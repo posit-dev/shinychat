@@ -263,19 +263,23 @@ artifact_content <- function(label) {
 ui <- page_chat(
   "Assistant",
   messages = "Welcome! Ask a question to get started.",
-  toolbar = actionButton("show_preview", "Show preview"),
-  toolbar_global = actionButton("help", "Help"),
+  toolbar = bslib::toolbar(
+    actionButton("show_preview", "Show preview")
+  ),
+  toolbar_global = bslib::toolbar(
+    bslib::input_dark_mode(),
+    actionButton("help", "Help")
+  ),
   sidebar = chat_sidebar(
     tags$p("Home tools"),
     history = FALSE,
     open = "open"
   ),
-  pages = list(
+  pages_navbar = list(
     chat_nav_panel(
       "About",
       tags$p("This is a secondary page."),
       value = "about",
-      toolbar = TRUE
     ),
     chat_nav_panel(
       "Settings",
@@ -286,10 +290,12 @@ ui <- page_chat(
         width = 320,
         open = "closed"
       ),
-      toolbar = actionButton("save_settings", "Save settings")
+      toolbar = bslib::toolbar(
+        actionButton("save_settings", "Save settings")
+      )
     )
   ),
-  artifact = chat_artifact(
+  drawer = chat_drawer(
     artifact_content("Initial preview"),
     title = "Preview"
   )
@@ -301,7 +307,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$show_preview, {
-    chat_artifact_show(
+    chat_drawer_show(
       "chat",
       content = artifact_content("Preview opened from the server"),
       title = "Preview"
@@ -320,8 +326,8 @@ when the chat is embedded alongside other top-level UI or inside an existing
 `bslib` layout.
 
 Set `history = TRUE` in a `chat_sidebar()` when the chat is connected to
-`chat_server()` or `chat_enable_history()`. Use `chat_artifact_update()`,
-`chat_artifact_hide()`, and `chat_artifact_toggle()` for subsequent artifact
+`chat_server()` or `chat_enable_history()`. Use `chat_drawer_update()`,
+`chat_drawer_hide()`, and `chat_drawer_toggle()` for subsequent artifact
 updates. Artifact content may contain ordinary Shiny inputs and outputs.
 
 ### Screen-filling layout
@@ -338,22 +344,30 @@ ui <- bslib::page_fillable(
 )
 ```
 
+Use `bslib::toolbar()` to group controls in every page-chat toolbar.
 `toolbar` is scoped to the home page. Navigation pages default to
-`toolbar = NULL`, which omits the scoped segment. Supply UI to replace that
-segment. For compatibility with earlier code, `toolbar = TRUE` reuses the home
-toolbar and `toolbar = FALSE` is an alias for omitting it. Use
-`toolbar_global` for actions that remain mounted across every page; it is
-rendered after the scoped segment and preserves its Shiny input and output
-state while controls move between desktop and mobile layouts. On narrow
-screens, navigation and toolbar controls move into the app menu above the
-active page's sidebar content without duplicating IDs.
+`toolbar = NULL`, which omits the scoped segment; their
+`chat_nav_panel(toolbar = bslib::toolbar(...))` supplies a page-specific
+replacement. Use `toolbar_global = bslib::toolbar(...)` for actions that remain
+mounted across every page. It is rendered after the active scoped toolbar.
+When omitted, `toolbar_global` contains bslib's dark/light mode toggle; pass
+`toolbar_global = NULL` to opt out. The controls move between the desktop
+header and mobile app menu without duplicating their Shiny IDs or losing state.
+
+`pages_navbar` also accepts bslib navigation items. A standard
+`bslib::nav_panel()` uses the normal page-chat content width with no
+page-specific sidebar or toolbar; use `chat_nav_panel()` when a page needs
+those options. `bslib::nav_menu()` supports nested menus,
+`bslib::nav_item()` adds non-selecting navigation UI, and
+`bslib::nav_spacer()` separates items. `bslib::nav_panel_hidden()` creates an
+unlisted panel.
 
 The package includes runnable navigation and artifact-control examples. They
 use local echo responses, so no provider credentials are required:
 
 ```r
 shiny::runExample("page-chat-navigation", package = "shinychat")
-shiny::runExample("page-chat-artifact-controls", package = "shinychat")
+shiny::runExample("page-chat-drawer-controls", package = "shinychat")
 ```
 
 The [R example source](https://github.com/posit-dev/shinychat/tree/main/pkg-r/inst/examples-shiny)

@@ -36,9 +36,7 @@ def test_history_rename_delete_search(
           .querySelector(".shiny-chat-history-list")
           ?.contains(element)"""
     )
-    menu.get_by_role(
-        "button", name="Rename"
-    ).click()
+    menu.get_by_role("button", name="Rename").click()
     # The item switches to an inline input.
     field = page.locator(".shiny-chat-history-item input")
     expect(field).to_be_visible()

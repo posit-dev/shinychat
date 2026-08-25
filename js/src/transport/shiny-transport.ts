@@ -49,14 +49,14 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
         const { id, action, html_deps } = envelope
 
         // Message dependencies must be registered before their DOM reaches
-        // React. Artifact dependencies instead travel with their action:
-        // ChatArtifact replaces its dynamic subtree in unbind -> deps -> bind
+        // React. Drawer dependencies instead travel with their action:
+        // ChatDrawer replaces its dynamic subtree in unbind -> deps -> bind
         // order, so rendering them here would both duplicate the work and
         // violate that lifecycle.
         if (html_deps && Array.isArray(html_deps)) {
           if (
-            action.type === "artifact_show" ||
-            action.type === "artifact_update"
+            action.type === "drawer_show" ||
+            action.type === "drawer_update"
           ) {
             ;(action as { html_deps?: HtmlDep[] }).html_deps = html_deps
           } else {

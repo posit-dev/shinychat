@@ -9,9 +9,9 @@ page_chat(
   icon = NULL,
   ...,
   id = "chat",
-  pages = NULL,
+  pages_navbar = NULL,
   toolbar = NULL,
-  toolbar_global = NULL,
+  toolbar_global = bslib::toolbar(bslib::input_dark_mode()),
   toolbar_input = NULL,
   navbar_options = NULL,
   sidebar = TRUE,
@@ -23,7 +23,7 @@ page_chat(
   enable_cancel = NULL,
   allow_attachments = NULL,
   footer = NULL,
-  artifact = TRUE,
+  drawer = TRUE,
   window_title = NA,
   lang = NULL,
   theme = page_chat_theme()
@@ -38,15 +38,28 @@ page_chat(
 \code{page_chat()} owns \code{height}, \code{fill}, and \code{show_history}; attempts to pass
 those arguments are rejected.}
 
-\item{id}{A non-empty string identifying the chat.}
+\item{id}{A non-empty string identifying the chat. The currently selected
+page is readable server-side as \verb{input$<id>_page} and settable via
+\code{\link[bslib:nav_select]{bslib::nav_select()}}. Use \code{\link[bslib:nav_show]{bslib::nav_show()}} and \code{\link[bslib:nav_hide]{bslib::nav_hide()}}
+to reveal or hide nav controls. The reserved value \code{"__home__"}
+represents the main chat page.}
 
-\item{pages}{\code{NULL} or a list of \code{\link[=chat_nav_panel]{chat_nav_panel()}} configurations.}
+\item{pages_navbar}{\code{NULL} or a list of \code{\link[=chat_nav_panel]{chat_nav_panel()}} configurations
+and supported standard bslib navigation items. Standard content panels
+use the normal page-chat content width with no page-specific sidebar or
+toolbar. \code{\link[bslib:nav_panel_hidden]{bslib::nav_panel_hidden()}} panels render their nav control
+hidden; use \code{\link[bslib:nav_show]{bslib::nav_show()}} to reveal it.}
 
 \item{toolbar}{Optional home-page-scoped UI displayed with the navigation
-controls. A panel's \code{chat_nav_panel(toolbar = )} can replace this segment.}
+controls. Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group toolbar controls. A panel's
+\code{chat_nav_panel(toolbar = )} replaces this scoped segment.}
 
 \item{toolbar_global}{Optional persistent UI displayed after the page-scoped
-toolbar in the navigation controls.}
+toolbar in the navigation controls. Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group
+toolbar controls. Defaults to a toolbar containing
+\code{\link[bslib:input_dark_mode]{bslib::input_dark_mode()}}; use \code{NULL} to opt out. It remains mounted
+while secondary pages are selected and while controls move between desktop
+and mobile layouts.}
 
 \item{toolbar_input}{Optional UI displayed directly below the chat input.
 Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group toolbar controls. This is independent of
@@ -58,12 +71,13 @@ supported. \code{position} and \code{collapsible} are unsupported because
 \code{page_chat()} owns the full-window layout and responsive app menu.}
 
 \item{sidebar}{Whether to use the default history sidebar (\code{TRUE}), omit the
-default sidebar (\code{FALSE}), or use a \code{\link[=chat_sidebar]{chat_sidebar()}} or
-\code{\link[bslib:sidebar]{bslib::sidebar()}} configuration. A bslib sidebar supplies its child
-content, width, initial open state, and resizability; its history defaults
-to \code{FALSE}.}
+default sidebar (\code{FALSE}), or use a
+\code{\link[=chat_sidebar]{chat_sidebar()}} or \code{\link[bslib:sidebar]{bslib::sidebar()}} configuration. A bslib sidebar
+supplies its child content, width, initial open state, and resizability;
+its history defaults to \code{FALSE}. A \code{\link[=chat_sidebar]{chat_sidebar()}} with \code{history = NULL}
+defaults to \code{TRUE} here.}
 
-\item{messages, greeting, placeholder, width, icon_assistant, enable_cancel, allow_attachments, footer, artifact}{Common arguments passed to \code{\link[=chat_ui]{chat_ui()}}.}
+\item{messages, greeting, placeholder, width, icon_assistant, enable_cancel, allow_attachments, footer, drawer}{Common arguments passed to \code{\link[=chat_ui]{chat_ui()}}.}
 
 \item{window_title}{A static browser-window title. The default, \code{NA},
 derives the window title from \code{title} when \code{title} is a scalar string.
@@ -110,30 +124,42 @@ on the mounted chat. Do not wrap \code{page_chat()} in another page container or
 \section{Navigation, sidebars, and artifacts}{
 
 
-\code{pages} accepts a list of additional pages, each created with
-\code{\link[=chat_nav_panel]{chat_nav_panel()}}.
+\code{pages_navbar} accepts a list of additional navbar items. Use
+\code{\link[=chat_nav_panel]{chat_nav_panel()}} when a page needs page-chat-specific sidebar, toolbar, or
+content-width options. It also accepts \code{\link[bslib:nav_panel]{bslib::nav_panel()}},
+\code{\link[bslib:nav_panel_hidden]{bslib::nav_panel_hidden()}}, \code{\link[bslib:nav_menu]{bslib::nav_menu()}}, \code{\link[bslib:nav_item]{bslib::nav_item()}}, and
+\code{\link[bslib:nav_spacer]{bslib::nav_spacer()}}.
+Programmatic navigation uses standard bslib helpers against the derived
+\code{"<id>_page"} id: \code{\link[bslib:nav_select]{bslib::nav_select()}} to switch pages (including hidden
+panels and \code{nav_menu()} children), \code{\link[bslib:nav_show]{bslib::nav_show()}} and
+\code{\link[bslib:nav_hide]{bslib::nav_hide()}} to reveal or hide nav controls. The active page is
+readable as \verb{input$<id>_page} (\code{"__home__"} when the main chat page is active).
+Sidebar navigation is not yet implemented.
 Each panel can use the default sidebar, no page-specific sidebar, or its
 own \code{\link[=chat_sidebar]{chat_sidebar()}} or \code{\link[bslib:sidebar]{bslib::sidebar()}} configuration. The \code{sidebar}
 argument configures the
-home view; \code{toolbar} is a home-page-scoped segment rendered with the page
-navigation controls and follows them into the mobile app menu.
-\code{toolbar_global} is a persistent segment that remains mounted on every page.
-A panel's \code{toolbar = NULL} omits the home-scoped segment; custom UI replaces
-it. For compatibility, \code{toolbar = TRUE} reuses the home toolbar and
-\code{toolbar = FALSE} is an alias for omitting it. On narrow screens, navigation
-and toolbar controls move into the app menu above the active page's sidebar
-content without duplicating Shiny input or output IDs.
+home view. Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group controls in \code{toolbar}; it is a
+home-page-scoped segment rendered with the page navigation controls and
+follows them into the mobile app menu. A panel's \code{toolbar = NULL} omits that
+scoped segment; \code{chat_nav_panel(toolbar = bslib::toolbar(...))} supplies a
+page-specific replacement. Use \code{toolbar_global = bslib::toolbar(...)} for a
+persistent segment that remains mounted on every page after the active
+scoped toolbar. On narrow screens, navigation and toolbar controls move into
+the app menu above the active page's sidebar content without duplicating
+Shiny input or output IDs. By default, \code{toolbar_global} contains
+\code{\link[bslib:input_dark_mode]{bslib::input_dark_mode()}}; use \code{NULL} to opt out.
 
-Set \code{artifact} to a \code{\link[=chat_artifact]{chat_artifact()}} configuration to provide initial
-content and layout options. Update the mounted artifact from the server
-with \code{\link[=chat_artifact_show]{chat_artifact_show()}}, \code{\link[=chat_artifact_update]{chat_artifact_update()}},
-\code{\link[=chat_artifact_hide]{chat_artifact_hide()}}, and \code{\link[=chat_artifact_toggle]{chat_artifact_toggle()}}. Artifact content is
+Set \code{drawer} to a \code{\link[=chat_drawer]{chat_drawer()}} configuration to provide
+initial content and layout options. Update the mounted drawer from
+the server
+with \code{\link[=chat_drawer_show]{chat_drawer_show()}}, \code{\link[=chat_drawer_update]{chat_drawer_update()}},
+\code{\link[=chat_drawer_hide]{chat_drawer_hide()}}, and \code{\link[=chat_drawer_toggle]{chat_drawer_toggle()}}. Artifact content is
 static UI passed through those server functions; use ordinary Shiny
 inputs and outputs inside that content when needed.
 You can try navigation and artifact-control examples, which do not require
 credentials, through
 \code{shiny::runExample("page-chat-navigation", package = "shinychat")} and
-\code{shiny::runExample("page-chat-artifact-controls", package = "shinychat")}.
+\code{shiny::runExample("page-chat-drawer-controls", package = "shinychat")}.
 
 \code{page_chat()} owns page composition and accepts one chat root. Do not pass
 unrelated top-level UI or a second chat root. Existing apps that need those
@@ -156,19 +182,18 @@ artifact_content <- function(label) {
 ui <- page_chat(
   "Assistant",
   messages = "Welcome! Ask a question to get started.",
-  toolbar = actionButton("show_preview", "Show preview"),
+  toolbar = bslib::toolbar(actionButton("show_preview", "Show preview")),
   toolbar_global = actionButton("help", "Help"),
   sidebar = chat_sidebar(
     tags$p("Home tools"),
     history = FALSE,
     open = "open"
   ),
-  pages = list(
+  pages_navbar = list(
     chat_nav_panel(
       "About",
       tags$p("This is a secondary page."),
       value = "about",
-      toolbar = TRUE
     ),
     chat_nav_panel(
       "Settings",
@@ -179,10 +204,10 @@ ui <- page_chat(
         width = 320,
         open = "closed"
       ),
-      toolbar = actionButton("save_settings", "Save settings")
+      toolbar = bslib::toolbar(actionButton("save_settings", "Save settings"))
     )
   ),
-  artifact = chat_artifact(
+  drawer = chat_drawer(
     artifact_content("Initial preview"),
     title = "Preview"
   )
@@ -194,7 +219,7 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$show_preview, {
-    chat_artifact_show(
+    chat_drawer_show(
       "chat",
       content = artifact_content("Preview opened from the server"),
       title = "Preview"

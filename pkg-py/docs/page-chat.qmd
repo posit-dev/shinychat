@@ -3,7 +3,7 @@ title: "Page chat"
 ---
 
 `page_chat()` creates a full-window chat application with a persistent chat home,
-optional navigation pages, page-aware sidebars, and an artifact region. Use it
+optional navigation pages, page-aware sidebars, and an artifact panel. Use it
 when chat is the primary application surface. For an embedded chat in a larger
 Shiny layout, continue to use [`chat_ui()`](api/chat_ui.qmd).
 
@@ -63,15 +63,17 @@ page_chat("Assistant", id="chat")
 ## Compose a page
 
 The home page always contains the chat. Add secondary pages with
-`chat_nav_panel()`, configure a home or page-specific sidebar with
-`chat_sidebar()`, and use `chat_artifact()` for initial artifact content.
-This complete Core app echoes submitted text and shows it in the artifact.
+`chat_nav_panel()` or Shiny's `ui.nav_panel()`, organize them with
+`ui.nav_menu()`, and add non-selecting navigation UI with `ui.nav_control()`
+or `ui.nav_spacer()`. Configure a home or page-specific sidebar with
+`chat_sidebar()`, and use `chat_drawer()` for initial artifact content.
+This complete Core app echoes submitted text and shows it in the artifact panel.
 
 ```{.python file="app.py"}
 from shiny import App, reactive, ui
 from shinychat import (
     Chat,
-    chat_artifact,
+    chat_drawer,
     chat_nav_panel,
     chat_sidebar,
     page_chat,
@@ -80,19 +82,23 @@ from shinychat import (
 app_ui = page_chat(
     "Research assistant",
     id="chat",
-    toolbar=ui.input_action_button("clear_chat", "Clear conversation"),
-    toolbar_global=ui.input_action_button("help", "Help"),
+    toolbar=ui.toolbar(
+        ui.input_action_button("clear_chat", "Clear conversation"),
+    ),
+    toolbar_global=ui.toolbar(
+        ui.input_dark_mode(),
+        ui.input_action_button("help", "Help"),
+    ),
     sidebar=chat_sidebar(
         ui.p("Recent conversations"),
         history=False,
         width=300,
     ),
-    pages=[
+    pages_navbar=[
         chat_nav_panel(
             "Sources",
             ui.p("Sources selected during this session appear here."),
             sidebar=True,
-            toolbar=True,
         ),
         chat_nav_panel(
             "Settings",
@@ -102,7 +108,9 @@ app_ui = page_chat(
                 open="closed",
                 width=260,
             ),
-            toolbar=ui.input_action_button("save_settings", "Save settings"),
+            toolbar=ui.toolbar(
+                ui.input_action_button("save_settings", "Save settings"),
+            ),
         ),
         chat_nav_panel(
             "About",
@@ -110,7 +118,7 @@ app_ui = page_chat(
             sidebar=False,
         ),
     ],
-    artifact=chat_artifact(
+    drawer=chat_drawer(
         ui.p("Submit a question to inspect it here."),
         title="Latest request",
         width=400,
@@ -129,7 +137,7 @@ def server(input, output, session):
     @chat.on_user_submit
     async def _(user_input: str):
         await chat.append_message(f"You asked: {user_input}")
-        await chat.artifact.show(
+        await chat.drawer.show(
             ui.p(user_input),
             title="Latest request",
         )
@@ -138,23 +146,35 @@ def server(input, output, session):
 app = App(app_ui, server)
 ```
 
-`sidebar=True` supplies the default conversation-history sidebar when `Chat`
-has a client and history enabled. Pass a
+`sidebar=True` supplies the default conversation-history sidebar. Pass a
 `chat_sidebar()` object when the page needs additional content or a different
-initial width and open state. A navigation page can set `sidebar=False` to
-remove it, use `sidebar=True` to use the default history sidebar, or supply
-its own `chat_sidebar()`. `chat_ui_history("chat")` is available when an
-advanced layout needs a history view bound to a specific chat ID outside a
+initial width and open state. If its `history` argument is omitted,
+`page_chat()` enables history and `chat_nav_panel()` disables it. A navigation
+page can set `sidebar=False` to
+remove its page-specific sidebar, use `sidebar=True` to use the default history
+sidebar, or supply its own `chat_sidebar()`. `chat_ui_history("chat")` is available when an advanced
+layout needs a history view bound to a specific chat ID outside a
 `page_chat()` sidebar.
 
+`pages_navbar` supplies the header/navbar navigation only. A standard
+`ui.nav_panel()` receives the normal page-chat content width and no
+page-specific sidebar or toolbar; use `chat_nav_panel()` when a page needs
+those options. `ui.nav_menu()` supports nested menus, while menu strings remain
+section headers or dividers. Shiny for Python currently has no
+`nav_panel_hidden()` or `nav_item()` equivalent; use `ui.nav_control()` for
+non-selecting navigation UI. Sidebar navigation is not yet implemented; a
+future `pages_sidebar` argument will configure it.
+
+Use `shiny.ui.toolbar()` to group controls in every page-chat toolbar.
 `toolbar` is scoped to the chat home page. A navigation page defaults to
-`toolbar=None`, which omits that scoped segment. Supply an HTML child for
-`toolbar` to replace it. For compatibility with earlier code,
-`toolbar=True` reuses the home toolbar and `toolbar=False` is an alias for
-omitting it. Use `toolbar_global` for actions that must remain mounted and
-visible across every selected page; it is rendered after the page-scoped
-segment and keeps its input and output state when the controls move between
-desktop and mobile layouts.
+`toolbar=None`, which omits that scoped segment; its
+`chat_nav_panel(toolbar=ui.toolbar(...))` supplies a page-specific replacement.
+Use `toolbar_global=ui.toolbar(...)` for actions that must remain mounted and
+visible across every selected page. It is rendered after the active scoped
+toolbar. When omitted, `toolbar_global` contains Shiny's dark/light mode
+toggle; pass `toolbar_global=None` to opt out. The controls move between the
+desktop header and mobile app menu without duplicating their Shiny IDs or
+losing state.
 
 Use `navbar_options=ui.navbar_options(...)` to style the title bar with its
 background, color theme, underline navigation treatment, and HTML attributes.
@@ -163,10 +183,10 @@ It owns the full-window layout and responsive app menu, so
 `navbar_options(position=...)` and `navbar_options(collapsible=...)` are not
 supported.
 
-Configured artifacts start open by default; use `chat_artifact(open=False)` to
-start one closed. Bare `artifact=True` enables an empty, initially hidden
-artifact region. From the server, `chat.artifact.show()`, `.update()`,
-`.hide()`, and `.toggle()` change the artifact without replacing the chat.
+Configured artifacts start open by default; use `chat_drawer(open=False)` to
+start one closed. Bare `drawer=True` enables an empty, initially hidden
+artifact panel. From the server, `chat.drawer.show()`, `.update()`,
+`.hide()`, and `.toggle()` change the panel without replacing the chat.
 `show()` and `update()` accept htmltools or Shiny UI content, including Shiny
 inputs and outputs.
 
@@ -182,12 +202,12 @@ uv pip install "shinychat[providers]"
 shiny run shinychat.examples.page_chat.navigation:app
 ```
 
-Replace `navigation` with `artifact_control` to run the artifact-controls
+Replace `navigation` with `drawer_control` to run the artifact-controls
 example; it has no optional dependencies.
 
 The same composition helpers work with Shiny Express. Keep `page_chat()` as the
-only top-level UI item and place application UI in its `toolbar`, `pages`,
-sidebars, or artifact.
+only top-level UI item and place application UI in its `toolbar`, `pages_navbar`,
+sidebars, or artifact panel.
 
 ```{.python file="app.py"}
 from shiny import reactive, ui
@@ -200,20 +220,26 @@ chat = Chat("chat")
 page_chat(
     "Research assistant",
     id="chat",
-    toolbar=ui.input_action_button("clear_chat", "Clear conversation"),
-    toolbar_global=ui.input_action_button("help", "Help"),
+    toolbar=ui.toolbar(
+        ui.input_action_button("clear_chat", "Clear conversation"),
+    ),
+    toolbar_global=ui.toolbar(
+        ui.input_dark_mode(),
+        ui.input_action_button("help", "Help"),
+    ),
     sidebar=chat_sidebar(history=False),
-    pages=[
+    pages_navbar=[
         chat_nav_panel(
             "About",
             ui.p("This page keeps the chat mounted."),
             sidebar=False,
-            toolbar=True,
         ),
         chat_nav_panel(
             "Settings",
             ui.p("Settings"),
-            toolbar=ui.input_action_button("save_settings", "Save settings"),
+            toolbar=ui.toolbar(
+                ui.input_action_button("save_settings", "Save settings"),
+            ),
         )
     ],
 )

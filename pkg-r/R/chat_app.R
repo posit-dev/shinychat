@@ -195,10 +195,18 @@ chat_app <- function(
   is_interactive <- rlang::is_interactive()
   close_id <- paste0(id, "-close-btn")
   if (is_interactive) {
-    dots$toolbar_global <- htmltools::tagList(
-      dots$toolbar_global,
-      bslib::toolbar(chat_app_stop_button(close_id))
-    )
+    stop_toolbar <- chat_app_stop_button(close_id)
+    if ("toolbar_global" %in% rlang::names2(dots)) {
+      dots$toolbar_global <- htmltools::tagList(
+        dots$toolbar_global,
+        bslib::toolbar(stop_toolbar)
+      )
+    } else {
+      dots$toolbar_global <- bslib::toolbar(
+        bslib::input_dark_mode(),
+        stop_toolbar
+      )
+    }
   }
 
   ui <- function(req) {

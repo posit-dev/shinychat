@@ -2,19 +2,6 @@ library(shiny)
 library(shinychat)
 library(ellmer)
 
-require_offcanvas_support <- function(
-  bslib_version = utils::packageVersion("bslib")
-) {
-  if (utils::compareVersion(as.character(bslib_version), "0.12.0") < 0) {
-    stop(
-      "The page-chat-navigation example requires bslib >= 0.12.0 for offcanvas settings.",
-      call. = FALSE
-    )
-  }
-}
-
-require_offcanvas_support()
-
 setClass(
   "PageChatEchoProvider",
   representation(name = "character", model = "character")
@@ -53,7 +40,7 @@ record_exchange <- function(client, user_text, assistant_text) {
   ))
 }
 
-artifact_content <- function(label) {
+drawer_content <- function(label) {
   tags$section(
     tags$h3("Preview"),
     tags$p(label)
@@ -72,9 +59,10 @@ ui <- page_chat(
   "Field notes",
   id = "chat",
   toolbar = bslib::toolbar(
-    bslib::toolbar_input_button("show_preview", "Show preview")
+    bslib::toolbar_input_button("show_preview", "Show Panel")
   ),
   toolbar_global = bslib::toolbar(
+    bslib::input_dark_mode(),
     bslib::toolbar_input_button(
       "show_settings",
       "Answer settings",
@@ -115,7 +103,7 @@ ui <- page_chat(
     width = 320,
     open = "auto"
   ),
-  pages = list(
+  pages_navbar = list(
     chat_nav_panel(
       "Sources",
       tags$h2("Source checklist"),
@@ -126,8 +114,9 @@ ui <- page_chat(
         selected = c("Field observations", "Published research")
       ),
       sidebar = TRUE,
-      # Compatibility alias: reuse the home-page toolbar here.
-      toolbar = TRUE
+      toolbar = bslib::toolbar(
+        bslib::toolbar_input_button("show_preview_sources", "Show Panel")
+      )
     ),
     chat_nav_panel(
       "Notebook",
@@ -153,8 +142,8 @@ ui <- page_chat(
       toolbar = NULL
     )
   ),
-  artifact = chat_artifact(
-    artifact_content("Use the home toolbar to open this preview."),
+  drawer = chat_drawer(
+    drawer_content("Use the home toolbar to open this preview."),
     title = "Working preview",
     width = 420,
     open = FALSE
@@ -194,15 +183,22 @@ server <- function(input, output, session) {
     )
     record_exchange(client, user_text, assistant_text)
     chat_append("chat", assistant_text)
-    chat_artifact_update(
+    chat_drawer_update(
       "chat",
-      artifact_content(paste("Latest request:", user_text)),
+      drawer_content(paste("Latest request:", user_text)),
       title = "Latest request"
     )
   })
 
   observeEvent(input$show_preview, {
-    chat_artifact_show("chat", title = "Working preview")
+    # The page-chat root element is addressable as "<id>_page".
+    bslib::nav_select("chat_page", "__home__", session = session)
+    chat_drawer_show("chat", title = "Working preview")
+  })
+
+  observeEvent(input$show_preview_sources, {
+    bslib::nav_select("chat_page", "__home__", session = session)
+    chat_drawer_show("chat", title = "Working preview")
   })
 
   observeEvent(input$show_settings, {

@@ -12,9 +12,7 @@ def submit_message(
 ) -> Locator:
     page.set_viewport_size({"width": viewport[0], "height": viewport[1]})
     page.goto(local_app.url)
-    page.evaluate(
-        f"document.documentElement.style.fontSize = '{text_scale}%'"
-    )
+    page.evaluate(f"document.documentElement.style.fontSize = '{text_scale}%'")
 
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
@@ -29,9 +27,7 @@ def submit_message(
 def test_long_aside_pill_has_a_bounded_desktop_width(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    pill = submit_message(
-        page, local_app, viewport=(1440, 900), text_scale=100
-    )
+    pill = submit_message(page, local_app, viewport=(1440, 900), text_scale=100)
 
     pill_box = pill.bounding_box()
     assert pill_box is not None

@@ -12,7 +12,11 @@ test_that("chat_app() composes a page chat with client-derived titles", {
   html <- chat_app_html(app)
   date <- format(Sys.Date(), "%Y-%m-%d")
 
-  expect_match(html, '<shiny-chat-page data-chat-id="chat"', fixed = TRUE)
+  expect_match(
+    html,
+    '<shiny-chat-page id="chat_page" data-chat-id="chat"',
+    fixed = TRUE
+  )
   expect_match(
     html,
     '<span class="shiny-chat-page-identity-title">mock-model (Mock)</span>',
@@ -34,7 +38,7 @@ test_that("chat_app() forwards page and browser-title options", {
     window_title = "Custom window",
     id = "custom-chat",
     sidebar = FALSE,
-    artifact = FALSE
+    drawer = FALSE
   )
   html <- chat_app_html(app)
 
@@ -50,7 +54,7 @@ test_that("chat_app() forwards page and browser-title options", {
     html,
     fixed = TRUE
   ))
-  expect_false(grepl("<shiny-chat-artifact", html, fixed = TRUE))
+  expect_false(grepl("<shiny-chat-drawer", html, fixed = TRUE))
 })
 
 test_that("chat_app() preserves an explicitly supplied bslib theme", {
@@ -187,9 +191,16 @@ test_that("chat_app() puts the interactive stop button in the page toolbar", {
     '<div class="bslib-toolbar bslib-gap-spacing" data-align="right">',
     fixed = TRUE
   )
+  expect_match(html, "bslib-input-dark-mode", fixed = TRUE)
   expect_match(html, "bi-stop-circle-fill text-danger", fixed = TRUE)
   expect_match(html, "Stop chat app", fixed = TRUE)
   expect_false(grepl("position: fixed", html, fixed = TRUE))
+
+  opt_out_html <- chat_app_html(
+    chat_app(mock_chat_client(), toolbar_global = NULL)
+  )
+  expect_false(grepl("bslib-input-dark-mode", opt_out_html, fixed = TRUE))
+  expect_match(opt_out_html, "bi-stop-circle-fill text-danger", fixed = TRUE)
 })
 
 test_that("chat_app() omits the stop button outside interactive use", {

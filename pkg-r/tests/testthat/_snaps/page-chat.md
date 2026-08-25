@@ -40,10 +40,10 @@
       Error in `chat_config_content()`:
       ! Arguments in ... must be unnamed UI content.
 
-# chat_artifact() validates configuration
+# chat_drawer() validates configuration
 
     Code
-      chat_artifact(title = list())
+      chat_drawer(title = list())
     Condition
       Error in `chat_validate_string()`:
       ! `title` must be a single string, not an empty list.
@@ -51,7 +51,7 @@
 ---
 
     Code
-      chat_artifact(width = -1)
+      chat_drawer(width = -1)
     Condition
       Error in `chat_validate_width()`:
       ! `width` must be a positive number or a non-empty CSS length.
@@ -59,7 +59,7 @@
 ---
 
     Code
-      chat_artifact(width = "bogus")
+      chat_drawer(width = "bogus")
     Condition
       Error in `chat_validate_width()`:
       ! `width` must be a valid CSS length.
@@ -69,7 +69,7 @@
 ---
 
     Code
-      chat_artifact(open = "yes")
+      chat_drawer(open = "yes")
     Condition
       Error in `chat_validate_boolean()`:
       ! `open` must be `TRUE` or `FALSE`.
@@ -77,7 +77,7 @@
 ---
 
     Code
-      chat_artifact(data_role = "artifact")
+      chat_drawer(data_role = "drawer")
     Condition
       Error in `chat_config_content()`:
       ! Arguments in ... must be unnamed UI content.
@@ -128,8 +128,7 @@
       cat(rendered_html, "\n", sep = "")
     Output
       <body class="bslib-page-fill bslib-gap-spacing html-fill-container" style="padding:0px;gap:0px;">
-        <shiny-chat-page data-chat-id="chat" data-active-page="home" data-require-bs-version="5" data-require-bs-caller="page_chat">
-          <bslib-input-dark-mode attribute="data-bs-theme" data-require-bs-caller="input_dark_mode()" data-require-bs-version="5" style="--text-1:var(--bs-emphasis-color);--text-2:var(--bs-tertiary-color);--vertical-correction: ; display: none"></bslib-input-dark-mode>
+        <shiny-chat-page id="chat_page" data-chat-id="chat" data-active-page="__home__" data-require-bs-version="5" data-require-bs-caller="page_chat">
           <header class="shiny-chat-page-header" data-bs-theme="auto" data-shiny-chat-page-nav-style="underline">
             <button type="button" class="shiny-chat-page-sidebar-toggle" aria-controls="chat-sidebar" aria-expanded="false" aria-label="Toggle app menu"><svg class="shiny-chat-page-sidebar-icon bi bi-list" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5"/></svg></button>
             <div class="shiny-chat-page-identity">
@@ -143,7 +142,11 @@
                 <nav class="shiny-chat-page-nav" aria-label="Pages"></nav>
                 <div class="shiny-chat-page-toolbar">
                   <div class="shiny-chat-page-toolbar-scoped"></div>
-                  <div class="shiny-chat-page-toolbar-global"></div>
+                  <div class="shiny-chat-page-toolbar-global">
+                    <div class="bslib-toolbar bslib-gap-spacing" data-align="right">
+                      <bslib-input-dark-mode attribute="data-bs-theme" style="--text-1:var(--bs-emphasis-color);--text-2:var(--bs-tertiary-color);--vertical-correction: ;" data-require-bs-version="5" data-require-bs-caller="input_dark_mode()"></bslib-input-dark-mode>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -162,11 +165,11 @@
               </div>
             </aside>
             <main class="shiny-chat-page-main">
-              <section class="shiny-chat-page-panel shiny-chat-page-home" data-page-value="home" data-sidebar-key="default" data-page-toolbar-source="home">
+              <section class="shiny-chat-page-panel shiny-chat-page-home" data-page-value="__home__" data-sidebar-key="default" data-page-toolbar-source="home">
                 <shiny-chat-container class="html-fill-item html-fill-container" data-app-role="primary" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(680px, 100%);height:100%;" submit-key="enter+modifier">
                   <shiny-chat-messages></shiny-chat-messages>
                   <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
-                  <shiny-chat-artifact width="400px"></shiny-chat-artifact>
+                  <shiny-chat-drawer width="400px"></shiny-chat-drawer>
                 </shiny-chat-container>
               </section>
             </main>
@@ -223,32 +226,32 @@
 ---
 
     Code
-      page_chat("Assistant", pages = chat_nav_panel("About"))
+      page_chat("Assistant", pages_navbar = chat_nav_panel("About"))
     Condition
       Error in `normalize_chat_pages()`:
-      ! `pages` must be `NULL` or a list of `chat_nav_panel()` configurations.
+      ! `pages_navbar` must be `NULL` or a list of `chat_nav_panel()` configurations and supported bslib navigation items.
 
 ---
 
     Code
-      page_chat("Assistant", pages = list(htmltools::tags$p("About")))
+      page_chat("Assistant", pages_navbar = list(htmltools::tags$p("About")))
     Condition
-      Error in `normalize_chat_pages()`:
-      ! `pages` item 1 must be a `chat_nav_panel()` configuration.
+      Error in `normalize_item()`:
+      ! `pages_navbar` item 1 must be a `chat_nav_panel()` configuration or a supported bslib navigation item.
 
 ---
 
     Code
-      page_chat("Assistant", pages = list(chat_nav_panel("Home", value = "home")))
+      page_chat("Assistant", pages_navbar = list(chat_nav_panel("Home", value = "__home__")))
     Condition
       Error in `normalize_chat_pages()`:
-      ! "home" is reserved for the chat home and cannot be used as a page value.
+      ! "__home__" is reserved for the main chat page and cannot be used as a page value.
 
 ---
 
     Code
-      page_chat("Assistant", pages = list(chat_nav_panel("About"), chat_nav_panel(
-        "About")))
+      page_chat("Assistant", pages_navbar = list(chat_nav_panel("About"),
+      chat_nav_panel("About")))
     Condition
       Error in `normalize_chat_pages()`:
       ! Each navigation page must have a unique value; "About" is duplicated.
@@ -269,7 +272,7 @@
       Error in `chat_validate_plain_string()`:
       ! `lang` must be a single string, not the empty string "".
 
-# chat_ui() renders configured artifact content and dependencies
+# chat_ui() renders configured drawer content and dependencies
 
     Code
       ui
@@ -277,18 +280,18 @@
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(680px, 100%);height:auto;">
         <shiny-chat-messages></shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
-        <shiny-chat-artifact title="" width="30rem" open resizable="false">
-          <div>Artifact</div>
-        </shiny-chat-artifact>
+        <shiny-chat-drawer title="" width="30rem" open resizable="false">
+          <div>Drawer</div>
+        </shiny-chat-drawer>
       </shiny-chat-container>
 
-# chat_ui() omits disabled artifact support and history presentation
+# chat_ui() omits disabled drawer support and history presentation
 
     Code
-      chat_ui("chat", artifact = list())
+      chat_ui("chat", drawer = list())
     Condition
-      Error in `normalize_chat_artifact()`:
-      ! `artifact` must be `TRUE`, `FALSE`, or a `chat_artifact()` configuration.
+      Error in `normalize_chat_drawer()`:
+      ! `drawer` must be `TRUE`, `FALSE`, or a `chat_drawer()` configuration.
 
 ---
 

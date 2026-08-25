@@ -187,29 +187,29 @@ def test_aside_marker_public_style_properties(
     assert labeled_marker.evaluate("el => getComputedStyle(el).color") == (
         "rgb(10, 20, 30)"
     )
-    assert labeled_marker.evaluate("el => getComputedStyle(el).backgroundColor") == (
-        "rgb(70, 80, 90)"
-    )
-    assert count_marker.evaluate("el => getComputedStyle(el).backgroundColor") == (
-        "rgb(70, 80, 90)"
-    )
+    assert labeled_marker.evaluate(
+        "el => getComputedStyle(el).backgroundColor"
+    ) == ("rgb(70, 80, 90)")
+    assert count_marker.evaluate(
+        "el => getComputedStyle(el).backgroundColor"
+    ) == ("rgb(70, 80, 90)")
     assert compact_marker.evaluate("el => getComputedStyle(el).color") == (
         "rgb(10, 20, 30)"
     )
     assert compact_marker.evaluate("el => getComputedStyle(el).fontFamily") == (
         "monospace"
     )
-    assert compact_face.evaluate("el => getComputedStyle(el).backgroundColor") == (
-        "rgb(70, 80, 90)"
-    )
+    assert compact_face.evaluate(
+        "el => getComputedStyle(el).backgroundColor"
+    ) == ("rgb(70, 80, 90)")
 
     compact_marker.hover()
     assert compact_marker.evaluate("el => getComputedStyle(el).color") == (
         "rgb(40, 50, 60)"
     )
-    assert compact_face.evaluate("el => getComputedStyle(el).backgroundColor") == (
-        "rgb(100, 110, 120)"
-    )
+    assert compact_face.evaluate(
+        "el => getComputedStyle(el).backgroundColor"
+    ) == ("rgb(100, 110, 120)")
 
     page.keyboard.press("Tab")
     compact_marker.focus()
@@ -217,9 +217,9 @@ def test_aside_marker_public_style_properties(
     assert compact_marker.evaluate("el => getComputedStyle(el).color") == (
         "rgb(40, 50, 60)"
     )
-    assert compact_face.evaluate("el => getComputedStyle(el).backgroundColor") == (
-        "rgb(100, 110, 120)"
-    )
+    assert compact_face.evaluate(
+        "el => getComputedStyle(el).backgroundColor"
+    ) == ("rgb(100, 110, 120)")
 
     compact_marker.click()
     page.mouse.move(0, 0)
@@ -227,9 +227,9 @@ def test_aside_marker_public_style_properties(
     assert compact_marker.evaluate("el => getComputedStyle(el).color") == (
         "rgb(40, 50, 60)"
     )
-    assert compact_face.evaluate("el => getComputedStyle(el).backgroundColor") == (
-        "rgb(100, 110, 120)"
-    )
+    assert compact_face.evaluate(
+        "el => getComputedStyle(el).backgroundColor"
+    ) == ("rgb(100, 110, 120)")
 
 
 def test_web_aside_symmetric_padding_when_favicon_fails(

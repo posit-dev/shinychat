@@ -520,13 +520,13 @@ describe("ShinyTransport", () => {
 
       await fire(
         makeEnvelope(
-          { type: "artifact_show", content: "<div>Artifact</div>" },
+          { type: "drawer_show", content: "<div>Artifact</div>" },
           { html_deps: deps },
         ),
       )
       await fire(
         makeEnvelope(
-          { type: "artifact_update", content: "<div>Updated</div>" },
+          { type: "drawer_update", content: "<div>Updated</div>" },
           { html_deps: deps },
         ),
       )
@@ -534,12 +534,12 @@ describe("ShinyTransport", () => {
       expect(window.Shiny?.renderDependenciesAsync).not.toHaveBeenCalled()
       expect(received).toEqual([
         {
-          type: "artifact_show",
+          type: "drawer_show",
           content: "<div>Artifact</div>",
           html_deps: deps,
         },
         {
-          type: "artifact_update",
+          type: "drawer_update",
           content: "<div>Updated</div>",
           html_deps: deps,
         },

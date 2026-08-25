@@ -4,7 +4,7 @@
 @use "slash-commands.scss";
 @use "command-chip.scss";
 @use "history";
-@use "artifact";
+@use "drawer";
 
 shiny-chat-container {
   --shiny-chat-border: var(--bs-border-width, 1px) solid var(--bs-border-color, #e9ecef);
@@ -227,14 +227,14 @@ shiny-chat-page
 }
 
 // Both default triggers occupy the first 3rem of the chat: 0.5rem from the
-// edge, a 2rem control, and 0.5rem of breathing room. Artifact moves below a
+// edge, a 2rem control, and 0.5rem of breathing room. Drawer moves below a
 // right-placed history trigger, so reserve the combined stack in that case.
 :where(shiny-chat-container[data-inline-controls]) {
   --_chat-inline-controls-inset: 3rem;
 }
 
 :where(
-  shiny-chat-container[data-history-placement="right"][data-inline-controls~="artifact"]
+  shiny-chat-container[data-history-placement="right"][data-inline-controls~="drawer"]
 ) {
   --_chat-inline-controls-inset: 5.5rem;
 }

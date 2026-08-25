@@ -12,13 +12,13 @@ page_chat_example_path <- function(...) {
 }
 
 page_chat_example_names <- c(
-  "page-chat-artifact-controls",
+  "page-chat-drawer-controls",
   "page-chat-navigation"
 )
 
 test_that("page-chat R examples parse and construct", {
   apps <- c(
-    page_chat_example_path("page-chat-artifact-controls", "app.R"),
+    page_chat_example_path("page-chat-drawer-controls", "app.R"),
     page_chat_example_path("page-chat-navigation", "app.R")
   )
 
@@ -52,11 +52,6 @@ test_that("page-chat R examples parse and construct", {
         paste(readLines(app, warn = FALSE), collapse = "\n"),
         "chat_enable_history",
         fixed = TRUE
-      )
-      expect_no_error(env$require_offcanvas_support("0.12.0"))
-      expect_error(
-        env$require_offcanvas_support("0.11.0"),
-        "requires bslib >= 0.12.0"
       )
     }
   }
@@ -93,6 +88,42 @@ test_that("page-chat navigation example mounts inline history", {
       )
     ),
     1
+  )
+})
+
+test_that("page-chat navigation example returns home before showing artifact", {
+  skip_if_shinytest2_unavailable()
+
+  app <- shinytest2::AppDriver$new(
+    page_chat_example_path("page-chat-navigation"),
+    name = "page-chat-navigation-artifact-example",
+    width = 1440,
+    height = 900,
+    timeout = 30 * 1000
+  )
+  withr::defer(app$stop())
+
+  app$wait_for_js(
+    "document.querySelector('shiny-chat-page #chat [role=\"textbox\"]') !== null;",
+    timeout = 30 * 1000
+  )
+  app$click(selector = "button[data-page-target='Sources']")
+  app$wait_for_idle(timeout = 30 * 1000)
+  expect_identical(
+    app$get_js("document.querySelector('shiny-chat-page')?.dataset.activePage"),
+    "Sources"
+  )
+
+  app$click(selector = "#show_preview")
+  app$wait_for_idle(timeout = 30 * 1000)
+  expect_identical(
+    app$get_js("document.querySelector('shiny-chat-page')?.dataset.activePage"),
+    "__home__"
+  )
+  expect_true(
+    isTRUE(app$get_js(
+      "document.querySelector('#chat .shiny-chat-drawer')?.hidden === false"
+    ))
   )
 })
 

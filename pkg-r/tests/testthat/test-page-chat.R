@@ -1,6 +1,6 @@
-artifact_child <- function(ui) {
+drawer_child <- function(ui) {
   children <- Filter(
-    function(child) identical(child$name, "shiny-chat-artifact"),
+    function(child) identical(child$name, "shiny-chat-drawer"),
     ui$children
   )
   expect_length(children, 1)
@@ -18,6 +18,8 @@ page_chat_tag <- function(ui, selector) {
 }
 
 test_that("chat_sidebar() validates and normalizes configuration", {
+  expect_null(chat_sidebar()$history)
+
   sidebar <- chat_sidebar(
     htmltools::tags$p("Extra controls"),
     history = TRUE,
@@ -40,26 +42,26 @@ test_that("chat_sidebar() validates and normalizes configuration", {
   expect_snapshot(error = TRUE, chat_sidebar(class = "not-an-attribute"))
 })
 
-test_that("chat_artifact() validates configuration", {
-  artifact <- chat_artifact(
-    htmltools::tags$p("Artifact content"),
+test_that("chat_drawer() validates configuration", {
+  drawer <- chat_drawer(
+    htmltools::tags$p("Drawer content"),
     title = "Preview",
     width = 480,
     resizable = FALSE
   )
 
-  expect_s3_class(artifact, "chat_artifact")
-  expect_equal(artifact$title, "Preview")
-  expect_equal(artifact$width, "480px")
-  expect_true(artifact$open)
-  expect_false(artifact$resizable)
-  expect_false(chat_artifact(open = FALSE)$open)
+  expect_s3_class(drawer, "chat_drawer")
+  expect_equal(drawer$title, "Preview")
+  expect_equal(drawer$width, "480px")
+  expect_true(drawer$open)
+  expect_false(drawer$resizable)
+  expect_false(chat_drawer(open = FALSE)$open)
 
-  expect_snapshot(error = TRUE, chat_artifact(title = list()))
-  expect_snapshot(error = TRUE, chat_artifact(width = -1))
-  expect_snapshot(error = TRUE, chat_artifact(width = "bogus"))
-  expect_snapshot(error = TRUE, chat_artifact(open = "yes"))
-  expect_snapshot(error = TRUE, chat_artifact(data_role = "artifact"))
+  expect_snapshot(error = TRUE, chat_drawer(title = list()))
+  expect_snapshot(error = TRUE, chat_drawer(width = -1))
+  expect_snapshot(error = TRUE, chat_drawer(width = "bogus"))
+  expect_snapshot(error = TRUE, chat_drawer(open = "yes"))
+  expect_snapshot(error = TRUE, chat_drawer(data_role = "drawer"))
 })
 
 test_that("page_chat_theme() composes caller overrides over a preset", {
@@ -99,7 +101,7 @@ test_that("page_chat_theme() contains the page-specific baseline tokens", {
     "shiny-chat-page-nav-link-font-size",
     "shiny-chat-page-panel-padding-block",
     "shiny-chat-page-fill-padding",
-    "shiny-chat-page-artifact-box-shadow"
+    "shiny-chat-page-drawer-box-shadow"
   )
 
   expect_false(anyNA(bslib::bs_get_variables(page_theme, tokens)))
@@ -125,17 +127,17 @@ test_that("page_chat_theme() contains the page-specific baseline tokens", {
   )
   expect_match(
     css,
-    "background:var(--shiny-chat-page-artifact-bg)",
+    "background:var(--shiny-chat-page-drawer-bg)",
     fixed = TRUE
   )
   expect_match(
     css,
-    "box-shadow:var(--shiny-chat-page-artifact-box-shadow)",
+    "box-shadow:var(--shiny-chat-page-drawer-box-shadow)",
     fixed = TRUE
   )
   expect_match(
     css,
-    "background:var(--shiny-chat-page-artifact-header-bg)",
+    "background:var(--shiny-chat-page-drawer-header-bg)",
     fixed = TRUE
   )
 })
@@ -155,6 +157,7 @@ test_that("chat_nav_panel() requires page-chat configuration", {
   expect_s3_class(panel$sidebar, "chat_sidebar")
   expect_null(panel$toolbar)
   expect_equal(panel$content_width, "min(680px, 100%)")
+  expect_false(chat_nav_panel("Default")$sidebar)
   expect_equal(
     chat_nav_panel("Wide", content_width = 720)$content_width,
     "720px"
@@ -163,13 +166,28 @@ test_that("chat_nav_panel() requires page-chat configuration", {
     chat_nav_panel("Full", content_width = "100vw")$content_width,
     "100vw"
   )
-  expect_true(chat_nav_panel("Inherited", toolbar = TRUE)$toolbar)
-  expect_false(chat_nav_panel("Legacy empty", toolbar = FALSE)$toolbar)
+  expect_error(
+    chat_nav_panel("Inherited", toolbar = TRUE),
+    "must be NULL or UI content"
+  )
+  expect_error(
+    chat_nav_panel("Legacy empty", toolbar = FALSE),
+    "must be NULL or UI content"
+  )
   custom_toolbar <- htmltools::tags$span("Custom toolbar")
   expect_identical(
     chat_nav_panel("Custom", toolbar = custom_toolbar)$toolbar,
     custom_toolbar
   )
+
+  home <- page_chat("Assistant", sidebar = chat_sidebar())
+  panel <- page_chat(
+    "Assistant",
+    sidebar = FALSE,
+    pages_navbar = list(chat_nav_panel("About", sidebar = chat_sidebar()))
+  )
+  expect_length(page_chat_tags(home, "shiny-chat-history"), 1)
+  expect_length(page_chat_tags(panel, "shiny-chat-history"), 0)
 
   expect_snapshot(error = TRUE, chat_nav_panel(""))
   expect_snapshot(error = TRUE, chat_nav_panel("Settings", value = ""))
@@ -197,7 +215,7 @@ test_that("page_chat() normalizes bslib sidebars", {
       open = "open",
       resizable = FALSE
     ),
-    pages = list(
+    pages_navbar = list(
       chat_nav_panel(
         "Settings",
         sidebar = bslib::sidebar(
@@ -229,7 +247,7 @@ test_that("page_chat() normalizes bslib sidebars", {
 test_that("chat_nav_panel() renders a content-width wrapper", {
   page <- page_chat(
     "Assistant",
-    pages = list(
+    pages_navbar = list(
       chat_nav_panel("Default", htmltools::tags$p("Default")),
       chat_nav_panel(
         "Custom",
@@ -272,21 +290,6 @@ test_that("chat_nav_panel() renders a content-width wrapper", {
   )
 })
 
-test_that("page_chat() supports an inherited empty toolbar", {
-  page <- page_chat(
-    "Assistant",
-    pages = list(chat_nav_panel("About", toolbar = TRUE))
-  )
-
-  sources <- page_chat_tags(page, ".shiny-chat-page-toolbar-source")
-  expect_length(sources, 1)
-  expect_equal(sources[[1]]$attribs[["data-page-toolbar-source"]], "home")
-  expect_length(
-    page_chat_tags(page, ".shiny-chat-page-toolbar-content"),
-    1
-  )
-})
-
 test_that("chat_ui_history() resolves IDs and accepts named HTML attributes", {
   session <- shiny::MockShinySession$new()
   shiny::withReactiveDomain(session, {
@@ -316,7 +319,7 @@ test_that("page_chat() has the agreed public signature", {
       "icon",
       "...",
       "id",
-      "pages",
+      "pages_navbar",
       "toolbar",
       "toolbar_global",
       "toolbar_input",
@@ -330,7 +333,7 @@ test_that("page_chat() has the agreed public signature", {
       "enable_cancel",
       "allow_attachments",
       "footer",
-      "artifact",
+      "drawer",
       "window_title",
       "lang",
       "theme"
@@ -347,11 +350,17 @@ test_that("page_chat() builds the default fillable page contract", {
   )
 
   root <- page_chat_tag(page, "shiny-chat-page")
+  expect_equal(root$attribs$id, "chat_page")
   expect_equal(root$attribs[["data-chat-id"]], "chat")
-  expect_equal(root$attribs[["data-active-page"]], "home")
+  expect_equal(root$attribs[["data-active-page"]], "__home__")
   dark_mode <- page_chat_tag(page, "bslib-input-dark-mode")
   expect_equal(dark_mode$attribs$attribute, "data-bs-theme")
-  expect_match(as.character(page), "display: none", fixed = TRUE)
+  global_toolbar <- page_chat_tag(page, ".shiny-chat-page-toolbar-global")
+  expect_length(page_chat_tags(global_toolbar, ".bslib-toolbar"), 1)
+  expect_length(page_chat_tags(global_toolbar, "bslib-input-dark-mode"), 1)
+
+  opt_out <- page_chat("Assistant", toolbar_global = NULL)
+  expect_length(page_chat_tags(opt_out, "bslib-input-dark-mode"), 0)
 
   toggle <- page_chat_tag(page, ".shiny-chat-page-sidebar-toggle")
   expect_equal(toggle$attribs$type, "button")
@@ -372,7 +381,10 @@ test_that("page_chat() builds the default fillable page contract", {
     "bslib-toolbar-input-button",
     fixed = TRUE
   )
-  close_toolbar <- page_chat_tag(page, ".bslib-toolbar")
+  close_toolbar <- page_chat_tag(
+    page,
+    ".shiny-chat-page-sidebar > .bslib-toolbar"
+  )
   expect_length(
     page_chat_tags(close_toolbar, ".shiny-chat-page-sidebar-close"),
     1
@@ -428,7 +440,7 @@ test_that("page_chat() builds the default fillable page contract", {
   main <- page_chat_tag(page, ".shiny-chat-page-main")
   expect_equal(main$name, "main")
   home <- page_chat_tag(main, ".shiny-chat-page-home")
-  expect_equal(home$attribs[["data-page-value"]], "home")
+  expect_equal(home$attribs[["data-page-value"]], "__home__")
   expect_equal(home$attribs[["data-sidebar-key"]], "default")
 
   chat <- page_chat_tag(home, "shiny-chat-container")
@@ -502,12 +514,11 @@ test_that("page_chat() normalizes navigation and sidebar metadata once", {
   page <- page_chat(
     htmltools::tags$span("Reactive title"),
     icon = htmltools::tags$span("R"),
-    pages = list(
+    pages_navbar = list(
       chat_nav_panel(
         "About",
         htmltools::tags$p("About content"),
-        icon = htmltools::tags$span("?"),
-        toolbar = TRUE
+        icon = htmltools::tags$span("?")
       ),
       chat_nav_panel(
         "Conversations",
@@ -635,7 +646,7 @@ test_that("page_chat() normalizes navigation and sidebar metadata once", {
       function(x) x$attribs[["data-page-value"]],
       character(1)
     )),
-    c("home", "About", "conversations", "settings")
+    c("__home__", "About", "conversations", "settings")
   )
   expect_equal(
     unname(vapply(
@@ -653,7 +664,7 @@ test_that("page_chat() normalizes navigation and sidebar metadata once", {
       function(x) x$attribs[["data-page-toolbar-source"]] %||% NA_character_,
       character(1)
     )),
-    c("home", "home", NA, "page-3")
+    c("home", NA, NA, "page-3")
   )
   expect_null(sections[[1]]$attribs$hidden)
   expect_true(all(vapply(
@@ -732,15 +743,226 @@ test_that("page_chat() normalizes navigation and sidebar metadata once", {
   expect_identical(attr(page, "lang"), "en")
 })
 
-test_that("page_chat() keeps global toolbar and supports legacy panel booleans", {
+test_that("page_chat() supports standard bslib navigation items", {
+  page <- page_chat(
+    "Assistant",
+    pages_navbar = list(
+      bslib::nav_panel(
+        "About",
+        htmltools::tags$p("About content"),
+        value = "about"
+      ),
+      bslib::nav_menu(
+        "More",
+        bslib::nav_panel(
+          "Help",
+          htmltools::tags$p("Help content"),
+          value = "help"
+        ),
+        "---",
+        bslib::nav_menu(
+          "Nested",
+          bslib::nav_panel(
+            "Details",
+            htmltools::tags$p("Details content"),
+            value = "details"
+          )
+        )
+      ),
+      bslib::nav_item(
+        htmltools::tags$a("Documentation", href = "https://example.com")
+      ),
+      bslib::nav_spacer(),
+      chat_nav_panel("Settings", htmltools::tags$p("Settings content")),
+      bslib::nav_panel_hidden(
+        "advanced",
+        htmltools::tags$p("Advanced content")
+      )
+    )
+  )
+
+  sections <- page_chat_tags(page, ".shiny-chat-page-panel")
+  expect_equal(
+    unname(vapply(
+      sections,
+      function(section) section$attribs[["data-page-value"]],
+      character(1)
+    )),
+    c("__home__", "about", "help", "details", "Settings", "advanced")
+  )
+  expect_equal(
+    unname(vapply(
+      sections[-1],
+      function(section) section$attribs[["aria-labelledby"]],
+      character(1)
+    )),
+    paste0("chat-nav-", 1:5)
+  )
+  controls <- page_chat_tag(page, ".shiny-chat-page-nav")
+  nav_links <- page_chat_tags(controls, ".shiny-chat-page-nav-link")
+  expect_length(nav_links, 5)
+  expect_length(page_chat_tags(controls, ".shiny-chat-page-nav-menu"), 2)
+  expect_length(page_chat_tags(controls, ".shiny-chat-page-nav-divider"), 1)
+  expect_length(page_chat_tags(controls, ".shiny-chat-page-nav-control"), 1)
+  expect_length(page_chat_tags(controls, ".bslib-nav-spacer"), 1)
+  expect_match(as.character(controls), "Documentation", fixed = TRUE)
+  expect_match(
+    as.character(page),
+    "--shiny-chat-page-content-width:min(680px, 100%)",
+    fixed = TRUE
+  )
+})
+
+test_that("page_chat() pre-renders hidden nav controls in configured position", {
+  page <- page_chat(
+    "Assistant",
+    pages_navbar = list(
+      chat_nav_panel("About", htmltools::tags$p("About content")),
+      bslib::nav_panel_hidden(
+        "advanced",
+        htmltools::tags$p("Advanced content")
+      ),
+      chat_nav_panel("Settings", htmltools::tags$p("Settings content"))
+    )
+  )
+
+  sections <- page_chat_tags(page, ".shiny-chat-page-panel")
+  expect_equal(
+    unname(vapply(
+      sections,
+      function(section) section$attribs[["data-page-value"]],
+      character(1)
+    )),
+    c("__home__", "About", "advanced", "Settings")
+  )
+
+  nav <- page_chat_tag(page, ".shiny-chat-page-nav")
+  nav_links <- page_chat_tags(nav, ".shiny-chat-page-nav-link")
+  expect_length(nav_links, 3)
+
+  # The hidden control renders in its configured position (second).
+  expect_equal(nav_links[[1]]$attribs[["data-page-target"]], "About")
+  expect_equal(nav_links[[2]]$attribs[["data-page-target"]], "advanced")
+  expect_equal(nav_links[[3]]$attribs[["data-page-target"]], "Settings")
+
+  # The hidden control has the `hidden` attribute; visible controls do not.
+  expect_null(nav_links[[1]]$attribs$hidden)
+  expect_true(is.na(nav_links[[2]]$attribs$hidden))
+  expect_null(nav_links[[3]]$attribs$hidden)
+
+  # The hidden control's visible label falls back to the panel value.
+  title_spans <- page_chat_tags(
+    nav,
+    ".shiny-chat-page-nav-title"
+  )
+  expect_match(as.character(title_spans[[2]]), "advanced", fixed = TRUE)
+
+  # The hidden panel's section has aria-labelledby referencing its control.
+  hidden_section <- sections[[3]]
+  expect_equal(
+    hidden_section$attribs[["aria-labelledby"]],
+    nav_links[[2]]$attribs$id
+  )
+  expect_equal(hidden_section$attribs[["data-page-title"]], "advanced")
+})
+
+test_that("page_chat() pre-renders hidden nav controls inside nav_menu()", {
+  page <- page_chat(
+    "Assistant",
+    pages_navbar = list(
+      chat_nav_panel("About", htmltools::tags$p("About content")),
+      bslib::nav_menu(
+        "More",
+        bslib::nav_panel(
+          "Help",
+          htmltools::tags$p("Help content"),
+          value = "help"
+        ),
+        bslib::nav_panel_hidden(
+          "secret",
+          htmltools::tags$p("Secret content")
+        )
+      )
+    )
+  )
+
+  sections <- page_chat_tags(page, ".shiny-chat-page-panel")
+  expect_equal(
+    unname(vapply(
+      sections,
+      function(section) section$attribs[["data-page-value"]],
+      character(1)
+    )),
+    c("__home__", "About", "help", "secret")
+  )
+
+  nav <- page_chat_tag(page, ".shiny-chat-page-nav")
+  nav_links <- page_chat_tags(nav, ".shiny-chat-page-nav-link")
+  expect_length(nav_links, 3)
+
+  # The hidden control is inside the menu, in its configured position.
+  expect_equal(nav_links[[1]]$attribs[["data-page-target"]], "About")
+  expect_equal(nav_links[[2]]$attribs[["data-page-target"]], "help")
+  expect_equal(nav_links[[3]]$attribs[["data-page-target"]], "secret")
+  expect_true(is.na(nav_links[[3]]$attribs$hidden))
+  expect_null(nav_links[[2]]$attribs$hidden)
+
+  # The hidden panel's section has aria-labelledby referencing its control.
+  secret_section <- sections[[4]]
+  expect_equal(
+    secret_section$attribs[["aria-labelledby"]],
+    nav_links[[3]]$attribs$id
+  )
+})
+
+test_that("page_chat() preserves icon on hidden nav controls", {
+  icon_html <- htmltools::tags$span("A")
+  page <- page_chat(
+    "Assistant",
+    pages_navbar = list(
+      bslib::nav_panel_hidden(
+        "advanced",
+        htmltools::tags$p("Advanced content"),
+        icon = icon_html
+      )
+    )
+  )
+
+  nav <- page_chat_tag(page, ".shiny-chat-page-nav")
+  nav_link <- page_chat_tag(nav, ".shiny-chat-page-nav-link")
+  expect_true(is.na(nav_link$attribs$hidden))
+  icon_spans <- page_chat_tags(nav_link, ".shiny-chat-page-nav-icon")
+  expect_length(icon_spans, 1)
+  expect_match(as.character(icon_spans[[1]]), "<span>A</span>", fixed = TRUE)
+})
+
+test_that("page_chat() allows 'home' as a user page value", {
+  page <- page_chat(
+    "Assistant",
+    pages_navbar = list(
+      chat_nav_panel("Home", htmltools::tags$p("User home"), value = "home")
+    )
+  )
+
+  sections <- page_chat_tags(page, ".shiny-chat-page-panel")
+  expect_equal(
+    unname(vapply(
+      sections,
+      function(section) section$attribs[["data-page-value"]],
+      character(1)
+    )),
+    c("__home__", "home")
+  )
+})
+
+test_that("page_chat() keeps global and custom panel toolbars separate", {
   page <- page_chat(
     "Assistant",
     toolbar = htmltools::tags$button("Home"),
     toolbar_global = htmltools::tags$button("Global"),
-    pages = list(
+    pages_navbar = list(
       chat_nav_panel("Default"),
-      chat_nav_panel("Inherited", toolbar = TRUE),
-      chat_nav_panel("Legacy empty", toolbar = FALSE),
+      chat_nav_panel("No toolbar"),
       chat_nav_panel("Custom", toolbar = htmltools::tags$button("Custom"))
     )
   )
@@ -761,16 +983,15 @@ test_that("page_chat() keeps global toolbar and supports legacy panel booleans",
   expect_length(page_chat_tags(page, ".shiny-chat-page-toolbar-source"), 2)
   sections <- page_chat_tags(page, ".shiny-chat-page-panel")
   expect_null(sections[[2]]$attribs[["data-page-toolbar-source"]])
-  expect_equal(sections[[3]]$attribs[["data-page-toolbar-source"]], "home")
-  expect_null(sections[[4]]$attribs[["data-page-toolbar-source"]])
-  expect_equal(sections[[5]]$attribs[["data-page-toolbar-source"]], "page-4")
+  expect_null(sections[[3]]$attribs[["data-page-toolbar-source"]])
+  expect_equal(sections[[4]]$attribs[["data-page-toolbar-source"]], "page-3")
 })
 
 test_that("page_chat() retains the app-menu shell without a home sidebar", {
   page <- page_chat(
     "Assistant",
     sidebar = FALSE,
-    pages = list(chat_nav_panel("About", sidebar = TRUE)),
+    pages_navbar = list(chat_nav_panel("About", sidebar = TRUE)),
     window_title = NULL
   )
 
@@ -852,7 +1073,7 @@ test_that("page_chat() revalidates mutated sidebar configurations", {
   invalid_resizable$resizable <- NA
   panel <- chat_nav_panel("About", sidebar = invalid_resizable)
   expect_error(
-    page_chat("Assistant", pages = list(panel)),
+    page_chat("Assistant", pages_navbar = list(panel)),
     "`resizable`"
   )
 })
@@ -865,7 +1086,7 @@ test_that("page_chat() resolves its shared chat ID once", {
     page <- page_chat(
       "Assistant",
       id = "chat",
-      pages = list(chat_nav_panel("About"))
+      pages_navbar = list(chat_nav_panel("About"))
     )
     root <- page_chat_tag(page, "shiny-chat-page")
     chat <- page_chat_tag(page, "shiny-chat-container")
@@ -916,24 +1137,24 @@ test_that("page_chat() validates page-owned arguments and page metadata", {
   expect_no_error(page_chat("Assistant", toolbar = new.env()))
   expect_snapshot(
     error = TRUE,
-    page_chat("Assistant", pages = chat_nav_panel("About"))
+    page_chat("Assistant", pages_navbar = chat_nav_panel("About"))
   )
   expect_snapshot(
     error = TRUE,
-    page_chat("Assistant", pages = list(htmltools::tags$p("About")))
+    page_chat("Assistant", pages_navbar = list(htmltools::tags$p("About")))
   )
   expect_snapshot(
     error = TRUE,
     page_chat(
       "Assistant",
-      pages = list(chat_nav_panel("Home", value = "home"))
+      pages_navbar = list(chat_nav_panel("Home", value = "__home__"))
     )
   )
   expect_snapshot(
     error = TRUE,
     page_chat(
       "Assistant",
-      pages = list(chat_nav_panel("About"), chat_nav_panel("About"))
+      pages_navbar = list(chat_nav_panel("About"), chat_nav_panel("About"))
     )
   )
   expect_snapshot(
@@ -965,53 +1186,53 @@ test_that("page_chat() derives window title only from a scalar text title", {
   ))
 })
 
-test_that("chat_ui() keeps default artifact support hidden", {
+test_that("chat_ui() keeps default drawer support hidden", {
   ui <- chat_ui("chat")
-  artifact <- artifact_child(ui)
+  drawer <- drawer_child(ui)
 
-  expect_equal(artifact$name, "shiny-chat-artifact")
-  expect_equal(artifact$attribs$width, "400px")
-  expect_null(artifact$attribs$open)
-  expect_null(artifact$attribs$resizable)
+  expect_equal(drawer$name, "shiny-chat-drawer")
+  expect_equal(drawer$attribs$width, "400px")
+  expect_null(drawer$attribs$open)
+  expect_null(drawer$attribs$resizable)
   expect_null(ui$attribs[["show-history"]])
 })
 
-test_that("chat_ui() renders configured artifact content and dependencies", {
-  artifact_dep <- htmltools::htmlDependency("artifact-dep", "1.0.0", "")
+test_that("chat_ui() renders configured drawer content and dependencies", {
+  artifact_dep <- htmltools::htmlDependency("drawer-dep", "1.0.0", "")
   ui <- chat_ui(
     "chat",
-    artifact = chat_artifact(
-      htmltools::tags$div("Artifact", artifact_dep),
+    drawer = chat_drawer(
+      htmltools::tags$div("Drawer", artifact_dep),
       title = "",
       width = "30rem",
       resizable = FALSE
     )
   )
-  artifact <- artifact_child(ui)
+  drawer <- drawer_child(ui)
 
-  expect_equal(artifact$attribs$title, "")
-  expect_equal(artifact$attribs$width, "30rem")
-  expect_true(is.na(artifact$attribs$open))
-  expect_equal(artifact$attribs$resizable, "false")
-  expect_match(as.character(artifact), "Artifact", fixed = TRUE)
+  expect_equal(drawer$attribs$title, "")
+  expect_equal(drawer$attribs$width, "30rem")
+  expect_true(is.na(drawer$attribs$open))
+  expect_equal(drawer$attribs$resizable, "false")
+  expect_match(as.character(drawer), "Drawer", fixed = TRUE)
   expect_match(
     render_tags(ui)$deps,
-    "artifact-dep",
+    "drawer-dep",
     fixed = TRUE
   )
   expect_snapshot(ui)
 })
 
-test_that("chat_ui() omits disabled artifact support and history presentation", {
-  ui <- chat_ui("chat", artifact = FALSE, show_history = FALSE)
+test_that("chat_ui() omits disabled drawer support and history presentation", {
+  ui <- chat_ui("chat", drawer = FALSE, show_history = FALSE)
 
   expect_equal(ui$attribs[["show-history"]], "false")
   expect_false(any(vapply(
     ui$children,
-    function(child) identical(child$name, "shiny-chat-artifact"),
+    function(child) identical(child$name, "shiny-chat-drawer"),
     logical(1)
   )))
 
-  expect_snapshot(error = TRUE, chat_ui("chat", artifact = list()))
+  expect_snapshot(error = TRUE, chat_ui("chat", drawer = list()))
   expect_snapshot(error = TRUE, chat_ui("chat", show_history = NA))
 })

@@ -4,8 +4,12 @@ import {
   type ResizeHandleElement,
   type ResizeRequestDetail,
 } from "../resize-handle"
+import { getShinyTransport } from "../transport/shiny-transport"
+import type { InputBinding } from "rstudio-shiny/srcts/types/src/bindings/input/inputBinding"
 
 export const PAGE_MOBILE_MEDIA_QUERY = "(max-width: 799px)"
+export const HOME_PAGE_VALUE = "__home__"
+export const PAGE_CHANGE_EVENT = "shiny-chat-page:change"
 
 const PAGE_SELECTOR = ".shiny-chat-page-panel"
 const SIDEBAR_PANEL_SELECTOR = ".shiny-chat-page-sidebar-panel"
@@ -15,6 +19,7 @@ const MIN_SIDEBAR_WIDTH = 150
 const MIN_MAIN_WIDTH = 360
 const SIDEBAR_MOTION_DURATION = 180
 const TOAST_OFFSET_PROPERTY = "--shiny-chat-page-toast-offset"
+const NAV_MENU_VIEWPORT_INSET = 8
 const FOCUSABLE_SELECTOR = [
   "a[href]",
   "area[href]",
@@ -31,6 +36,78 @@ const FOCUSABLE_SELECTOR = [
   "[contenteditable]:not([contenteditable='false'])",
   "[tabindex]:not([tabindex='-1'])",
 ].join(",")
+
+// Mirrors the custom message handler name registered by Shiny's built-in
+// tabset binding (see `addMessageHandler("shiny-change-tab-visibility", ...)`
+// in shiny.js). bslib's nav_hide()/nav_show() dispatch through it.
+const TAB_VISIBILITY_MESSAGE = "shiny-change-tab-visibility"
+
+declare global {
+  interface Window {
+    // Shiny apps always load jQuery, but this script may run outside Shiny.
+    jQuery?: JQueryStatic
+  }
+}
+
+let pageInputBindingRegistered = false
+
+// Deferred until a page element connects because this script can load before
+// Shiny has initialized `window.Shiny`.
+function registerChatPageInputBinding() {
+  if (pageInputBindingRegistered || !window.Shiny?.inputBindings) {
+    return
+  }
+
+  window.Shiny.inputBindings.register(
+    new ChatPageInputBinding() as unknown as InputBinding,
+    "shinychat.chatPage",
+  )
+  pageInputBindingRegistered = true
+}
+
+let pageVisibilityListenerInstalled = false
+
+// bslib's nav_hide()/nav_show() send a `shiny-change-tab-visibility` custom
+// message whose built-in handler only understands bslib tabset DOM. Shiny
+// fires a `shiny:message` jQuery event before dispatching to its handlers, so
+// page-chat claims the message there by deleting it from the (mutable)
+// message object and applying its own semantics instead.
+function installPageChatVisibilityListener() {
+  if (pageVisibilityListenerInstalled || !window.jQuery) {
+    return
+  }
+
+  window
+    .jQuery(document)
+    .on("shiny:message", (event: JQuery.TriggeredEvent) => {
+      const message = (
+        event as JQuery.TriggeredEvent & { message?: Record<string, unknown> }
+      ).message
+      const payload = message?.[TAB_VISIBILITY_MESSAGE]
+      if (!payload || typeof payload !== "object") return
+
+      const { inputId, target, type } = payload as Record<string, unknown>
+      if (
+        typeof inputId !== "string" ||
+        typeof target !== "string" ||
+        (type !== "hide" && type !== "show")
+      ) {
+        return
+      }
+
+      const element = document.getElementById(inputId)
+      if (!(element instanceof ChatPageElement)) return
+
+      // Never preventDefault(): the message batch may also carry output values.
+      delete message![TAB_VISIBILITY_MESSAGE]
+      if (type === "hide") {
+        element.navHide(target)
+      } else {
+        element.navShow(target)
+      }
+    })
+  pageVisibilityListenerInstalled = true
+}
 
 type SidebarOpenMode = "auto" | "open" | "closed" | "always"
 
@@ -107,7 +184,7 @@ function isVisibleFocusable(element: HTMLElement, boundary: HTMLElement) {
   return true
 }
 
-class ChatPageElement extends HTMLElement {
+export class ChatPageElement extends HTMLElement {
   private static toastOffsetOwner: ChatPageElement | null = null
 
   private initialized = false
@@ -149,6 +226,8 @@ class ChatPageElement extends HTMLElement {
 
   connectedCallback() {
     if (this.initialized) return
+    registerChatPageInputBinding()
+    installPageChatVisibilityListener()
     if (!this.captureDom()) return
 
     this.initialized = true
@@ -157,9 +236,9 @@ class ChatPageElement extends HTMLElement {
     this.bindMediaQuery()
     this.bindResizeObserver()
 
-    const requestedPage = this.dataset.activePage || "home"
+    const requestedPage = this.dataset.activePage || HOME_PAGE_VALUE
     if (!this.selectPage(requestedPage, false)) {
-      this.selectPage("home", false)
+      this.selectPage(HOME_PAGE_VALUE, false)
     }
     this.bindHistoryAutoOpen()
     this.sidebarMotionFrame = window.requestAnimationFrame(() => {
@@ -227,8 +306,9 @@ class ChatPageElement extends HTMLElement {
       ? directChildrenMatching<HTMLElement>(main, PAGE_SELECTOR)
       : []
     if (
-      sections.filter((section) => section.dataset.pageValue === "home")
-        .length !== 1
+      sections.filter(
+        (section) => section.dataset.pageValue === HOME_PAGE_VALUE,
+      ).length !== 1
     ) {
       errors.push("home-panel")
     }
@@ -348,13 +428,13 @@ class ChatPageElement extends HTMLElement {
 
     if (this.identity) {
       this.listen(this.identity, "click", () => {
-        this.selectPage("home")
+        this.selectPage(HOME_PAGE_VALUE)
       })
     }
 
     if (this.mobileHomeLink) {
       this.listen(this.mobileHomeLink, "click", () => {
-        this.selectPage("home")
+        this.selectPage(HOME_PAGE_VALUE)
       })
     }
 
@@ -364,6 +444,22 @@ class ChatPageElement extends HTMLElement {
         if (target) this.selectPage(target)
       })
     })
+    const nav = this.controls?.querySelector<HTMLElement>(
+      ".shiny-chat-page-nav",
+    )
+    if (nav) {
+      this.listen(nav, "scroll", () => this.positionNavigationMenus())
+      nav
+        .querySelectorAll<HTMLDetailsElement>(".shiny-chat-page-nav-menu")
+        .forEach((menu) => {
+          this.listen(menu, "toggle", () => {
+            // A details toggle can expose a menu wider than its closed state.
+            // Reposition after the browser has applied its open-state layout.
+            window.requestAnimationFrame(() => this.positionNavigationMenus())
+          })
+        })
+    }
+    this.listen(window, "resize", () => this.positionNavigationMenus())
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (!this.mobile || !this.hasAttribute("data-mobile-menu-open")) return
@@ -501,6 +597,7 @@ class ChatPageElement extends HTMLElement {
       this.updateToggleState()
       this.updateResizeHandle()
     }
+    this.positionNavigationMenus()
     this.updateToastOffset()
   }
 
@@ -509,6 +606,7 @@ class ChatPageElement extends HTMLElement {
       (section) => section.dataset.pageValue === value,
     )
     if (!selected) return false
+    const changed = this.dataset.activePage !== value
     this.cancelSidebarResize()
     this.sections.forEach((section) => {
       section.hidden = section !== selected
@@ -516,14 +614,14 @@ class ChatPageElement extends HTMLElement {
     this.dataset.activePage = value
 
     this.navButtons.forEach((button) => {
-      if (value !== "home" && button.dataset.pageTarget === value) {
+      if (value !== HOME_PAGE_VALUE && button.dataset.pageTarget === value) {
         button.setAttribute("aria-current", "page")
       } else {
         button.removeAttribute("aria-current")
       }
     })
     if (this.identity) {
-      if (value === "home") {
+      if (value === HOME_PAGE_VALUE) {
         this.identity.setAttribute("aria-current", "page")
         this.identity.removeAttribute("aria-label")
       } else {
@@ -533,7 +631,7 @@ class ChatPageElement extends HTMLElement {
       this.updateIdentityTooltip()
     }
     if (this.mobileHomeLink) {
-      if (value === "home") {
+      if (value === HOME_PAGE_VALUE) {
         this.mobileHomeLink.setAttribute("aria-current", "page")
       } else {
         this.mobileHomeLink.removeAttribute("aria-current")
@@ -542,10 +640,154 @@ class ChatPageElement extends HTMLElement {
 
     this.syncSidebar(selected)
     this.syncToolbar(selected)
+    const activeElement = document.activeElement
+    const focusedMenu = Array.from(
+      this.controls?.querySelectorAll<HTMLDetailsElement>(
+        ".shiny-chat-page-nav-menu[open]",
+      ) ?? [],
+    ).find((menu) => menu.contains(activeElement))
+    this.controls
+      ?.querySelectorAll<HTMLDetailsElement>(".shiny-chat-page-nav-menu[open]")
+      .forEach((menu) => menu.removeAttribute("open"))
+    focusedMenu?.querySelector<HTMLElement>(":scope > summary")?.focus()
     if (closeMenu && this.mobile) this.closeMobileMenu()
     this.updateToastOffset()
     window.dispatchEvent(new Event("resize"))
+    if (changed) {
+      // Non-bubbling: the input binding listens directly on this element.
+      this.dispatchEvent(
+        new CustomEvent(PAGE_CHANGE_EVENT, { detail: { value } }),
+      )
+    }
     return true
+  }
+
+  /**
+   * Programmatic navigation API backing Shiny's standard tabset messages
+   * (`bslib::nav_select()` / `shiny.ui.update_navset()` for selection and
+   * `bslib::nav_hide()` / `bslib::nav_show()` for visibility).
+   */
+
+  navSelect(value: string) {
+    // Hidden panels stay selectable, matching bslib's hidden tabs.
+    if (this.selectPage(value)) return
+    this.reportNavigationError(
+      `Cannot select page "${value}": no page_chat() page has that value.`,
+    )
+  }
+
+  navHide(target: string) {
+    if (target === HOME_PAGE_VALUE) {
+      this.reportNavigationError(
+        `Cannot hide page "${target}": the page_chat() home page is always available.`,
+      )
+      return
+    }
+    if (!this.pageSection(target)) {
+      this.reportNavigationError(
+        `Cannot hide page "${target}": no page_chat() page has that value.`,
+      )
+      return
+    }
+    const control = this.navControlFor(target)
+
+    // Hiding the selected page returns home even when its control is
+    // already hidden (e.g. a selected nav_panel_hidden panel).
+    if (this.dataset.activePage === target) {
+      // Selecting home first keeps sidebar and toolbar sync on one path.
+      this.selectPage(HOME_PAGE_VALUE)
+    }
+    if (!control || control.hidden) return
+
+    control.hidden = true
+    if (control.contains(document.activeElement)) {
+      this.identity?.focus()
+    }
+    this.refreshNavigationAvailability()
+  }
+
+  navShow(target: string) {
+    if (!this.pageSection(target)) {
+      this.reportNavigationError(
+        `Cannot show page "${target}": no page_chat() page has that value.`,
+      )
+      return
+    }
+    const control = this.navControlFor(target)
+    if (!control || !control.hidden) return
+
+    control.hidden = false
+    this.refreshNavigationAvailability()
+  }
+
+  private pageSection(value: string) {
+    return this.sections.find((section) => section.dataset.pageValue === value)
+  }
+
+  private navControlFor(target: string) {
+    return this.navButtons.find(
+      (button) => button.dataset.pageTarget === target,
+    )
+  }
+
+  private reportNavigationError(message: string) {
+    console.error(`[shinychat] ${message}`)
+    getShinyTransport().showClientMessage({ status: "error", message })
+  }
+
+  private refreshNavigationAvailability() {
+    if (this.mobile) {
+      this.updateToggleState()
+      this.updateResizeHandle()
+    } else {
+      this.applyDesktopSidebarState()
+    }
+  }
+
+  private positionNavigationMenus() {
+    if (this.mobile || !this.controls) return
+
+    this.controls
+      .querySelectorAll<HTMLDetailsElement>(".shiny-chat-page-nav-menu[open]")
+      .forEach((menu) => {
+        const toggle = menu.querySelector<HTMLElement>(":scope > summary")
+        const items = menu.querySelector<HTMLElement>(
+          ":scope > .shiny-chat-page-nav-menu-items",
+        )
+        if (!toggle || !items) return
+
+        const bounds = toggle.getBoundingClientRect()
+        const menuBounds = items.getBoundingClientRect()
+        const maxLeft = Math.max(
+          NAV_MENU_VIEWPORT_INSET,
+          window.innerWidth - menuBounds.width - NAV_MENU_VIEWPORT_INSET,
+        )
+        const preferredLeft =
+          window.getComputedStyle(toggle).direction === "rtl"
+            ? bounds.right - menuBounds.width
+            : bounds.left
+        const left = Math.min(
+          Math.max(preferredLeft, NAV_MENU_VIEWPORT_INSET),
+          maxLeft,
+        )
+        const preferredTop = bounds.bottom + 4
+        const top =
+          preferredTop + menuBounds.height <=
+          window.innerHeight - NAV_MENU_VIEWPORT_INSET
+            ? preferredTop
+            : Math.max(
+                NAV_MENU_VIEWPORT_INSET,
+                bounds.top - menuBounds.height - 4,
+              )
+        items.style.setProperty(
+          "--shiny-chat-page-nav-menu-top",
+          `${Math.round(top)}px`,
+        )
+        items.style.setProperty(
+          "--shiny-chat-page-nav-menu-left",
+          `${Math.round(left)}px`,
+        )
+      })
   }
 
   private initializeIdentityTooltip() {
@@ -579,7 +821,7 @@ class ChatPageElement extends HTMLElement {
 
   private identityTooltipContent() {
     const content = document.createElement("span")
-    if (this.dataset.activePage !== "home") {
+    if (this.dataset.activePage !== HOME_PAGE_VALUE) {
       content.append(this.identityReturnLabel, document.createElement("br"))
     }
     content.append(this.mobileHomeLabel())
@@ -609,7 +851,7 @@ class ChatPageElement extends HTMLElement {
     const link = existing ?? document.createElement("button")
     link.type = "button"
     link.className = "shiny-chat-page-nav-link shiny-chat-page-home-link"
-    link.dataset.pageTarget = "home"
+    link.dataset.pageTarget = HOME_PAGE_VALUE
     let title = link.querySelector<HTMLElement>(".shiny-chat-page-nav-title")
     if (!title) {
       title = document.createElement("span")
@@ -807,7 +1049,7 @@ class ChatPageElement extends HTMLElement {
     const state = this.activeSidebarState()
     const available = this.mobile
       ? this.hasMobileMenuContent()
-      : this.sidebarStates.size > 0
+      : this.availableSidebarKeys().size > 0
     const toggleDisabled =
       available && !this.mobile && (state?.openMode === "always" || !state)
     const open =
@@ -844,8 +1086,8 @@ class ChatPageElement extends HTMLElement {
 
   private hasMobileMenuContent() {
     return (
-      this.sidebarStates.size > 0 ||
-      this.navButtons.length > 0 ||
+      this.availableSidebarKeys().size > 0 ||
+      this.hasVisibleNavContent() ||
       this.hasMeaningfulContent(this.toolbarGlobal) ||
       this.hasMeaningfulContent(
         this.toolbarScoped?.querySelector<HTMLElement>(
@@ -858,9 +1100,45 @@ class ChatPageElement extends HTMLElement {
             ":scope > .shiny-chat-page-toolbar-content",
           ),
         ),
-      ) ||
-      (this.mobile && Boolean(this.mobileHomeLink))
+      )
     )
+  }
+
+  // The mobile home link lives in the nav, so visible nav content covers it.
+  private hasVisibleNavContent() {
+    const nav = this.controls?.querySelector(".shiny-chat-page-nav")
+    if (!nav) return false
+    return Array.from(nav.children).some((child) => {
+      if (child instanceof HTMLElement && child.hidden) return false
+      return this.hasMeaningfulContent(child as HTMLElement)
+    })
+  }
+
+  // Sidebar keys referenced by at least one page that can still be reached:
+  // home (never hideable), the active page (a hidden panel stays selectable),
+  // or any page whose nav control is not hidden. Keys are resolved from the
+  // section -> data-sidebar-key mapping so the shared "default" sidebar
+  // counts as long as any visible page uses it.
+  private availableSidebarKeys(): Set<string> {
+    const hiddenTargets = new Set<string>()
+    this.navButtons.forEach((button) => {
+      const target = button.dataset.pageTarget
+      if (button.hidden && target) hiddenTargets.add(target)
+    })
+    const activePage = this.dataset.activePage || HOME_PAGE_VALUE
+    const keys = new Set<string>()
+    this.sections.forEach((section) => {
+      const value = section.dataset.pageValue
+      const reachable =
+        value === HOME_PAGE_VALUE ||
+        value === activePage ||
+        !value ||
+        !hiddenTargets.has(value)
+      if (!reachable) return
+      const key = section.dataset.sidebarKey?.trim()
+      if (key && this.sidebarStates.has(key)) keys.add(key)
+    })
+    return keys
   }
 
   private hasMeaningfulContent(element: HTMLElement | null) {
@@ -1178,6 +1456,71 @@ class ChatPageElement extends HTMLElement {
   private listen(target: EventTarget, type: string, listener: EventListener) {
     target.addEventListener(type, listener)
     this.cleanupListeners.push(() => target.removeEventListener(type, listener))
+  }
+}
+
+/**
+ * Input binding exposing the active page as input$<id> where <id> is the
+ * root element's id ("<chat id>_page"). Server-side `nav_select()` /
+ * `update_navset()` arrive as `receiveMessage({ value })`.
+ */
+export class ChatPageInputBinding {
+  private subscriptions = new WeakMap<HTMLElement, EventListener>()
+
+  find(scope: HTMLElement): ChatPageElement[] {
+    // Shiny's dynamic-bind path can pass a jQuery object instead of a node.
+    const candidate: unknown = scope
+    const root: ParentNode | undefined =
+      candidate instanceof Element || candidate instanceof Document
+        ? candidate
+        : (candidate as JQuery<HTMLElement> | undefined)?.[0]
+    if (!root) return []
+    return Array.from(
+      root.querySelectorAll<ChatPageElement>("shiny-chat-page[id]"),
+    )
+  }
+
+  getId(el: HTMLElement): string {
+    return el.id
+  }
+
+  getType(): string | null {
+    return null
+  }
+
+  getValue(el: HTMLElement): string {
+    return el.dataset.activePage || HOME_PAGE_VALUE
+  }
+
+  getState(el: HTMLElement): { value: string } {
+    return { value: this.getValue(el) }
+  }
+
+  getRatePolicy(): null {
+    return null
+  }
+
+  initialize(): void {}
+
+  subscribe(el: HTMLElement, callback: (allowDeferred: boolean) => void): void {
+    const listener = () => callback(false)
+    this.subscriptions.set(el, listener)
+    el.addEventListener(PAGE_CHANGE_EVENT, listener)
+  }
+
+  unsubscribe(el: HTMLElement): void {
+    const listener = this.subscriptions.get(el)
+    if (!listener) return
+    el.removeEventListener(PAGE_CHANGE_EVENT, listener)
+    this.subscriptions.delete(el)
+  }
+
+  receiveMessage(el: HTMLElement, message: unknown): void {
+    if (!message || typeof message !== "object") return
+    // `selected = NULL`/`None` drops the key, leaving an empty message.
+    const value = (message as { value?: unknown }).value
+    if (typeof value !== "string") return
+    ;(el as ChatPageElement).navSelect(value)
   }
 }
 

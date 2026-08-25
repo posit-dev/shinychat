@@ -1,33 +1,14 @@
-import shiny
-from packaging.version import Version
 from shiny import App, reactive, ui
 
 from shinychat import (
     Chat,
-    chat_artifact,
+    chat_drawer,
     chat_nav_panel,
     chat_sidebar,
     page_chat,
 )
 from shinychat.examples._echo import EchoChatClient
 from shinychat.types import HistoryOptions
-
-required_shiny_version = Version("1.7.0")
-
-
-def require_offcanvas_support(shiny_version: str | None = None) -> None:
-    installed_version = Version(
-        shiny.__version__ if shiny_version is None else shiny_version
-    )
-    if installed_version < required_shiny_version:
-        raise RuntimeError(
-            "The page-chat navigation example requires shiny >= 1.7.0 "
-            "for offcanvas settings."
-        )
-
-
-require_offcanvas_support()
-
 
 bs_icon_info_circle_fill = """
 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-info-circle-fill" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2"/></svg>
@@ -38,7 +19,7 @@ bs_icon_gear_fill = """
 """
 
 
-def artifact_content(label: str):
+def drawer_content(label: str):
     return ui.tags.section(
         ui.h3("Preview"),
         ui.p(label),
@@ -49,9 +30,10 @@ app_ui = page_chat(
     "Field notes",
     id="chat",
     toolbar=ui.toolbar(
-        ui.toolbar_input_button("show_preview", "Show preview"),
+        ui.toolbar_input_button("show_preview", "Show Panel"),
     ),
     toolbar_global=ui.toolbar(
+        ui.input_dark_mode(),
         ui.toolbar_input_button(
             "show_settings",
             "Answer settings",
@@ -92,7 +74,7 @@ app_ui = page_chat(
         width=320,
         open="auto",
     ),
-    pages=[
+    pages_navbar=[
         chat_nav_panel(
             "Sources",
             ui.h2("Source checklist"),
@@ -103,8 +85,9 @@ app_ui = page_chat(
                 selected=["Field observations", "Published research"],
             ),
             sidebar=True,
-            # Compatibility alias: reuse the home-page toolbar here.
-            toolbar=True,
+            toolbar=ui.toolbar(
+                ui.toolbar_input_button("show_preview_sources", "Show Panel"),
+            ),
         ),
         chat_nav_panel(
             "Notebook",
@@ -132,8 +115,8 @@ app_ui = page_chat(
             toolbar=None,
         ),
     ],
-    artifact=chat_artifact(
-        artifact_content("Use the home toolbar to open this preview."),
+    drawer=chat_drawer(
+        drawer_content("Use the home toolbar to open this preview."),
         title="Working preview",
         width=420,
         open=False,
@@ -165,16 +148,24 @@ def server(input, output, session):
     )
 
     @chat.on_user_submit
-    async def _update_artifact(user_input: str):
-        await chat.artifact.update(
-            artifact_content(f"Latest request: {user_input}"),
+    async def _update_drawer(user_input: str):
+        await chat.drawer.update(
+            drawer_content(f"Latest request: {user_input}"),
             title="Latest request",
         )
 
     @reactive.effect
     @reactive.event(input.show_preview)
     async def _show_preview():
-        await chat.artifact.show(title="Working preview")
+        # The page-chat root element is addressable as "<id>_page".
+        ui.update_navset("chat_page", "__home__")
+        await chat.drawer.show(title="Working preview")
+
+    @reactive.effect
+    @reactive.event(input.show_preview_sources)
+    async def _show_preview_from_sources():
+        ui.update_navset("chat_page", "__home__")
+        await chat.drawer.show(title="Working preview")
 
     @reactive.effect
     @reactive.event(input.show_settings)

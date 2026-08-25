@@ -114,16 +114,16 @@ describe("chat-entry custom element boot", () => {
     host.innerHTML = `
       <shiny-chat-messages></shiny-chat-messages>
       <shiny-chat-input></shiny-chat-input>
-      <shiny-chat-artifact title="Preview" width="32rem" open resizable="false">
+      <shiny-chat-drawer title="Preview" width="32rem" open resizable="false">
         <input value="Preserved artifact">
-        <script data-artifact-dependency>window.__artifact = true</script>
-      </shiny-chat-artifact>
+        <script data-drawer-dependency>window.__artifact = true</script>
+      </shiny-chat-drawer>
     `
     const initialInput = host.querySelector(
-      "shiny-chat-artifact input",
+      "shiny-chat-drawer input",
     ) as HTMLInputElement
     const initialDependency = host.querySelector(
-      "shiny-chat-artifact script",
+      "shiny-chat-drawer script",
     ) as HTMLScriptElement
     let artifactWasPresentAtUnbind = false
     const unbindAll = window.Shiny!.unbindAll as ReturnType<typeof vi.fn>
@@ -138,22 +138,20 @@ describe("chat-entry custom element boot", () => {
     })
 
     await waitFor(() => {
-      expect(host.querySelector(".shiny-chat-artifact")).not.toBeNull()
+      expect(host.querySelector(".shiny-chat-drawer")).not.toBeNull()
     })
 
-    const panel = host.querySelector(
-      ".shiny-chat-artifact",
-    ) as HTMLElement | null
+    const panel = host.querySelector(".shiny-chat-drawer") as HTMLElement | null
     expect(panel).not.toBeNull()
     expect(panel?.hidden).toBe(false)
-    expect(panel?.style.getPropertyValue("--shiny-chat-artifact-width")).toBe(
+    expect(panel?.style.getPropertyValue("--shiny-chat-drawer-width")).toBe(
       "32rem",
     )
     expect(
-      host.querySelector("#artifact-entry-artifact-title")?.textContent,
+      host.querySelector("#artifact-entry-drawer-title")?.textContent,
     ).toBe("Preview")
-    expect(host.querySelector(".shiny-chat-artifact input")).toBe(initialInput)
-    expect(host.querySelector(".shiny-chat-artifact script")).toBe(
+    expect(host.querySelector(".shiny-chat-drawer input")).toBe(initialInput)
+    expect(host.querySelector(".shiny-chat-drawer script")).toBe(
       initialDependency,
     )
     expect(artifactWasPresentAtUnbind).toBe(true)

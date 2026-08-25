@@ -48,8 +48,8 @@ def test_express_page_chat_matches_core_markup(tmp_path: Path) -> None:
             sidebar=False,
             toolbar=ui.input_action_button("home_action", "Home"),
             toolbar_global=ui.input_action_button("global_action", "Global"),
-            pages=[
-                chat_nav_panel("Inherited", toolbar=True),
+            pages_navbar=[
+                chat_nav_panel("No toolbar"),
                 chat_nav_panel(
                     "Custom",
                     toolbar=ui.input_action_button("custom_action", "Custom"),
@@ -67,8 +67,8 @@ def test_express_page_chat_matches_core_markup(tmp_path: Path) -> None:
             sidebar=False,
             toolbar=ui.input_action_button("home_action", "Home"),
             toolbar_global=ui.input_action_button("global_action", "Global"),
-            pages=[
-                chat_nav_panel("Inherited", toolbar=True),
+            pages_navbar=[
+                chat_nav_panel("No toolbar"),
                 chat_nav_panel(
                     "Custom",
                     toolbar=ui.input_action_button("custom_action", "Custom"),

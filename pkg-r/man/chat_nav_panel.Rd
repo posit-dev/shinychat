@@ -19,18 +19,19 @@ chat_nav_panel(
 
 \item{...}{UI content to display when the panel is active.}
 
-\item{value}{An optional unique navigation value.}
+\item{value}{An optional unique navigation value. Defaults to \code{title}.
+The value \code{"__home__"} is reserved for the main chat page.}
 
 \item{icon}{An optional icon to display with the title.}
 
 \item{sidebar}{Whether to use the default sidebar (\code{TRUE}), no
-page-specific sidebar (\code{FALSE}), or a \code{\link[=chat_sidebar]{chat_sidebar()}} or
-\code{\link[bslib:sidebar]{bslib::sidebar()}} configuration.}
+page-specific sidebar (\code{FALSE}), or a
+\code{\link[=chat_sidebar]{chat_sidebar()}} or \code{\link[bslib:sidebar]{bslib::sidebar()}} configuration. A \code{\link[=chat_sidebar]{chat_sidebar()}}
+with \code{history = NULL} defaults to \code{FALSE} here.}
 
 \item{toolbar}{\code{NULL} (the default) for no page-scoped toolbar, or UI
-content for a page-specific toolbar. For backward compatibility, \code{TRUE}
-reuses the home \code{page_chat()} toolbar and \code{FALSE} omits the page-scoped
-toolbar.}
+content for a page-specific toolbar. Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group
+toolbar controls.}
 
 \item{content_width}{Maximum panel-content width. Content is centered and
 receives responsive inline padding. Use exactly \code{"100\%"}, \code{"100vw"}, or

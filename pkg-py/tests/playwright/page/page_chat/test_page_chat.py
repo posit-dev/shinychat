@@ -3,9 +3,9 @@ from __future__ import annotations
 from math import ceil
 
 import pytest
-from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import Page, expect
 from shiny.run import ShinyAppProc
-from shinychat.playwright import ChatController
+from shinychat.playwright import ChatController, PageChatController
 
 TIMEOUT = 30_000
 
@@ -16,31 +16,29 @@ def open_page(
     *,
     viewport: tuple[int, int],
     toolbar_input: bool = False,
-) -> tuple[ChatController, Locator]:
+) -> tuple[ChatController, PageChatController]:
     page.set_viewport_size({"width": viewport[0], "height": viewport[1]})
     url = f"{local_app.url}?toolbar_input=true" if toolbar_input else local_app.url
     page.goto(url)
     chat = ChatController(page, "chat")
-    shell = page.locator("shiny-chat-page")
-    expect(shell).to_be_visible(timeout=TIMEOUT)
+    page_chat = PageChatController(page, "chat")
+    expect(page_chat.loc).to_be_visible(timeout=TIMEOUT)
     expect(chat.loc).to_be_visible(timeout=TIMEOUT)
-    return chat, shell
+    return chat, page_chat
 
 
 def test_desktop_navigation_streaming_and_history_auto_open(
     page: Page,
     local_app: ShinyAppProc,
 ) -> None:
-    chat, shell = open_page(page, local_app, viewport=(1280, 800))
-    sidebar = shell.locator(".shiny-chat-page-sidebar")
-    toggle = shell.locator(".shiny-chat-page-sidebar-toggle")
+    chat, page_chat = open_page(page, local_app, viewport=(1280, 800))
+    sidebar = page_chat.loc_sidebar
+    toggle = page_chat.loc_sidebar_toggle
     toolbar_input = page.locator("#toolbar_value")
     toolbar_global_input = page.locator("#toolbar_global_value")
 
-    expect(shell).to_have_attribute("data-active-page", "home")
-    expect(shell.locator(".shiny-chat-page-header")).to_have_css(
-        "min-height", "52px"
-    )
+    page_chat.expect_active_page("__home__")
+    expect(page_chat.loc_header).to_have_css("min-height", "52px")
     expect(sidebar).to_be_hidden()
     expect(toggle).to_have_attribute("aria-expanded", "false")
     expect(toolbar_input).to_have_count(1)
@@ -53,8 +51,8 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     chat.send_user_input()
     chat.set_user_input("preserved draft")
 
-    shell.get_by_role("button", name="Settings").click()
-    expect(shell).to_have_attribute("data-active-page", "settings")
+    page_chat.select_page("Settings")
+    page_chat.expect_active_page("settings")
     expect(chat.loc).to_be_hidden()
     expect(page.locator("#settings_page_input")).to_be_visible()
     expect(page.locator("#about_page_input")).to_be_hidden()
@@ -64,7 +62,7 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     toggle.click()
     expect(sidebar).to_be_visible()
     expect(page.locator("#custom_sidebar_input")).to_be_visible()
-    resizer = shell.get_by_role("separator", name="Resize sidebar")
+    resizer = page_chat.loc.get_by_role("separator", name="Resize sidebar")
     expect(resizer).to_be_visible()
     resizer.press("End")
     expect(resizer).to_have_attribute("aria-valuenow", "920")
@@ -72,7 +70,7 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     expect(resizer).to_have_attribute("aria-valuenow", "150")
 
     chat.expect_latest_message("echo: stream while hidden", timeout=TIMEOUT)
-    shell.get_by_role("button", name="Return to chat").click()
+    page_chat.return_home()
     expect(chat.loc).to_be_visible()
     chat.expect_user_input("preserved draft")
     expect(toolbar_input).to_have_value("preserved toolbar state")
@@ -85,19 +83,19 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     expect(sidebar).to_be_hidden()
     expect(toggle).to_have_attribute("aria-expanded", "false")
 
-    shell.get_by_role("button", name="History", exact=True).click()
-    expect(shell).to_have_attribute("data-active-page", "history")
+    page_chat.select_page("History", exact=True)
+    page_chat.expect_active_page("history")
     expect(sidebar).to_have_attribute("data-sidebar-key", "default")
     expect(sidebar).to_be_hidden()
 
-    shell.get_by_role("button", name="About").click()
-    expect(shell).to_have_attribute("data-active-page", "about")
+    page_chat.select_page("About")
+    page_chat.expect_active_page("about")
     assert sidebar.get_attribute("data-sidebar-key") is None
     expect(sidebar).to_be_hidden()
     expect(toggle).to_be_disabled()
     expect(toggle).to_have_attribute("aria-expanded", "false")
 
-    shell.get_by_role("button", name="Return to chat").click()
+    page_chat.return_home()
     expect(sidebar.locator(".shiny-chat-history-item")).to_have_count(
         1, timeout=TIMEOUT
     )
@@ -105,7 +103,7 @@ def test_desktop_navigation_streaming_and_history_auto_open(
         "localStorage.getItem('shinychat-current:chat') !== null"
     )
     page.reload()
-    expect(shell).to_be_visible(timeout=TIMEOUT)
+    expect(page_chat.loc).to_be_visible(timeout=TIMEOUT)
     expect(chat.loc).to_be_visible(timeout=TIMEOUT)
     expect(sidebar).to_be_visible(timeout=TIMEOUT)
     expect(toggle).to_have_attribute("aria-expanded", "true")
@@ -125,14 +123,14 @@ def test_explicit_theme_keeps_embedded_chat_composer_chrome(
     composer = chat.loc.locator(".shiny-chat-input .tiptap")
     input_area = chat.loc.locator(".shiny-chat-input")
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
-    shell = page.locator("shiny-chat-page")
+    page_chat = PageChatController(page, "chat")
 
     expect(chat.loc).to_be_visible(timeout=TIMEOUT)
     expect(composer).to_have_css("border-radius", "26px")
     expect(wrapper).to_have_css("padding-left", "4px")
     expect(input_area).to_have_css("padding-bottom", "4px")
 
-    shell.evaluate(
+    page_chat.loc.evaluate(
         """(element) => {
           element.style.setProperty('--shiny-chat-page-fill-padding', '2rem');
           element.style.setProperty(
@@ -149,6 +147,7 @@ def test_page_chat_toolbar_input_aligns_with_composer_and_footer_is_pinned(
     page: Page,
     local_app: ShinyAppProc,
 ) -> None:
+    page.emulate_media(reduced_motion="reduce")
     chat, _ = open_page(
         page, local_app, viewport=(800, 760), toolbar_input=True
     )
@@ -199,13 +198,13 @@ def test_desktop_header_keeps_controls_available(
     title: str,
     is_long_title: bool,
 ) -> None:
-    _, shell = open_page(page, local_app, viewport=(800, 760))
-    header = shell.locator(".shiny-chat-page-header")
-    identity = shell.locator(".shiny-chat-page-identity")
-    identity_title = shell.locator(".shiny-chat-page-identity-title")
-    controls_mount = shell.locator(".shiny-chat-page-controls-mount-desktop")
-    toolbar = shell.locator(".shiny-chat-page-toolbar")
-    toolbar_sources = shell.locator(".shiny-chat-page-toolbar-sources")
+    _, page_chat = open_page(page, local_app, viewport=(800, 760))
+    header = page_chat.loc_header
+    identity = page_chat.loc_identity
+    identity_title = page_chat.loc_identity_title
+    controls_mount = page_chat.loc_controls_mount_desktop
+    toolbar = page_chat.loc_toolbar
+    toolbar_sources = page_chat.loc.locator(".shiny-chat-page-toolbar-sources")
     toolbar_source = toolbar_sources.locator(
         ".shiny-chat-page-toolbar-source"
     ).first
@@ -216,7 +215,7 @@ def test_desktop_header_keeps_controls_available(
         title,
     )
 
-    expect(shell.get_by_role("button", name="Settings")).to_be_visible()
+    expect(page_chat.loc.get_by_role("button", name="Settings")).to_be_visible()
     expect(toolbar_input).to_be_visible()
     header_box = header.bounding_box()
     identity_box = identity.bounding_box()
@@ -266,15 +265,15 @@ def test_single_page_title_is_not_truncated(
 ) -> None:
     page.set_viewport_size({"width": 800, "height": 760})
     page.goto(f"{local_app.url}?single=true")
-    shell = page.locator("shiny-chat-page")
-    expect(shell).to_be_visible(timeout=TIMEOUT)
+    page_chat = PageChatController(page, "chat")
+    expect(page_chat.loc).to_be_visible(timeout=TIMEOUT)
 
-    identity = shell.locator(".shiny-chat-page-identity")
-    identity_title = shell.locator(".shiny-chat-page-identity-title")
-    header = shell.locator(".shiny-chat-page-header")
-    controls_mount = shell.locator(".shiny-chat-page-controls-mount-desktop")
-    toolbar = shell.locator(".shiny-chat-page-toolbar")
-    main = shell.locator(".shiny-chat-page-main")
+    identity = page_chat.loc_identity
+    identity_title = page_chat.loc_identity_title
+    header = page_chat.loc_header
+    controls_mount = page_chat.loc_controls_mount_desktop
+    toolbar = page_chat.loc_toolbar
+    main = page_chat.loc_main
     expect(identity).to_have_count(1)
     expect(identity).to_have_attribute("class", "shiny-chat-page-identity")
     expect(identity).not_to_have_attribute("data-page-home")
@@ -292,7 +291,7 @@ def test_single_page_title_is_not_truncated(
     controls_mount_box = controls_mount.bounding_box()
     toolbar_box = toolbar.bounding_box()
     main_box = main.bounding_box()
-    shell_box = shell.bounding_box()
+    shell_box = page_chat.loc.bounding_box()
     assert identity_box is not None
     assert header_box is not None
     assert controls_mount_box is not None
@@ -323,10 +322,10 @@ def test_identity_tooltip_discloses_title_and_return_action(
 ) -> None:
     page.set_viewport_size({"width": 800, "height": 760})
     page.goto(f"{local_app.url}?long_title=true")
-    shell = page.locator("shiny-chat-page")
-    expect(shell).to_be_visible(timeout=TIMEOUT)
+    page_chat = PageChatController(page, "chat")
+    expect(page_chat.loc).to_be_visible(timeout=TIMEOUT)
 
-    identity = shell.locator(".shiny-chat-page-identity")
+    identity = page_chat.loc_identity
     title = "Research Assistant for long-running analyses and multi-step investigations"
     updated_title = f"Updated {title}"
     tooltip = page.get_by_role("tooltip")
@@ -338,7 +337,7 @@ def test_identity_tooltip_discloses_title_and_return_action(
     identity.hover()
     expect(tooltip).to_have_text(updated_title)
 
-    shell.get_by_role("button", name="Settings").click()
+    page_chat.select_page("Settings")
     expect(tooltip).not_to_be_visible()
     identity.hover()
     expect(tooltip).to_contain_text("Return to chat")
@@ -354,26 +353,26 @@ def test_mobile_moves_controls_and_manages_dialog_focus(
     page: Page,
     local_app: ShinyAppProc,
 ) -> None:
-    _, shell = open_page(page, local_app, viewport=(390, 760))
-    sidebar = shell.locator(".shiny-chat-page-sidebar")
-    toggle = shell.locator(".shiny-chat-page-sidebar-toggle")
-    controls = shell.locator(".shiny-chat-page-controls")
+    _, page_chat = open_page(page, local_app, viewport=(390, 760))
+    sidebar = page_chat.loc_sidebar
+    toggle = page_chat.loc_sidebar_toggle
+    controls = page_chat.loc_controls
 
     expect(controls).to_have_count(1)
     expect(
-        shell.locator(
-            ".shiny-chat-page-controls-mount-mobile > .shiny-chat-page-controls"
+        page_chat.loc_controls_mount_mobile.locator(
+            "> .shiny-chat-page-controls"
         )
     ).to_have_count(1)
     expect(page.locator("#toolbar_value")).to_have_count(1)
     expect(toggle).to_have_attribute("aria-expanded", "false")
 
     toggle.click()
-    expect(shell).to_have_attribute("data-mobile-menu-open", "true")
+    page_chat.expect_mobile_menu_open()
     expect(sidebar).to_have_attribute("role", "dialog")
     expect(sidebar).to_have_attribute("aria-modal", "true")
     expect(sidebar).to_be_focused()
-    close_button = shell.get_by_role("button", name="Close app menu")
+    close_button = page_chat.loc.get_by_role("button", name="Close app menu")
     expect(close_button).to_be_visible()
     expect(close_button).to_have_css("position", "absolute")
     expect(close_button).to_have_css("top", "8px")
@@ -398,34 +397,34 @@ def test_mobile_moves_controls_and_manages_dialog_focus(
     page.keyboard.press("Tab")
     expect(close_button).to_be_focused()
     page.keyboard.press("Escape")
-    expect(shell).not_to_have_attribute("data-mobile-menu-open", "true")
+    page_chat.expect_mobile_menu_closed()
     expect(toggle).to_be_focused()
 
     toggle.click()
-    shell.get_by_role("button", name="About").click()
-    expect(shell).to_have_attribute("data-active-page", "about")
-    expect(shell).not_to_have_attribute("data-mobile-menu-open", "true")
+    page_chat.select_page("About")
+    page_chat.expect_active_page("about")
+    page_chat.expect_mobile_menu_closed()
     expect(toggle).to_be_focused()
     expect(toggle).not_to_be_disabled()
 
     # A page without a sidebar still retains the mobile app menu because it
     # owns navigation and toolbar controls.
     toggle.click()
-    expect(shell).to_have_attribute("data-mobile-menu-open", "true")
+    page_chat.expect_mobile_menu_open()
     assert sidebar.get_attribute("data-sidebar-key") is None
-    shell.locator(".shiny-chat-page-sidebar-scrim").click(
+    page_chat.loc.locator(".shiny-chat-page-sidebar-scrim").click(
         position={"x": 380, "y": 100}
     )
-    expect(shell).not_to_have_attribute("data-mobile-menu-open", "true")
+    page_chat.expect_mobile_menu_closed()
     expect(toggle).to_be_focused()
 
     toggle.click()
-    shell.get_by_role("button", name="Pinned").click()
-    expect(shell).to_have_attribute("data-active-page", "pinned")
+    page_chat.select_page("Pinned")
+    page_chat.expect_active_page("pinned")
     expect(toggle).not_to_be_disabled()
     expect(toggle).to_have_attribute("aria-expanded", "false")
     toggle.click()
-    expect(shell).to_have_attribute("data-mobile-menu-open", "true")
+    page_chat.expect_mobile_menu_open()
     expect(toggle).to_have_attribute("aria-expanded", "true")
 
 
@@ -435,10 +434,10 @@ def test_sidebarless_page_hides_desktop_toggle_and_keeps_mobile_app_menu(
 ) -> None:
     page.set_viewport_size({"width": 1280, "height": 800})
     page.goto(f"{local_app.url}?sidebarless=true")
-    shell = page.locator("shiny-chat-page")
-    toggle = shell.locator(".shiny-chat-page-sidebar-toggle")
+    page_chat = PageChatController(page, "chat")
+    toggle = page_chat.loc_sidebar_toggle
 
-    expect(shell).to_be_visible(timeout=TIMEOUT)
+    expect(page_chat.loc).to_be_visible(timeout=TIMEOUT)
     expect(toggle).to_be_hidden()
 
     page.set_viewport_size({"width": 390, "height": 760})
@@ -446,9 +445,170 @@ def test_sidebarless_page_hides_desktop_toggle_and_keeps_mobile_app_menu(
     expect(toggle).to_be_visible()
     expect(toggle).not_to_be_disabled()
     toggle.click()
-    expect(shell).to_have_attribute("data-mobile-menu-open", "true")
-    expect(shell.get_by_role("button", name="About")).to_be_visible()
+    page_chat.expect_mobile_menu_open()
+    expect(page_chat.loc.get_by_role("button", name="About")).to_be_visible()
     expect(page.locator("#sidebarless_toolbar")).to_be_visible()
+
+
+def test_mobile_menu_remains_available_for_navigation_controls_only(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.set_viewport_size({"width": 390, "height": 760})
+    page.goto(f"{local_app.url}?controls_only=true")
+    page_chat = PageChatController(page, "chat")
+    toggle = page_chat.loc_sidebar_toggle
+
+    expect(toggle).to_be_visible()
+    toggle.click()
+    page_chat.expect_mobile_menu_open()
+    action = page.locator("#controls_only_action")
+    expect(action).to_be_visible()
+    action.click()
+
+
+def test_desktop_dropdown_navigation_is_clickable_and_closes_after_selection(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.goto(f"{local_app.url}?crowded_dropdown=true")
+    page_chat = PageChatController(page, "chat")
+    menu = page_chat.loc.locator(".shiny-chat-page-nav-menu")
+    nav = page_chat.loc_nav
+    details = menu.locator(".shiny-chat-page-nav-link")
+
+    expect(page_chat.loc).to_be_visible(timeout=TIMEOUT)
+    expect(nav).to_have_css("overflow-x", "auto")
+    assert nav.evaluate(
+        "(element) => element.scrollWidth > element.clientWidth"
+    )
+    menu.scroll_into_view_if_needed()
+    details.evaluate(
+        """(element) => {
+          element.textContent = `Details ${"very long ".repeat(200)}`;
+        }"""
+    )
+    menu.locator("summary").click()
+    expect(menu).to_have_attribute("open", "")
+    expect(details).to_be_visible()
+    menu_items = menu.locator(".shiny-chat-page-nav-menu-items")
+    page.wait_for_function(
+        """(element) => {
+          if (
+            !element.style.getPropertyValue(
+              '--shiny-chat-page-nav-menu-left',
+            ) ||
+            !element.style.getPropertyValue(
+              '--shiny-chat-page-nav-menu-top',
+            )
+          ) {
+            return false;
+          }
+          const bounds = element.getBoundingClientRect();
+          return bounds.left >= 0 && bounds.right <= window.innerWidth;
+        }""",
+        arg=menu_items.element_handle(),
+    )
+
+    details_box = details.bounding_box()
+    menu_items_box = menu_items.bounding_box()
+    assert details_box is not None
+    assert menu_items_box is not None
+    assert menu_items_box["x"] >= 0
+    assert menu_items_box["x"] + menu_items_box["width"] <= 1280
+    assert menu_items_box["width"] == pytest.approx(1264, abs=1)
+    hit_target = page.evaluate(
+        """({ x, y }) => document.elementFromPoint(x, y)?.textContent""",
+        {
+            "x": details_box["x"] + details_box["width"] / 2,
+            "y": details_box["y"] + details_box["height"] / 2,
+        },
+    )
+    assert hit_target is not None
+    assert "Details" in hit_target
+
+    details.click()
+    page_chat.expect_active_page("details")
+    expect(page.locator("#dropdown_details_page")).to_be_visible()
+    expect(menu).not_to_have_attribute("open", "")
+    expect(menu.locator("summary")).to_be_focused()
+
+
+def test_mobile_dropdown_navigation_remains_in_the_app_menu(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.set_viewport_size({"width": 390, "height": 760})
+    page.goto(f"{local_app.url}?dropdown=true")
+    page_chat = PageChatController(page, "chat")
+    toggle = page_chat.loc_sidebar_toggle
+    menu = page_chat.loc.locator(".shiny-chat-page-nav-menu")
+
+    expect(page_chat.loc).to_be_visible(timeout=TIMEOUT)
+    toggle.click()
+    menu.locator("summary").click()
+    expect(menu.locator(".shiny-chat-page-nav-menu-items")).to_have_css(
+        "position", "static"
+    )
+    expect(menu.get_by_role("button", name="Details")).to_be_visible()
+
+
+def test_desktop_dropdown_navigation_aligns_in_rtl(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.goto(f"{local_app.url}?dropdown=true")
+    page_chat = PageChatController(page, "chat")
+    menu = page_chat.loc.locator(".shiny-chat-page-nav-menu")
+    summary = menu.locator("summary")
+    items = menu.locator(".shiny-chat-page-nav-menu-items")
+
+    expect(page_chat.loc).to_be_visible(timeout=TIMEOUT)
+    page.locator("html").evaluate("(element) => { element.dir = 'rtl' }")
+    summary.click()
+    page.wait_for_function(
+        """(element) => {
+          const summary = element.parentElement?.querySelector(
+            ':scope > summary',
+          );
+          if (!summary) return false;
+          return Math.abs(
+            element.getBoundingClientRect().right -
+              summary.getBoundingClientRect().right,
+          ) <= 1;
+        }""",
+        arg=items.element_handle(),
+    )
+    summary_box = summary.bounding_box()
+    items_box = items.bounding_box()
+    assert summary_box is not None
+    assert items_box is not None
+    assert items_box["x"] + items_box["width"] == pytest.approx(
+        summary_box["x"] + summary_box["width"], abs=1
+    )
+
+
+def test_open_mobile_dropdown_repositions_after_desktop_resize(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.set_viewport_size({"width": 390, "height": 760})
+    page.goto(f"{local_app.url}?dropdown=true")
+    page_chat = PageChatController(page, "chat")
+    menu = page_chat.loc.locator(".shiny-chat-page-nav-menu")
+
+    expect(page_chat.loc).to_be_visible(timeout=TIMEOUT)
+    page_chat.loc_sidebar_toggle.click()
+    menu.locator("summary").click()
+    expect(menu.locator(".shiny-chat-page-nav-menu-items")).to_have_css(
+        "position", "static"
+    )
+
+    page.set_viewport_size({"width": 1280, "height": 800})
+    expect(menu.locator(".shiny-chat-page-nav-menu-items")).to_have_css(
+        "position", "fixed"
+    )
+    items_box = menu.locator(".shiny-chat-page-nav-menu-items").bounding_box()
+    assert items_box is not None
+    assert items_box["x"] >= 0
+    assert items_box["x"] + items_box["width"] <= 1280
 
 
 def test_sidebarless_mobile_history_trigger_does_not_overlay_messages(
@@ -458,10 +618,10 @@ def test_sidebarless_mobile_history_trigger_does_not_overlay_messages(
     page.set_viewport_size({"width": 390, "height": 760})
     page.goto(f"{local_app.url}?sidebarless=true")
     chat = ChatController(page, "chat")
-    shell = page.locator("shiny-chat-page")
+    page_chat = PageChatController(page, "chat")
     trigger = chat.loc.locator(".shiny-chat-history-trigger")
 
-    expect(shell).to_be_visible(timeout=TIMEOUT)
+    expect(page_chat.loc).to_be_visible(timeout=TIMEOUT)
     expect(trigger).to_be_visible(timeout=TIMEOUT)
     expect(chat.loc.locator(".shiny-chat-messages")).to_have_css(
         "padding-top", "48px"
@@ -475,7 +635,9 @@ def test_sidebarless_mobile_history_trigger_does_not_overlay_messages(
     )
 
     trigger_box = trigger.bounding_box()
-    message_box = chat.loc.locator(".shiny-chat-user-message").first.bounding_box()
+    message_box = chat.loc.locator(
+        ".shiny-chat-user-message"
+    ).first.bounding_box()
     assert trigger_box is not None
     assert message_box is not None
     assert message_box["y"] >= trigger_box["y"] + trigger_box["height"]
@@ -500,8 +662,8 @@ def test_page_chat_keeps_content_inset_and_fills_its_page_region(
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
     footer = chat.loc.locator(".shiny-chat-footer")
 
-    shell_box = shell.bounding_box()
-    header_box = shell.locator(".shiny-chat-page-header").bounding_box()
+    shell_box = page_chat.loc.bounding_box()
+    header_box = page_chat.loc_header.bounding_box()
     main_box = main.bounding_box()
     chat_box = chat.loc.bounding_box()
     wrapper_box = wrapper.bounding_box()
@@ -529,7 +691,10 @@ def test_page_chat_keeps_content_inset_and_fills_its_page_region(
         chat_box["height"], abs=1
     )
     assert input_box["x"] >= chat_box["x"] + 16
-    assert input_box["x"] + input_box["width"] <= chat_box["x"] + chat_box["width"] - 16
+    assert (
+        input_box["x"] + input_box["width"]
+        <= chat_box["x"] + chat_box["width"] - 16
+    )
     assert input_box["y"] < chat_box["y"] + chat_box["height"] * 0.75
     expect(wrapper).to_have_css("padding-left", "16px")
     expect(wrapper).to_have_css("padding-right", "16px")
@@ -539,6 +704,7 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
     page: Page,
     local_app: ShinyAppProc,
 ) -> None:
+    page.emulate_media(reduced_motion="reduce")
     chat, _ = open_page(
         page, local_app, viewport=(1280, 800), toolbar_input=True
     )
@@ -567,6 +733,7 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
         greeting_box["y"] + greeting_box["height"]
     ) <= 16
     assert toolbar_box["y"] >= composer_box["y"]
+    assert footer_box["y"] >= composer_box["y"]
     group_center = (
         greeting_box["y"] + composer_box["y"] + composer_box["height"]
     ) / 2
@@ -619,22 +786,25 @@ def test_page_chat_remeasures_greeting_after_history_new(
     page: Page,
     local_app: ShinyAppProc,
 ) -> None:
-    chat, shell = open_page(page, local_app, viewport=(1280, 800))
+    page.emulate_media(reduced_motion="reduce")
+    chat, page_chat = open_page(page, local_app, viewport=(1280, 800))
     layout = chat.loc.locator(".shiny-chat-layout")
 
     chat.set_user_input("Save this conversation")
     chat.send_user_input()
     chat.expect_latest_message("echo: Save this conversation", timeout=TIMEOUT)
 
-    shell.get_by_role("button", name="History", exact=True).click()
-    history = shell.get_by_role("region", name="History", exact=True).locator(
-        "shiny-chat-history"
-    )
+    page_chat.select_page("History", exact=True)
+    history = page_chat.loc.get_by_role(
+        "region", name="History", exact=True
+    ).locator("shiny-chat-history")
     expect(history).to_be_visible(timeout=TIMEOUT)
     history.get_by_role("button", name="New conversation").click()
-    shell.get_by_role("button", name="Return to chat").click()
+    page_chat.return_home()
 
-    expect(layout).to_have_attribute("data-composer-centered", "", timeout=TIMEOUT)
+    expect(layout).to_have_attribute(
+        "data-composer-centered", "", timeout=TIMEOUT
+    )
     expect(layout).not_to_have_attribute("data-composer-revealing")
     expect(layout).not_to_have_attribute("data-composer-resizing")
     greeting_box = chat.loc_greeting.bounding_box()
@@ -642,9 +812,9 @@ def test_page_chat_remeasures_greeting_after_history_new(
     assert greeting_box is not None
     assert composer_box is not None
     assert composer_box["y"] >= greeting_box["y"] + greeting_box["height"]
-    assert composer_box["y"] - (
-        greeting_box["y"] + greeting_box["height"]
-    ) <= 16
+    assert (
+        composer_box["y"] - (greeting_box["y"] + greeting_box["height"]) <= 16
+    )
 
 
 def test_page_chat_tracks_resize_without_composer_transition(
@@ -674,7 +844,9 @@ def test_page_chat_tracks_resize_without_composer_transition(
         }"""
     )
     assert all(sample["resizing"] for sample in resize_samples)
-    assert all(sample["transitionDuration"] == "0s" for sample in resize_samples)
+    assert all(
+        sample["transitionDuration"] == "0s" for sample in resize_samples
+    )
 
     expect(layout).not_to_have_attribute(
         "data-composer-resizing",
@@ -711,8 +883,8 @@ def test_page_chat_respects_reduced_motion_for_composer_positioning(
 def test_top_aligned_toast_starts_below_the_page_title_bar(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    _, shell = open_page(page, local_app, viewport=(1280, 800))
-    header = shell.locator(".shiny-chat-page-header")
+    _, page_chat = open_page(page, local_app, viewport=(1280, 800))
+    header = page_chat.loc_header
     page.get_by_role("button", name="Show toast").click()
 
     container = page.locator("body > .toast-container")
@@ -731,9 +903,9 @@ def test_page_toolbars_move_without_duplicate_controls(
     page: Page,
     local_app: ShinyAppProc,
 ) -> None:
-    _, shell = open_page(page, local_app, viewport=(1280, 800))
-    toolbar = shell.locator(".shiny-chat-page-toolbar")
-    toolbar_sources = shell.locator(".shiny-chat-page-toolbar-sources")
+    _, page_chat = open_page(page, local_app, viewport=(1280, 800))
+    toolbar = page_chat.loc_toolbar
+    toolbar_sources = page_chat.loc.locator(".shiny-chat-page-toolbar-sources")
     home_input = page.locator("#toolbar_value")
     settings_input = page.locator("#settings_toolbar_value")
     global_input = page.locator("#toolbar_global_value")
@@ -748,16 +920,15 @@ def test_page_toolbars_move_without_duplicate_controls(
     home_input.fill("home toolbar state")
     global_input.fill("global toolbar state")
 
-    shell.get_by_role("button", name="History", exact=True).click()
-    expect(shell).to_have_attribute("data-active-page", "history")
-    expect(toolbar.locator("#toolbar_value")).to_have_count(1)
+    page_chat.select_page("History", exact=True)
+    page_chat.expect_active_page("history")
+    expect(toolbar.locator("#toolbar_value")).to_have_count(0)
     expect(toolbar.locator("#toolbar_global_value")).to_have_count(1)
-    expect(toolbar.locator(".shiny-chat-page-toolbar-content")).to_have_count(1)
+    expect(toolbar.locator(".shiny-chat-page-toolbar-content")).to_have_count(0)
     expect(page.locator("#toolbar_value")).to_have_count(1)
-    expect(home_input).to_have_value("home toolbar state")
 
-    shell.get_by_role("button", name="Settings").click()
-    expect(shell).to_have_attribute("data-active-page", "settings")
+    page_chat.select_page("Settings")
+    page_chat.expect_active_page("settings")
     expect(toolbar.locator("#settings_toolbar_value")).to_have_count(1)
     expect(toolbar.locator("#toolbar_value")).to_have_count(0)
     expect(toolbar.locator("#toolbar_global_value")).to_have_count(1)
@@ -767,44 +938,43 @@ def test_page_toolbars_move_without_duplicate_controls(
     expect(global_input).to_have_value("global toolbar state")
     settings_input.fill("settings toolbar state")
 
-    shell.get_by_role("button", name="About").click()
-    expect(shell).to_have_attribute("data-active-page", "about")
+    page_chat.select_page("About")
+    page_chat.expect_active_page("about")
     expect(toolbar.locator("input")).to_have_count(1)
     expect(toolbar.locator(".shiny-chat-page-toolbar-content")).to_have_count(0)
     expect(toolbar.locator("#toolbar_global_value")).to_have_count(1)
     expect(home_input).to_have_count(1)
     expect(settings_input).to_have_count(1)
 
-    shell.get_by_role("button", name="Return to chat").click()
+    page_chat.return_home()
     expect(toolbar.locator("#toolbar_value")).to_have_count(1)
     expect(toolbar.locator("#toolbar_global_value")).to_have_count(1)
     expect(toolbar.locator(".shiny-chat-page-toolbar-content")).to_have_count(1)
     expect(home_input).to_have_value("home toolbar state")
     expect(settings_input).to_have_value("settings toolbar state")
     expect(global_input).to_have_value("global toolbar state")
-    expect(shell.locator(".shiny-chat-page-toolbar-content")).to_have_count(2)
+    expect(
+        page_chat.loc.locator(".shiny-chat-page-toolbar-content")
+    ).to_have_count(2)
 
     page.set_viewport_size({"width": 390, "height": 760})
     expect(
-        shell.locator(
-            ".shiny-chat-page-controls-mount-mobile "
+        page_chat.loc_controls_mount_mobile.locator(
             ".shiny-chat-page-toolbar #toolbar_value"
         )
     ).to_have_count(1)
     expect(
-        shell.locator(
-            ".shiny-chat-page-controls-mount-mobile "
+        page_chat.loc_controls_mount_mobile.locator(
             ".shiny-chat-page-toolbar #toolbar_global_value"
         )
     ).to_have_count(1)
     expect(toolbar.locator(".shiny-chat-page-toolbar-content")).to_have_count(1)
     expect(global_input).to_have_value("global toolbar state")
-    toggle = shell.locator(".shiny-chat-page-sidebar-toggle")
+    toggle = page_chat.loc_sidebar_toggle
     toggle.click()
-    shell.get_by_role("button", name="Settings").click()
+    page_chat.select_page("Settings")
     expect(
-        shell.locator(
-            ".shiny-chat-page-controls-mount-mobile "
+        page_chat.loc_controls_mount_mobile.locator(
             ".shiny-chat-page-toolbar #settings_toolbar_value"
         )
     ).to_have_count(1)
@@ -819,30 +989,30 @@ def test_desktop_sidebar_motion_keeps_close_semantics_and_suppresses_resize(
     page: Page,
     local_app: ShinyAppProc,
 ) -> None:
-    _, shell = open_page(page, local_app, viewport=(1280, 800))
-    sidebar = shell.locator(".shiny-chat-page-sidebar")
-    body = shell.locator(".shiny-chat-page-body")
-    toggle = shell.locator(".shiny-chat-page-sidebar-toggle")
+    _, page_chat = open_page(page, local_app, viewport=(1280, 800))
+    sidebar = page_chat.loc_sidebar
+    body = page_chat.loc_body
+    toggle = page_chat.loc_sidebar_toggle
 
     assert "grid-template-columns" in body.evaluate(
         "(element) => getComputedStyle(element).transitionProperty"
     )
 
     toggle.click()
-    expect(shell).to_have_attribute("data-sidebar-open", "")
+    expect(page_chat.loc).to_have_attribute("data-sidebar-open", "")
     expect(sidebar).to_be_visible()
     expect(sidebar).to_have_attribute("aria-hidden", "false")
 
-    resizer = shell.get_by_role("separator", name="Resize sidebar")
+    resizer = page_chat.loc.get_by_role("separator", name="Resize sidebar")
     expect(resizer).to_be_visible()
     resizer.dispatch_event("resize-start")
-    expect(shell).to_have_attribute("data-sidebar-resizing", "")
+    expect(page_chat.loc).to_have_attribute("data-sidebar-resizing", "")
     expect(body).to_have_css("transition-duration", "0s")
     resizer.dispatch_event("resize-end")
-    expect(shell).not_to_have_attribute("data-sidebar-resizing", "")
+    expect(page_chat.loc).not_to_have_attribute("data-sidebar-resizing", "")
 
     toggle.click()
-    expect(shell).not_to_have_attribute("data-sidebar-open", "")
+    expect(page_chat.loc).not_to_have_attribute("data-sidebar-open", "")
     expect(sidebar).to_have_attribute("aria-hidden", "true")
     assert sidebar.evaluate("(element) => element.hidden") is False
     expect(sidebar).to_be_hidden(timeout=TIMEOUT)
@@ -852,13 +1022,15 @@ def test_non_resizable_sidebar_uses_bounded_desktop_grid_track(
     page: Page,
     local_app: ShinyAppProc,
 ) -> None:
-    _, shell = open_page(page, local_app, viewport=(1000, 800))
-    sidebar = shell.locator(".shiny-chat-page-sidebar")
-    main = shell.locator(".shiny-chat-page-main")
+    _, page_chat = open_page(page, local_app, viewport=(1000, 800))
+    sidebar = page_chat.loc_sidebar
+    main = page_chat.loc_main
 
-    shell.get_by_role("button", name="Pinned").click()
+    page_chat.select_page("Pinned")
     expect(sidebar).to_be_visible()
-    expect(shell.get_by_role("separator", name="Resize sidebar")).to_be_hidden()
+    expect(
+        page_chat.loc.get_by_role("separator", name="Resize sidebar")
+    ).to_be_hidden()
 
     sidebar_box = sidebar.bounding_box()
     main_box = main.bounding_box()
@@ -873,7 +1045,85 @@ def test_reduced_motion_disables_mobile_sidebar_transition(
     local_app: ShinyAppProc,
 ) -> None:
     page.emulate_media(reduced_motion="reduce")
-    _, shell = open_page(page, local_app, viewport=(390, 760))
-    sidebar = shell.locator(".shiny-chat-page-sidebar")
+    _, page_chat = open_page(page, local_app, viewport=(390, 760))
+    sidebar = page_chat.loc_sidebar
 
     expect(sidebar).to_have_css("transition-duration", "0s")
+
+
+def test_update_navset_selects_a_non_home_page(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    _, page_chat = open_page(page, local_app, viewport=(1280, 800))
+    active_page = page.locator("#active_page_value")
+
+    page_chat.expect_active_page("__home__")
+    expect(active_page).to_have_text("__home__")
+
+    page_chat.open_nav_offcanvas()
+    page.locator("#select_settings").click()
+
+    page_chat.expect_active_page("settings")
+    expect(page.locator("#settings_page_input")).to_be_visible()
+    expect(active_page).to_have_text("settings")
+
+
+def test_update_navset_returns_home(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    chat, page_chat = open_page(page, local_app, viewport=(1280, 800))
+    active_page = page.locator("#active_page_value")
+
+    page_chat.select_page("Settings")
+    page_chat.expect_active_page("settings")
+    expect(active_page).to_have_text("settings")
+
+    page_chat.open_nav_offcanvas()
+    page.locator("#select_home").click()
+
+    page_chat.expect_active_page("__home__")
+    expect(chat.loc).to_be_visible()
+    expect(active_page).to_have_text("__home__")
+
+
+def test_update_navset_selects_a_page_inside_a_nav_menu(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    _, page_chat = open_page(page, local_app, viewport=(1280, 800))
+    active_page = page.locator("#active_page_value")
+    menu = page_chat.loc.locator(".shiny-chat-page-nav-menu")
+
+    page_chat.expect_active_page("__home__")
+
+    page_chat.open_nav_offcanvas()
+    page.locator("#select_secret").click()
+
+    page_chat.expect_active_page("secret")
+    expect(page.locator("#secret_page")).to_be_visible()
+    expect(active_page).to_have_text("secret")
+    expect(menu).not_to_have_attribute("open", "")
+
+
+def test_update_navset_with_unknown_value_reports_error_without_changing_state(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    _, page_chat = open_page(page, local_app, viewport=(1280, 800))
+    active_page = page.locator("#active_page_value")
+
+    page_chat.select_page("About")
+    page_chat.expect_active_page("about")
+    expect(active_page).to_have_text("about")
+
+    with page.expect_console_message(
+        lambda msg: msg.type == "error" and "nonexistent-page" in msg.text,
+        timeout=TIMEOUT,
+    ):
+        page_chat.open_nav_offcanvas()
+        page.locator("#select_unknown").click()
+
+    page_chat.expect_active_page("about")
+    expect(active_page).to_have_text("about")

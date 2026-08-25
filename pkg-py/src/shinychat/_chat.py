@@ -36,7 +36,6 @@ from htmltools import (
 from pydantic import ValidationError
 
 from . import _utils
-from ._artifact import ChatArtifactController
 from ._attachments import (
     Attachment,
     attachment_to_content,
@@ -76,9 +75,14 @@ from ._chat_types import (
     StoredMessage,
     chat_greeting,
 )
+from ._drawer import ChatDrawerController
 from ._history import ChatHistory, HistoryOptions
 from ._html_deps_py_shiny import shinychat_dependency
-from ._page_chat import ChatArtifact, chat_artifact, render_chat_artifact
+from ._page_chat import (
+    ChatDrawer,
+    chat_drawer,
+    render_chat_drawer,
+)
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
@@ -99,11 +103,9 @@ else:
 
 __all__ = (
     "Chat",
-    "ChatArtifactController",
     "ChatExpress",
     "ChatGreeting",
     "ChatMessage",
-    "ChatArtifact",
     "chat_greeting",
     "chat_ui",
     "ChatMessageDict",
@@ -363,7 +365,7 @@ class Chat:
         )
         self._history_enabled: bool = history is not False
         self.history: ChatHistory = ChatHistory(self, config=history_config)
-        self.artifact: ChatArtifactController = ChatArtifactController(self)
+        self.drawer: ChatDrawerController = ChatDrawerController(self)
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
         self._greeting_content: str | None = None
 
@@ -2271,7 +2273,7 @@ class ChatExpress(Chat):
         toolbar_input: Optional[TagChild] = None,
         footer: Optional[TagChild] = None,
         tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
-        artifact: bool | ChatArtifact = True,
+        drawer: bool | ChatDrawer = True,
         show_history: bool = True,
         **kwargs: TagAttrValue,
     ) -> Tag:
@@ -2374,9 +2376,9 @@ class ChatExpress(Chat):
             ``ToolAnnotations``, so type checkers reject it. Chat-level
             ``"none"`` always disables grouping, even when a tool annotation
             requests ``"tool"`` or ``"all"``.
-        artifact
-            Whether the artifact region is available. Pass a
-            :class:`~shinychat.ChatArtifact` to supply its initial content and
+        drawer
+            Whether the artifact panel is available. Pass a
+            :class:`~shinychat.types.ChatDrawer` to supply its initial content and
             configuration.
         show_history
             Whether to render the chat's built-in history selector.
@@ -2402,7 +2404,7 @@ class ChatExpress(Chat):
             toolbar_input=toolbar_input,
             footer=footer,
             tool_grouping=tool_grouping,
-            artifact=artifact,
+            drawer=drawer,
             show_history=show_history,
             **kwargs,
         )
@@ -2507,7 +2509,7 @@ def chat_ui(
     toolbar_input: Optional[TagChild] = None,
     footer: Optional[TagChild] = None,
     tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
-    artifact: bool | ChatArtifact = True,
+    drawer: bool | ChatDrawer = True,
     show_history: bool = True,
     **kwargs: TagAttrValue,
 ) -> Tag:
@@ -2634,9 +2636,9 @@ def chat_ui(
         chatlas' ``ToolAnnotations``, so type checkers reject it. Chat-level
         ``"none"`` always disables grouping, even when a tool annotation
         requests ``"tool"`` or ``"all"``.
-    artifact
-        Whether the artifact region is available. Pass a
-        :class:`~shinychat.ChatArtifact` to supply its initial content and
+    drawer
+        Whether the artifact panel is available. Pass a
+        :class:`~shinychat.types.ChatDrawer` to supply its initial content and
         configuration.
     show_history
         Whether to render the chat's built-in history selector.
@@ -2658,10 +2660,10 @@ def chat_ui(
             f"not {tool_grouping!r}."
         )
 
-    if not isinstance(artifact, (bool, ChatArtifact)):
+    if not isinstance(drawer, (bool, ChatDrawer)):
         raise TypeError(
-            "`artifact` must be a bool or a shinychat `ChatArtifact`, "
-            f"not {type(artifact).__name__}."
+            "`drawer` must be a bool or a shinychat `ChatDrawer`, "
+            f"not {type(drawer).__name__}."
         )
     if not isinstance(show_history, bool):
         raise TypeError(
@@ -2699,17 +2701,15 @@ def chat_ui(
     if footer is not None:
         footer_tag = Tag("shiny-chat-footer", footer)
 
-    artifact_config: ChatArtifact | None
-    if isinstance(artifact, ChatArtifact):
-        artifact_config = artifact
-    elif artifact:
-        artifact_config = chat_artifact(open=False)
+    drawer_config: ChatDrawer | None
+    if isinstance(drawer, ChatDrawer):
+        drawer_config = drawer
+    elif drawer:
+        drawer_config = chat_drawer(open=False)
     else:
-        artifact_config = None
-    artifact_tag = (
-        render_chat_artifact(artifact_config)
-        if artifact_config is not None
-        else None
+        drawer_config = None
+    drawer_tag = (
+        render_chat_drawer(drawer_config) if drawer_config is not None else None
     )
 
     # Tri-state attribute: omitted = "no explicit preference" (lets a `client=`
@@ -2761,7 +2761,7 @@ def chat_ui(
         ),
         toolbar_tag,
         footer_tag,
-        artifact_tag,
+        drawer_tag,
         shinychat_dependency(),
         icon_deps,
         {"style": _container_style(as_css_unit(width), as_css_unit(height))},

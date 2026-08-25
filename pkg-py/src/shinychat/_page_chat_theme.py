@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from shiny.ui import Theme
 
 _PAGE_CHAT_THEME_DEFAULTS = {
     "font-family-sans-serif": (
@@ -38,15 +41,18 @@ _PAGE_CHAT_THEME_DEFAULTS = {
     "shiny-chat-page-surface-bg": "var(--bs-body-bg)",
     "shiny-chat-page-sidebar-bg": "var(--bs-secondary-bg)",
     "shiny-chat-page-canvas-bg": "var(--bs-tertiary-bg)",
-    "shiny-chat-page-artifact-bg": "var(--shiny-chat-page-surface-bg)",
-    "shiny-chat-page-artifact-box-shadow": "none",
-    "shiny-chat-page-artifact-header-bg": "var(--shiny-chat-page-canvas-bg)",
+    "shiny-chat-page-drawer-bg": "var(--shiny-chat-page-surface-bg)",
+    "shiny-chat-page-drawer-box-shadow": "none",
+    "shiny-chat-page-drawer-header-bg": "var(--shiny-chat-page-canvas-bg)",
     "shiny-chat-suggestion-card-border-radius": "var(--bs-border-radius)",
     "shiny-chat-user-message-border-radius": "var(--bs-border-radius)",
     "shiny-chat-user-message-padding": "0.5rem 0.75rem",
     "shiny-chat-user-assistant-gap-reduction": "0.5rem",
 }
 
+# Keep this Sass in sync with the equivalent rules in pkg-r/R/page_chat_theme.R.
+# Python and R inject runtime Sass through different framework APIs, so sharing
+# a source file would add package-path and runtime dependency complexity.
 _PAGE_CHAT_THEME_RULES = """
 :root {
   --shiny-chat-page-header-height: #{$shiny-chat-page-header-height};
@@ -69,9 +75,9 @@ _PAGE_CHAT_THEME_RULES = """
   --shiny-chat-page-surface-bg: #{$shiny-chat-page-surface-bg};
   --shiny-chat-page-sidebar-bg: #{$shiny-chat-page-sidebar-bg};
   --shiny-chat-page-canvas-bg: #{$shiny-chat-page-canvas-bg};
-  --shiny-chat-page-artifact-bg: #{$shiny-chat-page-artifact-bg};
-  --shiny-chat-page-artifact-box-shadow: #{$shiny-chat-page-artifact-box-shadow};
-  --shiny-chat-page-artifact-header-bg: #{$shiny-chat-page-artifact-header-bg};
+  --shiny-chat-page-drawer-bg: #{$shiny-chat-page-drawer-bg};
+  --shiny-chat-page-drawer-box-shadow: #{$shiny-chat-page-drawer-box-shadow};
+  --shiny-chat-page-drawer-header-bg: #{$shiny-chat-page-drawer-header-bg};
   --shiny-chat-suggestion-card-border-radius: #{$shiny-chat-suggestion-card-border-radius};
   --shiny-chat-user-message-border-radius: #{$shiny-chat-user-message-border-radius};
   --shiny-chat-user-message-padding: #{$shiny-chat-user-message-padding};
@@ -105,13 +111,13 @@ shiny-chat-page :is(
   --shiny-chat-input-padding-bottom: var(--shiny-chat-page-input-padding-bottom);
 }
 
-.shiny-chat-page-home .shiny-chat-artifact {
-  background: var(--shiny-chat-page-artifact-bg);
-  box-shadow: var(--shiny-chat-page-artifact-box-shadow);
+.shiny-chat-page-home .shiny-chat-drawer {
+  background: var(--shiny-chat-page-drawer-bg);
+  box-shadow: var(--shiny-chat-page-drawer-box-shadow);
 }
 
-.shiny-chat-page-home .shiny-chat-artifact-header {
-  background: var(--shiny-chat-page-artifact-header-bg);
+.shiny-chat-page-home .shiny-chat-drawer-header {
+  background: var(--shiny-chat-page-drawer-header-bg);
 }
 """
 
@@ -119,7 +125,7 @@ shiny-chat-page :is(
 def page_chat_theme(
     preset: str | None = "shiny",
     **variables: str | float | int | bool | None,
-) -> Any:
+) -> "Theme":
     """
     Create a theme for :func:`~shinychat.page_chat`.
 

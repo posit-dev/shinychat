@@ -24,5 +24,6 @@ except ImportError:
     pass
 
 from ._chat import Chat as ChatController
+from ._page_chat import PageChatController
 
-__all__ = ["ChatController"]
+__all__ = ["ChatController", "PageChatController"]

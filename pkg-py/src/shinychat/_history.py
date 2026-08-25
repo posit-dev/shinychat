@@ -873,7 +873,9 @@ class ChatHistory:
                     if old_state_id is not None:
                         await delete_bookmark_state(old_state_id)
                     if controller.partition is not None:
-                        await controller._put_record(controller.partition, record)
+                        await controller._put_record(
+                            controller.partition, record
+                        )
                     await controller.send_navigate(
                         f"?_state_id_={new_state_id}", captured_id
                     )

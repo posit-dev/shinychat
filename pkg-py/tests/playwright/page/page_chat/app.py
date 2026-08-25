@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import chatlas
 from chatlas import Turn
 from chatlas._turn import AssistantTurn
-from shiny import App, Inputs, Outputs, Session, reactive, ui
+from shiny import App, Inputs, Outputs, Session, reactive, render, ui
 from shinychat import (
     Chat,
     chat_nav_panel,
@@ -56,7 +56,7 @@ def app_ui(request: Request) -> ui.Tag:
             "Standard theme",
             id="chat",
             sidebar=False,
-            artifact=False,
+            drawer=False,
             theme=ui.Theme(preset="shiny"),
         )
 
@@ -66,14 +66,14 @@ def app_ui(request: Request) -> ui.Tag:
             id="chat",
             toolbar=ui.input_action_button("single_toolbar", "Action"),
             sidebar=False,
-            artifact=False,
+            drawer=False,
         )
 
     if request.query_params.get("sidebarless") == "true":
         return page_chat(
             "Sidebarless Assistant",
             id="chat",
-            pages=[
+            pages_navbar=[
                 chat_nav_panel(
                     "About",
                     ui.div("About page", id="sidebarless_about_page"),
@@ -82,7 +82,67 @@ def app_ui(request: Request) -> ui.Tag:
             ],
             toolbar=ui.input_action_button("sidebarless_toolbar", "Refresh"),
             sidebar=False,
-            artifact=False,
+            drawer=False,
+        )
+
+    if request.query_params.get("controls_only") == "true":
+        return page_chat(
+            "Controls only",
+            id="chat",
+            pages_navbar=[
+                ui.nav_control(
+                    ui.input_action_button("controls_only_action", "Action")
+                ),
+            ],
+            sidebar=False,
+            toolbar_global=None,
+            drawer=False,
+        )
+
+    if request.query_params.get("dropdown") == "true":
+        return page_chat(
+            "Dropdown navigation",
+            id="chat",
+            pages_navbar=[
+                ui.nav_menu(
+                    "More",
+                    ui.nav_panel(
+                        "Details",
+                        ui.div("Details page", id="dropdown_details_page"),
+                        value="details",
+                    ),
+                ),
+            ],
+            sidebar=False,
+            toolbar_global=None,
+            drawer=False,
+        )
+
+    if request.query_params.get("crowded_dropdown") == "true":
+        return page_chat(
+            "Crowded dropdown navigation",
+            id="chat",
+            pages_navbar=[
+                *(
+                    ui.nav_panel(
+                        f"Navigation item {index}",
+                        ui.div(f"Page {index}"),
+                        value=f"page-{index}",
+                    )
+                    for index in range(12)
+                ),
+                ui.nav_menu(
+                    "More",
+                    ui.nav_panel(
+                        "Details",
+                        ui.div("Details page", id="dropdown_details_page"),
+                        value="details",
+                    ),
+                ),
+            ],
+            sidebar=False,
+            toolbar_global=None,
+            drawer=False,
         )
 
     title = "Research Assistant"
@@ -104,7 +164,7 @@ def app_ui(request: Request) -> ui.Tag:
     return page_chat(
         title,
         id="chat",
-        pages=[
+        pages_navbar=[
             chat_nav_panel(
                 "History",
                 chat_ui_history("chat"),
@@ -118,7 +178,6 @@ def app_ui(request: Request) -> ui.Tag:
                 ),
                 value="history",
                 sidebar=True,
-                toolbar=True,
             ),
             chat_nav_panel(
                 "Settings",
@@ -171,6 +230,15 @@ def app_ui(request: Request) -> ui.Tag:
                     resizable=False,
                 ),
             ),
+            ui.nav_menu(
+                "More",
+                chat_nav_panel(  # pyright: ignore[reportArgumentType]
+                    "Secret",
+                    ui.div("Secret page content", id="secret_page"),
+                    value="secret",
+                    sidebar=False,
+                ),
+            ),
         ],
         toolbar=ui.input_text(
             "toolbar_value",
@@ -184,9 +252,11 @@ def app_ui(request: Request) -> ui.Tag:
                 value="global toolbar initial",
             ),
             ui.input_action_button("show_toast", "Show toast"),
+            ui.input_action_button("nav_controls", "Navigation controls"),
+            ui.output_text("active_page_value", inline=True),
         ),
         sidebar=True,
-        artifact=False,
+        drawer=False,
         greeting="Start a conversation.",
         **chat_kwargs,
     )
@@ -206,6 +276,45 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     @reactive.event(input.show_toast)
     def _show_toast() -> None:
         ui.show_toast(ui.toast("Toast content", header="Toast", type="info"))
+
+    @reactive.effect
+    @reactive.event(input.nav_controls)
+    def _show_nav_controls() -> None:
+        ui.show_offcanvas(
+            ui.offcanvas(
+                ui.input_action_button("select_settings", "Goto cfg"),
+                ui.input_action_button("select_secret", "Goto hidden"),
+                ui.input_action_button("select_home", "Goto start"),
+                ui.input_action_button("select_unknown", "Goto void"),
+                title="Navigation controls",
+                id="nav_controls_panel",
+                placement="right",
+            )
+        )
+
+    @reactive.effect
+    @reactive.event(input.select_settings)
+    def _select_settings() -> None:
+        ui.update_navset("chat_page", "settings")
+
+    @reactive.effect
+    @reactive.event(input.select_secret)
+    def _select_secret() -> None:
+        ui.update_navset("chat_page", "secret")
+
+    @reactive.effect
+    @reactive.event(input.select_home)
+    def _select_home() -> None:
+        ui.update_navset("chat_page", "__home__")
+
+    @reactive.effect
+    @reactive.event(input.select_unknown)
+    def _select_unknown() -> None:
+        ui.update_navset("chat_page", "nonexistent-page")
+
+    @render.text
+    def active_page_value() -> str:
+        return str(input.chat_page())
 
 
 app = App(app_ui, server)

@@ -4,18 +4,14 @@
 \alias{chat_sidebar}
 \title{Create a chat sidebar configuration}
 \usage{
-chat_sidebar(
-  ...,
-  history = FALSE,
-  width = 280,
-  open = "auto",
-  resizable = TRUE
-)
+chat_sidebar(..., history = NULL, width = 280, open = "auto", resizable = TRUE)
 }
 \arguments{
 \item{...}{UI content to display in the sidebar.}
 
-\item{history}{Whether to display the chat history selector in the sidebar.}
+\item{history}{Whether to display the chat history selector in the sidebar.
+When \code{NULL}, \code{\link[=page_chat]{page_chat()}} defaults to \code{TRUE} and \code{\link[=chat_nav_panel]{chat_nav_panel()}}
+defaults to \code{FALSE}.}
 
 \item{width}{The initial sidebar width. Positive numbers are converted to
 pixels; character values must be valid CSS lengths.}

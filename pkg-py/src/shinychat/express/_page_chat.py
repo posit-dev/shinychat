@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence, Union
 
-from htmltools import HTML, Tag, TagChild, TagList
+from htmltools import HTML, MetadataNode, Tag, TagChild, TagList
 
 from .._page_chat import (
-    ChatArtifact,
+    ChatDrawer,
     ChatNavPanel,
     ChatSidebar,
     _create_page_chat_root,
@@ -14,6 +15,9 @@ from .._page_chat import (
 from .._utils_types import MISSING, MISSING_TYPE
 
 if TYPE_CHECKING:
+    from shiny.types import NavSetArg
+    from shiny.ui import Theme
+    from shiny.ui._html_deps_external import ThemeProvider
     from shiny.ui.css import CssUnit
 
     from .._chat_types import ChatGreeting, ChatMessage, ChatMessageDict
@@ -26,19 +30,20 @@ _OWNERSHIP_ERROR = (
 
 def page_chat(
     title: TagChild,
-    icon: TagChild | None = None,
     *,
     id: str = "chat",
-    pages: Sequence[ChatNavPanel] | None = None,
+    icon: TagChild | None = None,
+    pages_navbar: Sequence[ChatNavPanel | NavSetArg | MetadataNode]
+    | None = None,
     toolbar: TagChild | None = None,
-    toolbar_global: TagChild | None = None,
+    toolbar_global: TagChild | None | MISSING_TYPE = MISSING,
     toolbar_input: TagChild | None = None,
     navbar_options: Any = None,
     sidebar: bool | ChatSidebar = True,
-    artifact: bool | ChatArtifact = True,
+    drawer: bool | ChatDrawer = True,
     window_title: str | None = None,
     lang: str | None = None,
-    theme: Any = None,
+    theme: str | Path | Theme | ThemeProvider | None = None,
     messages: Optional[
         Iterable[str | TagChild | "ChatMessageDict" | "ChatMessage" | Any]
     ] = None,
@@ -58,8 +63,8 @@ def page_chat(
     pages. This function configures :func:`shiny.express.ui.page_opts`
     internally and owns the complete top-level page layout. Do not also call
     ``chat.ui()``, add unrelated top-level UI, wrap the returned chat root, or
-    assign it to a variable. Compose additional UI through ``pages``,
-    ``toolbar``, ``toolbar_global``, ``sidebar``, and ``artifact``.
+    assign it to a variable. Compose additional UI through ``pages_navbar``,
+    ``toolbar``, ``toolbar_global``, ``sidebar``, and ``drawer``.
 
     Parameters
     ----------
@@ -71,15 +76,28 @@ def page_chat(
     id
         Unique ID shared by the page shell and its chat. Use the same ID for
         the server-side :class:`~shinychat.express.Chat`.
-    pages
-        Secondary pages created with :func:`~shinychat.chat_nav_panel`.
+    pages_navbar
+        Secondary navbar items. In addition to
+        :func:`~shinychat.chat_nav_panel`, this accepts Shiny's
+        :func:`shiny.ui.nav_panel`, :func:`shiny.ui.nav_menu`,
+        :func:`shiny.ui.nav_spacer`, and :func:`shiny.ui.nav_control`.
+        Standard content panels use the normal page-chat content width and no
+        page-specific sidebar or toolbar. Shiny for Python does not currently
+        expose ``nav_panel_hidden()`` or ``nav_item()``; use
+        :func:`shiny.ui.nav_control` for non-selecting navigation content.
+        Sidebar navigation is not yet implemented.
     toolbar
         Optional home-page-scoped HTML child displayed with the navigation
-        controls. A page's ``chat_nav_panel(toolbar=)`` can replace this
+        controls. Use :func:`shiny.ui.toolbar` to group toolbar controls. A
+        secondary page's ``chat_nav_panel(toolbar=)`` replaces this scoped
         segment.
     toolbar_global
         Optional persistent HTML child displayed after the page-scoped toolbar
-        in the navigation controls.
+        in the navigation controls. Use :func:`shiny.ui.toolbar` to group
+        toolbar controls. When omitted, it contains Shiny's dark/light mode
+        toggle; pass ``None`` to opt out. It remains mounted while secondary
+        pages are selected and while controls move between desktop and mobile
+        layouts.
     toolbar_input
         Optional HTML content displayed directly below the chat input. Use
         :func:`shiny.ui.toolbar` to group toolbar controls. This is independent
@@ -91,11 +109,11 @@ def page_chat(
     sidebar
         Home-page sidebar. ``True`` uses the default conversation-history
         sidebar, ``False`` removes it, and a
-        :class:`~shinychat.ChatSidebar` supplies custom content and behavior.
+        :class:`~shinychat.types.ChatSidebar` supplies custom content and behavior.
         Raw :class:`shiny.ui.Sidebar` objects are not supported.
-    artifact
-        Whether the chat has an artifact region. Pass a
-        :class:`~shinychat.ChatArtifact` to configure its initial content and
+    drawer
+        Whether the chat has an artifact panel. Pass a
+        :class:`~shinychat.types.ChatDrawer` to configure its initial content and
         behavior.
     window_title
         Optional document title. Use this when ``title`` is an HTML child or
@@ -147,7 +165,7 @@ def page_chat(
 
     page_chat(
         "Assistant",
-        pages=[
+        pages_navbar=[
             chat_nav_panel("About", ui.p("About this app"), sidebar=False),
         ],
         sidebar=chat_sidebar(history=False),
@@ -158,14 +176,14 @@ def page_chat(
     --------
     :func:`~shinychat.page_chat` : Create the same layout in a Core app.
     :func:`~shinychat.chat_sidebar` : Configure page sidebars.
-    :func:`~shinychat.chat_nav_panel` : Configure secondary pages.
-    :func:`~shinychat.chat_artifact` : Configure the artifact region.
+    :func:`~shinychat.chat_nav_panel` : Configure secondary navbar pages.
+    :func:`~shinychat.chat_drawer` : Configure the artifact panel.
     """
     from shiny.express import ui
 
     chat_root = _create_page_chat_root(
         id=id,
-        artifact=artifact,
+        drawer=drawer,
         messages=messages,
         greeting=greeting,
         placeholder=placeholder,
@@ -187,21 +205,23 @@ def page_chat(
             page_options["title"],
             icon,
             id=id,
-            pages=pages,
+            pages_navbar=pages_navbar,
             toolbar=toolbar,
             toolbar_global=toolbar_global,
             navbar_options=navbar_options,
             sidebar=sidebar,
             window_title=page_options["window_title"],
             lang=page_options["lang"],
-            theme=page_options["theme"],
+            theme=page_options.get("theme"),
         )
 
-    ui.page_opts(
-        title=title,  # pyright: ignore[reportArgumentType]
-        window_title=window_title,  # pyright: ignore[reportArgumentType]
-        lang=lang,  # pyright: ignore[reportArgumentType]
-        theme=theme,
-        page_fn=page_fn,
-    )
+    page_options: dict[str, Any] = {
+        "title": title,
+        "window_title": window_title,
+        "lang": lang,
+        "page_fn": page_fn,
+    }
+    if theme is not None:
+        page_options["theme"] = theme
+    ui.page_opts(**page_options)
     return chat_root

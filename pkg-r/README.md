@@ -67,14 +67,16 @@ responsive navigation and sidebar support:
 ui <- page_chat(
   "Assistant",
   toolbar = actionButton("clear_chat", "Clear conversation"),
-  toolbar_global = actionButton("help", "Help"),
+  toolbar_global = bslib::toolbar(
+    bslib::input_dark_mode(),
+    actionButton("help", "Help")
+  ),
   sidebar = chat_sidebar(tags$p("Tools"), history = FALSE),
-  pages = list(
+  pages_navbar = list(
     chat_nav_panel(
       "About",
       tags$p("About this app."),
       value = "about",
-      toolbar = TRUE
     ),
     chat_nav_panel(
       "Settings",
@@ -82,7 +84,7 @@ ui <- page_chat(
       toolbar = actionButton("save_settings", "Save settings")
     )
   ),
-  artifact = chat_artifact(tags$p("Preview content"), title = "Preview")
+  drawer = chat_drawer(tags$p("Preview content"), title = "Preview")
 )
 ```
 
@@ -95,5 +97,5 @@ The package includes credential-free `page_chat()` examples. Run them with:
 
 ```r
 shiny::runExample("page-chat-navigation", package = "shinychat")
-shiny::runExample("page-chat-artifact-controls", package = "shinychat")
+shiny::runExample("page-chat-drawer-controls", package = "shinychat")
 ```

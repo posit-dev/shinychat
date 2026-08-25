@@ -1,0 +1,256 @@
+@property --shiny-chat-drawer-layout-width {
+  syntax: "<length-percentage>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --shiny-chat-drawer-layout-gap {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+.shiny-chat-layout {
+  --shiny-chat-drawer-layout-width: 0px;
+  --shiny-chat-drawer-layout-gap: 0px;
+
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, var(--shiny-chat-drawer-layout-width));
+  grid-template-rows: minmax(0, 1fr) auto;
+  column-gap: var(--shiny-chat-drawer-layout-gap);
+  transition:
+    --shiny-chat-drawer-layout-width 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    --shiny-chat-drawer-layout-gap 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.shiny-chat-drawer-trigger {
+  --_drawer-accent: var(--shiny-chat-history-accent, var(--bs-primary, #007bc2));
+  --_drawer-bg: var(--shiny-chat-history-bg, var(--bs-body-bg, #fff));
+  --_drawer-border-color: var(--shiny-chat-history-border-color, var(--bs-border-color, #dee2e6));
+
+  position: absolute;
+  top: 0.5rem;
+  inset-inline-end: 0.5rem;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: var(--bs-border-width, 1px) solid var(--_drawer-border-color);
+  border-radius: 50%;
+  background-color: var(--_drawer-bg);
+  color: var(--bs-secondary-color, #6c757d);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+  line-height: 1;
+
+  &:hover {
+    color: var(--_drawer-accent);
+    border-color: color-mix(in srgb, var(--_drawer-accent) 40%, var(--_drawer-border-color));
+    background-color: light-dark(
+      color-mix(in srgb, var(--_drawer-accent) 6%, var(--_drawer-bg)),
+      color-mix(in srgb, var(--_drawer-accent) 14%, var(--_drawer-bg))
+    );
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--_drawer-accent);
+    outline-offset: 2px;
+  }
+
+  svg {
+    display: block;
+  }
+}
+
+shiny-chat-container[data-history-placement="right"] {
+  .shiny-chat-drawer-trigger {
+    top: 3rem;
+  }
+}
+
+.shiny-chat-layout[data-drawer-open] {
+  --shiny-chat-drawer-layout-width: var(--shiny-chat-drawer-width, 400px);
+  --shiny-chat-drawer-layout-gap: clamp(0.75rem, 1.5cqi, 1.5rem);
+
+  align-items: stretch;
+
+  .shiny-chat-wrapper {
+    // Include the chat gutter in the grid-track width so a full-width chat
+    // cannot overlap the artifact, while retaining the configured max width.
+    box-sizing: border-box;
+    width: 100%;
+    justify-self: center;
+  }
+}
+
+.shiny-chat-layout > .shiny-chat-wrapper {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.shiny-chat-layout > .shiny-chat-footer {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.shiny-chat-drawer-width-probe {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  contain: layout style;
+  height: 0;
+  overflow: hidden;
+}
+
+.shiny-chat-layout[data-drawer-takeover] {
+  position: relative;
+  z-index: 7;
+}
+
+.shiny-chat-drawer {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: visible;
+  border: 0;
+  border-inline-start: var(--shiny-chat-border);
+  background: var(--bs-body-bg, #fff);
+  color: var(--bs-body-color, #212529);
+  box-shadow: -2px 0 8px rgba(33, 37, 41, 0.06);
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity 140ms ease-out,
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.shiny-chat-drawer[data-motion="opening"],
+.shiny-chat-drawer[data-motion="closing"] {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(0.75rem);
+}
+
+.shiny-chat-layout:is([data-drawer-resizing], [data-drawer-takeover]) {
+  transition: none;
+}
+
+.shiny-chat-layout[data-drawer-resizing] .shiny-chat-drawer{
+  transition: none;
+}
+
+@container shiny-chat (min-width: 640px) {
+  .shiny-chat-layout .shiny-chat-wrapper {
+    justify-self: center;
+  }
+}
+
+.shiny-chat-drawer-header {
+  min-width: 0;
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.625rem 0.5rem 1rem;
+  border-bottom: var(--shiny-chat-border);
+
+  h2 {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.shiny-chat-drawer-close {
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--bs-secondary-color, #6c757d);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--bs-tertiary-bg, #f2f4f5);
+    color: var(--bs-body-color, #212529);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--bs-primary, #007bc2);
+    outline-offset: 2px;
+  }
+}
+
+.shiny-chat-drawer-content {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem;
+}
+
+// Keep a DOM boundary for Shiny's bind/unbind APIs without changing the
+// authored artifact content's layout.
+.shiny-chat-drawer-generation {
+  display: contents;
+}
+
+.shiny-chat-drawer-resizer {
+  inset-inline-start: 0;
+}
+
+@container shiny-chat (max-width: 639.99px) {
+  .shiny-chat-layout[data-drawer-open] {
+    display: block;
+    column-gap: 0;
+
+    .shiny-chat-wrapper {
+      display: none;
+    }
+
+    .shiny-chat-footer {
+      display: none;
+    }
+
+    .shiny-chat-drawer {
+      width: 100%;
+      min-height: 100%;
+      border-inline: 0;
+      box-shadow: none;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shiny-chat-layout,
+  .shiny-chat-drawer,
+  .shiny-chat-layout .shiny-chat-wrapper {
+    transition: none;
+  }
+}
