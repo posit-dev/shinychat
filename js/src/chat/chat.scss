@@ -413,7 +413,11 @@ shiny-chat-container:not([fill]) {
   // own width/height attributes; attach is explicitly forced to 22px below) —
   // the two aren't visually identical today, so one universal default would
   // change one of them. Setting --shiny-chat-input-icon-size unifies both.
-  --_input-icon-size: var(--shiny-chat-input-icon-size, 24px);
+  // [data-custom-icon] shrinks this default further (see below) so the
+  // default badge has room to be comfortably padded without growing past
+  // what the composer's rounded corner can actually contain.
+  --_icon-size-default: 24px;
+  --_input-icon-size: var(--shiny-chat-input-icon-size, var(--_icon-size-default));
 
   // Two default treatments, chosen by whether icon_send supplied a custom
   // icon (see [data-custom-icon] below): the built-in icon already draws its
@@ -488,10 +492,16 @@ shiny-chat-container:not([fill]) {
   // separate color-mix per state, so it works uniformly across the
   // ready/disabled/cancel colors above.
   &[data-custom-icon] {
+    // A badge sized to match the built-in icon's 24px (plus padding) would
+    // overflow the composer's rounded corner -- measured against the
+    // default single-line input height, ~26px is the largest footprint that
+    // stays inside the curve with a small margin, so the icon default also
+    // shrinks to leave that badge some real padding instead of being ~0.
+    --_icon-size-default: 18px;
     --_btn-send-bg-default: var(--_btn-send-color-state);
     --_btn-send-color-default: #fff;
     --_btn-send-padding-default: calc(
-      (var(--shiny-chat-btn-send-size, 32px) - var(--_input-icon-size)) / 2
+      (var(--shiny-chat-btn-send-size, 26px) - var(--_input-icon-size)) / 2
     );
 
     &:hover:not(:disabled) {
