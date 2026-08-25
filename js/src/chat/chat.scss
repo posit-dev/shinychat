@@ -424,7 +424,9 @@ shiny-chat-container:not([fill]) {
   transition: color 0.25s ease-in-out;
   padding: 0;
   cursor: pointer;
-  line-height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 50%;
   svg {
     display: block;
