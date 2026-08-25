@@ -862,7 +862,10 @@ chat_enable_history <- function(
 
     controller$on_response_saved <- function(record) {
       captured_id <- record$id
-      cancel_bm <- session$onBookmarked(function(url) {
+      # Register on the root session: module session proxies forbid
+      # onBookmarked() ("onBookmarked() can't be used in a module."), and
+      # rootScope() returns the session itself when not in a module.
+      cancel_bm <- session$rootScope()$onBookmarked(function(url) {
         new_state_id <- extract_state_id(url)
         if (is.null(new_state_id)) {
           return()
