@@ -370,11 +370,12 @@ chat_greeting <- function(
 #' @param fill Whether the chat element should try to vertically fill its
 #'   container, if the container is
 #'   [fillable](https://rstudio.github.io/bslib/articles/filling/index.html)
-#' @param icon_assistant The icon to use for the assistant chat messages. Can be
-#'   HTML or a tag in the form of [htmltools::HTML()] or [htmltools::tags()]. If
-#'   `NULL` (or `TRUE`), a default robot icon is used. Pass `FALSE` to remove
-#'   the assistant icon entirely (individual messages can still opt back in via
-#'   the `icon` argument of [chat_append()]).
+#' @param icon_assistant The icon to use for the assistant chat messages.
+#'   Can be HTML or a tag in the form of [htmltools::HTML()] or
+#'   [htmltools::tags()]. `NULL` (the default) or `FALSE` omits the assistant
+#'   icon entirely. Pass `TRUE` to use the built-in robot icon (individual
+#'   messages can still opt in to a different icon via the `icon` argument of
+#'   [chat_append()]).
 #' @param icon_send The icon to use for the chat input's ready-state submit
 #'   button. Can be HTML or a tag in the form of [htmltools::HTML()] or
 #'   [htmltools::tags()]. If `NULL`, `TRUE`, or `FALSE`, a default arrow icon is
@@ -478,6 +479,9 @@ chat_ui <- function(
   tool_grouping <- rlang::arg_match(tool_grouping)
   chat_validate_boolean(show_history, "show_history")
   drawer <- normalize_chat_drawer(drawer)
+  # `NULL` (the default) means no assistant icon; `TRUE` opts back into the
+  # built-in robot icon (see `resolve_icon_attr()`).
+  icon_assistant <- icon_assistant %||% FALSE
 
   attrs <- rlang::list2(...)
   if (!all(nzchar(rlang::names2(attrs)))) {

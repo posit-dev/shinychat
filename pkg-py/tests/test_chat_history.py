@@ -178,6 +178,36 @@ def test_controller_starts_none():
 
 
 @pytest.mark.anyio
+async def test_save_returns_false_before_history_starts():
+    chat = _make_chat()
+
+    assert await chat.history.save() is False
+    assert chat.history._controller is None
+
+
+@pytest.mark.anyio
+async def test_save_delegates_to_live_controller():
+    chat = _make_chat()
+    controller = MagicMock()
+    controller.save = AsyncMock(return_value=True)
+    chat.history._controller = controller
+
+    assert await chat.history.save() is True
+    controller.save.assert_awaited_once_with()
+
+
+@pytest.mark.anyio
+async def test_save_propagates_controller_errors():
+    chat = _make_chat()
+    controller = MagicMock()
+    controller.save = AsyncMock(side_effect=OSError("disk full"))
+    chat.history._controller = controller
+
+    with pytest.raises(OSError, match="disk full"):
+        await chat.history.save()
+
+
+@pytest.mark.anyio
 async def test_setup_greeting_wires_on_settled():
     chat = _make_chat()
 

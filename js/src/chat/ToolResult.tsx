@@ -5,6 +5,7 @@ import { MarkdownContent } from "../markdown/MarkdownContent"
 import { markdownCodeBlock } from "../markdown/markdownCodeBlock"
 import { exclamationCircleFill, filePdfFill } from "../utils/icons"
 import { useFullscreen } from "./useFullscreen"
+import { useChatStopScroll } from "./context"
 
 interface ContentExtraItem {
   type: "image" | "pdf" | "text"
@@ -90,6 +91,7 @@ export const ToolResult = memo(function ToolResult({
 }: ToolResultProps) {
   const cardRef = useRef<HTMLDivElement>(null)
   const { enterFullscreen, overlay } = useFullscreen(cardRef)
+  const stopScroll = useChatStopScroll()
 
   const isError = status === "error"
   const classStatus = isError ? "text-danger" : ""
@@ -111,7 +113,7 @@ export const ToolResult = memo(function ToolResult({
         onEnterFullscreen={enterFullscreen}
         cardRef={cardRef}
       >
-        {renderRequest(requestCall, showRequest)}
+        {renderRequest(requestCall, showRequest, stopScroll)}
         <ToolResultValue
           value={value}
           valueType={valueType}
@@ -126,6 +128,7 @@ export const ToolResult = memo(function ToolResult({
 function renderRequest(
   requestCall: string | undefined,
   showRequest: boolean,
+  stopScroll: ReturnType<typeof useChatStopScroll>,
 ): React.ReactNode {
   if (!showRequest || !requestCall) {
     return null
@@ -137,7 +140,7 @@ function renderRequest(
   return (
     <div className="shiny-tool-result__request">
       {isLongRequest ? (
-        <details>
+        <details onToggle={() => stopScroll?.()}>
           <summary>Tool call</summary>
           <MarkdownContent
             content={requestMarkdown}

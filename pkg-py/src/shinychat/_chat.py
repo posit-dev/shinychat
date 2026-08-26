@@ -2303,10 +2303,10 @@ class ChatExpress(Chat):
             container.
         icon_assistant
             The icon to use for the assistant chat messages. Can be a HTML or a tag in
-            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. If `None`
-            (or `True`), a default robot icon is used. Pass `False` to remove the
-            assistant icon entirely (individual messages can still opt back in via
-            the `icon` argument of `.append_message()`).
+            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. `None`
+            (the default) or `False` omits the assistant icon entirely. Pass `True`
+            to use the built-in robot icon (individual messages can still opt in to
+            a different icon via the `icon` argument of `.append_message()`).
         icon_send
             The icon to use for the chat input's ready-state submit button. Can be a
             HTML or a tag in the form of :class:`~htmltools.HTML` or
@@ -2540,58 +2540,58 @@ def chat_ui(
     **kwargs: TagAttrValue,
 ) -> Tag:
     """
-    UI container for a chat component (Shiny Core).
+        UI container for a chat component (Shiny Core).
 
-    This function is for locating a :class:`~shiny.ui.Chat` instance in a Shiny Core
-    app. If you are using Shiny Express, use the :method:`~shiny.ui.Chat.ui` method
-    instead.
+        This function is for locating a :class:`~shiny.ui.Chat` instance in a Shiny Core
+        app. If you are using Shiny Express, use the :method:`~shiny.ui.Chat.ui` method
+        instead.
 
-    Parameters
-    ----------
-    id
-        A unique identifier for the chat UI.
-    messages
-        A sequence of messages to display in the chat. A given message can be one of the
-        following:
+        Parameters
+        ----------
+        id
+            A unique identifier for the chat UI.
+        messages
+            A sequence of messages to display in the chat. A given message can be one of the
+            following:
 
-        * A string, which is interpreted as markdown and rendered to HTML on the client.
-            * To prevent interpreting as markdown, mark the string as
-              :class:`~shiny.ui.HTML`.
-        * A UI element (specifically, a :class:`~shiny.ui.TagChild`).
-            * This includes :class:`~shiny.ui.TagList`, which take UI elements
-              (including strings) as children. In this case, strings are still
-              interpreted as markdown as long as they're not inside HTML.
-        * A dictionary with `content` and `role` keys. The `content` key can contain a
-          content as described above, and the `role` key can be "assistant" or "user".
-        * More generally, any type registered with :func:`shinychat.message_content`.
+            * A string, which is interpreted as markdown and rendered to HTML on the client.
+                * To prevent interpreting as markdown, mark the string as
+                  :class:`~shiny.ui.HTML`.
+            * A UI element (specifically, a :class:`~shiny.ui.TagChild`).
+                * This includes :class:`~shiny.ui.TagList`, which take UI elements
+                  (including strings) as children. In this case, strings are still
+                  interpreted as markdown as long as they're not inside HTML.
+            * A dictionary with `content` and `role` keys. The `content` key can contain a
+              content as described above, and the `role` key can be "assistant" or "user".
+            * More generally, any type registered with :func:`shinychat.message_content`.
 
-        **NOTE:** content may include specially formatted **input suggestion** links
-        (see :method:`~shiny.ui.Chat.append_message` for more info).
-    greeting
-        An optional greeting to display at the top of the chat before any conversation
-        messages. Can be a markdown string or a :func:`~shinychat.chat_greeting` object.
-        For a dynamic or streaming greeting, use :meth:`~shinychat.Chat.set_greeting`
-        from the server instead.
+            **NOTE:** content may include specially formatted **input suggestion** links
+            (see :method:`~shiny.ui.Chat.append_message` for more info).
+        greeting
+            An optional greeting to display at the top of the chat before any conversation
+            messages. Can be a markdown string or a :func:`~shinychat.chat_greeting` object.
+            For a dynamic or streaming greeting, use :meth:`~shinychat.Chat.set_greeting`
+            from the server instead.
 
-        When no greeting is set and the chat is visible with no messages, an input
-        named ``{id}_greeting_requested`` fires. Use this input with
-        ``@reactive.event(input.{id}_greeting_requested)`` to generate a greeting
-        on demand from the server. It fires again after
-        :meth:`~shinychat.Chat.clear_messages` is called with ``greeting=True``.
-    placeholder
-        Placeholder text for the chat input.
-    width
-        The width of the chat container.
-    height
-        The height of the chat container.
-    fill
-        Whether the chat should vertically take available space inside a fillable container.
-    icon_assistant
-            The icon to use for the assistant chat messages. Can be a HTML or a tag in
-            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. If `None`
-            (or `True`), a default robot icon is used. Pass `False` to remove the
-            assistant icon entirely (individual messages can still opt back in via
-            the `icon` argument of `.append_message()`).
+            When no greeting is set and the chat is visible with no messages, an input
+            named ``{id}_greeting_requested`` fires. Use this input with
+            ``@reactive.event(input.{id}_greeting_requested)`` to generate a greeting
+            on demand from the server. It fires again after
+            :meth:`~shinychat.Chat.clear_messages` is called with ``greeting=True``.
+        placeholder
+            Placeholder text for the chat input.
+        width
+            The width of the chat container.
+        height
+            The height of the chat container.
+        fill
+            Whether the chat should vertically take available space inside a fillable container.
+        icon_assistant
+                The icon to use for the assistant chat messages. Can be a HTML or a tag in
+            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. `None`
+            (the default) or `False` omits the assistant icon entirely. Pass `True`
+            to use the built-in robot icon (individual messages can still opt in to
+            a different icon via the `icon` argument of `.append_message()`).
     icon_send
         The icon to use for the chat input's ready-state submit button. Can be a HTML
         or a tag in the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`.
@@ -2600,84 +2600,84 @@ def chat_ui(
         the supplied icon replaces only the glyph inside it. See the "Customizing
         the send button" section in the R documentation for CSS styling patterns
         (the CSS variables are the same for both R and Python).
-    enable_cancel
-        Whether to show a stop button during streaming that allows the user to
-        cancel the in-progress response. When ``True``, the chat UI shows a stop
-        button in place of the send button while streaming. You must observe
-        ``input.<id>_cancel`` on the server and call ``ctrl.cancel()`` on a
-        chatlas ``StreamController`` to actually stop the stream. When left
-        unset (the default), a chat driven by a ``client=`` enables the stop
-        button automatically; otherwise it stays hidden. Passing an explicit
-        ``True``/``False`` always wins over that automatic behavior.
-    submit_key
-        Controls which key combination submits the chat message:
+        enable_cancel
+            Whether to show a stop button during streaming that allows the user to
+            cancel the in-progress response. When ``True``, the chat UI shows a stop
+            button in place of the send button while streaming. You must observe
+            ``input.<id>_cancel`` on the server and call ``ctrl.cancel()`` on a
+            chatlas ``StreamController`` to actually stop the stream. When left
+            unset (the default), a chat driven by a ``client=`` enables the stop
+            button automatically; otherwise it stays hidden. Passing an explicit
+            ``True``/``False`` always wins over that automatic behavior.
+        submit_key
+            Controls which key combination submits the chat message:
 
-        - ``"enter"`` (default): Enter submits, Shift+Enter adds a newline.
-        - ``"enter+modifier"``: Ctrl+Enter (Cmd+Enter on Mac) submits,
-          plain Enter adds a newline.
-    allow_attachments
-        Controls the file-attachment affordance (an attach button, plus clipboard
-        paste and drag-and-drop) in the chat input. Pass ``True`` to accept all
-        supported types (PNG, JPEG, GIF, WebP, PDF, and common text/code files
-        such as Markdown, plain text, CSV, JSON, and source files), ``False`` to
-        disable, or a list of MIME types to restrict what is accepted (each must
-        be one of the supported types). Attachments are delivered to your
-        ``.on_user_submit()`` handler's second argument as a
-        ``list[Attachment]``, where each item exposes ``mime``, ``name``,
-        ``size``, and ``data_url`` attributes (and forwarded to a ``client=``
-        automatically). When left unset (the default), a chat driven by a
-        ``client=`` enables attachments automatically; otherwise it stays
-        hidden.
+            - ``"enter"`` (default): Enter submits, Shift+Enter adds a newline.
+            - ``"enter+modifier"``: Ctrl+Enter (Cmd+Enter on Mac) submits,
+              plain Enter adds a newline.
+        allow_attachments
+            Controls the file-attachment affordance (an attach button, plus clipboard
+            paste and drag-and-drop) in the chat input. Pass ``True`` to accept all
+            supported types (PNG, JPEG, GIF, WebP, PDF, and common text/code files
+            such as Markdown, plain text, CSV, JSON, and source files), ``False`` to
+            disable, or a list of MIME types to restrict what is accepted (each must
+            be one of the supported types). Attachments are delivered to your
+            ``.on_user_submit()`` handler's second argument as a
+            ``list[Attachment]``, where each item exposes ``mime``, ``name``,
+            ``size``, and ``data_url`` attributes (and forwarded to a ``client=``
+            automatically). When left unset (the default), a chat driven by a
+            ``client=`` enables attachments automatically; otherwise it stays
+            hidden.
 
-        The maximum combined size of all attachments in a single message is
-        controlled globally by the ``SHINYCHAT_MAX_ATTACHMENT_SIZE`` environment
-        variable (a raw byte count; defaults to approximately 30 MB). Files that
-        would push the total over this cap are rejected in the browser with a notice.
+            The maximum combined size of all attachments in a single message is
+            controlled globally by the ``SHINYCHAT_MAX_ATTACHMENT_SIZE`` environment
+            variable (a raw byte count; defaults to approximately 30 MB). Files that
+            would push the total over this cap are rejected in the browser with a notice.
 
-        When bookmarking is enabled, prefer ``bookmark_store="server"``:
-        attachment data is saved in the bookmark and can exceed URL length
-        limits with ``bookmark_store="url"``.
-    toolbar_input
-        Optional HTML content displayed directly below the chat input. Use
-        :func:`shiny.ui.toolbar` to group toolbar controls.
-    footer
-        Optional HTML content displayed in a bottom-pinned, full-width chat
-        region.
-        This can be any HTML content (tags, tag lists, or strings).
-        Useful for adding disclaimers, attribution, or other information.
-        The footer text is styled slightly smaller and lighter than body text
-        by default. Customize with CSS properties ``--shiny-chat-footer-font-size``
-        and ``--shiny-chat-footer-color`` on the chat container or footer element.
-    tool_grouping
-        Controls how tool calls are grouped together in the UI:
+            When bookmarking is enabled, prefer ``bookmark_store="server"``:
+            attachment data is saved in the bookmark and can exceed URL length
+            limits with ``bookmark_store="url"``.
+        toolbar_input
+            Optional HTML content displayed directly below the chat input. Use
+            :func:`shiny.ui.toolbar` to group toolbar controls.
+        footer
+            Optional HTML content displayed in a bottom-pinned, full-width chat
+            region.
+            This can be any HTML content (tags, tag lists, or strings).
+            Useful for adding disclaimers, attribution, or other information.
+            The footer text is styled slightly smaller and lighter than body text
+            by default. Customize with CSS properties ``--shiny-chat-footer-font-size``
+            and ``--shiny-chat-footer-color`` on the chat container or footer element.
+        tool_grouping
+            Controls how tool calls are grouped together in the UI:
 
-        - ``"tool"`` (default): calls to the *same* tool within a tool-calling
-          loop are grouped into a single activity row.
-          This groups by tool name across the whole loop, not just
-          consecutive calls -- e.g. calls to tools ``X``, ``Y``, ``Z``, ``X``,
-          ``Y`` (in that order) are grouped into ``X`` (2 calls), ``Y``
-          (2 calls), and ``Z`` (1 call).
-        - ``"all"``: every tool call within a tool-calling loop is
-          grouped into a single activity row, regardless of tool name.
-        - ``"none"``: each tool call is shown in its own activity row.
+            - ``"tool"`` (default): calls to the *same* tool within a tool-calling
+              loop are grouped into a single activity row.
+              This groups by tool name across the whole loop, not just
+              consecutive calls -- e.g. calls to tools ``X``, ``Y``, ``Z``, ``X``,
+              ``Y`` (in that order) are grouped into ``X`` (2 calls), ``Y``
+              (2 calls), and ``Z`` (1 call).
+            - ``"all"``: every tool call within a tool-calling loop is
+              grouped into a single activity row, regardless of tool name.
+            - ``"none"``: each tool call is shown in its own activity row.
 
-        Prose or thinking between calls starts a new tool-calling loop, so
-        grouping never crosses those transcript boundaries.
+            Prose or thinking between calls starts a new tool-calling loop, so
+            grouping never crosses those transcript boundaries.
 
-        Individual tools can override this via a ``grouping`` tool annotation.
-        For chatlas tools, prefer ``annotations={"extra": {"grouping": ...}}``:
-        a top-level ``grouping`` key is also read, but it isn't part of
-        chatlas' ``ToolAnnotations``, so type checkers reject it. Chat-level
-        ``"none"`` always disables grouping, even when a tool annotation
-        requests ``"tool"`` or ``"all"``.
-    drawer
-        Whether the artifact panel is available. Pass a
-        :class:`~shinychat.types.ChatDrawer` to supply its initial content and
-        configuration.
-    show_history
-        Whether to render the chat's built-in history selector.
-    kwargs
-        Additional attributes for the chat container element.
+            Individual tools can override this via a ``grouping`` tool annotation.
+            For chatlas tools, prefer ``annotations={"extra": {"grouping": ...}}``:
+            a top-level ``grouping`` key is also read, but it isn't part of
+            chatlas' ``ToolAnnotations``, so type checkers reject it. Chat-level
+            ``"none"`` always disables grouping, even when a tool annotation
+            requests ``"tool"`` or ``"all"``.
+        drawer
+            Whether the artifact panel is available. Pass a
+            :class:`~shinychat.types.ChatDrawer` to supply its initial content and
+            configuration.
+        show_history
+            Whether to render the chat's built-in history selector.
+        kwargs
+            Additional attributes for the chat container element.
     """
     from shiny.module import resolve_id
     from shiny.ui.css import as_css_unit
@@ -2703,6 +2703,11 @@ def chat_ui(
         raise TypeError(
             f"`show_history` must be a bool, not {type(show_history).__name__}."
         )
+
+    # `None` (the default) means no assistant icon; `True` opts back into the
+    # built-in robot icon (see `_resolve_icon_attr()`).
+    if icon_assistant is None:
+        icon_assistant = False
 
     icon_attr = _resolve_icon_attr(icon_assistant)
     icon_send_attr = _resolve_send_icon_attr(icon_send)

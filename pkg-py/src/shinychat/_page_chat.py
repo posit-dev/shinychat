@@ -184,7 +184,8 @@ def page_chat(
     width
         Maximum width of the chat content.
     icon_assistant
-        Default icon for assistant messages. ``False`` removes it.
+        Default icon for assistant messages. ``None`` (the default) or
+        ``False`` omits it; ``True`` uses the built-in robot icon.
     icon_send
         The icon to use for the chat input's ready-state submit button.
         ``None``, ``True``, or ``False`` all use the default arrow icon.

@@ -50,6 +50,7 @@ const resultOnlyFields = [
   "requestCall",
   "showRequest",
   "fullScreen",
+  "openStyle",
   "expanded",
   "customDisplay",
   "footer",

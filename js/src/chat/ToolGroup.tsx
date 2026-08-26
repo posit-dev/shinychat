@@ -25,6 +25,7 @@ import {
 } from "./tool-presentation"
 import { ToolResult, ToolResultValue } from "./ToolResult"
 import { ToolRequest } from "./ToolRequest"
+import { useChatStopScroll } from "./context"
 import { useFadingValue } from "./useFadingText"
 import { bareDot, chevronDown, exclamationCircleFill } from "../utils/icons"
 
@@ -181,6 +182,9 @@ function ToolCallRow({
   heterogeneous: boolean
 }): ReactNode {
   const [open, setOpen] = useExpandable(item.expanded)
+  const stopScroll = useChatStopScroll()
+  const framed =
+    open && item.status === "success" && item.openStyle === "framed"
   const label = toolCallLabel(item, segmentTitle, false)
   const statusClass =
     item.status === "error"
@@ -203,13 +207,21 @@ function ToolCallRow({
   const contentId = `tool-call${useId()}`
 
   return (
-    <li className="shiny-chat-tool-call-row" role="listitem">
+    <li
+      className={`shiny-chat-tool-call-row${
+        framed ? " shiny-chat-tool-call-row--framed" : ""
+      }`}
+      role="listitem"
+    >
       <button
         type="button"
         className="shiny-chat-tool-call-row__summary"
         aria-expanded={open}
         aria-controls={contentId}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          stopScroll?.()
+          setOpen((v) => !v)
+        }}
       >
         <span
           className={`shiny-chat-tool-call-row__status${statusClass}`}
@@ -325,6 +337,9 @@ function ToolGroupRow({
   bodyId: string
 }): ReactNode {
   const { identity, single, anyRunning, failedCount, heterogeneous } = row
+  const stopScroll = useChatStopScroll()
+  const framed =
+    expanded && single?.status === "success" && single.openStyle === "framed"
   const label = single && toolCallLabel(single, identity.title, true)
   const glyph = glyphHtml(toolGroupGlyph(row))
 
@@ -332,14 +347,17 @@ function ToolGroupRow({
     <div
       className={`shiny-chat-tool-group shiny-chat-tool-group--${
         single ? "single" : "multi"
-      }`}
+      }${framed ? " shiny-chat-tool-group--framed" : ""}`}
     >
       <button
         type="button"
         className="shiny-chat-tool-group__row"
         aria-expanded={expanded}
         aria-controls={bodyId}
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => {
+          stopScroll?.()
+          setExpanded((v) => !v)
+        }}
       >
         <span
           className={`shiny-chat-tool-group__glyph${anyRunning ? " running" : ""}`}
