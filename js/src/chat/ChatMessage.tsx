@@ -8,7 +8,7 @@ import {
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ThinkingDisplay } from "./ThinkingDisplay"
 import { ToolGroup } from "./ToolGroup"
-import { robot, dots_fade, arrowUpCircleFill, pencil } from "../utils/icons"
+import { robot, dots_fade, arrowUpShort, pencil } from "../utils/icons"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 import { useSlashCommands, useToolGrouping, useChatToolState } from "./context"
 import { CommandChip } from "./CommandChip"
@@ -560,7 +560,7 @@ export const ChatMessage = memo(function ChatMessage({
                 }}
                 aria-label="Save and resend"
                 title="Save and resend"
-                dangerouslySetInnerHTML={{ __html: arrowUpCircleFill }}
+                dangerouslySetInnerHTML={{ __html: arrowUpShort }}
               />
             </div>
             <button
