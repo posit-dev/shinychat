@@ -304,7 +304,11 @@ export const ChatInput = memo(
     // behavior); "pending"/"cancelling" are non-interactive via CSS
     // (pointer-events: none) only, so they don't trigger the :disabled
     // color rule and keep their state-driven color instead of turning gray.
+    // pointer-events doesn't cover keyboard/screen-reader users, so those
+    // states also get aria-disabled and are removed from the tab order.
     const sendButtonDisabled = sendButtonState === "empty"
+    const sendButtonInert =
+      sendButtonState === "pending" || sendButtonState === "cancelling"
 
     const handleSendClick =
       sendButtonState === "cancel"
@@ -354,6 +358,8 @@ export const ChatInput = memo(
           title={sendButtonLabel}
           aria-label={sendButtonLabel}
           disabled={sendButtonDisabled}
+          aria-disabled={sendButtonInert || undefined}
+          tabIndex={sendButtonInert ? -1 : undefined}
           onClick={handleSendClick}
           dangerouslySetInnerHTML={{ __html: sendButtonIcon }}
         />
