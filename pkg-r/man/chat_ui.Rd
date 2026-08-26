@@ -328,20 +328,6 @@ button to size to its content instead of the default fixed circle:
 \}
 }\if{html}{\out{</div>}}
 
-\strong{Ghost (outline) style.} Make the button transparent at rest with the
-state color on the icon and border, filling on hover. Target the button
-element (not an ancestor) because \code{--shiny-chat-btn-send-state-color}
-resolves on the button itself:
-
-\if{html}{\out{<div class="sourceCode css">}}\preformatted{:root .shiny-chat-btn-send \{
-  --shiny-chat-btn-send-bg: transparent;
-  --shiny-chat-btn-send-color: var(--shiny-chat-btn-send-state-color);
-  --shiny-chat-btn-send-border: 1px solid var(--shiny-chat-btn-send-state-color);
-  --shiny-chat-btn-send-color-hover: #fff;
-  --shiny-chat-btn-send-bg-hover: var(--shiny-chat-btn-send-state-color);
-\}
-}\if{html}{\out{</div>}}
-
 \strong{Per-state color overrides.} Each state's color can be set independently
 via CSS variables on the chat container or any ancestor. These are only
 read by the component (never set on the button), so inline styles inherit
@@ -352,6 +338,20 @@ cleanly:
 \}
 }\if{html}{\out{</div>}}
 
+\strong{Ghost (outline) style.} Make the button transparent at rest with the
+state color on the icon and border, filling on hover. Target the button
+element (not an ancestor) because the internal \verb{--_btn-send-state-color}
+variable resolves on the button itself:
+
+\if{html}{\out{<div class="sourceCode css">}}\preformatted{:root .shiny-chat-btn-send \{
+  --shiny-chat-btn-send-bg: transparent;
+  --shiny-chat-btn-send-color: var(--_btn-send-state-color);
+  --shiny-chat-btn-send-border: 1px solid var(--_btn-send-state-color);
+  --shiny-chat-btn-send-color-hover: #fff;
+  --shiny-chat-btn-send-bg-hover: var(--_btn-send-state-color);
+\}
+}\if{html}{\out{</div>}}
+
 \strong{Key CSS variables:}
 \itemize{
 \item \code{--shiny-chat-btn-send-size} — Button width and height (default \verb{24px})
@@ -359,7 +359,6 @@ cleanly:
 \item \code{--shiny-chat-btn-send-bg} — Button background (default: state color)
 \item \code{--shiny-chat-btn-send-color} — Icon color (default: \verb{#fff})
 \item \code{--shiny-chat-btn-send-border} — Button border (default: \code{none})
-\item \code{--shiny-chat-btn-send-state-color} — Resolved state color, read-only (set per state by the component)
 \item \code{--shiny-chat-btn-send-color-ready} — Override ready/pending color (default: \code{--bs-primary})
 \item \code{--shiny-chat-btn-send-color-empty} — Override empty/disabled color (default: \code{--bs-gray-500})
 \item \code{--shiny-chat-btn-send-color-cancel} — Override cancel/cancelling color (default: \code{--bs-danger})

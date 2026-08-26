@@ -406,14 +406,14 @@ shiny-chat-container:not([fill]) {
 
 .shiny-chat-btn-send {
   // State-color architecture:
-  // --shiny-chat-btn-send-state-color (public) is set per-state by the
+  // --_btn-send-state-color (private) is set per-state by the
   // [data-state] / :disabled selectors below, reading the per-state public
   // override vars (--shiny-chat-btn-send-color-ready/empty/cancel) with
   // Bootstrap fallbacks. Those per-state vars are NOT set here — only
   // read — so inline styles on a container inherit to the button without
   // competition. Ghost-style CSS on :root .shiny-chat-btn-send references
-  // --shiny-chat-btn-send-state-color for icon/border color.
-  --shiny-chat-btn-send-state-color:
+  // --_btn-send-state-color for icon/border color.
+  --_btn-send-state-color:
     var(--shiny-chat-btn-send-color-ready, var(--bs-primary, #007bc2));
 
   // 18px default gives 3px padding within the 24px button. Setting
@@ -425,7 +425,7 @@ shiny-chat-container:not([fill]) {
   right: var(--_input-control-inset, 8px);
   width: var(--shiny-chat-btn-send-size, 24px);
   height: var(--shiny-chat-btn-send-size, 24px);
-  background-color: var(--shiny-chat-btn-send-bg, var(--shiny-chat-btn-send-state-color));
+  background-color: var(--shiny-chat-btn-send-bg, var(--_btn-send-state-color));
   color: var(--shiny-chat-btn-send-color, #fff);
   border: var(--shiny-chat-btn-send-border, none);
   transition:
@@ -452,23 +452,23 @@ shiny-chat-container:not([fill]) {
   }
   &:hover:not(:disabled) {
     color: var(--shiny-chat-btn-send-color-hover, var(--shiny-chat-btn-send-color, #fff));
-    background-color: var(--shiny-chat-btn-send-bg-hover, var(--shiny-chat-btn-send-state-color));
+    background-color: var(--shiny-chat-btn-send-bg-hover, var(--_btn-send-state-color));
     border-color: var(--shiny-chat-btn-send-border-color-hover, transparent);
     filter: brightness(0.92);
   }
   &:active:not(:disabled) {
     color: var(--shiny-chat-btn-send-color-active, var(--shiny-chat-btn-send-color, #fff));
-    background-color: var(--shiny-chat-btn-send-bg-active, var(--shiny-chat-btn-send-state-color));
+    background-color: var(--shiny-chat-btn-send-bg-active, var(--_btn-send-state-color));
     filter: brightness(0.85);
   }
   &:disabled {
     cursor: not-allowed;
-    --shiny-chat-btn-send-state-color:
+    --_btn-send-state-color:
       var(--shiny-chat-btn-send-color-empty, var(--bs-gray-500, #8d959e));
   }
   &[data-state="cancel"],
   &[data-state="cancelling"] {
-    --shiny-chat-btn-send-state-color:
+    --_btn-send-state-color:
       var(--shiny-chat-btn-send-color-cancel, var(--bs-danger, #dc3545));
   }
   &[data-state="pending"],
