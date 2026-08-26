@@ -2311,7 +2311,11 @@ class ChatExpress(Chat):
             The icon to use for the chat input's ready-state submit button. Can be a
             HTML or a tag in the form of :class:`~htmltools.HTML` or
             :class:`~htmltools.Tag`. If `None`, `True`, or `False`, a default arrow
-            icon is used.
+            icon is used. The button provides a filled circular surface
+            (state-colored background, white icon); the supplied icon replaces only
+            the glyph inside it. See the "Customizing the send button" section in
+            the R documentation for CSS styling patterns (the CSS variables are the
+            same for both R and Python).
         enable_cancel
             Whether to show a stop button during streaming that allows the user to
             cancel the in-progress response. When ``True``, the chat UI shows a stop
@@ -2591,7 +2595,11 @@ def chat_ui(
     icon_send
         The icon to use for the chat input's ready-state submit button. Can be a HTML
         or a tag in the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`.
-        If `None`, `True`, or `False`, a default arrow icon is used.
+        If `None`, `True`, or `False`, a default arrow icon is used. The button
+        provides a filled circular surface (state-colored background, white icon);
+        the supplied icon replaces only the glyph inside it. See the "Customizing
+        the send button" section in the R documentation for CSS styling patterns
+        (the CSS variables are the same for both R and Python).
     enable_cancel
         Whether to show a stop button during streaming that allows the user to
         cancel the in-progress response. When ``True``, the chat UI shows a stop

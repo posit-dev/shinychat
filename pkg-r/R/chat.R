@@ -237,7 +237,10 @@ chat_greeting <- function(
 #' @param icon_send The icon to use for the chat input's ready-state submit
 #'   button. Can be HTML or a tag in the form of [htmltools::HTML()] or
 #'   [htmltools::tags()]. If `NULL`, `TRUE`, or `FALSE`, a default arrow icon
-#'   is used.
+#'   is used. The button provides a filled circular surface (state-colored
+#'   background, white icon); the supplied icon replaces only the glyph inside
+#'   it. See the "Customizing the send button" section below for styling
+#'   patterns.
 #' @param enable_cancel Whether to show a stop button during streaming that
 #'   allows the user to cancel the in-progress response. When using
 #'   [chat_server()], cancellation is wired up automatically and this defaults
@@ -343,6 +346,82 @@ chat_greeting <- function(
 #'
 #' Topic labels are entirely optional. Without them, the thinking panel still
 #' works -- it just won't have sub-section headings.
+#'
+#' @section Customizing the send button:
+#'
+#' The send button is a filled circle whose background color reflects the
+#' current state (primary when ready, gray when empty/disabled, danger when
+#' cancelling) with a white icon centered inside. The `icon_send` parameter
+#' swaps the ready-state icon without changing the button's surface.
+#'
+#' **Custom icon.** Pass an SVG from [bsicons::bs_icon()] or
+#' [faicons::icon_svg()]. The button provides the surface, so a bare glyph
+#' gets the same filled-circle treatment as the default arrow:
+#'
+#' ```r
+#' chat_ui("chat", icon_send = bsicons::bs_icon("send-fill"))
+#' ```
+#'
+#' **Icon with text.** Use [htmltools::tagList()] to pass an icon and a text
+#' label as siblings (not wrapped in a `<span>`) so they lay out side by
+#' side, with a Bootstrap margin utility for spacing. Then override the
+#' button to size to its content instead of the default fixed circle:
+#'
+#' ```r
+#' chat_ui("chat",
+#'   icon_send = tagList(
+#'     bsicons::bs_icon("airplane-fill"),
+#'     span("Send", class = "ms-2")
+#'   )
+#' )
+#' ```
+#'
+#' ```css
+#' :root .shiny-chat-btn-send {
+#'   width: auto;
+#'   height: auto;
+#'   padding: 4px 10px;
+#'   border-radius: 6px;
+#' }
+#' ```
+#'
+#' **Ghost (outline) style.** Make the button transparent at rest with the
+#' state color on the icon and border, filling on hover. Target the button
+#' element (not an ancestor) because `--shiny-chat-btn-send-state-color`
+#' resolves on the button itself:
+#'
+#' ```css
+#' :root .shiny-chat-btn-send {
+#'   --shiny-chat-btn-send-bg: transparent;
+#'   --shiny-chat-btn-send-color: var(--shiny-chat-btn-send-state-color);
+#'   --shiny-chat-btn-send-border: 1px solid var(--shiny-chat-btn-send-state-color);
+#'   --shiny-chat-btn-send-color-hover: #fff;
+#'   --shiny-chat-btn-send-bg-hover: var(--shiny-chat-btn-send-state-color);
+#' }
+#' ```
+#'
+#' **Per-state color overrides.** Each state's color can be set independently
+#' via CSS variables on the chat container or any ancestor. These are only
+#' read by the component (never set on the button), so inline styles inherit
+#' cleanly:
+#'
+#' ```css
+#' #chat {
+#'   --shiny-chat-btn-send-color-cancel: #abc123;
+#' }
+#' ```
+#'
+#' **Key CSS variables:**
+#'
+#'   * `--shiny-chat-btn-send-size` — Button width and height (default `24px`)
+#'   * `--shiny-chat-input-icon-size` — Icon size, shared with the attach button (default `18px`)
+#'   * `--shiny-chat-btn-send-bg` — Button background (default: state color)
+#'   * `--shiny-chat-btn-send-color` — Icon color (default: `#fff`)
+#'   * `--shiny-chat-btn-send-border` — Button border (default: `none`)
+#'   * `--shiny-chat-btn-send-state-color` — Resolved state color, read-only (set per state by the component)
+#'   * `--shiny-chat-btn-send-color-ready` — Override ready/pending color (default: `--bs-primary`)
+#'   * `--shiny-chat-btn-send-color-empty` — Override empty/disabled color (default: `--bs-gray-500`)
+#'   * `--shiny-chat-btn-send-color-cancel` — Override cancel/cancelling color (default: `--bs-danger`)
 #'
 #' @returns A Shiny tag object, suitable for inclusion in a Shiny UI
 #'

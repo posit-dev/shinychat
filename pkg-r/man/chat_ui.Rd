@@ -74,7 +74,10 @@ can still opt back in via the \code{icon} argument of \code{\link[=chat_append]{
 \item{icon_send}{The icon to use for the chat input's ready-state submit
 button. Can be HTML or a tag in the form of \code{\link[htmltools:HTML]{htmltools::HTML()}} or
 \code{\link[htmltools:tags]{htmltools::tags()}}. If \code{NULL}, \code{TRUE}, or \code{FALSE}, a default arrow icon
-is used.}
+is used. The button provides a filled circular surface (state-colored
+background, white icon); the supplied icon replaces only the glyph inside
+it. See the "Customizing the send button" section below for styling
+patterns.}
 
 \item{enable_cancel}{Whether to show a stop button during streaming that
 allows the user to cancel the in-progress response. When using
@@ -286,6 +289,80 @@ to indicate what you're currently reasoning about. For example:
 
 Topic labels are entirely optional. Without them, the thinking panel still
 works -- it just won't have sub-section headings.
+}
+}
+
+\section{Customizing the send button}{
+
+
+The send button is a filled circle whose background color reflects the
+current state (primary when ready, gray when empty/disabled, danger when
+cancelling) with a white icon centered inside. The \code{icon_send} parameter
+swaps the ready-state icon without changing the button's surface.
+
+\strong{Custom icon.} Pass an SVG from \code{\link[bsicons:bs_icon]{bsicons::bs_icon()}} or
+\code{\link[faicons:icon_svg]{faicons::icon_svg()}}. The button provides the surface, so a bare glyph
+gets the same filled-circle treatment as the default arrow:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_ui("chat", icon_send = bsicons::bs_icon("send-fill"))
+}\if{html}{\out{</div>}}
+
+\strong{Icon with text.} Use \code{\link[htmltools:tagList]{htmltools::tagList()}} to pass an icon and a text
+label as siblings (not wrapped in a \verb{<span>}) so they lay out side by
+side, with a Bootstrap margin utility for spacing. Then override the
+button to size to its content instead of the default fixed circle:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_ui("chat",
+  icon_send = tagList(
+    bsicons::bs_icon("airplane-fill"),
+    span("Send", class = "ms-2")
+  )
+)
+}\if{html}{\out{</div>}}
+
+\if{html}{\out{<div class="sourceCode css">}}\preformatted{:root .shiny-chat-btn-send \{
+  width: auto;
+  height: auto;
+  padding: 4px 10px;
+  border-radius: 6px;
+\}
+}\if{html}{\out{</div>}}
+
+\strong{Ghost (outline) style.} Make the button transparent at rest with the
+state color on the icon and border, filling on hover. Target the button
+element (not an ancestor) because \code{--shiny-chat-btn-send-state-color}
+resolves on the button itself:
+
+\if{html}{\out{<div class="sourceCode css">}}\preformatted{:root .shiny-chat-btn-send \{
+  --shiny-chat-btn-send-bg: transparent;
+  --shiny-chat-btn-send-color: var(--shiny-chat-btn-send-state-color);
+  --shiny-chat-btn-send-border: 1px solid var(--shiny-chat-btn-send-state-color);
+  --shiny-chat-btn-send-color-hover: #fff;
+  --shiny-chat-btn-send-bg-hover: var(--shiny-chat-btn-send-state-color);
+\}
+}\if{html}{\out{</div>}}
+
+\strong{Per-state color overrides.} Each state's color can be set independently
+via CSS variables on the chat container or any ancestor. These are only
+read by the component (never set on the button), so inline styles inherit
+cleanly:
+
+\if{html}{\out{<div class="sourceCode css">}}\preformatted{#chat \{
+  --shiny-chat-btn-send-color-cancel: #abc123;
+\}
+}\if{html}{\out{</div>}}
+
+\strong{Key CSS variables:}
+\itemize{
+\item \code{--shiny-chat-btn-send-size} — Button width and height (default \verb{24px})
+\item \code{--shiny-chat-input-icon-size} — Icon size, shared with the attach button (default \verb{18px})
+\item \code{--shiny-chat-btn-send-bg} — Button background (default: state color)
+\item \code{--shiny-chat-btn-send-color} — Icon color (default: \verb{#fff})
+\item \code{--shiny-chat-btn-send-border} — Button border (default: \code{none})
+\item \code{--shiny-chat-btn-send-state-color} — Resolved state color, read-only (set per state by the component)
+\item \code{--shiny-chat-btn-send-color-ready} — Override ready/pending color (default: \code{--bs-primary})
+\item \code{--shiny-chat-btn-send-color-empty} — Override empty/disabled color (default: \code{--bs-gray-500})
+\item \code{--shiny-chat-btn-send-color-cancel} — Override cancel/cancelling color (default: \code{--bs-danger})
 }
 }
 
