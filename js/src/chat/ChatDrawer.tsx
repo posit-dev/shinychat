@@ -447,7 +447,7 @@ export function ChatDrawer({
 
   const title = drawer.title || "Drawer"
   const style = {
-    "--shiny-chat-drawer-width": width,
+    "--_drawer-width": width,
   } as React.CSSProperties
 
   return (

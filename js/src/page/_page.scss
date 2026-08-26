@@ -418,7 +418,7 @@ button.shiny-chat-page-identity:focus-visible,
 .shiny-chat-page-sidebar-resizer {
   inset-inline-start: calc(
     var(--shiny-chat-page-sidebar-rendered-width, var(--_page-sidebar-width)) -
-      var(--shiny-chat-resize-handle-hit-target)
+      var(--_resize-handle-hit-target, 8px)
   );
 }
 

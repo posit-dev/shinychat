@@ -1,13 +1,13 @@
 shiny-chat-resize-handle {
-  --shiny-chat-resize-handle-hit-target: 8px;
-  --shiny-chat-resize-handle-indicator-color: currentcolor;
+  --_resize-handle-hit-target: var(--shiny-chat-resize-handle-hit-target, 8px);
+  --_resize-handle-indicator-color: var(--shiny-chat-resize-handle-indicator-color, currentcolor);
 
   position: absolute;
   z-index: 4;
   top: 0;
   bottom: 0;
   display: block;
-  width: var(--shiny-chat-resize-handle-hit-target);
+  width: var(--_resize-handle-hit-target);
   padding: 0;
   color: inherit;
   cursor: ew-resize;
@@ -21,7 +21,7 @@ shiny-chat-resize-handle {
     top: 50%;
     width: 2px;
     height: 30px;
-    background: var(--shiny-chat-resize-handle-indicator-color);
+    background: var(--_resize-handle-indicator-color);
     border-radius: 1px;
     cursor: ew-resize;
     opacity: 0.3;
@@ -152,7 +152,7 @@ shiny-chat-resize-handle {
 
 @media (any-pointer: coarse) {
   shiny-chat-resize-handle {
-    --shiny-chat-resize-handle-hit-target: 26px;
+    --_resize-handle-hit-target: 26px;
   }
 
   // Coarse starts are captured at the document using the host's 26px bounds.
