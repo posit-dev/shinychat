@@ -388,7 +388,6 @@ server <- function(input, output, session) {
       "</blockquote>"
     )
     chat_append("chat", response)
-    chat_append("chat", stream)
   })
 }
 

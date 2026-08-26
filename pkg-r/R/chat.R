@@ -337,7 +337,6 @@ chat_greeting <- function(
 #'       "</blockquote>"
 #'     )
 #'     chat_append("chat", response)
-#'     chat_append("chat", stream)
 #'   })
 #' }
 #'
