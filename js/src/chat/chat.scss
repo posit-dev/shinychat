@@ -514,8 +514,7 @@ shiny-chat-container:not([fill]) {
   border: var(--shiny-chat-btn-send-border, none);
   transition:
     color 0.25s ease-in-out,
-    background-color 0.25s ease-in-out,
-    filter 0.25s ease-in-out;
+    background-color 0.25s ease-in-out;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -534,16 +533,24 @@ shiny-chat-container:not([fill]) {
     height: var(--_input-icon-size) !important;
     margin: 0 !important;
   }
+  // The default hover/active backgrounds dim the state color via color-mix
+  // (approximating the previous brightness() filter) rather than a separate
+  // `filter` declaration, so an explicitly set --shiny-chat-btn-send-bg-hover
+  // /-active is used verbatim instead of being dimmed a second time.
   &:hover:not(:disabled) {
     color: var(--shiny-chat-btn-send-color-hover, var(--shiny-chat-btn-send-color, #fff));
-    background-color: var(--shiny-chat-btn-send-bg-hover, var(--_btn-send-state-color));
+    background-color: var(
+      --shiny-chat-btn-send-bg-hover,
+      color-mix(in srgb, var(--_btn-send-state-color) 92%, black)
+    );
     border-color: var(--shiny-chat-btn-send-border-color-hover, transparent);
-    filter: brightness(0.92);
   }
   &:active:not(:disabled) {
     color: var(--shiny-chat-btn-send-color-active, var(--shiny-chat-btn-send-color, #fff));
-    background-color: var(--shiny-chat-btn-send-bg-active, var(--_btn-send-state-color));
-    filter: brightness(0.85);
+    background-color: var(
+      --shiny-chat-btn-send-bg-active,
+      color-mix(in srgb, var(--_btn-send-state-color) 85%, black)
+    );
   }
   &:disabled {
     cursor: not-allowed;
