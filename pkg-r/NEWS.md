@@ -64,6 +64,8 @@
 
 * `chat_app()` no longer renders a close button or registers a `stopApp()` observer when deployed to a server. Both are now gated on `rlang::is_interactive()`, preventing session crashes in multi-user deployments. (#265)
 
+* Single tildes no longer trigger strikethrough in markdown. Text like `(~$1.50)` and `~/Documents` now renders as literal text; only `~~text~~` produces strikethrough. (#349, #353)
+
 * The `dismissible` parameter of `chat_greeting()` has been renamed to `persistent` with an inverted value. `dismissible = FALSE` (greeting stays visible) is now `persistent = TRUE`. The old `dismissible` argument still works but warns. When both `persistent` and `dismissible` are provided, `persistent` now takes precedence silently rather than erroring. (#260)
 
 * Fixed suggestion cards and the greeting overflowing the chat container in narrow spaces such as sidebars. (#255)

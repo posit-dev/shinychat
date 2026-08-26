@@ -52,6 +52,7 @@ export interface ChatAppProps {
   shinyLifecycle: ShinyLifecycle
   elementId: string
   iconAssistant?: string
+  iconSend?: string
   inputId: string
   cancelId?: string
   uploadAccept?: string[]
@@ -100,6 +101,7 @@ export function ChatApp({
   shinyLifecycle,
   elementId,
   iconAssistant,
+  iconSend,
   inputId,
   cancelId,
   uploadAccept = [],
@@ -382,6 +384,7 @@ export function ChatApp({
                   inputDisabled={state.inputDisabled}
                   inputPlaceholder={state.inputPlaceholder}
                   iconAssistant={iconAssistant}
+                  iconSend={iconSend}
                   inputId={inputId}
                   uploadAccept={uploadAccept}
                   maxUploadSize={maxUploadSize}

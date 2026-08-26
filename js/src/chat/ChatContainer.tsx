@@ -124,6 +124,7 @@ export interface ChatContainerProps {
   inputDisabled: boolean
   inputPlaceholder: string
   iconAssistant?: string
+  iconSend?: string
   inputId: string
   uploadAccept: string[]
   maxUploadSize: number | null
@@ -176,6 +177,7 @@ export const ChatContainer = forwardRef<
     inputDisabled,
     inputPlaceholder,
     iconAssistant,
+    iconSend,
     inputId,
     uploadAccept,
     maxUploadSize,
@@ -1050,6 +1052,7 @@ export const ChatContainer = forwardRef<
                 slashCommands={slashCommands}
                 slashCommandId={slashCommandId}
                 submitKey={submitKey}
+                iconSend={iconSend}
               />
             </div>
 
