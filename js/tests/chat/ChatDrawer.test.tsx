@@ -488,9 +488,7 @@ describe("ChatDrawer", () => {
     Object.defineProperty(panel, "getBoundingClientRect", {
       value: () => ({ width: panelWidth }),
     })
-    expect(panel.style.getPropertyValue("--_drawer-width")).toBe(
-      "32rem",
-    )
+    expect(panel.style.getPropertyValue("--_drawer-width")).toBe("32rem")
     expect(onWidthChange).not.toHaveBeenCalled()
 
     await act(async () => {
@@ -514,9 +512,7 @@ describe("ChatDrawer", () => {
     })
 
     expect(onWidthChange).toHaveBeenLastCalledWith("552px")
-    expect(panel.style.getPropertyValue("--_drawer-width")).toBe(
-      "552px",
-    )
+    expect(panel.style.getPropertyValue("--_drawer-width")).toBe("552px")
   })
 
   it("bounds a non-pixel layout width before configuring its first separator", async () => {
@@ -557,9 +553,7 @@ describe("ChatDrawer", () => {
     const separator = screen.getByRole("separator", {
       name: "Resize drawer panel",
     })
-    expect(panel.style.getPropertyValue("--_drawer-width")).toBe(
-      "616px",
-    )
+    expect(panel.style.getPropertyValue("--_drawer-width")).toBe("616px")
     expect(separator).toHaveAttribute("aria-valuenow", "616")
     expect(separator).toHaveAttribute("aria-valuemax", "616")
     expect(onWidthChange).toHaveBeenLastCalledWith("616px")
@@ -601,9 +595,7 @@ describe("ChatDrawer", () => {
     })
 
     expect(onWidthChange).toHaveBeenLastCalledWith("616px")
-    expect(panel.style.getPropertyValue("--_drawer-width")).toBe(
-      "616px",
-    )
+    expect(panel.style.getPropertyValue("--_drawer-width")).toBe("616px")
   })
 
   it("resolves auto drawer widths to a pixel layout target before reveal", async () => {
@@ -639,9 +631,7 @@ describe("ChatDrawer", () => {
         ".shiny-chat-layout",
       ) as HTMLElement
 
-      expect(layout.style.getPropertyValue("--_drawer-width")).toBe(
-        "400px",
-      )
+      expect(layout.style.getPropertyValue("--_drawer-width")).toBe("400px")
     } finally {
       if (original) {
         Object.defineProperty(
@@ -689,9 +679,7 @@ describe("ChatDrawer", () => {
         ".shiny-chat-layout",
       ) as HTMLElement
 
-      expect(layout.style.getPropertyValue("--_drawer-width")).toBe(
-        "1056px",
-      )
+      expect(layout.style.getPropertyValue("--_drawer-width")).toBe("1056px")
     } finally {
       if (original) {
         Object.defineProperty(
@@ -748,18 +736,14 @@ describe("ChatDrawer", () => {
         ".shiny-chat-drawer-width-probe",
       ) as HTMLElement
 
-      expect(layout.style.getPropertyValue("--_drawer-width")).toBe(
-        "512px",
-      )
+      expect(layout.style.getPropertyValue("--_drawer-width")).toBe("512px")
 
       relativeWidth = 640
       await act(async () => {
         ResizeObserverStub.resize(probe, relativeWidth)
       })
 
-      expect(layout.style.getPropertyValue("--_drawer-width")).toBe(
-        "640px",
-      )
+      expect(layout.style.getPropertyValue("--_drawer-width")).toBe("640px")
     } finally {
       vi.unstubAllGlobals()
       if (original) {
