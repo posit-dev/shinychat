@@ -30,30 +30,29 @@ chat_ui(
 
 \item{...}{Extra HTML attributes to include on the chat element}
 
-\item{messages}{A list of messages to prepopulate the chat with. Each
-message can be one of the following:
+\item{messages}{A list of messages to prepopulate the chat with. Each message
+can be one of the following:
 \itemize{
-\item A string, which is interpreted as markdown and rendered to HTML on
-the client.
+\item A string, which is interpreted as markdown and rendered to HTML on the
+client.
 \itemize{
 \item To prevent interpreting as markdown, mark the string as
 \code{\link[htmltools:HTML]{htmltools::HTML()}}.
 }
 \item A UI element.
 \itemize{
-\item This includes \code{\link[htmltools:tagList]{htmltools::tagList()}}, which take UI elements
-(including strings) as children. In this case, strings are still
-interpreted as markdown as long as they're not inside HTML.
+\item This includes \code{\link[htmltools:tagList]{htmltools::tagList()}}, which take UI elements (including
+strings) as children. In this case, strings are still interpreted as
+markdown as long as they're not inside HTML.
 }
 \item A named list of \code{content} and \code{role}. The \code{content} can contain content
 as described above, and the \code{role} can be "assistant" or "user".
 }}
 
 \item{greeting}{An optional greeting to display when the chat first loads.
-Can be a \code{\link[=chat_greeting]{chat_greeting()}} object, or a plain string (which is
-auto-wrapped with default options). The greeting is dismissed when the
-user sends their first message. For example:
-\code{greeting = chat_greeting("## Hello!\\n\\nHow can I help you today?")}}
+Can be a \code{\link[=chat_greeting]{chat_greeting()}} object, or a plain string (which is auto-wrapped
+with default options). The greeting is dismissed when the user sends their
+first message. For example: \code{greeting = chat_greeting("## Hello!\\n\\nHow can I help you today?")}}
 
 \item{placeholder}{The placeholder text for the chat's user input field}
 
@@ -65,16 +64,16 @@ user sends their first message. For example:
 container, if the container is
 \href{https://rstudio.github.io/bslib/articles/filling/index.html}{fillable}}
 
-\item{icon_assistant}{The icon to use for the assistant chat messages.
-Can be HTML or a tag in the form of \code{\link[htmltools:HTML]{htmltools::HTML()}} or
-\code{\link[htmltools:tags]{htmltools::tags()}}. If \code{NULL} (or \code{TRUE}), a default robot icon is used.
-Pass \code{FALSE} to remove the assistant icon entirely (individual messages
-can still opt back in via the \code{icon} argument of \code{\link[=chat_append]{chat_append()}}).}
+\item{icon_assistant}{The icon to use for the assistant chat messages. Can be
+HTML or a tag in the form of \code{\link[htmltools:HTML]{htmltools::HTML()}} or \code{\link[htmltools:tags]{htmltools::tags()}}. If
+\code{NULL} (or \code{TRUE}), a default robot icon is used. Pass \code{FALSE} to remove
+the assistant icon entirely (individual messages can still opt back in via
+the \code{icon} argument of \code{\link[=chat_append]{chat_append()}}).}
 
 \item{icon_send}{The icon to use for the chat input's ready-state submit
 button. Can be HTML or a tag in the form of \code{\link[htmltools:HTML]{htmltools::HTML()}} or
-\code{\link[htmltools:tags]{htmltools::tags()}}. If \code{NULL}, \code{TRUE}, or \code{FALSE}, a default arrow icon
-is used. The button provides a filled circular surface (state-colored
+\code{\link[htmltools:tags]{htmltools::tags()}}. If \code{NULL}, \code{TRUE}, or \code{FALSE}, a default arrow icon is
+used. The button provides a filled circular surface (state-colored
 background, white icon); the supplied icon replaces only the glyph inside
 it. See the "Customizing the send button" section below for styling
 patterns.}
@@ -89,12 +88,12 @@ to \code{NULL} (let the server decide). For manual usage without
 
 \item{submit_key}{Controls which key combination submits the chat message.
 \code{"enter"} (the default): Enter submits, Shift+Enter adds a newline.
-\code{"enter+modifier"}: Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter
-adds a newline.}
+\code{"enter+modifier"}: Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter adds
+a newline.}
 
 \item{allow_attachments}{Controls the file-attachment affordance (an attach
-button, plus clipboard paste and drag-and-drop) in the chat input.
-\code{NULL} (default) defers to \code{\link[=chat_server]{chat_server()}}, which enables attachments
+button, plus clipboard paste and drag-and-drop) in the chat input. \code{NULL}
+(default) defers to \code{\link[=chat_server]{chat_server()}}, which enables attachments
 automatically. Pass \code{TRUE} to accept all supported types (PNG, JPEG, GIF,
 WebP, PDF, and common text/code files such as Markdown, plain text, CSV,
 JSON, and source files), \code{FALSE} to disable, or a character vector of MIME
@@ -114,7 +113,8 @@ needed: ellmer's chat methods collect \code{...} with dynamic dots.)
 The maximum combined size of all attachments in a single message is
 controlled globally by the \code{SHINYCHAT_MAX_ATTACHMENT_SIZE} environment
 variable (a raw byte count; defaults to approximately 30 MB). Files that
-would push the total over this cap are rejected in the browser with a notice.}
+would push the total over this cap are rejected in the browser with a
+notice.}
 
 \item{toolbar_input}{Optional HTML content to display directly below the chat
 input. Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group toolbar controls.}
@@ -137,11 +137,11 @@ to \code{TRUE}; setting it to \code{FALSE} only hides its presentation.}
 \item{tool_grouping}{Controls how tool calls are grouped together in the
 compact activity rows:
 \itemize{
-\item \code{"tool"} (default): calls to the \emph{same} tool within a turn's
-contiguous tool loop are grouped into one activity row. This groups by
-tool name across the whole loop, not just consecutive
-calls -- e.g. calls to tools \code{X}, \code{Y}, \code{Z}, \code{X}, \code{Y} (in that order)
-are grouped into \code{X} (2 calls), \code{Y} (2 calls), and \code{Z} (1 call).
+\item \code{"tool"} (default): calls to the \emph{same} tool within a turn's contiguous
+tool loop are grouped into one activity row. This groups by tool name
+across the whole loop, not just consecutive calls -- e.g. calls to tools
+\code{X}, \code{Y}, \code{Z}, \code{X}, \code{Y} (in that order) are grouped into \code{X} (2 calls),
+\code{Y} (2 calls), and \code{Z} (1 call).
 \item \code{"all"}: every tool call within a contiguous tool loop is summarized in
 one activity row, regardless of tool name.
 \item \code{"none"}: each tool call is shown in its own activity row. Its request
@@ -150,11 +150,11 @@ restore an always-visible card stack.
 }
 
 Prose or thinking between tool calls starts a new tool loop, so calls on
-opposite sides of either boundary never group together. Individual tools can
-override \code{"tool"} or \code{"all"} via a top-level \code{grouping} tool annotation,
-e.g. \code{ellmer::tool(..., annotations = ellmer::tool_annotations(grouping = "all"))}.
-\code{tool_grouping = "none"} takes precedence over every annotation and disables
-grouping for the whole chat.}
+opposite sides of either boundary never group together. Individual tools
+can override \code{"tool"} or \code{"all"} via a top-level \code{grouping} tool
+annotation, e.g. \code{ellmer::tool(..., annotations = ellmer::tool_annotations(grouping = "all"))}. \code{tool_grouping = "none"}
+takes precedence over every annotation and disables grouping for the whole
+chat.}
 }
 \value{
 A Shiny tag object, suitable for inclusion in a Shiny UI
