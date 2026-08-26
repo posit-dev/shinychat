@@ -12,7 +12,7 @@ import type {
   SlashCommandDef,
   SlashCommandEventDetail,
 } from "../transport/types"
-import { arrowUpCircleFill, spinnerArc, stopCircleFill } from "../utils/icons"
+import { arrowUpShort, spinnerArc, stopFill } from "../utils/icons"
 import { TiptapInput, type TiptapInputHandle } from "./TiptapInput"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 import { type AttachmentPayload } from "./attachments"
@@ -288,10 +288,10 @@ export const ChatInput = memo(
 
     const sendButtonIcon =
       sendButtonState === "cancel"
-        ? stopCircleFill
+        ? stopFill
         : sendButtonState === "pending" || sendButtonState === "cancelling"
           ? spinnerArc
-          : (iconSend ?? arrowUpCircleFill)
+          : (iconSend ?? arrowUpShort)
 
     const sendButtonLabel =
       sendButtonState === "cancel"
@@ -351,7 +351,6 @@ export const ChatInput = memo(
           type="button"
           className="shiny-chat-btn-send"
           data-state={sendButtonState}
-          data-custom-icon={iconSend ? "" : undefined}
           title={sendButtonLabel}
           aria-label={sendButtonLabel}
           disabled={sendButtonDisabled}
