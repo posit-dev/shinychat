@@ -451,7 +451,7 @@ chat_greeting <- function(
 #'   ellmer::tool_annotations(grouping = "all"))`. `tool_grouping = "none"`
 #'   takes precedence over every annotation and disables grouping for the whole
 #'   chat.
-#
+#'
 #' @returns A Shiny tag object, suitable for inclusion in a Shiny UI
 #' @export
 chat_ui <- function(
