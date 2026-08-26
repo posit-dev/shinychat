@@ -416,9 +416,9 @@ shiny-chat-container:not([fill]) {
   --shiny-chat-btn-send-state-color:
     var(--shiny-chat-btn-send-color-ready, var(--bs-primary, #007bc2));
 
-  // 16px default gives 4px padding within the 24px button. Setting
+  // 18px default gives 3px padding within the 24px button. Setting
   // --shiny-chat-input-icon-size unifies send and attach.
-  --_input-icon-size: var(--shiny-chat-input-icon-size, 16px);
+  --_input-icon-size: var(--shiny-chat-input-icon-size, 18px);
 
   position: absolute;
   bottom: var(--_input-control-inset, 8px);
@@ -445,6 +445,7 @@ shiny-chat-container:not([fill]) {
   // icons we don't control the markup of.
   svg {
     display: block !important;
+    flex: none;
     width: var(--_input-icon-size) !important;
     height: var(--_input-icon-size) !important;
     margin: 0 !important;
