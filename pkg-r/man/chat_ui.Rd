@@ -295,10 +295,11 @@ works -- it just won't have sub-section headings.
 \section{Customizing the send button}{
 
 
-The send button is a filled circle whose background color reflects the
-current state (primary when ready, gray when empty/disabled, danger when
-cancelling) with a white icon centered inside. The \code{icon_send} parameter
-swaps the ready-state icon without changing the button's surface.
+The send button is a filled circle (24px by default) whose background
+color reflects the current state (primary when ready, gray when
+empty/disabled, danger when cancelling) with a white icon (18px by
+default) centered inside. The \code{icon_send} parameter swaps the
+ready-state icon without changing the button's surface.
 
 \strong{Custom icon.} Pass an SVG from \code{\link[bsicons:bs_icon]{bsicons::bs_icon()}} or
 \code{\link[faicons:icon_svg]{faicons::icon_svg()}}. The button provides the surface, so a bare glyph

@@ -349,10 +349,11 @@ chat_greeting <- function(
 #'
 #' @section Customizing the send button:
 #'
-#' The send button is a filled circle whose background color reflects the
-#' current state (primary when ready, gray when empty/disabled, danger when
-#' cancelling) with a white icon centered inside. The `icon_send` parameter
-#' swaps the ready-state icon without changing the button's surface.
+#' The send button is a filled circle (24px by default) whose background
+#' color reflects the current state (primary when ready, gray when
+#' empty/disabled, danger when cancelling) with a white icon (18px by
+#' default) centered inside. The `icon_send` parameter swaps the
+#' ready-state icon without changing the button's surface.
 #'
 #' **Custom icon.** Pass an SVG from [bsicons::bs_icon()] or
 #' [faicons::icon_svg()]. The button provides the surface, so a bare glyph
