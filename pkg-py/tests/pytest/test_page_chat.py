@@ -323,6 +323,7 @@ def test_page_chat_signature_makes_icon_keyword_only() -> None:
         "placeholder",
         "width",
         "icon_assistant",
+        "icon_send",
         "enable_cancel",
         "allow_attachments",
         "footer",

@@ -2267,6 +2267,7 @@ class ChatExpress(Chat):
         height: "CssUnit" = "auto",
         fill: bool = True,
         icon_assistant: HTML | Tag | TagList | bool | None = None,
+        icon_send: HTML | Tag | TagList | bool | None = None,
         enable_cancel: "bool | MISSING_TYPE" = MISSING,
         submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
         allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
@@ -2306,6 +2307,14 @@ class ChatExpress(Chat):
             (the default) or `False` omits the assistant icon entirely. Pass `True`
             to use the built-in robot icon (individual messages can still opt in to
             a different icon via the `icon` argument of `.append_message()`).
+        icon_send
+            The icon to use for the chat input's ready-state submit button. Can be a
+            HTML or a tag in the form of :class:`~htmltools.HTML` or
+            :class:`~htmltools.Tag`. If `None` (the default) or `False`, a
+            default arrow icon is used. The button provides a filled circular surface
+            (state-colored background, white icon); the supplied icon replaces only
+            the glyph inside it. See :func:`~shinychat.chat_ui` for the CSS
+            variables that control the button's appearance.
         enable_cancel
             Whether to show a stop button during streaming that allows the user to
             cancel the in-progress response. When ``True``, the chat UI shows a stop
@@ -2398,6 +2407,7 @@ class ChatExpress(Chat):
             height=height,
             fill=fill,
             icon_assistant=icon_assistant,
+            icon_send=icon_send,
             enable_cancel=enable_cancel,
             submit_key=submit_key,
             allow_attachments=allow_attachments,
@@ -2478,6 +2488,25 @@ def _resolve_icon_attr(
     return str(icon)
 
 
+def _resolve_send_icon_attr(
+    icon: "HTML | Tag | TagList | bool | None",
+) -> "str | None":
+    """Translate an ``icon_send`` value into its wire attribute.
+
+    Unlike ``_resolve_icon_attr()``, there's no blank state: ``False`` and
+    ``None`` both defer to the default arrow icon (attribute omitted);
+    anything else is stringified HTML.
+    """
+    if icon is True:
+        raise ValueError(
+            "`icon_send` does not accept `True`. Pass `None` for the "
+            "default arrow icon or supply custom icon HTML."
+        )
+    if icon is None or icon is False:
+        return None
+    return str(icon)
+
+
 def _container_style(width: "str | None", height: "str | None") -> "str | None":
     # `width` is emitted as a pseudo-private custom property consumed by
     # `.shiny-chat-wrapper` (as max-width), so the container itself stays
@@ -2503,6 +2532,7 @@ def chat_ui(
     height: "CssUnit" = "auto",
     fill: bool = True,
     icon_assistant: Optional[HTML | Tag | TagList | bool] = None,
+    icon_send: Optional[HTML | Tag | TagList | bool] = None,
     enable_cancel: "bool | MISSING_TYPE" = MISSING,
     submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
     allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
@@ -2561,11 +2591,46 @@ def chat_ui(
     fill
         Whether the chat should vertically take available space inside a fillable container.
     icon_assistant
-            The icon to use for the assistant chat messages. Can be a HTML or a tag in
-            the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. `None`
-            (the default) or `False` omits the assistant icon entirely. Pass `True`
-            to use the built-in robot icon (individual messages can still opt in to
-            a different icon via the `icon` argument of `.append_message()`).
+        The icon to use for the assistant chat messages. Can be a HTML or a tag in
+        the form of :class:`~htmltools.HTML` or :class:`~htmltools.Tag`. `None`
+        (the default) or `False` omits the assistant icon entirely. Pass `True`
+        to use the built-in robot icon (individual messages can still opt in to
+        a different icon via the `icon` argument of `.append_message()`).
+    icon_send
+        The icon to use for the chat input's ready-state submit button. Can be a
+        HTML or a tag in the form of :class:`~htmltools.HTML` or
+        :class:`~htmltools.Tag`. If `None` (the default) or `False`, a default
+        arrow icon is used. The button provides a filled circular surface
+        (state-colored background, white icon); the supplied icon replaces only
+        the glyph inside it.
+
+        The button's appearance is controlled by CSS variables set on the chat
+        container or any ancestor:
+
+        * ``--shiny-chat-btn-send-size`` -- button width and height (default ``24px``)
+        * ``--shiny-chat-input-icon-size`` -- icon size, shared with the attach button (default ``18px``)
+        * ``--shiny-chat-btn-send-bg`` -- button background (default: state color)
+        * ``--shiny-chat-btn-send-color`` -- icon color (default: ``#fff``)
+        * ``--shiny-chat-btn-send-border`` -- button border (default: ``none``)
+        * ``--shiny-chat-btn-send-color-ready`` -- ready/pending state color (default: ``--bs-primary``)
+        * ``--shiny-chat-btn-send-color-empty`` -- empty/disabled state color (default: ``--bs-gray-500``)
+        * ``--shiny-chat-btn-send-color-cancel`` -- cancel/cancelling state color (default: ``--bs-danger``)
+
+        For example, a ghost (outline) style that fills on hover:
+
+        .. code-block:: css
+
+            :root .shiny-chat-btn-send {
+              --shiny-chat-btn-send-bg: transparent;
+              --shiny-chat-btn-send-color: var(--_btn-send-state-color);
+              --shiny-chat-btn-send-border: 1px solid var(--_btn-send-state-color);
+              --shiny-chat-btn-send-color-hover: #fff;
+              --shiny-chat-btn-send-bg-hover: var(--_btn-send-state-color);
+            }
+
+        (``--_btn-send-state-color`` is an internal variable that resolves on
+        the button itself, so ghost-style rules must target the button element
+        rather than an ancestor.)
     enable_cancel
         Whether to show a stop button during streaming that allows the user to
         cancel the in-progress response. When ``True``, the chat UI shows a stop
@@ -2676,10 +2741,15 @@ def chat_ui(
         icon_assistant = False
 
     icon_attr = _resolve_icon_attr(icon_assistant)
+    icon_send_attr = _resolve_send_icon_attr(icon_send)
 
     icon_deps = None
     if isinstance(icon_assistant, (Tag, TagList)):
         icon_deps = icon_assistant.get_dependencies()
+
+    icon_send_deps = None
+    if isinstance(icon_send, (Tag, TagList)):
+        icon_send_deps = icon_send.get_dependencies()
 
     message_tags: list[Tag] = []
     if messages is None:
@@ -2769,6 +2839,7 @@ def chat_ui(
         drawer_tag,
         shinychat_dependency(),
         icon_deps,
+        icon_send_deps,
         {"style": _container_style(as_css_unit(width), as_css_unit(height))},
         id=id,
         placeholder=placeholder,
@@ -2782,6 +2853,7 @@ def chat_ui(
         # Also include icon on the parent so that when messages are dynamically added,
         # we know the default icon has changed
         icon_assistant=icon_attr,
+        icon_send=icon_send_attr,
         submit_key=submit_key if submit_key != "enter" else None,
         tool_grouping=tool_grouping if tool_grouping != "tool" else None,
         show_history="false" if not show_history else None,
