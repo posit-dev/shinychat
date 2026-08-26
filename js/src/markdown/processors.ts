@@ -6,6 +6,8 @@ import rehypeRaw from "rehype-raw"
 import rehypeSanitize from "rehype-sanitize"
 import rehypeHighlight from "rehype-highlight"
 
+import { remarkGfmOptions } from "./remarkGfmOptions"
+
 import { rehypeAccessibleSuggestions } from "./plugins/rehypeAccessibleSuggestions"
 import { rehypeSuggestionCards } from "./plugins/rehypeSuggestionCards"
 import { remarkEscapeHtml } from "./plugins/remarkEscapeHtml"
@@ -35,7 +37,7 @@ import { remarkNormalizeListItemAsides } from "./plugins/normalizeAsideMarkdown"
  */
 export const markdownProcessor = unified()
   .use(remarkParse)
-  .use(remarkGfm)
+  .use(remarkGfm, remarkGfmOptions)
   .use(remarkNormalizeListItemAsides)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeRewriteAsideToTemplate)
@@ -86,7 +88,7 @@ export const htmlProcessor = unified()
  */
 export const userMarkdownProcessor = unified()
   .use(remarkParse)
-  .use(remarkGfm)
+  .use(remarkGfm, remarkGfmOptions)
   .use(remarkEscapeHtml)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeRaw)

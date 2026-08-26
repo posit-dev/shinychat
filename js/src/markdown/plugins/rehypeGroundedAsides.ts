@@ -5,6 +5,8 @@ import remarkRehype from "remark-rehype"
 import { unified, type Plugin } from "unified"
 import { visit } from "unist-util-visit"
 
+import { remarkGfmOptions } from "../remarkGfmOptions"
+
 interface TextSegment {
   node: Text
   start: number
@@ -25,7 +27,7 @@ interface GroundedRange {
 
 const groundedSpanProcessor = unified()
   .use(remarkParse)
-  .use(remarkGfm)
+  .use(remarkGfm, remarkGfmOptions)
   .use(remarkRehype)
   .freeze()
 const strongDelimiter = "**"
