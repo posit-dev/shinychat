@@ -144,7 +144,7 @@ describe("chat-entry custom element boot", () => {
     const panel = host.querySelector(".shiny-chat-drawer") as HTMLElement | null
     expect(panel).not.toBeNull()
     expect(panel?.hidden).toBe(false)
-    expect(panel?.style.getPropertyValue("--shiny-chat-drawer-width")).toBe(
+    expect(panel?.style.getPropertyValue("--_drawer-width")).toBe(
       "32rem",
     )
     expect(
