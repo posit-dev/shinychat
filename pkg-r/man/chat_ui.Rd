@@ -14,6 +14,7 @@ chat_ui(
   height = "auto",
   fill = TRUE,
   icon_assistant = NULL,
+  icon_send = NULL,
   enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
@@ -29,30 +30,29 @@ chat_ui(
 
 \item{...}{Extra HTML attributes to include on the chat element}
 
-\item{messages}{A list of messages to prepopulate the chat with. Each
-message can be one of the following:
+\item{messages}{A list of messages to prepopulate the chat with. Each message
+can be one of the following:
 \itemize{
-\item A string, which is interpreted as markdown and rendered to HTML on
-the client.
+\item A string, which is interpreted as markdown and rendered to HTML on the
+client.
 \itemize{
 \item To prevent interpreting as markdown, mark the string as
 \code{\link[htmltools:HTML]{htmltools::HTML()}}.
 }
 \item A UI element.
 \itemize{
-\item This includes \code{\link[htmltools:tagList]{htmltools::tagList()}}, which take UI elements
-(including strings) as children. In this case, strings are still
-interpreted as markdown as long as they're not inside HTML.
+\item This includes \code{\link[htmltools:tagList]{htmltools::tagList()}}, which take UI elements (including
+strings) as children. In this case, strings are still interpreted as
+markdown as long as they're not inside HTML.
 }
 \item A named list of \code{content} and \code{role}. The \code{content} can contain content
 as described above, and the \code{role} can be "assistant" or "user".
 }}
 
 \item{greeting}{An optional greeting to display when the chat first loads.
-Can be a \code{\link[=chat_greeting]{chat_greeting()}} object, or a plain string (which is
-auto-wrapped with default options). The greeting is dismissed when the
-user sends their first message. For example:
-\code{greeting = chat_greeting("## Hello!\\n\\nHow can I help you today?")}}
+Can be a \code{\link[=chat_greeting]{chat_greeting()}} object, or a plain string (which is auto-wrapped
+with default options). The greeting is dismissed when the user sends their
+first message. For example: \code{greeting = chat_greeting("## Hello!\\n\\nHow can I help you today?")}}
 
 \item{placeholder}{The placeholder text for the chat's user input field}
 
@@ -71,6 +71,14 @@ icon entirely. Pass \code{TRUE} to use the built-in robot icon (individual
 messages can still opt in to a different icon via the \code{icon} argument of
 \code{\link[=chat_append]{chat_append()}}).}
 
+\item{icon_send}{The icon to use for the chat input's ready-state submit
+button. Can be HTML or a tag in the form of \code{\link[htmltools:HTML]{htmltools::HTML()}} or
+\code{\link[htmltools:tags]{htmltools::tags()}}. If \code{NULL}, \code{TRUE}, or \code{FALSE}, a default arrow icon is
+used. The button provides a filled circular surface (state-colored
+background, white icon); the supplied icon replaces only the glyph inside
+it. See the "Customizing the send button" section below for styling
+patterns.}
+
 \item{enable_cancel}{Whether to show a stop button during streaming that
 allows the user to cancel the in-progress response. When using
 \code{\link[=chat_server]{chat_server()}}, cancellation is wired up automatically and this defaults
@@ -81,12 +89,12 @@ to \code{NULL} (let the server decide). For manual usage without
 
 \item{submit_key}{Controls which key combination submits the chat message.
 \code{"enter"} (the default): Enter submits, Shift+Enter adds a newline.
-\code{"enter+modifier"}: Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter
-adds a newline.}
+\code{"enter+modifier"}: Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter adds
+a newline.}
 
 \item{allow_attachments}{Controls the file-attachment affordance (an attach
-button, plus clipboard paste and drag-and-drop) in the chat input.
-\code{NULL} (default) defers to \code{\link[=chat_server]{chat_server()}}, which enables attachments
+button, plus clipboard paste and drag-and-drop) in the chat input. \code{NULL}
+(default) defers to \code{\link[=chat_server]{chat_server()}}, which enables attachments
 automatically. Pass \code{TRUE} to accept all supported types (PNG, JPEG, GIF,
 WebP, PDF, and common text/code files such as Markdown, plain text, CSV,
 JSON, and source files), \code{FALSE} to disable, or a character vector of MIME
@@ -106,7 +114,8 @@ needed: ellmer's chat methods collect \code{...} with dynamic dots.)
 The maximum combined size of all attachments in a single message is
 controlled globally by the \code{SHINYCHAT_MAX_ATTACHMENT_SIZE} environment
 variable (a raw byte count; defaults to approximately 30 MB). Files that
-would push the total over this cap are rejected in the browser with a notice.}
+would push the total over this cap are rejected in the browser with a
+notice.}
 
 \item{toolbar_input}{Optional HTML content to display directly below the chat
 input. Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group toolbar controls.}
@@ -129,11 +138,11 @@ to \code{TRUE}; setting it to \code{FALSE} only hides its presentation.}
 \item{tool_grouping}{Controls how tool calls are grouped together in the
 compact activity rows:
 \itemize{
-\item \code{"tool"} (default): calls to the \emph{same} tool within a turn's
-contiguous tool loop are grouped into one activity row. This groups by
-tool name across the whole loop, not just consecutive
-calls -- e.g. calls to tools \code{X}, \code{Y}, \code{Z}, \code{X}, \code{Y} (in that order)
-are grouped into \code{X} (2 calls), \code{Y} (2 calls), and \code{Z} (1 call).
+\item \code{"tool"} (default): calls to the \emph{same} tool within a turn's contiguous
+tool loop are grouped into one activity row. This groups by tool name
+across the whole loop, not just consecutive calls -- e.g. calls to tools
+\code{X}, \code{Y}, \code{Z}, \code{X}, \code{Y} (in that order) are grouped into \code{X} (2 calls),
+\code{Y} (2 calls), and \code{Z} (1 call).
 \item \code{"all"}: every tool call within a contiguous tool loop is summarized in
 one activity row, regardless of tool name.
 \item \code{"none"}: each tool call is shown in its own activity row. Its request
@@ -142,11 +151,11 @@ restore an always-visible card stack.
 }
 
 Prose or thinking between tool calls starts a new tool loop, so calls on
-opposite sides of either boundary never group together. Individual tools can
-override \code{"tool"} or \code{"all"} via a top-level \code{grouping} tool annotation,
-e.g. \code{ellmer::tool(..., annotations = ellmer::tool_annotations(grouping = "all"))}.
-\code{tool_grouping = "none"} takes precedence over every annotation and disables
-grouping for the whole chat.}
+opposite sides of either boundary never group together. Individual tools
+can override \code{"tool"} or \code{"all"} via a top-level \code{grouping} tool
+annotation, e.g. \code{ellmer::tool(..., annotations = ellmer::tool_annotations(grouping = "all"))}. \code{tool_grouping = "none"}
+takes precedence over every annotation and disables grouping for the whole
+chat.}
 }
 \value{
 A Shiny tag object, suitable for inclusion in a Shiny UI
@@ -281,6 +290,80 @@ to indicate what you're currently reasoning about. For example:
 
 Topic labels are entirely optional. Without them, the thinking panel still
 works -- it just won't have sub-section headings.
+}
+}
+
+\section{Customizing the send button}{
+
+
+The send button is a filled circle (24px by default) whose background
+color reflects the current state (primary when ready, gray when
+empty/disabled, danger when cancelling) with a white icon (18px by
+default) centered inside. The \code{icon_send} parameter swaps the
+ready-state icon without changing the button's surface.
+
+\strong{Custom icon.} Pass an SVG from \code{\link[bsicons:bs_icon]{bsicons::bs_icon()}} or
+\code{\link[faicons:icon_svg]{faicons::icon_svg()}}. The button provides the surface, so a bare glyph
+gets the same filled-circle treatment as the default arrow:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_ui("chat", icon_send = bsicons::bs_icon("send-fill"))
+}\if{html}{\out{</div>}}
+
+\strong{Icon with text.} Use \code{\link[htmltools:tagList]{htmltools::tagList()}} to pass an icon and a text
+label as siblings (not wrapped in a \verb{<span>}) so they lay out side by
+side, with a Bootstrap margin utility for spacing. Then override the
+button to size to its content instead of the default fixed circle:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_ui("chat",
+  icon_send = tagList(
+    bsicons::bs_icon("airplane-fill"),
+    span("Send", class = "ms-2")
+  )
+)
+}\if{html}{\out{</div>}}
+
+\if{html}{\out{<div class="sourceCode css">}}\preformatted{:root .shiny-chat-btn-send \{
+  width: auto;
+  height: auto;
+  padding: 4px 10px;
+  border-radius: 6px;
+\}
+}\if{html}{\out{</div>}}
+
+\strong{Per-state color overrides.} Each state's color can be set independently
+via CSS variables on the chat container or any ancestor. These are only
+read by the component (never set on the button), so inline styles inherit
+cleanly:
+
+\if{html}{\out{<div class="sourceCode css">}}\preformatted{#chat \{
+  --shiny-chat-btn-send-color-cancel: #abc123;
+\}
+}\if{html}{\out{</div>}}
+
+\strong{Ghost (outline) style.} Make the button transparent at rest with the
+state color on the icon and border, filling on hover. Target the button
+element (not an ancestor) because the internal \verb{--_btn-send-state-color}
+variable resolves on the button itself:
+
+\if{html}{\out{<div class="sourceCode css">}}\preformatted{:root .shiny-chat-btn-send \{
+  --shiny-chat-btn-send-bg: transparent;
+  --shiny-chat-btn-send-color: var(--_btn-send-state-color);
+  --shiny-chat-btn-send-border: 1px solid var(--_btn-send-state-color);
+  --shiny-chat-btn-send-color-hover: #fff;
+  --shiny-chat-btn-send-bg-hover: var(--_btn-send-state-color);
+\}
+}\if{html}{\out{</div>}}
+
+\strong{Key CSS variables:}
+\itemize{
+\item \code{--shiny-chat-btn-send-size} — Button width and height (default \verb{24px})
+\item \code{--shiny-chat-input-icon-size} — Icon size, shared with the attach button (default \verb{18px})
+\item \code{--shiny-chat-btn-send-bg} — Button background (default: state color)
+\item \code{--shiny-chat-btn-send-color} — Icon color (default: \verb{#fff})
+\item \code{--shiny-chat-btn-send-border} — Button border (default: \code{none})
+\item \code{--shiny-chat-btn-send-color-ready} — Override ready/pending color (default: \code{--bs-primary})
+\item \code{--shiny-chat-btn-send-color-empty} — Override empty/disabled color (default: \code{--bs-gray-500})
+\item \code{--shiny-chat-btn-send-color-cancel} — Override cancel/cancelling color (default: \code{--bs-danger})
 }
 }
 
