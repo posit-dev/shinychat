@@ -116,6 +116,7 @@ you write to.</p>
 <span>  height <span class="op">=</span> <span class="st">"auto"</span>,</span>
 <span>  fill <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  icon_assistant <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  icon_send <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  enable_cancel <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  submit_key <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"enter"</span>, <span class="st">"enter+modifier"</span><span class="op">)</span>,</span>
 <span>  allow_attachments <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -140,14 +141,14 @@ you write to.</p>
 
 
 <dt id="arg-messages">messages<a class="anchor" aria-label="anchor" href="#arg-messages"></a></dt>
-<dd><p>A list of messages to prepopulate the chat with. Each
-message can be one of the following:</p><ul><li><p>A string, which is interpreted as markdown and rendered to HTML on
-the client.</p><ul><li><p>To prevent interpreting as markdown, mark the string as
+<dd><p>A list of messages to prepopulate the chat with. Each message
+can be one of the following:</p><ul><li><p>A string, which is interpreted as markdown and rendered to HTML on the
+client.</p><ul><li><p>To prevent interpreting as markdown, mark the string as
 <code><a href="https://rstudio.github.io/htmltools/reference/HTML.html" class="external-link">htmltools::HTML()</a></code>.</p></li>
 </ul></li>
-<li><p>A UI element.</p><ul><li><p>This includes <code><a href="https://rstudio.github.io/htmltools/reference/tagList.html" class="external-link">htmltools::tagList()</a></code>, which take UI elements
-(including strings) as children. In this case, strings are still
-interpreted as markdown as long as they're not inside HTML.</p></li>
+<li><p>A UI element.</p><ul><li><p>This includes <code><a href="https://rstudio.github.io/htmltools/reference/tagList.html" class="external-link">htmltools::tagList()</a></code>, which take UI elements (including
+strings) as children. In this case, strings are still interpreted as
+markdown as long as they're not inside HTML.</p></li>
 </ul></li>
 <li><p>A named list of <code>content</code> and <code>role</code>. The <code>content</code> can contain content
 as described above, and the <code>role</code> can be "assistant" or "user".</p></li>
@@ -156,10 +157,9 @@ as described above, and the <code>role</code> can be "assistant" or "user".</p><
 
 <dt id="arg-greeting">greeting<a class="anchor" aria-label="anchor" href="#arg-greeting"></a></dt>
 <dd><p>An optional greeting to display when the chat first loads.
-Can be a <code><a href="chat_greeting.html">chat_greeting()</a></code> object, or a plain string (which is
-auto-wrapped with default options). The greeting is dismissed when the
-user sends their first message. For example:
-<code>greeting = chat_greeting("## Hello!\n\nHow can I help you today?")</code></p></dd>
+Can be a <code><a href="chat_greeting.html">chat_greeting()</a></code> object, or a plain string (which is auto-wrapped
+with default options). The greeting is dismissed when the user sends their
+first message. For example: <code>greeting = chat_greeting("## Hello!\n\nHow can I help you today?")</code></p></dd>
 
 
 <dt id="arg-placeholder">placeholder<a class="anchor" aria-label="anchor" href="#arg-placeholder"></a></dt>
@@ -189,6 +189,16 @@ messages can still opt in to a different icon via the <code>icon</code> argument
 <code><a href="chat_append.html">chat_append()</a></code>).</p></dd>
 
 
+<dt id="arg-icon-send">icon_send<a class="anchor" aria-label="anchor" href="#arg-icon-send"></a></dt>
+<dd><p>The icon to use for the chat input's ready-state submit
+button. Can be HTML or a tag in the form of <code><a href="https://rstudio.github.io/htmltools/reference/HTML.html" class="external-link">htmltools::HTML()</a></code> or
+<code><a href="https://rstudio.github.io/htmltools/reference/builder.html" class="external-link">htmltools::tags()</a></code>. If <code>NULL</code> (the default) or <code>FALSE</code>, a default arrow icon is
+used. The button provides a filled circular surface (state-colored
+background, white icon); the supplied icon replaces only the glyph inside
+it. See the "Customizing the send button" section below for styling
+patterns.</p></dd>
+
+
 <dt id="arg-enable-cancel">enable_cancel<a class="anchor" aria-label="anchor" href="#arg-enable-cancel"></a></dt>
 <dd><p>Whether to show a stop button during streaming that
 allows the user to cancel the in-progress response. When using
@@ -202,14 +212,14 @@ to <code>NULL</code> (let the server decide). For manual usage without
 <dt id="arg-submit-key">submit_key<a class="anchor" aria-label="anchor" href="#arg-submit-key"></a></dt>
 <dd><p>Controls which key combination submits the chat message.
 <code>"enter"</code> (the default): Enter submits, Shift+Enter adds a newline.
-<code>"enter+modifier"</code>: Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter
-adds a newline.</p></dd>
+<code>"enter+modifier"</code>: Ctrl+Enter (Cmd+Enter on Mac) submits, plain Enter adds
+a newline.</p></dd>
 
 
 <dt id="arg-allow-attachments">allow_attachments<a class="anchor" aria-label="anchor" href="#arg-allow-attachments"></a></dt>
 <dd><p>Controls the file-attachment affordance (an attach
-button, plus clipboard paste and drag-and-drop) in the chat input.
-<code>NULL</code> (default) defers to <code><a href="chat_app.html">chat_server()</a></code>, which enables attachments
+button, plus clipboard paste and drag-and-drop) in the chat input. <code>NULL</code>
+(default) defers to <code><a href="chat_app.html">chat_server()</a></code>, which enables attachments
 automatically. Pass <code>TRUE</code> to accept all supported types (PNG, JPEG, GIF,
 WebP, PDF, and common text/code files such as Markdown, plain text, CSV,
 JSON, and source files), <code>FALSE</code> to disable, or a character vector of MIME
@@ -227,7 +237,8 @@ needed: ellmer's chat methods collect <code>...</code> with dynamic dots.)</p>
 <p>The maximum combined size of all attachments in a single message is
 controlled globally by the <code>SHINYCHAT_MAX_ATTACHMENT_SIZE</code> environment
 variable (a raw byte count; defaults to approximately 30 MB). Files that
-would push the total over this cap are rejected in the browser with a notice.</p></dd>
+would push the total over this cap are rejected in the browser with a
+notice.</p></dd>
 
 
 <dt id="arg-toolbar-input">toolbar_input<a class="anchor" aria-label="anchor" href="#arg-toolbar-input"></a></dt>
@@ -258,22 +269,22 @@ to <code>TRUE</code>; setting it to <code>FALSE</code> only hides its presentati
 
 <dt id="arg-tool-grouping">tool_grouping<a class="anchor" aria-label="anchor" href="#arg-tool-grouping"></a></dt>
 <dd><p>Controls how tool calls are grouped together in the
-compact activity rows:</p><ul><li><p><code>"tool"</code> (default): calls to the <em>same</em> tool within a turn's
-contiguous tool loop are grouped into one activity row. This groups by
-tool name across the whole loop, not just consecutive
-calls – e.g. calls to tools <code>X</code>, <code>Y</code>, <code>Z</code>, <code>X</code>, <code>Y</code> (in that order)
-are grouped into <code>X</code> (2 calls), <code>Y</code> (2 calls), and <code>Z</code> (1 call).</p></li>
+compact activity rows:</p><ul><li><p><code>"tool"</code> (default): calls to the <em>same</em> tool within a turn's contiguous
+tool loop are grouped into one activity row. This groups by tool name
+across the whole loop, not just consecutive calls – e.g. calls to tools
+<code>X</code>, <code>Y</code>, <code>Z</code>, <code>X</code>, <code>Y</code> (in that order) are grouped into <code>X</code> (2 calls),
+<code>Y</code> (2 calls), and <code>Z</code> (1 call).</p></li>
 <li><p><code>"all"</code>: every tool call within a contiguous tool loop is summarized in
 one activity row, regardless of tool name.</p></li>
 <li><p><code>"none"</code>: each tool call is shown in its own activity row. Its request
 and result remain available by drilling into that row; this does not
 restore an always-visible card stack.</p></li>
 </ul><p>Prose or thinking between tool calls starts a new tool loop, so calls on
-opposite sides of either boundary never group together. Individual tools can
-override <code>"tool"</code> or <code>"all"</code> via a top-level <code>grouping</code> tool annotation,
-e.g. <code>ellmer::tool(..., annotations = ellmer::tool_annotations(grouping = "all"))</code>.
-<code>tool_grouping = "none"</code> takes precedence over every annotation and disables
-grouping for the whole chat.</p></dd>
+opposite sides of either boundary never group together. Individual tools
+can override <code>"tool"</code> or <code>"all"</code> via a top-level <code>grouping</code> tool
+annotation, e.g. <code>ellmer::tool(..., annotations = ellmer::tool_annotations(grouping = "all"))</code>. <code>tool_grouping = "none"</code>
+takes precedence over every annotation and disables grouping for the whole
+chat.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -377,6 +388,63 @@ works – it just won't have sub-section headings.</p>
 </div>
 
     </div>
+    <div class="section level2">
+    <h2 id="customizing-the-send-button">Customizing the send button<a class="anchor" aria-label="anchor" href="#customizing-the-send-button"></a></h2>
+
+
+
+<p>The send button is a filled circle (24px by default) whose background
+color reflects the current state (primary when ready, gray when
+empty/disabled, danger when cancelling) with a white icon (18px by
+default) centered inside. The <code>icon_send</code> parameter swaps the
+ready-state icon without changing the button's surface.</p>
+<p><strong>Custom icon.</strong> Pass an SVG from <code><a href="https://rdrr.io/pkg/bsicons/man/bs_icon.html" class="external-link">bsicons::bs_icon()</a></code> or
+<code>faicons::icon_svg()</code>. The button provides the surface, so a bare glyph
+gets the same filled-circle treatment as the default arrow:</p>
+<p></p><div class="sourceCode r"><pre><code><span><span class="fu"><a href="../reference/chat_ui.html">chat_ui</a></span><span class="op">(</span><span class="st">"chat"</span>, icon_send <span class="op">=</span> <span class="fu">bsicons</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/bsicons/man/bs_icon.html" class="external-link">bs_icon</a></span><span class="op">(</span><span class="st">"send-fill"</span><span class="op">)</span><span class="op">)</span></span></code></pre><p></p></div>
+<p><strong>Icon with text.</strong> Use <code><a href="https://rstudio.github.io/htmltools/reference/tagList.html" class="external-link">htmltools::tagList()</a></code> to pass an icon and a text
+label as siblings (not wrapped in a <code>&lt;span&gt;</code>) so they lay out side by
+side, with a Bootstrap margin utility for spacing. Then override the
+button to size to its content instead of the default fixed circle:</p>
+<p></p><div class="sourceCode r"><pre><code><span><span class="fu"><a href="../reference/chat_ui.html">chat_ui</a></span><span class="op">(</span><span class="st">"chat"</span>,</span>
+<span>  icon_send <span class="op">=</span> <span class="fu"><a href="https://rstudio.github.io/htmltools/reference/tagList.html" class="external-link">tagList</a></span><span class="op">(</span></span>
+<span>    <span class="fu">bsicons</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/bsicons/man/bs_icon.html" class="external-link">bs_icon</a></span><span class="op">(</span><span class="st">"airplane-fill"</span><span class="op">)</span>,</span>
+<span>    <span class="fu"><a href="https://rstudio.github.io/htmltools/reference/builder.html" class="external-link">span</a></span><span class="op">(</span><span class="st">"Send"</span>, class <span class="op">=</span> <span class="st">"ms-2"</span><span class="op">)</span></span>
+<span>  <span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre><p></p></div>
+<p></p><div class="sourceCode css"><pre><code><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="in">:root</span> <span class="fu">.shiny-chat-btn-send</span> {</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>  <span class="kw">width</span><span class="ch">:</span> <span class="bu">auto</span><span class="op">;</span></span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a>  <span class="kw">height</span><span class="ch">:</span> <span class="bu">auto</span><span class="op">;</span></span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a>  <span class="kw">padding</span><span class="ch">:</span> <span class="dv">4</span><span class="dt">px</span> <span class="dv">10</span><span class="dt">px</span><span class="op">;</span></span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a>  <span class="kw">border-radius</span><span class="ch">:</span> <span class="dv">6</span><span class="dt">px</span><span class="op">;</span></span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a>}</span></code></pre><p></p></div>
+<p><strong>Per-state color overrides.</strong> Each state's color can be set independently
+via CSS variables on the chat container or any ancestor. These are only
+read by the component (never set on the button), so inline styles inherit
+cleanly:</p>
+<p></p><div class="sourceCode css"><pre><code><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="pp">#chat</span> {</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>  <span class="va">--shiny-chat-btn-send-color-cancel</span><span class="ch">:</span> <span class="cn">#abc123</span><span class="op">;</span></span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a>}</span></code></pre><p></p></div>
+<p><strong>Ghost (outline) style.</strong> Make the button transparent at rest with the
+state color on the icon and border, filling on hover. Target the button
+element (not an ancestor) because the internal <code>--_btn-send-state-color</code>
+variable resolves on the button itself:</p>
+<p></p><div class="sourceCode css"><pre><code><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="in">:root</span> <span class="fu">.shiny-chat-btn-send</span> {</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>  <span class="va">--shiny-chat-btn-send-bg</span><span class="ch">:</span> <span class="dv">transparent</span><span class="op">;</span></span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a>  <span class="va">--shiny-chat-btn-send-color</span><span class="ch">:</span> <span class="fu">var(</span><span class="va">--_btn-send-state-color</span><span class="fu">)</span><span class="op">;</span></span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a>  <span class="va">--shiny-chat-btn-send-border</span><span class="ch">:</span> <span class="dv">1</span><span class="dt">px</span> <span class="dv">solid</span> <span class="fu">var(</span><span class="va">--_btn-send-state-color</span><span class="fu">)</span><span class="op">;</span></span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a>  <span class="va">--shiny-chat-btn-send-color-hover</span><span class="ch">:</span> <span class="cn">#fff</span><span class="op">;</span></span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a>  <span class="va">--shiny-chat-btn-send-bg-hover</span><span class="ch">:</span> <span class="fu">var(</span><span class="va">--_btn-send-state-color</span><span class="fu">)</span><span class="op">;</span></span>
+<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a>}</span></code></pre><p></p></div>
+<p><strong>Key CSS variables:</strong></p><ul><li><p><code>--shiny-chat-btn-send-size</code> — Button width and height (default <code>24px</code>)</p></li>
+<li><p><code>--shiny-chat-input-icon-size</code> — Icon size, shared with the attach button (default <code>18px</code>)</p></li>
+<li><p><code>--shiny-chat-btn-send-bg</code> — Button background (default: state color)</p></li>
+<li><p><code>--shiny-chat-btn-send-color</code> — Icon color (default: <code>#fff</code>)</p></li>
+<li><p><code>--shiny-chat-btn-send-border</code> — Button border (default: <code>none</code>)</p></li>
+<li><p><code>--shiny-chat-btn-send-color-ready</code> — Override ready/pending color (default: <code>--bs-primary</code>)</p></li>
+<li><p><code>--shiny-chat-btn-send-color-empty</code> — Override empty/disabled color (default: <code>--bs-gray-500</code>)</p></li>
+<li><p><code>--shiny-chat-btn-send-color-cancel</code> — Override cancel/cancelling color (default: <code>--bs-danger</code>)</p></li>
+</ul></div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
@@ -400,7 +468,6 @@ works – it just won't have sub-section headings.</p>
 <span class="r-in"><span>      <span class="st">"&lt;/blockquote&gt;"</span></span></span>
 <span class="r-in"><span>    <span class="op">)</span></span></span>
 <span class="r-in"><span>    <span class="fu"><a href="chat_append.html">chat_append</a></span><span class="op">(</span><span class="st">"chat"</span>, <span class="va">response</span><span class="op">)</span></span></span>
-<span class="r-in"><span>    <span class="fu"><a href="chat_append.html">chat_append</a></span><span class="op">(</span><span class="st">"chat"</span>, <span class="va">stream</span><span class="op">)</span></span></span>
 <span class="r-in"><span>  <span class="op">}</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">}</span></span></span>
 <span class="r-in"><span></span></span>

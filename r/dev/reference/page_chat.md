@@ -34,6 +34,7 @@ page_chat(
   placeholder = "Enter a message...",
   width = "min(680px, 100%)",
   icon_assistant = NULL,
+  icon_send = NULL,
   enable_cancel = NULL,
   allow_attachments = NULL,
   footer = NULL,
@@ -132,8 +133,8 @@ page_chat(
   [`chat_sidebar()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_sidebar.md)
   with `history = NULL` defaults to `TRUE` here.
 
-- messages, greeting, placeholder, width, icon_assistant, enable_cancel,
-  allow_attachments, footer, drawer:
+- messages, greeting, placeholder, width, icon_assistant, icon_send,
+  enable_cancel, allow_attachments, footer, drawer:
 
   Common arguments passed to
   [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md).

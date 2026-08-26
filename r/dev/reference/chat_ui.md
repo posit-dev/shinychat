@@ -35,6 +35,7 @@ chat_ui(
   height = "auto",
   fill = TRUE,
   icon_assistant = NULL,
+  icon_send = NULL,
   enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
@@ -117,6 +118,18 @@ chat_ui(
   Pass `TRUE` to use the built-in robot icon (individual messages can
   still opt in to a different icon via the `icon` argument of
   [`chat_append()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md)).
+
+- icon_send:
+
+  The icon to use for the chat input's ready-state submit button. Can be
+  HTML or a tag in the form of
+  [`htmltools::HTML()`](https://rstudio.github.io/htmltools/reference/HTML.html)
+  or
+  [`htmltools::tags()`](https://rstudio.github.io/htmltools/reference/builder.html).
+  If `NULL` (the default) or `FALSE`, a default arrow icon is used. The
+  button provides a filled circular surface (state-colored background,
+  white icon); the supplied icon replaces only the glyph inside it. See
+  the "Customizing the send button" section below for styling patterns.
 
 - enable_cancel:
 
@@ -336,6 +349,87 @@ To use topic labels, add something like this to your system prompt:
 Topic labels are entirely optional. Without them, the thinking panel
 still works – it just won't have sub-section headings.
 
+## Customizing the send button
+
+The send button is a filled circle (24px by default) whose background
+color reflects the current state (primary when ready, gray when
+empty/disabled, danger when cancelling) with a white icon (18px by
+default) centered inside. The `icon_send` parameter swaps the
+ready-state icon without changing the button's surface.
+
+**Custom icon.** Pass an SVG from
+[`bsicons::bs_icon()`](https://rdrr.io/pkg/bsicons/man/bs_icon.html) or
+`faicons::icon_svg()`. The button provides the surface, so a bare glyph
+gets the same filled-circle treatment as the default arrow:
+
+    chat_ui("chat", icon_send = bsicons::bs_icon("send-fill"))
+
+**Icon with text.** Use
+[`htmltools::tagList()`](https://rstudio.github.io/htmltools/reference/tagList.html)
+to pass an icon and a text label as siblings (not wrapped in a `<span>`)
+so they lay out side by side, with a Bootstrap margin utility for
+spacing. Then override the button to size to its content instead of the
+default fixed circle:
+
+    chat_ui("chat",
+      icon_send = tagList(
+        bsicons::bs_icon("airplane-fill"),
+        span("Send", class = "ms-2")
+      )
+    )
+
+    :root .shiny-chat-btn-send {
+      width: auto;
+      height: auto;
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+
+**Per-state color overrides.** Each state's color can be set
+independently via CSS variables on the chat container or any ancestor.
+These are only read by the component (never set on the button), so
+inline styles inherit cleanly:
+
+    #chat {
+      --shiny-chat-btn-send-color-cancel: #abc123;
+    }
+
+**Ghost (outline) style.** Make the button transparent at rest with the
+state color on the icon and border, filling on hover. Target the button
+element (not an ancestor) because the internal `--_btn-send-state-color`
+variable resolves on the button itself:
+
+    :root .shiny-chat-btn-send {
+      --shiny-chat-btn-send-bg: transparent;
+      --shiny-chat-btn-send-color: var(--_btn-send-state-color);
+      --shiny-chat-btn-send-border: 1px solid var(--_btn-send-state-color);
+      --shiny-chat-btn-send-color-hover: #fff;
+      --shiny-chat-btn-send-bg-hover: var(--_btn-send-state-color);
+    }
+
+**Key CSS variables:**
+
+- `--shiny-chat-btn-send-size` — Button width and height (default
+  `24px`)
+
+- `--shiny-chat-input-icon-size` — Icon size, shared with the attach
+  button (default `18px`)
+
+- `--shiny-chat-btn-send-bg` — Button background (default: state color)
+
+- `--shiny-chat-btn-send-color` — Icon color (default: `#fff`)
+
+- `--shiny-chat-btn-send-border` — Button border (default: `none`)
+
+- `--shiny-chat-btn-send-color-ready` — Override ready/pending color
+  (default: `--bs-primary`)
+
+- `--shiny-chat-btn-send-color-empty` — Override empty/disabled color
+  (default: `--bs-gray-500`)
+
+- `--shiny-chat-btn-send-color-cancel` — Override cancel/cancelling
+  color (default: `--bs-danger`)
+
 ## Examples
 
 ``` r
@@ -359,7 +453,6 @@ server <- function(input, output, session) {
       "</blockquote>"
     )
     chat_append("chat", response)
-    chat_append("chat", stream)
   })
 }
 
