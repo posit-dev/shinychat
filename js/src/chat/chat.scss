@@ -7,8 +7,8 @@
 @use "drawer";
 
 shiny-chat-container {
-  --shiny-chat-border: var(--bs-border-width, 1px) solid var(--bs-border-color, #e9ecef);
-  --shiny-chat-user-message-bg: RGBA(var(--bs-primary-rgb, 0, 123, 194), 0.06);
+  --_border: var(--shiny-chat-border, var(--bs-border-width, 1px) solid var(--bs-border-color, #e9ecef));
+  --_user-message-bg: var(--shiny-chat-user-message-bg, RGBA(var(--bs-primary-rgb, 0, 123, 194), 0.06));
   // Content padding for the centered .shiny-chat-wrapper column and the input's
   // sticky bottom gap. Defaults to 0.25rem. When a
   // fill-enabled chat is the sole child of a padded bslib fillable container,
@@ -18,7 +18,7 @@ shiny-chat-container {
   --_chat-container-padding: var(--shiny-chat-fill-padding, 0.25rem);
   // Single source of truth for the height of every attachment card in a sent
   // message (image thumbnail, PDF chip, text preview), so the row is uniform.
-  --shiny-chat-attachment-size: 4.5rem;
+  --_attachment-size: var(--shiny-chat-attachment-size, 4.5rem);
 
   // Opacity that quiets the tool-activity and thinking rows so a whole run reads
   // as one subordinate unit rather than competing with the assistant's prose.
@@ -158,7 +158,7 @@ shiny-chat-container {
   min-width: 0;
   position: sticky;
   bottom: calc(-1 * var(--_chat-composer-input-padding-bottom));
-  translate: 0 var(--shiny-chat-composer-offset, 0px);
+  translate: 0 var(--_composer-offset, 0px);
 }
 
 .shiny-chat-layout:has(> .shiny-chat-footer) .shiny-chat-composer {
@@ -286,13 +286,13 @@ shiny-chat-container:not([fill]) {
 
 // Content wrapper — useStickToBottom attaches contentRef here
 .shiny-chat-messages-content {
-  --shiny-chat-messages-padding-bottom: 4rem;
+  --_messages-padding-bottom: var(--shiny-chat-messages-padding-bottom, 4rem);
 
   display: flex;
   flex-direction: column;
   gap: 2rem;
   // Extra breathing room so the last message isn't flush against the input
-  padding-bottom: var(--shiny-chat-messages-padding-bottom);
+  padding-bottom: var(--_messages-padding-bottom);
 }
 
 // React renders messages as <div class="shiny-chat-message"> (not custom elements),
@@ -306,7 +306,7 @@ shiny-chat-container:not([fill]) {
   }
   .message-icon {
     border-radius: 50%;
-    border: var(--shiny-chat-border);
+    border: var(--_border);
     height: 2rem;
     width: 2rem;
     display: grid;
@@ -458,7 +458,7 @@ shiny-chat-container:not([fill]) {
   align-self: flex-end;
   padding: var(--shiny-chat-user-message-padding, 0.75rem 1rem);
   border-radius: var(--shiny-chat-user-message-border-radius, 10px);
-  background-color: var(--shiny-chat-user-message-bg);
+  background-color: var(--_user-message-bg);
   max-width: 100%;
   // User messages don't have an icon by default
   grid-template-columns: auto;
@@ -614,11 +614,11 @@ shiny-chat-container:not([fill]) {
 }
 
 .shiny-chat-footer {
-  --shiny-chat-footer-font-size: 0.8125em;
-  --shiny-chat-footer-color: var(--bs-secondary-color, #6c757d);
+  --_footer-font-size: var(--shiny-chat-footer-font-size, 0.8125em);
+  --_footer-color: var(--shiny-chat-footer-color, var(--bs-secondary-color, #6c757d));
 
-  font-size: var(--shiny-chat-footer-font-size);
-  color: var(--shiny-chat-footer-color);
+  font-size: var(--_footer-font-size);
+  color: var(--_footer-color);
   text-align: center;
   // The footer is a bottom-pinned chat-area region rather than part of the
   // centered messages column. Retain the chat-area gutter around its content
@@ -647,7 +647,7 @@ shiny-chat-container:not([fill]) {
   align-items: center;
   justify-content: center;
   padding: 8px;
-  border: var(--shiny-chat-border);
+  border: var(--_border);
   border-radius: 50%;
   background-color: var(--bs-body-bg, #fff);
   color: var(--bs-body-color, #212529);
@@ -754,9 +754,9 @@ shiny-chat-container:not([fill]) {
   // 2.49:1 (light), below AA for what is real text; inherited body color at the
   // same opacity is 5.76:1. The thought *body* stays secondary — that prose is
   // genuinely subordinate, and it is not part of the row stack.
-  --shiny-chat-thinking-header-color: inherit;
-  --shiny-chat-thinking-border-color: var(--bs-border-color, #dee2e6);
-  --shiny-chat-thinking-content-color: var(--bs-secondary-color, #6c757d);
+  --_thinking-header-color: var(--shiny-chat-thinking-header-color, inherit);
+  --_thinking-border-color: var(--shiny-chat-thinking-border-color, var(--bs-border-color, #dee2e6));
+  --_thinking-content-color: var(--shiny-chat-thinking-content-color, var(--bs-secondary-color, #6c757d));
 
   // Row geometry shared with the condensed tool rows, which define the same
   // pseudo-private tokens (see `.shiny-chat-tool-group` in chat-tools.scss). A
@@ -780,7 +780,7 @@ shiny-chat-container:not([fill]) {
   background: none;
   border: none;
   text-align: left;
-  color: var(--shiny-chat-thinking-header-color);
+  color: var(--_thinking-header-color);
   cursor: pointer;
   font: inherit;
   opacity: var(--_activity-opacity);
@@ -852,7 +852,7 @@ shiny-chat-container:not([fill]) {
   // Land the left rule on the leading glyph, the same way a tool row's drill-in
   // rule does: past the row's inline padding, then half the glyph box.
   margin-left: calc(var(--_row-pad) + var(--_row-glyph-width) / 2 - 1px);
-  border-left: 2px solid var(--shiny-chat-thinking-border-color);
+  border-left: 2px solid var(--_thinking-border-color);
 
   &[data-expanded] {
     grid-template-rows: 1fr;
@@ -864,7 +864,7 @@ shiny-chat-container:not([fill]) {
   overflow: hidden;
   padding-left: 0.75rem;
   padding-block: 0;
-  color: var(--shiny-chat-thinking-content-color);
+  color: var(--_thinking-content-color);
   font-size: 0.9em;
   // No `padding-block` transition: the parent already animates the open/close
   // with `grid-template-rows` over the same duration, so this only added a
@@ -1038,7 +1038,7 @@ shiny-chat-container:not([fill]) {
 .shiny-chat-message-attachment-chip {
   // Every sent-message attachment card shares one height (see
   // --shiny-chat-attachment-size) so the row is uniform.
-  height: var(--shiny-chat-attachment-size);
+  height: var(--_attachment-size);
   min-height: 0;
   padding: 0.5rem 0.75rem;
   // The chip is a <button> (click opens the file in the lightbox); undo the
@@ -1061,7 +1061,7 @@ shiny-chat-container:not([fill]) {
   // In a sent message, the text preview is a fixed-height card like the others
   // (the input-tray variant stays content-sized).
   .shiny-chat-text-preview {
-    height: var(--shiny-chat-attachment-size);
+    height: var(--_attachment-size);
   }
 
   // In a sent message, the text card is a button (click opens the lightbox).
@@ -1073,8 +1073,8 @@ shiny-chat-container:not([fill]) {
 // A sent image is a square thumbnail (cropped to fill); click to open the full
 // image in the lightbox.
 .shiny-chat-message-image-btn {
-  width: var(--shiny-chat-attachment-size);
-  height: var(--shiny-chat-attachment-size);
+  width: var(--_attachment-size);
+  height: var(--_attachment-size);
   padding: 0;
   border: 1px solid var(--bs-border-color, #ccc);
   border-radius: 0.5rem;

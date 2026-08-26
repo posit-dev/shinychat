@@ -1,18 +1,18 @@
-@property --shiny-chat-drawer-layout-width {
+@property --_drawer-layout-width {
   syntax: "<length-percentage>";
   inherits: true;
   initial-value: 0px;
 }
 
-@property --shiny-chat-drawer-layout-gap {
+@property --_drawer-layout-gap {
   syntax: "<length>";
   inherits: true;
   initial-value: 0px;
 }
 
 .shiny-chat-layout {
-  --shiny-chat-drawer-layout-width: 0px;
-  --shiny-chat-drawer-layout-gap: 0px;
+  --_drawer-layout-width: 0px;
+  --_drawer-layout-gap: 0px;
 
   min-width: 0;
   min-height: 0;
@@ -21,12 +21,12 @@
   display: grid;
   grid-template-columns:
     minmax(0, 1fr)
-    minmax(0, var(--shiny-chat-drawer-layout-width));
+    minmax(0, var(--_drawer-layout-width));
   grid-template-rows: minmax(0, 1fr) auto;
-  column-gap: var(--shiny-chat-drawer-layout-gap);
+  column-gap: var(--_drawer-layout-gap);
   transition:
-    --shiny-chat-drawer-layout-width 180ms cubic-bezier(0.16, 1, 0.3, 1),
-    --shiny-chat-drawer-layout-gap 180ms cubic-bezier(0.16, 1, 0.3, 1);
+    --_drawer-layout-width 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    --_drawer-layout-gap 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .shiny-chat-drawer-trigger {
@@ -81,8 +81,8 @@ shiny-chat-container[data-history-placement="right"] {
 }
 
 .shiny-chat-layout[data-drawer-open] {
-  --shiny-chat-drawer-layout-width: var(--shiny-chat-drawer-width, 400px);
-  --shiny-chat-drawer-layout-gap: clamp(0.75rem, 1.5cqi, 1.5rem);
+  --_drawer-layout-width: var(--_drawer-width, 400px);
+  --_drawer-layout-gap: clamp(0.75rem, 1.5cqi, 1.5rem);
 
   align-items: stretch;
 
@@ -131,7 +131,7 @@ shiny-chat-container[data-history-placement="right"] {
   grid-template-rows: auto minmax(0, 1fr);
   overflow: visible;
   border: 0;
-  border-inline-start: var(--shiny-chat-border);
+  border-inline-start: var(--_border);
   background: var(--bs-body-bg, #fff);
   color: var(--bs-body-color, #212529);
   box-shadow: -2px 0 8px rgba(33, 37, 41, 0.06);
@@ -171,7 +171,7 @@ shiny-chat-container[data-history-placement="right"] {
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.5rem 0.625rem 0.5rem 1rem;
-  border-bottom: var(--shiny-chat-border);
+  border-bottom: var(--_border);
 
   h2 {
     min-width: 0;

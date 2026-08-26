@@ -951,11 +951,11 @@ export const ChatContainer = forwardRef<
             ? ({
                 ...(drawer.enabled
                   ? {
-                      "--shiny-chat-drawer-width": drawerLayoutWidth,
+                      "--_drawer-width": drawerLayoutWidth,
                     }
                   : {}),
-                "--shiny-chat-greeting-offset": `${composerPosition.greetingOffset}px`,
-                "--shiny-chat-composer-offset": `${composerPosition.composerOffset}px`,
+                "--_greeting-offset": `${composerPosition.greetingOffset}px`,
+                "--_composer-offset": `${composerPosition.composerOffset}px`,
               } as React.CSSProperties)
             : undefined
         }
