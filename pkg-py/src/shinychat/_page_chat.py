@@ -188,7 +188,7 @@ def page_chat(
         ``False`` omits it; ``True`` uses the built-in robot icon.
     icon_send
         The icon to use for the chat input's ready-state submit button.
-        ``None``, ``True``, or ``False`` all use the default arrow icon.
+        ``None`` (the default) or ``False`` uses the default arrow icon.
     enable_cancel
         Whether to show the streaming cancel control. When omitted, a chat
         constructed with ``client=`` enables it automatically.

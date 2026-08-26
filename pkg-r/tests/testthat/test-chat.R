@@ -169,18 +169,22 @@ test_that("chat_ui(icon_send = ...) sets the icon-send attribute", {
   )
 })
 
-test_that("chat_ui(icon_send = TRUE/FALSE/NULL) omits the icon-send attribute", {
-  for (icon_send in list(NULL, TRUE, FALSE)) {
+test_that("chat_ui(icon_send = FALSE/NULL) omits the icon-send attribute", {
+  for (icon_send in list(NULL, FALSE)) {
     ui <- chat_ui("chat", icon_send = icon_send)
     expect_null(ui$attribs[["icon-send"]])
     expect_no_match(as.character(ui), "icon-send", fixed = TRUE)
   }
 })
 
+test_that("chat_ui(icon_send = TRUE) is rejected", {
+  expect_error(chat_ui("chat", icon_send = TRUE), "does not accept `TRUE`")
+})
+
 test_that("resolve_send_icon_attr() has no blank/FALSE state", {
   expect_null(resolve_send_icon_attr(NULL))
-  expect_null(resolve_send_icon_attr(TRUE))
   expect_null(resolve_send_icon_attr(FALSE))
+  expect_error(resolve_send_icon_attr(TRUE), "does not accept `TRUE`")
   expect_equal(resolve_send_icon_attr("<span>x</span>"), "<span>x</span>")
 })
 

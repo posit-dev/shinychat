@@ -2310,8 +2310,8 @@ class ChatExpress(Chat):
         icon_send
             The icon to use for the chat input's ready-state submit button. Can be a
             HTML or a tag in the form of :class:`~htmltools.HTML` or
-            :class:`~htmltools.Tag`. If `None`, `True`, or `False`, a default arrow
-            icon is used. The button provides a filled circular surface
+            :class:`~htmltools.Tag`. If `None` (the default) or `False`, a
+            default arrow icon is used. The button provides a filled circular surface
             (state-colored background, white icon); the supplied icon replaces only
             the glyph inside it. See :func:`~shinychat.chat_ui` for the CSS
             variables that control the button's appearance.
@@ -2493,11 +2493,16 @@ def _resolve_send_icon_attr(
 ) -> "str | None":
     """Translate an ``icon_send`` value into its wire attribute.
 
-    Unlike ``_resolve_icon_attr()``, there's no blank state: ``False``,
-    ``True``, and ``None`` all defer to the default arrow icon (attribute
-    omitted); anything else is stringified HTML.
+    Unlike ``_resolve_icon_attr()``, there's no blank state: ``False`` and
+    ``None`` both defer to the default arrow icon (attribute omitted);
+    anything else is stringified HTML.
     """
-    if icon is None or icon is True or icon is False:
+    if icon is True:
+        raise ValueError(
+            "`icon_send` does not accept `True`. Pass `None` for the "
+            "default arrow icon or supply custom icon HTML."
+        )
+    if icon is None or icon is False:
         return None
     return str(icon)
 
@@ -2594,8 +2599,8 @@ def chat_ui(
     icon_send
         The icon to use for the chat input's ready-state submit button. Can be a
         HTML or a tag in the form of :class:`~htmltools.HTML` or
-        :class:`~htmltools.Tag`. If `None`, `True`, or `False`, a default arrow
-        icon is used. The button provides a filled circular surface
+        :class:`~htmltools.Tag`. If `None` (the default) or `False`, a default
+        arrow icon is used. The button provides a filled circular surface
         (state-colored background, white icon); the supplied icon replaces only
         the glyph inside it.
 

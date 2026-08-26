@@ -444,11 +444,16 @@ def test_chat_ui_icon_send_sets_attribute():
     assert "UP" in html
 
 
-def test_chat_ui_icon_send_true_false_none_omit_attribute():
-    for icon_send in (None, True, False):
+def test_chat_ui_icon_send_false_none_omit_attribute():
+    for icon_send in (None, False):
         tag = chat_ui("myid", icon_send=icon_send)
         html = tag.get_html_string()
         assert "icon-send" not in html
+
+
+def test_chat_ui_icon_send_true_raises():
+    with pytest.raises(ValueError, match="does not accept `True`"):
+        chat_ui("myid", icon_send=True)
 
 
 # ---------------------------------------------------------------------------

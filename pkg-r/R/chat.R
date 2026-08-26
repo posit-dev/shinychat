@@ -377,7 +377,7 @@ chat_greeting <- function(
 #'   [chat_append()]).
 #' @param icon_send The icon to use for the chat input's ready-state submit
 #'   button. Can be HTML or a tag in the form of [htmltools::HTML()] or
-#'   [htmltools::tags()]. If `NULL`, `TRUE`, or `FALSE`, a default arrow icon is
+#'   [htmltools::tags()]. If `NULL` (the default) or `FALSE`, a default arrow icon is
 #'   used. The button provides a filled circular surface (state-colored
 #'   background, white icon); the supplied icon replaces only the glyph inside
 #'   it. See the "Customizing the send button" section below for styling

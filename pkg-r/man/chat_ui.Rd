@@ -73,7 +73,7 @@ messages can still opt in to a different icon via the \code{icon} argument of
 
 \item{icon_send}{The icon to use for the chat input's ready-state submit
 button. Can be HTML or a tag in the form of \code{\link[htmltools:HTML]{htmltools::HTML()}} or
-\code{\link[htmltools:tags]{htmltools::tags()}}. If \code{NULL}, \code{TRUE}, or \code{FALSE}, a default arrow icon is
+\code{\link[htmltools:tags]{htmltools::tags()}}. If \code{NULL} (the default) or \code{FALSE}, a default arrow icon is
 used. The button provides a filled circular surface (state-colored
 background, white icon); the supplied icon replaces only the glyph inside
 it. See the "Customizing the send button" section below for styling

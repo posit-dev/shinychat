@@ -88,11 +88,16 @@ resolve_icon_attr <- function(icon) {
 }
 
 # Translate an `icon_send` value into its wire attribute. Unlike
-# resolve_icon_attr(), there's no blank state: `FALSE`, `TRUE`, and `NULL` all
-# defer to the default arrow icon (attribute omitted); anything else is
-# coerced to an HTML string.
+# resolve_icon_attr(), there's no blank state: `FALSE` and `NULL` both defer
+# to the default arrow icon (attribute omitted); anything else is coerced to
+# an HTML string.
 resolve_send_icon_attr <- function(icon) {
-  if (is.null(icon) || isTRUE(icon) || isFALSE(icon)) {
+  if (isTRUE(icon)) {
+    cli::cli_abort(
+      "`icon_send` does not accept `TRUE`. Pass `NULL` for the default arrow icon or supply custom icon HTML."
+    )
+  }
+  if (is.null(icon) || isFALSE(icon)) {
     return(NULL)
   }
   as.character(icon)
