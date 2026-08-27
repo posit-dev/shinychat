@@ -1,7 +1,13 @@
 from __future__ import annotations
 
-from htmltools import Tag, TagList, div, span
-from shinychat._html_islands import split_html_islands
+import json
+
+from htmltools import HTML, Tag, TagList, div, span
+from shinychat import output_markdown_stream
+from shinychat._html_islands import (
+    split_content_by_trust,
+    split_html_islands,
+)
 
 
 def test_plain_html_wrapped_in_single_island():
@@ -144,3 +150,46 @@ def test_tagifiable_in_taglist_splits_correctly():
     for line in rendered.split("\n"):
         if "shiny-tool-result" in line:
             assert "shiny-chat-raw-html" not in line
+
+
+def test_mixed_taglist_keeps_plain_strings_untrusted():
+    segments = split_content_by_trust(
+        TagList("## This is markdown", div("This is HTML"))
+    )
+
+    assert len(segments) == 2
+    assert segments[0] == (False, "## This is markdown")
+    assert segments[1][0] is True
+
+
+def test_html_marked_string_is_trusted():
+    segments = split_content_by_trust(
+        TagList("model text", HTML("<strong>server HTML</strong>"))
+    )
+
+    assert [trusted for trusted, _ in segments] == [False, True]
+
+
+def test_markdown_stream_serializes_mixed_initial_provenance():
+    el = output_markdown_stream(
+        "stream",
+        content=TagList("## This is markdown", div("This is HTML")),
+    )
+    segments = json.loads(str(el.attrs["content-segments"]))
+
+    assert segments[0] == {
+        "text": "## This is markdown",
+        "trusted": False,
+    }
+    assert segments[1]["trusted"] is True
+    assert "<shiny-chat-raw-html>" in segments[1]["text"]
+    assert "<div>This is HTML</div>" in segments[1]["text"]
+    assert el.attrs["content-trusted"] == "false"
+
+
+def test_markdown_stream_marks_single_tag_initial_content_trusted():
+    el = output_markdown_stream("stream", content=div("Trusted"))
+    segments = json.loads(str(el.attrs["content-segments"]))
+
+    assert segments[0]["trusted"] is True
+    assert el.attrs["content-trusted"] == "true"

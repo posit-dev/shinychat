@@ -63,11 +63,39 @@ On the client, message content goes through a [unified](https://unifiedjs.com/) 
 
 ### Processors
 
-Three frozen processors exist for different content types (`js/src/markdown/processors.ts`):
+Four frozen processors exist for different content types (`js/src/markdown/processors.ts`):
 
-- **`markdownProcessor`** — for LLM-generated markdown. Includes GFM, raw HTML passthrough, syntax highlighting, and several rehype plugins.
+- **`markdownProcessor`** — for LLM-generated markdown. Reserved raw-HTML island tags are escaped to literal text.
+- **`trustedMarkdownProcessor`** — the same markdown pipeline, but allows server-authored raw-HTML islands.
 - **`htmlProcessor`** — for raw HTML content. Minimal processing (external links, uncontrolled inputs).
-- **`semiMarkdownProcessor`** — for user input. HTML is escaped and sanitized.
+- **`userMarkdownProcessor`** — for user input. HTML is escaped and sanitized.
+
+### Raw-HTML Island Trust
+
+Only explicitly trusted server-authored content may instantiate
+`<shiny-chat-raw-html>` (or its legacy spelling) and reach `innerHTML`.
+Assistant markdown uses a disguise/escape plugin pair around `rehypeRaw`, so a
+model-authored island renders as visible text.
+
+MarkdownStream carries provenance on every content message. Plain strings are
+untrusted; `HTML()` and Tag content are trusted. Mixed TagLists are split at
+their leaves, so a plain string cannot inherit trust from an adjacent Tag.
+The client retains ordered `{text, trusted}` runs and merges only adjacent runs
+with equal trust when the wire marks a chunk as a continuation. A
+`segment_start` flag preserves authored composite boundaries even when adjacent
+segments have equal trust. Initial mixed content carries the same structure in
+the `content-segments` attribute.
+
+Untrusted MarkdownStream segments also override the raw-island component
+mapping. This is a defense in depth backstop for Markdown and the primary
+protection for `content_type="html"`, whose processor intentionally performs
+minimal HTML parsing.
+
+Chat messages have a different transport contract: an HTML content block is
+trusted, server-authored output and intentionally retains the live raw-island
+mapping. Model output is sent as Markdown and uses `markdownProcessor`.
+Supporting untrusted HTML blocks in chat would require adding per-block
+provenance to that wire format rather than inferring trust in the client.
 
 ### Two-Stage Rendering
 

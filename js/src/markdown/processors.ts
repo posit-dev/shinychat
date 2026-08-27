@@ -13,6 +13,10 @@ import { rehypeSuggestionCards } from "./plugins/rehypeSuggestionCards"
 import { remarkEscapeHtml } from "./plugins/remarkEscapeHtml"
 import { rehypeExternalLinks } from "./plugins/rehypeExternalLinks"
 import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
+import {
+  rehypeDisguiseReservedIslands,
+  rehypeEscapeReservedIslands,
+} from "./plugins/rehypeEscapeReservedIslands"
 import { rehypeUnwrapBlockCEs } from "./plugins/rehypeUnwrapBlockCEs"
 import { rehypeGroupWebActivity } from "./plugins/rehypeGroupWebActivity"
 import { rehypeAttachAsidesToPreviousParagraph } from "./plugins/rehypeAttachAsidesToPreviousParagraph"
@@ -35,28 +39,45 @@ import { remarkNormalizeListItemAsides } from "./plugins/normalizeAsideMarkdown"
  * toJsxRuntime (not innerHTML), so script tags and event-handler attributes
  * are inert.
  */
-export const markdownProcessor = unified()
-  .use(remarkParse)
-  .use(remarkGfm, remarkGfmOptions)
-  .use(remarkNormalizeListItemAsides)
-  .use(remarkRehype, { allowDangerousHtml: true })
-  .use(rehypeRewriteAsideToTemplate)
-  .use(rehypeRaw)
-  .use(rehypeRewriteAsideFromTemplate)
-  .use(rehypeLazyContinuation)
-  .use(rehypeUnwrapBlockCEs)
-  .use(rehypeGroupWebActivity)
-  .use(rehypeAttachAsidesToPreviousParagraph)
-  .use(rehypeGroundedAsides)
-  .use(rehypeGroupAsides)
-  .use(rehypeAttachCitedSources)
-  .use(rehypeMarkTrailingAsides)
-  .use(rehypeUncontrolledInputs)
-  .use(rehypeAccessibleSuggestions)
-  .use(rehypeSuggestionCards)
-  .use(rehypeExternalLinks)
-  .use(rehypeHighlight, { detect: false, ignoreMissing: true })
-  .freeze()
+function makeMarkdownProcessor(escapeReservedIslands: boolean) {
+  let processor = unified()
+    .use(remarkParse)
+    .use(remarkGfm, remarkGfmOptions)
+    .use(remarkNormalizeListItemAsides)
+    .use(remarkRehype, { allowDangerousHtml: true })
+    .use(rehypeRewriteAsideToTemplate)
+
+  if (escapeReservedIslands) {
+    processor = processor.use(rehypeDisguiseReservedIslands)
+  }
+  processor = processor.use(rehypeRaw)
+  if (escapeReservedIslands) {
+    processor = processor.use(rehypeEscapeReservedIslands)
+  }
+
+  return processor
+    .use(rehypeRewriteAsideFromTemplate)
+    .use(rehypeLazyContinuation)
+    .use(rehypeUnwrapBlockCEs)
+    .use(rehypeGroupWebActivity)
+    .use(rehypeAttachAsidesToPreviousParagraph)
+    .use(rehypeGroundedAsides)
+    .use(rehypeGroupAsides)
+    .use(rehypeAttachCitedSources)
+    .use(rehypeMarkTrailingAsides)
+    .use(rehypeUncontrolledInputs)
+    .use(rehypeAccessibleSuggestions)
+    .use(rehypeSuggestionCards)
+    .use(rehypeExternalLinks)
+    .use(rehypeHighlight, { detect: false, ignoreMissing: true })
+    .freeze()
+}
+
+/** Assistant markdown: reserved raw-HTML islands render as literal text. */
+export const markdownProcessor = makeMarkdownProcessor(true)
+
+/** Server-authored markdown may instantiate raw-HTML islands. */
+export const trustedMarkdownProcessor = makeMarkdownProcessor(false)
 
 /**
  * Frozen processor for raw HTML content.
