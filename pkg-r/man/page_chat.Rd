@@ -20,6 +20,7 @@ page_chat(
   placeholder = "Enter a message...",
   width = "min(680px, 100\%)",
   icon_assistant = NULL,
+  icon_send = NULL,
   enable_cancel = NULL,
   allow_attachments = NULL,
   footer = NULL,
@@ -77,7 +78,7 @@ supplies its child content, width, initial open state, and resizability;
 its history defaults to \code{FALSE}. A \code{\link[=chat_sidebar]{chat_sidebar()}} with \code{history = NULL}
 defaults to \code{TRUE} here.}
 
-\item{messages, greeting, placeholder, width, icon_assistant, enable_cancel, allow_attachments, footer, drawer}{Common arguments passed to \code{\link[=chat_ui]{chat_ui()}}.}
+\item{messages, greeting, placeholder, width, icon_assistant, icon_send, enable_cancel, allow_attachments, footer, drawer}{Common arguments passed to \code{\link[=chat_ui]{chat_ui()}}.}
 
 \item{window_title}{A static browser-window title. The default, \code{NA},
 derives the window title from \code{title} when \code{title} is a scalar string.

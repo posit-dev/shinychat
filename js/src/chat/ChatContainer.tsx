@@ -124,6 +124,7 @@ export interface ChatContainerProps {
   inputDisabled: boolean
   inputPlaceholder: string
   iconAssistant?: string
+  iconSend?: string
   inputId: string
   uploadAccept: string[]
   maxUploadSize: number | null
@@ -176,6 +177,7 @@ export const ChatContainer = forwardRef<
     inputDisabled,
     inputPlaceholder,
     iconAssistant,
+    iconSend,
     inputId,
     uploadAccept,
     maxUploadSize,
@@ -951,11 +953,11 @@ export const ChatContainer = forwardRef<
             ? ({
                 ...(drawer.enabled
                   ? {
-                      "--shiny-chat-drawer-width": drawerLayoutWidth,
+                      "--_drawer-width": drawerLayoutWidth,
                     }
                   : {}),
-                "--shiny-chat-greeting-offset": `${composerPosition.greetingOffset}px`,
-                "--shiny-chat-composer-offset": `${composerPosition.composerOffset}px`,
+                "--_greeting-offset": `${composerPosition.greetingOffset}px`,
+                "--_composer-offset": `${composerPosition.composerOffset}px`,
               } as React.CSSProperties)
             : undefined
         }
@@ -1050,6 +1052,7 @@ export const ChatContainer = forwardRef<
                 slashCommands={slashCommands}
                 slashCommandId={slashCommandId}
                 submitKey={submitKey}
+                iconSend={iconSend}
               />
             </div>
 

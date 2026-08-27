@@ -58,7 +58,7 @@ shiny-chat-container {
       display: block;
       position: relative;
       padding: 0.75rem 2rem 0.75rem 1rem;
-      border: var(--shiny-chat-border);
+      border: var(--_border);
       border-radius: var(--shiny-chat-suggestion-card-border-radius, 8px);
       background-color: var(--bs-body-bg, #fff);
       cursor: pointer;

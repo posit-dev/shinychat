@@ -330,6 +330,7 @@ test_that("page_chat() has the agreed public signature", {
       "placeholder",
       "width",
       "icon_assistant",
+      "icon_send",
       "enable_cancel",
       "allow_attachments",
       "footer",

@@ -296,7 +296,13 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
           }
         },
         focus() {
-          editor?.commands.focus("end")
+          if (!editor) return
+          // editor.commands.focus("end") defers via requestAnimationFrame,
+          // which races with subsequent focus() calls on other elements (e.g.
+          // attachment-chip focus in useLayoutEffect). Use synchronous DOM
+          // focus + cursor positioning instead — same pattern as setInputValue.
+          editor.view.dom.focus()
+          editor.commands.setTextSelection(editor.state.doc.content.size)
         },
         serializeEditor() {
           return editor ? serializeEditor(editor) : ""

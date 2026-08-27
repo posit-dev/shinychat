@@ -437,6 +437,25 @@ def test_chat_ui_icon_assistant_skips_user_messages():
     assert "ROBOT" in assistant_msg
 
 
+def test_chat_ui_icon_send_sets_attribute():
+    tag = chat_ui("myid", icon_send=HTML("<span>UP</span>"))
+    html = tag.get_html_string()
+    assert "icon-send=" in html
+    assert "UP" in html
+
+
+def test_chat_ui_icon_send_false_none_omit_attribute():
+    for icon_send in (None, False):
+        tag = chat_ui("myid", icon_send=icon_send)
+        html = tag.get_html_string()
+        assert "icon-send" not in html
+
+
+def test_chat_ui_icon_send_true_raises():
+    with pytest.raises(ValueError, match="does not accept `True`"):
+        chat_ui("myid", icon_send=True)
+
+
 # ---------------------------------------------------------------------------
 # Public exports
 # ---------------------------------------------------------------------------

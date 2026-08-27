@@ -33,8 +33,8 @@ chat_mod_server(
 doesn't already contain turns. Passed to \code{messages} in \code{\link[=chat_ui]{chat_ui()}}.}
 
 \item{allow_attachments}{Controls the file-attachment affordance (an attach
-button, plus clipboard paste and drag-and-drop) in the chat input.
-\code{NULL} (default) defers to \code{\link[=chat_server]{chat_server()}}, which enables attachments
+button, plus clipboard paste and drag-and-drop) in the chat input. \code{NULL}
+(default) defers to \code{\link[=chat_server]{chat_server()}}, which enables attachments
 automatically. Pass \code{TRUE} to accept all supported types (PNG, JPEG, GIF,
 WebP, PDF, and common text/code files such as Markdown, plain text, CSV,
 JSON, and source files), \code{FALSE} to disable, or a character vector of MIME
@@ -54,7 +54,8 @@ needed: ellmer's chat methods collect \code{...} with dynamic dots.)
 The maximum combined size of all attachments in a single message is
 controlled globally by the \code{SHINYCHAT_MAX_ATTACHMENT_SIZE} environment
 variable (a raw byte count; defaults to approximately 30 MB). Files that
-would push the total over this cap are rejected in the browser with a notice.}
+would push the total over this cap are rejected in the browser with a
+notice.}
 
 \item{greeting}{See \code{\link[=chat_server]{chat_server()}}.}
 
