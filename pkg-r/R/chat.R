@@ -317,6 +317,22 @@ chat_greeting <- function(
 #'   * `--shiny-chat-btn-send-color-empty` — Override empty/disabled color (default: `--bs-gray-500`)
 #'   * `--shiny-chat-btn-send-color-cancel` — Override cancel/cancelling color (default: `--bs-danger`)
 #'
+#' @section Customizing the pending indicator:
+#'
+#' When the assistant icon is disabled, shinychat displays animated dots while
+#' it waits for the response to begin. Set
+#' `--shiny-chat-pending-indicator-icon-display: none` to hide the dots and
+#' `--shiny-chat-pending-indicator-content` to add text in their place.
+#' `.shiny-chat-pending-indicator` and its `::before` and `::after`
+#' pseudo-elements are supported styling hooks for the replacement content.
+#'
+#' ```css
+#' #chat {
+#'   --shiny-chat-pending-indicator-content: "Working…";
+#'   --shiny-chat-pending-indicator-icon-display: none;
+#' }
+#' ```
+#'
 #' @examplesIf interactive()
 #' library(shiny)
 #' library(bslib)

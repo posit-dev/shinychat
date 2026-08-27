@@ -2308,6 +2308,10 @@ class ChatExpress(Chat):
             (the default) or `False` omits the assistant icon entirely. Pass `True`
             to use the built-in robot icon (individual messages can still opt in to
             a different icon via the `icon` argument of `.append_message()`).
+
+            With no assistant icon, shinychat displays animated dots while it waits
+            for the response to begin. See :func:`~shinychat.chat_ui` for the public
+            CSS hooks that customize this pending indicator.
         icon_send
             The icon to use for the chat input's ready-state submit button. Can be a
             HTML or a tag in the form of :class:`~htmltools.HTML` or
@@ -2597,6 +2601,21 @@ def chat_ui(
         (the default) or `False` omits the assistant icon entirely. Pass `True`
         to use the built-in robot icon (individual messages can still opt in to
         a different icon via the `icon` argument of `.append_message()`).
+
+        With no assistant icon, shinychat displays animated dots while it waits
+        for the response to begin. Set
+        ``--shiny-chat-pending-indicator-icon-display: none`` to hide the dots
+        and ``--shiny-chat-pending-indicator-content`` to add text in their
+        place. ``.shiny-chat-pending-indicator`` and its ``::before`` and
+        ``::after`` pseudo-elements are supported styling hooks for replacement
+        content.
+
+        .. code-block:: css
+
+            #chat {
+              --shiny-chat-pending-indicator-content: "Working…";
+              --shiny-chat-pending-indicator-icon-display: none;
+            }
     icon_send
         The icon to use for the chat input's ready-state submit button. Can be a
         HTML or a tag in the form of :class:`~htmltools.HTML` or

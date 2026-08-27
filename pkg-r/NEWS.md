@@ -33,6 +33,9 @@
 
 * `chat_ui()` and `page_chat()` no longer show an assistant icon by default. Pass `icon_assistant = TRUE` to restore the built-in robot icon, or supply your own icon as before. (#345)
 
+* The avatar-independent pending indicator now provides public CSS hooks for
+  replacing its animated dots with custom content.
+
 ## Breaking changes
 
 * `chat_app()` now configures its full-window page through `page_chat()`.

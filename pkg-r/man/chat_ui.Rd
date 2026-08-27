@@ -367,6 +367,23 @@ variable resolves on the button itself:
 }
 }
 
+\section{Customizing the pending indicator}{
+
+
+When the assistant icon is disabled, shinychat displays animated dots while
+it waits for the response to begin. Set
+\code{--shiny-chat-pending-indicator-icon-display: none} to hide the dots and
+\code{--shiny-chat-pending-indicator-content} to add text in their place.
+\code{.shiny-chat-pending-indicator} and its \verb{::before} and \verb{::after}
+pseudo-elements are supported styling hooks for the replacement content.
+
+\if{html}{\out{<div class="sourceCode css">}}\preformatted{#chat \{
+  --shiny-chat-pending-indicator-content: "Working…";
+  --shiny-chat-pending-indicator-icon-display: none;
+\}
+}\if{html}{\out{</div>}}
+}
+
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 library(shiny)

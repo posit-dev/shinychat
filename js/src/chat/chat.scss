@@ -385,7 +385,12 @@ shiny-chat-container:not([fill]) {
   pointer-events: none;
   animation: shiny-chat-pending-indicator-appear 0.2s ease forwards;
 
+  &::after {
+    content: var(--shiny-chat-pending-indicator-content, none);
+  }
+
   > svg {
+    display: var(--shiny-chat-pending-indicator-icon-display, inline-block);
     width: 1.35em;
     height: auto;
   }
