@@ -191,32 +191,19 @@ def test_new_controller_has_no_conversation_id():
 
 def test_ensure_conversation_id_allocates_once_and_is_stable():
     async def main() -> None:
-        ctrl = make_controller()
+        store = InMemoryConversationStore()
+        ctrl = make_controller(store=store)
         id = await ctrl.ensure_conversation_id()
         assert id.startswith("c_")
         assert await ctrl.ensure_conversation_id() == id
         assert active_id(ctrl) == id
 
-        # An identified draft has no record and is not in the store.
+        # An identified draft has no record and leaks nothing into the
+        # store, even when no save ever happens (model call failed or was
+        # cancelled).
         assert ctrl.record is None
         assert ctrl.partition is not None
         assert await ctrl.store.get(ctrl.partition, id) is None
-
-    run_async(main)
-
-
-def test_unsaved_draft_retains_id():
-    # No save happens (model call failed or was cancelled); the ID survives
-    # and nothing leaks into the store.
-    async def main() -> None:
-        store = InMemoryConversationStore()
-        ctrl = make_controller(store=store)
-        id = await ctrl.ensure_conversation_id()
-
-        assert await ctrl.ensure_conversation_id() == id
-        assert active_id(ctrl) == id
-        assert ctrl.record is None
-        assert ctrl.partition is not None
         assert await store.list(ctrl.partition) == []
 
     run_async(main)
@@ -400,6 +387,26 @@ def test_on_active_id_change_fires_on_allocation_and_clearing_not_save():
     run_async(main)
 
 
+def test_new_chat_announces_cleared_id_even_from_empty_draft():
+    async def main() -> None:
+        ctrl = make_controller()
+        calls: list[str | None] = []
+
+        async def on_change(id: str | None) -> None:
+            calls.append(id)
+
+        ctrl.on_active_id_change = on_change
+
+        await ctrl.new_chat()
+
+        # URL restore mode relies on this to clear a stale conversation
+        # param in the address bar even when the active ID was already
+        # None (e.g. after a failed restore).
+        assert calls == [None]
+
+    run_async(main)
+
+
 # ---------------------------------------------------------------------------
 # Chat integration (mock session, reactive effects driven by reactive.flush)
 # ---------------------------------------------------------------------------
@@ -550,21 +557,32 @@ def test_conversation_id_is_none_initially_and_allocated_before_model_call():
         assert chat.history._controller is not None
 
         ids_seen: list[str | None] = []
-        mock.on_stream = lambda: ids_seen.append(public_conversation_id(chat))
+        bindings_seen: list[str | None] = []
+
+        def on_stream() -> None:
+            # The managed model call must already observe a non-None ID,
+            # both via the public reactive and via its own
+            # `conversation_id` property.
+            ids_seen.append(public_conversation_id(chat))
+            bindings_seen.append(mock.conversation_id)
+
+        mock.on_stream = on_stream
 
         # scope() requires the browser token before history initializes
         session.input["chat_history_browser_token"] = reactive.Value("tok")
         await reactive.flush()
 
         assert public_conversation_id(chat) is None
+        assert mock.conversation_id is None
 
         status = await submit_and_wait(chat, session, "hi")
         assert status == "success"
 
-        # The managed model call must already observe a non-None ID.
         assert len(ids_seen) == 1
         assert ids_seen[0] is not None
         assert public_conversation_id(chat) == ids_seen[0]
+        assert bindings_seen == ids_seen
+        assert mock.conversation_id == ids_seen[0]
 
     run_async(main)
 
@@ -678,46 +696,12 @@ def test_client_set_preserves_the_conversation_id():
 
 def test_history_disabled_stays_none():
     async def main() -> None:
-        chat, _, session = make_chat(history=False)
+        chat, mock, session = make_chat(history=False)
         assert chat.history._controller is None
 
         status = await submit_and_wait(chat, session, "hi")
         assert status == "success"
         assert public_conversation_id(chat) is None
-
-    run_async(main)
-
-
-
-# ---------------------------------------------------------------------------
-# Client telemetry handoff
-# ---------------------------------------------------------------------------
-
-
-def test_managed_response_hands_the_conversation_id_to_the_client():
-    async def main() -> None:
-        chat, mock, session = make_chat()
-        ids_seen: list[str | None] = []
-        # The client property must be set before the model call begins.
-        mock.on_stream = lambda: ids_seen.append(mock.conversation_id)
-
-        assert mock.conversation_id is None
-        status = await submit_and_wait(chat, session, "hi")
-        assert status == "success"
-
-        id = public_conversation_id(chat)
-        assert id is not None
-        assert ids_seen == [id]
-        assert mock.conversation_id == id
-
-    run_async(main)
-
-
-def test_history_disabled_responses_leave_the_client_conversation_id_unset():
-    async def main() -> None:
-        chat, mock, session = make_chat(history=False)
-        status = await submit_and_wait(chat, session, "hi")
-        assert status == "success"
         assert mock.conversation_id is None
 
     run_async(main)

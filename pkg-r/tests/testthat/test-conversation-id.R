@@ -72,29 +72,18 @@ test_that("a new controller has no conversation ID", {
 })
 
 test_that("ensure_conversation_id() allocates once and returns it stably", {
-  ctrl <- cid_new_controller()
+  store <- InMemoryConversationStore$new()
+  ctrl <- cid_new_controller(store = store)
 
   id <- ctrl$ensure_conversation_id()
   expect_match(id, "^c_")
   expect_identical(ctrl$ensure_conversation_id(), id)
   expect_identical(shiny::isolate(ctrl$conversation_id()), id)
 
-  # An identified draft has no record and is not in the store.
+  # An identified draft has no record and leaks nothing into the store,
+  # even when no save ever happens (model call failed or was cancelled).
   expect_null(ctrl$record)
   expect_length(ctrl$get_record(ctrl$partition, id) %||% list(), 0)
-})
-
-test_that("an unsaved draft retains its ID (failure/cancellation before save)", {
-  store <- InMemoryConversationStore$new()
-  ctrl <- cid_new_controller(store = store)
-
-  id <- ctrl$ensure_conversation_id()
-
-  # No save happens (model call failed or was cancelled); the ID survives
-  # and nothing leaks into the store.
-  expect_identical(ctrl$ensure_conversation_id(), id)
-  expect_identical(shiny::isolate(ctrl$conversation_id()), id)
-  expect_null(ctrl$record)
   expect_length(store$list(ctrl$partition), 0)
 })
 
@@ -169,20 +158,6 @@ test_that("new_chat() announces the cleared ID even from an empty draft", {
   # URL restore mode relies on this to clear a stale conversation param in
   # the address bar even when the active ID was already NULL (e.g. after a
   # failed restore).
-  expect_length(announced, 1L)
-  expect_null(announced[[1L]][[1L]])
-})
-
-test_that("new_chat() announces the cleared ID exactly once from an identified draft", {
-  ctrl <- cid_new_controller()
-  ctrl$ensure_conversation_id()
-  announced <- list()
-  ctrl$on_active_id_change <- function(id) {
-    announced[[length(announced) + 1L]] <<- list(id)
-  }
-
-  ctrl$new_chat()
-
   expect_length(announced, 1L)
   expect_null(announced[[1L]][[1L]])
 })
@@ -330,9 +305,12 @@ test_that("conversation_id() is NULL initially and allocated before the first mo
   client <- mock_chat_client()
   mod <- NULL
   id_seen_by_client <- NULL
+  binding_seen_by_client <- NULL
   client$stream_async <- function(...) {
-    # The managed model call must already observe a non-NULL ID.
+    # The managed model call must already observe a non-NULL ID, both via
+    # the public reactive and via its own `conversation_id` binding.
     id_seen_by_client <<- shiny::isolate(mod$history$conversation_id())
+    binding_seen_by_client <<- client$conversation_id
     "response"
   }
 
@@ -347,6 +325,7 @@ test_that("conversation_id() is NULL initially and allocated before the first mo
     },
     {
       expect_null(shiny::isolate(mod$history$conversation_id()))
+      expect_null(client$conversation_id)
 
       session$setInputs(
         chat_history_browser_token = "tok",
@@ -359,6 +338,8 @@ test_that("conversation_id() is NULL initially and allocated before the first mo
         shiny::isolate(mod$history$conversation_id()),
         id_seen_by_client
       )
+      expect_identical(binding_seen_by_client, id_seen_by_client)
+      expect_identical(client$conversation_id, id_seen_by_client)
     }
   )
 })
@@ -568,6 +549,7 @@ test_that("with history = FALSE the conversation_id() reactive stays NULL", {
       session$setInputs(chat_user_input = "hi")
       cid_pump(session)
       expect_null(shiny::isolate(mod$history$conversation_id()))
+      expect_null(client$conversation_id)
     }
   )
 })
@@ -672,56 +654,6 @@ test_that("submission and conversation_id() work when greeting is set", {
 
 # --- Client telemetry handoff -------------------------------------------------
 
-test_that("a managed response hands the conversation ID to the client", {
-  skip_if_not_installed("ellmer")
-
-  client <- mock_chat_client()
-  mod <- NULL
-  id_seen_by_client <- NULL
-  client$stream_async <- function(...) {
-    # The client binding must be set before the model call begins.
-    id_seen_by_client <<- client$conversation_id
-    "response"
-  }
-
-  shiny::testServer(
-    function(input, output, session) {
-      mod <<- chat_server(
-        "chat",
-        client,
-        history = history_options(store = "memory", title = NULL),
-        session = session
-      )
-    },
-    {
-      expect_null(client$conversation_id)
-
-      session$setInputs(
-        chat_history_browser_token = "tok",
-        chat_user_input = "hi"
-      )
-      cid_pump(session)
-
-      active_id <- shiny::isolate(mod$history$conversation_id())
-      expect_false(is.null(active_id))
-      expect_identical(id_seen_by_client, active_id)
-      expect_identical(client$conversation_id, active_id)
-    }
-  )
-})
-
-test_that("set_client_conversation_id() skips clients without the binding", {
-  # `.make_test_client()` has no `conversation_id` member, standing in for
-  # an ellmer release that predates the binding.
-  old_client <- .make_test_client()
-  set_client_conversation_id(old_client, "abc")
-  expect_false("conversation_id" %in% names(old_client))
-
-  new_client <- mock_chat_client()
-  set_client_conversation_id(new_client, "abc")
-  expect_identical(new_client$conversation_id, "abc")
-})
-
 test_that("a managed response still works for clients without the binding", {
   skip_if_not_installed("ellmer")
 
@@ -753,24 +685,6 @@ test_that("a managed response still works for clients without the binding", {
       # working, only the telemetry handoff is skipped.
       expect_true(stream_called)
       expect_false("conversation_id" %in% names(client))
-    }
-  )
-})
-
-test_that("history-disabled responses leave the client conversation ID unset", {
-  skip_if_not_installed("ellmer")
-
-  client <- mock_chat_client()
-  client$stream_async <- function(...) "response"
-
-  shiny::testServer(
-    function(input, output, session) {
-      chat_server("chat", client, history = FALSE, session = session)
-    },
-    {
-      session$setInputs(chat_user_input = "hi")
-      cid_pump(session)
-      expect_null(client$conversation_id)
     }
   )
 })
