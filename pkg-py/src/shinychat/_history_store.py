@@ -129,6 +129,11 @@ class FileConversationStore(ConversationStore):
     atomically on every save). ``turns.jsonl`` and ``ui.jsonl`` are
     append-only — new turns and UI entries are appended, never rewritten.
 
+    Temporary records and journal rollback protect against ordinary I/O
+    failures, but this store does not fsync files or directories. It also
+    does not coordinate concurrent access across processes; callers must
+    serialize reads and writes for each conversation.
+
     On ``get()``, the three files are read and merged into a full
     ``ConversationRecord`` with inline turns and UI on each node. Callers
     never see the split.

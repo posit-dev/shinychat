@@ -49,12 +49,7 @@ STORE_MATRIX = {
 
 
 def _conv_dir(tmp_path: Path, rec: ConversationRecord) -> Path:
-    return (
-        tmp_path
-        / sanitize_scope("chat")
-        / sanitize_scope("alice")
-        / rec.id
-    )
+    return tmp_path / sanitize_scope("chat") / sanitize_scope("alice") / rec.id
 
 
 def _file_snapshot(path: Path) -> dict[str, bytes]:
@@ -420,7 +415,7 @@ async def test_store_fixture_matrix_grown_content_same_count_is_repersisted(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("failure_step", ["serialize", "append", "rename"])
-async def test_put_failure_rolls_back_all_journal_changes(
+async def test_put_failure_leaves_files_unchanged(
     store: FileConversationStore,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

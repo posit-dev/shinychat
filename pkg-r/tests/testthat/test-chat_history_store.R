@@ -702,7 +702,7 @@ test_that("store fixture matrix: changed UI content with same count re-persists"
   expect_equal(restored$nodes$n_0001$ui, rec$nodes$n_0001$ui)
 })
 
-test_that("FileConversationStore rolls back journals when serialization fails", {
+test_that("FileConversationStore leaves files unchanged when serialization fails", {
   dir <- withr::local_tempdir()
   partition <- part()
   store <- FileConversationStore$new(dir = dir)
