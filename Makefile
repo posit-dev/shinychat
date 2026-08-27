@@ -258,7 +258,7 @@ py-update-dist: ## [py] Update shinychat web assets
 .PHONY: help
 help:  ## Show help messages for make targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; { \
-		printf "\033[32m%-18s\033[0m", $$1; \
+		printf "\033[32m%-19s\033[0m", $$1; \
 		if ($$2 ~ /^\[docs\]/) { \
 			printf "\033[37m[docs]\033[0m%s\n", substr($$2, 7); \
 		} else if ($$2 ~ /^\[py\]/) { \
