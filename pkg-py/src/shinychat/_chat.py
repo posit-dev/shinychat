@@ -61,6 +61,7 @@ from ._chat_segments import (
     segments_content,
     segments_deps,
 )
+from ._chat_transcript import ChatTranscript, TranscriptEntry
 from ._chat_types import (
     ChatAction,
     ChatGreeting,
@@ -374,6 +375,17 @@ class Chat:
         from shiny.session import session_context
 
         with session_context(self._session):
+            self._transcript_revision: reactive.Value[int] = reactive.Value(0)
+
+            def _notify_transcript_change() -> None:
+                with reactive.isolate():
+                    revision = self._transcript_revision()
+                self._transcript_revision.set(revision + 1)
+
+            self._transcript = ChatTranscript(
+                on_change=_notify_transcript_change
+            )
+
             # `None` until the first registration, which lets us skip the
             # redundant initial sync (the client already initializes to `[]`).
             # An empty dict, by contrast, is sent so that removing the last
@@ -421,7 +433,7 @@ class Chat:
                         role="user",
                         attachments=attachments,
                     )
-                    self._latest_user_input.set(self._as_stored_message(msg))
+                    self._record_accepted_user_input(msg)
                 except Exception as e:
                     await self._raise_exception(e)
 
@@ -447,7 +459,7 @@ class Chat:
                 if echo:
                     full_text = f"/{command} {user_text}".rstrip()
                     msg = ChatMessage(content=full_text, role="user")
-                    self._latest_user_input.set(self._as_stored_message(msg))
+                    self._record_accepted_user_input(msg)
                 cmds = self._slash_commands()
                 reg = cmds.get(command) if cmds else None
                 try:
@@ -1039,7 +1051,7 @@ class Chat:
         similar) is specified in model's completion method.
         :::
         """
-        # If we're in a stream, queue the message
+        # If we're in a stream, queue the message.
         if self._current_stream_id:
             self._pending_messages.append((message, False, "append", None))
             return
@@ -1048,11 +1060,20 @@ class Chat:
         msg = await self._transform_message(msg)
         if msg is None:
             return
-        await self._send_append_message(
-            message=msg,
-            chunk=False,
-            icon=icon,
+        stored = self._as_stored_message(msg)
+        entry = TranscriptEntry(
+            message=stored,
+            icon=_resolve_icon_attr(icon),
         )
+
+        async def send() -> bool:
+            return await self._send_append_message(
+                message=stored,
+                chunk=False,
+                icon=icon,
+            )
+
+        await self._transcript.append(entry, send=send)
 
     @asynccontextmanager
     async def message_stream_context(self):
@@ -1476,11 +1497,11 @@ class Chat:
         chunk: ChunkOption = False,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | bool | None = None,
-    ):
+    ) -> bool:
         message = self._as_stored_message(message)
 
         if message.role == "system":
-            return
+            return False
 
         # Bare segment content (no <thinking> wrapping): on the wire, thinking
         # travels as raw text paired with content_type="thinking", and the
@@ -1529,6 +1550,7 @@ class Chat:
         else:
             action = {"type": "message", "message": msg_payload}
             await self._send_action(action, message.html_deps)
+        return True
 
     def _messages_for_bookmark(self) -> list[dict[str, Any]]:
         from shiny import reactive
@@ -1568,7 +1590,13 @@ class Chat:
                 stacklevel=2,
             )
             return
-        await self._send_append_message(stored)
+
+        entry = TranscriptEntry(message=stored)
+
+        async def send() -> bool:
+            return await self._send_append_message(stored)
+
+        await self._transcript.append(entry, send=send)
 
     def transform_user_input(self, *args: object, **kwargs: object) -> object:
         raise TypeError(
@@ -1699,6 +1727,14 @@ class Chat:
 
         html_deps = self._serialize_html_deps(message.html_deps)
         return StoredMessage.from_chat_message(message, html_deps=html_deps)
+
+    def _record_accepted_user_input(
+        self,
+        message: ChatMessage,
+    ) -> None:
+        stored = self._as_stored_message(message)
+        self._transcript.record_accepted_input(stored)
+        self._latest_user_input.set(stored)
 
     def user_input(self) -> "UserInput | None":
         """
@@ -1837,7 +1873,11 @@ class Chat:
         if greeting:
             self._greeting_content = None
             action["greeting"] = True
-        await self._send_action(action)
+
+        async def send() -> None:
+            await self._send_action(action)
+
+        await self._transcript.clear(send=send)
 
     def get_greeting(self) -> str | None:
         """

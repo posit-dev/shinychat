@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any, cast
 
 import pytest
-from htmltools import HTMLDependency, TagList, tags
+from htmltools import HTML, HTMLDependency, TagList, tags
 from shiny import Session, reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
@@ -46,6 +46,9 @@ class _MockSession:
         pass
 
     def _increment_busy_count(self) -> None:
+        pass
+
+    def _decrement_busy_count(self) -> None:
         pass
 
     async def send_custom_message(self, type: str, message: Any) -> None:
@@ -99,6 +102,367 @@ def test_messages_token_limits_raises():
 
         with pytest.raises(TypeError, match="token_limits.*removed"):
             chat.messages(token_limits=(100, 0))  # type: ignore[arg-type]
+
+
+def test_transcript_contains_accepted_input_before_submit_callback():
+    session = cast(Session, _MockSession())
+    seen: list[tuple[Any, ...]] = []
+
+    with session_context(session):
+        chat = Chat("accepted_input", history=False)
+
+        @chat.on_user_submit
+        async def _() -> None:
+            seen.append(chat._transcript.read())
+
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "message from user", "attachments": []}
+        )
+        run_async(reactive.flush)
+
+    assert len(seen) == 1
+    assert [entry.message.content for entry in seen[0]] == ["message from user"]
+    assert chat._transcript.open_exchange_id is not None
+
+
+def test_echoed_slash_command_records_once_before_its_callback():
+    session = cast(Session, _MockSession())
+    callback_state: list[tuple[str, list[str], str | None]] = []
+
+    with session_context(session):
+        chat = Chat("echoed_slash", history=False)
+
+        @chat.slash_command("greet", "Greet the user")
+        async def _(user_text: str) -> None:
+            callback_state.append(
+                (
+                    user_text,
+                    [
+                        entry.message.content
+                        for entry in chat._transcript.read()
+                    ],
+                    chat._transcript.open_exchange_id,
+                )
+            )
+
+        cast(Any, session.input[chat._slash_command_id])._set(
+            {"command": "greet", "userText": "world", "echo": True}
+        )
+        run_async(reactive.flush)
+
+    assert len(callback_state) == 1
+    assert callback_state[0][0] == "world"
+    assert callback_state[0][1] == ["/greet world"]
+    assert callback_state[0][2] is not None
+    assert [entry.message.content for entry in chat._transcript.read()] == [
+        "/greet world"
+    ]
+
+
+def test_side_effect_only_slash_command_preserves_callback_without_echo():
+    session = cast(Session, _MockSession())
+    callback_state: list[tuple[str, tuple[Any, ...], str | None]] = []
+
+    with session_context(session):
+        chat = Chat("side_effect_slash", history=False)
+
+        @chat.slash_command("note", "Record a side effect", echo=False)
+        async def _(user_text: str) -> None:
+            callback_state.append(
+                (
+                    user_text,
+                    chat._transcript.read(),
+                    chat._transcript.open_exchange_id,
+                )
+            )
+
+        cast(Any, session.input[chat._slash_command_id])._set(
+            {"command": "note", "userText": "private", "echo": False}
+        )
+        run_async(reactive.flush)
+
+    assert callback_state == [("private", (), None)]
+    assert chat._transcript.read() == ()
+
+
+def test_identical_accepted_inputs_open_distinct_exchanges_once_each():
+    session = cast(Session, _MockSession())
+    callback_exchanges: list[str | None] = []
+
+    with session_context(session):
+        chat = Chat("repeated_input", history=False)
+
+        @chat.on_user_submit
+        async def _() -> None:
+            callback_exchanges.append(chat._transcript.open_exchange_id)
+
+        for seq in (1, 2):
+            cast(Any, session.input[chat.user_input_id])._set(
+                {"text": "same message", "attachments": [], "seq": seq}
+            )
+            run_async(reactive.flush)
+
+    assert len(callback_exchanges) == 2
+    assert callback_exchanges[0] is not None
+    assert callback_exchanges[0] != callback_exchanges[1]
+    assert [entry.message.content for entry in chat._transcript.read()] == [
+        "same message",
+        "same message",
+    ]
+
+
+def test_accepted_input_records_while_an_older_stream_is_active():
+    session = cast(Session, _MockSession())
+    callback_state: list[tuple[list[str], str | None]] = []
+
+    with session_context(session):
+        chat = Chat("input_during_stream", history=False)
+        chat._record_accepted_user_input(
+            ChatMessage(content="older exchange", role="user")
+        )
+        older_exchange = chat._transcript.open_exchange_id
+        chat._current_stream_id = "older-stream"
+
+        @chat.on_user_submit
+        async def _() -> None:
+            callback_state.append(
+                (
+                    [
+                        entry.message.content
+                        for entry in chat._transcript.read()
+                    ],
+                    chat._transcript.open_exchange_id,
+                )
+            )
+
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "next exchange", "attachments": [], "seq": 1}
+        )
+        run_async(reactive.flush)
+
+    assert len(callback_state) == 1
+    assert callback_state[0][0] == ["older exchange", "next exchange"]
+    assert callback_state[0][1] is not None
+    assert callback_state[0][1] != older_exchange
+    assert chat._current_stream_id == "older-stream"
+    assert chat._pending_messages == []
+
+
+def test_transcript_contains_complete_append_immediately_after_send():
+    with session_context(test_session):
+        chat = Chat("complete_append", history=False)
+
+        run_async(lambda: chat.append_message("server message"))
+
+        assert [entry.message.content for entry in chat._transcript.read()] == [
+            "server message"
+        ]
+
+
+def test_transcript_complete_mutations_invalidate_reactive_dependents():
+    with session_context(test_session):
+        chat = Chat("transcript_reactive", history=False)
+        seen: list[list[str]] = []
+
+        @reactive.effect
+        def _():
+            chat._transcript_revision()
+            seen.append(
+                [entry.message.content for entry in chat._transcript.read()]
+            )
+
+        run_async(reactive.flush)
+        run_async(lambda: chat.append_message("server message"))
+        run_async(reactive.flush)
+        run_async(chat.clear_messages)
+        run_async(reactive.flush)
+
+    assert seen == [[], ["server message"], []]
+
+
+def test_transcript_does_not_commit_system_messages_without_wire_send():
+    with session_context(test_session):
+        chat = Chat("system_message", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            await chat.append_message(
+                ChatMessage(content="not displayed", role="system")
+            )
+            await chat._restore_bookmark_message(
+                {
+                    "role": "system",
+                    "segments": [
+                        {
+                            "content": "not restored",
+                            "content_type": "markdown",
+                        }
+                    ],
+                }
+            )
+
+        run_async(_exercise)
+
+        assert sent == []
+        assert chat._transcript.read() == ()
+
+
+def test_transcript_append_send_failure_leaves_owner_unchanged():
+    with session_context(test_session):
+        chat = Chat("append_failure", history=False)
+
+        async def _fail(*args: Any, **kwargs: Any) -> None:
+            raise RuntimeError("send failed")
+
+        chat._send_action = _fail  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="send failed"):
+            run_async(lambda: chat.append_message("discarded"))
+
+        assert chat._transcript.read() == ()
+
+
+def test_transcript_clear_send_failure_leaves_owner_unchanged():
+    with session_context(test_session):
+        chat = Chat("clear_failure", history=False)
+
+        run_async(lambda: chat.append_message("kept"))
+
+        async def _fail(*args: Any, **kwargs: Any) -> None:
+            raise RuntimeError("clear failed")
+
+        chat._send_action = _fail  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="clear failed"):
+            run_async(chat.clear_messages)
+
+        assert [entry.message.content for entry in chat._transcript.read()] == [
+            "kept"
+        ]
+
+
+def test_transcript_captures_complete_message_wire_spec():
+    from shinychat._attachments import Attachment
+
+    with session_context(test_session):
+        chat = Chat("wire_spec", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append({"action": action, "deps": deps})
+
+        async def _transform(content: str, chunk: str, done: bool) -> str:
+            assert chunk == ""
+            assert done
+            return f"{content} transformed"
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transform_assistant = _transform
+        chat._serialize_html_deps = lambda deps: [  # type: ignore[method-assign]
+            {"name": "chart", "metadata": {"version": "1.0"}}
+        ]
+        message = ChatMessage(
+            content="source",
+            role="assistant",
+            attachments=[
+                Attachment.from_data(
+                    b"chart", mime="image/png", name="chart.png"
+                )
+            ],
+        )
+        message.html_deps = [HTMLDependency(name="chart", version="1.0")]
+
+        run_async(
+            lambda: chat.append_message(message, icon=HTML("<i>chart</i>"))
+        )
+
+        entry = chat._transcript.read()[0]
+        assert entry.message.content == "source transformed"
+        assert entry.message.attachments[0].name == "chart.png"
+        assert entry.message.html_deps == [
+            {"name": "chart", "metadata": {"version": "1.0"}}
+        ]
+        assert entry.icon == "<i>chart</i>"
+        assert sent[0]["action"]["message"]["icon"] == "<i>chart</i>"
+
+
+@pytest.mark.parametrize(
+    ("icon", "expected_icon"),
+    [
+        pytest.param(False, "", id="false"),
+        pytest.param(None, None, id="none"),
+        pytest.param(True, None, id="true"),
+        pytest.param(HTML(""), "", id="empty-html"),
+        pytest.param("", "", id="empty-string"),
+        pytest.param(HTML("<i>custom</i>"), "<i>custom</i>", id="custom"),
+    ],
+)
+def test_transcript_complete_append_captures_resolved_icon_wire_spec(
+    icon: Any, expected_icon: str | None
+):
+    with session_context(test_session):
+        chat = Chat("resolved_icon", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        run_async(lambda: chat.append_message("complete message", icon=icon))
+
+    entry = chat._transcript.read()[0]
+    payload = sent[0]["message"]
+    assert entry.icon == expected_icon
+    if expected_icon is None:
+        assert "icon" not in payload
+    else:
+        assert payload["icon"] == expected_icon
+
+
+def test_transcript_entries_are_defensive_for_nested_wire_specs():
+    from shinychat._attachments import Attachment
+
+    with session_context(test_session):
+        chat = Chat("defensive_entry", history=False)
+        chat._serialize_html_deps = lambda deps: [  # type: ignore[method-assign]
+            {"name": "chart", "metadata": {"version": "1.0"}}
+        ]
+        message = ChatMessage(
+            content="source",
+            role="assistant",
+            attachments=[
+                Attachment.from_data(
+                    b"chart", mime="image/png", name="chart.png"
+                )
+            ],
+        )
+        message.html_deps = [HTMLDependency(name="chart", version="1.0")]
+
+        run_async(
+            lambda: chat.append_message(message, icon=HTML("<i>chart</i>"))
+        )
+
+        projection = chat._transcript.read()[0]
+        projection.message.attachments[0].name = "mutated.png"
+        assert projection.message.html_deps is not None
+        metadata = cast(
+            dict[str, str], projection.message.html_deps[0]["metadata"]
+        )
+        metadata["version"] = "mutated"
+        projection.icon = "mutated"
+
+        committed = chat._transcript.read()[0]
+        assert committed.message.attachments[0].name == "chart.png"
+        assert committed.message.html_deps == [
+            {"name": "chart", "metadata": {"version": "1.0"}}
+        ]
+        assert committed.icon == "<i>chart</i>"
 
 
 def test_tokenizer_raises():
@@ -977,11 +1341,12 @@ def test_message_stream_context_flushes_queued_appends():
             "type": "message",
             "message": {
                 "role": "assistant",
-                "segments": [
-                    {"content": "queued", "content_type": "markdown"}
-                ],
+                "segments": [{"content": "queued", "content_type": "markdown"}],
             },
         }
+        assert [entry.message.content for entry in chat._transcript.read()] == [
+            "queued"
+        ]
 
 
 def test_thinking_stream_stores_segment_not_tags():

@@ -19,21 +19,26 @@ exchange nodes; it does not introduce the persistent node schema.
 
 - Add one private Python transcript owner. `Chat` retains normalization,
   transforms, dependency processing, and transport; the owner retains
-  committed message specs and in-flight stream accumulation.
+  committed message wire specs, including resolved per-message icon metadata,
+  and in-flight stream accumulation.
 - Mutations follow **prepare → send → commit**. A failed send never commits
   unsent content. Successfully sent stream content is committed eagerly to
   the in-flight entry so a later error cannot erase what the user saw.
 - Accepted user input is committed by the priority-9999 input observer before
   application submit callbacks. It needs no transport send because the
   browser already rendered its optimistic user message.
-- Complete output, stream start/chunk/end, clear, initial messages, slash
-  command echoes, and restore paths all mutate through the owner.
-- Public `Chat.messages()` takes a reactive dependency on owner revision and
-  returns defensive projections. Existing successful messages keep their
-  current shape; a preserved partial adds `status: "cancelled"` or
-  `status: "error"`, and an errored partial adds `error: {"message": ...}`.
-  Phase 3 moves those fields onto exchange nodes rather than inventing a
-  second status model.
+- Complete output, clear, Chat-owned initial messages, slash-command echoes,
+  and complete-message restore paths mutate through the owner. Stream
+  transitions move there in `shinychat#ch09`.
+- Until `shinychat#ch09`, public `Chat.messages()` retains its legacy
+  browser-reported, eventually consistent behavior. The owner has a reactive
+  revision for internal consumers and returns defensive projections.
+- Once complete and streaming paths share the owner, `shinychat#ch09` switches
+  public `Chat.messages()` to synchronous owner reads. Existing successful
+  messages retain their current shape; a preserved partial adds
+  `status: "cancelled"` or `status: "error"`, and an errored partial adds
+  `error: {"message": ...}`. Phase 3 moves those fields onto exchange nodes
+  rather than inventing a second status model.
 
 ### Exchange attribution, not scheduling
 
@@ -83,17 +88,18 @@ rejected by Shiny; a graceful no-op transport response is not required.
 
 ## Stacked work
 
-1. **Keystone complete-message slice (`6s8q`).** Add the private owner, revised fixture
-   seed, accepted-input recording, transactional complete sends, and
-   synchronous `Chat.messages()` while leaving the browser echo temporarily
-   unused by that API.
-2. **Transactional streams and attribution (`ch09`).** Route stream transitions through
-   the owner, commit sent chunks eagerly, preserve partial cancellation/error,
-   bind streams to opening exchanges, and delete the pending queue.
-3. **Python consumer cutover (`dy7g`).** Move bookmark and current history consumers to
+1. **Keystone complete-message slice (`shinychat#6s8q`).** Add the private
+   owner, revised fixture seed, accepted-input recording, transactional
+   complete sends, and owner invalidation while retaining public legacy
+   `Chat.messages()` behavior.
+2. **Transactional streams and attribution (`shinychat#ch09`).** Route stream
+   transitions through the owner, commit sent chunks eagerly, preserve partial
+   cancellation/error, bind streams to opening exchanges, delete the pending
+   queue, and switch `Chat.messages()` to synchronous owner reads.
+3. **Python consumer cutover (`shinychat#dy7g`).** Move bookmark and current history consumers to
    server state; replace echo-triggered settlement; remove stale-report
    deduplication, `ui_offset`, and Python's `shinychat.messages` handler.
-4. **Client echo deletion and acceptance audit (`47fa`).** Remove the JS reporter and
+4. **Client echo deletion and acceptance audit (`shinychat#47fa`).** Remove the JS reporter and
    snapshot builder, build JS, copy assets only to Python, add forged-input and
    end-to-end regressions, and verify no Python echo consumer/reporter remains.
 
@@ -112,7 +118,25 @@ single-session atom and starts only after every Python consumer has moved.
 
 ## Handoff
 
-- **Landed:** design investigation and Phase 2 mechanism decisions.
-- **Next:** claim `shinychat#6s8q` and begin the keystone complete-message
-  slice.
+- **Landed (`shinychat#6s8q`):** private Python ownership now records accepted
+  input and transactional complete-message sends, including Chat-owned
+  initial/restore paths and slash echoes. The shared fixture and focused
+  coverage verify reactive invalidation, defensive reads, send failures, and
+  complete-message wire metadata.
+- **Resolved sequencing decision (2026-08-27):** retain legacy
+  browser-reported `Chat.messages()` through `shinychat#6s8q`. Switching it
+  before stream ownership regressed successful streamed conversations; an echo
+  fallback would violate the server-authoritative boundary, and stream-end
+  commits would prematurely implement an incomplete stream model. The public
+  switch moves to `shinychat#ch09` after complete and streaming paths share
+  the owner. Static `chat_ui(messages=...)` remains render-only.
+- **Legacy icon disposition (2026-08-27):** while the legacy stream is active,
+  its pending-message tuple drops a complete append's caller-supplied icon.
+  The owner therefore records the emitted wire value (`None`), not the lost
+  caller intent. `shinychat#ch09` deletes that queue. Legacy browser snapshots,
+  bookmarks, and history UI records have no message-icon field, so restore
+  emits and records no per-message icon until the later consumer cutovers.
+- **Next:** `shinychat#ch09` adds transactional stream ownership and
+  attribution, deletes the legacy pending-message queue, and switches the
+  public projection to the owner.
 - **Provisional decisions:** none.

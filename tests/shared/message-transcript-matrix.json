@@ -1,0 +1,120 @@
+[
+  {
+    "name": "complete_wire_specs_preserve_display_metadata",
+    "operations": [
+      {
+        "operation": "complete-message",
+        "wire_spec": {
+          "message": {
+            "role": "user",
+            "segments": [
+              {"content": "Hi", "content_type": "markdown"}
+            ],
+            "attachments": [
+              {
+                "mime": "text/plain",
+                "data_url": "data:text/plain;base64,SGk=",
+                "name": "hi.txt",
+                "size": 2
+              }
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "complete-message",
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {
+                "content": "Hello",
+                "content_type": "text",
+                "html_deps": [
+                  {"name": "chart", "metadata": {"version": "1.0"}}
+                ]
+              }
+            ]
+          },
+          "icon": "<i>assistant</i>"
+        },
+        "send": {"result": "sent"}
+      }
+    ],
+    "expected": [
+      {
+        "message": {
+          "role": "user",
+          "segments": [
+            {"content": "Hi", "content_type": "markdown"}
+          ],
+          "attachments": [
+            {
+              "mime": "text/plain",
+              "data_url": "data:text/plain;base64,SGk=",
+              "name": "hi.txt",
+              "size": 2
+            }
+          ]
+        }
+      },
+      {
+        "message": {
+          "role": "assistant",
+          "segments": [
+            {
+              "content": "Hello",
+              "content_type": "text",
+              "html_deps": [
+                {"name": "chart", "metadata": {"version": "1.0"}}
+              ]
+            }
+          ]
+        },
+        "icon": "<i>assistant</i>"
+      }
+    ]
+  },
+  {
+    "name": "failed_complete_send_does_not_commit",
+    "operations": [
+      {
+        "operation": "complete-message",
+        "wire_spec": {
+          "message": {
+            "role": "user",
+            "segments": [
+              {"content": "kept", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "complete-message",
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "discarded", "content_type": "markdown"}
+            ]
+          },
+          "icon": ""
+        },
+        "send": {"result": "error", "message": "send failed"}
+      }
+    ],
+    "error": "send failed",
+    "expected": [
+      {
+        "message": {
+          "role": "user",
+          "segments": [
+            {"content": "kept", "content_type": "markdown"}
+          ]
+        }
+      }
+    ]
+  }
+]
