@@ -2,6 +2,59 @@ part <- function(chat_id = "chat", scope = "user1") {
   conversation_partition(chat_id, scope)
 }
 
+store_fixture_matrix <- jsonlite::fromJSON(
+  test_path("fixtures", "history-store-fixture-matrix.json"),
+  simplifyVector = FALSE
+)
+
+store_fixture_case <- function(name) {
+  Filter(function(case) identical(case$name, name), store_fixture_matrix)[[1]]
+}
+
+store_conv_dir <- function(dir, partition, record) {
+  file.path(
+    dir,
+    sanitize_scope(partition$chat_id),
+    sanitize_scope(partition$scope),
+    record$id
+  )
+}
+
+store_file_snapshot <- function(path) {
+  files <- list.files(path, full.names = TRUE)
+  snapshot <- lapply(files, function(file) {
+    readBin(file, "raw", file.size(file))
+  })
+  names(snapshot) <- basename(files)
+  snapshot
+}
+
+store_test_record <- function() {
+  rec <- new_conversation_record("rollback")
+  rec$nodes$n_0001 <- list(
+    parent = NULL,
+    children = list(),
+    turns = list(list(role = "user", content = "first")),
+    ui = list(list(role = "user", segments = list())),
+    selected_child = NULL
+  )
+  rec$current_leaf <- "n_0001"
+  rec
+}
+
+store_test_record_add_node <- function(rec) {
+  rec$nodes$n_0001$children <- list("n_0002")
+  rec$nodes$n_0002 <- list(
+    parent = "n_0001",
+    children = list(),
+    turns = list(list(role = "assistant", content = "second")),
+    ui = list(list(role = "assistant", segments = list())),
+    selected_child = NULL
+  )
+  rec$current_leaf <- "n_0002"
+  rec
+}
+
 test_that("InMemoryConversationStore: put and get", {
   store <- InMemoryConversationStore$new()
   rec <- new_conversation_record("Test chat")
@@ -600,6 +653,124 @@ test_that("FileConversationStore re-appends a node's ui when it grows across sav
   fetched <- store$get(part(), rec$id)
   expect_length(fetched$nodes$n_0001$ui, 2)
   expect_equal(fetched$nodes$n_0001$ui[[2]]$segments[[1]]$content, "more")
+})
+
+test_that("store fixture matrix: doubles round-trip", {
+  case <- store_fixture_case("doubles_round_trip")
+  store <- FileConversationStore$new(dir = withr::local_tempdir())
+  rec <- new_conversation_record("doubles")
+  rec$values <- list(pi = case$value)
+
+  store$put(part(), rec)
+
+  expect_identical(store$get(part(), rec$id)$values$pi, case$value)
+})
+
+test_that("store fixture matrix: doubles in turns round-trip", {
+  case <- store_fixture_case("doubles_round_trip")
+  store <- FileConversationStore$new(dir = withr::local_tempdir())
+  rec <- store_test_record()
+  rec$nodes$n_0001$turns <- list(
+    list(role = "assistant", value = case$value)
+  )
+
+  store$put(part(), rec)
+
+  restored <- store$get(part(), rec$id)
+  expect_identical(restored$nodes$n_0001$turns[[1]]$value, case$value)
+})
+
+test_that("store fixture matrix: malformed jsonl lines warn visibly", {
+  case <- store_fixture_case("malformed_jsonl_line")
+  dir <- withr::local_tempdir()
+  partition <- part()
+  store <- FileConversationStore$new(dir = dir)
+  rec <- store_test_record()
+  store$put(partition, rec)
+  cdir <- store_conv_dir(dir, partition, rec)
+  turns_file <- file.path(cdir, "turns.jsonl")
+  cat(case$line, "\n", file = turns_file, append = TRUE, sep = "")
+
+  expect_warning(
+    result <- store$get(partition, rec$id),
+    paste0("turns.jsonl:2")
+  )
+  expect_equal(result$nodes$n_0001$turns, rec$nodes$n_0001$turns)
+})
+
+test_that("store fixture matrix: changed UI content with same count re-persists", {
+  case <- store_fixture_case("grown_content_same_count")
+  dir <- withr::local_tempdir()
+  store <- FileConversationStore$new(dir = dir)
+  rec <- store_test_record()
+  rec$nodes$n_0001$ui[[1]]$segments <- list(list(
+    content = case$initial,
+    content_type = "markdown"
+  ))
+  store$put(part(), rec)
+
+  rec$nodes$n_0001$ui[[1]]$segments[[1]]$content <- case$updated
+  store$put(part(), rec)
+
+  restored <- FileConversationStore$new(dir = dir)$get(part(), rec$id)
+  expect_equal(restored$nodes$n_0001$ui, rec$nodes$n_0001$ui)
+})
+
+test_that("FileConversationStore leaves files unchanged when serialization fails", {
+  dir <- withr::local_tempdir()
+  partition <- part()
+  store <- FileConversationStore$new(dir = dir)
+  rec <- store_test_record()
+  store$put(partition, rec)
+  cdir <- store_conv_dir(dir, partition, rec)
+  before <- store_file_snapshot(cdir)
+  rec <- store_test_record_add_node(rec)
+
+  testthat::local_mocked_bindings(
+    history_json = function(...) rlang::abort("injected serialization failure")
+  )
+  expect_error(store$put(partition, rec), "injected serialization failure")
+  expect_identical(store_file_snapshot(cdir), before)
+})
+
+test_that("FileConversationStore rolls back journals when an append fails", {
+  dir <- withr::local_tempdir()
+  partition <- part()
+  store <- FileConversationStore$new(dir = dir)
+  rec <- store_test_record()
+  store$put(partition, rec)
+  cdir <- store_conv_dir(dir, partition, rec)
+  before <- store_file_snapshot(cdir)
+  rec <- store_test_record_add_node(rec)
+
+  original_append <- history_append_jsonl
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    history_append_jsonl = function(path, lines) {
+      calls <<- calls + 1L
+      original_append(path, lines)
+      if (calls == 2L) rlang::abort("injected append failure")
+    }
+  )
+  expect_error(store$put(partition, rec), "injected append failure")
+  expect_identical(store_file_snapshot(cdir), before)
+})
+
+test_that("FileConversationStore rolls back journals when rename fails", {
+  dir <- withr::local_tempdir()
+  partition <- part()
+  store <- FileConversationStore$new(dir = dir)
+  rec <- store_test_record()
+  store$put(partition, rec)
+  cdir <- store_conv_dir(dir, partition, rec)
+  before <- store_file_snapshot(cdir)
+  rec <- store_test_record_add_node(rec)
+
+  testthat::local_mocked_bindings(
+    file_move = function(...) FALSE
+  )
+  expect_error(store$put(partition, rec), "Failed to write conversation")
+  expect_identical(store_file_snapshot(cdir), before)
 })
 
 test_that("FileConversationStore preserves schema_version and children on round trip", {

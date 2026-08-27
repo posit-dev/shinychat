@@ -46,8 +46,8 @@ jobs:
       - name: 🏭 Build
         run: make js-build
 
-      - name: 🔄 Sync history matrix fixture
-        run: make history-matrix-sync
+      - name: 🔄 Sync test fixtures into R package
+        run: make r-sync-fixtures
 
       - name: 🧐 Check for uncommitted changes
         run: |
