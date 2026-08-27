@@ -1133,6 +1133,7 @@ class Chat:
                     chunk="end",
                     stream_id=stream_id,
                 )
+                await self._flush_pending_messages()
 
     async def _append_message_chunk(
         self,
