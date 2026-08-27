@@ -521,17 +521,14 @@ class Chat:
                 contents = [attachment_to_content(a) for a in attachments]
 
                 # Resolve the active conversation ID before model work
-                # begins, and hand it to the client as a scalar: later
-                # history switches, new-chat actions, or client swaps must
-                # not relabel in-flight work. shinychat itself emits no
-                # OpenTelemetry spans; the client records the ID as
-                # `gen_ai.conversation.id` on its own spans.
-                conversation_id: str | None = None
+                # begins: later history switches, new-chat actions, or
+                # client swaps must not relabel in-flight work.
                 history_controller = self.history._controller
-                if history_controller is not None:
-                    conversation_id = (
-                        await history_controller.ensure_conversation_id()
-                    )
+                conversation_id = (
+                    await history_controller.ensure_conversation_id()
+                    if history_controller is not None
+                    else None
+                )
                 chat_client.value.conversation_id = conversation_id
 
                 response = await chat_client.value.stream_async(

@@ -295,12 +295,9 @@ check_ellmer_chat <- function(client) {
   }
 }
 
-# shinychat does not emit OpenTelemetry spans itself. Instead it hands the
-# active conversation ID to the client, which records it as the
-# `gen_ai.conversation.id` attribute on its own spans (ellmer's
-# `conversation_id` active binding). Clients without the binding (older
-# ellmer) are left alone: identity features keep working, just without
-# telemetry.
+# shinychat emits no OpenTelemetry spans itself; the client records the ID
+# as `gen_ai.conversation.id` on its own spans. Clients without the
+# `conversation_id` binding (older ellmer) are left alone.
 # TODO: replace the capability check with an ellmer version floor once the
 # binding is in a released ellmer version.
 set_client_conversation_id <- function(client, id) {
@@ -451,32 +448,17 @@ chat_server <- function(
   }
 
   append_stream_task <- shiny::ExtendedTask$new(
-    function(
-      client,
-      ui_id,
-      user_input,
-      controller = NULL,
-      conversation_id = NULL
-    ) {
-      run <- function() {
-        stream <- client$stream_async(
-          !!!user_input,
-          stream = "content",
-          controller = controller
-        )
+    function(client, ui_id, user_input, controller = NULL) {
+      stream <- client$stream_async(
+        !!!user_input,
+        stream = "content",
+        controller = controller
+      )
 
-        p <- promises::promise_resolve(stream)
-        promises::then(p, function(stream) {
-          chat_append(ui_id, stream)
-        })
-      }
-
-      # Hand the client's spans the active conversation ID. The ID was
-      # captured as a scalar at submission time, so in-flight work is never
-      # relabeled by later history switches, new-chat actions, or client
-      # swaps.
-      set_client_conversation_id(client, conversation_id)
-      run()
+      p <- promises::promise_resolve(stream)
+      promises::then(p, function(stream) {
+        chat_append(ui_id, stream)
+      })
     }
   )
 
@@ -619,21 +601,19 @@ chat_server <- function(
       user_input <- session$input[[paste0(id, "_user_input")]]
       last_input(user_input)
 
-      # Resolve the active conversation ID synchronously, before model work
-      # begins, and hand the task a scalar: later history switches, new-chat
+      # Resolve the active conversation ID before model work begins and set
+      # it on the client as a scalar: later history switches, new-chat
       # actions, or client swaps must not relabel in-flight work.
-      conversation_id <- NULL
       hist_ctrl <- history_controller()
       if (!is.null(hist_ctrl)) {
-        conversation_id <- hist_ctrl$ensure_conversation_id()
+        set_client_conversation_id(client, hist_ctrl$ensure_conversation_id())
       }
 
       append_stream_task$invoke(
         client,
         id,
         user_input,
-        controller = ctrl,
-        conversation_id = conversation_id
+        controller = ctrl
       )
     }
   )
