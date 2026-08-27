@@ -2,114 +2,114 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/page-chat.html</loc>
-    <lastmod>2026-08-26T18:57:11.920Z</lastmod>
+    <lastmod>2026-08-27T01:02:53.402Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/express.page_chat.html</loc>
-    <lastmod>2026-08-26T18:57:49.211Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.120Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/chat_nav_panel.html</loc>
-    <lastmod>2026-08-26T18:57:49.136Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.072Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/chat_ui.html</loc>
-    <lastmod>2026-08-26T18:57:49.101Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.050Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/types.ConversationMeta.html</loc>
-    <lastmod>2026-08-26T18:57:49.230Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.132Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/index.html</loc>
-    <lastmod>2026-08-26T18:57:49.019Z</lastmod>
+    <lastmod>2026-08-27T01:03:40.997Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/page_chat_theme.html</loc>
-    <lastmod>2026-08-26T18:57:49.126Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.066Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/chat_ui_history.html</loc>
-    <lastmod>2026-08-26T18:57:49.143Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.077Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/types.FileConversationStore.html</loc>
-    <lastmod>2026-08-26T18:57:49.226Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.130Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/message_content.html</loc>
-    <lastmod>2026-08-26T18:57:49.148Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.080Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/types.ToolResultDisplay.html</loc>
-    <lastmod>2026-08-26T18:57:49.145Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.078Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/chat_drawer.html</loc>
-    <lastmod>2026-08-26T18:57:49.140Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.075Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/types.ConversationRecord.html</loc>
-    <lastmod>2026-08-26T18:57:49.229Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.132Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/types.ChatDrawerController.html</loc>
-    <lastmod>2026-08-26T18:57:49.111Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.057Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/index.html</loc>
-    <lastmod>2026-08-26T18:57:11.920Z</lastmod>
+    <lastmod>2026-08-27T01:02:53.402Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/types.Attachment.html</loc>
-    <lastmod>2026-08-26T18:57:49.092Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.044Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/types.ConversationPartition.html</loc>
-    <lastmod>2026-08-26T18:57:49.216Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.124Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/page_chat.html</loc>
-    <lastmod>2026-08-26T18:57:49.123Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.064Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/playwright.ChatController.html</loc>
-    <lastmod>2026-08-26T18:57:49.247Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.143Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/chat_sidebar.html</loc>
-    <lastmod>2026-08-26T18:57:49.130Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.069Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/types.ChatClient.html</loc>
-    <lastmod>2026-08-26T18:57:49.084Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.039Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/express.Chat.html</loc>
-    <lastmod>2026-08-26T18:57:49.199Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.112Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/Chat.html</loc>
-    <lastmod>2026-08-26T18:57:49.077Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.034Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/types.HistoryOptions.html</loc>
-    <lastmod>2026-08-26T18:57:49.214Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.123Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/chat_greeting.html</loc>
-    <lastmod>2026-08-26T18:57:49.104Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.052Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/message_content_chunk.html</loc>
-    <lastmod>2026-08-26T18:57:49.151Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.083Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/types.ChatMessage.html</loc>
-    <lastmod>2026-08-26T18:57:49.086Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.040Z</lastmod>
   </url>
   <url>
     <loc>https://posit-dev.github.io/shinychat/py/api/types.ConversationStore.html</loc>
-    <lastmod>2026-08-26T18:57:49.225Z</lastmod>
+    <lastmod>2026-08-27T01:03:41.129Z</lastmod>
   </url>
 </urlset>
