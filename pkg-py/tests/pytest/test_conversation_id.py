@@ -587,6 +587,23 @@ def test_conversation_id_is_none_initially_and_allocated_before_model_call():
     run_async(main)
 
 
+def test_client_without_conversation_id_binding_is_left_alone():
+    async def main() -> None:
+        chat, mock, session = make_chat()
+        # Older chatlas / non-chatlas clients have no `conversation_id`.
+        del mock.conversation_id
+        session.input["chat_history_browser_token"] = reactive.Value("tok")
+        await reactive.flush()
+
+        status = await submit_and_wait(chat, session, "hi")
+        assert status == "success"
+
+        assert not hasattr(mock, "conversation_id")
+        assert public_conversation_id(chat) is not None
+
+    run_async(main)
+
+
 def test_public_id_matches_the_stored_record():
     async def main() -> None:
         chat, mock, session = make_chat()

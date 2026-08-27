@@ -2,6 +2,8 @@
 
 ## New features and improvements
 
+* Conversations now have a stable, publicly accessible ID, available reactively via `history$conversation_id()` (`NULL` when history is disabled or the chat is still empty). The ID is stable across retries, restores, conversation switches, and `set_client()` calls, and becomes the saved conversation record's `id`. The ID is also handed to the chat client (when supported), which records it as the standard `gen_ai.conversation.id` attribute on its own OpenTelemetry spans, so telemetry consumers can group model work by conversation. (#307)
+
 * Added `page_chat()` for full-window chat pages with persistent chat
   navigation, responsive sidebars, optional page-specific sidebars, and
   drawers. Use it instead of
