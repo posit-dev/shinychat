@@ -617,7 +617,7 @@ FileConversationStore <- R6::R6Class(
               history_json(
                 list(
                   seq = seq,
-                  data = jsonlite::serializeJSON(turn_data)
+                  data = jsonlite::serializeJSON(turn_data, digits = 17)
                 )
               )
             )

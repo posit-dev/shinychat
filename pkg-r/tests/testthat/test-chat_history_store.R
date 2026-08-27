@@ -666,6 +666,20 @@ test_that("store fixture matrix: doubles round-trip", {
   expect_identical(store$get(part(), rec$id)$values$pi, case$value)
 })
 
+test_that("store fixture matrix: doubles in turns round-trip", {
+  case <- store_fixture_case("doubles_round_trip")
+  store <- FileConversationStore$new(dir = withr::local_tempdir())
+  rec <- store_test_record()
+  rec$nodes$n_0001$turns <- list(
+    list(role = "assistant", value = case$value)
+  )
+
+  store$put(part(), rec)
+
+  restored <- store$get(part(), rec$id)
+  expect_identical(restored$nodes$n_0001$turns[[1]]$value, case$value)
+})
+
 test_that("store fixture matrix: malformed jsonl lines warn visibly", {
   case <- store_fixture_case("malformed_jsonl_line")
   dir <- withr::local_tempdir()
