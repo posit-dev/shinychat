@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
 import { render, fireEvent } from "@testing-library/react"
 import { ToolCard } from "../../src/chat/ToolCard"
+import { ChatScrollContext } from "../../src/chat/context"
 
 describe("ToolCard", () => {
   afterEach(() => {
@@ -80,6 +81,38 @@ describe("ToolCard", () => {
         ([event]) => event instanceof Event && event.type === "resize",
       ),
     ).toBe(true)
+  })
+
+  it("disengages the outer chat's stick-to-bottom before expanding, so opening a card doesn't yank the scroll position away", () => {
+    // The outer chat message list auto-scrolls to the bottom on any resize
+    // while it's pinned there. Toggling a tool card resizes the message list
+    // too, so without disengaging first, expanding an older card would drag
+    // the viewport down past the very thing the user just clicked to see.
+    const stopScroll = vi.fn()
+    const { container } = render(
+      <ChatScrollContext.Provider value={stopScroll}>
+        <ToolCard toolName="my_tool" initialExpanded={false}>
+          <div>body content</div>
+        </ToolCard>
+      </ChatScrollContext.Provider>,
+    )
+    const header = container.querySelector(".card-header") as HTMLElement
+    fireEvent.click(header)
+    expect(stopScroll).toHaveBeenCalled()
+  })
+
+  it("disengages the outer chat's stick-to-bottom before collapsing too", () => {
+    const stopScroll = vi.fn()
+    const { container } = render(
+      <ChatScrollContext.Provider value={stopScroll}>
+        <ToolCard toolName="my_tool" initialExpanded={true}>
+          <div>body content</div>
+        </ToolCard>
+      </ChatScrollContext.Provider>,
+    )
+    const header = container.querySelector(".card-header") as HTMLElement
+    fireEvent.click(header)
+    expect(stopScroll).toHaveBeenCalled()
   })
 
   it("renders toolTitle as HTML (developer-controlled content)", () => {

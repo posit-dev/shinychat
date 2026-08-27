@@ -17,7 +17,9 @@ def test_auto_chat_cancel_uses_stream_controller(
     chat.set_user_input("cancel this response")
     chat.send_user_input(method="enter")
 
-    cancel_button = chat.loc_input_container.locator(".shiny-chat-btn-cancel")
+    cancel_button = chat.loc_input_container.locator(
+        '.shiny-chat-btn-send[data-state="cancel"]'
+    )
     expect(cancel_button).to_be_visible(timeout=30_000)
     cancel_button.click()
 

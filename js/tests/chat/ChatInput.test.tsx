@@ -104,6 +104,7 @@ function renderChatInput(
     cancelRequested: boolean
     isStreaming: boolean
     onCancel: () => void
+    iconSend: string
     slashCommandId: string
     slashCommands: Array<{
       name: string
@@ -151,6 +152,7 @@ function renderChatInput(
           cancelRequested={props.cancelRequested}
           isStreaming={props.isStreaming}
           onCancel={props.onCancel}
+          iconSend={props.iconSend}
           slashCommandId={props.slashCommandId}
           slashCommands={props.slashCommands}
         />
@@ -602,6 +604,119 @@ describe("ChatInput", () => {
       expect(
         screen.queryByRole("button", { name: "Stop generating" }),
       ).toBeNull()
+    })
+  })
+
+  describe("send button state machine", () => {
+    // The send button is a single element whose data-state attribute drives
+    // both its appearance (CSS) and its behavior (onClick/disabled). These
+    // tests pin the prop combination -> state mapping, including the
+    // ambiguous isStreaming && !enableCancel case, which resolves to
+    // "pending".
+    function sendButton(): HTMLButtonElement {
+      return document.querySelector(".shiny-chat-btn-send") as HTMLButtonElement
+    }
+
+    it("is a single button element across all states", () => {
+      renderChatInput({ enableCancel: true, isStreaming: true })
+      expect(document.querySelectorAll(".shiny-chat-btn-send")).toHaveLength(1)
+    })
+
+    it("empty: no content, not disabled", () => {
+      renderChatInput()
+      const button = sendButton()
+      expect(button.dataset.state).toBe("empty")
+      expect(button.disabled).toBe(true)
+      expect(button.getAttribute("aria-label")).toBe("Send message")
+    })
+
+    it("ready: content present, not disabled", () => {
+      const { ref } = renderChatInput()
+      act(() => {
+        ref.current?.setInputValue("hello")
+      })
+      const button = sendButton()
+      expect(button.dataset.state).toBe("ready")
+      expect(button.disabled).toBe(false)
+      expect(button.getAttribute("aria-label")).toBe("Send message")
+    })
+
+    it("pending: disabled without streaming", () => {
+      renderChatInput({ disabled: true })
+      const button = sendButton()
+      expect(button.dataset.state).toBe("pending")
+      expect(button.disabled).toBe(false)
+      expect(button.getAttribute("aria-label")).toBe("Loading")
+    })
+
+    it("pending: streaming without cancel enabled (ambiguous case)", () => {
+      // ChatApp disables the input while streaming, so this combination is
+      // how "streaming but not cancellable" actually arrives.
+      renderChatInput({
+        disabled: true,
+        isStreaming: true,
+        enableCancel: false,
+      })
+      expect(sendButton().dataset.state).toBe("pending")
+    })
+
+    it("cancel: streaming with cancel enabled", () => {
+      renderChatInput({ isStreaming: true, enableCancel: true })
+      const button = sendButton()
+      expect(button.dataset.state).toBe("cancel")
+      expect(button.disabled).toBe(false)
+      expect(button.getAttribute("aria-label")).toBe("Stop generating")
+    })
+
+    it("cancelling: cancelRequested wins over every other state", () => {
+      renderChatInput({
+        isStreaming: true,
+        enableCancel: true,
+        cancelRequested: true,
+      })
+      const button = sendButton()
+      expect(button.dataset.state).toBe("cancelling")
+      expect(button.getAttribute("aria-label")).toBe("Loading")
+    })
+
+    it("inert states are aria-disabled and removed from the tab order", () => {
+      renderChatInput({ disabled: true })
+      const button = sendButton()
+      expect(button.getAttribute("aria-disabled")).toBe("true")
+      expect(button.tabIndex).toBe(-1)
+    })
+
+    it("interactive states stay in the tab order without aria-disabled", () => {
+      renderChatInput({ isStreaming: true, enableCancel: true })
+      const button = sendButton()
+      expect(button.getAttribute("aria-disabled")).toBeNull()
+      expect(button.tabIndex).not.toBe(-1)
+    })
+
+    it("uses the default arrow icon when iconSend is not provided", () => {
+      renderChatInput()
+      expect(sendButton().querySelector("svg.bi-arrow-up-short")).toBeTruthy()
+    })
+
+    it("renders a custom iconSend in the ready/empty states only", () => {
+      const iconSend = '<svg class="custom-send"></svg>'
+      const { ref } = renderChatInput({ iconSend })
+      expect(sendButton().querySelector("svg.custom-send")).toBeTruthy()
+
+      act(() => {
+        ref.current?.setInputValue("hello")
+      })
+      expect(sendButton().querySelector("svg.custom-send")).toBeTruthy()
+    })
+
+    it("ignores iconSend in the cancel state", () => {
+      renderChatInput({
+        iconSend: '<svg class="custom-send"></svg>',
+        isStreaming: true,
+        enableCancel: true,
+      })
+      expect(sendButton().querySelector("svg.custom-send")).toBeNull()
+      expect(sendButton().querySelector("svg.bi-stop-fill")).toBeTruthy()
     })
   })
 

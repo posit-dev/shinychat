@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest"
 import { render, fireEvent, act } from "@testing-library/react"
 import { ToolGroup } from "../../src/chat/ToolGroup"
 import type { ToolCallGroup, ToolCallItem } from "../../src/chat/state"
+import { ChatScrollContext } from "../../src/chat/context"
 
 function call(
   partial: Partial<ToolCallItem> & { requestId: string },
@@ -1176,6 +1177,51 @@ describe("ToolGroup", () => {
     // A re-render (streaming re-routes on every chunk) must not fight the user.
     rerender(<ToolGroup group={{ ...expandedGroup }} />)
     expect(groupRow.getAttribute("aria-expanded")).toBe("false")
+  })
+
+  it("disengages the outer chat's stick-to-bottom before toggling a Tier-1 group row", () => {
+    // Expanding/collapsing a group row resizes the chat message list; without
+    // disengaging the outer stick-to-bottom first, a pinned-to-bottom chat
+    // would auto-scroll away from the row the user just clicked.
+    const stopScroll = vi.fn()
+    const { container } = render(
+      <ChatScrollContext.Provider value={stopScroll}>
+        <ToolGroup
+          group={group({
+            title: "Ran R code",
+            calls: [call({ requestId: "a", value: "42", valueType: "text" })],
+          })}
+        />
+      </ChatScrollContext.Provider>,
+    )
+    fireEvent.click(
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
+    )
+    expect(stopScroll).toHaveBeenCalled()
+  })
+
+  it("disengages the outer chat's stick-to-bottom before toggling a Tier-2 call row", () => {
+    const stopScroll = vi.fn()
+    const { container } = render(
+      <ChatScrollContext.Provider value={stopScroll}>
+        <ToolGroup
+          group={group({
+            title: "Searched",
+            calls: [
+              call({ requestId: "a", label: "glucose" }),
+              call({ requestId: "b", label: "mannose" }),
+            ],
+          })}
+        />
+      </ChatScrollContext.Provider>,
+    )
+    fireEvent.click(
+      container.querySelector(".shiny-chat-tool-group__row") as Element,
+    )
+    stopScroll.mockClear()
+    const rows = container.querySelectorAll(".shiny-chat-tool-call-row")
+    fireEvent.click(rows[0]!.querySelector("button") as Element)
+    expect(stopScroll).toHaveBeenCalled()
   })
 
   it("gives every row and leaf card a document-unique aria-controls target", () => {

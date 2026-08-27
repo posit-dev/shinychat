@@ -1008,19 +1008,19 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     case "remove_loading": {
       const messages = removeLoadingMessage(state.messages)
       if (state.streamingMessage) {
-        const finalized = finalizeMessage(
-          state.streamingMessage,
-          state.toolGrouping,
-        )
-        const withCancel = state.cancelRequested
-          ? { ...finalized, cancelled: true }
-          : finalized
-        messages.push(withCancel)
+        // The server may send remove_loading while a stream is still in
+        // flight; an open stream means a response is still arriving, so
+        // only clear the loading placeholder. Streams own their
+        // finalization: chunk_end moves the message into the list and
+        // re-enables the composer, and both server packages guarantee a
+        // chunk_end for every opened stream, even on error. Finalizing
+        // here would truncate the response — chunks are dropped once
+        // streamingMessage is cleared.
+        return { ...state, messages }
       }
       return {
         ...state,
         messages,
-        streamingMessage: null,
         inputDisabled: false,
         cancelRequested: false,
       }

@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changes
 
+* `chat_ui()` / `Chat.ui()` and `page_chat()` no longer show an assistant icon by default. Pass `icon_assistant=True` to restore the built-in robot icon, or supply your own icon as before. (#345)
+
 * The CSS classes used by the external-link dialog, thinking display, and tool-result images/PDFs now use the `.shiny-chat-*` prefix instead of `.shinychat-*`. The thinking display's custom properties and animation names have likewise changed from `--shinychat-thinking-*` / `shinychat-thinking-*` to `--shiny-chat-thinking-*` / `shiny-chat-thinking-*`. Update any custom CSS that targets these identifiers. (#285, #286)
 
 * The record of displayed messages is now sourced from the browser rather than a server-side accumulator. As a consequence, `chat.messages()` is *eventually* consistent: it returns an empty tuple until the client's first report, and a message passed to `chat.append_message()` does not appear there until the browser has rendered it and reported back. Read it reactively rather than expecting a synchronous update immediately after appending. (#272)
@@ -40,6 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Attachment data URLs must now use the declared MIME type and a valid base64 header. PDF previews are also restricted to PDF content and rendered in a sandboxed iframe, preventing mismatched attachment data from being interpreted as active HTML. (#325)
 
 * Fixed `MarkdownStream` permanently stopping following new content after the user scrolled back to the bottom. Pinning was decided only from `scroll` events, which browsers dispatch asynchronously; if a chunk grew the container first, the user's at-bottom position no longer read as at-bottom and auto-scroll silently disengaged for good. (#282)
+
+* Single tildes no longer trigger strikethrough in markdown. Text like `(~$1.50)` and `~/Documents` now renders as literal text; only `~~text~~` produces strikethrough. (#349, #353)
 
 ## [0.6.1] - 2026-08-14
 

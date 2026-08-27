@@ -662,6 +662,56 @@ test_that("bookmark mode pre-switch emits reload navigation", {
   expect_true(nav[[1]]$message$action$reload)
 })
 
+test_that("bookmark mode on_response_saved works from a module session", {
+  # Shiny's module session proxy forbids onBookmarked():
+  #   stop("onBookmarked() can't be used in a module.")
+  # (shiny/R/shiny.R, in makeScope()). MockShinySession$makeScope() doesn't
+  # emulate that restriction, so build a faithful proxy by hand.
+  root <- shiny::MockShinySession$new()
+
+  registered_on <- NULL
+  # MockShinySession$onBookmarked() is a noop returning NULL; give it a
+  # realistic cancel-function return value and record which session the
+  # callback was registered on.
+  root$onBookmarked <- function(fun) {
+    registered_on <<- "root"
+    function() invisible(NULL)
+  }
+
+  mod_session <- shiny:::createSessionProxy(
+    root,
+    ns = shiny::NS("mod"),
+    onBookmarked = function(fun) {
+      stop("onBookmarked() can't be used in a module.")
+    }
+  )
+
+  client <- mock_chat_client()
+  store <- InMemoryConversationStore$new()
+
+  old_bookmark_store <- shiny::getShinyOption("bookmarkStore", NULL)
+  shiny::shinyOptions(bookmarkStore = "server")
+  withr::defer(shiny::shinyOptions(bookmarkStore = old_bookmark_store))
+
+  chat_enable_history(
+    "chat",
+    client,
+    options = history_options(
+      store = store,
+      scope = "test-user",
+      restore_mode = "bookmark",
+      title = NULL
+    ),
+    session = mod_session
+  )
+
+  ctrl <- get_session_chat_bookmark_info(mod_session, "chat.history-controller")
+  record <- new_conversation_record("conv1")
+
+  expect_no_error(ctrl$on_response_saved(record))
+  expect_identical(registered_on, "root")
+})
+
 test_that("delete_bookmark_state removes Shiny appDir server bookmark state", {
   old_app_dir <- shiny::getShinyOption("appDir", NULL)
   old_bookmark_save_dir <- shiny::getShinyOption("bookmarkSaveDir", NULL)

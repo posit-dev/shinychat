@@ -498,7 +498,7 @@ def test_ninety_percent_drawer_is_bounded_before_reveal(
 
     page.get_by_role("button", name="Show drawer").click()
     expect(layout).to_have_attribute("data-drawer-open", "")
-    expect(layout).to_have_css("--shiny-chat-drawer-width", "1056px")
+    expect(layout).to_have_css("--_drawer-width", "1056px")
     page.wait_for_timeout(70)
 
     grid_tracks = layout.evaluate(
@@ -609,13 +609,13 @@ def test_relative_drawer_width_refreshes_without_layout_resize(
 
     page.get_by_role("button", name="Show drawer").click()
     expect(panel).to_be_visible(timeout=TIMEOUT)
-    expect(layout).to_have_css("--shiny-chat-drawer-width", "512px")
+    expect(layout).to_have_css("--_drawer-width", "512px")
     page.wait_for_timeout(220)
     initial_layout_box = layout.bounding_box()
     assert initial_layout_box is not None
 
     page.evaluate("document.documentElement.style.fontSize = '20px'")
-    expect(layout).to_have_css("--shiny-chat-drawer-width", "640px")
+    expect(layout).to_have_css("--_drawer-width", "640px")
     refreshed_layout_box = layout.bounding_box()
     assert refreshed_layout_box is not None
     assert refreshed_layout_box["width"] == pytest.approx(
@@ -702,7 +702,7 @@ def test_drawer_motion_retains_close_panel_and_suppresses_resize(
     layout = chat.loc.locator(".shiny-chat-layout")
     panel = chat.loc.locator(".shiny-chat-drawer")
 
-    assert "--shiny-chat-drawer-layout-width" in layout.evaluate(
+    assert "--_drawer-layout-width" in layout.evaluate(
         "(element) => getComputedStyle(element).transitionProperty"
     )
     page.locator("#show_drawer").click()
@@ -743,7 +743,7 @@ def test_drawer_layout_track_interpolates_during_desktop_reveal(
           );
           const target = Number.parseFloat(
             getComputedStyle(element).getPropertyValue(
-              "--shiny-chat-drawer-width"
+              "--_drawer-width"
             )
           );
           return track > 0 && track < target;

@@ -12,7 +12,7 @@ import type {
   SlashCommandDef,
   SlashCommandEventDetail,
 } from "../transport/types"
-import { arrowUpCircleFill, spinnerArc, stopCircleFill } from "../utils/icons"
+import { arrowUpShort, spinnerArc, stopFill } from "../utils/icons"
 import { TiptapInput, type TiptapInputHandle } from "./TiptapInput"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 import { type AttachmentPayload } from "./attachments"
@@ -37,6 +37,7 @@ export interface ChatInputProps {
   slashCommands?: SlashCommandDef[]
   slashCommandId?: string
   submitKey?: SubmitKey
+  iconSend?: string
 }
 
 export interface ChatInputHandle {
@@ -88,6 +89,7 @@ export const ChatInput = memo(
       slashCommands = [],
       slashCommandId = "",
       submitKey = "enter",
+      iconSend,
     },
     ref,
   ) {
@@ -266,11 +268,60 @@ export const ChatInput = memo(
       ],
     )
 
-    const sendButtonDisabled =
-      disabled || (!hasText && attachments.length === 0)
-    const isPending = disabled && !isStreaming
-    const showCancelButton = !!enableCancel && !!isStreaming && !cancelRequested
-    const showSpinner = isPending || !!cancelRequested
+    type SendButtonState =
+      | "empty"
+      | "ready"
+      | "pending"
+      | "cancel"
+      | "cancelling"
+
+    const hasContent = hasText || attachments.length > 0
+    const sendButtonState: SendButtonState = cancelRequested
+      ? "cancelling"
+      : !!enableCancel && !!isStreaming
+        ? "cancel"
+        : disabled
+          ? "pending" // also covers isStreaming && !enableCancel, a pre-existing ambiguous case
+          : hasContent
+            ? "ready"
+            : "empty"
+
+    const sendButtonIcon =
+      sendButtonState === "cancel"
+        ? stopFill
+        : sendButtonState === "pending" || sendButtonState === "cancelling"
+          ? spinnerArc
+          : (iconSend ?? arrowUpShort)
+
+    const sendButtonLabel =
+      sendButtonState === "cancel"
+        ? "Stop generating"
+        : sendButtonState === "pending" || sendButtonState === "cancelling"
+          ? "Loading"
+          : "Send message"
+
+    // Only "empty" gets the native disabled attribute (matches prior
+    // behavior); "pending"/"cancelling" are non-interactive via CSS
+    // (pointer-events: none) only, so they don't trigger the :disabled
+    // color rule and keep their state-driven color instead of turning gray.
+    // pointer-events doesn't cover keyboard/screen-reader users, so those
+    // states also get aria-disabled and are removed from the tab order.
+    const sendButtonDisabled = sendButtonState === "empty"
+    const sendButtonInert =
+      sendButtonState === "pending" || sendButtonState === "cancelling"
+
+    const handleSendClick =
+      sendButtonState === "cancel"
+        ? onCancel
+        : sendButtonState === "ready"
+          ? () => {
+              const content = tiptapRef.current?.serializeEditor() ?? ""
+              if (submitValue(content)) {
+                tiptapRef.current?.setInputValue("")
+                tiptapRef.current?.focus()
+              }
+            }
+          : undefined
 
     return (
       // The whole input region is a drop zone, so files can be dropped onto
@@ -300,39 +351,18 @@ export const ChatInput = memo(
           submitKey={submitKey}
           canSubmitEmpty={canSubmitEmpty}
         />
-        {showCancelButton ? (
-          <button
-            type="button"
-            className="shiny-chat-btn-send shiny-chat-btn-cancel"
-            title="Stop generating"
-            aria-label="Stop generating"
-            onClick={onCancel}
-            dangerouslySetInnerHTML={{ __html: stopCircleFill }}
-          />
-        ) : showSpinner ? (
-          <button
-            type="button"
-            className={`shiny-chat-btn-send shiny-chat-btn-spinner${cancelRequested ? " shiny-chat-btn-cancel" : ""}`}
-            aria-label="Loading"
-            dangerouslySetInnerHTML={{ __html: spinnerArc }}
-          />
-        ) : (
-          <button
-            type="button"
-            className="shiny-chat-btn-send"
-            title="Send message"
-            aria-label="Send message"
-            disabled={sendButtonDisabled}
-            onClick={() => {
-              const content = tiptapRef.current?.serializeEditor() ?? ""
-              if (submitValue(content)) {
-                tiptapRef.current?.setInputValue("")
-                tiptapRef.current?.focus()
-              }
-            }}
-            dangerouslySetInnerHTML={{ __html: arrowUpCircleFill }}
-          />
-        )}
+        <button
+          type="button"
+          className="shiny-chat-btn-send"
+          data-state={sendButtonState}
+          title={sendButtonLabel}
+          aria-label={sendButtonLabel}
+          disabled={sendButtonDisabled}
+          aria-disabled={sendButtonInert || undefined}
+          tabIndex={sendButtonInert ? -1 : undefined}
+          onClick={handleSendClick}
+          dangerouslySetInnerHTML={{ __html: sendButtonIcon }}
+        />
       </div>
     )
   }),

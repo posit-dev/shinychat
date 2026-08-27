@@ -88,13 +88,35 @@ class ConversationStore(ABC):
 @dataclasses.dataclass
 class _WriteState:
     turn_seq_map: dict[str, list[int]] = dataclasses.field(default_factory=dict)
-    # node_id -> count of UI messages last persisted for that node. A node's
-    # `ui` is append-only, so a change in length is a sufficient dirty-check;
-    # on change we re-append the node's full current UI. get() reads
-    # ui.jsonl last-write-wins, so the newest (longest) line for a node id
-    # is always what's returned.
-    ui_node_len: dict[str, int] = dataclasses.field(default_factory=dict)
+    # node_id -> digest of the UI messages last persisted for that node.
+    # ui.jsonl is last-write-wins, so any content change must re-append the
+    # complete current UI, even if its message count did not change.
+    ui_node_digest: dict[str, str] = dataclasses.field(default_factory=dict)
     next_turn_seq: int = 0
+
+
+def _json_digest(value: object) -> str:
+    data = json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(data.encode("utf-8")).hexdigest()
+
+
+def _append_jsonl(path: Path, lines: list[str]) -> None:
+    with open(path, "a", encoding="utf-8") as f:
+        if lines:
+            f.write("\n".join(lines) + "\n")
+
+
+def _rollback_jsonl(path: Path, *, existed: bool, size: int) -> None:
+    if existed:
+        with open(path, "r+b") as f:
+            f.truncate(size)
+    else:
+        path.unlink(missing_ok=True)
 
 
 class FileConversationStore(ConversationStore):
@@ -106,6 +128,11 @@ class FileConversationStore(ConversationStore):
     ``record.json`` holds tree structure and metadata (small, rewritten
     atomically on every save). ``turns.jsonl`` and ``ui.jsonl`` are
     append-only — new turns and UI entries are appended, never rewritten.
+
+    Temporary records and journal rollback protect against ordinary I/O
+    failures, but this store does not fsync files or directories. It also
+    does not coordinate concurrent access across processes; callers must
+    serialize reads and writes for each conversation.
 
     On ``get()``, the three files are read and merged into a full
     ``ConversationRecord`` with inline turns and UI on each node. Callers
@@ -147,14 +174,33 @@ class FileConversationStore(ConversationStore):
                     ws.turn_seq_map[nid] = turn_ids
         ui_file = conv_dir / "ui.jsonl"
         if ui_file.is_file():
-            for line in (
-                ui_file.read_text(encoding="utf-8").strip().splitlines()
+            for line_number, line in enumerate(
+                ui_file.read_text(encoding="utf-8").splitlines(), start=1
             ):
+                if not line:
+                    continue
                 try:
                     entry = json.loads(line)
-                    ws.ui_node_len[entry["node_id"]] = len(entry["data"])
-                except (json.JSONDecodeError, KeyError, TypeError):
-                    continue
+                    if (
+                        not isinstance(entry, dict)
+                        or not isinstance(entry.get("node_id"), str)
+                        or not isinstance(entry.get("data"), list)
+                    ):
+                        raise ValueError("expected node_id and data")
+                    ws.ui_node_digest[entry["node_id"]] = _json_digest(
+                        entry["data"]
+                    )
+                except (
+                    json.JSONDecodeError,
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                ):
+                    logger.warning(
+                        "Skipping malformed JSONL line %s:%d",
+                        ui_file,
+                        line_number,
+                    )
         self._write_state[key] = ws
         return ws
 
@@ -225,26 +271,60 @@ class FileConversationStore(ConversationStore):
         turns_map: dict[int, dict[str, Any]] = {}
         turns_file = conv_dir / "turns.jsonl"
         if turns_file.is_file():
-            for line in (
-                turns_file.read_text(encoding="utf-8").strip().splitlines()
+            for line_number, line in enumerate(
+                turns_file.read_text(encoding="utf-8").splitlines(), start=1
             ):
+                if not line:
+                    continue
                 try:
                     entry = json.loads(line)
+                    if (
+                        not isinstance(entry, dict)
+                        or type(entry.get("seq")) is not int
+                        or not isinstance(entry.get("data"), dict)
+                    ):
+                        raise ValueError("expected seq and data")
                     turns_map[entry["seq"]] = entry["data"]
-                except (json.JSONDecodeError, KeyError):
-                    continue
+                except (
+                    json.JSONDecodeError,
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                ):
+                    logger.warning(
+                        "Skipping malformed JSONL line %s:%d",
+                        turns_file,
+                        line_number,
+                    )
 
         ui_map: dict[str, list[dict[str, Any]]] = {}
         ui_file = conv_dir / "ui.jsonl"
         if ui_file.is_file():
-            for line in (
-                ui_file.read_text(encoding="utf-8").strip().splitlines()
+            for line_number, line in enumerate(
+                ui_file.read_text(encoding="utf-8").splitlines(), start=1
             ):
+                if not line:
+                    continue
                 try:
                     entry = json.loads(line)
+                    if (
+                        not isinstance(entry, dict)
+                        or not isinstance(entry.get("node_id"), str)
+                        or not isinstance(entry.get("data"), list)
+                    ):
+                        raise ValueError("expected node_id and data")
                     ui_map[entry["node_id"]] = entry["data"]
-                except (json.JSONDecodeError, KeyError):
-                    continue
+                except (
+                    json.JSONDecodeError,
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                ):
+                    logger.warning(
+                        "Skipping malformed JSONL line %s:%d",
+                        ui_file,
+                        line_number,
+                    )
 
         nodes: dict[str, ConversationNode] = {}
         for nid, node_data in raw.get("nodes", {}).items():
@@ -291,18 +371,27 @@ class FileConversationStore(ConversationStore):
 
         conv_dir.mkdir(parents=True, exist_ok=True)
 
+        ws_key = self._ws_key(partition, record.id)
+        had_write_state = ws_key in self._write_state
         ws = self._get_or_init_write_state(partition, record.id, conv_dir)
+        staged_ws = dataclasses.replace(
+            ws,
+            turn_seq_map={
+                nid: list(turn_ids) for nid, turn_ids in ws.turn_seq_map.items()
+            },
+            ui_node_digest=dict(ws.ui_node_digest),
+        )
 
         new_turns_lines: list[str] = []
         new_ui_lines: list[str] = []
         record_nodes: dict[str, dict[str, Any]] = {}
 
         for nid, node in record.nodes.items():
-            if nid not in ws.turn_seq_map:
+            if nid not in staged_ws.turn_seq_map:
                 turn_ids: list[int] = []
                 for turn_data in node.turns:
-                    seq = ws.next_turn_seq
-                    ws.next_turn_seq += 1
+                    seq = staged_ws.next_turn_seq
+                    staged_ws.next_turn_seq += 1
                     turn_ids.append(seq)
                     new_turns_lines.append(
                         json.dumps(
@@ -310,35 +399,23 @@ class FileConversationStore(ConversationStore):
                             ensure_ascii=False,
                         )
                     )
-                ws.turn_seq_map[nid] = turn_ids
-            if node.ui is not None and len(node.ui) != ws.ui_node_len.get(nid):
-                new_ui_lines.append(
-                    json.dumps(
-                        {"node_id": nid, "data": node.ui},
-                        ensure_ascii=False,
+                staged_ws.turn_seq_map[nid] = turn_ids
+            if node.ui is not None:
+                ui_digest = _json_digest(node.ui)
+                if ui_digest != staged_ws.ui_node_digest.get(nid):
+                    new_ui_lines.append(
+                        json.dumps(
+                            {"node_id": nid, "data": node.ui},
+                            ensure_ascii=False,
+                        )
                     )
-                )
-                ws.ui_node_len[nid] = len(node.ui)
+                    staged_ws.ui_node_digest[nid] = ui_digest
             record_nodes[nid] = {
                 "parent": node.parent,
                 "children": node.children,
-                "turn_ids": ws.turn_seq_map.get(nid, []),
+                "turn_ids": staged_ws.turn_seq_map.get(nid, []),
                 "selected_child": node.selected_child,
             }
-
-        turns_file = conv_dir / "turns.jsonl"
-        if new_turns_lines:
-            with open(turns_file, "a", encoding="utf-8") as f:
-                f.write("\n".join(new_turns_lines) + "\n")
-        elif not turns_file.exists():
-            turns_file.touch()
-
-        ui_file = conv_dir / "ui.jsonl"
-        if new_ui_lines:
-            with open(ui_file, "a", encoding="utf-8") as f:
-                f.write("\n".join(new_ui_lines) + "\n")
-        elif not ui_file.exists():
-            ui_file.touch()
 
         record_data = {
             "schema_version": record.schema_version,
@@ -355,12 +432,36 @@ class FileConversationStore(ConversationStore):
             "values": record.values,
             "bookmark_state_id": record.bookmark_state_id,
         }
+        record_json = json.dumps(record_data, ensure_ascii=False)
+
+        turns_file = conv_dir / "turns.jsonl"
+        ui_file = conv_dir / "ui.jsonl"
+        jsonl_snapshots = [
+            (
+                path,
+                path.exists(),
+                path.stat().st_size if path.exists() else 0,
+            )
+            for path in (turns_file, ui_file)
+        ]
         tmp = conv_dir / ".record.json.tmp"
-        tmp.write_text(
-            json.dumps(record_data, ensure_ascii=False),
-            encoding="utf-8",
-        )
-        os.replace(tmp, conv_dir / "record.json")
+        try:
+            # Serialize and write the replacement record before appending
+            # journal entries. A later append or rename failure rolls those
+            # entries back to these snapshots.
+            tmp.write_text(record_json, encoding="utf-8")
+            _append_jsonl(turns_file, new_turns_lines)
+            _append_jsonl(ui_file, new_ui_lines)
+            os.replace(tmp, record_file)
+        except Exception:
+            for path, existed, size in reversed(jsonl_snapshots):
+                _rollback_jsonl(path, existed=existed, size=size)
+            tmp.unlink(missing_ok=True)
+            if not had_write_state:
+                self._write_state.pop(ws_key, None)
+            raise
+
+        self._write_state[ws_key] = staged_ws
 
         if partition in self._meta_cache:
             size_bytes = sum(

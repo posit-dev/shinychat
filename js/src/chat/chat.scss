@@ -7,8 +7,8 @@
 @use "drawer";
 
 shiny-chat-container {
-  --shiny-chat-border: var(--bs-border-width, 1px) solid var(--bs-border-color, #e9ecef);
-  --shiny-chat-user-message-bg: RGBA(var(--bs-primary-rgb, 0, 123, 194), 0.06);
+  --_border: var(--shiny-chat-border, var(--bs-border-width, 1px) solid var(--bs-border-color, #e9ecef));
+  --_user-message-bg: var(--shiny-chat-user-message-bg, RGBA(var(--bs-primary-rgb, 0, 123, 194), 0.06));
   // Content padding for the centered .shiny-chat-wrapper column and the input's
   // sticky bottom gap. Defaults to 0.25rem. When a
   // fill-enabled chat is the sole child of a padded bslib fillable container,
@@ -18,7 +18,7 @@ shiny-chat-container {
   --_chat-container-padding: var(--shiny-chat-fill-padding, 0.25rem);
   // Single source of truth for the height of every attachment card in a sent
   // message (image thumbnail, PDF chip, text preview), so the row is uniform.
-  --shiny-chat-attachment-size: 4.5rem;
+  --_attachment-size: var(--shiny-chat-attachment-size, 4.5rem);
 
   // Opacity that quiets the tool-activity and thinking rows so a whole run reads
   // as one subordinate unit rather than competing with the assistant's prose.
@@ -158,7 +158,7 @@ shiny-chat-container {
   min-width: 0;
   position: sticky;
   bottom: calc(-1 * var(--_chat-composer-input-padding-bottom));
-  translate: 0 var(--shiny-chat-composer-offset, 0px);
+  translate: 0 var(--_composer-offset, 0px);
 }
 
 .shiny-chat-layout:has(> .shiny-chat-footer) .shiny-chat-composer {
@@ -286,13 +286,13 @@ shiny-chat-container:not([fill]) {
 
 // Content wrapper — useStickToBottom attaches contentRef here
 .shiny-chat-messages-content {
-  --shiny-chat-messages-padding-bottom: 4rem;
+  --_messages-padding-bottom: var(--shiny-chat-messages-padding-bottom, 4rem);
 
   display: flex;
   flex-direction: column;
   gap: 2rem;
   // Extra breathing room so the last message isn't flush against the input
-  padding-bottom: var(--shiny-chat-messages-padding-bottom);
+  padding-bottom: var(--_messages-padding-bottom);
 }
 
 // React renders messages as <div class="shiny-chat-message"> (not custom elements),
@@ -306,7 +306,7 @@ shiny-chat-container:not([fill]) {
   }
   .message-icon {
     border-radius: 50%;
-    border: var(--shiny-chat-border);
+    border: var(--_border);
     height: 2rem;
     width: 2rem;
     display: grid;
@@ -344,6 +344,15 @@ shiny-chat-container:not([fill]) {
   .shiny-chat-message-content {
     align-self: center;
     padding-right: 1px;
+    // Positioning context for the pending indicator overlay below, so it can
+    // sit exactly where the first line of content will land.
+    position: relative;
+
+    // Reserve room for the overlaid indicator while there's no real content
+    // yet to give the row height itself (see .shiny-chat-pending-indicator).
+    &[data-pending] {
+      min-height: 1.5em;
+    }
   }
 
   /* When the icon is removed (icon_assistant=False / icon=False), collapse the
@@ -354,7 +363,82 @@ shiny-chat-container:not([fill]) {
   }
 }
 
-.shiny-chat-message-content > hr:first-child {
+// Inline stand-in for the icon-slot dots_fade animation when the assistant
+// icon is disabled. The leading dot lands at the same inset used by the
+// thinking/tool rows' leading glyph (--_row-pad, see .shiny-chat-thinking in
+// this file) so the "something is happening" marker doesn't jump sideways if
+// a thinking block appears next.
+//
+// Positioned absolutely over the content's first line (not in normal flow)
+// so it never reserves its own layout space: the first content lands in the
+// same spot instead of appearing below the dots and jumping up when they're
+// removed. `.shiny-chat-message-content` is the positioning context.
+.shiny-chat-pending-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 1.5em;
+  padding-left: 0.4rem;
+  opacity: 0;
+  pointer-events: none;
+  animation: shiny-chat-pending-indicator-appear 0.2s ease forwards;
+
+  > svg {
+    width: 1.35em;
+    height: auto;
+  }
+
+  &[data-exiting] {
+    animation: shiny-chat-pending-indicator-exit 0.2s ease forwards;
+  }
+}
+
+@keyframes shiny-chat-pending-indicator-appear {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shiny-chat-pending-indicator-exit {
+  to {
+    opacity: 0;
+  }
+}
+
+// Crossfades the first content in as the pending indicator above fades out
+// (see PENDING_INDICATOR_FADE_MS in ChatMessage.tsx). Scoped to this wrapper
+// rather than .shiny-chat-message-content itself so the fade-in doesn't also
+// multiply against the indicator's own (independent) fade-out opacity.
+.shiny-chat-message-body[data-entering] {
+  animation: shiny-chat-content-enter 0.2s ease;
+}
+
+@keyframes shiny-chat-content-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shiny-chat-pending-indicator {
+    animation: shiny-chat-pending-indicator-appear 0s ease forwards;
+
+    &[data-exiting] {
+      animation: shiny-chat-pending-indicator-exit 0s ease forwards;
+    }
+  }
+
+  .shiny-chat-message-body[data-entering] {
+    animation: none;
+  }
+}
+
+.shiny-chat-message-content > .shiny-chat-message-body > hr:first-child {
   display: none;
 }
 
@@ -374,7 +458,7 @@ shiny-chat-container:not([fill]) {
   align-self: flex-end;
   padding: var(--shiny-chat-user-message-padding, 0.75rem 1rem);
   border-radius: var(--shiny-chat-user-message-border-radius, 10px);
-  background-color: var(--shiny-chat-user-message-bg);
+  background-color: var(--_user-message-bg);
   max-width: 100%;
   // User messages don't have an icon by default
   grid-template-columns: auto;
@@ -405,29 +489,84 @@ shiny-chat-container:not([fill]) {
 }
 
 .shiny-chat-btn-send {
+  // State-color architecture:
+  // --_btn-send-state-color (private) is set per-state by the
+  // [data-state] / :disabled selectors below, reading the per-state public
+  // override vars (--shiny-chat-btn-send-color-ready/empty/cancel) with
+  // Bootstrap fallbacks. Those per-state vars are NOT set here — only
+  // read — so inline styles on a container inherit to the button without
+  // competition. Ghost-style CSS on :root .shiny-chat-btn-send references
+  // --_btn-send-state-color for icon/border color.
+  --_btn-send-state-color:
+    var(--shiny-chat-btn-send-color-ready, var(--bs-primary, #007bc2));
+
+  // 18px default gives 3px padding within the 24px button. Setting
+  // --shiny-chat-input-icon-size unifies send and attach.
+  --_input-icon-size: var(--shiny-chat-input-icon-size, 18px);
+
   position: absolute;
-  bottom: 8px;
-  right: 8px;
-  background-color: transparent;
-  color: var(--bs-primary, #007bc2);
-  transition: color 0.25s ease-in-out;
-  border: none;
-  padding: 0;
+  bottom: var(--_input-control-inset, 8px);
+  right: var(--_input-control-inset, 8px);
+  width: var(--shiny-chat-btn-send-size, 24px);
+  height: var(--shiny-chat-btn-send-size, 24px);
+  background-color: var(--shiny-chat-btn-send-bg, var(--_btn-send-state-color));
+  color: var(--shiny-chat-btn-send-color, #fff);
+  border: var(--shiny-chat-btn-send-border, none);
+  transition:
+    color 0.25s ease-in-out,
+    background-color 0.25s ease-in-out;
   cursor: pointer;
-  line-height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 50%;
+  // icon_send accepts arbitrary author-supplied HTML (e.g. bsicons/faicons),
+  // which typically carries its own inline style="width/height/margin/..."
+  // meant for inline-text icon usage. Inline styles beat any selector in an
+  // external stylesheet regardless of specificity, so !important is the only
+  // way to make --shiny-chat-input-icon-size and true centering hold for
+  // icons we don't control the markup of.
+  svg {
+    display: block !important;
+    flex: none;
+    width: var(--_input-icon-size) !important;
+    height: var(--_input-icon-size) !important;
+    margin: 0 !important;
+  }
+  // The default hover/active backgrounds dim the state color via color-mix
+  // (approximating the previous brightness() filter) rather than a separate
+  // `filter` declaration, so an explicitly set --shiny-chat-btn-send-bg-hover
+  // /-active is used verbatim instead of being dimmed a second time.
+  &:hover:not(:disabled) {
+    color: var(--shiny-chat-btn-send-color-hover, var(--shiny-chat-btn-send-color, #fff));
+    background-color: var(
+      --shiny-chat-btn-send-bg-hover,
+      color-mix(in srgb, var(--_btn-send-state-color) 92%, black)
+    );
+    border-color: var(--shiny-chat-btn-send-border-color-hover, transparent);
+  }
+  &:active:not(:disabled) {
+    color: var(--shiny-chat-btn-send-color-active, var(--shiny-chat-btn-send-color, #fff));
+    background-color: var(
+      --shiny-chat-btn-send-bg-active,
+      color-mix(in srgb, var(--_btn-send-state-color) 85%, black)
+    );
+  }
   &:disabled {
     cursor: not-allowed;
-    color: var(--bs-gray-500, #8d959e);
+    --_btn-send-state-color:
+      var(--shiny-chat-btn-send-color-empty, var(--bs-gray-500, #8d959e));
   }
-  &.shiny-chat-btn-cancel {
-    color: var(--bs-danger, #dc3545);
+  &[data-state="cancel"],
+  &[data-state="cancelling"] {
+    --_btn-send-state-color:
+      var(--shiny-chat-btn-send-color-cancel, var(--bs-danger, #dc3545));
   }
-  &.shiny-chat-btn-spinner {
+  &[data-state="pending"],
+  &[data-state="cancelling"] {
     pointer-events: none;
     cursor: default;
     svg {
-      display: block;
       animation: shiny-chat-spin 0.75s linear infinite;
       transform-origin: center;
     }
@@ -435,9 +574,13 @@ shiny-chat-container:not([fill]) {
 }
 
 .shiny-chat-btn-attach {
+  // See .shiny-chat-btn-send above — same shared token, own default (22px)
+  // to match this button's current forced SVG size.
+  --_input-icon-size: var(--shiny-chat-input-icon-size, 22px);
+
   position: absolute;
-  bottom: 8px;
-  left: 8px;
+  bottom: var(--_input-control-inset, 8px);
+  left: var(--_input-control-inset, 8px);
   // The button renders before the editor (AttachmentTray comes first in the
   // DOM) and .ProseMirror is position: relative, so without a z-index the
   // editor's opaque form-control background paints over the button.
@@ -456,8 +599,8 @@ shiny-chat-container:not([fill]) {
   border-radius: 50%;
   svg {
     display: block;
-    width: 22px;
-    height: 22px;
+    width: var(--_input-icon-size);
+    height: var(--_input-icon-size);
   }
   &:hover:not(:disabled) {
     color: var(--bs-primary, #007bc2);
@@ -471,6 +614,9 @@ shiny-chat-container:not([fill]) {
 .shiny-chat-input {
   --_input-padding-top: 0;
   --_input-padding-bottom: var(--_chat-composer-input-padding-bottom);
+  // Shared base inset for the send/attach buttons; the tighter 6px used
+  // below is this value minus 2px, not an unrelated literal.
+  --_input-control-inset: 8px;
 
   margin-top: calc(-1 * var(--_input-padding-top));
   position: sticky;
@@ -490,7 +636,10 @@ shiny-chat-container:not([fill]) {
       pointer-events: none;
     }
   }
-  // Only reserve left space when the attach button is actually rendered
+  // Only reserve left space when the attach button is actually rendered.
+  // 36px ~= inset (8px) + button width (24px) + a 4px gap, but that gap isn't
+  // backed by any existing token, so this stays a literal rather than a
+  // derived value that would just relocate the magic number.
   &:has(.shiny-chat-btn-attach) {
     .tiptap {
       padding-left: 36px !important;
@@ -513,10 +662,14 @@ shiny-chat-container:not([fill]) {
     }
   }
   .shiny-chat-btn-send {
-    bottom: calc(6px + var(--_input-padding-bottom));
+    bottom: calc(
+      var(--_input-control-inset) - 2px + var(--_input-padding-bottom)
+    );
   }
   .shiny-chat-btn-attach {
-    bottom: calc(6px + var(--_input-padding-bottom));
+    bottom: calc(
+      var(--_input-control-inset) - 2px + var(--_input-padding-bottom)
+    );
   }
 }
 
@@ -530,11 +683,11 @@ shiny-chat-container:not([fill]) {
 }
 
 .shiny-chat-footer {
-  --shiny-chat-footer-font-size: 0.8125em;
-  --shiny-chat-footer-color: var(--bs-secondary-color, #6c757d);
+  --_footer-font-size: var(--shiny-chat-footer-font-size, 0.8125em);
+  --_footer-color: var(--shiny-chat-footer-color, var(--bs-secondary-color, #6c757d));
 
-  font-size: var(--shiny-chat-footer-font-size);
-  color: var(--shiny-chat-footer-color);
+  font-size: var(--_footer-font-size);
+  color: var(--_footer-color);
   text-align: center;
   // The footer is a bottom-pinned chat-area region rather than part of the
   // centered messages column. Retain the chat-area gutter around its content
@@ -563,7 +716,7 @@ shiny-chat-container:not([fill]) {
   align-items: center;
   justify-content: center;
   padding: 8px;
-  border: var(--shiny-chat-border);
+  border: var(--_border);
   border-radius: 50%;
   background-color: var(--bs-body-bg, #fff);
   color: var(--bs-body-color, #212529);
@@ -670,9 +823,9 @@ shiny-chat-container:not([fill]) {
   // 2.49:1 (light), below AA for what is real text; inherited body color at the
   // same opacity is 5.76:1. The thought *body* stays secondary — that prose is
   // genuinely subordinate, and it is not part of the row stack.
-  --shiny-chat-thinking-header-color: inherit;
-  --shiny-chat-thinking-border-color: var(--bs-border-color, #dee2e6);
-  --shiny-chat-thinking-content-color: var(--bs-secondary-color, #6c757d);
+  --_thinking-header-color: var(--shiny-chat-thinking-header-color, inherit);
+  --_thinking-border-color: var(--shiny-chat-thinking-border-color, var(--bs-border-color, #dee2e6));
+  --_thinking-content-color: var(--shiny-chat-thinking-content-color, var(--bs-secondary-color, #6c757d));
 
   // Row geometry shared with the condensed tool rows, which define the same
   // pseudo-private tokens (see `.shiny-chat-tool-group` in chat-tools.scss). A
@@ -696,7 +849,7 @@ shiny-chat-container:not([fill]) {
   background: none;
   border: none;
   text-align: left;
-  color: var(--shiny-chat-thinking-header-color);
+  color: var(--_thinking-header-color);
   cursor: pointer;
   font: inherit;
   opacity: var(--_activity-opacity);
@@ -768,7 +921,7 @@ shiny-chat-container:not([fill]) {
   // Land the left rule on the leading glyph, the same way a tool row's drill-in
   // rule does: past the row's inline padding, then half the glyph box.
   margin-left: calc(var(--_row-pad) + var(--_row-glyph-width) / 2 - 1px);
-  border-left: 2px solid var(--shiny-chat-thinking-border-color);
+  border-left: 2px solid var(--_thinking-border-color);
 
   &[data-expanded] {
     grid-template-rows: 1fr;
@@ -780,7 +933,7 @@ shiny-chat-container:not([fill]) {
   overflow: hidden;
   padding-left: 0.75rem;
   padding-block: 0;
-  color: var(--shiny-chat-thinking-content-color);
+  color: var(--_thinking-content-color);
   font-size: 0.9em;
   // No `padding-block` transition: the parent already animates the open/close
   // with `grid-template-rows` over the same duration, so this only added a
@@ -954,7 +1107,7 @@ shiny-chat-container:not([fill]) {
 .shiny-chat-message-attachment-chip {
   // Every sent-message attachment card shares one height (see
   // --shiny-chat-attachment-size) so the row is uniform.
-  height: var(--shiny-chat-attachment-size);
+  height: var(--_attachment-size);
   min-height: 0;
   padding: 0.5rem 0.75rem;
   // The chip is a <button> (click opens the file in the lightbox); undo the
@@ -977,7 +1130,7 @@ shiny-chat-container:not([fill]) {
   // In a sent message, the text preview is a fixed-height card like the others
   // (the input-tray variant stays content-sized).
   .shiny-chat-text-preview {
-    height: var(--shiny-chat-attachment-size);
+    height: var(--_attachment-size);
   }
 
   // In a sent message, the text card is a button (click opens the lightbox).
@@ -989,8 +1142,8 @@ shiny-chat-container:not([fill]) {
 // A sent image is a square thumbnail (cropped to fill); click to open the full
 // image in the lightbox.
 .shiny-chat-message-image-btn {
-  width: var(--shiny-chat-attachment-size);
-  height: var(--shiny-chat-attachment-size);
+  width: var(--_attachment-size);
+  height: var(--_attachment-size);
   padding: 0;
   border: 1px solid var(--bs-border-color, #ccc);
   border-radius: 0.5rem;

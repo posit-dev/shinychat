@@ -118,14 +118,19 @@ test_that("chat_ui(icon_assistant = FALSE) removes the icon", {
   expect_match(html, 'icon=""', fixed = TRUE)
 })
 
-test_that("chat_ui(icon_assistant = TRUE/NULL) omits the icon attribute", {
+test_that("chat_ui(icon_assistant = TRUE) omits the icon attribute", {
   ui_true <- chat_ui("chat", messages = list("Hello"), icon_assistant = TRUE)
   expect_null(ui_true$attribs[["icon-assistant"]])
   expect_no_match(as.character(ui_true), "icon-assistant", fixed = TRUE)
+})
 
+test_that("chat_ui(icon_assistant = NULL) (the default) removes the icon", {
   ui_null <- chat_ui("chat", messages = list("Hello"))
-  expect_null(ui_null$attribs[["icon-assistant"]])
-  expect_no_match(as.character(ui_null), "icon-assistant", fixed = TRUE)
+  expect_equal(ui_null$attribs[["icon-assistant"]], "")
+
+  html <- as.character(ui_null)
+  expect_match(html, 'icon-assistant=""', fixed = TRUE)
+  expect_match(html, 'icon=""', fixed = TRUE)
 })
 
 test_that("chat_ui() does not put the assistant icon on user messages", {
@@ -152,6 +157,35 @@ test_that("resolve_icon_attr() translates the boolean sentinel", {
   expect_null(resolve_icon_attr(TRUE))
   expect_equal(resolve_icon_attr(FALSE), "")
   expect_equal(resolve_icon_attr("<span>x</span>"), "<span>x</span>")
+})
+
+test_that("chat_ui(icon_send = ...) sets the icon-send attribute", {
+  ui <- chat_ui("chat", icon_send = htmltools::HTML("<span>UP</span>"))
+  expect_equal(ui$attribs[["icon-send"]], "<span>UP</span>")
+  expect_match(
+    as.character(ui),
+    'icon-send="&lt;span&gt;UP&lt;/span&gt;"',
+    fixed = TRUE
+  )
+})
+
+test_that("chat_ui(icon_send = FALSE/NULL) omits the icon-send attribute", {
+  for (icon_send in list(NULL, FALSE)) {
+    ui <- chat_ui("chat", icon_send = icon_send)
+    expect_null(ui$attribs[["icon-send"]])
+    expect_no_match(as.character(ui), "icon-send", fixed = TRUE)
+  }
+})
+
+test_that("chat_ui(icon_send = TRUE) is rejected", {
+  expect_error(chat_ui("chat", icon_send = TRUE), "does not accept `TRUE`")
+})
+
+test_that("resolve_send_icon_attr() has no blank/FALSE state", {
+  expect_null(resolve_send_icon_attr(NULL))
+  expect_null(resolve_send_icon_attr(FALSE))
+  expect_error(resolve_send_icon_attr(TRUE), "does not accept `TRUE`")
+  expect_equal(resolve_send_icon_attr("<span>x</span>"), "<span>x</span>")
 })
 
 test_that("chat_append_stream() returns the stream contents as string if all text", {

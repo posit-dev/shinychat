@@ -956,6 +956,34 @@ def test_stream_thinking_creates_thinking_segment():
         assert by_content["answer"] == "markdown"
 
 
+def test_message_stream_context_flushes_queued_appends():
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            async with chat.message_stream_context() as stream:
+                await stream.append("streamed")
+                await chat.append_message("queued")
+
+        run_async(_exercise)
+
+        assert sent[-1] == {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "segments": [
+                    {"content": "queued", "content_type": "markdown"}
+                ],
+            },
+        }
+
+
 def test_thinking_stream_stores_segment_not_tags():
     with session_context(test_session):
         chat = Chat(id="chat")

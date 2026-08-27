@@ -1,6 +1,6 @@
 shiny-chat-container {
-  --shiny-chat-greeting-max-width: 680px;
-  --shiny-chat-greeting-color: var(--bs-secondary-color, #6c757d);
+  --_greeting-max-width: var(--shiny-chat-greeting-max-width, 680px);
+  --_greeting-color: var(--shiny-chat-greeting-color, var(--bs-secondary-color, #6c757d));
 }
 
 .shiny-chat-messages-wrapper:has(.shiny-chat-history-trigger) .shiny-chat-greeting {
@@ -10,9 +10,9 @@ shiny-chat-container {
 .shiny-chat-greeting {
   margin-inline: auto;
   width: 100%;
-  max-width: var(--shiny-chat-greeting-max-width);
+  max-width: var(--_greeting-max-width);
   padding: 1.5rem;
-  color: var(--shiny-chat-greeting-color);
+  color: var(--_greeting-color);
 
   &.shiny-chat-greeting--enter {
     animation: shiny-chat-greeting-reveal 300ms
@@ -29,7 +29,7 @@ shiny-chat-container {
   }
 
   .shiny-chat-suggestion-list {
-    max-width: var(--shiny-chat-greeting-max-width);
+    max-width: var(--_greeting-max-width);
   }
 
   &[data-dismissing] {
@@ -82,7 +82,7 @@ shiny-chat-page
 shiny-chat-page
   .shiny-chat-layout[data-composer-centered]
   .shiny-chat-greeting {
-  translate: 0 var(--shiny-chat-greeting-offset, 0px);
+  translate: 0 var(--_greeting-offset, 0px);
 }
 
 shiny-chat-page

@@ -403,18 +403,19 @@ def test_chat_ui_icon_assistant_false_removes_icon():
 
 
 def test_chat_ui_icon_assistant_true_omits_attribute():
-    # True (like None) defers to the default robot: no icon attribute emitted.
+    # True opts into the default robot icon: no icon attribute emitted.
     tag = chat_ui("myid", messages=["Hello there"], icon_assistant=True)
     html = tag.get_html_string()
     assert "icon-assistant" not in html
     assert "icon=" not in html
 
 
-def test_chat_ui_icon_assistant_none_omits_attribute():
+def test_chat_ui_icon_assistant_none_removes_icon():
+    # None (the default) removes the icon, same as False.
     tag = chat_ui("myid", messages=["Hello there"])
     html = tag.get_html_string()
-    assert "icon-assistant" not in html
-    assert "icon=" not in html
+    assert 'icon-assistant=""' in html
+    assert 'icon=""' in html
 
 
 def test_chat_ui_icon_assistant_skips_user_messages():
@@ -434,6 +435,25 @@ def test_chat_ui_icon_assistant_skips_user_messages():
     assert "ROBOT" not in user_msg
     assert 'data-role="assistant"' in assistant_msg
     assert "ROBOT" in assistant_msg
+
+
+def test_chat_ui_icon_send_sets_attribute():
+    tag = chat_ui("myid", icon_send=HTML("<span>UP</span>"))
+    html = tag.get_html_string()
+    assert "icon-send=" in html
+    assert "UP" in html
+
+
+def test_chat_ui_icon_send_false_none_omit_attribute():
+    for icon_send in (None, False):
+        tag = chat_ui("myid", icon_send=icon_send)
+        html = tag.get_html_string()
+        assert "icon-send" not in html
+
+
+def test_chat_ui_icon_send_true_raises():
+    with pytest.raises(ValueError, match="does not accept `True`"):
+        chat_ui("myid", icon_send=True)
 
 
 # ---------------------------------------------------------------------------

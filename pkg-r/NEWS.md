@@ -31,6 +31,8 @@
 
 * Added `submit_key` parameter to `chat_ui()`: `"enter"` (default, Enter submits) or `"enter+modifier"` (Ctrl/Cmd+Enter submits, plain Enter inserts a line break). The input remains editable while a response is streaming — only submission is blocked, not typing. (#251)
 
+* `chat_ui()` and `page_chat()` no longer show an assistant icon by default. Pass `icon_assistant = TRUE` to restore the built-in robot icon, or supply your own icon as before. (#345)
+
 ## Breaking changes
 
 * `chat_app()` now configures its full-window page through `page_chat()`.
@@ -61,6 +63,8 @@
 * Fixed `output_markdown_stream()` permanently stopping following new content after the user scrolled back to the bottom. Pinning was decided only from `scroll` events, which browsers dispatch asynchronously; if a chunk grew the container first, the user's at-bottom position no longer read as at-bottom and auto-scroll silently disengaged for good. (#282)
 
 * `chat_app()` no longer renders a close button or registers a `stopApp()` observer when deployed to a server. Both are now gated on `rlang::is_interactive()`, preventing session crashes in multi-user deployments. (#265)
+
+* Single tildes no longer trigger strikethrough in markdown. Text like `(~$1.50)` and `~/Documents` now renders as literal text; only `~~text~~` produces strikethrough. (#349, #353)
 
 * The `dismissible` parameter of `chat_greeting()` has been renamed to `persistent` with an inverted value. `dismissible = FALSE` (greeting stays visible) is now `persistent = TRUE`. The old `dismissible` argument still works but warns. When both `persistent` and `dismissible` are provided, `persistent` now takes precedence silently rather than erroring. (#260)
 
