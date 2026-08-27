@@ -276,6 +276,12 @@
   preventing session crashes in multi-user deployments.
   ([\#265](https://github.com/posit-dev/shinychat/issues/265))
 
+- Single tildes no longer trigger strikethrough in markdown. Text like
+  `(~$1.50)` and `~/Documents` now renders as literal text; only
+  `~~text~~` produces strikethrough.
+  ([\#349](https://github.com/posit-dev/shinychat/issues/349),
+  [\#353](https://github.com/posit-dev/shinychat/issues/353))
+
 - The `dismissible` parameter of
   [`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md)
   has been renamed to `persistent` with an inverted value.

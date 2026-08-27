@@ -1,6 +1,9 @@
 # File-based conversation storage backend
 
-File-based conversation storage backend
+Uses temporary records and journal rollback to protect against ordinary
+I/O failures, but does not fsync files or directories. This store also
+does not coordinate concurrent access across processes; callers must
+serialize reads and writes for each conversation.
 
 ## Super class
 
