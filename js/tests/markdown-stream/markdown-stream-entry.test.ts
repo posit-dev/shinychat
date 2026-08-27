@@ -171,9 +171,9 @@ describe("MarkdownStreamElement — pending message queue", () => {
     el.setAttribute("streaming", "")
     document.body.appendChild(el)
 
-    await new Promise((resolve) => setTimeout(resolve, 0))
-
-    expect(el.querySelector(".markdown-stream-dot")).toBeTruthy()
+    await waitFor(() => {
+      expect(el.querySelector(".markdown-stream-dot")).toBeTruthy()
+    })
   })
 
   it("queues messages when api is null and dispatches them in order on API ready", () => {
