@@ -1,0 +1,15 @@
+[
+  {
+    "name": "doubles_round_trip",
+    "value": 3.141592653589793
+  },
+  {
+    "name": "malformed_jsonl_line",
+    "line": "{not valid json"
+  },
+  {
+    "name": "grown_content_same_count",
+    "initial": "partial response",
+    "updated": "completed response"
+  }
+]

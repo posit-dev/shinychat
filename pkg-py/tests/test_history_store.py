@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import shinychat._history_store as history_store_module
 from htmltools import HTMLDependency, tags
 from shinychat._history_client import as_turns_adapter
 from shinychat._history_store import (
@@ -33,6 +34,35 @@ def store(tmp_path: Path) -> FileConversationStore:
 
 def part(chat_id: str = "chat", scope: str = "alice") -> ConversationPartition:
     return ConversationPartition(chat_id=chat_id, scope=scope)
+
+
+STORE_MATRIX_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "tests"
+    / "shared"
+    / "history-store-fixture-matrix.json"
+)
+STORE_MATRIX = {
+    case["name"]: case
+    for case in json.loads(STORE_MATRIX_PATH.read_text(encoding="utf-8"))
+}
+
+
+def _conv_dir(tmp_path: Path, rec: ConversationRecord) -> Path:
+    return (
+        tmp_path
+        / sanitize_scope("chat")
+        / sanitize_scope("alice")
+        / rec.id
+    )
+
+
+def _file_snapshot(path: Path) -> dict[str, bytes]:
+    return {
+        file.name: file.read_bytes()
+        for file in path.iterdir()
+        if file.is_file()
+    }
 
 
 @pytest.mark.anyio
@@ -311,6 +341,144 @@ async def test_ui_growth_across_saves_is_repersisted(
     got2 = await store2.get(part(), rec.id)
     assert got2 is not None
     assert got2.nodes[nid].ui == [msg1, msg2]
+
+
+@pytest.mark.anyio
+async def test_store_fixture_matrix_doubles_round_trip(
+    store: FileConversationStore,
+):
+    rec = new_conversation_record(title="doubles")
+    value = STORE_MATRIX["doubles_round_trip"]["value"]
+    rec.values = {"pi": value}
+
+    await store.put(part(), rec)
+
+    got = await store.get(part(), rec.id)
+    assert got is not None
+    assert got.values["pi"] == value
+
+
+@pytest.mark.anyio
+async def test_store_fixture_matrix_malformed_jsonl_line_warns(
+    store: FileConversationStore,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+):
+    rec = new_conversation_record(title="malformed")
+    rec.append_linear([{"role": "user", "content": "preserved"}])
+    await store.put(part(), rec)
+    turns_file = _conv_dir(tmp_path, rec) / "turns.jsonl"
+    turns_file.write_text(
+        turns_file.read_text(encoding="utf-8")
+        + STORE_MATRIX["malformed_jsonl_line"]["line"]
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with caplog.at_level(logging.WARNING):
+        got = await store.get(part(), rec.id)
+
+    assert got is not None
+    assert got.path_turns() == [{"role": "user", "content": "preserved"}]
+    assert f"{turns_file}:2" in caplog.text
+
+
+@pytest.mark.anyio
+async def test_store_fixture_matrix_grown_content_same_count_is_repersisted(
+    store: FileConversationStore,
+    tmp_path: Path,
+):
+    case = STORE_MATRIX["grown_content_same_count"]
+    rec = new_conversation_record(title="same count")
+    nid = rec.append_linear(
+        [{"role": "assistant", "content": case["initial"]}],
+        ui=[
+            {
+                "role": "assistant",
+                "segments": [
+                    {"content": case["initial"], "content_type": "markdown"}
+                ],
+            }
+        ],
+    )
+    await store.put(part(), rec)
+
+    rec.nodes[nid].ui = [
+        {
+            "role": "assistant",
+            "segments": [
+                {"content": case["updated"], "content_type": "markdown"}
+            ],
+        }
+    ]
+    await store.put(part(), rec)
+
+    got = await FileConversationStore(dir=tmp_path).get(part(), rec.id)
+    assert got is not None
+    assert got.nodes[nid].ui == rec.nodes[nid].ui
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failure_step", ["serialize", "append", "rename"])
+async def test_put_failure_rolls_back_all_journal_changes(
+    store: FileConversationStore,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_step: str,
+):
+    rec = new_conversation_record(title="rollback")
+    rec.append_linear(
+        [{"role": "user", "content": "first"}],
+        ui=[{"role": "user", "segments": []}],
+    )
+    await store.put(part(), rec)
+    conv_dir = _conv_dir(tmp_path, rec)
+    before = _file_snapshot(conv_dir)
+
+    rec.append_linear(
+        [{"role": "assistant", "content": "second"}],
+        ui=[{"role": "assistant", "segments": []}],
+    )
+
+    with monkeypatch.context() as patch:
+        if failure_step == "serialize":
+            patch.setattr(
+                "shinychat._history_store.json.dumps",
+                lambda *args, **kwargs: (_ for _ in ()).throw(
+                    TypeError("injected serialization failure")
+                ),
+            )
+        elif failure_step == "append":
+            original_append = history_store_module._append_jsonl
+            call_count = 0
+
+            def fail_after_append(path: Path, lines: list[str]) -> None:
+                nonlocal call_count
+                call_count += 1
+                original_append(path, lines)
+                if call_count == 2:
+                    raise OSError("injected append failure")
+
+            patch.setattr(
+                history_store_module, "_append_jsonl", fail_after_append
+            )
+        else:
+            patch.setattr(
+                "shinychat._history_store.os.replace",
+                lambda *args, **kwargs: (_ for _ in ()).throw(
+                    OSError("injected rename failure")
+                ),
+            )
+
+        with pytest.raises((TypeError, OSError)):
+            await store.put(part(), rec)
+
+    assert _file_snapshot(conv_dir) == before
+
+    await FileConversationStore(dir=tmp_path).put(part(), rec)
+    got = await FileConversationStore(dir=tmp_path).get(part(), rec.id)
+    assert got is not None
+    assert len(got.nodes) == 2
 
 
 @pytest.mark.anyio
