@@ -432,6 +432,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>types.FileConversationStore(<span class="bu">dir</span><span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Default store: each conversation is a directory at <code>&lt;dir&gt;/&lt;chat_id&gt;/&lt;scope&gt;/&lt;id&gt;/</code> containing <code>record.json</code>, <code>turns.jsonl</code>, and <code>ui.jsonl</code>.</p>
 <p><code>record.json</code> holds tree structure and metadata (small, rewritten atomically on every save). <code>turns.jsonl</code> and <code>ui.jsonl</code> are append-only — new turns and UI entries are appended, never rewritten.</p>
+<p>Temporary records and journal rollback protect against ordinary I/O failures, but this store does not fsync files or directories. It also does not coordinate concurrent access across processes; callers must serialize reads and writes for each conversation.</p>
 <p>On <code>get()</code>, the three files are read and merged into a full <code>ConversationRecord</code> with inline turns and UI on each node. Callers never see the split.</p>
 
 

@@ -361,7 +361,7 @@
     "href": "api/types.FileConversationStore.html",
     "title": "types.FileConversationStore",
     "section": "",
-    "text": "types.FileConversationStore\ntypes.FileConversationStore(dir=None)\nDefault store: each conversation is a directory at &lt;dir&gt;/&lt;chat_id&gt;/&lt;scope&gt;/&lt;id&gt;/ containing record.json, turns.jsonl, and ui.jsonl.\nrecord.json holds tree structure and metadata (small, rewritten atomically on every save). turns.jsonl and ui.jsonl are append-only — new turns and UI entries are appended, never rewritten.\nOn get(), the three files are read and merged into a full ConversationRecord with inline turns and UI on each node. Callers never see the split.",
+    "text": "types.FileConversationStore\ntypes.FileConversationStore(dir=None)\nDefault store: each conversation is a directory at &lt;dir&gt;/&lt;chat_id&gt;/&lt;scope&gt;/&lt;id&gt;/ containing record.json, turns.jsonl, and ui.jsonl.\nrecord.json holds tree structure and metadata (small, rewritten atomically on every save). turns.jsonl and ui.jsonl are append-only — new turns and UI entries are appended, never rewritten.\nTemporary records and journal rollback protect against ordinary I/O failures, but this store does not fsync files or directories. It also does not coordinate concurrent access across processes; callers must serialize reads and writes for each conversation.\nOn get(), the three files are read and merged into a full ConversationRecord with inline turns and UI on each node. Callers never see the split.",
     "crumbs": [
       "API Reference",
       "Conversation history",
