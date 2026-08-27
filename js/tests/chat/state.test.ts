@@ -766,7 +766,12 @@ describe("chatReducer", () => {
       expect(next.inputDisabled).toBe(false)
     })
 
-    it("marks finalized streaming message as cancelled when cancelRequested is true", () => {
+    it("leaves an open streaming message untouched", () => {
+      // The server may send remove_loading while a response is still
+      // streaming (e.g. an R slash-command handler that starts an async
+      // stream returns before it finishes). Finalizing here would truncate
+      // the response, so the stream, the composer lock, and cancelRequested
+      // are all left for chunk_end to resolve.
       const msg = makeAssistantMsg({ streaming: true })
       const state = makeState({
         streamingMessage: msg,
@@ -774,21 +779,30 @@ describe("chatReducer", () => {
         cancelRequested: true,
       })
       const next = chatReducer(state, { type: "remove_loading" })
-      const finalized = next.messages[next.messages.length - 1]!
-      expect(finalized.cancelled).toBe(true)
-      expect(next.cancelRequested).toBe(false)
+      expect(next.streamingMessage).toBe(msg)
+      expect(next.messages).toHaveLength(0)
+      expect(next.inputDisabled).toBe(true)
+      expect(next.cancelRequested).toBe(true)
     })
 
-    it("does not mark finalized streaming message as cancelled when cancelRequested is false", () => {
+    it("still removes the placeholder when a stream is open", () => {
+      const placeholder: ChatMessageData = {
+        id: "p",
+        role: "assistant",
+        content: "",
+        streaming: false,
+        isPlaceholder: true,
+        blocks: [],
+      }
       const msg = makeAssistantMsg({ streaming: true })
       const state = makeState({
+        messages: [placeholder],
         streamingMessage: msg,
         inputDisabled: true,
-        cancelRequested: false,
       })
       const next = chatReducer(state, { type: "remove_loading" })
-      const finalized = next.messages[next.messages.length - 1]!
-      expect(finalized.cancelled).toBeUndefined()
+      expect(next.messages).toHaveLength(0)
+      expect(next.streamingMessage).toBe(msg)
     })
 
     it("resets cancelRequested even without a streaming message", () => {
@@ -1079,7 +1093,7 @@ describe("chatReducer", () => {
       expect(msg.blocks[3]!.type).toBe("content")
     })
 
-    it("remove_loading finalizes in-flight thinking blocks", () => {
+    it("chunk_end finalizes in-flight thinking blocks", () => {
       vi.spyOn(Date, "now").mockReturnValue(10000)
       const streamingMsg = makeAssistantMsg({
         streaming: true,
@@ -1098,7 +1112,7 @@ describe("chatReducer", () => {
         streamingMessage: streamingMsg,
         inputDisabled: true,
       })
-      const next = chatReducer(state, { type: "remove_loading" })
+      const next = chatReducer(state, { type: "chunk_end" })
       expect(next.streamingMessage).toBeNull()
       expect(next.inputDisabled).toBe(false)
 
@@ -1942,7 +1956,7 @@ describe("routeToolBlocks (tool content router)", () => {
       fenceMarker: "```",
     })
     const next = chatReducer(makeState({ streamingMessage: msg }), {
-      type: "remove_loading",
+      type: "chunk_end",
     })
     const finalized = next.messages[next.messages.length - 1]!
     expect(loops(finalized.blocks)).toHaveLength(0)
@@ -1957,7 +1971,7 @@ describe("routeToolBlocks (tool content router)", () => {
       blocks: [{ type: "content", content, contentType: "markdown" }],
     })
     const next = chatReducer(makeState({ streamingMessage: msg }), {
-      type: "remove_loading",
+      type: "chunk_end",
     })
     const finalized = next.messages[next.messages.length - 1]!
     expect(loops(finalized.blocks)).toHaveLength(1)
