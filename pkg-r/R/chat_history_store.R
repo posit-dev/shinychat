@@ -185,6 +185,72 @@ record_json_size <- function(record) {
   as.double(nchar(jsonlite::serializeJSON(record), type = "bytes"))
 }
 
+history_json <- function(value) {
+  as.character(jsonlite::toJSON(
+    value,
+    auto_unbox = TRUE,
+    null = "null",
+    digits = 17
+  ))
+}
+
+history_json_digest <- function(value) {
+  rlang::hash(history_json(value))
+}
+
+history_warn_malformed_jsonl <- function(path, line_number, reason) {
+  rlang::warn(paste0(
+    "Skipping malformed JSONL line ",
+    path,
+    ":",
+    line_number,
+    ": ",
+    reason
+  ))
+}
+
+history_parse_jsonl_line <- function(line, path, line_number) {
+  tryCatch(
+    jsonlite::fromJSON(line, simplifyVector = FALSE),
+    error = function(e) {
+      history_warn_malformed_jsonl(path, line_number, conditionMessage(e))
+      NULL
+    }
+  )
+}
+
+history_append_jsonl <- function(path, lines) {
+  if (length(lines) > 0) {
+    cat(
+      paste0(lines, collapse = "\n"),
+      "\n",
+      file = path,
+      sep = "",
+      append = TRUE
+    )
+  } else if (!file.exists(path)) {
+    file.create(path)
+  }
+  invisible(NULL)
+}
+
+history_rollback_jsonl <- function(path, existed, size) {
+  if (!existed) {
+    unlink(path)
+    return(invisible(NULL))
+  }
+  con <- file(path, open = "r+b")
+  on.exit(close(con), add = TRUE)
+  seek(con, where = size, origin = "start")
+  truncate(con)
+  invisible(NULL)
+}
+
+history_write_temp_record <- function(json, path) {
+  writeLines(json, path)
+  invisible(NULL)
+}
+
 CONV_ID_RE <- "^[A-Za-z0-9_-]{1,80}$"
 
 sanitize_scope <- function(scope) {
@@ -252,7 +318,7 @@ FileConversationStore <- R6::R6Class(
 
       ws <- list(
         turn_seq_map = list(),
-        ui_node_len = list(),
+        ui_node_digest = list(),
         next_turn_seq = 0L
       )
 
@@ -275,17 +341,31 @@ FileConversationStore <- R6::R6Class(
 
       ui_file <- file.path(cdir, "ui.jsonl")
       if (file.exists(ui_file)) {
-        for (line in readLines(ui_file, warn = FALSE)) {
+        for (line_number in seq_along(
+          lines <- readLines(ui_file, warn = FALSE)
+        )) {
+          line <- lines[[line_number]]
           if (!nzchar(line)) {
             next
           }
-          entry <- tryCatch(
-            jsonlite::fromJSON(line, simplifyVector = FALSE),
-            error = function(e) NULL
-          )
-          if (!is.null(entry)) {
-            ws$ui_node_len[[entry$node_id]] <- length(entry$data)
+          entry <- history_parse_jsonl_line(line, ui_file, line_number)
+          if (
+            is.null(entry) ||
+              !is.list(entry) ||
+              !is.character(entry$node_id) ||
+              length(entry$node_id) != 1L ||
+              !is.list(entry$data)
+          ) {
+            if (!is.null(entry)) {
+              history_warn_malformed_jsonl(
+                ui_file,
+                line_number,
+                "expected node_id and data"
+              )
+            }
+            next
           }
+          ws$ui_node_digest[[entry$node_id]] <- history_json_digest(entry$data)
         }
       }
 
@@ -381,20 +461,44 @@ FileConversationStore <- R6::R6Class(
       turns_map <- list()
       turns_file <- file.path(cdir, "turns.jsonl")
       if (file.exists(turns_file)) {
-        for (line in readLines(turns_file, warn = FALSE)) {
+        lines <- readLines(turns_file, warn = FALSE)
+        for (line_number in seq_along(lines)) {
+          line <- lines[[line_number]]
           if (!nzchar(line)) {
             next
           }
-          entry <- tryCatch(
-            {
-              entry <- jsonlite::fromJSON(line, simplifyVector = FALSE)
-              entry$data <- jsonlite::unserializeJSON(entry$data)
-              entry
-            },
-            error = function(e) NULL
+          entry <- history_parse_jsonl_line(line, turns_file, line_number)
+          if (
+            is.null(entry) ||
+              !is.list(entry) ||
+              !is.numeric(entry$seq) ||
+              length(entry$seq) != 1L ||
+              is.na(entry$seq) ||
+              !is.character(entry$data) ||
+              length(entry$data) != 1L
+          ) {
+            if (!is.null(entry)) {
+              history_warn_malformed_jsonl(
+                turns_file,
+                line_number,
+                "expected seq and serialized data"
+              )
+            }
+            next
+          }
+          turn <- tryCatch(
+            jsonlite::unserializeJSON(entry$data),
+            error = function(e) {
+              history_warn_malformed_jsonl(
+                turns_file,
+                line_number,
+                conditionMessage(e)
+              )
+              NULL
+            }
           )
-          if (!is.null(entry)) {
-            turns_map[[as.character(entry$seq)]] <- entry$data
+          if (!is.null(turn)) {
+            turns_map[[as.character(entry$seq)]] <- turn
           }
         }
       }
@@ -402,17 +506,30 @@ FileConversationStore <- R6::R6Class(
       ui_map <- list()
       ui_file <- file.path(cdir, "ui.jsonl")
       if (file.exists(ui_file)) {
-        for (line in readLines(ui_file, warn = FALSE)) {
+        lines <- readLines(ui_file, warn = FALSE)
+        for (line_number in seq_along(lines)) {
+          line <- lines[[line_number]]
           if (!nzchar(line)) {
             next
           }
-          entry <- tryCatch(
-            jsonlite::fromJSON(line, simplifyVector = FALSE),
-            error = function(e) NULL
-          )
-          if (!is.null(entry)) {
-            ui_map[[entry$node_id]] <- entry$data
+          entry <- history_parse_jsonl_line(line, ui_file, line_number)
+          if (
+            is.null(entry) ||
+              !is.list(entry) ||
+              !is.character(entry$node_id) ||
+              length(entry$node_id) != 1L ||
+              !is.list(entry$data)
+          ) {
+            if (!is.null(entry)) {
+              history_warn_malformed_jsonl(
+                ui_file,
+                line_number,
+                "expected node_id and data"
+              )
+            }
+            next
           }
+          ui_map[[entry$node_id]] <- entry$data
         }
       }
 
@@ -472,7 +589,10 @@ FileConversationStore <- R6::R6Class(
       }
       dir.create(cdir, recursive = TRUE, showWarnings = FALSE)
 
+      ws_key <- private$ws_key(partition, record$id)
+      had_write_state <- !is.null(private$write_state[[ws_key]])
       ws <- private$get_or_init_write_state(partition, record$id, cdir)
+      staged_ws <- unserialize(serialize(ws, NULL))
 
       new_turns_lines <- character(0)
       new_ui_lines <- character(0)
@@ -481,75 +601,43 @@ FileConversationStore <- R6::R6Class(
       for (nid in names(record$nodes)) {
         node <- record$nodes[[nid]]
 
-        if (is.null(ws$turn_seq_map[[nid]])) {
+        if (is.null(staged_ws$turn_seq_map[[nid]])) {
           turn_ids <- list()
           for (turn_data in node$turns) {
-            seq <- ws$next_turn_seq
-            ws$next_turn_seq <- ws$next_turn_seq + 1L
+            seq <- staged_ws$next_turn_seq
+            staged_ws$next_turn_seq <- staged_ws$next_turn_seq + 1L
             turn_ids <- c(turn_ids, seq)
             new_turns_lines <- c(
               new_turns_lines,
-              as.character(jsonlite::toJSON(
+              history_json(
                 list(
                   seq = seq,
                   data = jsonlite::serializeJSON(turn_data)
-                ),
-                auto_unbox = TRUE,
-                null = "null"
-              ))
+                )
+              )
             )
           }
-          ws$turn_seq_map[[nid]] <- turn_ids
+          staged_ws$turn_seq_map[[nid]] <- turn_ids
         }
 
-        ui_len <- length(node$ui)
-        if (!is.null(node$ui) && !identical(ui_len, ws$ui_node_len[[nid]])) {
-          new_ui_lines <- c(
-            new_ui_lines,
-            as.character(jsonlite::toJSON(
-              list(node_id = nid, data = node$ui),
-              auto_unbox = TRUE,
-              null = "null"
-            ))
-          )
-          ws$ui_node_len[[nid]] <- ui_len
+        if (!is.null(node$ui)) {
+          ui_digest <- history_json_digest(node$ui)
+          if (!identical(ui_digest, staged_ws$ui_node_digest[[nid]])) {
+            new_ui_lines <- c(
+              new_ui_lines,
+              history_json(list(node_id = nid, data = node$ui))
+            )
+            staged_ws$ui_node_digest[[nid]] <- ui_digest
+          }
         }
 
         record_nodes[[nid]] <- list(
           parent = node$parent,
           children = node$children,
-          turn_ids = ws$turn_seq_map[[nid]],
+          turn_ids = staged_ws$turn_seq_map[[nid]],
           selected_child = node$selected_child
         )
       }
-
-      turns_file <- file.path(cdir, "turns.jsonl")
-      if (length(new_turns_lines) > 0) {
-        cat(
-          paste0(new_turns_lines, collapse = "\n"),
-          "\n",
-          file = turns_file,
-          sep = "",
-          append = TRUE
-        )
-      } else if (!file.exists(turns_file)) {
-        file.create(turns_file)
-      }
-
-      ui_file <- file.path(cdir, "ui.jsonl")
-      if (length(new_ui_lines) > 0) {
-        cat(
-          paste0(new_ui_lines, collapse = "\n"),
-          "\n",
-          file = ui_file,
-          sep = "",
-          append = TRUE
-        )
-      } else if (!file.exists(ui_file)) {
-        file.create(ui_file)
-      }
-
-      private$write_state[[private$ws_key(partition, record$id)]] <- ws
 
       record_data <- list(
         schema_version = record$schema_version,
@@ -565,14 +653,52 @@ FileConversationStore <- R6::R6Class(
         values = record$values,
         bookmark_state_id = record$bookmark_state_id
       )
-      json <- jsonlite::toJSON(record_data, auto_unbox = TRUE, null = "null")
+      json <- history_json(record_data)
+
+      turns_file <- file.path(cdir, "turns.jsonl")
+      ui_file <- file.path(cdir, "ui.jsonl")
+      snapshots <- lapply(
+        list(turns_file, ui_file),
+        function(path) {
+          existed <- file.exists(path)
+          list(
+            path = path,
+            existed = existed,
+            size = if (existed) file.size(path) else 0
+          )
+        }
+      )
       tmp <- tempfile(tmpdir = cdir, fileext = ".json.tmp")
-      on.exit(unlink(tmp), add = TRUE)
-      writeLines(json, tmp)
+      committed <- FALSE
+      on.exit(
+        {
+          if (!committed) {
+            for (snapshot in rev(snapshots)) {
+              history_rollback_jsonl(
+                snapshot$path,
+                snapshot$existed,
+                snapshot$size
+              )
+            }
+            unlink(tmp)
+            if (!had_write_state) {
+              private$write_state[[ws_key]] <- NULL
+            }
+          }
+        },
+        add = TRUE
+      )
+
+      # Write and validate the replacement record before appending journals.
+      history_write_temp_record(json, tmp)
+      history_append_jsonl(turns_file, new_turns_lines)
+      history_append_jsonl(ui_file, new_ui_lines)
       ok <- file_move(tmp, record_file)
       if (!isTRUE(ok)) {
         rlang::abort(paste0("Failed to write conversation: ", cdir))
       }
+      committed <- TRUE
+      private$write_state[[ws_key]] <- staged_ws
 
       cache <- private$meta_cache[[key]]
       if (!is.null(cache)) {
