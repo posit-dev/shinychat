@@ -61,10 +61,20 @@ js-build-dev:  ## [js] Build JS code for development (React Profiler enabled)
 	@echo "🧳 Building JS code (dev)"
 	cd $(PATH_PKG_JS) && npx tsx build.ts --dev
 
+.PHONY: js-build-fast
+js-build-fast:  ## [js] Build JS code without minification
+	@echo "🧳 Building JS code without minification"
+	cd $(PATH_PKG_JS) && npm run build-fast
+
 .PHONY: js-build-watch
 js-build-watch:  ## [js] Build JS code in watch mode
 	@echo "🧳 Building JS code in watch mode"
 	cd $(PATH_PKG_JS) && npm run watch
+
+.PHONY: js-build-watch-fast
+js-build-watch-fast:  ## [js] Build JS code without minification in watch mode
+	@echo "🧳 Building JS code without minification in watch mode"
+	cd $(PATH_PKG_JS) && npm run watch-fast
 
 .PHONY: update-dist
 update-dist: js-build r-update-dist py-update-dist  ## Update shinychat web assets in all packages
@@ -93,10 +103,10 @@ r-check-package:  ## [r] Check package
 	cd $(PATH_PKG_R) && Rscript -e "devtools::check(document = FALSE)"
 
 .PHONY: r-check-tests
-r-check-tests:  ## [r] Check tests
+r-check-tests:  ## [r] Check tests (FILTER=... to select tests)
 	@echo ""
 	@echo "🧪 Running R tests"
-	cd $(PATH_PKG_R) && Rscript -e "devtools::test()"
+	cd $(PATH_PKG_R) && FILTER="$(FILTER)" Rscript -e 'filter <- Sys.getenv("FILTER"); devtools::test(filter = if (nzchar(filter)) filter else NULL)'
 
 .PHONY: r-check-format
 r-check-format:  ## [r] Check format
@@ -152,12 +162,12 @@ py-check-tox:  ## [py] Run python checks across versions with tox
 	uv run tox run-parallel
 
 .PHONY: py-check-tests
-py-check-tests:  ## [py] Run python tests
+py-check-tests:  ## [py] Run python tests (FILTER=... for pytest -k selection)
 	@echo ""
 	@echo "🧪 Running tests with pytest"
 	uv run playwright install
-	uv run pytest pkg-py/tests/playwright/
-	uv run pytest --ignore=pkg-py/tests/playwright/
+	uv run pytest pkg-py/tests/playwright/ $(if $(FILTER),-k "$(FILTER)")
+	uv run pytest --ignore=pkg-py/tests/playwright/ $(if $(FILTER),-k "$(FILTER)")
 
 .PHONY: py-check-types
 py-check-types:  ## [py] Run python type checks
@@ -248,7 +258,7 @@ py-update-dist: ## [py] Update shinychat web assets
 .PHONY: help
 help:  ## Show help messages for make targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; { \
-		printf "\033[32m%-18s\033[0m", $$1; \
+		printf "\033[32m%-19s\033[0m", $$1; \
 		if ($$2 ~ /^\[docs\]/) { \
 			printf "\033[37m[docs]\033[0m%s\n", substr($$2, 7); \
 		} else if ($$2 ~ /^\[py\]/) { \
