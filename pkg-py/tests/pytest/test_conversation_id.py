@@ -2,8 +2,9 @@
 Tests for stable conversation identity: the active conversation ID is
 allocated at first submission (before model work), retained across
 failure/cancellation, adopted by the first saved record, and cleared on
-new-chat/delete. Managed responses are wrapped in a `shinychat.response`
-OpenTelemetry span carrying `gen_ai.conversation.id`.
+new-chat/delete. The ID is handed to the chatlas client before model work so
+the client can annotate its own OpenTelemetry spans with
+`gen_ai.conversation.id` (shinychat itself does not create spans).
 
 Mirrors pkg-r/tests/testthat/test-conversation-id.R.
 """
