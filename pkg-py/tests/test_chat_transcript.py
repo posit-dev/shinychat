@@ -119,6 +119,97 @@ async def test_capture_events_are_awaited_after_their_commits() -> None:
 
 
 @pytest.mark.anyio
+async def test_stream_capture_events_follow_successful_stream_commits() -> None:
+    events: list[tuple[str, str, str]] = []
+
+    async def stream_started(
+        stream_id: str, exchange_id: str | None, message: TranscriptEntry
+    ) -> None:
+        events.append(("start", stream_id, message.message.content))
+        assert exchange_id == transcript.open_exchange_id
+        assert len(transcript.read()) == 1
+
+    async def stream_updated(stream_id: str, message: TranscriptEntry) -> None:
+        events.append(("update", stream_id, message.message.content))
+        assert len(transcript.read()) == 1
+
+    async def stream_finished(
+        stream_id: str, status: str, error: str | None
+    ) -> None:
+        events.append((status, stream_id, error or ""))
+        assert transcript.active_stream_id is None
+
+    transcript = ChatTranscript(
+        on_stream_started=stream_started,
+        on_stream_updated=stream_updated,
+        on_stream_finished=stream_finished,
+    )
+    await start_stream(transcript)
+    await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[segment("partial")],
+        message=entry("assistant", "partial").message,
+        operation="append",
+        send=sent,
+    )
+    await transcript.end_stream(
+        stream_id="stream",
+        status=None,
+        error=None,
+        send=sent,
+    )
+
+    assert events == [
+        ("start", "stream", ""),
+        ("update", "stream", "partial"),
+        ("ok", "stream", ""),
+    ]
+
+
+@pytest.mark.anyio
+async def test_failed_stream_transport_emits_no_start_or_update_capture_event() -> (
+    None
+):
+    events: list[str] = []
+
+    async def stream_started(
+        _stream_id: str, _exchange_id: str | None, _message: TranscriptEntry
+    ) -> None:
+        events.append("start")
+
+    async def stream_updated(
+        _stream_id: str, _message: TranscriptEntry
+    ) -> None:
+        events.append("update")
+
+    async def unsent() -> bool:
+        return False
+
+    transcript = ChatTranscript(
+        on_stream_started=stream_started,
+        on_stream_updated=stream_updated,
+    )
+    assert not await transcript.start_stream(
+        stream_id="stream",
+        entry=entry("assistant", ""),
+        owner_task=None,
+        exchange_id=None,
+        send=unsent,
+    )
+    assert events == []
+
+    await start_stream(transcript)
+    assert not await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[segment("unsent")],
+        message=entry("assistant", "unsent").message,
+        operation="append",
+        send=unsent,
+    )
+    assert events == ["start"]
+
+
+@pytest.mark.anyio
 async def test_transport_failure_emits_no_message_capture_event() -> None:
     captured: list[TranscriptEntry] = []
 
@@ -577,7 +668,7 @@ async def test_stream_abort_preserves_sent_partial_and_error_status() -> None:
         send=sent,
     )
 
-    transcript.abort_stream(
+    await transcript.abort_stream(
         "stream", status="error", error="terminal send failed"
     )
 

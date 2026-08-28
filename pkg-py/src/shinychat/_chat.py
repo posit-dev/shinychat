@@ -1244,7 +1244,7 @@ class Chat:
                         and isinstance(terminal_error, asyncio.CancelledError)
                         else status or "error"
                     )
-                    self._transcript.abort_stream(
+                    await self._transcript.abort_stream(
                         stream_id,
                         status=terminal_status,
                         error=(
@@ -1671,7 +1671,7 @@ class Chat:
                         and isinstance(terminal_error, asyncio.CancelledError)
                         else status or "error"
                     )
-                    self._transcript.abort_stream(
+                    await self._transcript.abort_stream(
                         id,
                         status=terminal_status,
                         error=(

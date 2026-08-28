@@ -346,6 +346,41 @@ class ConversationRecordV2(BaseModel):
             node.error = None
         self.updated_at = utcnow()
 
+    def append_stream_message(
+        self, exchange_id: str, message: CapturedMessage
+    ) -> None:
+        node = self.nodes.get(exchange_id)
+        if node is None:
+            raise ValueError(f"Unknown exchange id {exchange_id!r}")
+        node.messages.append(message)
+        self.updated_at = utcnow()
+
+    def replace_stream_message(
+        self, exchange_id: str, message: CapturedMessage
+    ) -> None:
+        node = self.nodes.get(exchange_id)
+        if node is None:
+            raise ValueError(f"Unknown exchange id {exchange_id!r}")
+        if not node.messages:
+            raise ValueError(
+                f"Cannot replace missing stream message for exchange {exchange_id!r}"
+            )
+        node.messages[-1] = message
+        self.updated_at = utcnow()
+
+    def finish_exchange(
+        self,
+        exchange_id: str,
+        status: Literal["ok", "error", "cancelled"],
+        error: str | None,
+    ) -> None:
+        node = self.nodes.get(exchange_id)
+        if node is None:
+            raise ValueError(f"Unknown exchange id {exchange_id!r}")
+        node.status = status
+        node.error = ErrorEntry(message=error or "") if status == "error" else None
+        self.updated_at = utcnow()
+
 
 def new_conversation_record_v2(
     *, title: str, client_info: dict[str, str]

@@ -149,7 +149,7 @@ async def test_message_transcript_matrix(case: dict[str, Any]) -> None:
                         send=send_for(operation, transport),
                     )
                 elif kind == "stream-abort":
-                    transcript.abort_stream(
+                    await transcript.abort_stream(
                         cast(str, operation["stream_id"]),
                         status=cast(Any, operation["status"]),
                         error=cast(str | None, operation.get("error_message")),

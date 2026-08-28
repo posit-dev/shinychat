@@ -16,6 +16,11 @@ AcceptedInputCallback = Callable[[str, StoredMessage], Awaitable[None]]
 MessageCommittedCallback = Callable[
     [str | None, "TranscriptEntry"], Awaitable[None]
 ]
+StreamStartedCallback = Callable[[str, str | None, "TranscriptEntry"], Awaitable[None]]
+StreamUpdatedCallback = Callable[[str, "TranscriptEntry"], Awaitable[None]]
+StreamFinishedCallback = Callable[
+    [str, Literal["ok", "cancelled", "error"], str | None], Awaitable[None]
+]
 StreamStatus = Literal["cancelled", "error"]
 
 
@@ -58,11 +63,17 @@ class ChatTranscript:
         on_stream_terminal: StreamTerminalCallback | None = None,
         on_accepted_input: AcceptedInputCallback | None = None,
         on_message_committed: MessageCommittedCallback | None = None,
+        on_stream_started: StreamStartedCallback | None = None,
+        on_stream_updated: StreamUpdatedCallback | None = None,
+        on_stream_finished: StreamFinishedCallback | None = None,
     ) -> None:
         self._on_change = on_change
         self._on_stream_terminal = on_stream_terminal
         self._on_accepted_input = on_accepted_input
         self._on_message_committed = on_message_committed
+        self._on_stream_started = on_stream_started
+        self._on_stream_updated = on_stream_updated
+        self._on_stream_finished = on_stream_finished
         self._entries: tuple[TranscriptEntry, ...] = ()
         self._open_exchange_id: str | None = None
         self._stream: _InFlightStream | None = None
@@ -140,9 +151,15 @@ class ChatTranscript:
         *,
         on_accepted_input: AcceptedInputCallback | None,
         on_message_committed: MessageCommittedCallback | None,
+        on_stream_started: StreamStartedCallback | None,
+        on_stream_updated: StreamUpdatedCallback | None,
+        on_stream_finished: StreamFinishedCallback | None,
     ) -> None:
         self._on_accepted_input = on_accepted_input
         self._on_message_committed = on_message_committed
+        self._on_stream_started = on_stream_started
+        self._on_stream_updated = on_stream_updated
+        self._on_stream_finished = on_stream_finished
 
     async def start_stream(
         self,
@@ -177,6 +194,9 @@ class ChatTranscript:
                 return False
             self._entries = (*self._entries, prepared)
             self._notify_change()
+            await self._notify_stream_started(
+                stream_id, exchange_id, prepared
+            )
             return True
         except BaseException:
             if self._stream is reserved:
@@ -228,6 +248,7 @@ class ChatTranscript:
                 stream.entry, prepared_message, operation
             )
             self._notify_change()
+            await self._notify_stream_updated(stream_id, stream.entry)
             return True
         finally:
             self._release_transaction(transaction)
@@ -272,6 +293,11 @@ class ChatTranscript:
                 )
                 self._stream = None
                 self._notify_change()
+                await self._notify_stream_finished(
+                    stream_id,
+                    "error",
+                    error or "Could not send message stream end.",
+                )
                 self._notify_stream_terminal()
                 return False
 
@@ -284,12 +310,15 @@ class ChatTranscript:
             self._set_stream_status(stream.entry, status, error)
             self._stream = None
             self._notify_change()
+            await self._notify_stream_finished(
+                stream_id, status or "ok", error
+            )
             self._notify_stream_terminal()
             return True
         finally:
             self._release_transaction(transaction)
 
-    def abort_stream(
+    async def abort_stream(
         self,
         stream_id: str,
         *,
@@ -304,6 +333,7 @@ class ChatTranscript:
         self._set_stream_status(stream.entry, status, error)
         self._stream = None
         self._notify_change()
+        await self._notify_stream_finished(stream_id, status, error)
         self._notify_stream_terminal()
 
     async def clear(
@@ -492,3 +522,24 @@ class ChatTranscript:
     ) -> None:
         if self._on_message_committed is not None:
             await self._on_message_committed(exchange_id, entry.copy())
+
+    async def _notify_stream_started(
+        self, stream_id: str, exchange_id: str | None, entry: TranscriptEntry
+    ) -> None:
+        if self._on_stream_started is not None:
+            await self._on_stream_started(stream_id, exchange_id, entry.copy())
+
+    async def _notify_stream_updated(
+        self, stream_id: str, entry: TranscriptEntry
+    ) -> None:
+        if self._on_stream_updated is not None:
+            await self._on_stream_updated(stream_id, entry.copy())
+
+    async def _notify_stream_finished(
+        self,
+        stream_id: str,
+        status: Literal["ok", "cancelled", "error"],
+        error: str | None,
+    ) -> None:
+        if self._on_stream_finished is not None:
+            await self._on_stream_finished(stream_id, status, error)

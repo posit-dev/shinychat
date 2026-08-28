@@ -2,9 +2,15 @@
 # is covered by Playwright e2e tests (Task 13). This file tests the pure
 # helpers that HistoryController delegates to.
 
+import os
+import signal
+import subprocess
+import sys
+import textwrap
 import warnings
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from pathlib import Path
 from typing import Any, Callable, cast
 from unittest.mock import AsyncMock
 
@@ -394,6 +400,316 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
         for message in fake_chat.restored_messages
     ] == ["hello", "hi"]
     assert fake_chat.restored_icons == [None, "<i>bot</i>"]
+
+
+@pytest.mark.anyio
+async def test_v2_recorder_replaces_stream_projection_on_its_opening_exchange():
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+
+    first_exchange = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "first")
+    )
+    await transcript.start_stream(
+        stream_id="stream",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=first_exchange,
+        send=_sent,
+    )
+    await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[],
+        message=_stored_message("assistant", "partial"),
+        operation="append",
+        send=_sent,
+    )
+    second_exchange = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "second")
+    )
+    await transcript.end_stream(
+        stream_id="stream",
+        status=None,
+        error=None,
+        send=_sent,
+    )
+
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    first = record.nodes[first_exchange]
+    assert first.status == "ok"
+    assert [message.as_stored_message().content for message in first.messages] == [
+        "partial"
+    ]
+    assert record.nodes[second_exchange].status == "pending"
+    assert record.active_leaf == second_exchange
+    assert recorder._stream_exchanges == {}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("status", "error"),
+    [
+        ("error", "provider timeout"),
+        ("cancelled", None),
+    ],
+)
+async def test_v2_recorder_persists_stream_terminal_status(
+    status: str, error: str | None
+) -> None:
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "question")
+    )
+    await transcript.start_stream(
+        stream_id="stream",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+    await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[],
+        message=_stored_message("assistant", "partial"),
+        operation="append",
+        send=_sent,
+    )
+    await transcript.end_stream(
+        stream_id="stream",
+        status=status,  # type: ignore[arg-type]
+        error=error,
+        send=_sent,
+    )
+
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    node = record.nodes[exchange_id]
+    assert node.status == status
+    if error is None:
+        assert node.error is None
+    else:
+        assert node.error is not None
+        assert node.error.message == error
+    assert [message.as_stored_message().content for message in node.messages] == [
+        "partial"
+    ]
+
+
+@pytest.mark.anyio
+async def test_stream_recorder_failure_does_not_rollback_sent_transcript():
+    class FailingStore(InMemoryConversationStore):
+        fail = False
+
+        async def put(
+            self, partition: ConversationPartition, record: Any
+        ) -> None:
+            if self.fail:
+                raise RuntimeError("durability failure")
+            await super().put(partition, record)
+
+    store = FailingStore()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "question")
+    )
+    await transcript.start_stream(
+        stream_id="stream",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+
+    store.fail = True
+    with pytest.raises(RuntimeError, match="durability failure"):
+        await transcript.transition_stream(
+            stream_id="stream",
+            source_segments=[],
+            message=_stored_message("assistant", "sent partial"),
+            operation="append",
+            send=_sent,
+        )
+
+    assert transcript.read()[-1].message.content == "sent partial"
+    assert transcript.active_stream_id == "stream"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("checkpoint", "expected_content", "expected_status", "expected_error"),
+    [
+        ("input", [], "pending", None),
+        ("start", [""], "pending", None),
+        ("update-one", ["first"], "pending", None),
+        ("update-two", ["first second"], "pending", None),
+        ("ok", ["first second"], "ok", None),
+        ("error", ["first second"], "error", "provider timeout"),
+        ("cancelled", ["first second"], "cancelled", None),
+    ],
+)
+async def test_stream_capture_survives_process_kill_and_file_store_reload(
+    tmp_path: Any,
+    checkpoint: str,
+    expected_content: list[str],
+    expected_status: str,
+    expected_error: str | None,
+) -> None:
+    from shinychat._history_store import FileConversationStore
+
+    source_root = str(
+        (Path(__file__).resolve().parents[1] / "src").resolve()
+    )
+    env = dict(os.environ)
+    env["PYTHONPATH"] = (
+        source_root
+        if not env.get("PYTHONPATH")
+        else source_root + os.pathsep + env["PYTHONPATH"]
+    )
+    child = textwrap.dedent(
+        """
+        import asyncio
+        import os
+        import signal
+        import sys
+        from types import SimpleNamespace
+
+        from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
+        from shinychat._chat_types import StoredMessage, StoredSegment
+        from shinychat._history import _ExchangeRecorder
+        from shinychat._history_store import ConversationPartition, FileConversationStore
+
+        def message(role, content):
+            return StoredMessage(
+                role=role,
+                segments=[StoredSegment(content=content, content_type="markdown")],
+            )
+
+        async def sent():
+            return True
+
+        async def run():
+            store = FileConversationStore(sys.argv[1])
+            controller = SimpleNamespace(
+                partition=ConversationPartition(chat_id="kill", scope="scope"),
+                adapter=SimpleNamespace(client_info=lambda: {}),
+                store=store,
+            )
+            recorder = _ExchangeRecorder(controller)
+            transcript = ChatTranscript(
+                on_accepted_input=recorder.accepted_input,
+                on_stream_started=recorder.stream_started,
+                on_stream_updated=recorder.stream_updated,
+                on_stream_finished=recorder.stream_finished,
+            )
+            exchange_id = await transcript.record_accepted_input_and_notify(
+                message("user", "question")
+            )
+            if sys.argv[2] == "input":
+                os.kill(os.getpid(), signal.SIGKILL)
+            await transcript.start_stream(
+                stream_id="stream",
+                entry=TranscriptEntry(message=message("assistant", "")),
+                owner_task=None,
+                exchange_id=exchange_id,
+                send=sent,
+            )
+            if sys.argv[2] == "start":
+                os.kill(os.getpid(), signal.SIGKILL)
+            await transcript.transition_stream(
+                stream_id="stream",
+                source_segments=[],
+                message=message("assistant", "first"),
+                operation="append",
+                send=sent,
+            )
+            if sys.argv[2] == "update-one":
+                os.kill(os.getpid(), signal.SIGKILL)
+            await transcript.transition_stream(
+                stream_id="stream",
+                source_segments=[],
+                message=message("assistant", " second"),
+                operation="append",
+                send=sent,
+            )
+            if sys.argv[2] == "update-two":
+                os.kill(os.getpid(), signal.SIGKILL)
+            status = None if sys.argv[2] == "ok" else sys.argv[2]
+            error = "provider timeout" if status == "error" else None
+            await transcript.end_stream(
+                stream_id="stream",
+                status=status,
+                error=error,
+                send=sent,
+            )
+            os.kill(os.getpid(), signal.SIGKILL)
+
+        asyncio.run(run())
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", child, str(tmp_path), checkpoint],
+        check=False,
+        capture_output=True,
+        env=env,
+        text=True,
+    )
+
+    assert result.returncode == -signal.SIGKILL, result.stderr
+    store = FileConversationStore(tmp_path)
+    metas = await store.list(ConversationPartition(chat_id="kill", scope="scope"))
+    assert len(metas) == 1
+    record = await store.get(
+        ConversationPartition(chat_id="kill", scope="scope"), metas[0].id
+    )
+    assert isinstance(record, ConversationRecordV2)
+    node = next(node for node in record.nodes.values() if node.input is not None)
+    assert node.status == expected_status
+    assert (
+        [message.as_stored_message().content for message in node.messages]
+        == expected_content
+    )
+    assert (
+        node.error is None
+        if expected_error is None
+        else node.error is not None and node.error.message == expected_error
+    )
 
 
 async def _sent() -> bool:
