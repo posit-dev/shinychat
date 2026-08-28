@@ -682,6 +682,61 @@ test_that("attach_cited_sources adds cited_sources to last web_search when no re
   expect_equal(result, content_no_search)
 })
 
+test_that("attach_cited_sources backfills a missing title from a later citation for the same URL", {
+  skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
+
+  # Two citations for the same URL: first has no title, second has one.
+  # The first cited_sources record should gain the second's title.
+  cit_no_title <- ellmer::ContentCitation(
+    source = ellmer::WebSource("https://shared.example", title = NULL),
+    grounded_span = "claim one"
+  )
+  cit_with_title <- ellmer::ContentCitation(
+    source = ellmer::WebSource("https://shared.example", "Later Title"),
+    grounded_span = "claim two"
+  )
+  raw_contents <- list(cit_no_title, cit_with_title)
+
+  search_block <- new_web_block("web_search", query = "test")
+  content <- list("answer", search_block)
+
+  result <- attach_cited_sources(raw_contents, content)
+  expect_false(is.null(result[[2]]$cited_sources))
+  expect_length(result[[2]]$cited_sources, 1L)
+  expect_equal(result[[2]]$cited_sources[[1]]$url, "https://shared.example")
+  expect_equal(result[[2]]$cited_sources[[1]]$title, "Later Title")
+})
+
+test_that("Turn conversion attaches cited_sources to a results-less web_search", {
+  skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
+
+  turn <- ellmer::AssistantTurn(
+    contents = list(
+      ellmer::ContentToolRequestSearch(
+        query = "shinychat structured blocks"
+      ),
+      ellmer::ContentText("According to the docs..."),
+      ellmer::ContentCitation(
+        source = ellmer::WebSource("https://example.com/docs", "Docs"),
+        grounded_span = "According to the docs"
+      )
+    )
+  )
+
+  results <- contents_shinychat(turn)
+  search_block <- Filter(
+    function(x) {
+      inherits(x, "shinychat_block") && identical(x$type, "web_search")
+    },
+    results
+  )
+  expect_length(search_block, 1L)
+  expect_equal(
+    search_block[[1]]$cited_sources,
+    list(list(url = "https://example.com/docs", title = "Docs"))
+  )
+})
+
 test_that("processes a Turn object", {
   # Create a turn with multiple content items
   turn <- ellmer::AssistantTurn(

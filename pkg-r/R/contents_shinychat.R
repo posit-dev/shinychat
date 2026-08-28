@@ -992,7 +992,15 @@ method(contents_shinychat, ellmer::Turn) <- function(content) {
   # whole turn discards each `ContentToolResult` before any caller could wrap
   # it, so a turn carrying a custom tool result would otherwise emit bare UI
   # with no `<shiny-tool-result>` to pair its request against.
-  compact(map(content@contents, contents_shinychat_wrapped))
+  raw_contents <- content@contents
+  content <- compact(map(raw_contents, contents_shinychat_wrapped))
+  # Carry cited sources explicitly on the structured web_search block:
+  # the markup path's rehypeAttachCitedSources fallback can't fire for
+  # structured blocks (they never appear as markup siblings of the
+  # citation asides). Mirrors Python's `_attach_cited_sources` call inside
+  # Turn normalization (_chat_normalize.py). Streaming-time citation
+  # attachment is out of scope (Python doesn't do it either).
+  attach_cited_sources(raw_contents, content)
 }
 
 ellmer_turn_effective_role <- function(turn) {
@@ -1082,7 +1090,12 @@ attach_cited_sources <- function(raw_contents, content) {
     return(content)
   }
   cited <- list()
-  by_url <- new.env(parent = emptyenv())
+  # Track the index into `cited` for each URL so a later citation can
+  # backfill a missing title on the actual stored record. R lists are
+  # copy-on-modify, so mutating a copy fetched from an env (as the
+  # previous code did) leaves the record in `cited` unchanged. Mirrors
+  # Python's by_url, which stores references to the same dicts in cited.
+  url_index <- new.env(parent = emptyenv())
   for (x in raw_contents) {
     if (!S7_inherits(x, Citation_class)) {
       next
@@ -1091,10 +1104,10 @@ attach_cited_sources <- function(raw_contents, content) {
     if (!S7_inherits(source, WebSource_class) || is.null(source@url)) {
       next
     }
-    existing <- by_url[[source@url]]
-    if (!is.null(existing)) {
-      if (is.null(existing$title) && !is.null(source@title)) {
-        existing$title <- source@title
+    idx <- url_index[[source@url]]
+    if (!is.null(idx)) {
+      if (is.null(cited[[idx]]$title) && !is.null(source@title)) {
+        cited[[idx]]$title <- source@title
       }
       next
     }
@@ -1102,7 +1115,7 @@ attach_cited_sources <- function(raw_contents, content) {
     if (!is.null(source@title)) {
       record$title <- source@title
     }
-    by_url[[source@url]] <- record
+    url_index[[source@url]] <- length(cited) + 1L
     cited <- c(cited, list(record))
   }
   if (length(cited) == 0) {

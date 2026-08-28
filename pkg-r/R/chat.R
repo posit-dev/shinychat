@@ -939,21 +939,26 @@ build_html_island_segments <- function(content, session) {
       rendered <- htmltools::renderTags(htmltools::tagList(!!!children))
       island_html <- as.character(rendered$html)
       island_deps <- rendered$dependencies
-      all_deps <- c(all_deps, island_deps)
 
       block <- new_html_block(island_html)
       if (length(island_deps) > 0) {
         attr(block, "shinychat_html_deps") <- island_deps
       }
-      # Process block deps (session-process + attach to block)
+      # Process block deps (session-process + attach to block). Only the
+      # processed deps enter all_deps — raw html_dependency objects cannot
+      # be JSON-serialized. Mirrors the message-level path
+      # (process_ui(pre_process_ui(content), session)).
       result <- process_block_deps(block, session)
       all_deps <- c(all_deps, result$deps)
       segments[[length(segments) + 1]] <- result$block
     } else {
-      # Bare React element: render it bare and keep it as a string part
-      rendered <- htmltools::renderTags(item)
-      all_deps <- c(all_deps, rendered$dependencies)
-      run <- paste0("\n\n", as.character(rendered$html), "\n\n")
+      # Bare React element: session-process deps (same path as message-level
+      # content) and keep the rendered element as a string part. Raw
+      # html_dependency objects must not enter all_deps directly — they
+      # cannot be JSON-serialized and would bypass session registration.
+      ui <- process_ui(pre_process_ui(item), session)
+      all_deps <- c(all_deps, ui[["deps"]])
+      run <- paste0("\n\n", ui[["html"]], "\n\n")
       # Coalesce with previous string segment if adjacent
       if (
         length(segments) > 0 &&

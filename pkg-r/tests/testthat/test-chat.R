@@ -666,6 +666,94 @@ test_that("chat_append_message() block-level html deps are session-processed and
   expect_null(attr(block_seg, "shinychat_html_deps"))
 })
 
+test_that("chat_append_message() non-string HTML content deps are session-processed (no raw dep objects, no duplicates)", {
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- list(
+        action = action,
+        html_deps = html_deps
+      )
+      invisible()
+    }
+  )
+  session <- shiny::MockShinySession$new()
+
+  dep <- htmltools::htmlDependency(
+    name = "island-test-dep",
+    version = "1.0.0",
+    src = ".",
+    script = "island.js"
+  )
+
+  # Non-string HTML content (a tag carrying a dependency) enters the
+  # build_html_island_segments path, which session-processes deps via
+  # process_ui(pre_process_ui(...)). The processed deps should be plain
+  # lists (unclassed by processDeps), never raw html_dependency objects.
+  content <- htmltools::div("trusted HTML", dep)
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = content),
+    chunk = FALSE,
+    session = session
+  )
+
+  expect_length(captured, 1)
+  msg <- captured[[1]]$action
+  expect_equal(msg$type, "message")
+
+  # The html_block segment should carry processed deps on its html_deps field
+  segments <- msg$message$segments
+  block_seg <- segments[[which(vapply(
+    segments,
+    function(s) identical(s$type, "html_block"),
+    logical(1)
+  ))]]
+  expect_equal(block_seg$type, "html_block")
+  expect_false(is.null(block_seg$html_deps))
+
+  # Envelope-level deps should also carry the processed dep
+  expect_false(is.null(captured[[1]]$html_deps))
+
+  # Collect all dep objects from both locations
+  all_deps <- c(block_seg$html_deps, captured[[1]]$html_deps)
+
+  # No dep should still carry the "html_dependency" class — that marks a
+  # raw, unprocessed dep object that cannot be JSON-serialized.
+  is_raw_dep <- vapply(
+    all_deps,
+    function(d) {
+      "html_dependency" %in% class(d)
+    },
+    logical(1)
+  )
+  expect_false(any(is_raw_dep))
+
+  # Each dep should be a plain list with a name key
+  dep_names <- vapply(all_deps, function(d) d$name, character(1))
+  expect_true("island-test-dep" %in% dep_names)
+
+  # No duplicates: the dep should appear exactly once in each location
+  expect_equal(sum(dep_names == "island-test-dep"), 2L)
+  expect_equal(
+    sum(
+      vapply(block_seg$html_deps, function(d) d$name, character(1)) ==
+        "island-test-dep"
+    ),
+    1L
+  )
+  expect_equal(
+    sum(
+      vapply(captured[[1]]$html_deps, function(d) d$name, character(1)) ==
+        "island-test-dep"
+    ),
+    1L
+  )
+
+  # The raw shinychat_html_deps attribute must not survive on the block
+  expect_null(attr(block_seg, "shinychat_html_deps"))
+})
+
 test_that("chat_append_message() emits web_search and web_search_results blocks as segments", {
   captured <- list()
   local_mocked_bindings(
