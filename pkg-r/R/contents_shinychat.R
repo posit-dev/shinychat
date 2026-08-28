@@ -535,7 +535,7 @@ method(contents_shinychat, ellmer::ContentToolRequest) <- function(
       auto_unbox = TRUE
     )),
     intent = content@arguments[["_intent"]],
-    title = as.character(annotations$title),
+    title = if (!is.null(annotations$title)) as.character(annotations$title),
     # The tool *definition* icon. The result element sends the result's own
     # icon (falling back to this one), so the client needs both to tell a
     # result-specific icon from the tool's shared identity.
@@ -601,7 +601,10 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     request_call = request_call,
     status = if (tool_errored(content)) "error" else "success",
     tool_name = content@request@name,
-    title = as.character(display$title %||% annotations$title),
+    title = {
+      block_title <- display$title %||% annotations$title
+      if (!is.null(block_title)) as.character(block_title)
+    },
     icon = icon_rendered$html,
     intent = content@request@arguments[["_intent"]],
     show_request = isTRUE(display$show_request %||% TRUE),
@@ -1101,21 +1104,22 @@ attach_cited_sources <- function(raw_contents, content) {
       next
     }
     source <- x@source
-    if (!S7_inherits(source, WebSource_class) || is.null(source@url)) {
+    if (!S7_inherits(source, WebSource_class)) {
       next
     }
-    idx <- url_index[[source@url]]
+    # web_source_record rejects NULL/NA urls and omits NULL/NA titles
+    record <- web_source_record(source)
+    if (is.null(record)) {
+      next
+    }
+    idx <- url_index[[record$url]]
     if (!is.null(idx)) {
-      if (is.null(cited[[idx]]$title) && !is.null(source@title)) {
-        cited[[idx]]$title <- source@title
+      if (is.null(cited[[idx]]$title) && !is.null(record$title)) {
+        cited[[idx]]$title <- record$title
       }
       next
     }
-    record <- list(url = source@url)
-    if (!is.null(source@title)) {
-      record$title <- source@title
-    }
-    url_index[[source@url]] <- length(cited) + 1L
+    url_index[[record$url]] <- length(cited) + 1L
     cited <- c(cited, list(record))
   }
   if (length(cited) == 0) {

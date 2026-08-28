@@ -186,6 +186,21 @@ test_that("ContentToolRequest handles tool annotations", {
   expect_equal(res$title, "Weather Tool")
 })
 
+test_that("absent annotation title yields no title field, not character(0)", {
+  # as.character(NULL) is character(0), which serializes as `"title": []` —
+  # the client would read a present-but-empty title instead of falling back
+  # to the tool name (roborev 1061).
+  local_shinychat_tool_display(opt = "rich")
+
+  request <- new_tool_request(tool = new_tool(name = "weather"))
+  res <- contents_shinychat(request)
+  expect_true(is.null(res$title))
+
+  result <- new_tool_result(value = "ok", request = request)
+  res <- contents_shinychat(result)
+  expect_true(is.null(res$title))
+})
+
 test_that("ContentToolRequest emits the tool definition icon and its dependencies", {
   # The client compares this static icon against the result's own icon to tell a
   # result-specific icon from the tool's shared identity, so the request has to

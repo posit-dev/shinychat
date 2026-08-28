@@ -1,7 +1,9 @@
-from htmltools import Tag
+from chatlas.types import ContentToolRequest, ContentToolResult
+from htmltools import HTML
 from shiny import reactive
 from shiny.express import input, ui
 from shinychat.express import Chat
+from shinychat.types import ToolResultDisplay
 
 ui.page_opts(fillable=True, title="HTML Title Test")
 
@@ -14,15 +16,20 @@ ui.input_action_button("add_tool", "Add tool result")
 @reactive.effect
 @reactive.event(input.add_tool)
 async def _():
-    tool_tag = Tag(
-        "shiny-tool-result",
-        data_shinychat_react=True,
-        request_id="test-html-title",
-        tool_name="test_tool",
-        tool_title="Map of <i>Paris</i>",
-        value="Tool result content here",
-        value_type="text",
-        status="success",
-        expanded="",
+    request = ContentToolRequest(
+        id="test-html-title", name="test_tool", arguments={}
     )
-    await chat.append_message(tool_tag)
+    await chat.append_message_stream(
+        [
+            request,
+            ContentToolResult(
+                value="Tool result content here",
+                request=request,
+                extra={
+                    "display": ToolResultDisplay(
+                        title=HTML("Map of <i>Paris</i>"), open=True
+                    )
+                },
+            ),
+        ]
+    )
