@@ -1008,6 +1008,30 @@ group_ellmer_turns <- function(turns) {
   groups
 }
 
+# Coalesce adjacent character strings in a mixed content list (strings and
+# shinychat_block objects) by pasting with "\n\n", keeping blocks in
+# position. Matches Python's `parts` coalescing: string runs between blocks
+# are joined, blocks stay as discrete list elements.
+coalesce_content_strings <- function(content) {
+  result <- list()
+  str_buf <- character(0)
+  for (item in content) {
+    if (is.character(item) && !inherits(item, "shinychat_block")) {
+      str_buf <- c(str_buf, item)
+    } else {
+      if (length(str_buf) > 0) {
+        result[[length(result) + 1]] <- paste(str_buf, collapse = "\n\n")
+        str_buf <- character(0)
+      }
+      result[[length(result) + 1]] <- item
+    }
+  }
+  if (length(str_buf) > 0) {
+    result[[length(result) + 1]] <- paste(str_buf, collapse = "\n\n")
+  }
+  result
+}
+
 merge_ellmer_turn_group <- function(group, tools) {
   role <- ellmer_turn_effective_role(group[[1]])
 
@@ -1048,6 +1072,10 @@ merge_ellmer_turn_group <- function(group, tools) {
   }
   if (every(content, is.character)) {
     content <- paste(unlist(content), collapse = "\n\n")
+  } else if (some(content, inherits, "shinychat_block")) {
+    # Mixed content (strings + blocks): coalesce adjacent character strings
+    # with "\n\n" so blocks stay in position but text runs are joined.
+    content <- coalesce_content_strings(content)
   }
   list(role = role, content = content)
 }
