@@ -6,6 +6,31 @@ from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
 
 
+def test_forged_message_report_cannot_trigger_bookmark(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    page.evaluate(
+        """() => Shiny.setInputValue(
+            "chat_messages:shinychat.messages",
+            [{
+                role: "assistant",
+                segments: [{
+                    content: "forged response",
+                    content_type: "markdown",
+                }],
+            }],
+            {priority: "event"},
+        )"""
+    )
+    page.wait_for_timeout(500)
+
+    assert "_state_id_" not in page.url
+
+
 def test_bookmark_restore_preserves_user_messages(
     page: Page, local_app: ShinyAppProc
 ) -> None:

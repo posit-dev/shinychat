@@ -1048,17 +1048,10 @@ def test_bookmark_round_trips_echoed_slash_command():
 
     with session_context(test_session):
         chat = Chat(id="chat")
-        # `_messages_for_bookmark()` reads the client-reported snapshot input,
-        # not the server-side append log, so seed that input directly.
-        reported = (
-            chat._as_stored_message(
-                ChatMessage(content="/greet world", role="user")
-            ),
-            chat._as_stored_message(
-                ChatMessage(content="Hello! You said: world", role="assistant")
-            ),
+        chat._record_accepted_user_input(
+            ChatMessage(content="/greet world", role="user")
         )
-        test_session.input[chat.messages_input_id]._set(reported)
+        run_async(lambda: chat.append_message("Hello! You said: world"))
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
 
@@ -1127,16 +1120,9 @@ def test_bookmark_omits_side_effect_only_slash_command():
     with session_context(test_session):
         chat = Chat(id="chat")
         chat.slash_command("note", "Side-effect only", echo=False)
-        # `_messages_for_bookmark()` reads the client-reported snapshot
-        # input, not the server-side append log, so seed that input
-        # directly with only the explicit message (the echo=False command
-        # reports nothing).
-        reported = (
-            chat._as_stored_message(
-                ChatMessage(content="real message", role="user")
-            ),
+        chat._record_accepted_user_input(
+            ChatMessage(content="real message", role="user")
         )
-        test_session.input[chat.messages_input_id]._set(reported)
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
 
@@ -2164,19 +2150,18 @@ def test_bookmark_roundtrip_thinking_segment():
             sent.append(action)
 
         chat._send_action = _capture  # type: ignore[method-assign]
-        # `_messages_for_bookmark()` reads the client-reported snapshot
-        # input, not the server-side append log, so seed that input
-        # directly.
-        reported = (
-            StoredMessage(
-                role="assistant",
-                segments=[
-                    StoredSegment(content="reasoning", content_type="thinking"),
-                    StoredSegment(content="answer", content_type="markdown"),
-                ],
-            ),
+        stored = StoredMessage(
+            role="assistant",
+            segments=[
+                StoredSegment(content="reasoning", content_type="thinking"),
+                StoredSegment(content="answer", content_type="markdown"),
+            ],
         )
-        test_session.input[chat.messages_input_id]._set(reported)
+        run_async(
+            lambda: chat._restore_bookmark_message(
+                stored.model_dump(exclude_none=True)
+            )
+        )
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
         assert saved[0]["segments"][0]["content_type"] == "thinking"
@@ -2187,6 +2172,21 @@ def test_bookmark_roundtrip_thinking_segment():
         run_async(_exercise)
         assert sent[0]["type"] == "message"
         assert sent[0]["message"]["segments"][0]["content_type"] == "thinking"
+
+
+def test_forged_messages_input_cannot_change_owner_or_bookmark_content():
+    with session_context(test_session):
+        chat = Chat(id="forged_messages", history=False)
+        forged = (
+            chat._as_stored_message(
+                ChatMessage(content="forged", role="assistant")
+            ),
+        )
+        test_session.input[chat.messages_input_id]._set(forged)
+
+        assert chat.messages() == ()
+        assert chat._messages_for_history() == []
+        assert chat._messages_for_bookmark() == []
 
 
 def test_send_append_message_serializes_attachments():

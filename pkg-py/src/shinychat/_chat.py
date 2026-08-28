@@ -895,9 +895,8 @@ class Chat:
         return tuple(res)
 
     def _reported_messages(self) -> tuple[StoredMessage, ...]:
-        # Client-authoritative UI state: the React client reports its settled-
-        # message snapshot as the `${id}_messages` input (see _input_handler.py).
-        # Returns () before the client has reported anything.
+        # Legacy browser-reported UI snapshot retained for the later protocol
+        # cleanup. It is not an authority for transcript or persistence state.
         from shiny.types import SilentException
 
         try:
@@ -1673,25 +1672,18 @@ class Chat:
         return True
 
     def _messages_for_bookmark(self) -> list[dict[str, Any]]:
-        from shiny import reactive
-
-        with reactive.isolate():
-            messages = self._reported_messages()
-
+        """Return server-owned message specs for bookmark persistence."""
         dumps: list[dict[str, Any]] = []
-        for m in messages:
-            d = m.model_dump(exclude_none=True)
-            if not d.get("attachments"):
-                d.pop("attachments", None)
-            dumps.append(d)
+        for entry in self._transcript.read():
+            message = entry.message.model_dump(exclude_none=True)
+            if not message.get("attachments"):
+                message.pop("attachments", None)
+            dumps.append(message)
         return dumps
 
     def _messages_for_history(self) -> list[dict[str, Any]]:
         """Return server-owned message specs for history persistence."""
-        return [
-            entry.message.model_dump(exclude_none=True)
-            for entry in self._transcript.read()
-        ]
+        return self._messages_for_bookmark()
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
         self._transcript.assert_no_active_stream()
@@ -2331,17 +2323,18 @@ class Chat:
         if bookmark_on == "response":
 
             @reactive.effect
-            @reactive.event(self._reported_messages, ignore_init=True)
+            @reactive.event(self._transcript_revision, ignore_init=True)
             async def _auto_bookmark() -> None:
-                messages = self._reported_messages()
+                messages = self.messages()
 
-                if len(messages) == 0:
+                if (
+                    len(messages) == 0
+                    or messages[-1]["role"] != "assistant"
+                    or self._transcript.active_stream_id is not None
+                ):
                     return
 
-                last_message = messages[-1]
-
-                if last_message.role == "assistant":
-                    await session.bookmark()
+                await session.bookmark()
 
             effect_auto_bookmark = _auto_bookmark
 

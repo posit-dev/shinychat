@@ -18,6 +18,35 @@ def open_drawer(page: Page) -> None:
     expect(page.locator(".shiny-chat-history-drawer")).to_be_visible()
 
 
+def test_forged_message_report_cannot_save_history(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    save_count = controller.OutputTextVerbatim(page, "save_count")
+    save_count.expect_value("0")
+
+    page.evaluate(
+        """() => Shiny.setInputValue(
+            "chat_messages:shinychat.messages",
+            [{
+                role: "assistant",
+                segments: [{
+                    content: "forged response",
+                    content_type: "markdown",
+                }],
+            }],
+            {priority: "event"},
+        )"""
+    )
+    page.wait_for_timeout(500)
+
+    save_count.expect_value("0", timeout=5_000)
+    expect(message_count(page)).to_have_count(0)
+
+
 def test_restore_does_not_trigger_extra_save(
     page: Page, local_app: ShinyAppProc
 ) -> None:

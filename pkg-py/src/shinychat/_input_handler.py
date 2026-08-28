@@ -8,9 +8,10 @@ this module must be imported for shinychat to work. The handler normalizes the
 composite into a ``UserInput``-compatible dict so ``Chat`` can read it without
 further coercion.
 
-The client also co-sends a full UI message snapshot tagged
-``:shinychat.messages`` alongside the user input, so the ``shinychat.messages``
-handler deserializes that snapshot into ``StoredMessage`` objects.
+The client also co-sends a legacy full UI message snapshot tagged
+``:shinychat.messages`` alongside the user input. Its handler remains during
+the compatibility window, but the snapshot is not transcript or persistence
+authority.
 """
 
 from __future__ import annotations
@@ -63,10 +64,8 @@ def messages_input_value(value: Any) -> list[StoredMessage]:
         )
     messages: list[StoredMessage] = []
     for m in value:
-        # This snapshot is the authoritative record for persistence, so a
-        # malformed message is a client/protocol bug we surface loudly rather
-        # than silently drop (which would be invisible data loss on save). The
-        # R handler (chat_history_types.R) takes the same posture.
+        # This is a legacy protocol input, so malformed data remains visible
+        # as a client/protocol error instead of being silently normalized.
         # The browser reports dependencies at message scope. Store them once
         # because StoredMessage.html_deps aggregates dependencies across segments.
         html_deps = m.get("htmlDeps")

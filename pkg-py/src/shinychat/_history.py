@@ -583,10 +583,8 @@ class HistoryController:
             for message_dict in stored:
                 await self.chat._restore_bookmark_message(message_dict)
                 restored_count += 1
-        # ui_offset must reflect the messages the client will report for the
-        # restored conversation. `_messages_for_bookmark()` reads the async
-        # client-reported input, which still holds the PREVIOUS conversation's
-        # snapshot at this synchronous point — so count what we actually restored.
+        # ui_offset must reflect the restored owner projection. Count what we
+        # actually restored instead of reading asynchronous browser input.
         self.ui_offset = restored_count
 
     # -- list mutations ----------------------------------------------------
@@ -1193,12 +1191,16 @@ class ChatHistory:
             await controller.notify_settled(controller.record is not None)
 
         @reactive.effect
-        @reactive.event(chat._reported_messages, ignore_init=True)
+        @reactive.event(chat._transcript_revision, ignore_init=True)
         async def _save_on_response():
             if controller.partition is None:
                 return
-            messages = chat._reported_messages()
-            if messages and messages[-1].role == "assistant":
+            messages = chat.messages()
+            if (
+                messages
+                and messages[-1]["role"] == "assistant"
+                and chat._transcript.active_stream_id is None
+            ):
                 try:
                     await controller.on_response()
                 except Exception as e:
