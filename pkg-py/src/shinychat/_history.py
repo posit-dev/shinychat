@@ -358,7 +358,7 @@ class HistoryController:
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
         turn_groups = self.adapter.get_turns_grouped()
-        messages = self.chat._messages_for_bookmark()
+        messages = self.chat._messages_for_history()
 
         first_save = self.record is None
         if not first_save:

@@ -1043,28 +1043,33 @@ class Chat:
         :::
         """
         exchange_id = self._transcript.open_exchange_id
-        msg = normalize_message(message)
-        msg = await self._transform_message(msg)
-        if msg is None:
-            return
-        stored = self._as_stored_message(msg)
-        entry = TranscriptEntry(
-            message=stored,
-            icon=_resolve_icon_attr(icon),
-        )
-
-        async def send() -> bool:
-            return await self._send_append_message(
+        transaction = self._transcript._reserve_complete_append()
+        try:
+            msg = normalize_message(message)
+            msg = await self._transform_message(msg)
+            if msg is None:
+                return
+            stored = self._as_stored_message(msg)
+            entry = TranscriptEntry(
                 message=stored,
-                chunk=False,
-                icon=icon,
+                icon=_resolve_icon_attr(icon),
             )
 
-        await self._transcript.append(
-            entry,
-            exchange_id=exchange_id,
-            send=send,
-        )
+            async def send() -> bool:
+                return await self._send_append_message(
+                    message=stored,
+                    chunk=False,
+                    icon=icon,
+                )
+
+            await self._transcript.append(
+                entry,
+                exchange_id=exchange_id,
+                send=send,
+                transaction=transaction,
+            )
+        finally:
+            self._transcript._release_transaction(transaction)
 
     @asynccontextmanager
     async def message_stream_context(self):
@@ -1180,6 +1185,10 @@ class Chat:
                         error=error,
                     )
                 except BaseException as terminal_error:
+                    try:
+                        await self._send_action({"type": "chunk_end"})
+                    except BaseException:
+                        pass
                     self._transcript.abort_stream(
                         stream_id,
                         status="error",
@@ -1202,35 +1211,41 @@ class Chat:
             self._transcript.open_exchange_id if chunk == "start" else None
         )
         # Normalize various message types into a ChatMessage()
-        msg = normalize_message_chunk(message)
-        chunk_deps = msg.html_deps or []
         if chunk == "start":
-            if self._needs_transform(msg):
-                msg = await self._transform_message(msg, chunk=chunk)
-                if msg is None:
-                    return False
-            stored = self._as_stored_message(msg)
-            entry = TranscriptEntry(
-                message=stored,
-                icon=_resolve_icon_attr(icon),
-            )
-
-            async def send_start() -> bool:
-                return await self._send_append_message(
+            transaction = self._transcript._reserve_stream_start()
+            try:
+                msg = normalize_message_chunk(message)
+                if self._needs_transform(msg):
+                    msg = await self._transform_message(msg, chunk=chunk)
+                    if msg is None:
+                        return False
+                stored = self._as_stored_message(msg)
+                entry = TranscriptEntry(
                     message=stored,
-                    chunk=chunk,
-                    operation=operation,
-                    icon=icon,
+                    icon=_resolve_icon_attr(icon),
                 )
 
-            return await self._transcript.start_stream(
-                stream_id=stream_id,
-                entry=entry,
-                owner_task=asyncio.current_task(),
-                exchange_id=exchange_id,
-                send=send_start,
-            )
+                async def send_start() -> bool:
+                    return await self._send_append_message(
+                        message=stored,
+                        chunk=chunk,
+                        operation=operation,
+                        icon=icon,
+                    )
 
+                return await self._transcript.start_stream(
+                    stream_id=stream_id,
+                    entry=entry,
+                    owner_task=asyncio.current_task(),
+                    exchange_id=exchange_id,
+                    send=send_start,
+                    transaction=transaction,
+                )
+            finally:
+                self._transcript._release_transaction(transaction)
+
+        msg = normalize_message_chunk(message)
+        chunk_deps = msg.html_deps or []
         current_segments = self._transcript.stream_segments(stream_id)
 
         if operation == "replace":
@@ -1269,6 +1284,9 @@ class Chat:
             )
             # A suppressed terminal transform still needs to close the stream.
             if msg is None:
+                self._transcript.commit_stream_source(
+                    stream_id, current_segments
+                )
                 if chunk == "end":
 
                     async def send_end() -> bool:
@@ -1281,7 +1299,7 @@ class Chat:
                         error=error,
                         send=send_end,
                     )
-                return False
+                return True
             if chunk == "end":
                 stream_deps = segments_deps(current_segments)
                 serialized_deps = self._serialize_html_deps(stream_deps)
@@ -1569,6 +1587,10 @@ class Chat:
                         error=error,
                     )
                 except BaseException as terminal_error:
+                    try:
+                        await self._send_action({"type": "chunk_end"})
+                    except BaseException:
+                        pass
                     self._transcript.abort_stream(
                         id,
                         status="error",
@@ -1651,6 +1673,13 @@ class Chat:
                 d.pop("attachments", None)
             dumps.append(d)
         return dumps
+
+    def _messages_for_history(self) -> list[dict[str, Any]]:
+        """Return server-owned message specs for history persistence."""
+        return [
+            entry.message.model_dump(exclude_none=True)
+            for entry in self._transcript.read()
+        ]
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
         self._transcript.assert_no_active_stream()
@@ -1962,13 +1991,14 @@ class Chat:
         """
         action: ClearAction = {"type": "clear"}
         if greeting:
-            self._greeting_content = None
             action["greeting"] = True
 
         async def send() -> None:
             await self._send_action(action)
 
         await self._transcript.clear(send=send)
+        if greeting:
+            self._greeting_content = None
 
     def get_greeting(self) -> str | None:
         """

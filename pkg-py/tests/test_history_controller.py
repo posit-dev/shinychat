@@ -195,6 +195,9 @@ class _FakeChat:
     def _messages_for_bookmark(self) -> list[Any]:
         return []
 
+    def _messages_for_history(self) -> list[Any]:
+        return self._messages_for_bookmark()
+
     async def _send_action(self, action: Any) -> None:
         pass
 
@@ -432,6 +435,43 @@ class _ReplayFakeChat(_FakeChat):
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
         self.messages.append(message_dict)
+
+
+class _OwnerHistoryFakeChat(_FakeChat):
+    def _messages_for_bookmark(self) -> list[Any]:
+        return [msg("user"), msg("assistant")]
+
+    def _messages_for_history(self) -> list[Any]:
+        return [
+            {
+                "role": "user",
+                "segments": [
+                    {"content": "accepted", "content_type": "markdown"}
+                ],
+            },
+            {
+                "role": "assistant",
+                "segments": [
+                    {"content": "emitted", "content_type": "markdown"}
+                ],
+            },
+        ]
+
+
+@pytest.mark.anyio
+async def test_on_response_persists_owner_messages_not_reported_messages():
+    controller, _store = _make_controller()
+    controller.chat = _OwnerHistoryFakeChat()  # type: ignore[assignment]
+
+    await controller.on_response()
+
+    assert controller.record is not None
+    stored = [
+        message
+        for node_id in controller.record.path_node_ids()
+        for message in (controller.record.nodes[node_id].ui or [])
+    ]
+    assert stored == controller.chat._messages_for_history()
 
 
 @pytest.mark.anyio

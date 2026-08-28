@@ -564,6 +564,10 @@ def test_stream_replace_discards_stale_html_dependencies():
         assert final_send["action"]["content"] == "final"
         dep_names = [d["name"] for d in (final_send["deps"] or [])]
         assert "custom-styled-card" not in dep_names
+        assert [
+            dep["name"]
+            for dep in (chat._transcript.read()[0].message.html_deps or [])
+        ] == ["custom-styled-card"]
 
 
 # ------------------------------------------------------------------------------------
@@ -1502,6 +1506,69 @@ def test_stream_commits_final_transformed_content_before_chunk_end_failure():
     assert entry.error == {"message": "end send failed"}
 
 
+def test_stream_transform_error_best_effort_closes_the_wire_and_owner():
+    with session_context(test_session):
+        chat = Chat(id="terminal_transform_error", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        async def _transform(content: str, chunk: str, done: bool) -> str:
+            if done:
+                raise RuntimeError("terminal transform failed")
+            return content
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transform_assistant = _transform
+
+        async def _stream():
+            yield "kept"
+
+        with pytest.raises(RuntimeError, match="terminal transform failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": "terminal transform failed"}
+    assert chat._transcript.active_stream_id is None
+    assert sent[-1] == {"type": "chunk_end"}
+
+
+def test_stream_final_display_error_best_effort_closes_the_wire_and_owner():
+    with session_context(test_session):
+        chat = Chat(id="terminal_display_error", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+            if (
+                action.get("type") == "chunk"
+                and action["content"] == "kept final"
+            ):
+                raise RuntimeError("terminal display failed")
+
+        async def _transform(content: str, chunk: str, done: bool) -> str:
+            return f"{content} final" if done else content
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transform_assistant = _transform
+
+        async def _stream():
+            yield "kept"
+
+        with pytest.raises(RuntimeError, match="terminal display failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": "terminal display failed"}
+    assert chat._transcript.active_stream_id is None
+    assert sent[-1] == {"type": "chunk_end"}
+
+
 def test_stream_suppressed_terminal_transform_closes_and_preserves_content():
     with session_context(test_session):
         chat = Chat(id="suppressed_terminal", history=False)
@@ -1528,6 +1595,26 @@ def test_stream_suppressed_terminal_transform_closes_and_preserves_content():
     assert entry.status is None
     assert chat._transcript.active_stream_id is None
     assert sent[-1] == {"type": "chunk_end"}
+
+
+def test_suppressed_chunk_commits_source_without_mutating_display():
+    with session_context(test_session):
+        chat = Chat(id="suppressed_chunk", history=False)
+
+        async def _transform(
+            content: str, chunk: str, done: bool
+        ) -> str | None:
+            return None if chunk == "hidden" else content
+
+        chat._transform_assistant = _transform
+
+        async def _stream():
+            yield "hidden"
+            yield "shown"
+
+        run_async(lambda: chat._append_message_stream(_stream()))
+
+    assert chat._transcript.read()[0].message.content == "hiddenshown"
 
 
 def test_suppressed_terminal_transform_surfaces_end_send_failure():
@@ -1675,6 +1762,89 @@ def test_stream_start_captures_exchange_before_async_transform():
 
     assert chat._transcript.read()[-1].exchange_id == old_exchange
     assert chat._transcript.open_exchange_id != old_exchange
+
+
+def test_complete_append_reserves_admission_before_async_transform():
+    with session_context(test_session):
+        chat = Chat(id="complete_transform_admission", history=False)
+        transform_started = asyncio.Event()
+        release_transform = asyncio.Event()
+
+        async def _transform(content: str, chunk: str, done: bool) -> str:
+            transform_started.set()
+            await release_transform.wait()
+            return content
+
+        chat._transform_assistant = _transform
+
+        async def _exercise() -> None:
+            append = asyncio.create_task(chat.append_message("complete"))
+            await transform_started.wait()
+            with pytest.raises(
+                RuntimeError, match="another transcript operation"
+            ):
+                await chat._append_message_chunk(
+                    "", chunk="start", stream_id="blocked"
+                )
+            release_transform.set()
+            await append
+
+        run_async(_exercise)
+
+    assert [entry.message.content for entry in chat._transcript.read()] == [
+        "complete"
+    ]
+
+
+def test_stream_start_reserves_admission_before_async_transform():
+    with session_context(test_session):
+        chat = Chat(id="stream_transform_admission", history=False)
+        transform_started = asyncio.Event()
+        release_transform = asyncio.Event()
+
+        async def _transform(content: str, chunk: str, done: bool) -> str:
+            transform_started.set()
+            await release_transform.wait()
+            return content
+
+        chat._transform_assistant = _transform
+
+        async def _exercise() -> None:
+            start = asyncio.create_task(
+                chat._append_message_chunk(
+                    "", chunk="start", stream_id="reserved"
+                )
+            )
+            await transform_started.wait()
+            with pytest.raises(
+                RuntimeError, match="another transcript operation"
+            ):
+                await chat.append_message("blocked")
+            release_transform.set()
+            await start
+            await chat._append_message_chunk(
+                "", chunk="end", stream_id="reserved"
+            )
+
+        run_async(_exercise)
+
+    assert [entry.message.content for entry in chat._transcript.read()] == [""]
+
+
+def test_clear_greeting_waits_for_successful_transport():
+    with session_context(test_session):
+        chat = Chat(id="clear_greeting_failure", history=False)
+        chat._greeting_content = "welcome"
+
+        async def _fail(action: Any, deps: Any = None) -> None:
+            raise RuntimeError("clear failed")
+
+        chat._send_action = _fail  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="clear failed"):
+            run_async(lambda: chat.clear_messages(greeting=True))
+
+    assert chat.get_greeting() == "welcome"
 
 
 def test_second_root_stream_is_rejected():
