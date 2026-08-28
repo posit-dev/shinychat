@@ -519,6 +519,24 @@ class Chat:
                 user_input: str, attachments: list[Attachment]
             ) -> None:
                 contents = [attachment_to_content(a) for a in attachments]
+
+                # Resolve the ID before model work begins: later history
+                # switches, new-chat actions, or client swaps must not
+                # relabel in-flight work.
+                history_controller = self.history._controller
+                conversation_id = (
+                    await history_controller.ensure_conversation_id()
+                    if history_controller is not None
+                    else None
+                )
+                # Older chatlas / non-chatlas clients lack this binding;
+                # their telemetry simply goes without the ID. The scalar
+                # handoff assumes one active stream per client; overlapping
+                # submissions could cross-label spans.
+                client = chat_client.value
+                if hasattr(client, "conversation_id"):
+                    client.conversation_id = conversation_id
+
                 response = await chat_client.value.stream_async(
                     user_input,
                     *contents,

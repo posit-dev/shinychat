@@ -116,6 +116,15 @@ a notification, so neither appears here.
 \item \code{client}: The current chat client object (an active binding that
 always reflects the latest client, even after \code{set_client()}
 is called).
+\item \code{history$conversation_id()}: A reactive expression returning the
+active conversation ID: \code{NULL} when history is disabled or the chat
+is still an empty draft, otherwise the ID allocated on the first
+user submission -- before the model call -- that the saved
+conversation record carries. The ID is stable across retries,
+restores, conversation switches, and \code{set_client()} calls. The ID
+is also handed to the client (via its \code{conversation_id} binding,
+when supported), which records it as the \code{gen_ai.conversation.id}
+attribute on its own OpenTelemetry spans.
 \item \code{set_client(new_client, sync = TRUE)}: Replace the chat client used by
 the module. When \code{sync} is \code{TRUE} (the default), the new client
 inherits conversation turns, system prompt, and tools from the previous

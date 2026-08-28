@@ -113,11 +113,11 @@ check_schema_version <- function(version) {
   as.integer(version)
 }
 
-new_conversation_record <- function(title, client_info = list()) {
+new_conversation_record <- function(title, client_info = list(), id = NULL) {
   now <- utcnow_iso()
   list(
     schema_version = 1L,
-    id = new_conversation_id(),
+    id = id %||% new_conversation_id(),
     title = title,
     # NULL = timestamp-based title, no explicit source yet -- either LLM
     # titling hasn't finished (or was never enabled) or nothing has renamed
