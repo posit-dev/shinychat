@@ -611,14 +611,13 @@ class InMemoryConversationStore(ConversationStore):
         if partition not in self._data:
             self._data[partition] = {}
         existing = self._data[partition].get(record.id)
-        if (
-            existing is not None
-            and existing.schema_version != record.schema_version
-        ):
-            raise ValueError(
-                "Cannot overwrite a conversation record with a different "
-                "schema version."
-            )
+        if existing is not None:
+            existing = _check_record_for_store(existing)
+            if type(existing) is not type(record):
+                raise ValueError(
+                    "Cannot overwrite a conversation record with a different "
+                    "schema version."
+                )
         self._data[partition][record.id] = record
 
         # Only touched-record work — mirrors FileConversationStore.put(), so

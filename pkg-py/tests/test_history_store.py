@@ -193,6 +193,19 @@ async def test_memory_store_never_overwrites_a_v1_record_with_v2():
 
 
 @pytest.mark.anyio
+async def test_memory_store_rejects_a_mutated_resident_v1_record():
+    store = InMemoryConversationStore()
+    v1 = new_conversation_record(title="v1")
+    await store.put(part(scope="alice"), v1)
+    cast(Any, v1).schema_version = 2
+    v2 = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    v2.id = v1.id
+
+    with pytest.raises(ValueError, match="model does not match"):
+        await store.put(part(scope="alice"), v2)
+
+
+@pytest.mark.anyio
 async def test_file_store_round_trips_dict_tool_result_display(
     store: FileConversationStore,
 ):
