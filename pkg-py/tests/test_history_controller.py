@@ -212,6 +212,7 @@ def test_extend_with_ui_messages_reconstructs_them():
 class _FakeChat:
     def __init__(self) -> None:
         self.set_greeting_calls: list[Any] = []
+        self.destructive_preflight_calls = 0
 
     def _messages_for_bookmark(self) -> list[Any]:
         return []
@@ -224,6 +225,9 @@ class _FakeChat:
 
     async def clear_messages(self) -> None:
         pass
+
+    async def _prepare_destructive_history_mutation(self) -> None:
+        self.destructive_preflight_calls += 1
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
         pass
@@ -677,6 +681,61 @@ async def test_switch_to_swaps_in_session():
     assert _nav_actions(chat) == []
     assert chat.cleared == 1
     assert controller.record is target
+
+
+@pytest.mark.anyio
+async def test_active_stream_rejects_history_switch_before_partial_mutation():
+    controller, store, chat = _make_nav_controller()
+    active = new_conversation_record(title="active")
+    target = new_conversation_record(title="target")
+    controller.record = active
+    store.records[target.id] = target
+
+    async def reject_active_stream() -> None:
+        raise RuntimeError(
+            "Cannot clear or restore messages while a message stream is active."
+        )
+
+    chat._prepare_destructive_history_mutation = reject_active_stream  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="stream is active"):
+        await controller.switch_to(target.id)
+
+    assert controller.record is active
+    assert store.put_calls == []
+    assert cast(_NavFakeAdapter, controller.adapter).set_calls == []
+    assert chat.cleared == 0
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("operation", ["new_chat", "delete", "replay_ui"])
+async def test_active_stream_rejects_destructive_history_paths_before_mutation(
+    operation: str,
+):
+    controller, store, chat = _make_nav_controller()
+    active = new_conversation_record(title="active")
+    controller.record = active
+    store.records[active.id] = active
+
+    async def reject_active_stream() -> None:
+        raise RuntimeError(
+            "Cannot clear or restore messages while a message stream is active."
+        )
+
+    chat._prepare_destructive_history_mutation = reject_active_stream  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="stream is active"):
+        if operation == "new_chat":
+            await controller.new_chat()
+        elif operation == "delete":
+            await controller.delete(active.id)
+        else:
+            await controller.replay_ui(active)
+
+    assert controller.record is active
+    assert store.records[active.id] is active
+    assert cast(_NavFakeAdapter, controller.adapter).set_calls == []
+    assert chat.cleared == 0
 
 
 @pytest.mark.anyio
@@ -1610,6 +1669,9 @@ class _TrackingChat:
     async def clear_messages(self) -> None:
         self.messages_ = []
         self.cleared = True
+
+    async def _prepare_destructive_history_mutation(self) -> None:
+        pass
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
         self.messages_.append(message_dict)

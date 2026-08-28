@@ -354,6 +354,9 @@ class HistoryController:
         check_schema_version(record.schema_version)
         await self.store.put(partition, record)
 
+    async def _prepare_destructive_mutation(self) -> None:
+        await self.chat._prepare_destructive_history_mutation()
+
     # -- save -----------------------------------------------------------
 
     async def on_response(self) -> None:
@@ -514,6 +517,7 @@ class HistoryController:
         if target is None:
             raise RuntimeError(f"Conversation {conv_id!r} no longer exists.")
 
+        await self._prepare_destructive_mutation()
         await self.save_current()
         if self.on_pre_switch is not None:
             skip = await self.on_pre_switch(target)
@@ -527,6 +531,7 @@ class HistoryController:
         await self.send_history_update()
 
     async def new_chat(self) -> None:
+        await self._prepare_destructive_mutation()
         await self.save_current()
         self.adapter.set_turns_json([])
         await self.chat.clear_messages()
@@ -545,6 +550,7 @@ class HistoryController:
         await self.send_history_update()
 
     async def replay_ui(self, record: ConversationRecord) -> None:
+        await self._prepare_destructive_mutation()
         await self.chat.clear_messages()
         # A restored conversation is never a "new chat" — the app's
         # greeting doesn't belong here, regardless of `persistent`.
@@ -588,6 +594,7 @@ class HistoryController:
     async def delete(self, conv_id: str) -> None:
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
+        await self._prepare_destructive_mutation()
         if self.on_evict is not None:
             await self.on_evict(conv_id)
         await self.store.delete(self.partition, conv_id)
@@ -644,6 +651,7 @@ class HistoryController:
                 return
             target = siblings[current_pos + 1]
 
+        await self._prepare_destructive_mutation()
         leaf = self.record.subtree_leaf(target)
         self.record.set_current_leaf(leaf)
         self.adapter.set_turns_json(self.record.path_turns())
@@ -666,6 +674,7 @@ class HistoryController:
         node_id, _ = self.record.node_id_for_message_index(message_index)
         fork_parent = self.record.nodes[node_id].parent
 
+        await self._prepare_destructive_mutation()
         # Branching happens implicitly: truncating current_leaf here means the next
         # append_linear (from the resubmit's on_response) creates a sibling under
         # fork_parent, not a child of the old leaf. We don't call branch_from here
@@ -1123,6 +1132,7 @@ class ChatHistory:
                     await notify_error("Could not load conversation", e)
                     target = None
                 if target is not None:
+                    await controller._prepare_destructive_mutation()
                     adapter.set_turns_json(target.path_turns())
                     await controller.replay_ui(target)
                     await controller.activate_record(target)
@@ -1158,6 +1168,7 @@ class ChatHistory:
                     await notify_error("Could not load conversation", e)
                     pointed = None
                 if pointed is not None:
+                    await controller._prepare_destructive_mutation()
                     adapter.set_turns_json(pointed.path_turns())
                     await controller.replay_ui(pointed)
                     await controller.activate_record(pointed)

@@ -22,6 +22,11 @@ from shinychat._chat_types import (
     StoredMessage,
     StoredSegment,
 )
+from shinychat._history import HistoryController
+from shinychat._history_store import (
+    ConversationPartition,
+    InMemoryConversationStore,
+)
 from shinychat._utils_types import MISSING
 
 # ----------------------------------------------------------------------
@@ -121,6 +126,16 @@ def run_async(coro_fn: Any) -> None:
     t.join()
     if exc:
         raise exc[0]
+
+
+def run_async_result(coro_fn: Any) -> Any:
+    result: list[Any] = []
+
+    async def capture() -> None:
+        result.append(await coro_fn())
+
+    run_async(capture)
+    return result[0]
 
 
 def stored_message(content: str, role: Role) -> StoredMessage:
@@ -390,7 +405,6 @@ def test_response_settlement_persists_source_response_before_new_chat():
 
         chat._on_response_settled(on_settled)
         run_async(lambda: chat.append_message("source response"))
-        run_async(reactive.flush)
         run_async(chat.clear_messages)
         run_async(reactive.flush)
 
@@ -407,7 +421,6 @@ def test_response_settlement_auto_bookmarks_source_before_new_chat():
         chat = Chat("response_settlement_bookmark", history=False)
         chat.enable_bookmarking(cast(Any, _BookmarkClient()))
         run_async(lambda: chat.append_message("source response"))
-        run_async(reactive.flush)
         run_async(chat.clear_messages)
         run_async(reactive.flush)
 
@@ -419,6 +432,125 @@ def test_response_settlement_auto_bookmarks_source_before_new_chat():
                 {"content": "source response", "content_type": "markdown"}
             ],
         }
+    ]
+
+
+def test_new_chat_drains_response_into_the_original_history_record_once():
+    class _HistoryAdapter:
+        def __init__(self) -> None:
+            self.turns = [
+                {"role": "user", "content": "prompt"},
+                {"role": "assistant", "content": "source response"},
+            ]
+
+        def get_turns_json(self) -> list[dict[str, str]]:
+            return list(self.turns)
+
+        def get_turns_grouped(self) -> list[list[dict[str, str]]]:
+            return [[turn] for turn in self.turns]
+
+        def set_turns_json(self, turns: list[dict[str, str]]) -> None:
+            self.turns = list(turns)
+
+        def client_info(self) -> dict[str, str]:
+            return {}
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_history_new_chat", history=False)
+        store = InMemoryConversationStore()
+        controller = HistoryController(
+            chat=chat,
+            adapter=_HistoryAdapter(),  # type: ignore[arg-type]
+            store=store,
+            title_fn=None,
+            title_enabled=False,
+            client=None,
+        )
+        controller.partition = ConversationPartition(
+            chat_id=chat.id, scope="response-settlement"
+        )
+        chat._on_response_settled(controller.on_response)
+
+        run_async(lambda: chat.append_message("source response"))
+        run_async(controller.new_chat)
+        run_async(reactive.flush)
+
+        partition = controller.partition
+        assert partition is not None
+        records = run_async_result(lambda: store.list(partition))
+        assert len(records) == 1
+        record = run_async_result(lambda: store.get(partition, records[0].id))
+
+    assert record is not None
+    assert record.response_count == 1
+    assert controller.record is None
+    assert chat.messages() == ()
+
+
+def test_clear_without_a_pending_response_settlement_invokes_no_consumers():
+    settled: list[str] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_isolated_clear", history=False)
+
+        async def on_settled() -> None:
+            settled.append("settled")
+
+        chat._on_response_settled(on_settled)
+        run_async(chat.clear_messages)
+        run_async(reactive.flush)
+
+    assert settled == []
+
+
+def test_clear_drains_each_pending_consumer_despite_consumer_failure():
+    settled: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_clear_consumer_failure", history=False)
+
+        async def broken_callback() -> None:
+            raise RuntimeError("callback failed")
+
+        async def on_settled() -> None:
+            settled.append(chat.messages())
+
+        chat._on_response_settled(broken_callback)
+        chat._on_response_settled(on_settled)
+        run_async(lambda: chat.append_message("source response"))
+        with pytest.warns(UserWarning, match="callback failed"):
+            run_async(chat.clear_messages)
+        run_async(reactive.flush)
+
+    assert settled == [
+        (ChatMessageDict(content="source response", role="assistant"),)
+    ]
+
+
+def test_multiple_complete_responses_in_one_flush_settle_once_each():
+    settled: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_batched_complete", history=False)
+
+        async def on_settled() -> None:
+            settled.append(chat.messages())
+
+        chat._on_response_settled(on_settled)
+        run_async(lambda: chat.append_message("first response"))
+        run_async(lambda: chat.append_message("second response"))
+        run_async(reactive.flush)
+        run_async(reactive.flush)
+
+    assert settled == [
+        (
+            ChatMessageDict(content="first response", role="assistant"),
+            ChatMessageDict(content="second response", role="assistant"),
+        ),
+        (
+            ChatMessageDict(content="first response", role="assistant"),
+            ChatMessageDict(content="second response", role="assistant"),
+        ),
     ]
 
 

@@ -152,6 +152,11 @@ UserSubmitFunction = Union[
 ResponseSettlementCallback = Callable[[], Awaitable[None]]
 
 
+@dataclass(eq=False)
+class _PendingResponseSettlement:
+    callbacks: tuple[ResponseSettlementCallback, ...]
+
+
 @dataclass(frozen=True)
 class SlashCommandRegistration:
     handler: UserSubmitFunction | None
@@ -354,6 +359,9 @@ class Chat:
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
         self._greeting_content: str | None = None
         self._response_settlement_callbacks: list[ResponseSettlementCallback] = []
+        self._pending_response_settlements: list[
+            _PendingResponseSettlement
+        ] = []
 
         # Initialize chat state and user input effect
         from shiny import reactive
@@ -1744,28 +1752,50 @@ class Chat:
         return cancel
 
     def _schedule_response_settlement(self) -> None:
-        if not self._response_settlement_callbacks:
+        callbacks = tuple(self._response_settlement_callbacks)
+        if not callbacks:
+            return
+
+        from shiny import reactive
+
+        delivery = _PendingResponseSettlement(callbacks)
+        self._pending_response_settlements.append(delivery)
+
+        reactive.on_flushed(
+            lambda: self._deliver_response_settlement(delivery), once=True
+        )
+
+    async def _deliver_response_settlement(
+        self, delivery: _PendingResponseSettlement
+    ) -> None:
+        try:
+            self._pending_response_settlements.remove(delivery)
+        except ValueError:
             return
 
         from shiny import reactive
         from shiny.session import session_context
 
-        async def settle() -> None:
-            context = reactive.Context()
-            with session_context(self._session), context():
-                for callback in tuple(self._response_settlement_callbacks):
-                    try:
-                        await callback()
-                    except BaseException as error:
-                        warnings.warn(
-                            f"Chat response settlement callback failed: {error}",
-                            stacklevel=2,
-                        )
+        context = reactive.Context()
+        with session_context(self._session), context():
+            for callback in delivery.callbacks:
+                try:
+                    await callback()
+                except BaseException as error:
+                    warnings.warn(
+                        f"Chat response settlement callback failed: {error}",
+                        stacklevel=2,
+                    )
 
-        reactive.on_flushed(settle, once=True)
+    async def _prepare_destructive_history_mutation(self) -> None:
+        """Reject an active stream and settle terminal responses before mutation."""
+        self._transcript.assert_can_clear_or_restore()
+        while self._pending_response_settlements:
+            await self._deliver_response_settlement(
+                self._pending_response_settlements[0]
+            )
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
-        self._transcript.assert_no_active_stream()
         try:
             stored = StoredMessage.model_validate(message_dict)
         except ValidationError as e:
@@ -1790,6 +1820,7 @@ class Chat:
             )
             return
 
+        await self._prepare_destructive_history_mutation()
         entry = TranscriptEntry(message=stored)
 
         async def send() -> bool:
@@ -2079,6 +2110,7 @@ class Chat:
         async def send() -> None:
             await self._send_action(action)
 
+        await self._prepare_destructive_history_mutation()
         await self._transcript.clear(send=send)
         if greeting:
             self._greeting_content = None
@@ -2470,6 +2502,7 @@ class Chat:
             # and `self.messages()` are never initialized due to
             # calling `self._init_chat.destroy()` above
 
+            await self._prepare_destructive_history_mutation()
             if resolved_bookmark_id_msgs_str not in state.values:
                 # If no messages to restore, display the `__init__(messages=)` messages
                 await self._append_init_messages()

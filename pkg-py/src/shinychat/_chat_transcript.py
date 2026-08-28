@@ -308,6 +308,10 @@ class ChatTranscript:
                 "Cannot clear or restore messages while a message stream is active."
             )
 
+    def assert_can_clear_or_restore(self) -> None:
+        """Check whether a destructive mutation can proceed without reserving it."""
+        self._assert_can_clear_or_restore()
+
     def _reserve_complete_append(self) -> object:
         if self._stream is not None:
             raise RuntimeError(
