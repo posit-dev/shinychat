@@ -258,7 +258,7 @@ class _ExchangeRecorder:
         turns: list[dict[str, Any]],
     ) -> tuple[list[dict[str, Any]], list[str]]:
         serialized = [
-            json.loads(json.dumps(turn, sort_keys=True, separators=(",", ":")))
+            json.loads(json.dumps(turn, separators=(",", ":")))
             for turn in turns
         ]
         return serialized, [

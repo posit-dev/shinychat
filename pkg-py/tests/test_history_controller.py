@@ -378,6 +378,37 @@ def _stored_message(role: str, content: str) -> StoredMessage:
     )
 
 
+def test_v2_recorder_normalizes_mixed_mapping_keys_before_fingerprinting():
+    from shinychat._history import _ExchangeRecorder
+
+    serialized, fingerprints = _ExchangeRecorder._canonical_turns(
+        [{2: "two", "one": "one"}]  # type: ignore[dict-item]
+    )
+
+    assert serialized == [{"2": "two", "one": "one"}]
+    assert fingerprints == ['{"2":"two","one":"one"}']
+
+
+def test_v2_recorder_mixed_mapping_keys_keep_a_stable_prefix():
+    from shinychat._history import _ExchangeRecorder
+
+    _, baseline = _ExchangeRecorder._canonical_turns(
+        [{"one": "one", 2: "two"}]  # type: ignore[dict-item]
+    )
+    _, current = _ExchangeRecorder._canonical_turns(
+        [{2: "two", "one": "one"}, {"role": "assistant", "content": "later"}]  # type: ignore[dict-item]
+    )
+
+    assert current[: len(baseline)] == baseline
+
+
+def test_v2_recorder_rejects_non_json_turn_values():
+    from shinychat._history import _ExchangeRecorder
+
+    with pytest.raises(TypeError):
+        _ExchangeRecorder._canonical_turns([{"value": object()}])
+
+
 @pytest.mark.anyio
 async def test_v2_recorder_persists_one_input_response_and_replays_display():
     store = InMemoryConversationStore()
