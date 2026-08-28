@@ -233,7 +233,7 @@
         "send": {"result": "sent"}
       }
     ],
-    "expected_exchanges": {"1": "older"},
+    "expected_exchanges": {"0": "older", "1": "older", "2": "newer"},
     "expected": [
       {
         "message": {

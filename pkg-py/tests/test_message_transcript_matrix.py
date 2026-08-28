@@ -109,6 +109,7 @@ async def test_message_transcript_matrix(case: dict[str, Any]) -> None:
                 if kind == "complete-message":
                     await transcript.append(
                         entry_for(operation),
+                        exchange_id=transcript.open_exchange_id,
                         send=send_for(operation, transport),
                     )
                 elif kind == "accepted-input":
@@ -122,6 +123,7 @@ async def test_message_transcript_matrix(case: dict[str, Any]) -> None:
                         stream_id=cast(str, operation["stream_id"]),
                         entry=entry_for(operation),
                         owner_task=None,
+                        exchange_id=transcript.open_exchange_id,
                         send=send_for(operation, transport),
                     )
                 elif kind == "stream-chunk":

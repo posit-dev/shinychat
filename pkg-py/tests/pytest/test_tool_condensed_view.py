@@ -398,15 +398,17 @@ def custom_message_handler():
 
 
 async def _stream_custom_result(result: ContentToolResult) -> list[Any]:
-    """Drive `result` through `chat._append_message_chunk`, capturing what's sent."""
+    """Drive `result` through a stream lifecycle, capturing its content chunk."""
     from shiny.express._stub_session import ExpressStubSession
     from shiny.session import session_context
     from shinychat import Chat
 
     sent: list[Any] = []
 
-    async def capture_append(message: Any, **kwargs: Any) -> None:
-        sent.append(message)
+    async def capture_append(message: Any, **kwargs: Any) -> bool:
+        if kwargs.get("chunk") is True:
+            sent.append(message)
+        return True
 
     async def capture_action(*args: Any, **kwargs: Any) -> None:
         pass
@@ -415,7 +417,12 @@ async def _stream_custom_result(result: ContentToolResult) -> list[Any]:
         chat = Chat(id="chat")
         chat._send_append_message = capture_append  # type: ignore[method-assign]
         chat._send_action = capture_action  # type: ignore[method-assign]
+        chat._serialize_html_deps = lambda deps: (  # type: ignore[method-assign]
+            [{"name": dep.name} for dep in deps] if deps else None
+        )
+        await chat._append_message_chunk("", chunk="start", stream_id="s1")
         await chat._append_message_chunk(result, stream_id="s1")
+        await chat._append_message_chunk("", chunk="end", stream_id="s1")
 
     return sent
 
@@ -689,7 +696,9 @@ async def test_custom_tool_result_html_dependencies_survive_the_wrap(
     sent = await _stream_custom_result(result)
 
     assert len(sent) == 1
-    dep_names = [d.name for d in sent[0].html_deps]
+    dep_names = [
+        d["name"] for d in (sent[0].segments[0].html_deps or [])
+    ]
     assert "custom-widget" in dep_names
 
 
@@ -823,7 +832,7 @@ async def test_custom_text_result_stays_routable(
     sent = await _stream_custom_result(result)
 
     assert len(sent) == 1
-    assert sent[0].content_type == "html"
+    assert sent[0].segments[0].content_type == "html"
     html = sent[0].content
     assert "<shiny-tool-result" in html
     assert "custom-display" in html

@@ -1042,6 +1042,7 @@ class Chat:
         similar) is specified in model's completion method.
         :::
         """
+        exchange_id = self._transcript.open_exchange_id
         msg = normalize_message(message)
         msg = await self._transform_message(msg)
         if msg is None:
@@ -1059,7 +1060,11 @@ class Chat:
                 icon=icon,
             )
 
-        await self._transcript.append(entry, send=send)
+        await self._transcript.append(
+            entry,
+            exchange_id=exchange_id,
+            send=send,
+        )
 
     @asynccontextmanager
     async def message_stream_context(self):
@@ -1193,6 +1198,9 @@ class Chat:
         status: Literal["cancelled", "error"] | None = None,
         error: str | None = None,
     ) -> bool:
+        exchange_id = (
+            self._transcript.open_exchange_id if chunk == "start" else None
+        )
         # Normalize various message types into a ChatMessage()
         msg = normalize_message_chunk(message)
         chunk_deps = msg.html_deps or []
@@ -1219,6 +1227,7 @@ class Chat:
                 stream_id=stream_id,
                 entry=entry,
                 owner_task=asyncio.current_task(),
+                exchange_id=exchange_id,
                 send=send_start,
             )
 
@@ -1258,8 +1267,20 @@ class Chat:
             msg = await self._transform_message(
                 msg, chunk=chunk, chunk_content=chunk_content
             )
-            # Act like nothing happened if transformed to None
+            # A suppressed terminal transform still needs to close the stream.
             if msg is None:
+                if chunk == "end":
+
+                    async def send_end() -> bool:
+                        await self._send_action({"type": "chunk_end"})
+                        return True
+
+                    return await self._transcript.end_stream(
+                        stream_id=stream_id,
+                        status=status,
+                        error=error,
+                        send=send_end,
+                    )
                 return False
             if chunk == "end":
                 stream_deps = segments_deps(current_segments)
@@ -1662,7 +1683,11 @@ class Chat:
         async def send() -> bool:
             return await self._send_append_message(stored)
 
-        await self._transcript.append(entry, send=send)
+        await self._transcript.append(
+            entry,
+            exchange_id=self._transcript.open_exchange_id,
+            send=send,
+        )
 
     def transform_user_input(self, *args: object, **kwargs: object) -> object:
         raise TypeError(
@@ -1935,7 +1960,6 @@ class Chat:
             react to the request to generate a new one via
             :meth:`~shinychat.Chat.set_greeting`.
         """
-        self._transcript.assert_no_active_stream()
         action: ClearAction = {"type": "clear"}
         if greeting:
             self._greeting_content = None
@@ -2265,16 +2289,16 @@ class Chat:
         if bookmark_on == "response":
 
             @reactive.effect
-            @reactive.event(self.messages, ignore_init=True)
+            @reactive.event(self._reported_messages, ignore_init=True)
             async def _auto_bookmark() -> None:
-                messages = self.messages()
+                messages = self._reported_messages()
 
                 if len(messages) == 0:
                     return
 
                 last_message = messages[-1]
 
-                if last_message.get("role") == "assistant":
+                if last_message.role == "assistant":
                     await session.bookmark()
 
             effect_auto_bookmark = _auto_bookmark

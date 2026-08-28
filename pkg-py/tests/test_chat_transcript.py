@@ -42,6 +42,7 @@ async def start_stream(
         stream_id=stream_id,
         entry=entry("assistant", ""),
         owner_task=owner_task,
+        exchange_id=transcript.open_exchange_id,
         send=sent,
     )
 
@@ -50,7 +51,9 @@ async def start_stream(
 async def test_read_returns_a_defensive_copy() -> None:
     transcript = ChatTranscript()
     await transcript.append(
-        entry("user", "hello", icon="<i>user</i>"), send=sent
+        entry("user", "hello", icon="<i>user</i>"),
+        exchange_id=transcript.open_exchange_id,
+        send=sent,
     )
 
     projection = transcript.read()
@@ -72,7 +75,11 @@ async def test_append_sends_before_committing() -> None:
         events.append(("send", len(transcript.read())))
         return True
 
-    await transcript.append(sent_message, send=send)
+    await transcript.append(
+        sent_message,
+        exchange_id=transcript.open_exchange_id,
+        send=send,
+    )
     events.append(("commit", len(transcript.read())))
 
     assert events == [("send", 0), ("commit", 1)]
@@ -91,7 +98,11 @@ async def test_append_commits_the_pre_send_snapshot() -> None:
         return True
 
     async def append() -> None:
-        await transcript.append(source, send=send)
+        await transcript.append(
+            source,
+            exchange_id=transcript.open_exchange_id,
+            send=send,
+        )
 
     async with anyio.create_task_group() as task_group:
         task_group.start_soon(append)
@@ -120,7 +131,11 @@ async def test_complete_append_captures_exchange_before_awaiting_send() -> None:
         return True
 
     async def append_response() -> None:
-        await transcript.append(entry("assistant", "first response"), send=send)
+        await transcript.append(
+            entry("assistant", "first response"),
+            exchange_id=opening_exchange,
+            send=send,
+        )
 
     async with anyio.create_task_group() as task_group:
         task_group.start_soon(append_response)
@@ -134,13 +149,21 @@ async def test_complete_append_captures_exchange_before_awaiting_send() -> None:
 @pytest.mark.anyio
 async def test_failed_send_leaves_committed_messages_unchanged() -> None:
     transcript = ChatTranscript()
-    await transcript.append(entry("user", "kept"), send=sent)
+    await transcript.append(
+        entry("user", "kept"),
+        exchange_id=transcript.open_exchange_id,
+        send=sent,
+    )
 
     async def fail() -> bool:
         raise RuntimeError("send failed")
 
     with pytest.raises(RuntimeError, match="send failed"):
-        await transcript.append(entry("assistant", "discarded"), send=fail)
+        await transcript.append(
+            entry("assistant", "discarded"),
+            exchange_id=transcript.open_exchange_id,
+            send=fail,
+        )
 
     assert [item.message.content for item in transcript.read()] == ["kept"]
 
@@ -152,7 +175,11 @@ async def test_unsent_message_does_not_commit() -> None:
     async def unsent() -> bool:
         return False
 
-    assert not await transcript.append(entry("system", "hidden"), send=unsent)
+    assert not await transcript.append(
+        entry("system", "hidden"),
+        exchange_id=transcript.open_exchange_id,
+        send=unsent,
+    )
     assert transcript.read() == ()
 
 
@@ -162,7 +189,11 @@ async def test_mutations_notify_change() -> None:
     transcript = ChatTranscript(on_change=lambda: changes.append(None))
 
     transcript.record_accepted_input(entry("user", "first").message)
-    await transcript.append(entry("assistant", "reply"), send=sent)
+    await transcript.append(
+        entry("assistant", "reply"),
+        exchange_id=transcript.open_exchange_id,
+        send=sent,
+    )
     await transcript.clear(send=sent_action)
     transcript.replace([entry("assistant", "restored")])
 
@@ -182,6 +213,7 @@ def test_accepted_input_opens_a_new_opaque_exchange() -> None:
         "first",
         "second",
     ]
+    assert [item.exchange_id for item in transcript.read()] == [first, second]
 
 
 @pytest.mark.anyio
@@ -221,6 +253,7 @@ async def test_stream_start_reserves_admission_before_awaiting_send() -> None:
             stream_id="first",
             entry=entry("assistant", ""),
             owner_task=None,
+            exchange_id=transcript.open_exchange_id,
             send=blocked_send,
         )
 
@@ -246,11 +279,120 @@ async def test_failed_stream_start_rolls_back_its_reservation() -> None:
             stream_id="failed",
             entry=entry("assistant", ""),
             owner_task=None,
+            exchange_id=transcript.open_exchange_id,
             send=fail,
         )
 
     assert transcript.active_stream_id is None
     await start_stream(transcript, stream_id="next")
+
+
+@pytest.mark.anyio
+async def test_failed_stream_transition_releases_its_admission() -> None:
+    transcript = ChatTranscript()
+    await start_stream(transcript)
+
+    async def unsent() -> bool:
+        return False
+
+    assert not await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[segment("discarded")],
+        message=entry("assistant", "discarded").message,
+        operation="append",
+        send=unsent,
+    )
+    await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[segment("kept")],
+        message=entry("assistant", "kept").message,
+        operation="append",
+        send=sent,
+    )
+
+    assert transcript.read()[0].message.content == "kept"
+
+
+@pytest.mark.anyio
+async def test_blocked_complete_append_rejects_stream_start_immediately() -> (
+    None
+):
+    transcript = ChatTranscript()
+    send_started = anyio.Event()
+    release_send = anyio.Event()
+
+    async def blocked_send() -> bool:
+        send_started.set()
+        await release_send.wait()
+        return True
+
+    async def append_message() -> None:
+        await transcript.append(
+            entry("assistant", "complete"),
+            exchange_id=transcript.open_exchange_id,
+            send=blocked_send,
+        )
+
+    async with anyio.create_task_group() as task_group:
+        task_group.start_soon(append_message)
+        await send_started.wait()
+        with pytest.raises(RuntimeError, match="another transcript operation"):
+            await start_stream(transcript)
+        release_send.set()
+
+    await start_stream(transcript)
+
+
+@pytest.mark.anyio
+async def test_blocked_clear_rejects_stream_start_and_replace_immediately() -> (
+    None
+):
+    transcript = ChatTranscript()
+    send_started = anyio.Event()
+    release_send = anyio.Event()
+
+    async def blocked_send() -> None:
+        send_started.set()
+        await release_send.wait()
+
+    async def clear() -> None:
+        await transcript.clear(send=blocked_send)
+
+    async with anyio.create_task_group() as task_group:
+        task_group.start_soon(clear)
+        await send_started.wait()
+        with pytest.raises(RuntimeError, match="another transcript operation"):
+            await start_stream(transcript)
+        with pytest.raises(RuntimeError, match="another transcript operation"):
+            transcript.replace([entry("assistant", "restored")])
+        release_send.set()
+
+    await start_stream(transcript)
+
+
+@pytest.mark.anyio
+async def test_cancelled_complete_append_releases_its_admission() -> None:
+    transcript = ChatTranscript()
+    send_started = anyio.Event()
+
+    async def blocked_send() -> bool:
+        send_started.set()
+        await anyio.sleep_forever()
+        return False
+
+    async def append_message() -> None:
+        await transcript.append(
+            entry("assistant", "cancelled"),
+            exchange_id=transcript.open_exchange_id,
+            send=blocked_send,
+        )
+
+    async with anyio.create_task_group() as task_group:
+        task_group.start_soon(append_message)
+        await send_started.wait()
+        task_group.cancel_scope.cancel()
+
+    await start_stream(transcript)
 
 
 @pytest.mark.anyio
@@ -341,7 +483,11 @@ async def test_active_stream_rejects_complete_append_and_second_start() -> None:
     with pytest.raises(
         RuntimeError, match="complete message.*stream is active"
     ):
-        await transcript.append(entry("assistant", "blocked"), send=sent)
+        await transcript.append(
+            entry("assistant", "blocked"),
+            exchange_id=transcript.open_exchange_id,
+            send=sent,
+        )
     with pytest.raises(RuntimeError, match="second message stream"):
         await start_stream(transcript, stream_id="other")
 

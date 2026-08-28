@@ -1502,6 +1502,63 @@ def test_stream_commits_final_transformed_content_before_chunk_end_failure():
     assert entry.error == {"message": "end send failed"}
 
 
+def test_stream_suppressed_terminal_transform_closes_and_preserves_content():
+    with session_context(test_session):
+        chat = Chat(id="suppressed_terminal", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        async def _transform(
+            content: str, chunk: str, done: bool
+        ) -> str | None:
+            return None if done else content
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transform_assistant = _transform
+
+        async def _stream():
+            yield "kept"
+
+        run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status is None
+    assert chat._transcript.active_stream_id is None
+    assert sent[-1] == {"type": "chunk_end"}
+
+
+def test_suppressed_terminal_transform_surfaces_end_send_failure():
+    with session_context(test_session):
+        chat = Chat(id="suppressed_terminal_error", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("end send failed")
+
+        async def _transform(
+            content: str, chunk: str, done: bool
+        ) -> str | None:
+            return None if done else content
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transform_assistant = _transform
+
+        async def _stream():
+            yield "kept"
+
+        with pytest.raises(RuntimeError, match="end send failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": "end send failed"}
+    assert chat._transcript.active_stream_id is None
+
+
 def test_stream_cancellation_preserves_sent_partial():
     with session_context(test_session):
         chat = Chat(id="partial_cancelled", history=False)
@@ -1547,6 +1604,77 @@ def test_stream_captures_exchange_before_newer_input():
     assert stream_entry.exchange_id == old_exchange
     assert chat._transcript.open_exchange_id != old_exchange
     assert stream_entry.message.content == "old response"
+
+
+def test_complete_append_captures_exchange_before_async_transform():
+    with session_context(test_session):
+        chat = Chat(id="complete_transform_exchange", history=False)
+        chat._record_accepted_user_input(
+            ChatMessage(content="old request", role="user")
+        )
+        old_exchange = chat._transcript.open_exchange_id
+        transform_started = asyncio.Event()
+        release_transform = asyncio.Event()
+
+        async def _transform(content: str, chunk: str, done: bool) -> str:
+            transform_started.set()
+            await release_transform.wait()
+            return content
+
+        chat._transform_assistant = _transform
+
+        async def _exercise() -> None:
+            append = asyncio.create_task(chat.append_message("old response"))
+            await transform_started.wait()
+            chat._record_accepted_user_input(
+                ChatMessage(content="new request", role="user")
+            )
+            release_transform.set()
+            await append
+
+        run_async(_exercise)
+
+    assert chat._transcript.read()[-1].exchange_id == old_exchange
+    assert chat._transcript.open_exchange_id != old_exchange
+
+
+def test_stream_start_captures_exchange_before_async_transform():
+    with session_context(test_session):
+        chat = Chat(id="stream_transform_exchange", history=False)
+        chat._record_accepted_user_input(
+            ChatMessage(content="old request", role="user")
+        )
+        old_exchange = chat._transcript.open_exchange_id
+        transform_started = asyncio.Event()
+        release_transform = asyncio.Event()
+
+        async def _transform(content: str, chunk: str, done: bool) -> str:
+            transform_started.set()
+            await release_transform.wait()
+            return content
+
+        chat._transform_assistant = _transform
+
+        async def _exercise() -> None:
+            start = asyncio.create_task(
+                chat._append_message_chunk(
+                    "", chunk="start", stream_id="old-stream"
+                )
+            )
+            await transform_started.wait()
+            chat._record_accepted_user_input(
+                ChatMessage(content="new request", role="user")
+            )
+            release_transform.set()
+            await start
+            await chat._append_message_chunk(
+                "", chunk="end", stream_id="old-stream"
+            )
+
+        run_async(_exercise)
+
+    assert chat._transcript.read()[-1].exchange_id == old_exchange
+    assert chat._transcript.open_exchange_id != old_exchange
 
 
 def test_second_root_stream_is_rejected():

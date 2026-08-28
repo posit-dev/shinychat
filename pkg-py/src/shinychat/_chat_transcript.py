@@ -51,6 +51,7 @@ class ChatTranscript:
         self._entries: tuple[TranscriptEntry, ...] = ()
         self._open_exchange_id: str | None = None
         self._stream: _InFlightStream | None = None
+        self._transaction: object | None = None
 
     def read(self) -> tuple[TranscriptEntry, ...]:
         """Return a defensive projection of the committed transcript."""
@@ -70,30 +71,38 @@ class ChatTranscript:
         return stream.owner_task is owner_task
 
     async def append(
-        self, entry: TranscriptEntry, *, send: AsyncCommitSend
+        self,
+        entry: TranscriptEntry,
+        *,
+        exchange_id: str | None,
+        send: AsyncCommitSend,
     ) -> bool:
         """Send a complete message, then commit its normalized wire spec."""
-        if self._stream is not None:
-            raise RuntimeError(
-                "Cannot append a complete message while a message stream is active."
-            )
+        transaction = self._admit_complete_append()
         prepared = entry.copy()
-        prepared.exchange_id = self._open_exchange_id
-        if not await send():
-            return False
-        self._entries = (*self._entries, prepared)
-        self._notify_change()
-        return True
+        prepared.exchange_id = exchange_id
+        try:
+            if not await send():
+                return False
+            self._entries = (*self._entries, prepared)
+            self._notify_change()
+            return True
+        finally:
+            self._release_transaction(transaction)
 
     def record_accepted_input(self, message: StoredMessage) -> str:
         """Commit an accepted optimistic user message and open its exchange."""
+        exchange_id = _utils.private_random_id()
         self._entries = (
             *self._entries,
-            TranscriptEntry(message=message.model_copy(deep=True)),
+            TranscriptEntry(
+                message=message.model_copy(deep=True),
+                exchange_id=exchange_id,
+            ),
         )
-        self._open_exchange_id = _utils.private_random_id()
+        self._open_exchange_id = exchange_id
         self._notify_change()
-        return self._open_exchange_id
+        return exchange_id
 
     async def start_stream(
         self,
@@ -101,16 +110,13 @@ class ChatTranscript:
         stream_id: str,
         entry: TranscriptEntry,
         owner_task: object | None,
+        exchange_id: str | None,
         send: AsyncCommitSend,
     ) -> bool:
         """Reserve, send, then commit a stream start."""
-        if self._stream is not None:
-            raise RuntimeError(
-                "Cannot start a second message stream while a message stream is active."
-            )
-
+        transaction = self._admit_stream_start()
         prepared = entry.copy()
-        prepared.exchange_id = self._open_exchange_id
+        prepared.exchange_id = exchange_id
         reserved = _InFlightStream(
             id=stream_id,
             entry=prepared,
@@ -126,14 +132,15 @@ class ChatTranscript:
             if not sent:
                 self._stream = None
                 return False
+            self._entries = (*self._entries, prepared)
+            self._notify_change()
+            return True
         except BaseException:
             if self._stream is reserved:
                 self._stream = None
             raise
-
-        self._entries = (*self._entries, prepared)
-        self._notify_change()
-        return True
+        finally:
+            self._release_transaction(transaction)
 
     def stream_segments(self, stream_id: str) -> list[ContentSegment]:
         """Return a defensive source-segment snapshot for an active stream."""
@@ -150,6 +157,9 @@ class ChatTranscript:
     ) -> None:
         """Set the replacement checkpoint for an active stream context."""
         stream = self._require_stream(stream_id)
+        self._assert_no_transaction(
+            "Cannot update a message stream while another transcript operation is active."
+        )
         stream.checkpoint = copy_segments(checkpoint)
 
     async def transition_stream(
@@ -162,16 +172,21 @@ class ChatTranscript:
         send: AsyncCommitSend,
     ) -> bool:
         """Send a stream chunk, then commit its accumulated source and display."""
-        stream = self._require_stream(stream_id)
-        prepared_segments = copy_segments(source_segments)
-        prepared_message = message.model_copy(deep=True)
-        if not await send():
-            return False
+        stream, transaction = self._admit_stream_transition(stream_id)
+        try:
+            prepared_segments = copy_segments(source_segments)
+            prepared_message = message.model_copy(deep=True)
+            if not await send():
+                return False
 
-        stream.source_segments = prepared_segments
-        self._apply_stream_message(stream.entry, prepared_message, operation)
-        self._notify_change()
-        return True
+            stream.source_segments = prepared_segments
+            self._apply_stream_message(
+                stream.entry, prepared_message, operation
+            )
+            self._notify_change()
+            return True
+        finally:
+            self._release_transaction(transaction)
 
     async def end_stream(
         self,
@@ -185,28 +200,31 @@ class ChatTranscript:
         operation: Literal["append", "replace"] = "append",
     ) -> bool:
         """Send a stream end, then commit optional terminal display and status."""
-        stream = self._require_stream(stream_id)
-        prepared_segments = (
-            copy_segments(source_segments)
-            if source_segments is not None
-            else None
-        )
-        prepared_message = (
-            message.model_copy(deep=True) if message is not None else None
-        )
-        if not await send():
-            return False
-
-        if prepared_segments is not None:
-            stream.source_segments = prepared_segments
-        if prepared_message is not None:
-            self._apply_stream_message(
-                stream.entry, prepared_message, operation
+        stream, transaction = self._admit_stream_transition(stream_id)
+        try:
+            prepared_segments = (
+                copy_segments(source_segments)
+                if source_segments is not None
+                else None
             )
-        self._set_stream_status(stream.entry, status, error)
-        self._stream = None
-        self._notify_change()
-        return True
+            prepared_message = (
+                message.model_copy(deep=True) if message is not None else None
+            )
+            if not await send():
+                return False
+
+            if prepared_segments is not None:
+                stream.source_segments = prepared_segments
+            if prepared_message is not None:
+                self._apply_stream_message(
+                    stream.entry, prepared_message, operation
+                )
+            self._set_stream_status(stream.entry, status, error)
+            self._stream = None
+            self._notify_change()
+            return True
+        finally:
+            self._release_transaction(transaction)
 
     def abort_stream(
         self,
@@ -216,6 +234,9 @@ class ChatTranscript:
         error: str | None = None,
     ) -> None:
         """Retain successfully sent stream content after an interrupted end."""
+        self._assert_no_transaction(
+            "Cannot abort a message stream while another transcript operation is active."
+        )
         stream = self._require_stream(stream_id)
         self._set_stream_status(stream.entry, status, error)
         self._stream = None
@@ -223,15 +244,18 @@ class ChatTranscript:
 
     async def clear(self, *, send: AsyncActionSend) -> None:
         """Send the clear action, then discard the committed transcript."""
-        self.assert_no_active_stream()
-        await send()
-        self._entries = ()
-        self._open_exchange_id = None
-        self._notify_change()
+        transaction = self._admit_clear_or_restore()
+        try:
+            await send()
+            self._entries = ()
+            self._open_exchange_id = None
+            self._notify_change()
+        finally:
+            self._release_transaction(transaction)
 
     def replace(self, entries: Sequence[TranscriptEntry]) -> None:
         """Replace the committed transcript after a caller has restored it."""
-        self.assert_no_active_stream()
+        self._assert_can_clear_or_restore()
         self._entries = tuple(entry.copy() for entry in entries)
         self._open_exchange_id = None
         self._notify_change()
@@ -242,6 +266,58 @@ class ChatTranscript:
             raise RuntimeError(
                 "Cannot clear or restore messages while a message stream is active."
             )
+
+    def _admit_complete_append(self) -> object:
+        if self._stream is not None:
+            raise RuntimeError(
+                "Cannot append a complete message while a message stream is active."
+            )
+        self._assert_no_transaction(
+            "Cannot append a complete message while another transcript operation is active."
+        )
+        return self._reserve_transaction()
+
+    def _admit_stream_start(self) -> object:
+        if self._stream is not None:
+            raise RuntimeError(
+                "Cannot start a second message stream while a message stream is active."
+            )
+        self._assert_no_transaction(
+            "Cannot start a message stream while another transcript operation is active."
+        )
+        return self._reserve_transaction()
+
+    def _admit_stream_transition(
+        self, stream_id: str
+    ) -> tuple[_InFlightStream, object]:
+        stream = self._require_stream(stream_id)
+        self._assert_no_transaction(
+            "Cannot transition a message stream while another transcript operation is active."
+        )
+        return stream, self._reserve_transaction()
+
+    def _admit_clear_or_restore(self) -> object:
+        self._assert_can_clear_or_restore()
+        return self._reserve_transaction()
+
+    def _assert_can_clear_or_restore(self) -> None:
+        self.assert_no_active_stream()
+        self._assert_no_transaction(
+            "Cannot clear or restore messages while another transcript operation is active."
+        )
+
+    def _assert_no_transaction(self, message: str) -> None:
+        if self._transaction is not None:
+            raise RuntimeError(message)
+
+    def _reserve_transaction(self) -> object:
+        transaction = object()
+        self._transaction = transaction
+        return transaction
+
+    def _release_transaction(self, transaction: object) -> None:
+        if self._transaction is transaction:
+            self._transaction = None
 
     def _require_stream(self, stream_id: str | None = None) -> _InFlightStream:
         stream = self._stream
