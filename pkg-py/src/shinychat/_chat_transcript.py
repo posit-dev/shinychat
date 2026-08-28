@@ -11,6 +11,7 @@ from ._chat_types import ContentSegment, StoredMessage, StoredSegment
 AsyncCommitSend = Callable[[], Awaitable[bool]]
 AsyncActionSend = Callable[[], Awaitable[None]]
 ChangeCallback = Callable[[], None]
+StreamTerminalCallback = Callable[[], None]
 StreamStatus = Literal["cancelled", "error"]
 
 
@@ -46,8 +47,14 @@ class _InFlightStream:
 class ChatTranscript:
     """Private owner for committed, server-authoritative chat messages."""
 
-    def __init__(self, *, on_change: ChangeCallback | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        on_change: ChangeCallback | None = None,
+        on_stream_terminal: StreamTerminalCallback | None = None,
+    ) -> None:
         self._on_change = on_change
+        self._on_stream_terminal = on_stream_terminal
         self._entries: tuple[TranscriptEntry, ...] = ()
         self._open_exchange_id: str | None = None
         self._stream: _InFlightStream | None = None
@@ -236,6 +243,7 @@ class ChatTranscript:
                 )
                 self._stream = None
                 self._notify_change()
+                self._notify_stream_terminal()
                 return False
 
             if prepared_segments is not None:
@@ -247,6 +255,7 @@ class ChatTranscript:
             self._set_stream_status(stream.entry, status, error)
             self._stream = None
             self._notify_change()
+            self._notify_stream_terminal()
             return True
         finally:
             self._release_transaction(transaction)
@@ -266,6 +275,7 @@ class ChatTranscript:
         self._set_stream_status(stream.entry, status, error)
         self._stream = None
         self._notify_change()
+        self._notify_stream_terminal()
 
     async def clear(self, *, send: AsyncActionSend) -> None:
         """Send the clear action, then discard the committed transcript."""
@@ -434,3 +444,7 @@ class ChatTranscript:
     def _notify_change(self) -> None:
         if self._on_change is not None:
             self._on_change()
+
+    def _notify_stream_terminal(self) -> None:
+        if self._on_stream_terminal is not None:
+            self._on_stream_terminal()

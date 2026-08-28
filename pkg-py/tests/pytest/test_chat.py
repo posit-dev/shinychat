@@ -311,6 +311,225 @@ def test_messages_reactively_reads_the_transcript_revision():
     ]
 
 
+def test_response_settlement_runs_after_complete_assistant_append():
+    settled: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_complete", history=False)
+
+        async def on_settled() -> None:
+            settled.append(chat.messages())
+
+        chat._on_response_settled(on_settled)
+        run_async(lambda: chat.append_message("out-of-band response"))
+        assert settled == []
+        run_async(reactive.flush)
+        run_async(reactive.flush)
+
+    assert settled == [
+        (ChatMessageDict(content="out-of-band response", role="assistant"),)
+    ]
+
+
+def test_response_settlement_ignores_nonterminal_transcript_mutations():
+    settled: list[str] = []
+
+    with session_context(test_session):
+        with pytest.warns(Warning, match="Chat\\(messages"):
+            chat = Chat(
+                "response_settlement_nonterminal",
+                history=False,
+                messages=["initial"],
+            )
+
+        async def on_settled() -> None:
+            settled.append("settled")
+
+        chat._on_response_settled(on_settled)
+        run_async(reactive.flush)
+        run_async(chat.clear_messages)
+        chat._record_accepted_user_input(
+            ChatMessage(content="accepted", role="user")
+        )
+        run_async(
+            lambda: chat._restore_bookmark_message(
+                {
+                    "role": "assistant",
+                    "segments": [
+                        {"content": "restored", "content_type": "markdown"}
+                    ],
+                }
+            )
+        )
+        run_async(
+            lambda: chat._append_message_chunk(
+                "", chunk="start", stream_id="partial"
+            )
+        )
+        run_async(
+            lambda: chat._append_message_chunk(
+                "partial", chunk=True, stream_id="partial"
+            )
+        )
+        run_async(reactive.flush)
+
+    assert settled == []
+
+
+@pytest.mark.parametrize(
+    ("status", "error"),
+    [
+        (None, None),
+        ("error", "response failed"),
+        ("cancelled", None),
+    ],
+)
+def test_response_settlement_runs_once_for_each_stream_terminal_outcome(
+    status: str | None, error: str | None
+):
+    settled: list[str] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_stream", history=False)
+
+        async def on_settled() -> None:
+            settled.append("settled")
+
+        chat._on_response_settled(on_settled)
+
+        async def exercise() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="stream"
+            )
+            await chat._append_message_chunk(
+                "",
+                chunk="end",
+                stream_id="stream",
+                status=cast(Any, status),
+                error=error,
+            )
+
+        run_async(exercise)
+        run_async(reactive.flush)
+        run_async(reactive.flush)
+
+    assert settled == ["settled"]
+
+
+def test_response_settlement_runs_after_terminal_stream_send_failure():
+    settled: list[str] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_terminal_failure", history=False)
+
+        async def on_settled() -> None:
+            settled.append("settled")
+
+        chat._on_response_settled(on_settled)
+
+        async def fail_chunk_end(action: Any, deps: Any = None) -> None:
+            if action["type"] == "chunk_end":
+                raise RuntimeError("terminal send failed")
+
+        chat._send_action = fail_chunk_end  # type: ignore[method-assign]
+
+        async def stream():
+            yield "partial"
+
+        with pytest.raises(RuntimeError, match="terminal send failed"):
+            run_async(lambda: chat._append_message_stream(stream()))
+        run_async(reactive.flush)
+        run_async(reactive.flush)
+
+    assert settled == ["settled"]
+    assert chat.messages()[-1].get("status") == "error"
+
+
+def test_old_stream_terminal_settles_after_newer_input():
+    settled: list[tuple[str, ...]] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_old_stream", history=False)
+        chat._record_accepted_user_input(
+            ChatMessage(content="older input", role="user")
+        )
+
+        async def on_settled() -> None:
+            settled.append(tuple(message["content"] for message in chat.messages()))
+
+        chat._on_response_settled(on_settled)
+
+        async def exercise() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="older-stream"
+            )
+            chat._record_accepted_user_input(
+                ChatMessage(content="newer input", role="user")
+            )
+            await chat._append_message_chunk(
+                "",
+                chunk="end",
+                stream_id="older-stream",
+            )
+
+        run_async(exercise)
+        run_async(reactive.flush)
+        run_async(reactive.flush)
+
+    assert settled == [("older input", "", "newer input")]
+
+
+def test_response_settlement_callback_failure_does_not_mask_stream_outcome():
+    with session_context(test_session):
+        chat = Chat("response_settlement_failure", history=False)
+
+        async def broken_callback() -> None:
+            raise RuntimeError("callback failed")
+
+        chat._on_response_settled(broken_callback)
+
+        async def exercise() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="stream"
+            )
+            await chat._append_message_chunk(
+                "",
+                chunk="end",
+                stream_id="stream",
+                status="error",
+                error="stream failed",
+            )
+
+        run_async(exercise)
+        run_async(reactive.flush)
+        with pytest.warns(UserWarning, match="callback failed"):
+            run_async(reactive.flush)
+
+    assert chat.messages()[-1].get("status") == "error"
+
+
+def test_forged_messages_input_does_not_schedule_response_settlement():
+    settled: list[str] = []
+
+    with session_context(test_session):
+        chat = Chat("forged_messages_settlement", history=False)
+
+        async def on_settled() -> None:
+            settled.append("settled")
+
+        chat._on_response_settled(on_settled)
+        test_session.input[chat.messages_input_id]._set(
+            (
+                chat._as_stored_message(
+                    ChatMessage(content="forged", role="assistant")
+                ),
+            )
+        )
+        run_async(reactive.flush)
+
+    assert settled == []
+
+
 def test_transcript_does_not_commit_system_messages_without_wire_send():
     with session_context(test_session):
         chat = Chat("system_message", history=False)

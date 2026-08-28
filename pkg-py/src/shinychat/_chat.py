@@ -149,6 +149,7 @@ UserSubmitFunction = Union[
     UserSubmitFunction1,
     UserSubmitFunction2,
 ]
+ResponseSettlementCallback = Callable[[], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -352,6 +353,7 @@ class Chat:
         self.drawer: ChatDrawerController = ChatDrawerController(self)
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
         self._greeting_content: str | None = None
+        self._response_settlement_callbacks: list[ResponseSettlementCallback] = []
 
         # Initialize chat state and user input effect
         from shiny import reactive
@@ -366,7 +368,8 @@ class Chat:
                 self._transcript_revision.set(revision + 1)
 
             self._transcript = ChatTranscript(
-                on_change=_notify_transcript_change
+                on_change=_notify_transcript_change,
+                on_stream_terminal=self._schedule_response_settlement,
             )
 
             # `None` until the first registration, which lets us skip the
@@ -393,7 +396,9 @@ class Chat:
             # state through other means
             async def _append_init_messages():
                 for msg in messages:
-                    await self.append_message(msg)
+                    await self._append_complete_message(
+                        msg, settle=False
+                    )
 
             @reactive.effect
             async def _init_chat():
@@ -1041,6 +1046,15 @@ class Chat:
         similar) is specified in model's completion method.
         :::
         """
+        await self._append_complete_message(message, icon=icon, settle=True)
+
+    async def _append_complete_message(
+        self,
+        message: Any,
+        *,
+        icon: HTML | Tag | TagList | bool | None = None,
+        settle: bool,
+    ) -> None:
         exchange_id = self._transcript.open_exchange_id
         transaction = self._transcript._reserve_complete_append()
         try:
@@ -1061,12 +1075,14 @@ class Chat:
                     icon=icon,
                 )
 
-            await self._transcript.append(
+            committed = await self._transcript.append(
                 entry,
                 exchange_id=exchange_id,
                 send=send,
                 transaction=transaction,
             )
+            if committed and settle and stored.role == "assistant":
+                self._schedule_response_settlement()
         finally:
             self._transcript._release_transaction(transaction)
 
@@ -1713,6 +1729,43 @@ class Chat:
         """Return server-owned message specs for history persistence."""
         return self._messages_for_bookmark()
 
+    def _on_response_settled(
+        self, callback: ResponseSettlementCallback
+    ) -> CancelCallback:
+        """Register a private callback for a completed response lifecycle."""
+        self._response_settlement_callbacks.append(callback)
+
+        def cancel() -> None:
+            try:
+                self._response_settlement_callbacks.remove(callback)
+            except ValueError:
+                pass
+
+        return cancel
+
+    def _schedule_response_settlement(self) -> None:
+        if not self._response_settlement_callbacks:
+            return
+
+        from shiny import reactive
+
+        async def settle() -> None:
+            @reactive.effect(session=self._session)
+            async def run_callbacks() -> None:
+                try:
+                    for callback in tuple(self._response_settlement_callbacks):
+                        try:
+                            await callback()
+                        except BaseException as error:
+                            warnings.warn(
+                                f"Chat response settlement callback failed: {error}",
+                                stacklevel=2,
+                            )
+                finally:
+                    run_callbacks.destroy()
+
+        reactive.on_flushed(settle, once=True)
+
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
         self._transcript.assert_no_active_stream()
         try:
@@ -2347,24 +2400,15 @@ class Chat:
                 _update_query_string_on_bookmarked
             )
 
-        effect_auto_bookmark = None
+        cancel_response_settlement = None
         if bookmark_on == "response":
 
-            @reactive.effect
-            @reactive.event(self._transcript_revision, ignore_init=True)
             async def _auto_bookmark() -> None:
-                messages = self.messages()
-
-                if (
-                    len(messages) == 0
-                    or messages[-1]["role"] != "assistant"
-                    or self._transcript.active_stream_id is not None
-                ):
-                    return
-
                 await session.bookmark()
 
-            effect_auto_bookmark = _auto_bookmark
+            cancel_response_settlement = self._on_response_settled(
+                _auto_bookmark
+            )
 
         ###############
         # Client Bookmarking
@@ -2453,8 +2497,8 @@ class Chat:
         def _cancel_bookmarking():
             if cancel_on_bookmarked is not None:
                 cancel_on_bookmarked()
-            if effect_auto_bookmark is not None:
-                effect_auto_bookmark.destroy()
+            if cancel_response_settlement is not None:
+                cancel_response_settlement()
             _on_bookmark_client()
             _on_bookmark_ui()
             _on_bookmark_greeting()
