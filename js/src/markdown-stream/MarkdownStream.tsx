@@ -7,9 +7,8 @@ import {
   useMemo,
   type ComponentType,
 } from "react"
-import { toHtml } from "hast-util-to-html"
-import type { Element } from "hast"
 import { MarkdownContent } from "../markdown/MarkdownContent"
+import { EscapedIsland } from "../markdown/EscapedIsland"
 import { useAutoScroll, findScrollableParent } from "../markdown/useAutoScroll"
 import type { ContentType } from "../transport/types"
 
@@ -19,10 +18,6 @@ export type ContentSegment = {
   text: string
   trusted: boolean
 }
-
-const EscapedIsland = (({ node }: { node?: Element }) => (
-  <>{node ? toHtml(node) : ""}</>
-)) as ComponentType<unknown>
 
 // This is the only island escape on untrusted `contentType="html"` segments;
 // the processor-level disguise/escape pair applies only to Markdown.
