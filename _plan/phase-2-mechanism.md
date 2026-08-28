@@ -262,3 +262,19 @@ single-session atom and starts only after every Python consumer has moved.
   deduplication, `ui_offset`, the Python report handler/input surface, and
   restore/switch/clear/out-of-band/etc consumer migration. `dy7g` work is not
   complete.
+- **Lifecycle settlement and scope decision (2026-08-27; `shinychat#dy7g` →
+  `shinychat#47fa`):** `_transcript_revision` is `Chat.messages()` invalidation
+  only, not persistence settlement. Add one private lifecycle-local response
+  callback scheduled via `reactive.on_flushed` after committed complete
+  assistant sends and after every stream terminal outcome: ok, error,
+  cancelled, or terminal failure. Replay/restore, clear, input, chunks, and
+  initial messages do not schedule it; history and automatic bookmarking
+  register callbacks. The temporary v1 bridge is removed when Phase 3
+  persists at the choke point. It is not a durable settlement event, queue,
+  flag, cursor, or new revision. Required tests include an old stream
+  terminating after newer input and still invoking the correct lifecycle
+  settlement behavior. The Python `shinychat.messages` handler,
+  `messages_input_id`, and parser deletion moves from `shinychat#dy7g` into
+  `shinychat#47fa`, so the JS and server protocol disappear atomically.
+  `shinychat#dy7g` removes consumers, stale deduplication, `ui_offset`, and
+  installs the lifecycle callback bridge.
