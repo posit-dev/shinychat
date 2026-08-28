@@ -631,6 +631,42 @@ async def test_v2_recorder_captures_active_node_before_next_input():
 
 
 @pytest.mark.anyio
+async def test_v2_recorder_keeps_terminal_turn_delta_at_node_close():
+    adapter = _FakeAdapter()
+    controller, _ = _make_controller(use_exchange_tree=True, adapter=adapter)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_finished=recorder.stream_finished,
+    )
+    first_exchange = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
+    adapter.turns.append({"role": "assistant", "content": "answer"})
+    await transcript.start_stream(
+        stream_id="stream",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=first_exchange,
+        send=_sent,
+    )
+    await transcript.end_stream(
+        stream_id="stream",
+        status=None,
+        error=None,
+        send=_sent,
+    )
+
+    await transcript.record_accepted_input_and_notify(_stored_message("user", "two"))
+
+    state = recorder.record.nodes[first_exchange].state["shinychat:turns"]  # type: ignore[union-attr]
+    assert state.mode == "delta"
+    assert state.data == [{"role": "assistant", "content": "answer"}]
+
+
+@pytest.mark.anyio
 async def test_v2_recorder_replaces_stream_projection_on_its_opening_exchange():
     store = InMemoryConversationStore()
     adapter = _FakeAdapter()

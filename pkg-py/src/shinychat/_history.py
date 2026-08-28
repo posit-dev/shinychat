@@ -284,6 +284,15 @@ class _ExchangeRecorder:
             data = turns[len(self._turn_baseline) :]
 
         self._turn_baseline = fingerprints
+        assert self.record is not None
+        previous = self.record.nodes[context.node_id].state.get(
+            "shinychat:turns"
+        )
+        if mode == "delta" and previous is not None:
+            if not isinstance(previous.data, list):
+                raise ValueError("Turn-state entries must contain a list.")
+            data = [*previous.data, *data]
+            mode = previous.mode
         return StateEntry(
             kind="chatlas"
             if getattr(adapter, "is_chatlas", lambda: False)()
