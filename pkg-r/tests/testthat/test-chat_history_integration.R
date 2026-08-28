@@ -840,12 +840,18 @@ test_that("set_client() seeds ui_offset from the restored record so a post-swap 
   })
 })
 
-test_that("the client's `_messages` echo drives the save and preserves the displayed assistant UI", {
+test_that("the client's `_messages` echo drives the save; UI is server-derived from turns (P4)", {
   # Regression for the save-timing bug: the save must be triggered by the
   # browser echoing its rendered `_messages` snapshot, not by server-side
   # stream completion. If it fired on completion, the just-finished assistant
-  # message would not yet be in the client's report, so its node would fall
-  # back to turn-derived markdown -- losing any display-only transformation.
+  # message would not yet be in the client's report, so the save would
+  # misattribute it to the wrong round.
+  #
+  # Per P4: the stored UI is now server-derived from turns, not from the
+  # client snapshot. The client's displayed/transformed form ("hello
+  # (displayed)") is NOT preserved — the turn text ("hello") is. The client
+  # snapshot remains the save trigger and the bookkeeping source, but not the
+  # persisted UI source.
   skip_if_not_installed("ellmer")
 
   make_turn <- function(role, text) {
@@ -929,7 +935,10 @@ test_that("the client's `_messages` echo drives the save and preserves the displ
     node_ids <- record_path_node_ids(saved)
     last_ui <- saved$nodes[[node_ids[[length(node_ids)]]]]$ui
     expect_equal(last_ui[[1]]$role, "assistant")
-    expect_equal(last_ui[[1]]$segments[[1]]$content, "hello (displayed)")
+    # Per P4: the stored UI is server-derived from turns, not from the
+    # client's displayed form. The turn text is "hello", not "hello
+    # (displayed)".
+    expect_equal(last_ui[[1]]$segments[[1]]$content, "hello")
   })
 })
 

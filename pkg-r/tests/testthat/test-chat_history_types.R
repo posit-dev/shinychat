@@ -611,7 +611,7 @@ test_that("extend_record_linear() appends only new turn groups", {
   expect_equal(rec$current_leaf, "n_0002")
 })
 
-test_that("extend_record_linear() attaches a user message to the matching new user-turn node", {
+test_that("extend_record_linear() derives UI from turns and attaches to matching nodes", {
   rec <- new_conversation_record("test")
   turns <- list(user_turn_fixture("hi"), assistant_turn_fixture("hello"))
   ui_messages <- list(
@@ -633,11 +633,17 @@ test_that("extend_record_linear() attaches a user message to the matching new us
     tools = list()
   )
 
-  expect_equal(rec$nodes$n_0001$ui, list(ui_messages[[1]]))
-  expect_equal(rec$nodes$n_0002$ui, list(ui_messages[[2]]))
+  # UI is now server-derived from turns (P4), not from the client snapshot.
+  # The derived message carries a version marker and the turn's text content.
+  expect_equal(rec$nodes$n_0001$ui[[1]]$version, STORED_UI_VERSION)
+  expect_equal(rec$nodes$n_0001$ui[[1]]$role, "user")
+  expect_equal(rec$nodes$n_0001$ui[[1]]$segments[[1]]$content, "hi")
+  expect_equal(rec$nodes$n_0002$ui[[1]]$version, STORED_UI_VERSION)
+  expect_equal(rec$nodes$n_0002$ui[[1]]$role, "assistant")
+  expect_equal(rec$nodes$n_0002$ui[[1]]$segments[[1]]$content, "hello")
 })
 
-test_that("extend_record_linear() attaches non-user messages to the last new node", {
+test_that("extend_record_linear() derives UI with structured blocks from tool-call turns", {
   rec <- new_conversation_record("test")
   turns <- list(
     user_turn_fixture("weather?"),
@@ -668,8 +674,35 @@ test_that("extend_record_linear() attaches non-user messages to the last new nod
     tools = list()
   )
 
-  expect_equal(rec$nodes$n_0001$ui, list(ui_messages[[1]]))
-  expect_equal(rec$nodes$n_0002$ui, ui_messages[2:3])
+  # n_0001 is the user turn group: one derived message with text "weather?"
+  expect_equal(rec$nodes$n_0001$ui[[1]]$version, STORED_UI_VERSION)
+  expect_equal(rec$nodes$n_0001$ui[[1]]$role, "user")
+  expect_equal(rec$nodes$n_0001$ui[[1]]$segments[[1]]$content, "weather?")
+
+  # n_0002 is the assistant+tool group: one derived message (all turns in
+  # the group are merged into one message). The tool request and result
+  # produce structured blocks, and the assistant text "sunny" is a string
+  # segment.
+  # 3 client messages - 2 derived = 1 out-of-band message attached to n_0002.
+  expect_length(rec$nodes$n_0002$ui, 2)
+  # First: derived message with blocks
+  derived <- rec$nodes$n_0002$ui[[1]]
+  expect_equal(derived$version, STORED_UI_VERSION)
+  expect_equal(derived$role, "assistant")
+  expect_false(is.null(derived$blocks))
+  expect_true(length(derived$blocks) > 0)
+  # The tool_request and tool_result blocks are present
+  block_types <- vapply(derived$blocks, function(b) b$type, character(1))
+  expect_true("tool_request" %in% block_types)
+  expect_true("tool_result" %in% block_types)
+  # The assistant text "sunny" is in the segments
+  seg_contents <- vapply(derived$segments, function(s) s$content, character(1))
+  expect_true("sunny" %in% seg_contents)
+  # Out-of-band message (from client snapshot, no version marker)
+  # The extra client message is the last one ("sunny") since the first
+  # n_derived=2 client messages are "consumed" by derivation.
+  expect_null(rec$nodes$n_0002$ui[[2]]$version)
+  expect_equal(rec$nodes$n_0002$ui[[2]]$segments[[1]]$content, "sunny")
 })
 
 test_that("extend_record_linear() attaches a late-arriving message to the current leaf when no new node is created", {
@@ -685,6 +718,11 @@ test_that("extend_record_linear() attaches a late-arriving message to the curren
     ui_offset = 0,
     tools = list()
   )
+
+  # First call: n_0001 has one derived UI message (version-marked, from turns)
+  expect_length(rec$nodes$n_0001$ui, 1)
+  expect_equal(rec$nodes$n_0001$ui[[1]]$version, STORED_UI_VERSION)
+  expect_equal(rec$nodes$n_0001$ui[[1]]$segments[[1]]$content, "hi")
 
   # Same turns (no new node), but one more ui message arrived (e.g. the
   # client caught up after a streamed reply settled).
@@ -706,17 +744,16 @@ test_that("extend_record_linear() attaches a late-arriving message to the curren
     tools = list()
   )
 
+  # No new nodes created (same turns)
   expect_equal(length(rec$nodes), 1)
-  expect_equal(
-    rec$nodes$n_0001$ui,
-    list(
-      list(
-        role = "user",
-        segments = list(list(content = "hi", content_type = "markdown"))
-      ),
-      late_message
-    )
-  )
+  # n_0001 now has 2 UI items: the derived one (from first call) and the
+  # late-arriving out-of-band message (from client snapshot, no version)
+  expect_length(rec$nodes$n_0001$ui, 2)
+  expect_equal(rec$nodes$n_0001$ui[[1]]$version, STORED_UI_VERSION)
+  expect_equal(rec$nodes$n_0001$ui[[1]]$segments[[1]]$content, "hi")
+  expect_null(rec$nodes$n_0001$ui[[2]]$version)
+  expect_equal(rec$nodes$n_0001$ui[[2]]$role, "assistant")
+  expect_equal(rec$nodes$n_0001$ui[[2]]$segments[[1]]$content, "hello")
 })
 
 test_that("extend_record_linear() records children pointers", {

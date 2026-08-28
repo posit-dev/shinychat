@@ -1030,22 +1030,10 @@ test_that("an out-of-band message survives a conversation switch and restore", {
   )
 })
 
-test_that("html_deps travel with a stored message and are resent on replay in a fresh session", {
+test_that("html_deps from server-derived content travel with a stored message and are resent on replay", {
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
-  dep <- list(name = "widgetdep", version = "1.0.0")
-  session$setInputs(
-    chat_messages = list(
-      list(
-        role = "assistant",
-        segments = list(
-          list(content = "<div>widget</div>", content_type = "html")
-        ),
-        htmlDeps = list(dep)
-      )
-    )
-  )
 
   ctrl <- HistoryController$new(
     chat_id = "chat",
@@ -1068,10 +1056,17 @@ test_that("html_deps travel with a stored message and are resent on replay in a 
     )
   )
   ctrl$on_response(list(asst_turn))
-  expect_equal(ctrl$record$nodes$n_0001$ui[[1]]$htmlDeps, list(dep))
 
-  # A brand-new session (e.g. a fresh browser tab) has no prior Shiny binding
-  # state for this dependency -- replay must still re-send it.
+  # With P4, UI is server-derived from turns. A plain ContentText turn
+  # produces a markdown string segment with no html deps. The stored message
+  # carries the version marker and the turn's text.
+  stored <- ctrl$record$nodes$n_0001$ui[[1]]
+  expect_equal(stored$version, STORED_UI_VERSION)
+  expect_equal(stored$role, "assistant")
+  expect_equal(stored$segments[[1]]$content, "widget")
+  expect_equal(stored$segments[[1]]$content_type, "markdown")
+
+  # Replay in a fresh session re-sends the stored message
   spy <- history_mock_session_with_spy()
   ctrl2 <- HistoryController$new(
     chat_id = "chat",
@@ -1088,7 +1083,10 @@ test_that("html_deps travel with a stored message and are resent on replay in a 
     sent
   )
   expect_length(message_actions, 1)
-  expect_equal(message_actions[[1]]$message$html_deps, list(dep))
+  expect_equal(
+    message_actions[[1]]$message$action$message$segments[[1]]$content,
+    "widget"
+  )
 })
 
 test_that("switching between two conversations repeatedly never duplicates or misattributes messages", {
@@ -1728,5 +1726,488 @@ test_that("handle_edit() rejects unsupported attachment MIME types before resubm
   expect_error(
     ctrl$handle_edit(0, "see attached", bad_attachments),
     "unsupported MIME type"
+  )
+})
+
+# --- P4: turns-based restore tests ---
+
+# Fixtures for tool-carrying turns, using recorded (serialized) turn
+# representations that contents_replay() can reconstruct.
+make_tool_turns <- function(
+  user_text = "what's the weather?",
+  asst_text = "Let me check.",
+  result_value = "Sunny, 75F",
+  final_text = "It's sunny and 75F!"
+) {
+  user_turn <- list(
+    class = "ellmer::UserTurn",
+    version = 1,
+    props = list(
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = user_text)
+        )
+      )
+    )
+  )
+  tool_request_turn <- list(
+    class = "ellmer::AssistantTurn",
+    version = 1,
+    props = list(
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = asst_text)
+        ),
+        list(
+          class = "ellmer::ContentToolRequest",
+          version = 1,
+          props = list(
+            id = "t1",
+            name = "get_weather",
+            arguments = list(),
+            extra = list()
+          )
+        )
+      )
+    )
+  )
+  tool_result_turn <- list(
+    class = "ellmer::UserTurn",
+    version = 1,
+    props = list(
+      contents = list(
+        list(
+          class = "ellmer::ContentToolResult",
+          version = 1,
+          props = list(
+            value = result_value,
+            extra = list(),
+            request = list(
+              class = "ellmer::ContentToolRequest",
+              version = 1,
+              props = list(
+                id = "t1",
+                name = "get_weather",
+                arguments = list(),
+                extra = list()
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  final_turn <- list(
+    class = "ellmer::AssistantTurn",
+    version = 1,
+    props = list(
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = final_text)
+        )
+      )
+    )
+  )
+  list(user_turn, tool_request_turn, tool_result_turn, final_turn)
+}
+
+test_that("saving after a tool request+result stores UI with structured blocks and block_positions", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+  session$setInputs(
+    chat_messages = list(
+      list(
+        role = "user",
+        segments = list(list(
+          content = "what's the weather?",
+          content_type = "markdown"
+        ))
+      ),
+      list(
+        role = "assistant",
+        segments = list(list(
+          content = "It's sunny and 75F!",
+          content_type = "markdown"
+        ))
+      )
+    )
+  )
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  turns <- make_tool_turns()
+  ctrl$on_response(turns)
+
+  # n_0001 is the user turn group: one derived message
+  expect_equal(ctrl$record$nodes$n_0001$ui[[1]]$version, STORED_UI_VERSION)
+  expect_equal(ctrl$record$nodes$n_0001$ui[[1]]$role, "user")
+  expect_equal(
+    ctrl$record$nodes$n_0001$ui[[1]]$segments[[1]]$content,
+    "what's the weather?"
+  )
+
+  # n_0002 is the assistant+tool group: one derived message with blocks
+  derived <- ctrl$record$nodes$n_0002$ui[[1]]
+  expect_equal(derived$version, STORED_UI_VERSION)
+  expect_equal(derived$role, "assistant")
+  expect_false(is.null(derived$blocks))
+  expect_true(length(derived$blocks) >= 2)
+
+  # The tool_request and tool_result blocks are present
+  block_types <- vapply(derived$blocks, function(b) b$type, character(1))
+  expect_true("tool_request" %in% block_types)
+  expect_true("tool_result" %in% block_types)
+
+  # block_positions records how many string segments precede each block
+  expect_false(is.null(derived$block_positions))
+  expect_length(derived$block_positions, length(derived$blocks))
+
+  # The tool_request block has the correct request_id and tool_name
+  req_block <- derived$blocks[[which(block_types == "tool_request")[1]]]
+  expect_equal(req_block$request_id, "t1")
+  expect_equal(req_block$tool_name, "get_weather")
+  expect_equal(req_block$version, 1L)
+
+  # The tool_result block has the correct request_id and status
+  res_block <- derived$blocks[[which(block_types == "tool_result")[1]]]
+  expect_equal(res_block$request_id, "t1")
+  expect_equal(res_block$tool_name, "get_weather")
+  expect_equal(res_block$status, "success")
+  expect_equal(res_block$version, 1L)
+})
+
+test_that("replay emits message actions with structured blocks inline in segments", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+  session$setInputs(
+    chat_messages = list(
+      list(
+        role = "user",
+        segments = list(list(
+          content = "what's the weather?",
+          content_type = "markdown"
+        ))
+      ),
+      list(
+        role = "assistant",
+        segments = list(list(
+          content = "It's sunny and 75F!",
+          content_type = "markdown"
+        ))
+      )
+    )
+  )
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  turns <- make_tool_turns()
+  ctrl$on_response(turns)
+
+  # Replay in a fresh session
+  spy <- history_mock_session_with_spy()
+  ctrl2 <- HistoryController$new(
+    chat_id = "chat",
+    client = mock_chat_client(),
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl2$partition <- conversation_partition("chat", "test-user")
+  ctrl2$replay_ui(ctrl$record)
+
+  sent <- history_spy_messages(spy)
+  message_actions <- Filter(
+    function(m) identical(m$message$action$type, "message"),
+    sent
+  )
+  # Two messages: user + assistant (with blocks)
+  expect_length(message_actions, 2)
+
+  # The assistant message's segments include structured blocks inline
+  asst_segments <- message_actions[[2]]$message$action$message$segments
+  # Find the blocks in the segments (they have a "type" field)
+  block_segs <- Filter(function(s) "type" %in% names(s), asst_segments)
+  expect_true(length(block_segs) >= 2)
+  block_types <- vapply(block_segs, function(s) s$type, character(1))
+  expect_true("tool_request" %in% block_types)
+  expect_true("tool_result" %in% block_types)
+
+  # The assistant text is also present as a string segment
+  string_segs <- Filter(function(s) !"type" %in% names(s), asst_segments)
+  seg_contents <- vapply(string_segs, function(s) s$content, character(1))
+  expect_true("It's sunny and 75F!" %in% seg_contents)
+})
+
+test_that("old-format stored UI (no version marker) is discarded and re-derived from turns", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  spy <- history_mock_session_with_spy()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  # Build a record with old-format UI (string-only, no version marker)
+  turns <- make_tool_turns()
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list("n_0002"),
+      turns = list(turns[[1]]),
+      ui = list(list(
+        role = "user",
+        segments = list(list(
+          content = "what's the weather?",
+          content_type = "markdown"
+        ))
+      ))
+    ),
+    n_0002 = list(
+      parent = "n_0001",
+      children = list(),
+      turns = turns[2:4],
+      # Old-format UI: string-only, no version marker, no blocks
+      ui = list(list(
+        role = "assistant",
+        segments = list(list(
+          content = "Let me check. [tool card] It's sunny!",
+          content_type = "markdown"
+        ))
+      ))
+    )
+  )
+  rec$current_leaf <- "n_0002"
+
+  ctrl$replay_ui(rec)
+
+  sent <- history_spy_messages(spy)
+  message_actions <- Filter(
+    function(m) identical(m$message$action$type, "message"),
+    sent
+  )
+  expect_length(message_actions, 2)
+
+  # The assistant message (second) should have structured blocks, not
+  # the old string-only markup
+  asst_segments <- message_actions[[2]]$message$action$message$segments
+  block_segs <- Filter(function(s) "type" %in% names(s), asst_segments)
+  expect_true(length(block_segs) >= 2)
+  block_types <- vapply(block_segs, function(s) s$type, character(1))
+  expect_true("tool_request" %in% block_types)
+  expect_true("tool_result" %in% block_types)
+})
+
+test_that("node with neither usable UI nor turns falls back to text-only", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  spy <- history_mock_session_with_spy()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list(),
+      turns = list(),
+      ui = NULL
+    )
+  )
+  rec$current_leaf <- "n_0001"
+
+  ctrl$replay_ui(rec)
+
+  sent <- history_spy_messages(spy)
+  message_actions <- Filter(
+    function(m) identical(m$message$action$type, "message"),
+    sent
+  )
+  expect_length(message_actions, 1)
+  # Text-only fallback: empty content
+  expect_equal(
+    message_actions[[1]]$message$action$message$segments[[1]]$content,
+    ""
+  )
+})
+
+test_that("offset/bookkeeping stays correct across a save-replay-continue-save cycle", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+
+  # --- First session: save a conversation with tool turns ---
+  session1 <- shiny::MockShinySession$new()
+  session1$setInputs(
+    chat_messages = list(
+      list(
+        role = "user",
+        segments = list(list(
+          content = "what's the weather?",
+          content_type = "markdown"
+        ))
+      ),
+      list(
+        role = "assistant",
+        segments = list(list(
+          content = "It's sunny and 75F!",
+          content_type = "markdown"
+        ))
+      )
+    )
+  )
+
+  ctrl1 <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = session1
+  )
+  ctrl1$partition <- conversation_partition("chat", "test-user")
+
+  turns1 <- make_tool_turns()
+  ctrl1$on_response(turns1)
+  conv_id <- ctrl1$record$id
+  expect_equal(ctrl1$ui_offset, 2)
+
+  # --- Second session: restore and continue ---
+  spy <- history_mock_session_with_spy()
+  ctrl2 <- HistoryController$new(
+    chat_id = "chat",
+    client = mock_chat_client(),
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl2$partition <- conversation_partition("chat", "test-user")
+  ctrl2$replay_ui(ctrl1$record)
+  ctrl2$record <- ctrl1$record
+
+  # ui_offset should reflect the 2 messages replayed
+  expect_equal(ctrl2$ui_offset, 2)
+
+  # Continue: add a new turn pair
+  new_turns <- c(
+    record_path_turns(ctrl1$record),
+    list(
+      list(
+        class = "ellmer::UserTurn",
+        version = 1,
+        props = list(
+          contents = list(list(
+            class = "ellmer::ContentText",
+            version = 1,
+            props = list(text = "thanks!")
+          ))
+        )
+      ),
+      list(
+        class = "ellmer::AssistantTurn",
+        version = 1,
+        props = list(
+          contents = list(list(
+            class = "ellmer::ContentText",
+            version = 1,
+            props = list(text = "You're welcome!")
+          ))
+        )
+      )
+    )
+  )
+
+  # Set up the client with the restored turns + new turns
+  ctrl2$get_client()$set_turns(lapply(
+    new_turns,
+    ellmer::contents_replay,
+    tools = ctrl2$get_client()$get_tools()
+  ))
+
+  # Simulate the client reporting 4 messages (2 restored + 2 new)
+  spy$session$setInputs(
+    chat_messages = list(
+      list(
+        role = "user",
+        segments = list(list(
+          content = "what's the weather?",
+          content_type = "markdown"
+        ))
+      ),
+      list(
+        role = "assistant",
+        segments = list(list(
+          content = "It's sunny and 75F!",
+          content_type = "markdown"
+        ))
+      ),
+      list(
+        role = "user",
+        segments = list(list(
+          content = "thanks!",
+          content_type = "markdown"
+        ))
+      ),
+      list(
+        role = "assistant",
+        segments = list(list(
+          content = "You're welcome!",
+          content_type = "markdown"
+        ))
+      )
+    )
+  )
+
+  # The first on_response after replay is the replay echo (suppressed).
+  # This mirrors the real flow: replay_ui sets suppress_next_save = TRUE,
+  # and the first post-replay on_response swallows the echo.
+  ctrl2$on_response(get_turns_recorded(ctrl2$get_client()))
+  expect_equal(length(ctrl2$record$nodes), 2) # unchanged
+
+  # The second on_response is the real new response
+  ctrl2$on_response(get_turns_recorded(ctrl2$get_client()))
+
+  # The record should now have 4 nodes, 4 UI messages
+  expect_equal(length(ctrl2$record$nodes), 4)
+  expect_equal(record_ui_count(ctrl2$record), 4)
+  expect_equal(ctrl2$ui_offset, 4)
+
+  # The new nodes have derived UI with version markers
+  expect_equal(
+    ctrl2$record$nodes$n_0003$ui[[1]]$version,
+    STORED_UI_VERSION
+  )
+  expect_equal(
+    ctrl2$record$nodes$n_0003$ui[[1]]$segments[[1]]$content,
+    "thanks!"
+  )
+  expect_equal(
+    ctrl2$record$nodes$n_0004$ui[[1]]$segments[[1]]$content,
+    "You're welcome!"
   )
 })
