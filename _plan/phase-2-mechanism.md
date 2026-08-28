@@ -188,6 +188,17 @@ single-session atom and starts only after every Python consumer has moved.
   `_reported_messages` remains a settlement trigger only; history content must
   come from the owner in `shinychat#ch09`; the separate bookmark consumer is
   already scoped to `shinychat#dy7g` and is not duplicated here.
-- **Next:** finish the `shinychat#ch09` review; do not move on to
-  `shinychat#dy7g`.
+- **Review fixes landed (2026-08-27; `785d3008`, `2754796e`,
+  `f5c99965`):** the existing owner now holds its one fail-fast admission
+  token across complete/root-stream preparation, retains accepted input across
+  clear transport, commits transformed-away source, merges replacement
+  dependencies, closes terminal false/error paths while preserving sent
+  partials, and updates greeting state only after a clear succeeds. History
+  still settles on `_reported_messages`, but now persists owner content; the
+  legacy bookmark consumer remains deferred to `shinychat#dy7g`.
+- **Verification:** focused Make selection passed (2 Playwright, 109
+  non-browser); `make py-check-format`, `make py-check-types`, and
+  `make py-check` passed (189 Playwright, 609 non-browser).
+- **Next:** `shinychat#ch09` remains open and `needs-review` for independent
+  rereview; do not move on to `shinychat#dy7g`.
 - **Provisional decisions:** none.
