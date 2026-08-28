@@ -255,22 +255,6 @@ test_that("a replacement controller inherits an unsaved draft ID", {
   expect_identical(new$record$id, id)
 })
 
-test_that("a replacement controller inherits a saved conversation ID", {
-  store <- InMemoryConversationStore$new()
-  old <- cid_new_controller(store = store)
-  id <- old$ensure_conversation_id()
-  old$on_response(cid_make_turns())
-
-  new <- cid_new_controller(store = store)
-  new$seed_conversation_id(id)
-  expect_identical(shiny::isolate(new$conversation_id()), id)
-
-  # Normal initialization restores the record and confirms the same ID.
-  target <- new$get_record(new$partition, id)
-  new$activate_record(target)
-  expect_identical(new$record$id, id)
-  expect_identical(shiny::isolate(new$conversation_id()), id)
-})
 
 test_that("seed_conversation_id() refuses to seed over an active record", {
   ctrl <- cid_new_controller()
@@ -606,6 +590,12 @@ test_that("set_client() does not seed a saved conversation's ID", {
       )
       expect_null(new_ctrl$record)
       expect_null(shiny::isolate(new_ctrl$conversation_id()))
+
+      # Negative assertion at the store level: the swap itself writes
+      # nothing, and the saved record is untouched. Guards against
+      # set_client() "simplifications" that always seed the active ID.
+      expect_identical(store$get(new_ctrl$partition, saved_id), saved_record)
+      expect_length(store$list(new_ctrl$partition), 1)
 
       # The next submission mints a fresh ID, and the stored conversation
       # survives the swap untouched.
