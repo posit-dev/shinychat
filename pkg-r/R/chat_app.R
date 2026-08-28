@@ -611,14 +611,20 @@ chat_server <- function(
         # Match Python: surface failures (e.g. url-mode send_navigate)
         # through the standard error path instead of escaping the observer.
         tryCatch(
-          set_client_conversation_id(client, hist_ctrl$ensure_conversation_id()),
+          set_client_conversation_id(
+            client,
+            hist_ctrl$ensure_conversation_id()
+          ),
           error = function(e) {
             shiny::showNotification(
               sanitized_error_message(e),
               type = "error",
               duration = NULL
             )
-            rlang::warn("Error resolving the active conversation ID", parent = e)
+            rlang::warn(
+              "Error resolving the active conversation ID",
+              parent = e
+            )
           }
         )
       }
