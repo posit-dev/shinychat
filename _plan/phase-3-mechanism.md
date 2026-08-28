@@ -161,6 +161,15 @@ already-committed transcript remains truthful about content that reached the
 browser; retrying persistence writes the current node projection
 idempotently. Do not roll back browser-visible content or transcript state.
 
+The recorder serializes each callback's complete record mutation (including
+its private stream-id association change) and awaited `store.put()` with one
+private `asyncio.Lock`. This preserves the one-recorder, in-process ordering
+of complete projections when a supported custom async store suspends an older
+write while a newer callback arrives. It is not a transcript/admission guard,
+response queue, second owner, CAS protocol, or multi-writer guarantee. The
+lock is released with `async with`; store failures and cancellation still
+propagate through the originating awaited callback.
+
 Bookkeeping and ambient actions emit no capture event. In particular,
 `history_*`, drawer, slash-command synchronization, `update_cancel`,
 loading, and every `greeting_*` action remain excluded. An echoed slash
@@ -173,6 +182,11 @@ starts `pending`, and receives pre-input complete/streamed content. A
 successful complete append can mark it `ok`; an active stream keeps it
 `pending` until that stream terminates.
 
+- **First pre-input content:** create and persist the conversation and its
+  pending implicit root before recording the content. Its stable fallback
+  metadata is title `"New chat"` and the current client information; a later
+  accepted input preserves that record/root, and normal title evolution
+  remains responsible for any later title update.
 - **First accepted input:** capture root state as a snapshot, leave an active
   root stream `pending`, otherwise mark the root `ok`, then create a pending
   child with that input. A later root-stream terminal event still writes to
@@ -485,8 +499,14 @@ child or the phase.
   accepted input needs an explicit record/title/root policy, and serializing
   recorder mutation-plus-write operations requires a new async ordering lock.
   The latter conflicts with this task's no-new-ordering-guard constraint.
-  `shinychat#19dk` is parked for coordinator disposition; job `1042` remains
-  open.
+  The coordinator extended `shinychat#19dk`: a first pre-input stream creates
+  and persists the pending implicit root with stable `"New chat"` fallback
+  metadata; existing-record content with no open exchange creates an
+  input-less pending child. One private recorder-owned `asyncio.Lock` covers
+  every record/stream-map mutation plus its awaited atomic put. It is
+  persistence serialization only, not a queue, admission/response-scheduling
+  change, CAS, or multi-writer support. Job `1042` remains open until the
+  implementation commit makes it stale.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
