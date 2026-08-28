@@ -569,7 +569,19 @@ child or the phase.
   Commit `465e9f7c` rejects non-finite values during both normalization and
   fingerprint serialization, with file-store coverage proving no record is
   written. Job `1052` is closed stale on the fix (1 finding, 1/3 toward a new
-  escalation chain); fresh review is pending.
+  escalation chain). Fresh job `1053` found two Medium issues in the same
+  turn-baseline mechanism: an older stream that terminates after a newer
+  admitted input can capture the newer exchange's client turns, and distinct
+  Python keys can collapse to one JSON string key during normalization. This
+  reaches the new 3/3 escalation valve. **PARKED:** do not patch either
+  finding before the coordinator's patch-or-replace decision. The grounded
+  recommendation is **REPLACE** the global turn-baseline attribution strategy:
+  the older-stream finding is a structural conflict with the required
+  admission/attribution rule and the no-reconciliation constraint, not a
+  local serialization bug. Retain the generic hook registry and record shape,
+  but re-derive a capture strategy that can keep late-stream state separate
+  from a newer exchange without positional turn matching, cursor
+  reconciliation, a queue, or a second lifecycle owner.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
