@@ -277,7 +277,7 @@
     Code
       ui
     Output
-      <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill icon-assistant="" id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(680px, 100%);height:auto;">
+      <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill icon-assistant="" id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(clamp(680px, 50vw, 760px), 100%);height:auto;">
         <shiny-chat-messages></shiny-chat-messages>
         <shiny-chat-input id="chat_user_input" placeholder="Enter a message..."></shiny-chat-input>
         <shiny-chat-drawer title="" width="30rem" open resizable="false">
