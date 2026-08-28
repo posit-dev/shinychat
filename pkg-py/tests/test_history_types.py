@@ -1,12 +1,16 @@
 import pytest
 from _history_test_helpers import branch_from
+from shinychat._chat_types import StoredMessage, StoredSegment
 from shinychat._history_types import (
+    CapturedMessage,
     ConversationMeta,
     ConversationNode,
     ConversationRecord,
+    ConversationRecordV2,
     UnsupportedSchemaVersionError,
     check_schema_version,
     new_conversation_record,
+    new_conversation_record_v2,
 )
 
 
@@ -24,6 +28,36 @@ def test_new_record_is_empty_draft():
     assert rec.title == "hello world"
     assert rec.title_source is None
     assert rec.response_count == 0
+
+
+def test_v2_record_tracks_an_exchange_path_with_captured_messages():
+    input_message = StoredMessage(
+        role="user",
+        segments=[StoredSegment(content="hello", content_type="markdown")],
+    )
+    response = StoredMessage(
+        role="assistant",
+        segments=[StoredSegment(content="hi", content_type="markdown")],
+    )
+    rec = new_conversation_record_v2(
+        title="hello",
+        client_info={"kind": "test"},
+    )
+
+    rec.open_exchange("exchange-1", input_message)
+    rec.append_message(
+        "exchange-1",
+        CapturedMessage.from_stored_message(response, icon="bot"),
+    )
+
+    assert isinstance(rec, ConversationRecordV2)
+    assert rec.schema_version == 2
+    assert rec.path_node_ids() == ["n_0000", "exchange-1"]
+    node = rec.nodes["exchange-1"]
+    assert node.status == "ok"
+    assert node.input == input_message
+    assert node.messages[0].as_stored_message() == response
+    assert node.messages[0].icon == "bot"
 
 
 @pytest.mark.parametrize("version", [True, 1.0, "1", [], [1], float("nan")])

@@ -16,6 +16,7 @@ from ._history_types import (
     ConversationMeta,
     ConversationNode,
     ConversationRecord,
+    ConversationRecordV2,
     check_schema_version,
 )
 
@@ -53,12 +54,14 @@ class ConversationStore(ABC):
     @abstractmethod
     async def get(
         self, partition: ConversationPartition, conv_id: str
-    ) -> ConversationRecord | None:
+    ) -> Any:
         """Full record, or None if missing."""
 
     @abstractmethod
     async def put(
-        self, partition: ConversationPartition, record: ConversationRecord
+        self,
+        partition: ConversationPartition,
+        record: Any,
     ) -> None:
         """Upsert. Rename = mutate record.title and put()."""
 
@@ -221,6 +224,13 @@ class FileConversationStore(ConversationStore):
                     schema_version = check_schema_version(
                         raw.get("schema_version")
                     )
+                    if schema_version == 2:
+                        rec = ConversationRecordV2.model_validate(raw)
+                        size_bytes = sum(
+                            f.stat().st_size for f in d.iterdir() if f.is_file()
+                        )
+                        metas.append(rec.meta(size_bytes=size_bytes))
+                        continue
                     nodes_raw = raw.get("nodes", {})
                     nodes = {}
                     for nid, nd in nodes_raw.items():
@@ -256,7 +266,7 @@ class FileConversationStore(ConversationStore):
 
     async def get(
         self, partition: ConversationPartition, conv_id: str
-    ) -> ConversationRecord | None:
+    ) -> Any:
         conv_dir = safe_conv_path(await self._partition_dir(partition), conv_id)
         record_file = conv_dir / "record.json"
         if not record_file.is_file():
@@ -267,6 +277,8 @@ class FileConversationStore(ConversationStore):
 
         raw = json.loads(record_file.read_text(encoding="utf-8"))
         schema_version = check_schema_version(raw.get("schema_version"))
+        if schema_version == 2:
+            return ConversationRecordV2.model_validate(raw)
 
         turns_map: dict[int, dict[str, Any]] = {}
         turns_file = conv_dir / "turns.jsonl"
@@ -355,7 +367,9 @@ class FileConversationStore(ConversationStore):
         )
 
     async def put(
-        self, partition: ConversationPartition, record: ConversationRecord
+        self,
+        partition: ConversationPartition,
+        record: Any,
     ) -> None:
         check_schema_version(record.schema_version)
 
@@ -367,7 +381,18 @@ class FileConversationStore(ConversationStore):
         record_file = conv_dir / "record.json"
         if record_file.is_file():
             raw = json.loads(record_file.read_text(encoding="utf-8"))
-            check_schema_version(raw.get("schema_version"))
+            existing_schema_version = check_schema_version(
+                raw.get("schema_version")
+            )
+            if existing_schema_version != record.schema_version:
+                raise ValueError(
+                    "Cannot overwrite a conversation record with a different "
+                    "schema version."
+                )
+
+        if isinstance(record, ConversationRecordV2):
+            await self._put_v2(partition, record, conv_dir)
+            return
 
         conv_dir.mkdir(parents=True, exist_ok=True)
 
@@ -474,6 +499,34 @@ class FileConversationStore(ConversationStore):
             updated.sort(key=lambda m: m.created_at, reverse=True)
             self._meta_cache[partition] = updated
 
+    async def _put_v2(
+        self,
+        partition: ConversationPartition,
+        record: ConversationRecordV2,
+        conv_dir: Path,
+    ) -> None:
+        """Write the v2 logical record through one atomic file replacement."""
+        conv_dir.mkdir(parents=True, exist_ok=True)
+        record_file = conv_dir / "record.json"
+        tmp = conv_dir / ".record.json.tmp"
+        try:
+            tmp.write_text(
+                record.model_dump_json(exclude_none=True), encoding="utf-8"
+            )
+            os.replace(tmp, record_file)
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            raise
+
+        if partition in self._meta_cache:
+            size_bytes = record_file.stat().st_size
+            updated = [
+                m for m in self._meta_cache[partition] if m.id != record.id
+            ]
+            updated.append(record.meta(size_bytes=size_bytes))
+            updated.sort(key=lambda m: m.updated_at, reverse=True)
+            self._meta_cache[partition] = updated
+
     async def delete(
         self, partition: ConversationPartition, conv_id: str
     ) -> None:
@@ -507,7 +560,8 @@ class InMemoryConversationStore(ConversationStore):
 
     def __init__(self) -> None:
         self._data: dict[
-            ConversationPartition, dict[str, ConversationRecord]
+            ConversationPartition,
+            dict[str, ConversationRecord | ConversationRecordV2],
         ] = {}
         self._meta_cache: dict[
             ConversationPartition, list[ConversationMeta]
@@ -528,11 +582,13 @@ class InMemoryConversationStore(ConversationStore):
 
     async def get(
         self, partition: ConversationPartition, conv_id: str
-    ) -> ConversationRecord | None:
+    ) -> Any:
         return self._data.get(partition, {}).get(conv_id)
 
     async def put(
-        self, partition: ConversationPartition, record: ConversationRecord
+        self,
+        partition: ConversationPartition,
+        record: Any,
     ) -> None:
         check_schema_version(record.schema_version)
 

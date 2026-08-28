@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 import shinychat._history_store as history_store_module
 from htmltools import HTMLDependency, tags
+from shinychat._chat_types import StoredMessage, StoredSegment
 from shinychat._history_client import as_turns_adapter
 from shinychat._history_store import (
     ConversationPartition,
@@ -21,9 +22,11 @@ from shinychat._history_store import (
 )
 from shinychat._history_types import (
     MAX_SCHEMA_VERSION,
+    CapturedMessage,
     ConversationRecord,
     UnsupportedSchemaVersionError,
     new_conversation_record,
+    new_conversation_record_v2,
 )
 
 
@@ -85,6 +88,85 @@ async def test_put_get_round_trip(store: FileConversationStore):
         assert got.nodes[nid].children == rec.nodes[nid].children
         assert got.nodes[nid].parent == rec.nodes[nid].parent
         assert got.nodes[nid].ui == rec.nodes[nid].ui
+
+
+@pytest.mark.anyio
+async def test_v2_put_get_round_trip_uses_one_atomic_document(
+    store: FileConversationStore, tmp_path: Path
+):
+    input_message = StoredMessage(
+        role="user",
+        segments=[StoredSegment(content="hello", content_type="markdown")],
+    )
+    response = StoredMessage(
+        role="assistant",
+        segments=[StoredSegment(content="hi", content_type="markdown")],
+    )
+    rec = new_conversation_record_v2(
+        title="hello",
+        client_info={"kind": "test"},
+    )
+    rec.open_exchange("exchange-1", input_message)
+    rec.append_message(
+        "exchange-1",
+        CapturedMessage.from_stored_message(response, icon=None),
+    )
+
+    await store.put(part(scope="alice"), rec)
+    got = await FileConversationStore(dir=tmp_path).get(
+        part(scope="alice"), rec.id
+    )
+
+    assert got == rec
+    conv_dir = (
+        tmp_path / sanitize_scope("chat") / sanitize_scope("alice") / rec.id
+    )
+    assert {path.name for path in conv_dir.iterdir()} == {"record.json"}
+
+
+@pytest.mark.anyio
+async def test_v2_put_failure_keeps_previous_document(
+    store: FileConversationStore,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    input_message = StoredMessage(
+        role="user",
+        segments=[StoredSegment(content="hello", content_type="markdown")],
+    )
+    rec = new_conversation_record_v2(
+        title="hello",
+        client_info={"kind": "test"},
+    )
+    rec.open_exchange("exchange-1", input_message)
+    await store.put(part(scope="alice"), rec)
+
+    conv_dir = (
+        tmp_path / sanitize_scope("chat") / sanitize_scope("alice") / rec.id
+    )
+    before = (conv_dir / "record.json").read_bytes()
+    rec.nodes["exchange-1"].status = "ok"
+
+    monkeypatch.setattr(
+        "shinychat._history_store.os.replace",
+        lambda *args: (_ for _ in ()).throw(OSError("injected replace failure")),
+    )
+    with pytest.raises(OSError, match="injected replace failure"):
+        await store.put(part(scope="alice"), rec)
+
+    assert (conv_dir / "record.json").read_bytes() == before
+    assert not (conv_dir / ".record.json.tmp").exists()
+
+
+@pytest.mark.anyio
+async def test_v2_never_overwrites_a_v1_record(store: FileConversationStore):
+    v1 = new_conversation_record(title="v1")
+    await store.put(part(scope="alice"), v1)
+    v2 = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    v2.id = v1.id
+
+    with pytest.raises(ValueError, match="different schema version"):
+        await store.put(part(scope="alice"), v2)
 
 
 @pytest.mark.anyio
