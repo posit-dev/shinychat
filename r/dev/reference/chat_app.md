@@ -186,6 +186,16 @@ chat_server(
     always reflects the latest client, even after `set_client()` is
     called).
 
+  - `history$conversation_id()`: A reactive expression returning the
+    active conversation ID: `NULL` when history is disabled or the chat
+    is still an empty draft, otherwise the ID allocated on the first
+    user submission – before the model call – that the saved
+    conversation record carries. The ID is stable across retries,
+    restores, conversation switches, and `set_client()` calls. The ID is
+    also handed to the client (via its `conversation_id` binding, when
+    supported), which records it as the `gen_ai.conversation.id`
+    attribute on its own OpenTelemetry spans.
+
   - `set_client(new_client, sync = TRUE)`: Replace the chat client used
     by the module. When `sync` is `TRUE` (the default), the new client
     inherits conversation turns, system prompt, and tools from the
