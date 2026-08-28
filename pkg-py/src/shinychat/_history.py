@@ -283,7 +283,8 @@ class _ExchangeRecorder:
                 )
             for message in node.messages:
                 await self._controller.chat._restore_bookmark_message(
-                    message.as_stored_message().model_dump(mode="json")
+                    message.as_stored_message().model_dump(mode="json"),
+                    icon=message.icon,
                 )
 
 

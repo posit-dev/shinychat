@@ -122,6 +122,24 @@ def _rollback_jsonl(path: Path, *, existed: bool, size: int) -> None:
         path.unlink(missing_ok=True)
 
 
+def _check_record_for_store(
+    record: Any,
+) -> ConversationRecord | ConversationRecordV2:
+    if not isinstance(record, (ConversationRecord, ConversationRecordV2)):
+        raise TypeError("Conversation stores require a supported record model.")
+    version = check_schema_version(record.schema_version)
+    if (
+        isinstance(record, ConversationRecord)
+        and version != 1
+        or isinstance(record, ConversationRecordV2)
+        and version != 2
+    ):
+        raise ValueError(
+            "Conversation record model does not match its schema version."
+        )
+    return record
+
+
 class FileConversationStore(ConversationStore):
     """
     Default store: each conversation is a directory at
@@ -240,7 +258,6 @@ class FileConversationStore(ConversationStore):
                             turns=[],
                         )
                     rec = ConversationRecord(
-                        schema_version=schema_version,
                         id=raw["id"],
                         title=raw["title"],
                         title_source=raw.get("title_source"),
@@ -351,7 +368,6 @@ class FileConversationStore(ConversationStore):
             )
 
         return ConversationRecord(
-            schema_version=schema_version,
             id=raw["id"],
             title=raw["title"],
             title_source=raw.get("title_source"),
@@ -371,7 +387,7 @@ class FileConversationStore(ConversationStore):
         partition: ConversationPartition,
         record: Any,
     ) -> None:
-        check_schema_version(record.schema_version)
+        record = _check_record_for_store(record)
 
         partition_dir = await self._partition_dir(partition)
         conv_dir = safe_conv_path(partition_dir, record.id)
@@ -590,10 +606,19 @@ class InMemoryConversationStore(ConversationStore):
         partition: ConversationPartition,
         record: Any,
     ) -> None:
-        check_schema_version(record.schema_version)
+        record = _check_record_for_store(record)
 
         if partition not in self._data:
             self._data[partition] = {}
+        existing = self._data[partition].get(record.id)
+        if (
+            existing is not None
+            and existing.schema_version != record.schema_version
+        ):
+            raise ValueError(
+                "Cannot overwrite a conversation record with a different "
+                "schema version."
+            )
         self._data[partition][record.id] = record
 
         # Only touched-record work — mirrors FileConversationStore.put(), so

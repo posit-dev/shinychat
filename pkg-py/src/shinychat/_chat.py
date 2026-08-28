@@ -1693,7 +1693,7 @@ class Chat:
         message: StoredMessage | ChatMessage,
         chunk: ChunkOption = False,
         operation: Literal["append", "replace"] = "append",
-        icon: HTML | Tag | TagList | bool | None = None,
+        icon: HTML | Tag | TagList | bool | str | None = None,
     ) -> bool:
         message = self._as_stored_message(message)
 
@@ -1938,7 +1938,12 @@ class Chat:
                 self._destructive_history_transaction = None
                 self._destructive_history_task = None
 
-    async def _restore_bookmark_message(self, message_dict: Any) -> None:
+    async def _restore_bookmark_message(
+        self,
+        message_dict: Any,
+        *,
+        icon: str | None = None,
+    ) -> None:
         try:
             stored = StoredMessage.model_validate(message_dict)
         except ValidationError as e:
@@ -1964,10 +1969,10 @@ class Chat:
             return
 
         async with self._destructive_history_mutation() as transaction:
-            entry = TranscriptEntry(message=stored)
+            entry = TranscriptEntry(message=stored, icon=icon)
 
             async def send() -> bool:
-                return await self._send_append_message(stored)
+                return await self._send_append_message(stored, icon=icon)
 
             await self._transcript.append(
                 entry,
@@ -2930,7 +2935,7 @@ class ChatExpress(Chat):
 
 
 def _resolve_icon_attr(
-    icon: "HTML | Tag | TagList | bool | None",
+    icon: "HTML | Tag | TagList | bool | str | None",
 ) -> "str | None":
     """Translate an icon value into its wire attribute.
 

@@ -84,7 +84,7 @@ def check_schema_version(version: object) -> int:
 
 
 class ConversationRecord(BaseModel):
-    schema_version: int = 1
+    schema_version: Literal[1] = 1
     id: str
     title: str
     # None = timestamp-based title, no explicit source yet — either LLM

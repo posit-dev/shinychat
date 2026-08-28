@@ -5,7 +5,7 @@ import logging
 import shutil
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import shinychat._history_store as history_store_module
@@ -160,6 +160,29 @@ async def test_v2_put_failure_keeps_previous_document(
 
 @pytest.mark.anyio
 async def test_v2_never_overwrites_a_v1_record(store: FileConversationStore):
+    v1 = new_conversation_record(title="v1")
+    await store.put(part(scope="alice"), v1)
+    v2 = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    v2.id = v1.id
+
+    with pytest.raises(ValueError, match="different schema version"):
+        await store.put(part(scope="alice"), v2)
+
+
+@pytest.mark.anyio
+async def test_file_store_rejects_a_v1_model_labeled_as_v2(
+    store: FileConversationStore,
+):
+    record = new_conversation_record(title="v1")
+    cast(Any, record).schema_version = 2
+
+    with pytest.raises(ValueError, match="model does not match"):
+        await store.put(part(scope="alice"), record)
+
+
+@pytest.mark.anyio
+async def test_memory_store_never_overwrites_a_v1_record_with_v2():
+    store = InMemoryConversationStore()
     v1 = new_conversation_record(title="v1")
     await store.put(part(scope="alice"), v1)
     v2 = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
@@ -904,7 +927,7 @@ async def test_put_rejects_unsupported_schema_version_into_empty_store(
     tmp_path: Path,
 ):
     rec = new_conversation_record(title="t")
-    rec.schema_version = MAX_SCHEMA_VERSION + 1
+    cast(Any, rec).schema_version = MAX_SCHEMA_VERSION + 1
 
     with pytest.raises(UnsupportedSchemaVersionError):
         await store.put(part(scope="alice"), rec)
@@ -945,7 +968,7 @@ async def test_memory_put_rejects_unsupported_schema_version(
     mem_store: InMemoryConversationStore,
 ):
     rec = new_conversation_record(title="t")
-    rec.schema_version = MAX_SCHEMA_VERSION + 1
+    cast(Any, rec).schema_version = MAX_SCHEMA_VERSION + 1
 
     with pytest.raises(UnsupportedSchemaVersionError):
         await mem_store.put(part(scope="alice"), rec)

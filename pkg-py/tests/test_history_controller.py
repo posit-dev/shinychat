@@ -218,6 +218,7 @@ class _FakeChat:
         self.set_greeting_calls: list[Any] = []
         self.destructive_preflight_calls = 0
         self.restored_messages: list[dict[str, Any]] = []
+        self.restored_icons: list[str | None] = []
 
     def _messages_for_bookmark(self) -> list[Any]:
         return []
@@ -236,8 +237,11 @@ class _FakeChat:
         self.destructive_preflight_calls += 1
         yield
 
-    async def _restore_bookmark_message(self, message_dict: Any) -> None:
+    async def _restore_bookmark_message(
+        self, message_dict: Any, *, icon: str | None = None
+    ) -> None:
         self.restored_messages.append(message_dict)
+        self.restored_icons.append(icon)
 
     async def set_greeting(self, greeting: Any) -> None:
         self.set_greeting_calls.append(greeting)
@@ -352,7 +356,10 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
         _stored_message("user", "hello")
     )
     await transcript.append(
-        TranscriptEntry(message=_stored_message("assistant", "hi")),
+        TranscriptEntry(
+            message=_stored_message("assistant", "hi"),
+            icon="<i>bot</i>",
+        ),
         exchange_id=exchange_id,
         send=_sent,
     )
@@ -386,6 +393,7 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
         message["segments"][0]["content"]
         for message in fake_chat.restored_messages
     ] == ["hello", "hi"]
+    assert fake_chat.restored_icons == [None, "<i>bot</i>"]
 
 
 async def _sent() -> bool:
@@ -537,7 +545,9 @@ class _ReplayFakeChat(_FakeChat):
     async def clear_messages(self) -> None:
         self.messages = []
 
-    async def _restore_bookmark_message(self, message_dict: Any) -> None:
+    async def _restore_bookmark_message(
+        self, message_dict: Any, *, icon: str | None = None
+    ) -> None:
         self.messages.append(message_dict)
 
 
@@ -698,7 +708,9 @@ class _NavFakeChat(_FakeChat):
     async def clear_messages(self) -> None:
         self.cleared += 1
 
-    async def _restore_bookmark_message(self, message_dict: Any) -> None:
+    async def _restore_bookmark_message(
+        self, message_dict: Any, *, icon: str | None = None
+    ) -> None:
         pass
 
 
@@ -863,7 +875,7 @@ class _UnsupportedSchemaVersionStore(ConversationStore):
     ) -> ConversationRecord | None:
         rec = new_conversation_record(title="from the future")
         rec.id = conv_id
-        rec.schema_version = MAX_SCHEMA_VERSION + 1
+        cast(Any, rec).schema_version = MAX_SCHEMA_VERSION + 1
         return rec
 
     async def put(self, partition: ConversationPartition, record: Any) -> None:
@@ -893,7 +905,7 @@ async def test_rename_rejects_record_with_unsupported_schema_version_before_writ
     # (issue #322).
     controller, store = _make_controller()
     controller.record = new_conversation_record(title="t")
-    controller.record.schema_version = MAX_SCHEMA_VERSION + 1
+    cast(Any, controller.record).schema_version = MAX_SCHEMA_VERSION + 1
 
     with pytest.raises(UnsupportedSchemaVersionError):
         await controller.rename(controller.record.id, "new title")
