@@ -165,7 +165,15 @@ single-session atom and starts only after every Python consumer has moved.
   races; accepting races violates the agreed transactional contract. This is
   the narrowly approved exception to the no-new-flag tripwire, not a response
   queue.
-- **Next:** `shinychat#ch09` adds transactional stream ownership and
-  attribution, deletes the legacy pending-message queue, and switches the
-  public projection to the owner.
+- **Landed (`shinychat#ch09`; `cee6312f`):** implemented the approved private
+  fail-fast transcript admission token across complete, stream, clear, and
+  restore mutations; stream and complete attribution are captured before
+  asynchronous transforms, terminal suppression closes the stream, and the
+  history settlement compatibility trigger remains intact.
+- **Verification (`shinychat#ch09`):** focused transcript/chat/matrix tests
+  passed (68), Playwright history-idempotence passed (2), `make py-check-format`
+  and `make py-check-types` passed, and `make py-check` passed (189 Playwright,
+  599 non-browser tests).
+- **Next:** `shinychat#ch09` is complete; `shinychat#dy7g` moves bookmark and
+  current-history consumers to server state.
 - **Provisional decisions:** none.
