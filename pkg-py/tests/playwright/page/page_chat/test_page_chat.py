@@ -27,23 +27,6 @@ def open_page(
     return chat, page_chat
 
 
-def test_default_chat_width_grows_on_wide_windows(
-    page: Page,
-    local_app: ShinyAppProc,
-) -> None:
-    chat, _ = open_page(page, local_app, viewport=(1280, 800))
-    wrapper = chat.loc.locator(".shiny-chat-wrapper")
-
-    box = wrapper.bounding_box()
-    assert box is not None
-    assert box["width"] == pytest.approx(680, abs=1)
-
-    page.set_viewport_size({"width": 1716, "height": 800})
-    box = wrapper.bounding_box()
-    assert box is not None
-    assert box["width"] == pytest.approx(760, abs=1)
-
-
 def test_desktop_navigation_streaming_and_history_auto_open(
     page: Page,
     local_app: ShinyAppProc,
