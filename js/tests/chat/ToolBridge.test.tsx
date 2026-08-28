@@ -668,4 +668,56 @@ describe("Tool component bridge rendering", () => {
     expect(document.body.textContent).toContain("Here you go.")
     vi.unstubAllGlobals()
   })
+
+  it("does not mount an HTML payload in tool_name when the card is expanded", () => {
+    // tool_name is model-influenced (chatlas sets it from the tool-call
+    // payload). When no server-attested title is provided, the fallback
+    // `${toolName}()` is interpolated into the RawHTML title span, so the
+    // name must be escaped — never mounted as a live element.
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+        uploadAccept={[]}
+        maxUploadSize={30000000}
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [
+            {
+              type: "tool_result",
+              version: 1,
+              request_id: "req-xss",
+              tool_name: '<img src=x onerror=alert(1)>',
+              status: "success",
+              value: "ok",
+              value_type: "text",
+              expanded: true,
+            },
+          ],
+        },
+      })
+    })
+
+    // The tool group row renders; expanded:true seeds the disclosure open so
+    // the leaf card (whose header carries the title span — the RawHTML sink
+    // under test) is already visible without clicking.
+    expect(document.querySelector(".shiny-chat-tool-group__row")).toBeTruthy()
+    expect(document.querySelector(".shiny-tool-card")).toBeTruthy()
+
+    // The malicious tool_name must not mount as a live <img> element anywhere
+    // in the document — it must render as escaped text in the title span.
+    expect(document.querySelector('img[src="x"]')).toBeNull()
+    expect(document.body.textContent).toContain("<img src=x onerror=alert(1)>")
+  })
 })

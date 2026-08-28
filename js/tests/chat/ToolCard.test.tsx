@@ -128,6 +128,25 @@ describe("ToolCard", () => {
     expect(nameSpan!.textContent).toBe("bold")
   })
 
+  it("escapes the toolName fallback when no toolTitle is provided (model-influenced text)", () => {
+    // toolName is model-influenced (chatlas sets it from the tool-call payload)
+    // and must never mount raw HTML through the RawHTML title span. Only the
+    // server-attested toolTitle is trusted as raw HTML.
+    const payload = '<img src=x onerror=alert(1)>'
+    const { container } = render(
+      <ToolCard toolName={payload} initialExpanded={true}>
+        <div>body</div>
+      </ToolCard>,
+    )
+
+    const nameSpan = container.querySelector(".tool-title-name")
+    expect(nameSpan).toBeTruthy()
+    // The payload must not mount as a live element.
+    expect(nameSpan!.querySelector("img")).toBeNull()
+    // It must render as escaped text, not be stripped entirely.
+    expect(nameSpan!.textContent).toContain(payload)
+  })
+
   it("does not wrap the title in a 'Running '/'failed' template (titleTemplate removed)", () => {
     const { container } = render(
       <ToolCard toolName="search" toolTitle="Searching" statusNote="failed">
