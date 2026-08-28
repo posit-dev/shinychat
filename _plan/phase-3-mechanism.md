@@ -456,7 +456,7 @@ child or the phase.
   Focused checks passed (Ruff, Pyright, 34 Playwright, 328 non-browser);
   the full gate passed Ruff, Pyright, and 191 Playwright tests, with only
   the known unrelated `shinychat#4z6p` MIME failure in the non-browser suite
-  (679 passed, 1 skipped, 1 failed after the review fix).
+  (682 passed, 1 skipped, 1 failed after the final callback fix).
 - **Review:** roborev jobs `1033` and `1035` were fixed and closed by commits
   `29e23dce` and `3e4b1385`. Job `1036` was the third v2 record-boundary
   finding, so the escalation valve applied. The approved **PATCH** landed in
@@ -471,8 +471,13 @@ child or the phase.
   persistence failure could strand the browser stream, and terminal
   persistence failure could mask its original error with a second abort.
   Both were accepted and fixed in `e582a6b1`; the job was closed stale on the
-  fix. This is a 2/3 recurrence chain, below the escalation valve. A fresh
-  coherent review is pending.
+  fix. Roborev job `1041` was the third finding in that mechanism: a failed
+  terminal recorder callback skipped response-settlement consumers even
+  though the stream was closed. The escalation decision was **PATCH**:
+  `6b3d729c` invokes stream-terminal notification in a `finally` around the
+  awaited recorder callback on normal end, failed end, and abort, while the
+  recorder exception still propagates. Job `1041` was closed stale on the
+  fix. A fresh coherent review is pending.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
