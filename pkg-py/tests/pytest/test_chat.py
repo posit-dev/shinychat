@@ -16,7 +16,6 @@ from shinychat import Chat
 from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
     ChatMessage,
-    ChatMessageDict,
     Role,
     StoredMessage,
     StoredSegment,
@@ -218,20 +217,29 @@ def test_tagifiable_normalization():
     assert m.content == "Hello <span>world</span>!"
     assert m.role == "assistant"
 
-    # Interpreted as HTML (without escaping)
+    # Interpreted as HTML (without escaping); raw HTML travels as a
+    # structured html_block, not island markup in the content string
     m = message_content(HTML("Hello <span>world</span>!"))
-    assert (
-        m.content
-        == "\n\n<shiny-chat-raw-html>Hello <span>world</span>!</shiny-chat-raw-html>\n\n"
-    )
+    assert m.content == ""
+    assert m.blocks == [
+        {
+            "type": "html_block",
+            "version": 1,
+            "content": "Hello <span>world</span>!",
+        }
+    ]
     assert m.role == "assistant"
 
     # Interpreted as HTML (if top-level object is tag-like, inner string contents get escaped)
     m = message_content(div("Hello <span>world</span>!"))
-    assert (
-        m.content
-        == "\n\n<shiny-chat-raw-html>\n  <div>Hello &lt;span&gt;world&lt;/span&gt;!</div>\n</shiny-chat-raw-html>\n\n"
-    )
+    assert m.content == ""
+    assert m.blocks == [
+        {
+            "type": "html_block",
+            "version": 1,
+            "content": "<div>Hello &lt;span&gt;world&lt;/span&gt;!</div>",
+        }
+    ]
     assert m.role == "assistant"
 
 
@@ -1373,7 +1381,7 @@ def test_messages_surfaces_attachments():
 
         # First message: assistant with attachment. No `format=` was passed, so
         # messages() returns ChatMessageDict entries.
-        att_msg = cast(ChatMessageDict, msgs[0])
+        att_msg = msgs[0]
         assert "attachments" in att_msg
         atts = att_msg["attachments"]
         assert len(atts) == 1

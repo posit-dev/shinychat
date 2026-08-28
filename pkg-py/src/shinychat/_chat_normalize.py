@@ -591,15 +591,21 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
         else "markdown"
     )
     annotations = resolve_tool_annotations(message.request.tool)
+    # ChatMessage.__init__ now emits html_block structured blocks for
+    # non-string (tag-like) content instead of inlining the rendered HTML
+    # into the content string. Fold the block content back so the wrapper
+    # receives the author's full UI (wrapping an empty value would produce
+    # an empty `<shiny-tool-result>`).
+    content = msg.content + "".join(
+        b["content"] for b in msg.blocks if b["type"] == "html_block"
+    )
     wrapped = wrap_custom_tool_result(
         request_id=message.request.id,
         tool_name=message.request.name,
         # A custom renderer owns its error presentation; the wrapper only
         # carries the lifecycle signal needed by the client.
         status="success" if message.error is None else "error",
-        value=TagList(HTML(msg.content))
-        if value_type == "html"
-        else msg.content,
+        value=TagList(HTML(content)) if value_type == "html" else content,
         value_type=value_type,
         grouping=annotations.grouping,
     )

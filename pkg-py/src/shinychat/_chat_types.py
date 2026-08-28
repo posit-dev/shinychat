@@ -3,7 +3,7 @@ from __future__ import annotations
 import warnings
 from typing import Any, AsyncIterable, Literal, Union
 
-from htmltools import HTML, HTMLDependency, Tag, TagChild, TagList
+from htmltools import HTML, HTMLDependency, Tag, TagChild, TagifiedTag, TagList
 from pydantic import BaseModel
 
 from ._attachments import Attachment
@@ -140,6 +140,24 @@ class WebFetchBlock(TypedDict):
     status: NotRequired[Literal["success", "error"]]
 
 
+class HtmlBlock(TypedDict):
+    """
+    A typed, server-authored raw-HTML island (mirrors `HtmlBlock` in
+    `js/src/transport/types.ts`). The envelope itself is the trust signal:
+    only the server can construct these blocks, so `content` renders through
+    the shared RawHTML sink. The block is opaque to the thinking-tag/fence
+    state machine, which operates only on string content.
+    """
+
+    type: Literal["html_block"]
+    version: Literal[1]
+    # Trusted HTML -> RawHTML
+    content: str
+    # Dependencies this island needs, rendered before its HTML mounts (the
+    # block-level complement to the envelope's `html_deps`).
+    html_deps: NotRequired[list[SerializedDep]]
+
+
 # The union of typed blocks carried in `MessagePayload.segments` (outside a
 # stream) or via a `block_insert` action (mid-stream). The union grows per
 # the design.
@@ -149,6 +167,7 @@ StructuredBlock = Union[
     WebSearchBlock,
     WebSearchResultsBlock,
     WebFetchBlock,
+    HtmlBlock,
 ]
 
 # One entry of `MessagePayload.segments`: a string segment
@@ -389,15 +408,87 @@ class ChatMessage:
         # markdown), so only process it if it's not a string.
         deps: list[HTMLDependency] = []
         if not isinstance(content, str):
+            # Walk the split_html_islands() output: island wrappers
+            # (<shiny-chat-raw-html>) become HtmlBlock structured blocks
+            # carrying the trusted server-authored HTML; bare React elements
+            # are rendered and concatenated as the residual string content.
+            # The string-segment path (isinstance(content, str)) is retained
+            # for string-typed content — this branch only fires for non-string
+            # (tag-like) content.
             split = split_html_islands(content)
-            ui = TagList(*split).render()
-            content, ui_deps = ui["html"], ui["dependencies"]
-            deps = deps + ui_deps
-            # Surround with blank lines so the markdown parser treats
-            # block-level custom elements correctly.
-            content = f"\n\n{content}\n\n"
-            if content_type is None:
-                self.content_type = "html"
+            content_parts: list[str | StructuredBlock] = []
+            for item in split:
+                if (
+                    isinstance(item, (Tag, TagifiedTag))
+                    and item.name == "shiny-chat-raw-html"
+                ):
+                    # Island wrapper: render its children (not the wrapper
+                    # itself) as the block's trusted HTML content.
+                    island = TagList(*item.children).render()
+                    island_html, island_deps = (
+                        island["html"],
+                        island["dependencies"],
+                    )
+                    deps.extend(island_deps)
+                    block: HtmlBlock = {
+                        "type": "html_block",
+                        "version": 1,
+                        "content": island_html,
+                    }
+                    if island_deps:
+                        block["html_deps"] = [d.as_dict() for d in island_deps]
+                    self.blocks.append(block)
+                    content_parts.append(block)
+                else:
+                    # Bare React element: render it bare and keep it as a
+                    # string part inline, so `parts` preserves the original
+                    # interleaving with html_blocks.
+                    rendered = TagList(item).render()
+                    deps.extend(rendered["dependencies"])
+                    # Surround with blank lines so the markdown parser treats
+                    # block-level custom elements correctly.
+                    run = f"\n\n{rendered['html']}\n\n"
+                    if content_parts and isinstance(content_parts[-1], str):
+                        content_parts[-1] += run
+                    else:
+                        content_parts.append(run)
+            residual_html = "".join(
+                p for p in content_parts if isinstance(p, str)
+            )
+            if residual_html:
+                content = residual_html
+                if content_type is None:
+                    self.content_type = "html"
+            else:
+                content = ""
+                # Even with no residual string, html_blocks carry trusted
+                # HTML: the message is html-typed (unless the caller passed
+                # an explicit content_type).
+                if content_parts and content_type is None:
+                    self.content_type = "html"
+            # Only set parts when the content was multi-part (string + block
+            # interleaving). A single block with no string content keeps
+            # parts = None so the flat layout path in from_chat_message
+            # handles it (one empty string segment carrying html_deps + the
+            # block appended after).
+            if content_parts and (
+                len(content_parts) > 1 or not isinstance(content_parts[0], str)
+            ):
+                # Coalesce adjacent string runs (string runs and blocks
+                # strictly alternate in parts).
+                coalesced: list[str | StructuredBlock] = []
+                for p in content_parts:
+                    if (
+                        isinstance(p, str)
+                        and coalesced
+                        and isinstance(coalesced[-1], str)
+                    ):
+                        coalesced[-1] += p
+                    else:
+                        coalesced.append(p)
+                self.parts = coalesced
+            elif parts:
+                self.parts = parts
 
         self.content = content
         self.html_deps: list[HTMLDependency] = deps
