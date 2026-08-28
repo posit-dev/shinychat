@@ -344,6 +344,39 @@ record. This is process-kill evidence, not a power-loss/fsync claim:
 | Split: kill after state-revision append | old |
 | Split: kill after atomic tree replacement | new |
 
+#### Partial-append follow-up (2026-08-28; roborev job 1028)
+
+The accepted review fix recreated a narrow disposable harness inline with
+Python's standard library. Each temporary store started with complete
+`old-message` and `old-state` JSONL revisions and an atomic tree document
+referencing both. A child process appended only a prefix of one new immutable
+revision, flushed the bytes, and was killed with `SIGKILL` before the tree
+could be replaced. The fresh reader parsed complete JSONL records, ignored an
+incomplete unreferenced tail, and resolved only the revisions referenced by
+the tree.
+
+The message payload was 43 bytes and the state payload was 58 bytes. They were
+interrupted independently at offsets `1`, midpoint, two bytes before the end,
+and one byte before the JSONL newline: messages at `1`, `21`, `41`, `42`;
+state at `1`, `29`, `56`, `57`. The last offset is complete JSON without its
+record terminator; the other end-near offsets exercise incomplete JSON. These
+were eight partial-prefix cases in total, and every case exposed the complete
+old logical record. A second check completed the message revision, interrupted
+the state revision at offset `56`, and still exposed old message plus old
+state; no mixed projection was visible. A control check completed both
+revisions and atomically replaced the tree, exposing the complete new logical
+record.
+The child processes exited from `SIGKILL` as expected. All temporary
+directories and the inline harness were removed after the run; no benchmark
+or failure harness was retained.
+
+Review dispositions for roborev job `1028`: the partial-append interruption
+finding is **accepted** and covered by the follow-up above. The prototype
+retention finding is **declined** because `shinychat#98jz` requires all
+disposable benchmark code to be deleted; the raw samples, workload
+description, environment, and these procedures are the durable audit
+evidence. This remains a documentation/evidence fix only.
+
 Every hot-write category clears the required threshold. The smallest
 improvements are 6.90x median for terminal state capture
 (`7.200 / 1.043`) and 2.50x p95 for 100 stream updates
@@ -396,9 +429,11 @@ child or the phase.
 
 - **Landed:** Phase 2 is closed; the Phase 3 mechanism is approved; gate items
   1-4 passed in `shinychat#ztvz`; Q2 in `shinychat#98jz` selected the split
-  layout with recorded measurements and failure-injection evidence.
+  layout with recorded measurements and complete-append plus partial-append
+  failure-injection evidence.
 - **Next:** human review of `shinychat#98jz`, then create the keystone v2
   slice child for `shinychat#qf2r`.
 - **Provisional:** no Phase 3 mechanism decision remains open. The split
   layout is the selected file-store direction; its production schema and
-  implementation remain for the keystone task.
+  implementation remain for the keystone task. The review-fix harness was
+  disposable and is not retained.
