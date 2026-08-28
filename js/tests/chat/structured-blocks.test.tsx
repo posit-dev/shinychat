@@ -7,23 +7,26 @@ vi.mock("../../src/chat/TiptapInput", async () => {
 })
 
 import { ChatMessages } from "../../src/chat/ChatMessages"
+import { ChatToolContext } from "../../src/chat/context"
 import {
   chatReducer,
   initialState,
+  supersededRequestIds,
   type ChatMessageData,
   type ChatState,
 } from "../../src/chat/state"
 import type {
   ChatAction,
   StructuredBlock,
+  ToolRequestBlock,
   ToolResultBlock,
 } from "../../src/transport/types"
 
-// Keystone slice for the structured-content-types epic: a `tool_result`
-// structured block flows Python → wire → reducer → rendered card, both via
-// `message.segments` (settled) and via `block_insert` (mid-stream). The
-// envelope — not markup scanned out of a content string — is what produces
-// trusted tool UI.
+// Keystone slice for the structured-content-types epic: `tool_request` and
+// `tool_result` structured blocks flow Python → wire → reducer → rendered
+// card, both via `message.segments` (settled) and via `block_insert`
+// (mid-stream). The envelope — not markup scanned out of a content string —
+// is what produces trusted tool UI.
 
 const toolResultBlock = (
   overrides: Partial<ToolResultBlock> = {},
@@ -37,6 +40,19 @@ const toolResultBlock = (
   value_type: "text",
   title: "Looked up weather",
   expanded: true,
+  ...overrides,
+})
+
+const toolRequestBlock = (
+  overrides: Partial<ToolRequestBlock> = {},
+): ToolRequestBlock => ({
+  type: "tool_request",
+  version: 1,
+  request_id: "call-1",
+  tool_name: "get_weather",
+  title: "Looking up weather",
+  intent: "check weather",
+  arguments: '{"location":"Duluth"}',
   ...overrides,
 })
 
@@ -397,5 +413,220 @@ describe("structured loops survive regrouping", () => {
 
     const { container } = renderMessages(state.messages)
     expectToolCard(container, "72F and sunny")
+  })
+})
+
+describe("structured tool_request block via message.segments", () => {
+  it("reduces to a running tool_loop call and renders the running row", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "Before the call. ", content_type: "markdown" },
+          toolRequestBlock(),
+          { content: " After the call.", content_type: "markdown" },
+        ],
+      },
+    })
+
+    expect(state.messages).toHaveLength(1)
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual([
+      "content",
+      "tool_loop",
+      "content",
+    ])
+
+    // An unpaired request derives a running call (pairToolEvents' convention
+    // for new request ids); "running" is never a wire value.
+    const loop = blocks[1]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const call = loop.groups.flatMap((g) => g.calls)[0]!
+    expect(call.status).toBe("running")
+    expect(call.structured).toBe(true)
+
+    const { container } = renderMessages(state.messages)
+    // The condensed row renders the running call under its definition title.
+    expect(container.querySelector(".shiny-chat-tool-group")).not.toBeNull()
+    expect(container.textContent).toContain("Looking up weather")
+    expect(container.textContent).toContain("Running…")
+
+    // Content renders in segment order around the row.
+    const text = container.textContent ?? ""
+    expect(text.indexOf("Before the call.")).toBeLessThan(
+      text.indexOf("Looking up weather"),
+    )
+    expect(text.indexOf("Looking up weather")).toBeLessThan(
+      text.indexOf("After the call."),
+    )
+  })
+
+  it("maps the full field surface onto the ToolCallItem", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          toolRequestBlock({
+            icon: "<svg></svg>",
+            grouping: "none",
+          }),
+        ],
+      },
+    })
+
+    const loop = state.messages[0]!.blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const call = loop.groups.flatMap((g) => g.calls)[0]!
+    // The request carries the tool *definition's* title/icon; the result's
+    // own title/icon settle over them when it arrives.
+    expect(call).toMatchObject({
+      requestId: "call-1",
+      localId: "call-1",
+      toolName: "get_weather",
+      status: "running",
+      definitionTitle: "Looking up weather",
+      definitionIcon: "<svg></svg>",
+      intent: "check weather",
+      arguments: '{"location":"Duluth"}',
+      grouping: "none",
+      structured: true,
+    })
+    // A request carries no result-level fields.
+    expect(call.title).toBeUndefined()
+    expect(call.icon).toBeUndefined()
+    expect(call.value).toBeUndefined()
+  })
+
+  it("hides the running request row once its result arrives", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [toolRequestBlock(), toolResultBlock()],
+      },
+    })
+
+    // Both calls land in one merged loop — the request stays running in the
+    // lifecycle model (pairing is a presentation concern)…
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    const loop = blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const calls = loop.groups.flatMap((g) => g.calls)
+    expect(
+      calls.map((c) => ({ requestId: c.requestId, status: c.status })),
+    ).toEqual([
+      { requestId: "call-1", status: "running" },
+      { requestId: "call-1", status: "success" },
+    ])
+
+    // …but transcript-wide supersession (derived from the structured result
+    // block) hides the running request row, leaving the settled result card.
+    const superseded = supersededRequestIds(state.messages, null)
+    expect([...superseded]).toEqual(["call-1"])
+    const { container } = render(
+      <ChatToolContext.Provider value={{ supersededRequests: superseded }}>
+        <ChatMessages messages={state.messages} inputId="test-input" />
+      </ChatToolContext.Provider>,
+    )
+    expectToolCard(container, "72F and sunny")
+    expect(container.textContent).not.toContain("Running…")
+  })
+})
+
+describe("structured tool_request block via block_insert mid-stream", () => {
+  function startStream(state: ChatState): ChatState {
+    return chatReducer(state, {
+      type: "chunk_start",
+      message: { role: "assistant", segments: [] },
+    })
+  }
+
+  it("appends a render-ready running tool loop to the in-flight message", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "Checking the weather. ",
+      operation: "append",
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolRequestBlock(),
+    })
+
+    // Mid-stream: the block is already render-ready in the streaming message.
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["content", "tool_loop"])
+    const loop = blocks[1]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const call = loop.groups.flatMap((g) => g.calls)[0]!
+    expect(call.status).toBe("running")
+    expect(call.structured).toBe(true)
+
+    state = chatReducer(state, { type: "chunk_end" })
+    expect(state.streamingMessage).toBeNull()
+    const { container } = renderMessages(state.messages)
+    expect(container.querySelector(".shiny-chat-tool-group")).not.toBeNull()
+    expect(container.textContent).toContain("Running…")
+  })
+
+  it("a result block for the same request merges into the request's loop", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolRequestBlock(),
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolResultBlock(),
+    })
+
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    const loop = blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const calls = loop.groups.flatMap((g) => g.calls)
+    expect(
+      calls.map((c) => ({ requestId: c.requestId, status: c.status })),
+    ).toEqual([
+      { requestId: "call-1", status: "running" },
+      { requestId: "call-1", status: "success" },
+    ])
+
+    state = chatReducer(state, { type: "chunk_end" })
+    const superseded = supersededRequestIds(state.messages, null)
+    const { container } = render(
+      <ChatToolContext.Provider value={{ supersededRequests: superseded }}>
+        <ChatMessages messages={state.messages} inputId="test-input" />
+      </ChatToolContext.Provider>,
+    )
+    expectToolCard(container, "72F and sunny")
+    expect(container.textContent).not.toContain("Running…")
+  })
+
+  it("adjacent structured requests merge into one tool loop", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolRequestBlock({ request_id: "call-1" }),
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolRequestBlock({
+        request_id: "call-2",
+        tool_name: "get_time",
+        title: "Checking the time",
+      }),
+    })
+
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    const loop = blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const calls = loop.groups.flatMap((g) => g.calls)
+    expect(calls.map((c) => c.requestId)).toEqual(["call-1", "call-2"])
+    expect(calls.every((c) => c.status === "running")).toBe(true)
   })
 })

@@ -27,6 +27,30 @@ export type MessagePayloadSegment = {
 export type StructuredBlockGrouping = "none" | "tool" | "all"
 
 /**
+ * A typed, server-authored tool request envelope. The envelope itself is the
+ * trust signal: only the server can construct these blocks, so trusted-HTML
+ * fields (`title`, `icon`) render through the shared RawHTML sink while text
+ * fields are escaped. The client derives a `running` call from an unpaired
+ * request (the same convention `pairToolEvents` uses for new request ids).
+ */
+export type ToolRequestBlock = {
+  type: "tool_request"
+  version: 1
+  /** Correlates with the result; keys transcript-wide request suppression. */
+  request_id: string
+  tool_name: string
+  /** HTML → RawHTML (the tool definition's title; was tool-title/definitionTitle) */
+  title?: string
+  /** HTML → RawHTML (the tool definition's icon; was definitionIcon) */
+  icon?: string
+  /** text → escaped */
+  intent?: string
+  /** JSON string, rendered as a markdown code block (escaped) */
+  arguments?: string
+  grouping?: StructuredBlockGrouping
+}
+
+/**
  * A typed, server-authored tool result envelope. The envelope itself is the
  * trust signal: only the server can construct these blocks, so trusted-HTML
  * fields (`value` with `value_type: "html"`, `title`, `icon`, `footer`)
@@ -66,10 +90,10 @@ export type ToolResultBlock = {
 
 /**
  * Server-authored structured blocks carried in `MessagePayload.segments`
- * (outside a stream) or via a `block_insert` action (mid-stream). Only
- * `tool_result` flows end-to-end so far; the union grows per the design.
+ * (outside a stream) or via a `block_insert` action (mid-stream). The union
+ * grows per the design.
  */
-export type StructuredBlock = ToolResultBlock
+export type StructuredBlock = ToolRequestBlock | ToolResultBlock
 
 /**
  * One entry of `MessagePayload.segments`: a string segment

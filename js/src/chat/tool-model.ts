@@ -1,6 +1,7 @@
 import type {
   ContentType,
   StructuredBlock,
+  ToolRequestBlock,
   ToolResultBlock,
 } from "../transport/types"
 import type { ChatMessageData, MessageBlock } from "./state"
@@ -428,6 +429,36 @@ function mergeAdjacentLoops(
 }
 
 /**
+ * Convert a structured `tool_request` wire block into a lifecycle call. The
+ * envelope is server-authored, so its fields map directly onto the call — no
+ * markup parsing, no attribute decoding, no entity decoding. An unpaired
+ * request is a running call (pairToolEvents' convention for new request
+ * ids); the matching `tool_result` block settles it, and transcript-wide
+ * supersession then hides the request row.
+ */
+export function toolRequestBlockToCall(block: ToolRequestBlock): ToolCallItem {
+  const call: ToolCallItem = {
+    requestId: block.request_id,
+    // pairToolEvents' convention: the request id, or a synthetic loop-local
+    // id that never enters transcript supersession.
+    localId: block.request_id || `__anon-structured-${uuid()}`,
+    toolName: block.tool_name,
+    // "running" is derived, never a wire value: a request with no result yet.
+    status: "running",
+    structured: true,
+  }
+  // The request carries the tool *definition's* title/icon (the markup path's
+  // definitionTitle/definitionIcon); the result's own title/icon settle over
+  // them when it arrives.
+  if (block.title !== undefined) call.definitionTitle = block.title
+  if (block.icon !== undefined) call.definitionIcon = block.icon
+  if (block.intent !== undefined) call.intent = block.intent
+  if (block.arguments !== undefined) call.arguments = block.arguments
+  if (block.grouping !== undefined) call.grouping = block.grouping
+  return call
+}
+
+/**
  * Convert a structured `tool_result` wire block into a lifecycle call. The
  * envelope is server-authored, so its fields map directly onto the call — no
  * markup parsing, no attribute decoding, no entity decoding.
@@ -475,18 +506,21 @@ export function structuredBlockToLoop(
   // Read discriminator fields defensively: the wire is JSON and may carry
   // block types/versions this client doesn't know yet.
   const type = (block as { type?: unknown }).type
-  if (type !== "tool_result") {
+  if (type !== "tool_request" && type !== "tool_result") {
     console.warn(`Ignoring unknown structured block type: ${String(type)}`)
     return null
   }
   const version = (block as { version?: unknown }).version
   if (version !== 1) {
     console.warn(
-      `Ignoring tool_result block with unsupported version: ${String(version)}`,
+      `Ignoring ${type} block with unsupported version: ${String(version)}`,
     )
     return null
   }
-  const call = toolResultBlockToCall(block)
+  const call =
+    type === "tool_request"
+      ? toolRequestBlockToCall(block as ToolRequestBlock)
+      : toolResultBlockToCall(block as ToolResultBlock)
   return {
     type: "tool_loop",
     // A structured-derived loop has no raw content slice to re-parse; its
