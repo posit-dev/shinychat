@@ -1391,3 +1391,413 @@ def test_messages_surfaces_attachments():
 
         # Second message: plain text — no attachments key
         assert "attachments" not in msgs[1]
+
+
+# ---------------------------------------------------------------------------
+# P5: chat_ui(messages=) with structured blocks (kata#c15v)
+# ---------------------------------------------------------------------------
+
+
+def _tool_result_block() -> Any:
+    return {
+        "type": "tool_result",
+        "version": 1,
+        "request_id": "r1",
+        "tool_name": "my_tool",
+        "status": "success",
+        "value": "42",
+        "value_type": "code",
+    }
+
+
+def test_chat_ui_string_messages_keep_static_tags():
+    from shinychat import chat_ui
+    from shinychat._chat import _QUEUED_INIT_MESSAGES
+
+    tag = chat_ui("chat_p5_str", messages=["Hello there", "another"])
+    html = tag.get_html_string()
+    assert html.count("<shiny-chat-message ") == 2
+    assert "Hello there" in html
+    # Nothing queued for server-side append.
+    assert "chat_p5_str" not in _QUEUED_INIT_MESSAGES
+
+
+def test_chat_ui_block_carrying_message_is_queued_not_static():
+    from shinychat import chat_ui
+    from shinychat._chat import _QUEUED_INIT_MESSAGES
+
+    block = _tool_result_block()
+    tag = chat_ui(
+        "chat_p5_block",
+        messages=[ChatMessage(content="", role="assistant", blocks=[block])],
+    )
+    html = tag.get_html_string()
+    # No static tag: it carries string content only, so the block would drop.
+    assert "<shiny-chat-message " not in html
+    queued = _QUEUED_INIT_MESSAGES["chat_p5_block"]
+    assert len(queued) == 1
+    assert queued[0].blocks == [block]
+
+
+def test_chat_ui_mixed_list_queues_whole_list_to_preserve_order():
+    from shinychat import chat_ui
+    from shinychat._chat import _QUEUED_INIT_MESSAGES
+
+    block = _tool_result_block()
+    tag = chat_ui(
+        "chat_p5_mixed",
+        messages=[
+            "welcome",
+            ChatMessage(content="", role="assistant", blocks=[block]),
+        ],
+    )
+    # The string message must NOT become a static tag either: server-appended
+    # messages land after static ones, so splitting the list would reorder.
+    assert "<shiny-chat-message " not in tag.get_html_string()
+    queued = _QUEUED_INIT_MESSAGES["chat_p5_mixed"]
+    assert [m.content for m in queued] == ["welcome", ""]
+    assert queued[1].blocks == [block]
+
+
+def test_chat_ui_queued_messages_append_on_init_with_blocks_intact():
+    from shinychat import chat_ui
+
+    block = _tool_result_block()
+    chat_ui(
+        "chat_p5_init",
+        messages=[ChatMessage(content="", role="assistant", blocks=[block])],
+    )
+
+    with session_context(test_session):
+        chat = Chat(id="chat_p5_init")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            await chat._append_init_messages()
+
+        run_async(_exercise)
+
+    message_actions = [a for a in sent if a["type"] == "message"]
+    assert len(message_actions) == 1
+    segments = message_actions[0]["message"]["segments"]
+    block_segments = [s for s in segments if s.get("type") == "tool_result"]
+    assert block_segments == [block]
+
+
+def test_chat_ui_queued_turn_with_tool_result_appends_with_blocks():
+    from chatlas import Turn
+    from chatlas.types import ContentToolRequest, ContentToolResult
+    from shinychat import chat_ui
+
+    req = ContentToolRequest(id="x", name="get_weather", arguments={})
+    turn = Turn(
+        role="assistant",
+        contents=[ContentToolResult(value="Sunny", request=req)],
+    )
+    chat_ui("chat_p5_turn", messages=[turn])
+
+    with session_context(test_session):
+        chat = Chat(id="chat_p5_turn")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            await chat._append_init_messages()
+
+        run_async(_exercise)
+
+    message_actions = [a for a in sent if a["type"] == "message"]
+    assert len(message_actions) == 1
+    segments = message_actions[0]["message"]["segments"]
+    kinds = [s.get("type") for s in segments if "type" in s]
+    assert kinds == ["tool_result"]
+
+
+# ---------------------------------------------------------------------------
+# P4: turns-based bookmark restore (kata#c15v)
+# ---------------------------------------------------------------------------
+
+
+class _BookmarkStubSession:
+    """Session stub with just enough bookmark machinery for
+    `enable_bookmarking`: captures the registered on_bookmark/on_restore
+    callbacks so tests can invoke them directly."""
+
+    ns: ResolvedId = ResolvedId("")
+    app: object = None
+    id: str = "mock-session-bookmark"
+    input: Any
+
+    def __init__(self) -> None:
+        from shiny import Inputs
+
+        self.input = Inputs({}, ns=ResolvedId)
+        self.bookmark = _BookmarkStub()
+        self.bookmark_calls: list[str] = []
+
+    def is_stub_session(self) -> bool:
+        return False
+
+    def root_scope(self) -> "_BookmarkStubSession":
+        return self
+
+    def on_ended(self, callback: object) -> None:
+        pass
+
+    def on_destroy(self, callback: object) -> None:
+        pass
+
+    def _increment_busy_count(self) -> None:
+        pass
+
+    async def send_custom_message(self, type: str, message: Any) -> None:
+        pass
+
+
+class _BookmarkStub:
+    def __init__(self) -> None:
+        self.exclude: list[str] = []
+        self.on_bookmark_cbs: list[Any] = []
+        self.on_restore_cbs: list[Any] = []
+
+    def on_bookmark(self, fn: Any) -> Any:
+        self.on_bookmark_cbs.append(fn)
+        return lambda: None
+
+    def on_restore(self, fn: Any) -> Any:
+        self.on_restore_cbs.append(fn)
+        return lambda: None
+
+    def on_bookmarked(self, fn: Any) -> Any:
+        return lambda: None
+
+
+def _bare_chatlas_client(turns: list[Any]) -> Any:
+    """A real chatlas.Chat (so the chatlas bookmark/turns paths engage) with
+    no provider — only turn storage is exercised."""
+    from chatlas import Chat as ChatlasChat
+
+    client = ChatlasChat.__new__(ChatlasChat)
+    client._turns = list(turns)
+    return client
+
+
+def _make_tool_turns() -> list[Any]:
+    from chatlas import Turn
+    from chatlas.types import (
+        ContentText,
+        ContentToolRequest,
+        ContentToolResult,
+    )
+
+    req = ContentToolRequest(
+        id="call-1", name="get_weather", arguments={"city": "Duluth"}
+    )
+    return [
+        Turn(role="user", contents=[ContentText(text="weather?")]),
+        Turn(role="assistant", contents=[req]),
+        Turn(
+            role="user",
+            contents=[ContentToolResult(value="Sunny", request=req)],
+        ),
+        Turn(role="assistant", contents=[ContentText(text="It's sunny.")]),
+    ]
+
+
+def test_bookmark_save_does_not_persist_ui_for_turns_capable_client():
+    session = cast(Session, _BookmarkStubSession())
+    with session_context(session):
+        chat = Chat(id="chat_bm_turns")
+        client = _bare_chatlas_client(_make_tool_turns())
+        chat.enable_bookmarking(client, bookmark_on=None)
+
+    bookmark = cast(Any, session).bookmark
+    # on_bookmark: client state, (skipped) UI, greeting
+    assert len(bookmark.on_bookmark_cbs) == 3
+
+    class _State:
+        values: dict[str, Any] = {}
+
+    async def _exercise() -> None:
+        for cb in bookmark.on_bookmark_cbs:
+            res = cb(_State())
+            if inspect.isawaitable(res):
+                await res
+
+    run_async(_exercise)
+
+    # Client (turns) state is persisted; the UI message state is not (P4) —
+    # on restore the UI is re-derived from the client's turns.
+    assert "chat_bm_turns" in _State.values
+    assert "chat_bm_turns--msgs" not in _State.values
+
+
+def test_bookmark_restore_rederives_ui_from_client_turns():
+    from shinychat._chat_bookmark import serialize_chatlas_turn
+
+    session = cast(Session, _BookmarkStubSession())
+    with session_context(session):
+        chat = Chat(id="chat_bm_restore")
+        client = _bare_chatlas_client([])
+        chat.enable_bookmarking(client, bookmark_on=None)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+    bookmark = cast(Any, session).bookmark
+    assert len(bookmark.on_restore_cbs) == 3
+
+    # The bookmark holds the client (turns) state — including an old-format
+    # persisted UI value, which must be ignored, never re-parsed (P4).
+    old_ui_value = [
+        {
+            "role": "assistant",
+            "segments": [
+                {"content": "STALE MARKUP", "content_type": "markdown"}
+            ],
+        }
+    ]
+
+    class _State:
+        values = {
+            "chat_bm_restore": {
+                "version": 1,
+                "turns": [
+                    serialize_chatlas_turn(t) for t in _make_tool_turns()
+                ],
+            },
+            "chat_bm_restore--msgs": old_ui_value,
+        }
+
+    async def _exercise() -> None:
+        for cb in bookmark.on_restore_cbs:
+            res = cb(_State())
+            if inspect.isawaitable(res):
+                await res
+
+    run_async(_exercise)
+
+    message_actions = [a for a in sent if a["type"] == "message"]
+    # user turn + one merged tool-exchange message; the stale persisted UI is
+    # never emitted.
+    assert len(message_actions) == 2
+    all_segments = [
+        s for a in message_actions for s in a["message"]["segments"]
+    ]
+    assert not any("STALE MARKUP" in s.get("content", "") for s in all_segments)
+    block_kinds = [s["type"] for s in all_segments if "type" in s]
+    assert block_kinds == ["tool_request", "tool_result"]
+    # The merged assistant message keeps the turn's text after the blocks.
+    asst_segments = message_actions[1]["message"]["segments"]
+    assert asst_segments[-1] == {
+        "content": "It's sunny.",
+        "content_type": "markdown",
+    }
+
+
+class _StateOnlyClient:
+    """ClientWithState without turn-level access: the legacy
+    persist-and-re-emit UI bookmark path is kept for these (P4)."""
+
+    def __init__(self) -> None:
+        self.state: Any = None
+
+    async def get_state(self) -> Any:
+        return {"blob": True}
+
+    async def set_state(self, state: Any) -> None:
+        self.state = state
+
+
+def test_bookmark_legacy_path_persists_ui_for_state_only_client():
+    session = cast(Session, _BookmarkStubSession())
+    with session_context(session):
+        chat = Chat(id="chat_bm_legacy")
+        chat.enable_bookmarking(_StateOnlyClient(), bookmark_on=None)
+        reported = (
+            chat._as_stored_message(ChatMessage(content="hi", role="user")),
+        )
+        cast(Any, session).input[chat.messages_input_id]._set(reported)
+
+    bookmark = cast(Any, session).bookmark
+
+    class _State:
+        values: dict[str, Any] = {}
+
+    async def _exercise() -> None:
+        for cb in bookmark.on_bookmark_cbs:
+            res = cb(_State())
+            if inspect.isawaitable(res):
+                await res
+
+    run_async(_exercise)
+
+    # Without turn-level access the UI snapshot is still the only UI record,
+    # so it keeps being persisted.
+    assert "chat_bm_legacy" in _State.values
+    assert _State.values["chat_bm_legacy--msgs"] == [
+        {
+            "role": "user",
+            "segments": [{"content": "hi", "content_type": "markdown"}],
+        }
+    ]
+
+
+def test_bookmark_restore_without_chat_state_appends_init_messages():
+    from shinychat import chat_ui
+    from shinychat._chat import _QUEUED_INIT_MESSAGES
+
+    # Queue a block-carrying initial message (P5) so the test also covers
+    # the no-chat-state restore branch appending it.
+    chat_ui(
+        "chat_bm_empty",
+        messages=[
+            ChatMessage(
+                content="", role="assistant", blocks=[_tool_result_block()]
+            )
+        ],
+    )
+    assert "chat_bm_empty" in _QUEUED_INIT_MESSAGES
+
+    session = cast(Session, _BookmarkStubSession())
+    with session_context(session):
+        chat = Chat(id="chat_bm_empty")
+        chat.enable_bookmarking(_bare_chatlas_client([]), bookmark_on=None)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+    bookmark = cast(Any, session).bookmark
+
+    class _State:
+        values: dict[str, Any] = {}  # no chat state in this bookmark
+
+    async def _exercise() -> None:
+        for cb in bookmark.on_restore_cbs:
+            res = cb(_State())
+            if inspect.isawaitable(res):
+                await res
+
+    run_async(_exercise)
+
+    message_actions = [a for a in sent if a["type"] == "message"]
+    assert len(message_actions) == 1
+    segments = message_actions[0]["message"]["segments"]
+    assert [s for s in segments if s.get("type") == "tool_result"] == [
+        _tool_result_block()
+    ]

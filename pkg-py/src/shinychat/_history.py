@@ -595,7 +595,7 @@ class HistoryController:
             # did in the client-snapshot era. A missing `ui` re-derives the
             # same way, with a text-only fallback when turns are also
             # missing.
-            if not is_stored_ui_versioned(stored):
+            if stored is None or not is_stored_ui_versioned(stored):
                 stored = derive_node_ui(node.turns, session=self.chat._session)
             for message_dict in stored:
                 await self.chat._restore_bookmark_message(message_dict)

@@ -79,6 +79,11 @@ from ._chat_types import (
 )
 from ._drawer import ChatDrawerController
 from ._history import ChatHistory, HistoryOptions
+from ._history_client import (
+    TurnsAdapter,
+    as_turns_adapter,
+    normalize_turn_group,
+)
 from ._html_deps_py_shiny import shinychat_dependency
 from ._page_chat import (
     ChatDrawer,
@@ -399,6 +404,13 @@ class Chat:
             # TODO: deprecate messages once we start promoting managing LLM message
             # state through other means
             async def _append_init_messages():
+                # `chat_ui(messages=)` messages that carry structured blocks
+                # are queued app-side (they can't ride the static
+                # <shiny-chat-message> tags) and appended here, where the
+                # send path preserves blocks (P5, kata#c15v). They lead, the
+                # same position the static tags render in.
+                for msg in _QUEUED_INIT_MESSAGES.get(self.id, []):
+                    await self.append_message(msg)
                 for msg in messages:
                     await self.append_message(msg)
 
@@ -1605,6 +1617,22 @@ class Chat:
             return
         await self._send_append_message(stored)
 
+    async def _restore_turns_ui(self, adapter: "TurnsAdapter") -> None:
+        """Re-derive and append UI messages from the client's current turns.
+
+        The turns-based restore path (P4, kata#c15v): each turn group is
+        merged and run through `normalize_message`, so structured blocks
+        (tool_request/tool_result/web_*/html_block) are reconstructed from
+        the turns rather than re-parsed from persisted UI markup. Note the
+        displayed content is re-derived from the raw turns, so a deprecated
+        `transform_assistant_response` does not re-apply on restore.
+        """
+        for group in adapter.get_turns_grouped():
+            msg = normalize_turn_group(group)
+            if msg is None:
+                continue
+            await self._send_append_message(msg)
+
     def transform_user_input(self, *args: object, **kwargs: object) -> object:
         raise TypeError(
             "`.transform_user_input()` has been removed. "
@@ -2165,6 +2193,20 @@ class Chat:
                 "`async def set_state(self, value: Jsonifiable)` (which should restore the `client=`'s state given the `state=`)."
             )
 
+        # Turns-based UI restore (P4, kata#c15v): when the client exposes
+        # turn-level access (chatlas, or any ClientWithTurns), the UI is
+        # re-derived from the client's turns on restore — which
+        # `_on_restore_client` has just applied via `set_state` — instead of
+        # re-emitting persisted UI message dicts. Persisted UI state in old
+        # bookmarks is ignored, never re-parsed. Clients without turn-level
+        # access keep the legacy persist-and-re-emit path (their state blob
+        # is opaque, so the UI snapshot is all we have).
+        turns_adapter: TurnsAdapter | None = None
+        try:
+            turns_adapter = as_turns_adapter(client)
+        except ValueError:
+            turns_adapter = None
+
         # Reset prior bookmarking hooks
         self._destroy_bookmarking()
 
@@ -2239,6 +2281,11 @@ class Chat:
 
         @root_session.bookmark.on_bookmark
         def _on_bookmark_ui(state: BookmarkState):
+            if turns_adapter is not None:
+                # UI message state is not persisted for turns-capable
+                # clients: on restore the UI is re-derived from the client's
+                # turns (P4, kata#c15v).
+                return
             if resolved_bookmark_id_msgs_str in state.values:
                 raise ValueError(
                     f'Bookmark value with id (`"{resolved_bookmark_id_msgs_str}"`) already exists.'
@@ -2273,6 +2320,21 @@ class Chat:
             # We always want to keep the `chat.ui(messages=)` values
             # and `self.messages()` are never initialized due to
             # calling `self._init_chat.destroy()` above
+
+            if turns_adapter is not None:
+                # Re-derive the UI from the client's turns (P4, kata#c15v).
+                # `_on_restore_client` is registered above, so `set_state`
+                # has already restored the turns by the time this runs
+                # (on_restore callbacks run in registration order). Any
+                # persisted `--msgs` UI state in old bookmarks is ignored,
+                # never re-parsed.
+                if resolved_bookmark_id_str not in state.values:
+                    # Not a chat bookmark: display the
+                    # `__init__(messages=)`/`chat.ui(messages=)` messages.
+                    await self._append_init_messages()
+                    return
+                await self._restore_turns_ui(turns_adapter)
+                return
 
             if resolved_bookmark_id_msgs_str not in state.values:
                 # If no messages to restore, display the `__init__(messages=)` messages
@@ -2814,20 +2876,29 @@ def chat_ui(
     message_tags: list[Tag] = []
     if messages is None:
         messages = []
-    for x in messages:
-        msg = normalize_message(x)
-        message_tags.append(
-            Tag(
-                "shiny-chat-message",
-                *msg.html_deps,
-                content=msg.content,
-                # The assistant default must not leak onto user messages, which
-                # render `message.icon` directly (no assistant fallback chain).
-                icon=icon_attr if msg.role != "user" else None,
-                data_role=msg.role,
-                content_type=msg.content_type,
+    normalized_messages = [normalize_message(x) for x in messages]
+    if any(msg.blocks for msg in normalized_messages):
+        # A static <shiny-chat-message> tag carries string content only, so
+        # a block-carrying message would silently drop its blocks. Queue the
+        # whole list — opting the entire list in keeps the message order
+        # intact, since server-appended messages would otherwise land after
+        # the static ones — for server-side append on session init (P5).
+        _QUEUED_INIT_MESSAGES[id] = normalized_messages
+    else:
+        for msg in normalized_messages:
+            message_tags.append(
+                Tag(
+                    "shiny-chat-message",
+                    *msg.html_deps,
+                    content=msg.content,
+                    # The assistant default must not leak onto user messages,
+                    # which render `message.icon` directly (no assistant
+                    # fallback chain).
+                    icon=icon_attr if msg.role != "user" else None,
+                    data_role=msg.role,
+                    content_type=msg.content_type,
+                )
             )
-        )
 
     toolbar_tag = None
     if toolbar_input is not None:
@@ -2981,3 +3052,13 @@ class MessageStream:
 
 
 CHAT_INSTANCES: WeakValueDictionary[str, Chat] = WeakValueDictionary()
+
+# App-level queue of `chat_ui(messages=)` initial messages that normalize to
+# carry structured blocks, keyed by resolved chat id. A static
+# <shiny-chat-message> tag carries string content only, so block-carrying
+# initial messages would silently drop their blocks (roborev 1025); instead
+# they are appended server-side on session init via
+# `Chat._append_init_messages` (P5, kata#c15v). The UI renders once per app,
+# so every session's `Chat` with the same id reads (never pops) the same
+# queue — matching the static tags' same-for-all-sessions semantics.
+_QUEUED_INIT_MESSAGES: dict[str, list[ChatMessage]] = {}

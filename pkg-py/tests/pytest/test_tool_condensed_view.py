@@ -27,6 +27,7 @@ from shinychat._chat_normalize_chatlas import (
     tool_request_contents,
     tool_result_contents,
 )
+from shinychat._chat_types import ToolRequestBlock, ToolResultBlock
 from shinychat.types import ChatMessage
 
 
@@ -541,6 +542,8 @@ def test_custom_result_via_chat_ui_messages_is_wrapped(
     The result therefore needs the same post-normalization wrap as
     append_message().
     """
+    from shinychat._chat import _QUEUED_INIT_MESSAGES
+
     dep = HTMLDependency(
         "static-custom-widget",
         "1.0.0",
@@ -556,27 +559,42 @@ def test_custom_result_via_chat_ui_messages_is_wrapped(
     request = _request(tool=_tool())
     result = _CustomToolResult(value=2, request=request)
 
-    ui = chat_ui("chat", messages=[request, result])
-    messages_container = ui.children[0]
-    assert isinstance(messages_container, Tag)
-    request_tag, result_tag = messages_container.children
-    assert isinstance(request_tag, Tag)
-    assert isinstance(result_tag, Tag)
-    request_html = request_tag.attrs["content"]
-    result_html = result_tag.attrs["content"]
+    try:
+        ui = chat_ui("chat", messages=[request, result])
 
-    # The request now normalizes to a structured `tool_request` block with
-    # empty string content, and chat_ui's initial-message serialization keeps
-    # only the string `content` -- structured blocks are dropped from
-    # preloaded messages (a known Phase 1/Phase 3 gap). Only live-streamed or
-    # appended requests reach the client as blocks.
-    assert request_html == ""
-    # Known D7/Phase 3 gap: chat_ui's static serialization drops structured
-    # blocks from preloaded messages, so the custom tool_result block does not
-    # survive into the static result_html either. Only live-streamed or
-    # appended results reach the client as blocks.
-    assert result_html == ""
-    assert "static-custom-widget" in [dep.name for dep in ui.get_dependencies()]
+        # P5 (kata#c15v): block-carrying initial messages are no longer
+        # rendered into static <shiny-chat-message> tags (the tags carry
+        # string content only, so blocks would silently drop). The whole
+        # list is queued for server-side append on session init instead.
+        messages_container = ui.children[0]
+        assert isinstance(messages_container, Tag)
+        assert not [
+            child
+            for child in messages_container.children
+            if isinstance(child, Tag) and child.name == "shiny-chat-message"
+        ]
+
+        queued = _QUEUED_INIT_MESSAGES["chat"]
+        assert len(queued) == 2
+        request_msg, result_msg = queued
+
+        # The request normalized to a structured `tool_request` block...
+        assert [b["type"] for b in request_msg.blocks] == ["tool_request"]
+        assert (
+            cast(ToolRequestBlock, request_msg.blocks[0])["request_id"]
+            == "call-1"
+        )
+
+        # ...and the custom result was wrapped into a custom-display
+        # `tool_result` block carrying the author's UI as its HTML value.
+        assert [b["type"] for b in result_msg.blocks] == ["tool_result"]
+        block = cast(ToolResultBlock, result_msg.blocks[0])
+        assert block["type"] == "tool_result"
+        assert block.get("custom_display") is True
+        assert block["request_id"] == "call-1"
+        assert "my-custom-ui" in block.get("value", "")
+    finally:
+        _QUEUED_INIT_MESSAGES.pop("chat", None)
 
 
 @pytest.mark.anyio
