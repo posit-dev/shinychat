@@ -24,6 +24,7 @@ from shinychat._history_types import (
     MAX_SCHEMA_VERSION,
     CapturedMessage,
     ConversationRecord,
+    ConversationRecordV2,
     UnsupportedSchemaVersionError,
     new_conversation_record,
     new_conversation_record_v2,
@@ -61,6 +62,10 @@ def _file_snapshot(path: Path) -> dict[str, bytes]:
         for file in path.iterdir()
         if file.is_file()
     }
+
+
+class _ConversationRecordV2Subclass(ConversationRecordV2):
+    pass
 
 
 @pytest.mark.anyio
@@ -190,6 +195,18 @@ async def test_memory_store_never_overwrites_a_v1_record_with_v2():
 
     with pytest.raises(ValueError, match="different schema version"):
         await store.put(part(scope="alice"), v2)
+
+
+@pytest.mark.anyio
+async def test_memory_store_allows_same_schema_record_subclass_overwrite():
+    store = InMemoryConversationStore()
+    record = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    await store.put(part(scope="alice"), record)
+    replacement = _ConversationRecordV2Subclass.model_validate(record.model_dump())
+
+    await store.put(part(scope="alice"), replacement)
+
+    assert await store.get(part(scope="alice"), record.id) is replacement
 
 
 @pytest.mark.anyio

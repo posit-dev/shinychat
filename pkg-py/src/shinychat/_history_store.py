@@ -613,7 +613,7 @@ class InMemoryConversationStore(ConversationStore):
         existing = self._data[partition].get(record.id)
         if existing is not None:
             existing = _check_record_for_store(existing)
-            if type(existing) is not type(record):
+            if existing.schema_version != record.schema_version:
                 raise ValueError(
                     "Cannot overwrite a conversation record with a different "
                     "schema version."
