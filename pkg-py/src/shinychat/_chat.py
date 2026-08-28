@@ -8,7 +8,7 @@ import re
 import warnings
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -162,6 +162,9 @@ class _ResponseSettlementConsumer:
 @dataclass(eq=False)
 class _PendingResponseSettlement:
     consumers: tuple[_ResponseSettlementConsumer, ...]
+    completed_consumers: set[_ResponseSettlementConsumer] = field(
+        default_factory=set
+    )
     owner_task: asyncio.Task[Any] | None = None
     completion: asyncio.Future[None] | None = None
     cancel_scheduled_delivery: CancelCallback | None = None
@@ -1784,13 +1787,21 @@ class Chat:
         if not consumers:
             return
 
-        from shiny import reactive
-
         delivery = _PendingResponseSettlement(consumers)
         self._pending_response_settlements.append(delivery)
+        self._schedule_pending_response_settlement_delivery(delivery)
+
+    def _schedule_pending_response_settlement_delivery(
+        self, delivery: _PendingResponseSettlement
+    ) -> None:
+        from shiny import reactive
+
+        async def deliver_on_flushed() -> None:
+            delivery.cancel_scheduled_delivery = None
+            await self._deliver_response_settlement(delivery)
 
         delivery.cancel_scheduled_delivery = reactive.on_flushed(
-            lambda: self._deliver_response_settlement(delivery), once=True
+            deliver_on_flushed, once=True
         )
 
     async def _deliver_response_settlement(
@@ -1822,38 +1833,53 @@ class Chat:
             context = reactive.Context()
             with session_context(self._session), context():
                 for consumer in delivery.consumers:
-                    if consumer.cancelled:
+                    if (
+                        consumer.cancelled
+                        or consumer in delivery.completed_consumers
+                    ):
                         continue
                     delivery_token = _response_settlement_delivery.set(delivery)
                     try:
                         await self._deliver_response_settlement_consumer(
                             consumer
                         )
+                        delivery.completed_consumers.add(consumer)
                     finally:
                         _response_settlement_delivery.reset(delivery_token)
         except BaseException as error:
             delivery_error = error
             raise
         finally:
-            try:
-                self._pending_response_settlements.remove(delivery)
-            except ValueError:
-                pass
-            if not completion.done():
-                if delivery_error is None:
-                    completion.set_result(None)
-                elif isinstance(delivery_error, asyncio.CancelledError):
+            if isinstance(delivery_error, asyncio.CancelledError):
+                if not completion.done():
                     completion.cancel()
-                else:
-                    completion.set_exception(delivery_error)
-                    # A destructive waiter may not have reached the shared
-                    # completion future before the owner failed.
-                    completion.exception()
+                delivery.owner_task = None
+                delivery.completion = None
+                self._schedule_pending_response_settlement_delivery(delivery)
+            else:
+                try:
+                    self._pending_response_settlements.remove(delivery)
+                except ValueError:
+                    pass
+                if not completion.done():
+                    if delivery_error is None:
+                        completion.set_result(None)
+                    else:
+                        completion.set_exception(delivery_error)
+                        # A destructive waiter may not have reached the shared
+                        # completion future before the owner failed.
+                        completion.exception()
 
     async def _deliver_response_settlement_consumer(
         self, consumer: _ResponseSettlementConsumer
     ) -> None:
         """Deliver one consumer while keeping cancellation ownership explicit."""
+        def consume_result(task: asyncio.Future[Any]) -> None:
+            try:
+                task.result()
+            except BaseException:
+                pass
+
         try:
             consumer_task = asyncio.ensure_future(consumer.callback())
         except BaseException as error:
@@ -1865,6 +1891,7 @@ class Chat:
             except BaseException:
                 pass
             return
+        consumer_task.add_done_callback(consume_result)
 
         try:
             await asyncio.wait((consumer_task,))

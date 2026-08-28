@@ -489,7 +489,7 @@ def test_new_chat_drains_response_into_the_original_history_record_once():
     assert chat.messages() == ()
 
 
-def test_cancelled_new_chat_does_not_mutate_while_settlement_is_blocked():
+def test_cancelled_clear_retries_unfinished_settlement_before_mutating():
     class _HistoryAdapter:
         def __init__(self) -> None:
             self.turns = [
@@ -526,29 +526,62 @@ def test_cancelled_new_chat_does_not_mutate_while_settlement_is_blocked():
         active = new_conversation_record(title="active")
         controller.record = active
         callback_started = asyncio.Event()
+        retry_callback_started = asyncio.Event()
+        release_callback = asyncio.Event()
+        first_consumer_calls: list[str] = []
+        second_consumer_calls: list[str] = []
 
-        async def block_settlement() -> None:
+        async def first_consumer() -> None:
+            first_consumer_calls.append("settled")
+
+        async def save_response() -> None:
+            second_consumer_calls.append("started")
             callback_started.set()
-            await asyncio.Event().wait()
+            if len(second_consumer_calls) == 2:
+                retry_callback_started.set()
+            await release_callback.wait()
+            await controller.on_response()
 
-        chat._on_response_settled(block_settlement)
-        chat._on_response_settled(controller.on_response)
+        chat._on_response_settled(first_consumer)
+        chat._on_response_settled(save_response)
 
         async def _exercise() -> None:
             await store.put(partition, active)
             await chat.append_message("source response")
-            new_chat = asyncio.create_task(controller.new_chat())
+            clear = asyncio.create_task(chat.clear_messages())
             await callback_started.wait()
 
-            new_chat.cancel()
+            clear.cancel()
             with pytest.raises(asyncio.CancelledError):
-                await new_chat
+                await clear
 
-        run_async(_exercise)
+            assert first_consumer_calls == ["settled"]
+            assert second_consumer_calls == ["started"]
+            assert chat.messages() == (
+                ChatMessageDict(content="source response", role="assistant"),
+            )
+            assert controller.record is active
+            assert active.response_count == 0
+            assert len(chat._pending_response_settlements) == 1
 
-    assert chat.messages() == (
-        ChatMessageDict(content="source response", role="assistant"),
-    )
+            retry = asyncio.create_task(chat.clear_messages())
+            await asyncio.wait_for(retry_callback_started.wait(), timeout=1)
+            assert second_consumer_calls == ["started", "started"]
+            assert not retry.done()
+            assert chat.messages() == (
+                ChatMessageDict(content="source response", role="assistant"),
+            )
+
+            release_callback.set()
+            await retry
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            run_async(_exercise)
+
+    assert first_consumer_calls == ["settled"]
+    assert second_consumer_calls == ["started", "started"]
+    assert chat.messages() == ()
     assert controller.record is active
     assert adapter.turns == [
         {"role": "user", "content": "prompt"},
@@ -556,7 +589,7 @@ def test_cancelled_new_chat_does_not_mutate_while_settlement_is_blocked():
     ]
     assert run_async_result(lambda: store.get(partition, active.id)) is active
     assert len(run_async_result(lambda: store.list(partition))) == 1
-    assert active.response_count == 0
+    assert active.response_count == 1
     assert chat._pending_response_settlements == []
 
 
@@ -588,6 +621,10 @@ def test_cancelled_settlement_owner_notifies_a_concurrent_waiter():
                 await flush
             with pytest.raises(asyncio.CancelledError):
                 await waiter
+            assert len(chat._pending_response_settlements) == 1
+
+            release_callback.set()
+            await reactive.flush()
 
         with warnings.catch_warnings():
             warnings.simplefilter("error")
@@ -639,6 +676,10 @@ def test_cancelled_settlement_does_not_mutate_a_second_destructive_waiter():
                 await first_clear
             with pytest.raises(asyncio.CancelledError):
                 await waiter
+            assert len(chat._pending_response_settlements) == 1
+
+            release_callback.set()
+            await reactive.flush()
 
         with warnings.catch_warnings():
             warnings.simplefilter("error")
@@ -864,7 +905,7 @@ def test_simultaneous_owner_and_consumer_cancellation_propagates_owner():
                 asyncio.get_running_loop().call_soon(owner_task.cancel)
                 raise
 
-        chat._on_response_settled(cancel_owner_and_consumer)
+        cancel_consumer = chat._on_response_settled(cancel_owner_and_consumer)
 
         async def _exercise() -> None:
             nonlocal owner_task
@@ -876,6 +917,10 @@ def test_simultaneous_owner_and_consumer_cancellation_propagates_owner():
             warnings.simplefilter("error")
             with pytest.raises(asyncio.CancelledError):
                 run_async(_exercise)
+
+        assert len(chat._pending_response_settlements) == 1
+        cancel_consumer()
+        run_async(reactive.flush)
 
     assert chat.messages() == (
         ChatMessageDict(content="source response", role="assistant"),
