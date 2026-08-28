@@ -279,9 +279,10 @@ is measured with the store benchmark before adding caching.
 
 Turn capture rejects recursive non-string mapping keys before `StateEntry`
 serialization and `store.put()`. Non-finite and otherwise non-JSON values
-continue to fail with `allow_nan=False`. For generic model-backed clients,
-mapping keys are checked on the pre-JSON Pydantic representation before
-`model_dump(mode="json")`, so JSON-mode key coercion cannot hide a collision.
+continue to fail with `allow_nan=False`. For chatlas and generic model-backed
+clients, mapping keys are checked on the pre-JSON representation when Python
+mode is supported before `model_dump(mode="json")`, so JSON-mode key coercion
+cannot hide a collision.
 
 For chatlas, root capture calls `get_turns(include_system_prompt=True)` so the
 system prompt is included. Later captures use the same sequence, which keeps

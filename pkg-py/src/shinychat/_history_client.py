@@ -21,6 +21,15 @@ def _validate_mapping_keys(value: Any) -> None:
             _validate_mapping_keys(nested)
 
 
+def _serialize_model_turn(turn: Any) -> dict[str, Any]:
+    try:
+        python_dump = turn.model_dump(mode="python")
+    except TypeError:
+        return turn.model_dump(mode="json")
+    _validate_mapping_keys(python_dump)
+    return turn.model_dump(mode="json")
+
+
 @runtime_checkable
 class ClientWithTurns(Protocol):
     """
@@ -53,13 +62,16 @@ class TurnsAdapter:
         raw = self._turns_client()
         if is_chatlas_chat_client(raw):
             turns = raw.get_turns(include_system_prompt=include_system_prompt)
-            return [serialize_chatlas_turn(t) for t in turns]
+            serialized: list[dict[str, Any]] = []
+            for turn in turns:
+                _validate_mapping_keys(turn.model_dump(mode="python"))
+                serialized.append(serialize_chatlas_turn(turn))
+            return serialized
         turns = raw.get_turns()
         serialized: list[dict[str, Any]] = []
         for turn in turns:
             if hasattr(turn, "model_dump"):
-                _validate_mapping_keys(turn.model_dump(mode="python"))
-                serialized.append(turn.model_dump(mode="json"))
+                serialized.append(_serialize_model_turn(turn))
             else:
                 serialized.append(turn)
         return serialized

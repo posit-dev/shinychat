@@ -713,6 +713,38 @@ async def test_v2_recorder_captures_model_backed_generic_turns():
 
 
 @pytest.mark.anyio
+async def test_v2_recorder_captures_json_only_model_turns():
+    class JsonOnlyTurn:
+        def model_dump(self, *, mode: str) -> dict[str, Any]:
+            if mode != "json":
+                raise TypeError("only JSON mode is supported")
+            return {"role": "user", "content": {"text": "hello"}}
+
+    class ModelClient:
+        def get_turns(self) -> list[JsonOnlyTurn]:
+            return [JsonOnlyTurn()]
+
+        def set_turns(self, turns: list[JsonOnlyTurn]) -> None:
+            pass
+
+    controller, _ = _make_controller(
+        use_exchange_tree=True,
+        adapter=TurnsAdapter(ModelClient()),  # type: ignore[arg-type]
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
+
+    state = recorder.record.nodes["n_0000"].state["shinychat:turns"]  # type: ignore[union-attr]
+    assert state.kind == "turns"
+    assert state.data == [{"role": "user", "content": {"text": "hello"}}]
+
+
+@pytest.mark.anyio
 async def test_v2_recorder_rejects_model_key_collision_before_file_store(
     tmp_path: Path,
 ):
@@ -736,6 +768,46 @@ async def test_v2_recorder_rejects_model_key_collision_before_file_store(
         store=store,
         use_exchange_tree=True,
         adapter=TurnsAdapter(ModelClient()),  # type: ignore[arg-type]
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+
+    with pytest.raises(ValueError, match="Non-string mapping key"):
+        await transcript.record_accepted_input_and_notify(
+            _stored_message("user", "one")
+        )
+
+    assert await store.list(part()) == []
+
+
+@pytest.mark.anyio
+async def test_v2_recorder_rejects_chatlas_key_collision_before_file_store(
+    tmp_path: Path,
+):
+    chatlas = pytest.importorskip("chatlas")
+    from chatlas import ContentToolResult
+    from shinychat._history_store import FileConversationStore
+
+    client = chatlas.ChatOpenAI(api_key="fake")
+    client.set_turns(
+        [
+            chatlas.Turn(
+                role="user",
+                contents=[
+                    ContentToolResult(
+                        value="done",
+                        extra={"nested": {2: "two", "2": "string"}},
+                    )
+                ],
+            )
+        ]
+    )
+    store = FileConversationStore(tmp_path)
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+        adapter=TurnsAdapter(client),  # type: ignore[arg-type]
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
