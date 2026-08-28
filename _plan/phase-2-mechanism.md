@@ -235,3 +235,16 @@ single-session atom and starts only after every Python consumer has moved.
   py-check` passed (191 Playwright, 616 non-browser).
 - **Next:** `shinychat#ch09` remains open with `needs-review` for independent
   rereview; do not move on to `shinychat#dy7g`.
+- **Terminal outcome correction landed (2026-08-27; roborev job 1010):** both
+  stream finalizers now classify cancellation while awaiting the terminal
+  `chunk_end` after a normal body as `cancelled`, preserve no error payload,
+  and re-raise `CancelledError`. Existing body error/cancellation outcomes
+  still outrank cleanup failures. Job 1010's empty-message finding is covered
+  by explicit `None` checks, so an original `RuntimeError("")` remains the
+  recorded error rather than being replaced by a cleanup error.
+- **Verification:** four direct finalizer regressions, full
+  `pkg-py/tests/pytest/test_chat.py` (102), relevant Playwright stream/context
+  coverage (2), `make py-check-format`, `make py-check-types`, and `make
+  py-check` passed (191 Playwright, 620 non-browser).
+- **Next:** `shinychat#ch09` remains open with `needs-review` for independent
+  rereview; do not move on to `shinychat#dy7g`.

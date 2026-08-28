@@ -1188,10 +1188,24 @@ class Chat:
                         await self._send_action({"type": "chunk_end"})
                     except BaseException:
                         pass
+                    terminal_status = (
+                        "cancelled"
+                        if status is None
+                        and isinstance(terminal_error, asyncio.CancelledError)
+                        else status or "error"
+                    )
                     self._transcript.abort_stream(
                         stream_id,
-                        status=status or "error",
-                        error=error or str(terminal_error),
+                        status=terminal_status,
+                        error=(
+                            None
+                            if terminal_status == "cancelled"
+                            else (
+                                error
+                                if error is not None
+                                else str(terminal_error)
+                            )
+                        ),
                     )
                     if status is None:
                         raise
@@ -1601,10 +1615,24 @@ class Chat:
                         await self._send_action({"type": "chunk_end"})
                     except BaseException:
                         pass
+                    terminal_status = (
+                        "cancelled"
+                        if status is None
+                        and isinstance(terminal_error, asyncio.CancelledError)
+                        else status or "error"
+                    )
                     self._transcript.abort_stream(
                         id,
-                        status=status or "error",
-                        error=error or str(terminal_error),
+                        status=terminal_status,
+                        error=(
+                            None
+                            if terminal_status == "cancelled"
+                            else (
+                                error
+                                if error is not None
+                                else str(terminal_error)
+                            )
+                        ),
                     )
                     if status is None:
                         raise

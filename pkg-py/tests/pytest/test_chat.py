@@ -1546,6 +1546,30 @@ def test_stream_generator_error_survives_terminal_cleanup_failure():
     assert chat._transcript.active_stream_id is None
 
 
+def test_stream_generator_empty_error_survives_terminal_cleanup_failure():
+    with session_context(test_session):
+        chat = Chat(id="generator_empty_error_cleanup_failure", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("terminal cleanup failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _stream():
+            yield "kept"
+            raise RuntimeError("")
+
+        with pytest.raises(RuntimeError, match="^$"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": ""}
+    assert chat._transcript.active_stream_id is None
+
+
 def test_stream_generator_cancellation_survives_terminal_cleanup_failure():
     with session_context(test_session):
         chat = Chat(id="generator_cancel_cleanup_failure", history=False)
@@ -1559,6 +1583,29 @@ def test_stream_generator_cancellation_survives_terminal_cleanup_failure():
         async def _stream():
             yield "kept"
             raise asyncio.CancelledError()
+
+        with pytest.raises(asyncio.CancelledError):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "cancelled"
+    assert entry.error is None
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_terminal_cancellation_aborts_without_error():
+    with session_context(test_session):
+        chat = Chat(id="stream_terminal_cancelled", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise asyncio.CancelledError()
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _stream():
+            yield "kept"
 
         with pytest.raises(asyncio.CancelledError):
             run_async(lambda: chat._append_message_stream(_stream()))
@@ -1595,6 +1642,31 @@ def test_stream_context_error_survives_terminal_cleanup_failure():
     assert chat._transcript.active_stream_id is None
 
 
+def test_stream_context_empty_error_survives_terminal_cleanup_failure():
+    with session_context(test_session):
+        chat = Chat(id="context_empty_error_cleanup_failure", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("terminal cleanup failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            async with chat.message_stream_context() as stream:
+                await stream.append("kept")
+                raise RuntimeError("")
+
+        with pytest.raises(RuntimeError, match="^$"):
+            run_async(_exercise)
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": ""}
+    assert chat._transcript.active_stream_id is None
+
+
 def test_stream_context_cancellation_survives_terminal_cleanup_failure():
     with session_context(test_session):
         chat = Chat(id="context_cancel_cleanup_failure", history=False)
@@ -1609,6 +1681,30 @@ def test_stream_context_cancellation_survives_terminal_cleanup_failure():
             async with chat.message_stream_context() as stream:
                 await stream.append("kept")
                 raise asyncio.CancelledError()
+
+        with pytest.raises(asyncio.CancelledError):
+            run_async(_exercise)
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "cancelled"
+    assert entry.error is None
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_context_terminal_cancellation_aborts_without_error():
+    with session_context(test_session):
+        chat = Chat(id="context_terminal_cancelled", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise asyncio.CancelledError()
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            async with chat.message_stream_context() as stream:
+                await stream.append("kept")
 
         with pytest.raises(asyncio.CancelledError):
             run_async(_exercise)
