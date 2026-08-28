@@ -519,6 +519,61 @@ async def test_v2_recorder_persists_pre_input_stream_on_pending_root() -> None:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("status", "error"),
+    [
+        (None, None),
+        ("error", "provider timeout"),
+        ("cancelled", None),
+    ],
+)
+async def test_v2_recorder_reopens_terminal_exchange_for_a_new_stream(
+    status: str | None, error: str | None
+) -> None:
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_finished=recorder.stream_finished,
+    )
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "question")
+    )
+    await transcript.start_stream(
+        stream_id="first",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+    await transcript.end_stream(
+        stream_id="first",
+        status=status,  # type: ignore[arg-type]
+        error=error,
+        send=_sent,
+    )
+    await transcript.start_stream(
+        stream_id="second",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    node = record.nodes[exchange_id]
+    assert node.status == "pending"
+    assert node.error is None
+
+
+@pytest.mark.anyio
 async def test_v2_recorder_creates_inputless_child_for_unowned_content() -> None:
     store = InMemoryConversationStore()
     controller, _ = _make_controller(

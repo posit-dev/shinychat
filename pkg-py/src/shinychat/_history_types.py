@@ -373,6 +373,8 @@ class ConversationRecordV2(BaseModel):
         if node is None:
             raise ValueError(f"Unknown exchange id {exchange_id!r}")
         node.messages.append(message)
+        node.status = "pending"
+        node.error = None
         self.updated_at = utcnow()
 
     def replace_stream_message(
