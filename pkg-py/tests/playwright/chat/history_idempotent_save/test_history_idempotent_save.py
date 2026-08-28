@@ -94,3 +94,52 @@ def test_restore_does_not_trigger_extra_save(
             has_text="first question"
         )
     ).to_be_visible(timeout=10_000)
+
+
+def test_paused_stream_waits_for_browser_settlement_before_history_save(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    save_count = controller.OutputTextVerbatim(page, "save_count")
+    owner_messages = controller.OutputTextVerbatim(page, "owner_messages")
+    save_count.expect_value("0")
+
+    chat.set_user_input("paused question")
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message("partial: paused question", timeout=30_000)
+    owner_messages.expect_value(
+        "paused question\npartial: paused question", timeout=10_000
+    )
+
+    # The public owner projection has the sent partial, while history remains
+    # report-triggered until the browser settles the stream.
+    page.wait_for_timeout(500)
+    save_count.expect_value("0", timeout=5_000)
+
+    page.locator("#release").click()
+    chat.expect_latest_message(
+        "partial: paused question complete", timeout=30_000
+    )
+    owner_messages.expect_value(
+        "paused question\npartial: paused question complete", timeout=10_000
+    )
+    save_count.expect_value("1", timeout=10_000)
+
+    open_drawer(page)
+    page.locator(".shiny-chat-history-new").click()
+    page.locator(".shiny-chat-history-drawer").wait_for(state="hidden")
+    save_count.expect_value("2", timeout=10_000)
+
+    open_drawer(page)
+    page.locator(".shiny-chat-history-item").filter(
+        has_text="paused question"
+    ).click()
+    page.locator(".shiny-chat-history-drawer").wait_for(state="hidden")
+    chat.expect_latest_message(
+        "partial: paused question complete", timeout=30_000
+    )
+    expect(message_count(page)).to_have_count(2, timeout=10_000)
+    save_count.expect_value("2", timeout=5_000)
