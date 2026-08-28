@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable, cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from _history_test_helpers import branch_from
@@ -378,25 +378,33 @@ def _stored_message(role: str, content: str) -> StoredMessage:
     )
 
 
-def test_v2_recorder_normalizes_mixed_mapping_keys_before_fingerprinting():
+@pytest.mark.parametrize(
+    "turn",
+    [
+        {2: "two"},
+        {"outer": [{"inner": {3: "three"}}]},
+    ],
+)
+def test_v2_recorder_rejects_non_string_mapping_keys_recursively(
+    turn: dict[Any, Any],
+):
     from shinychat._history import _ExchangeRecorder
 
-    serialized, fingerprints = _ExchangeRecorder._canonical_turns(
-        [{2: "two", "one": "one"}]  # type: ignore[dict-item]
-    )
-
-    assert serialized == [{"2": "two", "one": "one"}]
-    assert fingerprints == ['{"2":"two","one":"one"}']
+    with pytest.raises(ValueError, match="Non-string mapping key"):
+        _ExchangeRecorder._canonical_turns([turn])
 
 
-def test_v2_recorder_mixed_mapping_keys_keep_a_stable_prefix():
+def test_v2_recorder_string_key_reordering_keeps_a_stable_prefix():
     from shinychat._history import _ExchangeRecorder
 
     _, baseline = _ExchangeRecorder._canonical_turns(
-        [{"one": "one", 2: "two"}]  # type: ignore[dict-item]
+        [{"one": "one", "two": {"nested": "value"}}]
     )
     _, current = _ExchangeRecorder._canonical_turns(
-        [{2: "two", "one": "one"}, {"role": "assistant", "content": "later"}]  # type: ignore[dict-item]
+        [
+            {"two": {"nested": "value"}, "one": "one"},
+            {"role": "assistant", "content": "later"},
+        ]
     )
 
     assert current[: len(baseline)] == baseline
@@ -434,6 +442,95 @@ async def test_v2_recorder_rejects_nonfinite_turn_values_before_file_store(
         )
 
     assert await store.list(part()) == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "turn",
+    [
+        {2: "two"},
+        {"outer": [{"inner": {3: "three"}}]},
+    ],
+)
+async def test_v2_recorder_rejects_non_string_keys_before_file_store(
+    tmp_path: Path, turn: dict[Any, Any]
+):
+    from shinychat._history_store import FileConversationStore
+
+    adapter = _FakeAdapter()
+    adapter.turns = [turn]
+    store = FileConversationStore(tmp_path)
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+
+    with pytest.raises(ValueError, match="Non-string mapping key"):
+        await transcript.record_accepted_input_and_notify(
+            _stored_message("user", "one")
+        )
+
+    assert await store.list(part()) == []
+
+
+@pytest.mark.anyio
+async def test_chatlas_lazy_second_stream_is_rejected_before_turn_mutation():
+    chatlas = pytest.importorskip("chatlas")
+
+    provider = MagicMock()
+    provider.name = "deterministic"
+    provider.model = "deterministic"
+    client = chatlas.Chat(provider)
+    transcript = ChatTranscript()
+
+    first_exchange = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "first")
+    )
+    first_response = await client.stream_async("first")
+    assert client.get_turns() == []
+    assert provider.chat_perform_async.call_count == 0
+
+    await transcript.start_stream(
+        stream_id="first-stream",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=first_exchange,
+        send=_sent,
+    )
+
+    second_exchange = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "second")
+    )
+    second_response = await client.stream_async("second")
+    assert client.get_turns() == []
+
+    with pytest.raises(
+        RuntimeError,
+        match="Cannot start a second message stream",
+    ):
+        await transcript.start_stream(
+            stream_id="second-stream",
+            entry=TranscriptEntry(message=_stored_message("assistant", "")),
+            owner_task=None,
+            exchange_id=second_exchange,
+            send=_sent,
+        )
+
+    assert client.get_turns() == []
+    assert provider.chat_perform_async.call_count == 0
+
+    await transcript.end_stream(
+        stream_id="first-stream",
+        status=None,
+        error=None,
+        send=_sent,
+    )
+    await first_response.aclose()
+    await second_response.aclose()
 
 
 @pytest.mark.anyio
