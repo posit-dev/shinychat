@@ -278,3 +278,24 @@ single-session atom and starts only after every Python consumer has moved.
   `shinychat#47fa`, so the JS and server protocol disappear atomically.
   `shinychat#dy7g` removes consumers, stale deduplication, `ui_offset`, and
   installs the lifecycle callback bridge.
+- **Implementation ready for review (2026-08-27; `shinychat#dy7g`;
+  `703ecb95`, `76adae55`):** complete assistant appends and every committed
+  stream terminal state now schedule lifecycle-local callbacks through
+  `reactive.on_flushed(..., once=True)`. The flush hook starts a one-shot
+  reactive effect so history and automatic bookmark callbacks retain Shiny's
+  reactive context; callback failures warn and cannot alter stream outcomes.
+  Initial/replay/restore/clear/input/chunk mutations do not schedule a
+  callback. V1 history rebuilds its active-path UI from the server transcript,
+  assigns each response's UI to the response node following its input, and
+  removes stale-report deduplication and `ui_offset`. The legacy
+  `messages_input_id` bookmark exclusion is retained because its typed input
+  is not bookmark-serializable. The Python `shinychat.messages` handler,
+  input ID, and parser remain untouched for `shinychat#47fa`; JS, R, and
+  assets are unchanged.
+- **Verification (2026-08-27):** focused history/bookmark/lifecycle Make
+  selection passed (42 Playwright, 270 non-browser); focused transcript/chat
+  units passed (200); Ruff and Pyright passed. Full `make py-check` passed
+  lint and types and reached 190/191 Playwright tests; its sole failure was
+  an unrelated, untouched page-navigation resize timing assertion, which
+  passed on immediate isolated rerun. `shinychat#dy7g` remains open with
+  `needs-review`.
