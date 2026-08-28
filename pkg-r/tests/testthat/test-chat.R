@@ -666,6 +666,131 @@ test_that("chat_append_message() block-level html deps are session-processed and
   expect_null(attr(block_seg, "shinychat_html_deps"))
 })
 
+test_that("chat_append_message() emits web_search and web_search_results blocks as segments", {
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- list(
+        action = action,
+        html_deps = html_deps
+      )
+      invisible()
+    }
+  )
+  session <- shiny::MockShinySession$new()
+
+  search_block <- new_web_block("web_search", query = "shinychat docs")
+  results_block <- new_web_block(
+    "web_search_results",
+    sources = list(list(url = "https://example.com", title = "Example"))
+  )
+
+  # Non-streaming: mixed content with web blocks
+  chat_append_message(
+    "chat",
+    list(
+      role = "assistant",
+      content = list("Searching... ", search_block, results_block)
+    ),
+    chunk = FALSE,
+    session = session
+  )
+
+  expect_length(captured, 1)
+  msg <- captured[[1]]$action
+  expect_equal(msg$type, "message")
+  segments <- msg$message$segments
+  expect_length(segments, 3)
+
+  # Segment 1: string -> markdown
+  expect_equal(segments[[1]]$content, "Searching... ")
+  expect_equal(segments[[1]]$content_type, "markdown")
+
+  # Segment 2: web_search block
+  expect_equal(segments[[2]]$type, "web_search")
+  expect_equal(segments[[2]]$version, 1L)
+  expect_equal(segments[[2]]$query, "shinychat docs")
+
+  # Segment 3: web_search_results block
+  expect_equal(segments[[3]]$type, "web_search_results")
+  expect_equal(segments[[3]]$version, 1L)
+  expect_length(segments[[3]]$sources, 1L)
+  expect_equal(segments[[3]]$sources[[1]]$url, "https://example.com")
+})
+
+test_that("chat_append_message() emits web_fetch block as segment", {
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- list(
+        action = action,
+        html_deps = html_deps
+      )
+      invisible()
+    }
+  )
+  session <- shiny::MockShinySession$new()
+
+  fetch_block <- new_web_block(
+    "web_fetch",
+    url = "https://example.com",
+    status = "success"
+  )
+
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = fetch_block),
+    chunk = FALSE,
+    session = session
+  )
+
+  expect_length(captured, 1)
+  msg <- captured[[1]]$action
+  expect_equal(msg$type, "message")
+  segments <- msg$message$segments
+  expect_length(segments, 1)
+  expect_equal(segments[[1]]$type, "web_fetch")
+  expect_equal(segments[[1]]$version, 1L)
+  expect_equal(segments[[1]]$url, "https://example.com")
+  expect_equal(segments[[1]]$status, "success")
+})
+
+test_that("chat_append_message() streaming emits block_insert for web blocks", {
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- list(
+        action = action,
+        html_deps = html_deps
+      )
+      invisible()
+    }
+  )
+  session <- shiny::MockShinySession$new()
+
+  search_block <- new_web_block("web_search", query = "test")
+
+  # chunk = "end": block emitted as block_insert
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = list(search_block, " done")),
+    chunk = "end",
+    session = session
+  )
+
+  # First action: block_insert for the web_search block
+  expect_equal(captured[[1]]$action$type, "block_insert")
+  expect_equal(captured[[1]]$action$block$type, "web_search")
+  expect_equal(captured[[1]]$action$block$query, "test")
+
+  # Second action: chunk for the string
+  expect_equal(captured[[2]]$action$type, "chunk")
+  expect_equal(captured[[2]]$action$content, " done")
+
+  # Third action: chunk_end
+  expect_equal(captured[[3]]$action$type, "chunk_end")
+})
+
 test_that("chat_server() exposes a failed response until the next succeeds", {
   local_mocked_bindings(
     chat_restore = function(...) invisible(NULL),

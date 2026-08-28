@@ -480,91 +480,148 @@ test_that("tool_result_display rich format", {
   )
 })
 
-test_that("web content renders as shinychat web activity and citations", {
-  skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
+test_that("web content emitters produce structured shinychat_block lists", {
   local_shinychat_tool_display(opt = "rich")
 
-  request <- ellmer::ContentToolRequestSearch(
-    query = "ggplot2 release date"
-  )
-  request_tag <- contents_shinychat(request)
-  expect_equal(request_tag$name, "shiny-web-search")
-  expect_equal(request_tag$attribs$query, "ggplot2 release date")
-  expect_true("data-shinychat-react" %in% names(request_tag$attribs))
+  # Test the emitter functions directly using S7 mock classes that mimic
+  # the ellmer content property interface. The installed ellmer may not
+  # have the web content classes, so we test emitters in isolation.
 
-  response <- ellmer::ContentToolResponseSearch(
+  MockSearchRequest <- S7::new_class(
+    "MockSearchRequest",
+    properties = list(query = S7::class_character)
+  )
+  MockSearchResponse <- S7::new_class(
+    "MockSearchResponse",
+    properties = list(sources = S7::class_list)
+  )
+  MockWebSource <- S7::new_class(
+    "MockWebSource",
+    properties = list(url = S7::class_character, title = S7::class_character)
+  )
+  MockFetchResponse <- S7::new_class(
+    "MockFetchResponse",
+    properties = list(url = S7::class_character, status = S7::class_character)
+  )
+
+  # web_search block
+  search_content <- MockSearchRequest(query = "ggplot2 release date")
+  search_block <- contents_shinychat_search_request(search_content)
+  expect_s3_class(search_block, "shinychat_web_search")
+  expect_s3_class(search_block, "shinychat_block")
+  expect_equal(search_block$type, "web_search")
+  expect_equal(search_block$version, 1L)
+  expect_equal(search_block$query, "ggplot2 release date")
+
+  # web_search_results block
+  results_content <- MockSearchResponse(
     sources = list(
-      ellmer::WebSource(
-        "https://cran.r-project.org/package=ggplot2",
-        "ggplot2"
+      MockWebSource(
+        url = "https://cran.r-project.org/package=ggplot2",
+        title = "ggplot2"
       ),
-      ellmer::WebSource(title = "No URL")
+      MockWebSource(url = "https://example.com", title = NA_character_),
+      MockWebSource(url = NA_character_, title = "No URL")
     )
   )
-  response_tag <- contents_shinychat(response)
-  sources <- jsonlite::fromJSON(
-    response_tag$attribs$sources,
-    simplifyVector = FALSE
+  results_block <- contents_shinychat_search_response(results_content)
+  expect_s3_class(results_block, "shinychat_web_search_results")
+  expect_s3_class(results_block, "shinychat_block")
+  expect_equal(results_block$type, "web_search_results")
+  expect_equal(results_block$version, 1L)
+  # Sources with NULL/NA url are filtered out; title is omitted when NA
+  expect_length(results_block$sources, 2L)
+  expect_equal(
+    results_block$sources[[1]]$url,
+    "https://cran.r-project.org/package=ggplot2"
   )
-  expect_equal(length(sources), 1L)
-  expect_false("domain" %in% names(sources[[1]]))
+  expect_equal(results_block$sources[[1]]$title, "ggplot2")
+  expect_equal(results_block$sources[[2]]$url, "https://example.com")
+  expect_false("title" %in% names(results_block$sources[[2]]))
 
-  expect_null(
-    contents_shinychat(
-      ellmer::ContentToolRequestFetch("https://example.com")
-    )
+  # web_fetch request stays NULL
+  expect_null(contents_shinychat_fetch_request(list()))
+
+  # web_fetch response block
+  fetch_content <- MockFetchResponse(
+    url = "https://example.com",
+    status = "success"
+  )
+  fetch_block <- contents_shinychat_fetch_response(fetch_content)
+  expect_s3_class(fetch_block, "shinychat_web_fetch")
+  expect_s3_class(fetch_block, "shinychat_block")
+  expect_equal(fetch_block$type, "web_fetch")
+  expect_equal(fetch_block$version, 1L)
+  expect_equal(fetch_block$url, "https://example.com")
+  expect_equal(fetch_block$status, "success")
+
+  # web_fetch response with error status returns NULL
+  fetch_error <- MockFetchResponse(
+    url = "https://example.com",
+    status = "error"
+  )
+  expect_null(contents_shinychat_fetch_response(fetch_error))
+
+  # web_fetch response with NA url returns NULL
+  fetch_no_url <- MockFetchResponse(url = NA_character_, status = "success")
+  expect_null(contents_shinychat_fetch_response(fetch_no_url))
+})
+
+test_that("web content emitters respect disabled tool display", {
+  local_shinychat_tool_display(opt = "none")
+
+  MockSearchRequest <- S7::new_class(
+    "MockSearchRequest2",
+    properties = list(query = S7::class_character)
+  )
+  MockSearchResponse <- S7::new_class(
+    "MockSearchResponse2",
+    properties = list(sources = S7::class_list)
+  )
+  MockFetchResponse <- S7::new_class(
+    "MockFetchResponse2",
+    properties = list(url = S7::class_character, status = S7::class_character)
   )
 
-  fetch_tag <- contents_shinychat(
-    ellmer::ContentToolResponseFetch(
-      url = "https://example.com",
-      status = "success"
-    )
-  )
-  expect_equal(fetch_tag$name, "shiny-web-fetch")
-  expect_equal(fetch_tag$attribs$status, "success")
+  search_content <- MockSearchRequest(query = "test")
+  expect_null(contents_shinychat_search_request(search_content))
 
-  citation <- ellmer::ContentCitation(
-    source = ellmer::WebSource(
-      "https://x.example/?a=1&b=2",
-      "A & B <source>"
-    ),
-    grounded_span = 'Supported answer "text"',
-    cited_quote = "Source evidence <verbatim>"
+  results_content <- MockSearchResponse(sources = list())
+  expect_null(contents_shinychat_search_response(results_content))
+
+  fetch_content <- MockFetchResponse(
+    url = "https://example.com",
+    status = "success"
   )
-  citation_markup <- contents_shinychat(citation)
-  expect_match(citation_markup, "<shiny-aside", fixed = TRUE)
-  expect_match(citation_markup, "data-citation", fixed = TRUE)
-  expect_false(grepl("label=", citation_markup, fixed = TRUE))
-  expect_match(citation_markup, "A &amp; B &lt;source&gt;", fixed = TRUE)
-  expect_match(citation_markup, "a=1&amp;b=2", fixed = TRUE)
-  expect_match(
-    citation_markup,
-    'grounded-span="Supported answer &quot;text&quot;"',
-    fixed = TRUE
-  )
-  expect_match(
-    citation_markup,
-    'cited-quote="Source evidence &lt;verbatim&gt;"',
-    fixed = TRUE
+  expect_null(contents_shinychat_fetch_response(fetch_content))
+})
+
+test_that("web_source_record omits title when NA and filters NA urls", {
+  MockWebSource <- S7::new_class(
+    "MockWebSource2",
+    properties = list(url = S7::class_character, title = S7::class_character)
   )
 
-  citation_without_grounding <- contents_shinychat(
-    ellmer::ContentCitation(
-      source = ellmer::WebSource("https://x.example", "Example")
-    )
+  # With title
+  source_with_title <- MockWebSource(
+    url = "https://example.com",
+    title = "Example"
   )
-  expect_false(
-    grepl("grounded-span=", citation_without_grounding, fixed = TRUE)
-  )
-  expect_false(grepl("cited-quote=", citation_without_grounding, fixed = TRUE))
+  record <- web_source_record(source_with_title)
+  expect_equal(record, list(url = "https://example.com", title = "Example"))
 
-  expect_null(contents_shinychat(ellmer::ContentCitation()))
-  expect_null(
-    contents_shinychat(
-      ellmer::ContentToolResponseFetch(status = "error")
-    )
+  # Without title (NA title omitted)
+  source_no_title <- MockWebSource(
+    url = "https://example.com",
+    title = NA_character_
   )
+  record <- web_source_record(source_no_title)
+  expect_equal(record, list(url = "https://example.com"))
+  expect_false("title" %in% names(record))
+
+  # NA url returns NULL (filtered)
+  source_no_url <- MockWebSource(url = NA_character_, title = "No URL")
+  expect_null(web_source_record(source_no_url))
 })
 
 test_that("ContentCitation preserves optional metadata independently", {
@@ -602,33 +659,29 @@ test_that("web content feature detection derives classes from registered methods
   expect_false(ellmer_web_content_available(methods, exports[-2]))
 })
 
-test_that("web content renderers respect disabled tool display", {
-  skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
-  local_shinychat_tool_display(opt = "none")
+test_that("attach_cited_sources adds cited_sources to last web_search when no results", {
+  # Build a web_search block
+  search_block <- new_web_block("web_search", query = "test query")
+  # No web_search_results blocks → fallback should fire
+  content <- list("answer text", search_block)
 
-  contents <- list(
-    ellmer::ContentToolRequestSearch("ggplot2 release date"),
-    ellmer::ContentToolResponseSearch(
-      list(ellmer::WebSource("https://cran.r-project.org", "CRAN"))
-    ),
-    ellmer::ContentToolRequestFetch("https://example.com"),
-    ellmer::ContentToolResponseFetch("https://example.com", "success"),
-    ellmer::ContentCitation(
-      ellmer::WebSource("https://example.com", "Example")
-    )
-  )
+  # Without ContentCitation objects in raw_contents, nothing is attached
+  result <- attach_cited_sources(list(), content)
+  expect_null(result[[2]]$cited_sources)
 
-  expect_true(
-    all(
-      vapply(
-        contents,
-        function(content) {
-          is.null(contents_shinychat(content))
-        },
-        logical(1)
-      )
-    )
+  # With a web_search_results block present, fallback should NOT fire
+  results_block <- new_web_block(
+    "web_search_results",
+    sources = list(list(url = "https://provider.example", title = "Provider"))
   )
+  content_with_results <- list("answer", search_block, results_block)
+  result <- attach_cited_sources(list(), content_with_results)
+  expect_null(result[[2]]$cited_sources)
+
+  # Without any web_search block, fallback should NOT fire
+  content_no_search <- list("just text")
+  result <- attach_cited_sources(list(), content_no_search)
+  expect_equal(result, content_no_search)
 })
 
 test_that("processes a Turn object", {

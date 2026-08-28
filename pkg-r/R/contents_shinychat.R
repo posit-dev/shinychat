@@ -156,18 +156,27 @@ ellmer_web_content_available <- function(
   all(c("WebSource", names(methods)) %in% exports)
 }
 
+new_web_block <- function(type, ...) {
+  classes <- c(
+    paste0("shinychat_web_", sub("^web_", "", type)),
+    "shinychat_block"
+  )
+
+  dots <- dots_list(
+    type = type,
+    version = 1L,
+    ...
+  )
+
+  structure(dots, class = classes)
+}
+
 contents_shinychat_search_request <- function(content) {
   if (opt_shinychat_tool_display() == "none") {
     return(NULL)
   }
 
-  htmltools::tag(
-    "shiny-web-search",
-    list(
-      `data-shinychat-react` = NA,
-      query = content@query
-    )
-  )
+  new_web_block("web_search", query = content@query)
 }
 
 contents_shinychat_search_response <- function(content) {
@@ -178,17 +187,7 @@ contents_shinychat_search_response <- function(content) {
   sources <- lapply(content@sources, web_source_record)
   sources <- Filter(Negate(is.null), sources)
 
-  htmltools::tag(
-    "shiny-web-search-results",
-    list(
-      `data-shinychat-react` = NA,
-      sources = jsonlite::toJSON(
-        sources,
-        auto_unbox = TRUE,
-        null = "null"
-      )
-    )
-  )
+  new_web_block("web_search_results", sources = sources)
 }
 
 contents_shinychat_fetch_request <- function(content) {
@@ -196,22 +195,20 @@ contents_shinychat_fetch_request <- function(content) {
 }
 
 contents_shinychat_fetch_response <- function(content) {
+  if (opt_shinychat_tool_display() == "none") {
+    return(NULL)
+  }
+
+  url <- content@url
   if (
-    opt_shinychat_tool_display() == "none" ||
-      !identical(content@status, "success") ||
-      is.null(content@url)
+    !identical(content@status, "success") ||
+      is.null(url) ||
+      (is.character(url) && length(url) == 1 && is.na(url))
   ) {
     return(NULL)
   }
 
-  htmltools::tag(
-    "shiny-web-fetch",
-    list(
-      `data-shinychat-react` = NA,
-      url = content@url,
-      status = content@status
-    )
-  )
+  new_web_block("web_fetch", url = url, status = content@status)
 }
 
 contents_shinychat_citation <- function(content) {
@@ -274,14 +271,20 @@ register_ellmer_web_content_methods <- function() {
 }
 
 web_source_record <- function(source) {
-  if (is.null(source@url)) {
+  url <- source@url
+  if (is.null(url) || (is.character(url) && length(url) == 1 && is.na(url))) {
     return(NULL)
   }
 
-  list(
-    url = source@url,
-    title = source@title
-  )
+  record <- list(url = url)
+  title <- source@title
+  if (
+    !is.null(title) &&
+      !(is.character(title) && length(title) == 1 && is.na(title))
+  ) {
+    record$title <- title
+  }
+  record
 }
 
 rlang::on_load(register_ellmer_web_content_methods())
@@ -1032,6 +1035,85 @@ coalesce_content_strings <- function(content) {
   result
 }
 
+# Mirror the markup path's rehypeAttachCitedSources fallback for structured
+# web blocks: when a turn produced search requests and answer citations but
+# no provider search results, carry the cited sources on the last
+# `web_search` block so the client can show them while no results attach.
+# Mutates the content list in place (the same list elements are referenced
+# by the caller). Mirrors Python's `_attach_cited_sources`.
+attach_cited_sources <- function(raw_contents, content) {
+  has_web_search <- some(content, function(x) {
+    inherits(x, "shinychat_block") && identical(x$type, "web_search")
+  })
+  if (!has_web_search) {
+    return(content)
+  }
+  # Provider results win; cited sources are only a fallback when the turn
+  # has no results at all (hasSearchResults in rehypeAttachCitedSources).
+  has_web_results <- some(content, function(x) {
+    inherits(x, "shinychat_block") && identical(x$type, "web_search_results")
+  })
+  if (has_web_results) {
+    return(content)
+  }
+  # Collect cited sources from ContentCitation objects in the raw turn
+  # contents. Merge by URL (first occurrence wins; a later title fills a
+  # missing one), mirroring mergeSources in rehypeAttachCitedSources.
+  WebSource_class <- tryCatch(
+    getExportedValue("ellmer", "WebSource"),
+    error = function(e) NULL
+  )
+  if (is.null(WebSource_class)) {
+    return(content)
+  }
+  Citation_class <- tryCatch(
+    getExportedValue("ellmer", "ContentCitation"),
+    error = function(e) NULL
+  )
+  if (is.null(Citation_class)) {
+    return(content)
+  }
+  cited <- list()
+  by_url <- new.env(parent = emptyenv())
+  for (x in raw_contents) {
+    if (!S7_inherits(x, Citation_class)) {
+      next
+    }
+    source <- x@source
+    if (!S7_inherits(source, WebSource_class) || is.null(source@url)) {
+      next
+    }
+    existing <- by_url[[source@url]]
+    if (!is.null(existing)) {
+      if (is.null(existing$title) && !is.null(source@title)) {
+        existing$title <- source@title
+      }
+      next
+    }
+    record <- list(url = source@url)
+    if (!is.null(source@title)) {
+      record$title <- source@title
+    }
+    by_url[[source@url]] <- record
+    cited <- c(cited, list(record))
+  }
+  if (length(cited) == 0) {
+    return(content)
+  }
+  # Attach to the last web_search block (parseItems reads the wrapper's
+  # citedSources onto the last pending search).
+  for (i in rev(seq_along(content))) {
+    if (
+      inherits(content[[i]], "shinychat_block") &&
+        identical(content[[i]]$type, "web_search")
+    ) {
+      content[[i]]$cited_sources <- cited
+      break
+    }
+  }
+  content
+}
+
 merge_ellmer_turn_group <- function(group, tools) {
   role <- ellmer_turn_effective_role(group[[1]])
 
@@ -1070,6 +1152,11 @@ merge_ellmer_turn_group <- function(group, tools) {
   if (is.null(content) || identical(content, "")) {
     return(NULL)
   }
+  # Carry cited sources explicitly on the structured web_search block:
+  # the markup path's rehypeAttachCitedSources fallback can't fire for
+  # structured blocks (they never appear as markup siblings of the
+  # citation asides). Mirrors Python's `_attach_cited_sources`.
+  content <- attach_cited_sources(contents, content)
   if (every(content, is.character)) {
     content <- paste(unlist(content), collapse = "\n\n")
   } else if (some(content, inherits, "shinychat_block")) {
