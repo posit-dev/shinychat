@@ -477,7 +477,16 @@ child or the phase.
   `6b3d729c` invokes stream-terminal notification in a `finally` around the
   awaited recorder callback on normal end, failed end, and abort, while the
   recorder exception still propagates. Job `1041` was closed stale on the
-  fix. A fresh coherent review is pending.
+  fix. Roborev job `1042` found five follow-up issues. Three are narrow
+  stream-lifecycle fixes (preserve the original error if abort capture also
+  fails, restore `pending` when another stream starts on an `ok` node, and
+  preserve cancellation status during start-capture cleanup). Two require a
+  mechanism decision before implementation: recording a stream before any
+  accepted input needs an explicit record/title/root policy, and serializing
+  recorder mutation-plus-write operations requires a new async ordering lock.
+  The latter conflicts with this task's no-new-ordering-guard constraint.
+  `shinychat#19dk` is parked for coordinator disposition; job `1042` remains
+  open.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
