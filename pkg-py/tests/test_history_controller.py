@@ -410,6 +410,33 @@ def test_v2_recorder_rejects_non_json_turn_values():
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+async def test_v2_recorder_rejects_nonfinite_turn_values_before_file_store(
+    tmp_path: Path, value: float
+):
+    from shinychat._history_store import FileConversationStore
+
+    adapter = _FakeAdapter()
+    adapter.turns = [{"value": value}]
+    store = FileConversationStore(tmp_path)
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+
+    with pytest.raises(ValueError, match="Out of range float values"):
+        await transcript.record_accepted_input_and_notify(
+            _stored_message("user", "one")
+        )
+
+    assert await store.list(part()) == []
+
+
+@pytest.mark.anyio
 async def test_v2_recorder_persists_one_input_response_and_replays_display():
     store = InMemoryConversationStore()
     controller, _ = _make_controller(
