@@ -413,3 +413,15 @@ single-session atom and starts only after every Python consumer has moved.
   passes, 1 skip, and only the known unrelated `.md` MIME failure, so
   `make py-check` exits nonzero solely for that pre-existing test. No source
   files changed.
+- **Approved private-callback invariant (2026-08-28; job 1017;
+  `8a42c535`):** the `ContextVar` carries the source `Chat` plus the exact
+  immutable callback tuple. While that tuple remains pending or running in
+  `source_chat._pending_response_settlements`, any destructive `Chat`
+  mutation in that task lineage fails fast, regardless of the target `Chat`.
+  After dequeue, a copied child context is no longer blocked. This prevents
+  cross-`Chat` settlement deadlocks without adding a stack, lock, registry,
+  response queue, or client protocol; FIFO topology remains one deque, one
+  runner, and one wake-up.
+- **Verification:** 30 focused tests passed; Ruff and Pyright passed; the
+  full 191-test Playwright suite passed, with 654 tests passed, 1 skipped,
+  and the known MIME failure.
