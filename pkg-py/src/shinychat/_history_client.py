@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections import deque
+from collections.abc import Mapping, Sequence, Set
 from typing import Any, Protocol, runtime_checkable
 
 from ._chat_bookmark import is_chatlas_chat_client, serialize_chatlas_turn
@@ -16,7 +17,9 @@ def _validate_mapping_keys(value: Any) -> None:
                     "JSON object keys must already be strings."
                 )
             _validate_mapping_keys(nested)
-    elif isinstance(value, (list, tuple)):
+    elif isinstance(value, (str, bytes)):
+        return
+    elif isinstance(value, (Sequence, Set, deque)):
         for nested in value:
             _validate_mapping_keys(nested)
 

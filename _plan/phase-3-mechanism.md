@@ -616,6 +616,16 @@ child or the phase.
   capture points, restore/rewind boundaries, and one-display-stream
   transcript admission. Do not add a client journal, queue, or reconciliation
   path.
+- **3/3 PATCH disposition (2026-08-28; roborev job `1055`):** the follow-up
+  `shinychat#t9ee` decision is a narrow extension of the existing
+  `_validate_mapping_keys` recursion. Before JSON-mode model serialization, it
+  descends through finite Pydantic-supported non-mapping containers, including
+  `deque`, `set`, `frozenset`, and other finite sequences, while preserving
+  scalar `str`/`bytes` exclusions. JSON-only models retain the existing
+  `model_dump(mode="json")` fallback. A model-backed nested `deque` with mixed
+  mapping keys has a file-store regression proving rejection before any write.
+  This PATCH changes no ownership, concurrency, or reconciliation behavior and
+  does not revise the REPLACE contract above.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
