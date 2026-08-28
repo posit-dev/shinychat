@@ -1536,6 +1536,104 @@ def test_stream_transform_error_best_effort_closes_the_wire_and_owner():
     assert sent[-1] == {"type": "chunk_end"}
 
 
+def test_stream_generator_error_survives_terminal_cleanup_failure():
+    with session_context(test_session):
+        chat = Chat(id="generator_error_cleanup_failure", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("terminal cleanup failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _stream():
+            yield "kept"
+            raise RuntimeError("generator failed")
+
+        with pytest.raises(RuntimeError, match="generator failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": "generator failed"}
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_generator_cancellation_survives_terminal_cleanup_failure():
+    with session_context(test_session):
+        chat = Chat(id="generator_cancel_cleanup_failure", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("terminal cleanup failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _stream():
+            yield "kept"
+            raise asyncio.CancelledError()
+
+        with pytest.raises(asyncio.CancelledError):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "cancelled"
+    assert entry.error is None
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_context_error_survives_terminal_cleanup_failure():
+    with session_context(test_session):
+        chat = Chat(id="context_error_cleanup_failure", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("terminal cleanup failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            async with chat.message_stream_context() as stream:
+                await stream.append("kept")
+                raise RuntimeError("body failed")
+
+        with pytest.raises(RuntimeError, match="body failed"):
+            run_async(_exercise)
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": "body failed"}
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_context_cancellation_survives_terminal_cleanup_failure():
+    with session_context(test_session):
+        chat = Chat(id="context_cancel_cleanup_failure", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("terminal cleanup failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            async with chat.message_stream_context() as stream:
+                await stream.append("kept")
+                raise asyncio.CancelledError()
+
+        with pytest.raises(asyncio.CancelledError):
+            run_async(_exercise)
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "cancelled"
+    assert entry.error is None
+    assert chat._transcript.active_stream_id is None
+
+
 def test_stream_final_display_error_best_effort_closes_the_wire_and_owner():
     with session_context(test_session):
         chat = Chat(id="terminal_display_error", history=False)
@@ -1615,6 +1713,99 @@ def test_suppressed_chunk_commits_source_without_mutating_display():
         run_async(lambda: chat._append_message_stream(_stream()))
 
     assert chat._transcript.read()[0].message.content == "hiddenshown"
+
+
+def test_transformed_replacement_keeps_dependencies_from_suppressed_chunks():
+    with session_context(test_session):
+        chat = Chat(id="suppressed_chunk_dependencies", history=False)
+        hidden_dep = HTMLDependency(name="hidden", version="1.0")
+        visible_dep = HTMLDependency(name="visible", version="1.0")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append({"action": action, "deps": deps})
+
+        async def _transform(
+            content: str, chunk: str, done: bool
+        ) -> str | None:
+            return None if chunk == "hidden" else content.upper()
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transform_assistant = _transform
+        chat._serialize_html_deps = lambda deps: (  # type: ignore[method-assign]
+            [{"name": dep.name, "version": str(dep.version)} for dep in deps]
+            if deps
+            else None
+        )
+
+        async def _stream():
+            hidden = ChatMessage(content="hidden", role="assistant")
+            hidden.html_deps = [hidden_dep]
+            yield hidden
+            visible = ChatMessage(content="shown", role="assistant")
+            visible.html_deps = [visible_dep]
+            yield visible
+
+        run_async(lambda: chat._append_message_stream(_stream()))
+
+    expected_deps = [
+        {"name": "hidden", "version": "1.0"},
+        {"name": "visible", "version": "1.0"},
+    ]
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "HIDDENSHOWN"
+    assert entry.message.html_deps == expected_deps
+    visible_chunk = next(
+        item
+        for item in sent
+        if item["action"].get("type") == "chunk"
+        and item["action"]["content"] == "HIDDENSHOWN"
+    )
+    assert visible_chunk["deps"] == expected_deps
+
+
+def test_terminal_transformed_replacement_keeps_suppressed_dependencies():
+    with session_context(test_session):
+        chat = Chat(id="terminal_suppressed_dependencies", history=False)
+        hidden_dep = HTMLDependency(name="hidden", version="1.0")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append({"action": action, "deps": deps})
+
+        async def _transform(
+            content: str, chunk: str, done: bool
+        ) -> str | None:
+            if chunk == "hidden":
+                return None
+            return f"{content} final" if done else content.upper()
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transform_assistant = _transform
+        chat._serialize_html_deps = lambda deps: (  # type: ignore[method-assign]
+            [{"name": dep.name, "version": str(dep.version)} for dep in deps]
+            if deps
+            else None
+        )
+
+        async def _stream():
+            hidden = ChatMessage(content="hidden", role="assistant")
+            hidden.html_deps = [hidden_dep]
+            yield hidden
+
+        run_async(lambda: chat._append_message_stream(_stream()))
+
+    expected_deps = [{"name": "hidden", "version": "1.0"}]
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "hidden final"
+    assert entry.message.html_deps == expected_deps
+    final_chunk = next(
+        item
+        for item in sent
+        if item["action"].get("type") == "chunk"
+        and item["action"]["content"] == "hidden final"
+    )
+    assert final_chunk["deps"] == expected_deps
 
 
 def test_suppressed_terminal_transform_surfaces_end_send_failure():

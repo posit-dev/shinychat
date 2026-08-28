@@ -1191,10 +1191,11 @@ class Chat:
                         pass
                     self._transcript.abort_stream(
                         stream_id,
-                        status="error",
-                        error=str(terminal_error),
+                        status=status or "error",
+                        error=error or str(terminal_error),
                     )
-                    raise
+                    if status is None:
+                        raise
 
     async def _append_message_chunk(
         self,
@@ -1300,13 +1301,23 @@ class Chat:
                         send=send_end,
                     )
                 return True
-            if chunk == "end":
-                stream_deps = segments_deps(current_segments)
-                serialized_deps = self._serialize_html_deps(stream_deps)
-                # _transform_message returns a single-segment StoredMessage, so all stream
-                # deps belong on segments[0].
-                if serialized_deps and msg.segments:
-                    msg.segments[0].html_deps = serialized_deps
+            stream_deps = segments_deps(current_segments)
+            serialized_deps = self._serialize_html_deps(stream_deps)
+            # A transformed chunk replaces the visible stream content, so its
+            # wire spec owns every dependency accumulated by the source stream.
+            if serialized_deps and msg.segments:
+                transformed_deps = msg.html_deps or []
+                merged_deps = [
+                    *serialized_deps,
+                    *(
+                        dep
+                        for dep in transformed_deps
+                        if dep not in serialized_deps
+                    ),
+                ]
+                for segment in msg.segments:
+                    segment.html_deps = None
+                msg.segments[0].html_deps = merged_deps
 
         stored = self._as_stored_message(msg)
 
@@ -1593,10 +1604,11 @@ class Chat:
                         pass
                     self._transcript.abort_stream(
                         id,
-                        status="error",
-                        error=str(terminal_error),
+                        status=status or "error",
+                        error=error or str(terminal_error),
                     )
-                    raise
+                    if status is None:
+                        raise
 
     # Send a message to the UI
     async def _send_append_message(
