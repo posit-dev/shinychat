@@ -175,6 +175,7 @@ test_that("chat_server() accepts history = history_options() config", {
 
   client <- mock_chat_client()
   config <- history_options(store = "memory", max_store_mb = 10)
+  chat_module <- NULL
 
   shiny::testServer(
     function(input, output, session) {
