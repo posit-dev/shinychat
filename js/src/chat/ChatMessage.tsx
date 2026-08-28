@@ -1,4 +1,12 @@
-import { memo, useMemo, useState, useRef, useCallback, useEffect } from "react"
+import {
+  memo,
+  useMemo,
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  useContext,
+} from "react"
 import {
   deriveToolGroupIdentity,
   routeToolBlocks,
@@ -9,14 +17,20 @@ import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ThinkingDisplay } from "./ThinkingDisplay"
 import { ToolGroup } from "./ToolGroup"
 import { WebActivity } from "./WebActivity"
+import { RawHTML } from "./RawHTML"
 import { robot, dots_fade, arrowUpShort, pencil } from "../utils/icons"
 import {
   chatTagToComponentMap,
   untrustedChatTagToComponentMap,
 } from "./chatTagToComponentMap"
-import { useSlashCommands, useToolGrouping, useChatToolState } from "./context"
+import {
+  useSlashCommands,
+  useToolGrouping,
+  useChatToolState,
+  ShinyLifecycleContext,
+} from "./context"
 import { CommandChip } from "./CommandChip"
-import type { SlashCommandDef, ContentType } from "../transport/types"
+import type { SlashCommandDef, ContentType, HtmlDep } from "../transport/types"
 import {
   attachmentBadgeLabel,
   attachmentFamily,
@@ -303,7 +317,8 @@ export const ChatMessage = memo(function ChatMessage({
       ({ block }) =>
         block.type === "thinking" ||
         block.type === "tool_loop" ||
-        block.type === "web_activity",
+        block.type === "web_activity" ||
+        block.type === "html_block",
     ) ||
     (message.attachments?.length ?? 0) > 0 ||
     message.cancelled
@@ -459,6 +474,20 @@ export const ChatMessage = memo(function ChatMessage({
     // markup round-trip through the markdown pipeline.
     if (block.type === "web_activity") {
       return <WebActivity key={i} items={block.items} />
+    }
+
+    // A structured raw-HTML island (an html_block block): server-authored
+    // trusted HTML rendered directly through the shared RawHTML sink — no
+    // markdown-pipeline round-trip, and opaque to the thinking/fence state
+    // machine by construction.
+    if (block.type === "html_block") {
+      return (
+        <HtmlBlockContent
+          key={i}
+          content={block.content}
+          htmlDeps={block.htmlDeps}
+        />
+      )
     }
 
     if (leadingCommand && i === 0) {
@@ -682,3 +711,36 @@ export const ChatMessage = memo(function ChatMessage({
     </div>
   )
 })
+
+/**
+ * A structured `html_block` island: server-authored trusted HTML mounted
+ * through the shared RawHTML sink. Block-level dependencies render BEFORE
+ * the HTML mounts (ChatDrawer's ordering), so a dynamically-sent island's
+ * styles/scripts are in place before its markup — and its Shiny bindings —
+ * attach.
+ */
+function HtmlBlockContent({
+  content,
+  htmlDeps,
+}: {
+  content: string
+  htmlDeps: HtmlDep[]
+}) {
+  const shiny = useContext(ShinyLifecycleContext)
+  const [depsReady, setDepsReady] = useState(htmlDeps.length === 0)
+
+  useEffect(() => {
+    if (htmlDeps.length === 0) return
+    let cancelled = false
+    void (async () => {
+      await shiny?.renderDependencies(htmlDeps)
+      if (!cancelled) setDepsReady(true)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [htmlDeps, shiny])
+
+  if (!depsReady) return null
+  return <RawHTML html={content} />
+}

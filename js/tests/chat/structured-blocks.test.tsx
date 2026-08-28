@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
-import { fireEvent, render } from "@testing-library/react"
+import { fireEvent, render, act } from "@testing-library/react"
 
 vi.mock("../../src/chat/TiptapInput", async () => {
   const { FakeTiptapInput } = await import("../helpers/fakeTiptapInput")
@@ -7,7 +7,7 @@ vi.mock("../../src/chat/TiptapInput", async () => {
 })
 
 import { ChatMessages } from "../../src/chat/ChatMessages"
-import { ChatToolContext } from "../../src/chat/context"
+import { ChatToolContext, ShinyLifecycleContext } from "../../src/chat/context"
 import {
   chatReducer,
   initialState,
@@ -17,6 +17,7 @@ import {
 } from "../../src/chat/state"
 import type {
   ChatAction,
+  HtmlBlock,
   StructuredBlock,
   ToolRequestBlock,
   ToolResultBlock,
@@ -24,6 +25,7 @@ import type {
   WebSearchBlock,
   WebSearchResultsBlock,
 } from "../../src/transport/types"
+import type { ShinyLifecycle, HtmlDep } from "../../src/transport/types"
 
 // Keystone slice for the structured-content-types epic: `tool_request` and
 // `tool_result` structured blocks flow Python → wire → reducer → rendered
@@ -89,6 +91,28 @@ const webFetchBlock = (
   status: "success",
   ...overrides,
 })
+
+const htmlBlock = (overrides: Partial<HtmlBlock> = {}): HtmlBlock => ({
+  type: "html_block",
+  version: 1,
+  content: '<div class="island">Hello from HTML</div>',
+  ...overrides,
+})
+
+/** A minimal mock ShinyLifecycle for deps-before-innerHTML ordering tests. */
+function mockShiny(): ShinyLifecycle {
+  return {
+    bindAll: vi.fn().mockResolvedValue(undefined),
+    unbindAll: vi.fn(),
+    renderDependencies: vi.fn().mockResolvedValue(undefined),
+    showClientMessage: vi.fn(),
+  }
+}
+
+/** Minimal HtmlDep stub for tests (the real type is opaque from shiny). */
+function fakeDep(name: string): HtmlDep {
+  return { name, version: "1.0.0" } as unknown as HtmlDep
+}
 
 function makeState(overrides: Partial<ChatState> = {}): ChatState {
   return { ...initialState, ...overrides }
@@ -217,7 +241,7 @@ describe("structured tool_result block via message.segments", () => {
   it("ignores unknown block types and unsupported versions with a warning", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
     const unknownType = {
-      type: "html_block",
+      type: "future_block",
       version: 1,
       content: "<div></div>",
     } as unknown as StructuredBlock
@@ -360,7 +384,7 @@ describe("structured tool_result block via block_insert mid-stream", () => {
     state = chatReducer(state, {
       type: "block_insert",
       block: {
-        type: "html_block",
+        type: "future_block",
         version: 1,
         content: "<div></div>",
       } as unknown as StructuredBlock,
@@ -1017,5 +1041,273 @@ describe("structured web_* blocks via block_insert mid-stream", () => {
 
     expect(state.streamingMessage!.blocks).toHaveLength(0)
     expect(warn).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("structured html_block via message.segments", () => {
+  it("reduces to an html_block and renders innerHTML in segment order", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "Before the island. ", content_type: "markdown" },
+          htmlBlock({ content: "<p class='island'>Island HTML</p>" }),
+          { content: " After the island.", content_type: "markdown" },
+        ],
+      },
+    })
+
+    expect(state.messages).toHaveLength(1)
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual([
+      "content",
+      "html_block",
+      "content",
+    ])
+
+    const block = blocks[1]!
+    if (block.type !== "html_block") throw new Error("expected html_block")
+    expect(block.content).toBe("<p class='island'>Island HTML</p>")
+    expect(block.contentType).toBe("html")
+
+    const { container } = renderMessages(state.messages)
+    const island = container.querySelector(".island")
+    expect(island).not.toBeNull()
+    expect(island!.innerHTML).toBe("Island HTML")
+
+    // Content renders in segment order around the island.
+    const text = container.textContent ?? ""
+    expect(text.indexOf("Before the island.")).toBeLessThan(
+      text.indexOf("Island HTML"),
+    )
+    expect(text.indexOf("Island HTML")).toBeLessThan(
+      text.indexOf("After the island."),
+    )
+  })
+
+  it("merges block-level html_deps into the message htmlDeps", () => {
+    const dep = fakeDep("island-dep")
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [htmlBlock({ html_deps: [dep] })],
+      },
+    })
+
+    // Block-level deps ride the message envelope so snapshots retain them.
+    expect(state.messages[0]!.htmlDeps).toEqual([dep])
+  })
+
+  it("merges block-level deps with envelope-level html_deps", () => {
+    const blockDep = fakeDep("block-dep")
+    const envDep = fakeDep("env-dep")
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [htmlBlock({ html_deps: [blockDep] })],
+      },
+      html_deps: [envDep],
+    })
+
+    // Both sets merge onto the message.
+    expect(state.messages[0]!.htmlDeps).toEqual([blockDep, envDep])
+  })
+
+  it("ignores html_block in a user-role message with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "user",
+        segments: [htmlBlock()],
+      },
+    })
+
+    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual([])
+    expect(warn).toHaveBeenCalled()
+  })
+
+  it("ignores html_block with unsupported version with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "just text", content_type: "markdown" },
+          { ...htmlBlock(), version: 2 } as unknown as StructuredBlock,
+        ],
+      },
+    })
+
+    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual(["content"])
+    expect(warn).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("structured html_block via block_insert mid-stream", () => {
+  function startStream(state: ChatState): ChatState {
+    return chatReducer(state, {
+      type: "chunk_start",
+      message: { role: "assistant", segments: [] },
+    })
+  }
+
+  it("appends a render-ready html_block to the in-flight message", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "Before the island. ",
+      operation: "append",
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: htmlBlock({ content: "<p class='island'>Mid-stream island</p>" }),
+    })
+
+    // Mid-stream: the block is already render-ready.
+    const midBlocks = state.streamingMessage!.blocks
+    expect(midBlocks.map((b) => b.type)).toEqual(["content", "html_block"])
+
+    // A string chunk after a block_insert starts a NEW content block.
+    state = chatReducer(state, {
+      type: "chunk",
+      content: " After the island.",
+      operation: "append",
+    })
+    expect(state.streamingMessage!.blocks.map((b) => b.type)).toEqual([
+      "content",
+      "html_block",
+      "content",
+    ])
+
+    state = chatReducer(state, { type: "chunk_end" })
+    expect(state.streamingMessage).toBeNull()
+    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual([
+      "content",
+      "html_block",
+      "content",
+    ])
+
+    const { container } = renderMessages(state.messages)
+    expect(container.querySelector(".island")).not.toBeNull()
+    expect(container.textContent).toContain("Mid-stream island")
+
+    const text = container.textContent ?? ""
+    expect(text.indexOf("Before the island.")).toBeLessThan(
+      text.indexOf("Mid-stream island"),
+    )
+    expect(text.indexOf("Mid-stream island")).toBeLessThan(
+      text.indexOf("After the island."),
+    )
+  })
+
+  it("does not disturb thinking-tag/fence stream state", () => {
+    let state = startStream(makeState())
+    // Open a code fence, then insert an html_block: the fence state survives.
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "```\nsome code",
+      operation: "append",
+    })
+    expect(state.streamingMessage!.insideFence).toBe(true)
+
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: htmlBlock(),
+    })
+    // The block is opaque to the fence state machine.
+    expect(state.streamingMessage!.insideFence).toBe(true)
+    expect(state.streamingMessage!.blocks.map((b) => b.type)).toEqual([
+      "content",
+      "html_block",
+    ])
+  })
+
+  it("merges block-level deps into the streaming message htmlDeps", () => {
+    const dep = fakeDep("island-dep")
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: htmlBlock({ html_deps: [dep] }),
+    })
+
+    expect(state.streamingMessage!.htmlDeps).toEqual([dep])
+
+    state = chatReducer(state, { type: "chunk_end" })
+    expect(state.messages[0]!.htmlDeps).toEqual([dep])
+  })
+
+  it("ignores html_block with unsupported version with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: { ...htmlBlock(), version: 2 } as unknown as StructuredBlock,
+    })
+
+    expect(state.streamingMessage!.blocks).toHaveLength(0)
+    expect(warn).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("html_block deps-before-innerHTML ordering", () => {
+  it("renders dependencies before mounting innerHTML", async () => {
+    const shiny = mockShiny()
+    const dep = fakeDep("island-dep")
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [htmlBlock({ html_deps: [dep] })],
+      },
+    })
+
+    const { container } = render(
+      <ShinyLifecycleContext.Provider value={shiny}>
+        <ChatMessages messages={state.messages} inputId="test-input" />
+      </ShinyLifecycleContext.Provider>,
+    )
+
+    // While deps are pending, the island's innerHTML is NOT mounted.
+    // The HtmlBlockContent component returns null until depsReady.
+    expect(container.querySelector(".island")).toBeNull()
+    expect(shiny.renderDependencies).toHaveBeenCalledWith([dep])
+
+    // After deps resolve, the innerHTML mounts and Shiny binds it.
+    // The renderDependencies mock resolves on the next microtask; flush it
+    // so the component's useEffect callback runs and setDepsReady(true)
+    // re-renders with the island mounted.
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(container.querySelector(".island")).not.toBeNull()
+    expect(shiny.bindAll).toHaveBeenCalled()
+  })
+
+  it("mounts innerHTML immediately when no deps", () => {
+    const shiny = mockShiny()
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [htmlBlock({ content: "<p class='island'>No deps</p>" })],
+      },
+    })
+
+    const { container } = render(
+      <ShinyLifecycleContext.Provider value={shiny}>
+        <ChatMessages messages={state.messages} inputId="test-input" />
+      </ShinyLifecycleContext.Provider>,
+    )
+
+    // No deps → no deferred render; innerHTML is mounted immediately.
+    expect(container.querySelector(".island")).not.toBeNull()
+    expect(shiny.renderDependencies).not.toHaveBeenCalled()
+    expect(shiny.bindAll).toHaveBeenCalled()
   })
 })

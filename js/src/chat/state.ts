@@ -8,6 +8,7 @@ import type {
   SlashCommandDef,
   StructuredBlock,
   HtmlDep,
+  HtmlBlock as HtmlBlockWire,
 } from "../transport/types"
 import type { AttachmentPayload } from "./attachments"
 import { uuid } from "../utils/uuid"
@@ -61,11 +62,26 @@ export interface ThinkingBlock {
   durationMs?: number
   streaming: boolean
 }
+/**
+ * Render-model form of a structured `html_block`: a server-authored raw-HTML
+ * island. Carries `content`/`contentType` so the snapshot fallthrough
+ * (`blockToSegment`) persists it as an `html` string segment — the same
+ * shape the markup island path snapshots to.
+ */
+export interface HtmlBlock {
+  type: "html_block"
+  content: string
+  contentType: "html"
+  /** Block-level deps, rendered before the island's HTML mounts. */
+  htmlDeps: HtmlDep[]
+}
+
 export type MessageBlock =
   | ContentBlock
   | ThinkingBlock
   | ToolLoopBlock
   | WebActivityBlock
+  | HtmlBlock
 
 export interface ChatMessageData {
   id: string
@@ -217,11 +233,40 @@ function isStructuredSegment(seg: SegmentPayload): seg is StructuredBlock {
   return "type" in seg
 }
 
+/**
+ * Defensively narrow a structured block to a supported `html_block` wire
+ * block. `version` is a forward-compatibility marker: a block whose version
+ * this client predates is ignored with a warning rather than breaking the
+ * message around it (mirrors asWebActivityWireBlock).
+ */
+export function asHtmlBlock(block: StructuredBlock): HtmlBlockWire | null {
+  if ((block as { type?: unknown }).type !== "html_block") return null
+  const version = (block as { version?: unknown }).version
+  if (version !== 1) {
+    console.warn(
+      `Ignoring html_block block with unsupported version: ${String(version)}`,
+    )
+    return null
+  }
+  return block as HtmlBlockWire
+}
+
+/** Convert a validated `html_block` wire block to its render-model form. */
+function htmlBlockToRenderBlock(block: HtmlBlockWire): HtmlBlock {
+  return {
+    type: "html_block",
+    content: block.content,
+    contentType: "html",
+    htmlDeps: block.html_deps ?? [],
+  }
+}
+
 function messagePayloadToData(
   msg: MessagePayload,
   grouping: ToolGrouping = "tool",
 ): ChatMessageData {
   let rawBlocks: MessageBlock[] = []
+  let htmlDeps: HtmlDep[] | undefined
   for (const seg of msg.segments) {
     if (isStructuredSegment(seg)) {
       // Structured blocks are server-authored and arrive render-ready:
@@ -237,6 +282,17 @@ function messagePayloadToData(
         // arrival (re-expressing rehypeGroupWebActivity over blocks).
         const webBlock = asWebActivityWireBlock(seg)
         if (webBlock) rawBlocks = appendWebActivityBlock(rawBlocks, webBlock)
+        continue
+      }
+      if (seg.type === "html_block") {
+        // A raw-HTML island arrives render-ready. Its deps also ride the
+        // message so snapshots/persistence retain them (the envelope's own
+        // html_deps merge in the reducer cases below).
+        const htmlBlock = asHtmlBlock(seg)
+        if (htmlBlock) {
+          rawBlocks.push(htmlBlockToRenderBlock(htmlBlock))
+          htmlDeps = mergeHtmlDeps(htmlDeps, htmlBlock.html_deps)
+        }
         continue
       }
       const loop = structuredBlockToLoop(seg, grouping)
@@ -258,6 +314,7 @@ function messagePayloadToData(
     streaming: false,
     icon: msg.icon,
     ...(attachments.length > 0 ? { attachments } : {}),
+    ...(htmlDeps ? { htmlDeps } : {}),
     blocks,
     siblings: msg.siblings,
   }
@@ -410,9 +467,15 @@ function buildFenceCloseRe(marker: string): RegExp {
 function lastContentEndsWithNewline(blocks: MessageBlock[]): boolean {
   if (blocks.length === 0) return true
   const last = blocks[blocks.length - 1]!
-  // thinking and structured web_activity blocks are structural boundaries
-  // (the latter snapshots to an empty string), equivalent to a newline.
-  if (last.type === "thinking" || last.type === "web_activity") return true
+  // thinking and structured web_activity/html_block blocks are structural
+  // boundaries (a web_activity snapshots to an empty string; an html_block
+  // is a block-level island), equivalent to a newline.
+  if (
+    last.type === "thinking" ||
+    last.type === "web_activity" ||
+    last.type === "html_block"
+  )
+    return true
   return last.content === "" || last.content.endsWith("\n")
 }
 
@@ -667,7 +730,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     case "message": {
       const messages = removeLoadingMessage(state.messages)
       const data = messagePayloadToData(action.message, state.toolGrouping)
-      if (action.html_deps) data.htmlDeps = action.html_deps
+      // Merge over any block-level deps collected from structured segments.
+      if (action.html_deps)
+        data.htmlDeps = mergeHtmlDeps(data.htmlDeps, action.html_deps)
       return {
         ...state,
         messages: [...messages, data],
@@ -684,7 +749,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       newMsg.blocks = newMsg.blocks.map((b) =>
         b.type === "thinking" ? { ...b, streaming: true } : b,
       )
-      if (action.html_deps) newMsg.htmlDeps = action.html_deps
+      // Merge over any block-level deps collected from structured segments.
+      if (action.html_deps)
+        newMsg.htmlDeps = mergeHtmlDeps(newMsg.htmlDeps, action.html_deps)
       return {
         ...state,
         messages,
@@ -971,15 +1038,19 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       // Convert the wire block to its render-model form up front; unknown
       // types and unsupported versions warn and no-op. A web_* block joins
       // the trailing web activity (tolerating whitespace between carriers);
-      // a tool block becomes a one-call tool loop.
+      // a tool block becomes a one-call tool loop; an html_block is already
+      // render-ready.
       let webBlock: WebActivityWireBlock | null = null
       let loop: ToolLoopBlock | null = null
+      let htmlBlock: HtmlBlockWire | null = null
       if (isWebActivityWireBlock(action.block)) {
         webBlock = asWebActivityWireBlock(action.block)
+      } else if (action.block.type === "html_block") {
+        htmlBlock = asHtmlBlock(action.block)
       } else {
         loop = structuredBlockToLoop(action.block, state.toolGrouping)
       }
-      if (!webBlock && !loop) return state
+      if (!webBlock && !loop && !htmlBlock) return state
 
       let blocks = [...last.blocks]
 
@@ -1000,6 +1071,8 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
       if (webBlock) {
         blocks = appendWebActivityBlock(blocks, webBlock)
+      } else if (htmlBlock) {
+        blocks.push(htmlBlockToRenderBlock(htmlBlock))
       } else if (loop) {
         // Merge into an adjacent trailing tool loop when one exists (one
         // agentic loop), re-deriving groups from the combined calls.
@@ -1021,7 +1094,12 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         streamingMessage: {
           ...last,
           blocks,
-          htmlDeps: mergeHtmlDeps(last.htmlDeps, action.html_deps),
+          // Block-level deps ride the message too, so a snapshot of the
+          // settled message retains them.
+          htmlDeps: mergeHtmlDeps(
+            last.htmlDeps,
+            mergeHtmlDeps(action.html_deps, htmlBlock?.html_deps),
+          ),
         },
       }
     }
