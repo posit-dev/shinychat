@@ -2,6 +2,9 @@
 
 ## New features and improvements
 
+* `page_chat()` uses a wider content column on large displays while preserving
+  its existing width on smaller windows.
+
 * Added `page_chat()` for full-window chat pages with persistent chat
   navigation, responsive sidebars, optional page-specific sidebars, and
   drawers. Use it instead of
