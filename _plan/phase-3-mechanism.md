@@ -3,6 +3,9 @@
 **Status:** agreed 2026-08-28; store layout blocked on Q2 benchmark
 **Phase:** plan.md §4, Phase 3
 **Kata:** parent `shinychat#qf2r` under epic `shinychat#6d0d`
+**Review base:** `175d9acffc0f7e31e65fbeb3c3ba079f20f00972`
+(`docs: close Phase 2 mechanism`). Review all Phase 3 work as
+`175d9acffc0f7e31e65fbeb3c3ba079f20f00972..HEAD`.
 **Context:** `phase-2-mechanism.md` is closed historical context. This note is
 the Phase 3 gate and the only phase-local mechanism reference for new work.
 
