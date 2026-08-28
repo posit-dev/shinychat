@@ -7,9 +7,11 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal
 
 from ._attachments import Attachment, validate_attachments
+from ._chat_transcript import TranscriptEntry
 from ._chat_types import (
     HistoryNavigateAction,
     HistoryUpdateAction,
+    StoredMessage,
     UpdateInputAction,
     UpdateSiblingsAction,
 )
@@ -34,10 +36,13 @@ from ._history_title import (
 # NB: shiny is imported lazily inside methods throughout this module; a
 # top-level import would be circular (shiny.ui._chat imports shinychat).
 from ._history_types import (
+    CapturedMessage,
     ConversationRecord,
+    ConversationRecordV2,
     check_schema_version,
     new_conversation_id,
     new_conversation_record,
+    new_conversation_record_v2,
 )
 
 if TYPE_CHECKING:
@@ -48,6 +53,9 @@ if TYPE_CHECKING:
 
     from ._chat import Chat
     from ._chat_types import ChatGreeting
+
+
+_EXCHANGE_TREE_HISTORY_V2 = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -213,6 +221,72 @@ def extend_record_linear(
         node.ui = [*(node.ui or []), message]
 
 
+class _ExchangeRecorder:
+    """Private v2 capture owner for one history controller session."""
+
+    def __init__(self, controller: HistoryController) -> None:
+        self._controller = controller
+        self.record: ConversationRecordV2 | None = None
+
+    async def accepted_input(
+        self, exchange_id: str, message: StoredMessage
+    ) -> None:
+        controller = self._controller
+        if controller.partition is None:
+            raise RuntimeError("HistoryController not initialized")
+
+        if self.record is None:
+            title = " ".join(message.content.split())[:MAX_TITLE_LEN] or "New chat"
+            client_info = {
+                str(key): str(value)
+                for key, value in controller.adapter.client_info().items()
+            }
+            self.record = new_conversation_record_v2(
+                title=title,
+                client_info=client_info,
+            )
+
+        self.record.open_exchange(exchange_id, message)
+        await controller.store.put(controller.partition, self.record)
+
+    async def message_committed(
+        self, exchange_id: str | None, entry: TranscriptEntry
+    ) -> None:
+        if exchange_id is None or self.record is None:
+            return
+        if exchange_id not in self.record.nodes:
+            return
+        if entry.message.role not in ("user", "assistant"):
+            return
+        if self._controller.partition is None:
+            raise RuntimeError("HistoryController not initialized")
+
+        self.record.append_message(
+            exchange_id,
+            CapturedMessage.from_stored_message(entry.message, icon=entry.icon),
+        )
+        await self._controller.store.put(
+            self._controller.partition, self.record
+        )
+
+    async def replay_active_path(
+        self, record: ConversationRecordV2 | None = None
+    ) -> None:
+        target = self.record if record is None else record
+        if target is None:
+            return
+        for node_id in target.path_node_ids():
+            node = target.nodes[node_id]
+            if node.input is not None:
+                await self._controller.chat._restore_bookmark_message(
+                    node.input.model_dump(mode="json")
+                )
+            for message in node.messages:
+                await self._controller.chat._restore_bookmark_message(
+                    message.as_stored_message().model_dump(mode="json")
+                )
+
+
 class HistoryController:
     """Session-scoped orchestrator for conversation history."""
 
@@ -228,6 +302,7 @@ class HistoryController:
         save_callbacks: "list[Callable[[dict[str, Any]], None]] | None" = None,
         restore_callbacks: "list[Callable[[dict[str, Any]], None]] | None" = None,
         max_store_bytes: int | None = None,
+        use_exchange_tree: bool = False,
     ):
         self.chat = chat
         self.adapter = adapter
@@ -281,6 +356,9 @@ class HistoryController:
         self.max_store_bytes: int | None = max_store_bytes
         self._title_task: asyncio.Task[None] | None = None
         self._over_budget_warned: bool = False
+        self._exchange_recorder = (
+            _ExchangeRecorder(self) if use_exchange_tree else None
+        )
 
     # -- active conversation identity --------------------------------------
 
@@ -347,6 +425,10 @@ class HistoryController:
         record = await self.store.get(partition, conv_id)
         if record is not None:
             check_schema_version(record.schema_version)
+            if not isinstance(record, ConversationRecord):
+                raise ValueError(
+                    "Exchange-tree conversation records require the v2 history path."
+                )
         return record
 
     async def _put_record(
@@ -370,6 +452,8 @@ class HistoryController:
         outcome, so replay, clear, accepted input, and partial chunks do not
         settle history.
         """
+        if self._exchange_recorder is not None:
+            return
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
         turn_groups = self.adapter.get_turns_grouped()
@@ -488,6 +572,8 @@ class HistoryController:
 
     async def save_current(self) -> bool:
         """Persist the active conversation if it has ever been saved."""
+        if self._exchange_recorder is not None:
+            return False
         if self.record is None or self.partition is None:
             return False
         turn_groups = self.adapter.get_turns_grouped()
@@ -506,6 +592,13 @@ class HistoryController:
     def _restore_app_state(self, values: dict[str, Any]) -> None:
         for cb in self._restore_callbacks:
             cb(values)
+
+    async def replay_exchange_record(
+        self, record: ConversationRecordV2 | None = None
+    ) -> None:
+        if self._exchange_recorder is None:
+            raise RuntimeError("Exchange-tree history is not enabled")
+        await self._exchange_recorder.replay_active_path(record)
 
     # -- switch / new ----------------------------------------------------
 
@@ -955,8 +1048,15 @@ class ChatHistory:
             save_callbacks=self._save_callbacks,
             restore_callbacks=self._restore_callbacks,
             max_store_bytes=max_store_bytes,
+            use_exchange_tree=_EXCHANGE_TREE_HISTORY_V2,
         )
         self._controller = controller
+
+        if controller._exchange_recorder is not None:
+            chat._transcript.set_capture_callbacks(
+                on_accepted_input=controller._exchange_recorder.accepted_input,
+                on_message_committed=controller._exchange_recorder.message_committed,
+            )
 
         if restore_mode == "url":
 
@@ -1176,6 +1276,8 @@ class ChatHistory:
 
         async def _save_on_response():
             if controller.partition is None:
+                return
+            if controller._exchange_recorder is not None:
                 return
             try:
                 await controller.on_response()

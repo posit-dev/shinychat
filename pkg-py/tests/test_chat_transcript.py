@@ -86,6 +86,61 @@ async def test_append_sends_before_committing() -> None:
 
 
 @pytest.mark.anyio
+async def test_capture_events_are_awaited_after_their_commits() -> None:
+    events: list[tuple[str, str, int]] = []
+
+    async def accepted_input(exchange_id: str, message: StoredMessage) -> None:
+        events.append(("input", exchange_id, len(transcript.read())))
+        assert message.content == "question"
+
+    async def message_committed(
+        exchange_id: str | None, message: TranscriptEntry
+    ) -> None:
+        events.append(("message", exchange_id or "", len(transcript.read())))
+        assert message.message.content == "answer"
+
+    transcript = ChatTranscript(
+        on_accepted_input=accepted_input,
+        on_message_committed=message_committed,
+    )
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        entry("user", "question").message
+    )
+    await transcript.append(
+        entry("assistant", "answer"),
+        exchange_id=exchange_id,
+        send=sent,
+    )
+
+    assert events == [
+        ("input", exchange_id, 1),
+        ("message", exchange_id, 2),
+    ]
+
+
+@pytest.mark.anyio
+async def test_transport_failure_emits_no_message_capture_event() -> None:
+    captured: list[TranscriptEntry] = []
+
+    async def message_committed(
+        _exchange_id: str | None, message: TranscriptEntry
+    ) -> None:
+        captured.append(message)
+
+    transcript = ChatTranscript(on_message_committed=message_committed)
+
+    async def unsent() -> bool:
+        return False
+
+    assert not await transcript.append(
+        entry("assistant", "not sent"),
+        exchange_id=None,
+        send=unsent,
+    )
+    assert captured == []
+
+
+@pytest.mark.anyio
 async def test_append_commits_the_pre_send_snapshot() -> None:
     transcript = ChatTranscript()
     source = entry("assistant", "prepared", icon="<i>prepared</i>")

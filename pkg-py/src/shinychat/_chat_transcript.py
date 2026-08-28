@@ -12,6 +12,10 @@ AsyncCommitSend = Callable[[], Awaitable[bool]]
 AsyncActionSend = Callable[[], Awaitable[None]]
 ChangeCallback = Callable[[], None]
 StreamTerminalCallback = Callable[[], None]
+AcceptedInputCallback = Callable[[str, StoredMessage], Awaitable[None]]
+MessageCommittedCallback = Callable[
+    [str | None, "TranscriptEntry"], Awaitable[None]
+]
 StreamStatus = Literal["cancelled", "error"]
 
 
@@ -52,9 +56,13 @@ class ChatTranscript:
         *,
         on_change: ChangeCallback | None = None,
         on_stream_terminal: StreamTerminalCallback | None = None,
+        on_accepted_input: AcceptedInputCallback | None = None,
+        on_message_committed: MessageCommittedCallback | None = None,
     ) -> None:
         self._on_change = on_change
         self._on_stream_terminal = on_stream_terminal
+        self._on_accepted_input = on_accepted_input
+        self._on_message_committed = on_message_committed
         self._entries: tuple[TranscriptEntry, ...] = ()
         self._open_exchange_id: str | None = None
         self._stream: _InFlightStream | None = None
@@ -96,6 +104,7 @@ class ChatTranscript:
                 return False
             self._entries = (*self._entries, prepared)
             self._notify_change()
+            await self._notify_message_committed(exchange_id, prepared)
             return True
         finally:
             if release:
@@ -114,6 +123,26 @@ class ChatTranscript:
         self._open_exchange_id = exchange_id
         self._notify_change()
         return exchange_id
+
+    async def record_accepted_input_and_notify(
+        self, message: StoredMessage
+    ) -> str:
+        """Commit accepted input, then await its post-commit observer."""
+        exchange_id = self.record_accepted_input(message)
+        if self._on_accepted_input is not None:
+            await self._on_accepted_input(
+                exchange_id, message.model_copy(deep=True)
+            )
+        return exchange_id
+
+    def set_capture_callbacks(
+        self,
+        *,
+        on_accepted_input: AcceptedInputCallback | None,
+        on_message_committed: MessageCommittedCallback | None,
+    ) -> None:
+        self._on_accepted_input = on_accepted_input
+        self._on_message_committed = on_message_committed
 
     async def start_stream(
         self,
@@ -457,3 +486,9 @@ class ChatTranscript:
     def _notify_stream_terminal(self) -> None:
         if self._on_stream_terminal is not None:
             self._on_stream_terminal()
+
+    async def _notify_message_committed(
+        self, exchange_id: str | None, entry: TranscriptEntry
+    ) -> None:
+        if self._on_message_committed is not None:
+            await self._on_message_committed(exchange_id, entry.copy())

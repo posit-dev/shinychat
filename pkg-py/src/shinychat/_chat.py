@@ -459,7 +459,7 @@ class Chat:
                         role="user",
                         attachments=attachments,
                     )
-                    self._record_accepted_user_input(msg)
+                    await self._record_accepted_user_input_with_capture(msg)
                 except Exception as e:
                     await self._raise_exception(e)
 
@@ -485,7 +485,7 @@ class Chat:
                 if echo:
                     full_text = f"/{command} {user_text}".rstrip()
                     msg = ChatMessage(content=full_text, role="user")
-                    self._record_accepted_user_input(msg)
+                    await self._record_accepted_user_input_with_capture(msg)
                 cmds = self._slash_commands()
                 reg = cmds.get(command) if cmds else None
                 try:
@@ -2113,6 +2113,14 @@ class Chat:
         stored = self._as_stored_message(message)
         self._transcript.record_accepted_input(stored)
         self._latest_user_input.set(stored)
+
+    async def _record_accepted_user_input_with_capture(
+        self,
+        message: ChatMessage,
+    ) -> None:
+        stored = self._as_stored_message(message)
+        self._latest_user_input.set(stored)
+        await self._transcript.record_accepted_input_and_notify(stored)
 
     def user_input(self) -> "UserInput | None":
         """

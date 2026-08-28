@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 from _history_test_helpers import branch_from
+from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
+from shinychat._chat_types import StoredMessage, StoredSegment
 from shinychat._history import (
     HistoryController,
     do_bookmark_with_cleanup,
@@ -23,6 +25,7 @@ from shinychat._history_store import (
 from shinychat._history_types import (
     MAX_SCHEMA_VERSION,
     ConversationRecord,
+    ConversationRecordV2,
     UnsupportedSchemaVersionError,
     new_conversation_record,
 )
@@ -214,6 +217,7 @@ class _FakeChat:
     def __init__(self) -> None:
         self.set_greeting_calls: list[Any] = []
         self.destructive_preflight_calls = 0
+        self.restored_messages: list[dict[str, Any]] = []
 
     def _messages_for_bookmark(self) -> list[Any]:
         return []
@@ -233,7 +237,7 @@ class _FakeChat:
         yield
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
-        pass
+        self.restored_messages.append(message_dict)
 
     async def set_greeting(self, greeting: Any) -> None:
         self.set_greeting_calls.append(greeting)
@@ -305,6 +309,8 @@ class _PartitionCaptureStore(ConversationStore):
 def _make_controller(
     store: ConversationStore | None = None,
     save_callbacks: list[Callable[[dict[str, Any]], None]] | None = None,
+    *,
+    use_exchange_tree: bool = False,
 ) -> tuple[HistoryController, Any]:
     resolved_store = store if store is not None else _RecordingStore()
     controller = HistoryController(
@@ -315,9 +321,86 @@ def _make_controller(
         title_enabled=False,
         client=None,
         save_callbacks=save_callbacks,
+        use_exchange_tree=use_exchange_tree,
     )
     controller.partition = part()
     return controller, resolved_store
+
+
+def _stored_message(role: str, content: str) -> StoredMessage:
+    return StoredMessage(
+        role=role,  # type: ignore[arg-type]
+        segments=[StoredSegment(content=content, content_type="markdown")],
+    )
+
+
+@pytest.mark.anyio
+async def test_v2_recorder_persists_one_input_response_and_replays_display():
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+    )
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "hello")
+    )
+    await transcript.append(
+        TranscriptEntry(message=_stored_message("assistant", "hi")),
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    assert controller.record is None
+    node = record.nodes[exchange_id]
+    assert node.status == "ok"
+    assert node.input is not None and node.input.content == "hello"
+    assert [message.as_stored_message().content for message in node.messages] == [
+        "hi"
+    ]
+
+    await controller.on_response()
+    assert (await store.get(part(), record.id)) == record
+
+    restored, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+    )
+    stored = await store.get(part(), record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    await restored.replay_exchange_record(stored)
+    fake_chat = cast(_FakeChat, restored.chat)
+    assert [message["role"] for message in fake_chat.restored_messages] == [
+        "user",
+        "assistant",
+    ]
+    assert [
+        message["segments"][0]["content"]
+        for message in fake_chat.restored_messages
+    ] == ["hello", "hi"]
+
+
+async def _sent() -> bool:
+    return True
+
+
+@pytest.mark.anyio
+async def test_exchange_recorder_is_default_off_and_uses_v1_save_path():
+    controller, store = _make_controller()
+
+    assert controller._exchange_recorder is None
+    await controller.on_response()
+
+    assert len(store.put_calls) == 1
+    assert isinstance(store.put_calls[0][1], ConversationRecord)
 
 
 @pytest.mark.anyio
