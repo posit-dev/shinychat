@@ -524,8 +524,9 @@ child or the phase.
   inert/non-throwing until partition/restore selection; Phase 5 owns the
   guard for all capture-eligible initial sends and user submission. No buffer,
   provisional record or merge, queue, timer, reconciliation, or second owner
-  is added. The `shinychat#19dk` fix restores safe no-op behavior and leaves
-  job `1044` open only until its corrective review is requested.
+  is added. Commit `65a9e8cb` restores safe no-op behavior and regression
+  coverage for complete and streamed pre-partition sends. Job `1044` is closed
+  stale on that fix; fresh job `1046` reviews `b4f446e8..65a9e8cb`.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
