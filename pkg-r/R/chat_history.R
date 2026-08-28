@@ -129,7 +129,8 @@ HistoryController <- R6::R6Class(
         recorded_turns,
         ui_messages = messages,
         ui_offset = self$ui_offset,
-        tools = private$client$get_tools()
+        tools = private$client$get_tools(),
+        session = private$session
       )
       self$ui_offset <- length(messages)
       self$record$response_count <- (self$record$response_count %||% 0L) + 1L
@@ -289,24 +290,21 @@ HistoryController <- R6::R6Class(
         for (node_id in record_path_node_ids(record)) {
           node <- record$nodes[[node_id]]
           stored <- node$ui
-          if (is.null(stored)) {
-            last_turn <- node$turns[[length(node$turns)]]
-            last_turn_live <- ellmer::contents_replay(
-              last_turn,
-              tools = private$client$get_tools()
-            )
-            stored <- list(
-              list(
-                role = ellmer_turn_effective_role(last_turn_live),
-                segments = list(
-                  list(
-                    content = turn_fallback_markdown(last_turn),
-                    content_type = "markdown"
-                  )
-                )
-              )
+
+          # Old-format stored UI (string-only, no version marker) is discarded
+          # and re-derived from the node's stored turns via contents_shinychat
+          # (P4). This ensures structured blocks (tool cards, web blocks,
+          # html_block) are present on replay, not lost as they were in the
+          # client-snapshot era. A NULL ui (no stored UI at all) is also
+          # re-derived from turns.
+          if (is.null(stored) || !is_stored_ui_versioned(stored)) {
+            stored <- derive_node_ui_from_turns(
+              node,
+              tools = private$client$get_tools(),
+              session = private$session
             )
           }
+
           for (message in stored) {
             restore_history_message(
               private$chat_id,
@@ -358,7 +356,8 @@ HistoryController <- R6::R6Class(
         recorded_turns,
         ui_messages = messages,
         ui_offset = self$ui_offset,
-        tools = private$client$get_tools()
+        tools = private$client$get_tools(),
+        session = private$session
       )
       self$record$values <- private$capture_app_state()
       self$put_record(self$partition, self$record)
