@@ -2706,6 +2706,74 @@ def test_stream_start_send_failure_does_not_commit():
     assert chat._transcript.active_stream_id is None
 
 
+def test_stream_start_persistence_failure_closes_sent_stream():
+    with session_context(test_session):
+        chat = Chat(id="start_persistence_error", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        async def _fail_started(
+            _stream_id: str, _exchange_id: str | None, _entry: Any
+        ) -> None:
+            raise RuntimeError("start persistence failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transcript.set_capture_callbacks(
+            on_accepted_input=None,
+            on_message_committed=None,
+            on_stream_started=_fail_started,
+            on_stream_updated=None,
+            on_stream_finished=None,
+        )
+
+        async def _stream():
+            yield "not reached"
+
+        with pytest.raises(RuntimeError, match="start persistence failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.status == "error"
+    assert entry.error == {"message": "start persistence failed"}
+    assert chat._transcript.active_stream_id is None
+    assert sent[-1] == {"type": "chunk_end"}
+
+
+def test_stream_finish_persistence_failure_preserves_the_callback_error():
+    with session_context(test_session):
+        chat = Chat(id="finish_persistence_error", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        async def _fail_finished(
+            _stream_id: str, _status: str, _error: str | None
+        ) -> None:
+            raise RuntimeError("finish persistence failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transcript.set_capture_callbacks(
+            on_accepted_input=None,
+            on_message_committed=None,
+            on_stream_started=None,
+            on_stream_updated=None,
+            on_stream_finished=_fail_finished,
+        )
+
+        async def _stream():
+            yield "kept"
+
+        with pytest.raises(RuntimeError, match="finish persistence failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    assert chat._transcript.read()[0].message.content == "kept"
+    assert chat._transcript.active_stream_id is None
+    assert [action["type"] for action in sent].count("chunk_end") == 1
+
+
 def test_stream_preserves_sent_partial_when_terminal_send_fails():
     with session_context(test_session):
         chat = Chat(id="terminal_error", history=False)

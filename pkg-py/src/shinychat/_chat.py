@@ -1194,9 +1194,31 @@ class Chat:
         started = False
         if is_root_stream:
             stream_id = _utils.private_random_id()
-            started = await self._append_message_chunk(
-                "", chunk="start", stream_id=stream_id
-            )
+            try:
+                started = await self._append_message_chunk(
+                    "", chunk="start", stream_id=stream_id
+                )
+            except BaseException as start_error:
+                if self._transcript.active_stream_id == stream_id:
+                    try:
+                        await self._append_message_chunk(
+                            "",
+                            chunk="end",
+                            stream_id=stream_id,
+                            status="error",
+                            error=str(start_error),
+                        )
+                    except BaseException:
+                        if self._transcript.active_stream_id == stream_id:
+                            try:
+                                await self._transcript.abort_stream(
+                                    stream_id,
+                                    status="error",
+                                    error=str(start_error),
+                                )
+                            except BaseException:
+                                pass
+                raise
             if not started:
                 raise RuntimeError("Could not start a message stream.")
         elif not self._transcript.stream_is_owned_by(asyncio.current_task()):
@@ -1234,29 +1256,30 @@ class Chat:
                         error=error,
                     )
                 except BaseException as terminal_error:
-                    try:
-                        await self._send_action({"type": "chunk_end"})
-                    except BaseException:
-                        pass
-                    terminal_status = (
-                        "cancelled"
-                        if status is None
-                        and isinstance(terminal_error, asyncio.CancelledError)
-                        else status or "error"
-                    )
-                    await self._transcript.abort_stream(
-                        stream_id,
-                        status=terminal_status,
-                        error=(
-                            None
-                            if terminal_status == "cancelled"
-                            else (
-                                error
-                                if error is not None
-                                else str(terminal_error)
-                            )
-                        ),
-                    )
+                    if self._transcript.active_stream_id == stream_id:
+                        try:
+                            await self._send_action({"type": "chunk_end"})
+                        except BaseException:
+                            pass
+                        terminal_status = (
+                            "cancelled"
+                            if status is None
+                            and isinstance(terminal_error, asyncio.CancelledError)
+                            else status or "error"
+                        )
+                        await self._transcript.abort_stream(
+                            stream_id,
+                            status=terminal_status,
+                            error=(
+                                None
+                                if terminal_status == "cancelled"
+                                else (
+                                    error
+                                    if error is not None
+                                    else str(terminal_error)
+                                )
+                            ),
+                        )
                     if status is None:
                         raise
 
@@ -1645,10 +1668,12 @@ class Chat:
             return "".join(str(s) for s in self._transcript.stream_segments(id))
         except asyncio.CancelledError:
             status = "cancelled"
+            started = started or self._transcript.active_stream_id == id
             raise
         except BaseException as e:
             status = "error"
             error = str(e)
+            started = started or self._transcript.active_stream_id == id
             raise
         finally:
             if started:
@@ -1661,29 +1686,30 @@ class Chat:
                         error=error,
                     )
                 except BaseException as terminal_error:
-                    try:
-                        await self._send_action({"type": "chunk_end"})
-                    except BaseException:
-                        pass
-                    terminal_status = (
-                        "cancelled"
-                        if status is None
-                        and isinstance(terminal_error, asyncio.CancelledError)
-                        else status or "error"
-                    )
-                    await self._transcript.abort_stream(
-                        id,
-                        status=terminal_status,
-                        error=(
-                            None
-                            if terminal_status == "cancelled"
-                            else (
-                                error
-                                if error is not None
-                                else str(terminal_error)
-                            )
-                        ),
-                    )
+                    if self._transcript.active_stream_id == id:
+                        try:
+                            await self._send_action({"type": "chunk_end"})
+                        except BaseException:
+                            pass
+                        terminal_status = (
+                            "cancelled"
+                            if status is None
+                            and isinstance(terminal_error, asyncio.CancelledError)
+                            else status or "error"
+                        )
+                        await self._transcript.abort_stream(
+                            id,
+                            status=terminal_status,
+                            error=(
+                                None
+                                if terminal_status == "cancelled"
+                                else (
+                                    error
+                                    if error is not None
+                                    else str(terminal_error)
+                                )
+                            ),
+                        )
                     if status is None:
                         raise
 

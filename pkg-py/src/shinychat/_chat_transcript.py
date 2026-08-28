@@ -188,20 +188,19 @@ class ChatTranscript:
         # admission check while this start is in flight.
         self._stream = reserved
         try:
-            sent = await send()
+            try:
+                sent = await send()
+            except BaseException:
+                if self._stream is reserved:
+                    self._stream = None
+                raise
             if not sent:
                 self._stream = None
                 return False
             self._entries = (*self._entries, prepared)
             self._notify_change()
-            await self._notify_stream_started(
-                stream_id, exchange_id, prepared
-            )
+            await self._notify_stream_started(stream_id, exchange_id, prepared)
             return True
-        except BaseException:
-            if self._stream is reserved:
-                self._stream = None
-            raise
         finally:
             if release:
                 self._release_transaction(transaction)
