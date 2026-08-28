@@ -602,3 +602,39 @@ def test_chat_message_html_content_with_supplied_blocks_merges_order():
     assert first == {"content": "", "content_type": "html"}
     assert cast("HtmlBlock", wire[1])["type"] == "html_block"
     assert cast("ToolResultBlock", wire[2])["type"] == "tool_result"
+
+
+def test_turn_normalization_reindexes_block_dep_objects():
+    """Turn normalization combines item messages into a new ChatMessage; the
+    per-block dep-object map must be reindexed onto the combined block list
+    or _as_stored_message can't session-process the deps. See kata#rpx1."""
+    from chatlas import Turn
+    from chatlas._content import ContentText
+    from htmltools import HTMLDependency
+    from shinychat import _chat_normalize
+    from shinychat._chat_types import ChatMessage
+
+    dep = HTMLDependency(
+        "testlib", "1.0", source={"href": "/test"}, script={"src": "test.js"}
+    )
+
+    # Turn contents are a closed union of chatlas types, none of which
+    # produce html_blocks today — simulate a future content type by
+    # patching the per-item normalizer.
+    def fake_normalize(x: object) -> ChatMessage:
+        return ChatMessage(content=TagList(div("x"), dep))
+
+    turn = Turn(
+        [ContentText(text="a"), ContentText(text="b")], role="assistant"
+    )
+    original = _chat_normalize.normalize_message
+    _chat_normalize.normalize_message = fake_normalize  # type: ignore[assignment]
+    try:
+        m = _chat_normalize.message_content(turn)
+    finally:
+        _chat_normalize.normalize_message = original  # type: ignore[assignment]
+
+    assert len(m.blocks) == 2
+    assert set(m._block_html_deps.keys()) == {0, 1}
+    assert m._block_html_deps[0][0].name == "testlib"
+    assert m._block_html_deps[1][0].name == "testlib"

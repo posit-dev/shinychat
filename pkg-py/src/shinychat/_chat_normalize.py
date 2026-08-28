@@ -438,6 +438,10 @@ try:
         # wire emission can reproduce the turn's original content order
         # (text/tool-result/text must not arrive as text/text/tool-result).
         parts: list[str | StructuredBlock] = []
+        # Per-block dependency objects from item messages, reindexed to the
+        # combined block list, so _as_stored_message can session-process
+        # them (raw as_dict() on the block is only the no-session fallback).
+        block_dep_objs: dict[int, list[HTMLDependency]] = {}
         for x in message.contents:
             # Normalize and wrap per item, mirroring R's
             # `contents_shinychat_wrapped()`.
@@ -453,7 +457,10 @@ try:
             deps += item.html_deps
             # Structured blocks (e.g. `tool_result`) can't be concatenated
             # into the content string; they travel alongside it.
+            offset = len(blocks)
             blocks.extend(item.blocks)
+            for idx, block_deps in item._block_html_deps.items():
+                block_dep_objs[offset + idx] = block_deps
             if item.content:
                 # Coalesce adjacent string items into one run: string runs
                 # and blocks strictly alternate in `parts`.
@@ -475,6 +482,7 @@ try:
             content=content, role=role, blocks=blocks, parts=parts or None
         )
         result.html_deps = deps + result.html_deps
+        result._block_html_deps = block_dep_objs
         return result
 
     @message_content_chunk.register
