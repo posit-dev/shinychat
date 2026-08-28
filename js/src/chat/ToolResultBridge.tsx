@@ -38,10 +38,10 @@ export function ToolResultBridge({
   icon,
   footer,
 }: ToolResultBridgeProps) {
-  // Complete tool elements are consumed by routeToolBlocks before Markdown
-  // rendering. This bridge is fallback-only for incomplete or otherwise
-  // unrouted assistant content, so a custom payload must wait for that router
-  // path rather than becoming a subtly incorrect ordinary card.
+  // Complete tool elements travel as structured blocks, not markup. This
+  // bridge is fallback-only for tool markup in html-typed string content
+  // (e.g. legacy emitters), so a custom payload must wait for that path
+  // rather than becoming a subtly incorrect ordinary card.
   if (isTruthyAttribute(customDisplay)) return null
 
   // No longer announces that it supersedes its request: ChatApp derives that

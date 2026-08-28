@@ -31,7 +31,7 @@ export type StructuredBlockGrouping = "none" | "tool" | "all"
  * trust signal: only the server can construct these blocks, so trusted-HTML
  * fields (`title`, `icon`) render through the shared RawHTML sink while text
  * fields are escaped. The client derives a `running` call from an unpaired
- * request (the same convention `pairToolEvents` uses for new request ids).
+ * request (a request with no result of the same `request_id` yet).
  */
 export type ToolRequestBlock = {
   type: "tool_request"

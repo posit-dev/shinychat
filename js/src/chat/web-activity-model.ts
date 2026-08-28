@@ -79,6 +79,18 @@ export function asWebActivityWireBlock(
     )
     return null
   }
+  const required =
+    block.type === "web_search"
+      ? typeof (block as { query?: unknown }).query === "string"
+      : block.type === "web_fetch"
+        ? typeof (block as { url?: unknown }).url === "string"
+        : Array.isArray((block as { sources?: unknown }).sources)
+  if (!required) {
+    console.warn(
+      `Ignoring malformed ${block.type} block: required fields missing or mistyped`,
+    )
+    return null
+  }
   return block
 }
 

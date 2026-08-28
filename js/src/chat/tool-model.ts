@@ -12,9 +12,10 @@ import type { ToolResultOpenStyle } from "./tool-protocol"
 export type ToolGrouping = "none" | "tool" | "all"
 
 /**
- * One tool call — a request and/or its matching result, parsed out of
- * assistant content by the content router. It carries both condensed-view
- * metadata and the payload needed to render the leaf card.
+ * One tool call — a request and/or its matching result, built from
+ * structured tool_request/tool_result blocks in the reducer. It carries
+ * both condensed-view metadata and the payload needed to render the leaf
+ * card.
  */
 export interface ToolCallItem {
   /**
@@ -311,6 +312,16 @@ export function structuredBlockToLoop(
   if (version !== 1) {
     console.warn(
       `Ignoring ${type} block with unsupported version: ${String(version)}`,
+    )
+    return null
+  }
+  const { request_id, tool_name } = block as {
+    request_id?: unknown
+    tool_name?: unknown
+  }
+  if (typeof request_id !== "string" || typeof tool_name !== "string") {
+    console.warn(
+      `Ignoring malformed ${type} block: request_id and tool_name must be strings`,
     )
     return null
   }

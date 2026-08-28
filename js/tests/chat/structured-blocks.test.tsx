@@ -1213,6 +1213,24 @@ describe("structured html_block via message.segments", () => {
     expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual(["content"])
     expect(warn).toHaveBeenCalledTimes(1)
   })
+
+  it("ignores a malformed html_block (missing content) with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const malformed = { type: "html_block", version: 1 }
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "just text", content_type: "markdown" },
+          malformed as unknown as StructuredBlock,
+        ],
+      },
+    })
+
+    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual(["content"])
+    expect(warn).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe("structured html_block via block_insert mid-stream", () => {

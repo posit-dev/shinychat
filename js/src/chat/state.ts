@@ -246,6 +246,12 @@ export function asHtmlBlock(block: StructuredBlock): HtmlBlockWire | null {
     )
     return null
   }
+  if (typeof (block as { content?: unknown }).content !== "string") {
+    console.warn(
+      "Ignoring malformed html_block block: content must be a string",
+    )
+    return null
+  }
   return block as HtmlBlockWire
 }
 
@@ -1105,7 +1111,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           // settled message retains them.
           htmlDeps: mergeHtmlDeps(
             last.htmlDeps,
-            mergeHtmlDeps(action.html_deps, htmlBlock?.html_deps),
+            // Block deps first, then envelope deps — same order as the
+            // message/chunk_start paths.
+            mergeHtmlDeps(htmlBlock?.html_deps, action.html_deps),
           ),
         },
       }
