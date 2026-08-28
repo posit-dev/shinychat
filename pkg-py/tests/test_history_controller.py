@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from _history_test_helpers import branch_from
+from pydantic import BaseModel
 from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
 from shinychat._chat_types import StoredMessage, StoredSegment
 from shinychat._history import (
@@ -24,6 +25,7 @@ from shinychat._history import (
     do_bookmark_with_cleanup,
     extend_record_linear,
 )
+from shinychat._history_client import TurnsAdapter
 from shinychat._history_store import (
     ConversationPartition,
     ConversationStore,
@@ -519,6 +521,40 @@ async def test_v2_recorder_snapshots_chatlas_system_prompt_at_root_close():
     state = recorder.record.nodes[exchange_id].state["shinychat:turns"]  # type: ignore[union-attr]
     assert state.mode == "delta"
     assert state.data == [new_turn]
+
+
+@pytest.mark.anyio
+async def test_v2_recorder_captures_model_backed_generic_turns():
+    class ModelTurn(BaseModel):
+        role: str
+        content: str
+
+    class ModelClient:
+        def __init__(self) -> None:
+            self.turns = [ModelTurn(role="user", content="hello")]
+
+        def get_turns(self) -> list[ModelTurn]:
+            return list(self.turns)
+
+        def set_turns(self, turns: list[ModelTurn]) -> None:
+            self.turns = list(turns)
+
+    client = ModelClient()
+    controller, _ = _make_controller(
+        use_exchange_tree=True,
+        adapter=TurnsAdapter(client),  # type: ignore[arg-type]
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
+
+    state = recorder.record.nodes["n_0000"].state["shinychat:turns"]  # type: ignore[union-attr]
+    assert state.kind == "turns"
+    assert state.data == [{"role": "user", "content": "hello"}]
 
 
 @pytest.mark.anyio

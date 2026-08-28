@@ -40,7 +40,12 @@ class TurnsAdapter:
             turns = raw.get_turns(include_system_prompt=include_system_prompt)
             return [serialize_chatlas_turn(t) for t in turns]
         turns = raw.get_turns()
-        return list(turns)
+        return [
+            turn.model_dump(mode="json")
+            if hasattr(turn, "model_dump")
+            else turn
+            for turn in turns
+        ]
 
     def is_chatlas(self) -> bool:
         return is_chatlas_chat_client(self._turns_client())
