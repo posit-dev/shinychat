@@ -7,6 +7,7 @@ import os
 import re
 import warnings
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -163,6 +164,11 @@ class _PendingResponseSettlement:
     consumers: tuple[_ResponseSettlementConsumer, ...]
     owner_task: asyncio.Task[Any] | None = None
     completion: asyncio.Future[None] | None = None
+
+
+_response_settlement_delivery: ContextVar[
+    _PendingResponseSettlement | None
+] = ContextVar("_response_settlement_delivery", default=None)
 
 
 @dataclass(frozen=True)
@@ -1813,16 +1819,20 @@ class Chat:
                 for consumer in delivery.consumers:
                     if consumer.cancelled:
                         continue
+                    delivery_token = _response_settlement_delivery.set(delivery)
                     try:
-                        await consumer.callback()
-                    except BaseException as error:
                         try:
-                            warnings.warn(
-                                f"Chat response settlement callback failed: {error}",
-                                stacklevel=2,
-                            )
-                        except BaseException:
-                            pass
+                            await consumer.callback()
+                        except BaseException as error:
+                            try:
+                                warnings.warn(
+                                    f"Chat response settlement callback failed: {error}",
+                                    stacklevel=2,
+                                )
+                            except BaseException:
+                                pass
+                    finally:
+                        _response_settlement_delivery.reset(delivery_token)
         finally:
             try:
                 self._pending_response_settlements.remove(delivery)
@@ -1835,6 +1845,15 @@ class Chat:
     async def _destructive_history_mutation(self):
         """Reserve destructive transcript admission through settlement and mutation."""
         task = asyncio.current_task()
+        if any(
+            delivery is _response_settlement_delivery.get()
+            and delivery.completion is not None
+            and not delivery.completion.done()
+            for delivery in self._pending_response_settlements
+        ):
+            raise RuntimeError(
+                "Cannot clear or restore messages while response settlement is being delivered."
+            )
         if any(
             delivery.owner_task is task
             and delivery.completion is not None

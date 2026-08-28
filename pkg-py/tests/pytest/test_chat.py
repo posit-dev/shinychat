@@ -569,6 +569,44 @@ def test_settlement_consumer_cannot_clear_before_later_consumers():
     )
 
 
+def test_settlement_consumer_child_task_cannot_clear_before_later_consumers():
+    rejected: list[str] = []
+    settled: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(test_session):
+        chat = Chat("settlement_child_reentrant_clear", history=False)
+
+        async def clear_in_child() -> None:
+            with pytest.raises(RuntimeError, match="settlement is being delivered"):
+                await chat.clear_messages()
+            rejected.append("clear")
+
+        async def clear_during_settlement() -> None:
+            await asyncio.create_task(clear_in_child())
+
+        async def observe_settlement() -> None:
+            settled.append(chat.messages())
+
+        chat._on_response_settled(clear_during_settlement)
+        chat._on_response_settled(observe_settlement)
+
+        async def flush_response() -> None:
+            await chat.append_message("source response")
+            await asyncio.wait_for(reactive.flush(), timeout=1)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            run_async(flush_response)
+
+    assert rejected == ["clear"]
+    assert settled == [
+        (ChatMessageDict(content="source response", role="assistant"),)
+    ]
+    assert chat.messages() == (
+        ChatMessageDict(content="source response", role="assistant"),
+    )
+
+
 def test_cancelled_response_settlement_consumer_skips_pending_delivery():
     settled: list[str] = []
 
