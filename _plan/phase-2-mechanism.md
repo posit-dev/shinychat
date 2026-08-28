@@ -360,3 +360,19 @@ single-session atom and starts only after every Python consumer has moved.
   implementation and regression review; leave the normal `on_flushed` path,
   issue status/owner/relationships, `needs-review`, and
   `work.attention="ok"` unchanged.
+- **Settlement-drain implementation landed/in review (2026-08-28;
+  `shinychat#dy7g`; `c225bb8e`):** each terminal response now has a private
+  pending lifecycle-local delivery. Normal `reactive.on_flushed` settlement
+  remains unchanged; clear and destructive history paths first reject an
+  active stream, drain every pending delivery once, then mutate. The covered
+  paths are clear, switch, new chat, delete, replay, branch navigation/edit,
+  and initial restore/rebuild. Consumer failures remain isolated.
+- **Verification:** focused terminal/history regressions passed, including
+  pre-clear automatic bookmark serialization, original-history attribution on
+  new chat, no-consumer clear, batched complete appends, active-stream
+  zero-mutation rejection, stream terminal outcomes, and old-stream
+  attribution. Focused history/bookmark/action Playwright tests passed (7).
+  `make py-check` passed: Ruff, Pyright, 191 Playwright tests, and 640
+  non-browser tests. JS, R, packaged assets, and the legacy
+  `shinychat.messages` handler/input/parser remain untouched for
+  `shinychat#47fa`. `shinychat#dy7g` remains open with `needs-review`.
