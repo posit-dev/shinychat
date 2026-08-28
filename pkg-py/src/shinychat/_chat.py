@@ -2006,6 +2006,7 @@ class Chat:
         """
         self._destroy_effects()
         self._destroy_bookmarking()
+        self.history._teardown()
 
     def _destroy_effects(self):
         for x in self._effects:
