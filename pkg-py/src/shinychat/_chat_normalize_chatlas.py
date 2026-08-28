@@ -20,7 +20,7 @@ from packaging import version
 from pydantic import BaseModel, field_serializer, field_validator
 from typing_extensions import TypeAliasType
 
-from ._chat_types import ChatMessage, ToolResultBlock
+from ._chat_types import ChatMessage, ToolRequestBlock, ToolResultBlock
 from ._htmltools_serialization import SerializedHTML, serialize_htmltools
 
 if TYPE_CHECKING:
@@ -535,6 +535,61 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
         label=display.label,
         value_preview=display.value_preview,
     )
+
+
+def tool_request_block(
+    component: ToolRequestComponent,
+) -> "tuple[ToolRequestBlock, list[HTMLDependency]]":
+    """Build the structured `tool_request` wire block from a card component.
+
+    Mirrors `ToolRequestComponent.tagify()`'s rendering — the icon is
+    rendered to an HTML string and its dependencies collected — but produces
+    the typed envelope instead of `<shiny-tool-request>` markup. The envelope
+    (not markup scanned out of the text channel) is what the client turns
+    into trusted tool UI.
+    """
+    deps: list[HTMLDependency] = []
+
+    block: ToolRequestBlock = {
+        "type": "tool_request",
+        "version": 1,
+        "request_id": component.request_id,
+        "tool_name": component.tool_name,
+    }
+
+    if component.tool_title is not None:
+        block["title"] = component.tool_title
+    if component.intent is not None:
+        block["intent"] = component.intent
+    if component.arguments:
+        block["arguments"] = component.arguments
+    if component.grouping is not None:
+        block["grouping"] = component.grouping
+
+    # Icon strings are HTML and never get escaped
+    if component.icon is not None:
+        icon_ui = TagList(component.icon).render()
+        block["icon"] = str(icon_ui["html"])
+        deps.extend(icon_ui["dependencies"])
+
+    return block, deps
+
+
+def tool_request_message(request: Tagifiable) -> ChatMessage:
+    """Wrap shinychat's rich tool-request card in a block-carrying message."""
+    if isinstance(request, ToolRequestComponent):
+        # The default rich path emits the structured `tool_request` envelope,
+        # not tagified `<shiny-tool-request>` markup. (The tagify code above
+        # is retained for now; the legacy/none overrides still return non-
+        # component Tagifiables and keep the markup path.) Unlike results,
+        # requests get a plain ChatMessage: the ShinyToolCardMessage marker
+        # exists for the result custom-wrap postprocessing, which requests
+        # skip.
+        block, deps = tool_request_block(request)
+        msg = ChatMessage(content="", blocks=[block])
+        msg.html_deps = deps + msg.html_deps
+        return msg
+    return ChatMessage(content=request)
 
 
 def tool_result_block(

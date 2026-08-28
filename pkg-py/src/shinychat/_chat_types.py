@@ -27,6 +27,27 @@ class StringSegment(TypedDict):
     content_type: ContentType
 
 
+class ToolRequestBlock(TypedDict):
+    """
+    A typed, server-authored tool request envelope (mirrors `ToolRequestBlock`
+    in `js/src/transport/types.ts`). The envelope itself is the trust signal:
+    only the server can construct these blocks. The client derives a `running`
+    call from an unpaired request.
+    """
+
+    type: Literal["tool_request"]
+    version: Literal[1]
+    # Correlates with the result; keys transcript-wide request suppression.
+    request_id: str
+    tool_name: str
+    title: NotRequired[str]  # HTML -> RawHTML (the tool definition's title)
+    icon: NotRequired[str]  # HTML -> RawHTML (the tool definition's icon)
+    intent: NotRequired[str]  # text -> escaped
+    # JSON string, rendered as a markdown code block (escaped).
+    arguments: NotRequired[str]
+    grouping: NotRequired[Literal["none", "tool", "all"]]
+
+
 class ToolResultBlock(TypedDict):
     """
     A typed, server-authored tool result envelope (mirrors `ToolResultBlock`
@@ -63,9 +84,9 @@ class ToolResultBlock(TypedDict):
 
 
 # The union of typed blocks carried in `MessagePayload.segments` (outside a
-# stream) or via a `block_insert` action (mid-stream). Only `tool_result`
-# flows end-to-end so far; the union grows per the design.
-StructuredBlock = ToolResultBlock
+# stream) or via a `block_insert` action (mid-stream). The union grows per
+# the design.
+StructuredBlock = Union[ToolRequestBlock, ToolResultBlock]
 
 # One entry of `MessagePayload.segments`: a string segment
 # (`{content, content_type}`) or a structured block (discriminated by the

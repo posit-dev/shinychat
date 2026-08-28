@@ -224,6 +224,7 @@ try:
         citation_aside,
         tool_display_override,
         tool_request_contents,
+        tool_request_message,
         tool_result_contents,
         tool_result_message,
     )
@@ -281,7 +282,7 @@ try:
 
     @message_content.register
     def _(chunk: ContentToolRequest):
-        return ChatMessage(content=tool_request_contents(chunk))
+        return tool_request_message(tool_request_contents(chunk))
 
     @message_content_chunk.register
     def _(chunk: ContentToolRequest):
