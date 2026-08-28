@@ -5,6 +5,7 @@ import inspect
 import sys
 import threading
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -52,6 +53,54 @@ class _MockSession:
         pass
 
     async def send_custom_message(self, type: str, message: Any) -> None:
+        pass
+
+
+class _BookmarkRecorder:
+    def __init__(self) -> None:
+        self.exclude: list[str] = []
+        self.states: list[dict[str, Any]] = []
+        self._callbacks: list[Any] = []
+
+    def on_bookmark(self, callback: Any) -> Any:
+        self._callbacks.append(callback)
+        return callback
+
+    def on_restore(self, callback: Any) -> Any:
+        return callback
+
+    def on_bookmarked(self, callback: Any) -> Any:
+        return lambda: None
+
+    async def update_query_string(self, url: str) -> None:
+        pass
+
+    async def __call__(self) -> None:
+        state = SimpleNamespace(values={})
+        for callback in self._callbacks:
+            result = callback(state)
+            if inspect.isawaitable(result):
+                await result
+        self.states.append(state.values)
+
+
+class _BookmarkSession(_MockSession):
+    def __init__(self) -> None:
+        super().__init__()
+        self.bookmark = _BookmarkRecorder()
+
+    def is_stub_session(self) -> bool:
+        return False
+
+    def root_scope(self) -> "_BookmarkSession":
+        return self
+
+
+class _BookmarkClient:
+    async def get_state(self) -> dict[str, object]:
+        return {}
+
+    async def set_state(self, state: object) -> None:
         pass
 
 
@@ -324,10 +373,52 @@ def test_response_settlement_runs_after_complete_assistant_append():
         run_async(lambda: chat.append_message("out-of-band response"))
         assert settled == []
         run_async(reactive.flush)
-        run_async(reactive.flush)
 
     assert settled == [
         (ChatMessageDict(content="out-of-band response", role="assistant"),)
+    ]
+
+
+def test_response_settlement_persists_source_response_before_new_chat():
+    settled: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_before_new_chat", history=False)
+
+        async def on_settled() -> None:
+            settled.append(chat.messages())
+
+        chat._on_response_settled(on_settled)
+        run_async(lambda: chat.append_message("source response"))
+        run_async(reactive.flush)
+        run_async(chat.clear_messages)
+        run_async(reactive.flush)
+
+    assert settled == [
+        (ChatMessageDict(content="source response", role="assistant"),)
+    ]
+    assert chat.messages() == ()
+
+
+def test_response_settlement_auto_bookmarks_source_before_new_chat():
+    session = _BookmarkSession()
+
+    with session_context(cast(Session, session)):
+        chat = Chat("response_settlement_bookmark", history=False)
+        chat.enable_bookmarking(cast(Any, _BookmarkClient()))
+        run_async(lambda: chat.append_message("source response"))
+        run_async(reactive.flush)
+        run_async(chat.clear_messages)
+        run_async(reactive.flush)
+
+    assert len(session.bookmark.states) == 1
+    assert session.bookmark.states[0]["response_settlement_bookmark--msgs"] == [
+        {
+            "role": "assistant",
+            "segments": [
+                {"content": "source response", "content_type": "markdown"}
+            ],
+        }
     ]
 
 
@@ -411,7 +502,6 @@ def test_response_settlement_runs_once_for_each_stream_terminal_outcome(
 
         run_async(exercise)
         run_async(reactive.flush)
-        run_async(reactive.flush)
 
     assert settled == ["settled"]
 
@@ -438,7 +528,6 @@ def test_response_settlement_runs_after_terminal_stream_send_failure():
 
         with pytest.raises(RuntimeError, match="terminal send failed"):
             run_async(lambda: chat._append_message_stream(stream()))
-        run_async(reactive.flush)
         run_async(reactive.flush)
 
     assert settled == ["settled"]
@@ -474,7 +563,6 @@ def test_old_stream_terminal_settles_after_newer_input():
 
         run_async(exercise)
         run_async(reactive.flush)
-        run_async(reactive.flush)
 
     assert settled == [("older input", "", "newer input")]
 
@@ -501,7 +589,6 @@ def test_response_settlement_callback_failure_does_not_mask_stream_outcome():
             )
 
         run_async(exercise)
-        run_async(reactive.flush)
         with pytest.warns(UserWarning, match="callback failed"):
             run_async(reactive.flush)
 

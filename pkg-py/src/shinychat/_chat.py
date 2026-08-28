@@ -1748,21 +1748,19 @@ class Chat:
             return
 
         from shiny import reactive
+        from shiny.session import session_context
 
         async def settle() -> None:
-            @reactive.effect(session=self._session)
-            async def run_callbacks() -> None:
-                try:
-                    for callback in tuple(self._response_settlement_callbacks):
-                        try:
-                            await callback()
-                        except BaseException as error:
-                            warnings.warn(
-                                f"Chat response settlement callback failed: {error}",
-                                stacklevel=2,
-                            )
-                finally:
-                    run_callbacks.destroy()
+            context = reactive.Context()
+            with session_context(self._session), context():
+                for callback in tuple(self._response_settlement_callbacks):
+                    try:
+                        await callback()
+                    except BaseException as error:
+                        warnings.warn(
+                            f"Chat response settlement callback failed: {error}",
+                            stacklevel=2,
+                        )
 
         reactive.on_flushed(settle, once=True)
 

@@ -299,3 +299,15 @@ single-session atom and starts only after every Python consumer has moved.
   an unrelated, untouched page-navigation resize timing assertion, which
   passed on immediate isolated rerun. `shinychat#dy7g` remains open with
   `needs-review`.
+- **Blocking review fix landed (2026-08-27; `shinychat#dy7g`):** response
+  callbacks now run directly in their originating
+  `reactive.on_flushed(..., once=True)` turn under a temporary Shiny session
+  and reactive context. The hook no longer installs a reactive effect or adds
+  another flush, so a new-chat clear cannot run between a terminal response
+  and its history/bookmark settlement. Direct regressions require single-flush
+  settlement, preserve the source response across the immediate new-chat
+  clear, and verify automatic bookmark serialization captures that source
+  response exactly once. Verification passed focused lifecycle/history
+  selections, `make py-check-format`, `make py-check-types`, and full
+  `make py-check` (191 Playwright, 632 non-browser). `shinychat#dy7g`
+  remains open with `needs-review`.
