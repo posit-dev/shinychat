@@ -22,10 +22,12 @@ export interface WebActivitySearchItem {
   /** null while the search's results block hasn't arrived (or never will). */
   sources: WebSearchSource[] | null
   /**
-   * Answer-citation fallback, populated only by the markup path
-   * (rehypeAttachCitedSources collects citations onto the
+   * Answer-citation fallback, shown only while no provider results attach
+   * (sources === null). Populated on the markup path by
+   * rehypeAttachCitedSources (citations collected onto the
    * <shiny-web-activity> wrapper; parseItems reads them onto the last
-   * pending search). Structured blocks never carry it.
+   * pending search) or on the structured path by a web_search block's
+   * `cited_sources`.
    */
   citedSources: WebSearchSource[]
 }
@@ -116,7 +118,10 @@ export function applyWebBlock(
       kind: "search",
       query: block.query,
       sources: null,
-      citedSources: [],
+      // Answer-citation fallback carried explicitly on the block. A later
+      // results block's sources still win: the UI reads
+      // `sources ?? citedSources`.
+      citedSources: normalizeSources(block.cited_sources),
     })
   } else if (block.type === "web_search_results") {
     const sources = normalizeSources(block.sources)

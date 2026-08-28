@@ -39,8 +39,9 @@ function parseSources(json?: string): WebActivitySource[] {
  * reducer's applyWebBlock re-expresses this same pairing for web_* blocks.
  *
  * The wrapper's `citedSources` property (attached by
- * rehypeAttachCitedSources when a burst has no provider result list) is a
- * markup-path-only concept; structured blocks never carry it.
+ * rehypeAttachCitedSources when a burst has no provider result list) is the
+ * markup-path form of the answer-citation fallback; the structured path
+ * carries it as `cited_sources` on the web_search block instead.
  */
 function parseItems(node?: Element): WebActivityItem[] {
   if (!node) return []

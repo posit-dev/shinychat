@@ -108,6 +108,12 @@ export type WebSearchBlock = {
   type: "web_search"
   version: 1
   query: string
+  /**
+   * Answer-citation fallback (the structured re-expression of
+   * rehypeAttachCitedSources): sources the answer cited, shown only while
+   * no provider results attach to this search.
+   */
+  cited_sources?: WebSearchSource[]
 }
 
 /**

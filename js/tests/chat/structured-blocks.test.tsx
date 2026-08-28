@@ -787,6 +787,80 @@ describe("structured web_* blocks via message.segments", () => {
     ])
   })
 
+  it("attaches a search block's cited_sources as the cited-sources fallback", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          webSearchBlock({
+            cited_sources: [
+              { url: "https://example.com/cited", title: "Cited page" },
+              { url: "https://example.org/also-cited" },
+            ],
+          }),
+        ],
+      },
+    })
+
+    const activity = state.messages[0]!.blocks[0]!
+    if (activity.type !== "web_activity")
+      throw new Error("expected web_activity")
+    expect(activity.items).toEqual([
+      {
+        kind: "search",
+        query: "weather in Duluth",
+        sources: null,
+        citedSources: [
+          { url: "https://example.com/cited", title: "Cited page" },
+          { url: "https://example.org/also-cited" },
+        ],
+      },
+    ])
+
+    // With no results attached, the fallback renders as cited sources.
+    const { container } = renderMessages(state.messages)
+    fireEvent.click(container.querySelector(".shiny-web-activity__header")!)
+    expect(container.textContent).toContain("Cited sources")
+    expect(container.textContent).toContain("Cited page")
+  })
+
+  it("results pairing overrides the cited_sources fallback", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          webSearchBlock({
+            cited_sources: [
+              { url: "https://example.com/cited", title: "Cited page" },
+            ],
+          }),
+          webSearchResultsBlock(),
+        ],
+      },
+    })
+
+    const activity = state.messages[0]!.blocks[0]!
+    if (activity.type !== "web_activity")
+      throw new Error("expected web_activity")
+    const search = activity.items[0]!
+    if (search.kind !== "search") throw new Error("expected search item")
+    // The results' sources pair onto the search; the cited sources stay on
+    // the item but lose to the real result list (`sources ?? citedSources`).
+    expect(search.sources).toHaveLength(2)
+    expect(search.citedSources).toEqual([
+      { url: "https://example.com/cited", title: "Cited page" },
+    ])
+
+    const { container } = renderMessages(state.messages)
+    fireEvent.click(container.querySelector(".shiny-web-activity__header")!)
+    expect(container.textContent).toContain("2 results")
+    expect(container.textContent).toContain("Duluth weather")
+    expect(container.textContent).not.toContain("Cited sources")
+    expect(container.textContent).not.toContain("Cited page")
+  })
+
   it("ignores web blocks with unsupported versions with a warning", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
     const state = chatReducer(makeState(), {
