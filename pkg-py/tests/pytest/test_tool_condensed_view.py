@@ -704,6 +704,48 @@ async def test_custom_tool_result_html_dependencies_survive_the_wrap(
 
 
 @pytest.mark.anyio
+async def test_custom_tool_result_interleaved_content_preserves_order(
+    custom_display_handler: Any,
+) -> None:
+    """When the author's custom UI has mixed content (a React element between
+    two HTML islands), `_wrap_custom_tool_result` must rebuild from `parts` so
+    the interleaving order is preserved — not concatenate all string content
+    then all html_block content (which would reorder the islands around the
+    React element)."""
+    from htmltools import Tag, TagList, div
+
+    react_el = Tag(
+        "shiny-tool-result",
+        data_shinychat_react=True,
+        request_id="abc",
+        class_="react-mid",
+    )
+    # Island → React → Island: parts should be [block, str, block]
+    ui = TagList(div("before"), react_el, div("after"))
+
+    def handler(chunk: _CustomToolResult) -> ChatMessage:
+        return ChatMessage(content=ui)
+
+    custom_display_handler(handler)
+
+    request = _request(tool=_tool())
+    result = _CustomToolResult(value=2, request=request)
+    sent = await _stream_custom_result(result)
+
+    assert len(sent) == 1
+    html = sent[0].content
+    assert html.count("<shiny-tool-result") == 1
+    assert "custom-display" in html
+    # The wrapper carries the folded content in its `value` attribute (HTML-
+    # escaped). The "before" island must appear before the React element,
+    # and the "after" island must appear after it — not reordered.
+    before_pos = html.index("before")
+    react_pos = html.index("react-mid")
+    after_pos = html.index("after")
+    assert before_pos < react_pos < after_pos
+
+
+@pytest.mark.anyio
 async def test_custom_result_inside_a_turn_is_wrapped() -> None:
     """A `Turn` carrying a custom tool result must wrap it too.
 

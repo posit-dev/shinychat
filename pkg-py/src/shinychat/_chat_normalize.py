@@ -596,9 +596,20 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
     # into the content string. Fold the block content back so the wrapper
     # receives the author's full UI (wrapping an empty value would produce
     # an empty `<shiny-tool-result>`).
-    content = msg.content + "".join(
-        b["content"] for b in msg.blocks if b["type"] == "html_block"
-    )
+    # When `parts` is set, rebuild from the ordered interleaving so mixed
+    # content (e.g. a React element between two islands) keeps its original
+    # order. Without `parts`, fall back to concatenating the string content
+    # with the html_block contents (flat layout).
+    if msg.parts is not None:
+        content = "".join(
+            p if isinstance(p, str) else p["content"]
+            for p in msg.parts
+            if isinstance(p, str) or p["type"] == "html_block"
+        )
+    else:
+        content = msg.content + "".join(
+            b["content"] for b in msg.blocks if b["type"] == "html_block"
+        )
     wrapped = wrap_custom_tool_result(
         request_id=message.request.id,
         tool_name=message.request.name,

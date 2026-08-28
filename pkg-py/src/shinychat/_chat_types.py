@@ -395,7 +395,12 @@ class ChatMessage:
         # Server-authored structured blocks (e.g. `tool_result`) carried
         # alongside the string content. They travel the wire as typed
         # segments/`block_insert` actions, never as markup in `content`.
-        self.blocks: list[StructuredBlock] = list(blocks) if blocks else []
+        # When the caller also passes non-string (tag-like) content that
+        # generates html_blocks, the supplied blocks follow the
+        # content-derived parts (preserving prior flat-layout semantics:
+        # string segments first, then blocks).
+        supplied_blocks: list[StructuredBlock] = list(blocks) if blocks else []
+        self.blocks: list[StructuredBlock] = list(supplied_blocks)
         # Ordered interleaving of string runs and structured blocks, set only
         # when the message was normalized from multi-part content (e.g. a
         # chatlas `Turn` with text/tool-result/text). `content` and `blocks`
@@ -437,7 +442,6 @@ class ChatMessage:
                     }
                     if island_deps:
                         block["html_deps"] = [d.as_dict() for d in island_deps]
-                    self.blocks.append(block)
                     content_parts.append(block)
                 else:
                     # Bare React element: render it bare and keep it as a
@@ -466,18 +470,24 @@ class ChatMessage:
                 # an explicit content_type).
                 if content_parts and content_type is None:
                     self.content_type = "html"
+            # Merge supplied blocks after the content-derived parts,
+            # preserving prior flat-layout semantics (string segments
+            # first, then blocks). Derive self.blocks from the merged
+            # list so ordering is consistent.
+            merged_parts = list(content_parts) + supplied_blocks
+            self.blocks = [p for p in merged_parts if not isinstance(p, str)]
             # Only set parts when the content was multi-part (string + block
             # interleaving). A single block with no string content keeps
             # parts = None so the flat layout path in from_chat_message
             # handles it (one empty string segment carrying html_deps + the
             # block appended after).
-            if content_parts and (
-                len(content_parts) > 1 or not isinstance(content_parts[0], str)
+            if merged_parts and (
+                len(merged_parts) > 1 or not isinstance(merged_parts[0], str)
             ):
                 # Coalesce adjacent string runs (string runs and blocks
                 # strictly alternate in parts).
                 coalesced: list[str | StructuredBlock] = []
-                for p in content_parts:
+                for p in merged_parts:
                     if (
                         isinstance(p, str)
                         and coalesced

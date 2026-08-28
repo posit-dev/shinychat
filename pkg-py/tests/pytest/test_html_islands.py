@@ -282,4 +282,51 @@ def test_chat_message_mixed_content_wire_segments_preserve_order():
 
 
 if TYPE_CHECKING:
-    from shinychat._chat_types import HtmlBlock
+    from shinychat._chat_types import HtmlBlock, ToolResultBlock
+
+
+def test_chat_message_html_content_with_supplied_blocks_merges_order():
+    """When the caller passes BOTH non-string content (generating html_blocks)
+    AND blocks=[...], the supplied blocks follow the content-derived parts,
+    preserving prior flat-layout semantics (string segments first, then
+    blocks). `parts` includes both; `wire_segments` round-trips."""
+    from shinychat._chat_types import (
+        ChatMessage,
+        StoredMessage,
+    )
+
+    tool_block: ToolResultBlock = {
+        "type": "tool_result",
+        "version": 1,
+        "request_id": "req-1",
+        "tool_name": "my_tool",
+        "status": "success",
+        "value": "42",
+    }
+    m = ChatMessage(content=HTML("<b>raw</b>"), blocks=[tool_block])
+
+    # blocks: generated html_block first, then supplied tool_block
+    assert len(m.blocks) == 2
+    assert m.blocks[0]["type"] == "html_block"
+    assert m.blocks[1]["type"] == "tool_result"
+    assert m.blocks[0]["content"] == "<b>raw</b>"
+
+    # parts includes both the html_block and the supplied tool_block
+    assert m.parts is not None
+    assert len(m.parts) == 2
+    assert m.parts[0] == m.blocks[0]
+    assert m.parts[1] == m.blocks[1]
+
+    # content is empty (no residual string from the HTML island)
+    assert m.content == ""
+    assert m.content_type == "html"
+
+    # wire_segments round-trips: the flat layout leads with the (empty)
+    # string segment, then the blocks in order
+    stored = StoredMessage.from_chat_message(m)
+    wire = stored.wire_segments()
+    assert len(wire) == 3
+    first = cast("dict[str, str]", wire[0])
+    assert first == {"content": "", "content_type": "html"}
+    assert cast("HtmlBlock", wire[1])["type"] == "html_block"
+    assert cast("ToolResultBlock", wire[2])["type"] == "tool_result"
