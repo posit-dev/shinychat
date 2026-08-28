@@ -6,6 +6,7 @@ import json
 import os
 import re
 import warnings
+from collections import deque
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -159,16 +160,8 @@ class _ResponseSettlementConsumer:
     cancelled: bool = False
 
 
-@dataclass(eq=False)
-class _PendingResponseSettlement:
-    consumers: tuple[_ResponseSettlementConsumer, ...]
-    delivery_task: asyncio.Task[None] | None = None
-    cancel_scheduled_delivery: CancelCallback | None = None
-    cancelled: bool = False
-
-
 _response_settlement_delivery: ContextVar[
-    _PendingResponseSettlement | None
+    tuple[_ResponseSettlementConsumer, ...] | None
 ] = ContextVar("_response_settlement_delivery", default=None)
 
 
@@ -383,9 +376,11 @@ class Chat:
         self._response_settlement_callbacks: list[
             _ResponseSettlementConsumer
         ] = []
-        self._pending_response_settlements: list[
-            _PendingResponseSettlement
-        ] = []
+        self._pending_response_settlements: deque[
+            tuple[_ResponseSettlementConsumer, ...]
+        ] = deque()
+        self._response_settlement_runner: asyncio.Task[None] | None = None
+        self._cancel_response_settlement_wakeup: CancelCallback | None = None
         self._response_settlement_destroyed = False
         self._destructive_history_transaction: object | None = None
         self._destructive_history_task: asyncio.Task[Any] | None = None
@@ -1798,77 +1793,71 @@ class Chat:
         if not consumers:
             return
 
-        delivery = _PendingResponseSettlement(consumers)
-        self._pending_response_settlements.append(delivery)
-        self._schedule_pending_response_settlement_delivery(delivery)
+        self._pending_response_settlements.append(consumers)
+        self._schedule_response_settlement_wakeup()
 
-    def _schedule_pending_response_settlement_delivery(
-        self, delivery: _PendingResponseSettlement
-    ) -> None:
+    def _schedule_response_settlement_wakeup(self) -> None:
+        if self._cancel_response_settlement_wakeup is not None:
+            return
+
         from shiny import reactive
 
         async def deliver_on_flushed() -> None:
-            delivery.cancel_scheduled_delivery = None
-            if delivery.cancelled:
+            self._cancel_response_settlement_wakeup = None
+            if self._response_settlement_destroyed:
                 return
-            await self._deliver_response_settlement(delivery)
+            await self._join_response_settlement_pump()
 
-        delivery.cancel_scheduled_delivery = reactive.on_flushed(
+        self._cancel_response_settlement_wakeup = reactive.on_flushed(
             deliver_on_flushed, once=True
         )
 
-    def _start_response_settlement_delivery(
-        self, delivery: _PendingResponseSettlement
-    ) -> asyncio.Task[None] | None:
-        if delivery.cancelled:
+    def _start_response_settlement_pump(self) -> asyncio.Task[None] | None:
+        if self._response_settlement_destroyed:
             return None
 
-        task = delivery.delivery_task
+        task = self._response_settlement_runner
         if task is not None:
             return task
 
-        if delivery.cancel_scheduled_delivery is not None:
-            delivery.cancel_scheduled_delivery()
-            delivery.cancel_scheduled_delivery = None
+        if not self._pending_response_settlements:
+            return None
 
-        task = asyncio.create_task(
-            self._run_response_settlement_delivery(delivery)
-        )
+        task = asyncio.create_task(self._run_response_settlement_pump())
         task.add_done_callback(_consume_task_result)
-        delivery.delivery_task = task
+        self._response_settlement_runner = task
         return task
 
-    async def _deliver_response_settlement(
-        self, delivery: _PendingResponseSettlement
-    ) -> None:
-        task = self._start_response_settlement_delivery(delivery)
+    async def _join_response_settlement_pump(self) -> None:
+        task = self._start_response_settlement_pump()
         if task is not None:
             await asyncio.shield(task)
 
-    async def _run_response_settlement_delivery(
-        self, delivery: _PendingResponseSettlement
-    ) -> None:
+    async def _run_response_settlement_pump(self) -> None:
         try:
-            from shiny import reactive
-            from shiny.session import session_context
-
-            context = reactive.Context()
-            with session_context(self._session), context():
-                for consumer in delivery.consumers:
-                    if consumer.cancelled:
-                        continue
-                    delivery_token = _response_settlement_delivery.set(delivery)
-                    try:
-                        await self._deliver_response_settlement_consumer(
-                            consumer
-                        )
-                    finally:
-                        _response_settlement_delivery.reset(delivery_token)
+            while self._pending_response_settlements:
+                consumers = self._pending_response_settlements[0]
+                await self._run_response_settlement(consumers)
+                self._pending_response_settlements.popleft()
         finally:
-            try:
-                self._pending_response_settlements.remove(delivery)
-            except ValueError:
-                pass
+            self._response_settlement_runner = None
+
+    async def _run_response_settlement(
+        self, consumers: tuple[_ResponseSettlementConsumer, ...]
+    ) -> None:
+        from shiny import reactive
+        from shiny.session import session_context
+
+        context = reactive.Context()
+        with session_context(self._session), context():
+            for consumer in consumers:
+                if consumer.cancelled:
+                    continue
+                delivery_token = _response_settlement_delivery.set(consumers)
+                try:
+                    await self._deliver_response_settlement_consumer(consumer)
+                finally:
+                    _response_settlement_delivery.reset(delivery_token)
 
     async def _deliver_response_settlement_consumer(
         self, consumer: _ResponseSettlementConsumer
@@ -1916,10 +1905,7 @@ class Chat:
     async def _destructive_history_mutation(self):
         """Reserve destructive transcript admission through settlement and mutation."""
         task = asyncio.current_task()
-        if any(
-            delivery is _response_settlement_delivery.get()
-            for delivery in self._pending_response_settlements
-        ):
+        if _response_settlement_delivery.get() is not None:
             raise RuntimeError(
                 "Cannot clear or restore messages while response settlement is being delivered."
             )
@@ -1938,10 +1924,11 @@ class Chat:
         self._destructive_history_task = task
         self._destructive_history_depth = 1
         try:
-            while self._pending_response_settlements:
-                await self._deliver_response_settlement(
-                    self._pending_response_settlements[0]
-                )
+            cancel_wakeup = self._cancel_response_settlement_wakeup
+            self._cancel_response_settlement_wakeup = None
+            if cancel_wakeup is not None:
+                cancel_wakeup()
+            await self._join_response_settlement_pump()
             yield transaction
         finally:
             self._destructive_history_depth -= 1
@@ -2466,18 +2453,14 @@ class Chat:
     def _destroy_response_settlements(self) -> None:
         self._response_settlement_destroyed = True
         self._response_settlement_callbacks.clear()
-        deliveries = self._pending_response_settlements
-        self._pending_response_settlements = []
-        for delivery in deliveries:
-            delivery.cancelled = True
-            if delivery.cancel_scheduled_delivery is not None:
-                delivery.cancel_scheduled_delivery()
-                delivery.cancel_scheduled_delivery = None
-            if (
-                delivery.delivery_task is not None
-                and not delivery.delivery_task.done()
-            ):
-                delivery.delivery_task.cancel()
+        cancel_wakeup = self._cancel_response_settlement_wakeup
+        self._cancel_response_settlement_wakeup = None
+        if cancel_wakeup is not None:
+            cancel_wakeup()
+        self._pending_response_settlements.clear()
+        runner = self._response_settlement_runner
+        if runner is not None and not runner.done():
+            runner.cancel()
 
     def _destroy_effects(self):
         for x in self._effects:

@@ -587,7 +587,7 @@ def test_cancelled_clear_waits_for_the_same_settlement_before_mutating():
     assert run_async_result(lambda: store.get(partition, active.id)) is active
     assert len(run_async_result(lambda: store.list(partition))) == 1
     assert active.response_count == 1
-    assert chat._pending_response_settlements == []
+    assert not chat._pending_response_settlements
 
 
 def test_cancelled_settlement_waiter_keeps_the_shared_delivery_running():
@@ -607,10 +607,7 @@ def test_cancelled_settlement_waiter_keeps_the_shared_delivery_running():
             flush = asyncio.create_task(reactive.flush())
             await callback_started.wait()
 
-            delivery = chat._pending_response_settlements[0]
-            waiter = asyncio.create_task(
-                chat._deliver_response_settlement(delivery)
-            )
+            waiter = asyncio.create_task(chat._join_response_settlement_pump())
             await asyncio.sleep(0)
             flush.cancel()
 
@@ -628,7 +625,7 @@ def test_cancelled_settlement_waiter_keeps_the_shared_delivery_running():
     assert chat.messages() == (
         ChatMessageDict(content="source response", role="assistant"),
     )
-    assert chat._pending_response_settlements == []
+    assert not chat._pending_response_settlements
 
 
 def test_cancelled_settlement_does_not_mutate_a_second_destructive_waiter():
@@ -657,10 +654,7 @@ def test_cancelled_settlement_does_not_mutate_a_second_destructive_waiter():
             ):
                 await second_clear
 
-            delivery = chat._pending_response_settlements[0]
-            waiter = asyncio.create_task(
-                chat._deliver_response_settlement(delivery)
-            )
+            waiter = asyncio.create_task(chat._join_response_settlement_pump())
             await asyncio.sleep(0)
             assert not waiter.done()
 
@@ -682,7 +676,7 @@ def test_cancelled_settlement_does_not_mutate_a_second_destructive_waiter():
     assert chat.messages() == (
         ChatMessageDict(content="source response", role="assistant"),
     )
-    assert chat._pending_response_settlements == []
+    assert not chat._pending_response_settlements
 
 
 def test_clear_waits_for_an_in_flight_flush_settlement():
@@ -880,7 +874,7 @@ def test_cancelled_settlement_consumer_does_not_cancel_delivery():
             run_async(reactive.flush)
 
     assert settled == ["settled"]
-    assert chat._pending_response_settlements == []
+    assert not chat._pending_response_settlements
 
 
 def test_consumer_cancellation_does_not_reschedule_shared_delivery():
@@ -912,13 +906,13 @@ def test_consumer_cancellation_does_not_reschedule_shared_delivery():
             with pytest.raises(asyncio.CancelledError):
                 run_async(_exercise)
 
-        assert chat._pending_response_settlements == []
+        assert not chat._pending_response_settlements
         cancel_consumer()
 
     assert chat.messages() == (
         ChatMessageDict(content="source response", role="assistant"),
     )
-    assert chat._pending_response_settlements == []
+    assert not chat._pending_response_settlements
 
 
 def test_cancellation_after_consumer_completion_does_not_rerun_settlement():
@@ -946,7 +940,7 @@ def test_cancellation_after_consumer_completion_does_not_rerun_settlement():
             assert chat.messages() == (
                 ChatMessageDict(content="source response", role="assistant"),
             )
-            assert chat._pending_response_settlements == []
+            assert not chat._pending_response_settlements
 
             await chat.clear_messages()
 
@@ -993,7 +987,85 @@ def test_history_like_consumer_mutation_before_await_runs_once_after_clear_cance
     assert chat.messages() == ()
 
 
-def test_destroy_and_session_end_cancel_response_settlement_delivery():
+def test_response_settlement_pump_keeps_queued_flush_behind_blocked_drain():
+    timeline: list[str] = []
+    active_consumer_count = 0
+    max_active_consumer_count = 0
+
+    with session_context(test_session):
+        chat = Chat("settlement_fifo_pump", history=False)
+        history_started = asyncio.Event()
+        release_history = asyncio.Event()
+        history_delivery_count = 0
+
+        async def persist_history() -> None:
+            nonlocal active_consumer_count
+            nonlocal max_active_consumer_count
+            nonlocal history_delivery_count
+            history_delivery_count += 1
+            active_consumer_count += 1
+            max_active_consumer_count = max(
+                max_active_consumer_count, active_consumer_count
+            )
+            timeline.append(f"history-{history_delivery_count}-start")
+            try:
+                if history_delivery_count == 1:
+                    history_started.set()
+                    await release_history.wait()
+            finally:
+                timeline.append(f"history-{history_delivery_count}-end")
+                active_consumer_count -= 1
+
+        async def persist_bookmark() -> None:
+            nonlocal active_consumer_count, max_active_consumer_count
+            active_consumer_count += 1
+            max_active_consumer_count = max(
+                max_active_consumer_count, active_consumer_count
+            )
+            delivery_count = history_delivery_count
+            timeline.append(f"bookmark-{delivery_count}-start")
+            timeline.append(f"bookmark-{delivery_count}-end")
+            active_consumer_count -= 1
+
+        chat._on_response_settled(persist_history)
+        chat._on_response_settled(persist_bookmark)
+
+        async def _exercise() -> None:
+            await chat.append_message("A")
+            clear = asyncio.create_task(chat.clear_messages())
+            await history_started.wait()
+
+            clear.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await clear
+
+            await chat.append_message("B")
+            flush = asyncio.create_task(reactive.flush())
+            await asyncio.sleep(0)
+
+            assert timeline == ["history-1-start"]
+            assert max_active_consumer_count == 1
+
+            release_history.set()
+            await flush
+
+        run_async(_exercise)
+
+    assert timeline == [
+        "history-1-start",
+        "history-1-end",
+        "bookmark-1-start",
+        "bookmark-1-end",
+        "history-2-start",
+        "history-2-end",
+        "bookmark-2-start",
+        "bookmark-2-end",
+    ]
+    assert max_active_consumer_count == 1
+    assert not chat._pending_response_settlements
+
+
+def test_destroy_and_session_end_cancel_response_settlement_pump():
     class _TeardownSession(_MockSession):
         def __init__(self) -> None:
             super().__init__()
@@ -1028,10 +1100,10 @@ def test_destroy_and_session_end_cancel_response_settlement_delivery():
         scheduled_chat.destroy()
         run_async(reactive.flush)
         assert scheduled == []
-        assert scheduled_chat._pending_response_settlements == []
+        assert not scheduled_chat._pending_response_settlements
         assert scheduled_chat.destroy not in session.ended_callbacks
 
-        active_chat = Chat("settlement_destroy_scheduled", history=False)
+        active_chat = Chat("settlement_destroy_active", history=False)
         assert session.ended_callbacks.count(active_chat.destroy) == 1
         started = asyncio.Event()
 
@@ -1043,19 +1115,20 @@ def test_destroy_and_session_end_cancel_response_settlement_delivery():
         active_chat._on_response_settled(active_consumer)
 
         async def _exercise() -> None:
-            await active_chat.append_message("source response")
-            delivery = active_chat._pending_response_settlements[0]
-            waiter = asyncio.create_task(
-                active_chat._deliver_response_settlement(delivery)
-            )
+            await active_chat.append_message("A")
+            flush = asyncio.create_task(reactive.flush())
             await started.wait()
+            await active_chat.append_message("B")
+            assert len(active_chat._pending_response_settlements) == 2
+            runner = active_chat._response_settlement_runner
+            assert runner is not None
+
             session.end()
             with pytest.raises(asyncio.CancelledError):
-                await waiter
+                await flush
             assert active_chat.destroy not in session.ended_callbacks
-            assert active_chat._pending_response_settlements == []
-            assert delivery.delivery_task is not None
-            assert delivery.delivery_task.cancelled()
+            assert not active_chat._pending_response_settlements
+            assert runner.cancelled()
 
         run_async(_exercise)
 
