@@ -564,7 +564,12 @@ child or the phase.
   (which makes mapping keys strings), then produces the sorted canonical
   fingerprint. The patch preserves non-JSON validation failures and adds
   mixed-key plus stable-prefix regression coverage. Job `1051` is closed
-  stale on the fix; fresh review is pending.
+  stale on the fix. Fresh job `1052` found permissive `NaN`/infinity
+  serialization could silently become `null` through a file-store round trip.
+  Commit `465e9f7c` rejects non-finite values during both normalization and
+  fingerprint serialization, with file-store coverage proving no record is
+  written. Job `1052` is closed stale on the fix (1 finding, 1/3 toward a new
+  escalation chain); fresh review is pending.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
