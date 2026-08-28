@@ -130,6 +130,14 @@ single-session atom and starts only after every Python consumer has moved.
   commits would prematurely implement an incomplete stream model. The public
   switch moves to `shinychat#ch09` after complete and streaming paths share
   the owner. Static `chat_ui(messages=...)` remains render-only.
+- **History compatibility boundary (2026-08-27; `shinychat#ch09` →
+  `shinychat#dy7g`):** `Chat.messages()` cuts over to the owner in
+  `shinychat#ch09`. Until `shinychat#dy7g`, the legacy history effect binds
+  directly to `Chat._reported_messages` so it remains browser-settlement-driven.
+  This direct binding is a compatibility trigger only, not echo authority.
+  Deferring the cutover and adding a terminal revision/flag are rejected. The
+  regression must show partial owner visibility without a premature history
+  save, followed by exactly one save after browser settlement.
 - **Legacy icon disposition (2026-08-27):** while the legacy stream is active,
   its pending-message tuple drops a complete append's caller-supplied icon.
   The owner therefore records the emitted wire value (`None`), not the lost
