@@ -7,7 +7,7 @@ import threading
 import warnings
 from datetime import datetime
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 import pytest
 from htmltools import HTML, HTMLDependency, TagList, tags
@@ -47,8 +47,8 @@ class _MockSession:
 
         self.input = Inputs({}, ns=ResolvedId)
 
-    def on_ended(self, callback: object) -> None:
-        pass
+    def on_ended(self, callback: object) -> Callable[[], None]:
+        return lambda: None
 
     def on_destroy(self, callback: object) -> None:
         pass
@@ -997,13 +997,19 @@ def test_destroy_and_session_end_cancel_response_settlement_delivery():
     class _TeardownSession(_MockSession):
         def __init__(self) -> None:
             super().__init__()
-            self.ended_callbacks: list[Any] = []
+            self.ended_callbacks: list[Callable[[], None]] = []
 
-        def on_ended(self, callback: object) -> None:
-            self.ended_callbacks.append(cast(Any, callback))
+        def on_ended(self, callback: object) -> Callable[[], None]:
+            callback_fn = cast(Callable[[], None], callback)
+            self.ended_callbacks.append(callback_fn)
+
+            def cancel() -> None:
+                self.ended_callbacks.remove(callback_fn)
+
+            return cancel
 
         def end(self) -> None:
-            for callback in self.ended_callbacks:
+            for callback in list(self.ended_callbacks):
                 callback()
 
     session = _TeardownSession()
@@ -1023,8 +1029,10 @@ def test_destroy_and_session_end_cancel_response_settlement_delivery():
         run_async(reactive.flush)
         assert scheduled == []
         assert scheduled_chat._pending_response_settlements == []
+        assert scheduled_chat.destroy not in session.ended_callbacks
 
-        active_chat = Chat("settlement_destroy_active", history=False)
+        active_chat = Chat("settlement_destroy_scheduled", history=False)
+        assert session.ended_callbacks.count(active_chat.destroy) == 1
         started = asyncio.Event()
 
         async def active_consumer() -> None:
@@ -1044,6 +1052,7 @@ def test_destroy_and_session_end_cancel_response_settlement_delivery():
             session.end()
             with pytest.raises(asyncio.CancelledError):
                 await waiter
+            assert active_chat.destroy not in session.ended_callbacks
             assert active_chat._pending_response_settlements == []
             assert delivery.delivery_task is not None
             assert delivery.delivery_task.cancelled()

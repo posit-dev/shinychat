@@ -514,7 +514,9 @@ class Chat:
         if instance is not None:
             instance.destroy()
         CHAT_INSTANCES[instance_id] = self
-        self._session.on_ended(self.destroy)
+        self._cancel_session_end: CancelCallback | None = self._session.on_ended(
+            self.destroy
+        )
 
         self.client: "ChatClient | None" = None
         if client is not None:
@@ -2452,6 +2454,10 @@ class Chat:
         """
         Destroy the chat instance.
         """
+        cancel_session_end = self._cancel_session_end
+        self._cancel_session_end = None
+        if cancel_session_end is not None:
+            cancel_session_end()
         self._destroy_response_settlements()
         self._destroy_effects()
         self._destroy_bookmarking()
