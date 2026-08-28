@@ -23,6 +23,61 @@ export type MessagePayloadSegment = {
   content_type: ContentType
 }
 
+/** Per-call grouping override; mirrors `ToolGrouping` in chat/tool-model.ts. */
+export type StructuredBlockGrouping = "none" | "tool" | "all"
+
+/**
+ * A typed, server-authored tool result envelope. The envelope itself is the
+ * trust signal: only the server can construct these blocks, so trusted-HTML
+ * fields (`value` with `value_type: "html"`, `title`, `icon`, `footer`)
+ * render through the shared RawHTML sink while text fields are escaped.
+ */
+export type ToolResultBlock = {
+  type: "tool_result"
+  version: 1
+  /** Correlates with the request; keys transcript-wide request suppression. */
+  request_id: string
+  tool_name: string
+  /** "running" is NOT a wire value; the client derives it from an unpaired request. */
+  status: "success" | "error"
+  value?: string
+  value_type?: "html" | "markdown" | "text" | "code" | "content_extra"
+  request_call?: string
+  /** HTML → RawHTML */
+  title?: string
+  /** HTML → RawHTML */
+  icon?: string
+  /** text → escaped */
+  intent?: string
+  /** text → escaped */
+  label?: string
+  /** text → escaped */
+  value_preview?: string
+  grouping?: StructuredBlockGrouping
+  show_request?: boolean
+  expanded?: boolean
+  open_style?: "minimal" | "framed"
+  full_screen?: boolean
+  /** Internal-only: set by wrap_custom_tool_result, never author-facing. */
+  custom_display?: boolean
+  /** HTML → RawHTML */
+  footer?: string
+}
+
+/**
+ * Server-authored structured blocks carried in `MessagePayload.segments`
+ * (outside a stream) or via a `block_insert` action (mid-stream). Only
+ * `tool_result` flows end-to-end so far; the union grows per the design.
+ */
+export type StructuredBlock = ToolResultBlock
+
+/**
+ * One entry of `MessagePayload.segments`: a string segment
+ * (`{content, content_type}`) or a structured block (discriminated by the
+ * presence of `type`).
+ */
+export type SegmentPayload = MessagePayloadSegment | StructuredBlock
+
 export interface SlashCommandDef {
   name: string
   description: string
@@ -54,7 +109,7 @@ export type MessagePayload = {
   id?: string
   role: "user" | "assistant"
   icon?: string
-  segments: MessagePayloadSegment[]
+  segments: SegmentPayload[]
   attachments?: AttachmentPayload[]
   siblings?: { index: number; total: number }
 }
@@ -81,6 +136,17 @@ export type ChatAction =
       html_deps?: HtmlDep[]
     }
   | { type: "chunk_end" }
+  | {
+      /**
+       * Delivers one complete structured block while a message stream is in
+       * flight. Appends to `streamingMessage.blocks`; a no-op (with a
+       * console.warn) when no stream is in flight. Never affects the
+       * thinking-tag/fence state machine, which operates only on strings.
+       */
+      type: "block_insert"
+      block: StructuredBlock
+      html_deps?: HtmlDep[]
+    }
   | { type: "clear"; greeting?: boolean }
   | {
       type: "update_input"

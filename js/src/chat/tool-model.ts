@@ -1,5 +1,10 @@
-import type { ContentType } from "../transport/types"
+import type {
+  ContentType,
+  StructuredBlock,
+  ToolResultBlock,
+} from "../transport/types"
 import type { ChatMessageData, MessageBlock } from "./state"
+import { uuid } from "../utils/uuid"
 import {
   containsToolMarker,
   isRoutableContentType,
@@ -412,6 +417,108 @@ function mergeAdjacentLoops(
     }
   }
   return out
+}
+
+/**
+ * Convert a structured `tool_result` wire block into a lifecycle call. The
+ * envelope is server-authored, so its fields map directly onto the call — no
+ * markup parsing, no attribute decoding, no entity decoding.
+ */
+export function toolResultBlockToCall(block: ToolResultBlock): ToolCallItem {
+  const call: ToolCallItem = {
+    requestId: block.request_id,
+    // pairToolEvents' convention: the request id, or a synthetic loop-local
+    // id that never enters transcript supersession.
+    localId: block.request_id || `__anon-structured-${uuid()}`,
+    toolName: block.tool_name,
+    status: block.status,
+  }
+  if (block.title !== undefined) call.title = block.title
+  if (block.icon !== undefined) call.icon = block.icon
+  if (block.label !== undefined) call.label = block.label
+  if (block.value_preview !== undefined) call.valuePreview = block.value_preview
+  if (block.intent !== undefined) call.intent = block.intent
+  if (block.value !== undefined) call.value = block.value
+  if (block.value_type !== undefined) call.valueType = block.value_type
+  if (block.request_call !== undefined) call.requestCall = block.request_call
+  if (block.show_request !== undefined) call.showRequest = block.show_request
+  if (block.full_screen !== undefined) call.fullScreen = block.full_screen
+  if (block.open_style !== undefined) call.openStyle = block.open_style
+  if (block.expanded !== undefined) call.expanded = block.expanded
+  if (block.custom_display !== undefined)
+    call.customDisplay = block.custom_display
+  if (block.footer !== undefined) call.footer = block.footer
+  if (block.grouping !== undefined) call.grouping = block.grouping
+  return call
+}
+
+/**
+ * Convert a structured wire block into a render-ready ToolLoopBlock on
+ * arrival (one block → one loop → one group → one call). Unknown block types
+ * and unsupported versions are ignored with a warning — `version` is a
+ * forward-compatibility marker, so a block this client predates must not
+ * break the message around it.
+ */
+export function structuredBlockToLoop(
+  block: StructuredBlock,
+  grouping: ToolGrouping,
+): ToolLoopBlock | null {
+  // Read discriminator fields defensively: the wire is JSON and may carry
+  // block types/versions this client doesn't know yet.
+  const type = (block as { type?: unknown }).type
+  if (type !== "tool_result") {
+    console.warn(`Ignoring unknown structured block type: ${String(type)}`)
+    return null
+  }
+  const version = (block as { version?: unknown }).version
+  if (version !== 1) {
+    console.warn(
+      `Ignoring tool_result block with unsupported version: ${String(version)}`,
+    )
+    return null
+  }
+  const call = toolResultBlockToCall(block)
+  return {
+    type: "tool_loop",
+    // A structured-derived loop has no raw content slice to re-parse; the
+    // empty content marks it (rerouteMessage re-groups it from its calls).
+    content: "",
+    contentType: "html",
+    grouping,
+    groups: groupCalls([call], grouping),
+  }
+}
+
+/**
+ * Append a structured-derived call to an existing tool loop, re-deriving the
+ * groups from the combined call list (mirrors mergeAdjacentLoops).
+ */
+export function appendCallToToolLoop(
+  loop: ToolLoopBlock,
+  call: ToolCallItem,
+  grouping: ToolGrouping,
+): ToolLoopBlock {
+  const calls = [...loop.groups.flatMap((g) => g.calls), call]
+  return {
+    type: "tool_loop",
+    content: loop.content,
+    contentType: loop.contentType,
+    grouping,
+    groups: groupCalls(calls, grouping),
+  }
+}
+
+/**
+ * Re-derive a loop's groups at a new grouping mode from the calls it already
+ * holds. Used for structured-derived loops, which carry no raw content slice
+ * to unwind and re-parse the way markup-derived loops do.
+ */
+export function regroupToolLoop(
+  loop: ToolLoopBlock,
+  grouping: ToolGrouping,
+): ToolLoopBlock {
+  const calls = loop.groups.flatMap((g) => g.calls)
+  return { ...loop, grouping, groups: groupCalls(calls, grouping) }
 }
 
 /**

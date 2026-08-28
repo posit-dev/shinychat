@@ -4,13 +4,21 @@ import type {
   ConversationMeta,
   MessagePayload,
   GreetingOptions,
+  SegmentPayload,
   SlashCommandDef,
+  StructuredBlock,
   HtmlDep,
 } from "../transport/types"
 import type { AttachmentPayload } from "./attachments"
 import { uuid } from "../utils/uuid"
 import { codeRanges } from "./markdown-code-ranges"
-import { routeToolBlocks, supersededRequestIds } from "./tool-model"
+import {
+  appendCallToToolLoop,
+  regroupToolLoop,
+  routeToolBlocks,
+  structuredBlockToLoop,
+  supersededRequestIds,
+} from "./tool-model"
 import type { ToolLoopBlock, ToolGrouping } from "./tool-model"
 
 export {
@@ -186,14 +194,36 @@ export const initialState: ChatState = {
   },
 }
 
+/**
+ * Segment union discrimination: string segments are `{content, content_type}`;
+ * structured blocks carry a `type` discriminator (and `version`).
+ */
+function isStructuredSegment(seg: SegmentPayload): seg is StructuredBlock {
+  return "type" in seg
+}
+
 function messagePayloadToData(
   msg: MessagePayload,
   grouping: ToolGrouping = "tool",
 ): ChatMessageData {
   const rawBlocks: MessageBlock[] = []
   for (const seg of msg.segments) {
+    if (isStructuredSegment(seg)) {
+      // Structured blocks are server-authored and arrive render-ready:
+      // convert to a tool loop on arrival. Tool UI is never legitimate in a
+      // user message (mirrors routeToolBlocks' role gate).
+      if (msg.role === "user") {
+        console.warn("Ignoring structured block in a user-role message")
+        continue
+      }
+      const loop = structuredBlockToLoop(seg, grouping)
+      if (loop) rawBlocks.push(loop)
+      continue
+    }
     rawBlocks.push(...splitThinkingBlocks(seg.content, seg.content_type))
   }
+  // routeToolBlocks only scans content blocks; tool_loop blocks pass through
+  // (adjacent ones coalesce in mergeAdjacentLoops).
   const blocks = routeToolBlocks(rawBlocks, grouping, msg.role)
   const attachments: AttachmentPayload[] = msg.attachments ?? []
   const contentOnly = contentFromBlocks(blocks)
@@ -897,6 +927,66 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       }
     }
 
+    case "block_insert": {
+      // A structured block arriving mid-stream. Appends one complete block to
+      // the in-flight message; the thinking-tag/fence state machine operates
+      // only on string content and is deliberately left untouched here.
+      const last = state.streamingMessage
+      if (!last || !last.streaming) {
+        console.warn(
+          "Ignoring block_insert action: no message stream is in flight",
+        )
+        return state
+      }
+      if (last.role === "user") {
+        console.warn("Ignoring block_insert action for a user-role message")
+        return state
+      }
+
+      const loop = structuredBlockToLoop(action.block, state.toolGrouping)
+      if (!loop) return state
+
+      const blocks = [...last.blocks]
+
+      // Finalize any trailing streaming thinking block (mirrors the
+      // content-segment path in the "chunk" case).
+      const lastBlock = blocks[blocks.length - 1]
+      if (lastBlock?.type === "thinking" && lastBlock.streaming) {
+        blocks[blocks.length - 1] = {
+          ...lastBlock,
+          content: lastBlock.content + (lastBlock.topicBuffer ?? ""),
+          topicBuffer: "",
+          streaming: false,
+          durationMs: lastBlock.startedAt
+            ? Date.now() - lastBlock.startedAt
+            : undefined,
+        }
+      }
+
+      // Merge into an adjacent trailing tool loop when one exists (one agentic
+      // loop), re-deriving groups from the combined calls.
+      const tail = blocks[blocks.length - 1]
+      const call = loop.groups[0]?.calls[0]
+      if (tail?.type === "tool_loop" && call) {
+        blocks[blocks.length - 1] = appendCallToToolLoop(
+          tail,
+          call,
+          state.toolGrouping,
+        )
+      } else {
+        blocks.push(loop)
+      }
+
+      return {
+        ...state,
+        streamingMessage: {
+          ...last,
+          blocks,
+          htmlDeps: mergeHtmlDeps(last.htmlDeps, action.html_deps),
+        },
+      }
+    }
+
     case "chunk_end": {
       const last = state.streamingMessage
       if (!last || !last.streaming) {
@@ -1254,11 +1344,13 @@ function rerouteMessage(
   grouping: ToolGrouping,
 ): ChatMessageData {
   if (!msg.blocks.some((b) => b.type === "tool_loop")) return msg
-  const raw: MessageBlock[] = msg.blocks.map((b) =>
-    b.type === "tool_loop"
-      ? { type: "content", content: b.content, contentType: b.contentType }
-      : b,
-  )
+  const raw: MessageBlock[] = msg.blocks.map((b) => {
+    if (b.type !== "tool_loop") return b
+    // A structured-derived loop carries no raw content slice to unwind and
+    // re-parse; re-derive its groups from the calls it already holds.
+    if (b.content === "") return regroupToolLoop(b, grouping)
+    return { type: "content", content: b.content, contentType: b.contentType }
+  })
   const blocks = routeToolBlocks(
     raw,
     grouping,
