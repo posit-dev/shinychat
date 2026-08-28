@@ -1391,8 +1391,10 @@ describe("chatReducer", () => {
       })
       const msg = next.messages[0]!
       expect(msg.blocks).toHaveLength(1)
-      expect(msg.blocks[0]!.type).toBe("content")
-      expect(msg.blocks[0]!.content).toBe(content)
+      const onlyBlock = msg.blocks[0]!
+      if (onlyBlock.type !== "content")
+        throw new Error("expected content block")
+      expect(onlyBlock.content).toBe(content)
     })
 
     it("streams thinking in real-time when <thinking> tag arrives across chunks", () => {

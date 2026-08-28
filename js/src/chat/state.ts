@@ -21,6 +21,15 @@ import {
   supersededRequestIds,
 } from "./tool-model"
 import type { ToolLoopBlock, ToolGrouping } from "./tool-model"
+import {
+  appendWebActivityBlock,
+  asWebActivityWireBlock,
+  isWebActivityWireBlock,
+} from "./web-activity-model"
+import type {
+  WebActivityBlock,
+  WebActivityWireBlock,
+} from "./web-activity-model"
 
 export {
   deriveToolGroupIdentity,
@@ -35,6 +44,7 @@ export type {
   ToolGrouping,
   ToolLoopBlock,
 } from "./tool-model"
+export type { WebActivityBlock, WebActivityItem } from "./web-activity-model"
 
 export interface ContentBlock {
   type: "content"
@@ -51,7 +61,11 @@ export interface ThinkingBlock {
   durationMs?: number
   streaming: boolean
 }
-export type MessageBlock = ContentBlock | ThinkingBlock | ToolLoopBlock
+export type MessageBlock =
+  | ContentBlock
+  | ThinkingBlock
+  | ToolLoopBlock
+  | WebActivityBlock
 
 export interface ChatMessageData {
   id: string
@@ -207,14 +221,22 @@ function messagePayloadToData(
   msg: MessagePayload,
   grouping: ToolGrouping = "tool",
 ): ChatMessageData {
-  const rawBlocks: MessageBlock[] = []
+  let rawBlocks: MessageBlock[] = []
   for (const seg of msg.segments) {
     if (isStructuredSegment(seg)) {
       // Structured blocks are server-authored and arrive render-ready:
-      // convert to a tool loop on arrival. Tool UI is never legitimate in a
-      // user message (mirrors routeToolBlocks' role gate).
+      // convert to a tool loop / web activity on arrival. Tool UI is never
+      // legitimate in a user message (mirrors routeToolBlocks' role gate);
+      // web activity is likewise assistant-only.
       if (msg.role === "user") {
         console.warn("Ignoring structured block in a user-role message")
+        continue
+      }
+      if (isWebActivityWireBlock(seg)) {
+        // Consecutive web_* blocks group into ONE web_activity block on
+        // arrival (re-expressing rehypeGroupWebActivity over blocks).
+        const webBlock = asWebActivityWireBlock(seg)
+        if (webBlock) rawBlocks = appendWebActivityBlock(rawBlocks, webBlock)
         continue
       }
       const loop = structuredBlockToLoop(seg, grouping)
@@ -388,7 +410,9 @@ function buildFenceCloseRe(marker: string): RegExp {
 function lastContentEndsWithNewline(blocks: MessageBlock[]): boolean {
   if (blocks.length === 0) return true
   const last = blocks[blocks.length - 1]!
-  if (last.type === "thinking") return true
+  // thinking and structured web_activity blocks are structural boundaries
+  // (the latter snapshots to an empty string), equivalent to a newline.
+  if (last.type === "thinking" || last.type === "web_activity") return true
   return last.content === "" || last.content.endsWith("\n")
 }
 
@@ -944,10 +968,20 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         return state
       }
 
-      const loop = structuredBlockToLoop(action.block, state.toolGrouping)
-      if (!loop) return state
+      // Convert the wire block to its render-model form up front; unknown
+      // types and unsupported versions warn and no-op. A web_* block joins
+      // the trailing web activity (tolerating whitespace between carriers);
+      // a tool block becomes a one-call tool loop.
+      let webBlock: WebActivityWireBlock | null = null
+      let loop: ToolLoopBlock | null = null
+      if (isWebActivityWireBlock(action.block)) {
+        webBlock = asWebActivityWireBlock(action.block)
+      } else {
+        loop = structuredBlockToLoop(action.block, state.toolGrouping)
+      }
+      if (!webBlock && !loop) return state
 
-      const blocks = [...last.blocks]
+      let blocks = [...last.blocks]
 
       // Finalize any trailing streaming thinking block (mirrors the
       // content-segment path in the "chunk" case).
@@ -964,18 +998,22 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         }
       }
 
-      // Merge into an adjacent trailing tool loop when one exists (one agentic
-      // loop), re-deriving groups from the combined calls.
-      const tail = blocks[blocks.length - 1]
-      const call = loop.groups[0]?.calls[0]
-      if (tail?.type === "tool_loop" && call) {
-        blocks[blocks.length - 1] = appendCallToToolLoop(
-          tail,
-          call,
-          state.toolGrouping,
-        )
-      } else {
-        blocks.push(loop)
+      if (webBlock) {
+        blocks = appendWebActivityBlock(blocks, webBlock)
+      } else if (loop) {
+        // Merge into an adjacent trailing tool loop when one exists (one
+        // agentic loop), re-deriving groups from the combined calls.
+        const tail = blocks[blocks.length - 1]
+        const call = loop.groups[0]?.calls[0]
+        if (tail?.type === "tool_loop" && call) {
+          blocks[blocks.length - 1] = appendCallToToolLoop(
+            tail,
+            call,
+            state.toolGrouping,
+          )
+        } else {
+          blocks.push(loop)
+        }
       }
 
       return {
@@ -1313,6 +1351,12 @@ export type SnapshotMessage = {
 function blockToSegment(block: MessageBlock): SnapshotSegment {
   if (block.type === "thinking") {
     return { content: block.content, content_type: "thinking" }
+  }
+  if (block.type === "web_activity") {
+    // A structured web activity has no string form; mirror the
+    // structured-derived tool_loop snapshot (an empty segment keeps the
+    // block's position without inventing markup).
+    return { content: "", content_type: "html" }
   }
   return { content: block.content, content_type: block.contentType }
 }

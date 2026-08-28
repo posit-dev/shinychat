@@ -8,6 +8,7 @@ import {
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ThinkingDisplay } from "./ThinkingDisplay"
 import { ToolGroup } from "./ToolGroup"
+import { WebActivity } from "./WebActivity"
 import { robot, dots_fade, arrowUpShort, pencil } from "../utils/icons"
 import {
   chatTagToComponentMap,
@@ -299,7 +300,10 @@ export const ChatMessage = memo(function ChatMessage({
   const hasContent =
     message.content.trim() !== "" ||
     visibleBlocks.some(
-      ({ block }) => block.type === "thinking" || block.type === "tool_loop",
+      ({ block }) =>
+        block.type === "thinking" ||
+        block.type === "tool_loop" ||
+        block.type === "web_activity",
     ) ||
     (message.attachments?.length ?? 0) > 0 ||
     message.cancelled
@@ -448,6 +452,13 @@ export const ChatMessage = memo(function ChatMessage({
           ))}
         </div>
       )
+    }
+
+    // A structured web activity (web_search/web_search_results/web_fetch
+    // blocks, grouped by the reducer on arrival) renders directly — no
+    // markup round-trip through the markdown pipeline.
+    if (block.type === "web_activity") {
+      return <WebActivity key={i} items={block.items} />
     }
 
     if (leadingCommand && i === 0) {

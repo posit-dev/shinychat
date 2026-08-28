@@ -89,11 +89,58 @@ export type ToolResultBlock = {
 }
 
 /**
+ * One source in a `web_search_results` block: a real JSON array entry, not a
+ * stringified attribute. `url` is required; `title`/`domain` are display
+ * hints (the client derives a domain from the URL when absent).
+ */
+export type WebSearchSource = {
+  url: string
+  title?: string
+  domain?: string
+}
+
+/**
+ * A typed, server-authored web-search envelope. The envelope itself is the
+ * trust signal: only the server can construct these blocks. Consecutive
+ * web_* blocks group client-side into one `web_activity` block on arrival.
+ */
+export type WebSearchBlock = {
+  type: "web_search"
+  version: 1
+  query: string
+}
+
+/**
+ * The results paired with a preceding `web_search`: the client attaches the
+ * sources to the earliest still-pending search in the activity (the
+ * adjacency pairing `WebActivity.parseItems` uses on the markup path).
+ */
+export type WebSearchResultsBlock = {
+  type: "web_search_results"
+  version: 1
+  sources: WebSearchSource[]
+}
+
+/** A typed, server-authored web-fetch envelope. */
+export type WebFetchBlock = {
+  type: "web_fetch"
+  version: 1
+  url: string
+  /** Absent when the server didn't report one (chatlas allows None). */
+  status?: "success" | "error"
+}
+
+/**
  * Server-authored structured blocks carried in `MessagePayload.segments`
  * (outside a stream) or via a `block_insert` action (mid-stream). The union
  * grows per the design.
  */
-export type StructuredBlock = ToolRequestBlock | ToolResultBlock
+export type StructuredBlock =
+  | ToolRequestBlock
+  | ToolResultBlock
+  | WebSearchBlock
+  | WebSearchResultsBlock
+  | WebFetchBlock
 
 /**
  * One entry of `MessagePayload.segments`: a string segment

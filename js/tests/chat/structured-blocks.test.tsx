@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
-import { render } from "@testing-library/react"
+import { fireEvent, render } from "@testing-library/react"
 
 vi.mock("../../src/chat/TiptapInput", async () => {
   const { FakeTiptapInput } = await import("../helpers/fakeTiptapInput")
@@ -20,6 +20,9 @@ import type {
   StructuredBlock,
   ToolRequestBlock,
   ToolResultBlock,
+  WebFetchBlock,
+  WebSearchBlock,
+  WebSearchResultsBlock,
 } from "../../src/transport/types"
 
 // Keystone slice for the structured-content-types epic: `tool_request` and
@@ -53,6 +56,37 @@ const toolRequestBlock = (
   title: "Looking up weather",
   intent: "check weather",
   arguments: '{"location":"Duluth"}',
+  ...overrides,
+})
+
+const webSearchBlock = (
+  overrides: Partial<WebSearchBlock> = {},
+): WebSearchBlock => ({
+  type: "web_search",
+  version: 1,
+  query: "weather in Duluth",
+  ...overrides,
+})
+
+const webSearchResultsBlock = (
+  overrides: Partial<WebSearchResultsBlock> = {},
+): WebSearchResultsBlock => ({
+  type: "web_search_results",
+  version: 1,
+  sources: [
+    { url: "https://example.com/weather", title: "Duluth weather" },
+    { url: "https://example.org/forecast" },
+  ],
+  ...overrides,
+})
+
+const webFetchBlock = (
+  overrides: Partial<WebFetchBlock> = {},
+): WebFetchBlock => ({
+  type: "web_fetch",
+  version: 1,
+  url: "https://example.net/article",
+  status: "success",
   ...overrides,
 })
 
@@ -183,9 +217,9 @@ describe("structured tool_result block via message.segments", () => {
   it("ignores unknown block types and unsupported versions with a warning", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
     const unknownType = {
-      type: "web_search",
+      type: "html_block",
       version: 1,
-      query: "kittens",
+      content: "<div></div>",
     } as unknown as StructuredBlock
     const unknownVersion = {
       ...toolResultBlock(),
@@ -628,5 +662,286 @@ describe("structured tool_request block via block_insert mid-stream", () => {
     const calls = loop.groups.flatMap((g) => g.calls)
     expect(calls.map((c) => c.requestId)).toEqual(["call-1", "call-2"])
     expect(calls.every((c) => c.status === "running")).toBe(true)
+  })
+})
+
+describe("structured web_* blocks via message.segments", () => {
+  it("groups adjacent web blocks into one web_activity, pairing results with the pending search", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "Before the burst. ", content_type: "markdown" },
+          webSearchBlock(),
+          webSearchResultsBlock(),
+          webFetchBlock(),
+          { content: " After the burst.", content_type: "markdown" },
+        ],
+      },
+    })
+
+    expect(state.messages).toHaveLength(1)
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual([
+      "content",
+      "web_activity",
+      "content",
+    ])
+
+    // The results block attached its sources to the still-pending search;
+    // the fetch appended a standalone item (parseItems' adjacency pairing,
+    // re-expressed over structured arrival).
+    const activity = blocks[1]!
+    if (activity.type !== "web_activity")
+      throw new Error("expected web_activity")
+    expect(activity.items).toEqual([
+      {
+        kind: "search",
+        query: "weather in Duluth",
+        sources: [
+          { url: "https://example.com/weather", title: "Duluth weather" },
+          { url: "https://example.org/forecast" },
+        ],
+        citedSources: [],
+      },
+      { kind: "fetch", url: "https://example.net/article", status: "success" },
+    ])
+
+    // The grouped activity renders without a markup round-trip.
+    const { container } = renderMessages(state.messages)
+    expect(container.querySelector(".shiny-web-activity")).not.toBeNull()
+    const text = container.textContent ?? ""
+    expect(text.indexOf("Before the burst.")).toBeLessThan(
+      text.indexOf("Searched the web"),
+    )
+    expect(text.indexOf("Searched the web")).toBeLessThan(
+      text.indexOf("After the burst."),
+    )
+  })
+
+  it("tolerates whitespace-only content between carriers", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          webSearchBlock(),
+          // rehypeGroupWebActivity tolerates whitespace text nodes between
+          // carriers; the structured path drops the whitespace-only block.
+          { content: " \n", content_type: "markdown" },
+          webSearchResultsBlock(),
+          webFetchBlock(),
+        ],
+      },
+    })
+
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["web_activity"])
+    const activity = blocks[0]!
+    if (activity.type !== "web_activity")
+      throw new Error("expected web_activity")
+    expect(activity.items.map((it) => it.kind)).toEqual(["search", "fetch"])
+    // The dropped separator leaves no stray content behind.
+    expect(state.messages[0]!.content).toBe("")
+
+    // A web-activity-only message still renders (hasContent counts it).
+    const { container } = renderMessages(state.messages)
+    expect(container.querySelector(".shiny-web-activity")).not.toBeNull()
+  })
+
+  it("ends the activity run when prose intervenes", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          webSearchBlock(),
+          { content: " Some prose. ", content_type: "markdown" },
+          webFetchBlock(),
+        ],
+      },
+    })
+
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual([
+      "web_activity",
+      "content",
+      "web_activity",
+    ])
+    const first = blocks[0]!
+    if (first.type !== "web_activity") throw new Error("expected web_activity")
+    // The first run's search never met its results: it stays pending.
+    expect(first.items).toEqual([
+      {
+        kind: "search",
+        query: "weather in Duluth",
+        sources: null,
+        citedSources: [],
+      },
+    ])
+    const second = blocks[2]!
+    if (second.type !== "web_activity") throw new Error("expected web_activity")
+    expect(second.items).toEqual([
+      { kind: "fetch", url: "https://example.net/article", status: "success" },
+    ])
+  })
+
+  it("ignores web blocks with unsupported versions with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "just text", content_type: "markdown" },
+          { ...webSearchBlock(), version: 2 } as unknown as StructuredBlock,
+          { ...webFetchBlock(), version: 2 } as unknown as StructuredBlock,
+        ],
+      },
+    })
+
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["content"])
+    expect(warn).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe("structured web_* blocks via block_insert mid-stream", () => {
+  function startStream(state: ChatState): ChatState {
+    return chatReducer(state, {
+      type: "chunk_start",
+      message: { role: "assistant", segments: [] },
+    })
+  }
+
+  it("pairs a results block with a search inserted earlier in the stream", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: webSearchBlock(),
+    })
+
+    // The search sits pending in a fresh activity until its results arrive.
+    const midBlocks = state.streamingMessage!.blocks
+    expect(midBlocks.map((b) => b.type)).toEqual(["web_activity"])
+    const midActivity = midBlocks[0]!
+    if (midActivity.type !== "web_activity")
+      throw new Error("expected web_activity")
+    expect(midActivity.items).toEqual([
+      {
+        kind: "search",
+        query: "weather in Duluth",
+        sources: null,
+        citedSources: [],
+      },
+    ])
+
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: webSearchResultsBlock(),
+    })
+
+    // Pairing works across the block_insert boundary: the pending state
+    // lives in the item itself (sources === null).
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["web_activity"])
+    const activity = blocks[0]!
+    if (activity.type !== "web_activity")
+      throw new Error("expected web_activity")
+    expect(activity.items).toHaveLength(1)
+    const search = activity.items[0]!
+    if (search.kind !== "search") throw new Error("expected search item")
+    expect(search.sources).toHaveLength(2)
+
+    // A later search starts a new pending item; it doesn't disturb the
+    // already-paired one.
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: webSearchBlock({ query: "second query" }),
+    })
+    const after = state.streamingMessage!.blocks[0]!
+    if (after.type !== "web_activity") throw new Error("expected web_activity")
+    expect(after.items.map((it) => it.kind)).toEqual(["search", "search"])
+    const secondSearch = after.items[1]!
+    if (secondSearch.kind !== "search") throw new Error("expected search item")
+    expect(secondSearch.query).toBe("second query")
+    expect(secondSearch.sources).toBeNull()
+  })
+
+  it("renders an expandable activity that survives chunk_end", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "Checking the web. ",
+      operation: "append",
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: webSearchBlock(),
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: webSearchResultsBlock(),
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: webFetchBlock(),
+    })
+
+    // Mid-stream: the burst is already grouped render-ready.
+    expect(state.streamingMessage!.blocks.map((b) => b.type)).toEqual([
+      "content",
+      "web_activity",
+    ])
+
+    state = chatReducer(state, { type: "chunk_end" })
+    expect(state.streamingMessage).toBeNull()
+    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual([
+      "content",
+      "web_activity",
+    ])
+
+    const { container } = renderMessages(state.messages)
+    const header = container.querySelector(".shiny-web-activity__header")
+    expect(header).not.toBeNull()
+    expect(container.textContent).toContain("Searched the web")
+
+    // Collapsed by default; clicking the header expands the timeline.
+    expect(container.querySelector(".shiny-web-activity__timeline")).toBeNull()
+    fireEvent.click(header!)
+    expect(header!.getAttribute("aria-expanded")).toBe("true")
+    expect(
+      container.querySelector(".shiny-web-activity__timeline"),
+    ).not.toBeNull()
+    expect(container.textContent).toContain("weather in Duluth")
+    expect(container.textContent).toContain("2 results")
+    expect(container.textContent).toContain("Duluth weather")
+    // The title-less source falls back to its derived domain.
+    expect(container.textContent).toContain("example.org")
+    // The fetch item renders with its URL and success status.
+    expect(container.querySelector(".shiny-web-activity__fetch")).not.toBeNull()
+    expect(container.textContent).toContain("https://example.net/article")
+    expect(
+      container.querySelector(".shiny-web-activity__status--ok"),
+    ).not.toBeNull()
+
+    // Segment order around the activity is preserved.
+    const text = container.textContent ?? ""
+    expect(text.indexOf("Checking the web.")).toBeLessThan(
+      text.indexOf("Searched the web"),
+    )
+  })
+
+  it("ignores web blocks with unsupported versions with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: { ...webSearchBlock(), version: 2 } as unknown as StructuredBlock,
+    })
+
+    expect(state.streamingMessage!.blocks).toHaveLength(0)
+    expect(warn).toHaveBeenCalledTimes(1)
   })
 })

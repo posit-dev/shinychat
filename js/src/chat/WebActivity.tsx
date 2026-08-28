@@ -1,34 +1,20 @@
 import { memo, useState } from "react"
+import type { ComponentType } from "react"
 import type { Element, ElementContent } from "hast"
 import { externalLinkAttributes } from "../markdown/plugins/rehypeExternalLinks"
 import { isSafeUrl } from "../markdown/urlSanitize"
+import {
+  normalizeSources,
+  type WebActivityItem,
+  type WebActivitySearchItem,
+  type WebActivitySource,
+} from "./web-activity-model"
 import { ChevronIcon } from "./ChevronIcon"
 import { useAsideFavicon } from "./context"
 import { domainFromUrl } from "./domain"
 
-interface Source {
-  url: string
-  title?: string
-  domain?: string
-}
-
-interface SearchItem {
-  kind: "search"
-  query: string
-  sources: Source[] | null
-  citedSources: Source[]
-}
-
-interface FetchItem {
-  kind: "fetch"
-  url: string
-  status?: string
-}
-
-type Item = SearchItem | FetchItem
-
 interface WebActivityProps {
-  node?: Element
+  items: WebActivityItem[]
 }
 
 function prop(el: Element, name: string): string | undefined {
@@ -36,35 +22,37 @@ function prop(el: Element, name: string): string | undefined {
   return typeof v === "string" ? v : undefined
 }
 
-function parseSources(json?: string): Source[] {
+function parseSources(json?: string): WebActivitySource[] {
   if (!json) return []
   try {
-    const arr: unknown = JSON.parse(json)
-    if (!Array.isArray(arr)) return []
-    const seen = new Set<string>()
-    return arr.filter((s): s is Source => {
-      if (!s || typeof (s as Source).url !== "string") return false
-      const url = (s as Source).url
-      if (seen.has(url)) return false
-      seen.add(url)
-      return true
-    })
+    return normalizeSources(JSON.parse(json))
   } catch {
     return []
   }
 }
 
-function parseItems(node?: Element): Item[] {
+/**
+ * Parse a <shiny-web-activity> HAST subtree (the markup path) into
+ * structured items. Search↔results pairing uses a pending-search queue: a
+ * results element attaches its sources to the earliest search still lacking
+ * them, or becomes a query-less search item when none is pending. The
+ * reducer's applyWebBlock re-expresses this same pairing for web_* blocks.
+ *
+ * The wrapper's `citedSources` property (attached by
+ * rehypeAttachCitedSources when a burst has no provider result list) is a
+ * markup-path-only concept; structured blocks never carry it.
+ */
+function parseItems(node?: Element): WebActivityItem[] {
   if (!node) return []
   const citedSources = parseSources(prop(node, "citedSources"))
   const kids = (node.children ?? []).filter(
     (c: ElementContent): c is Element => c.type === "element",
   )
-  const items: Item[] = []
-  const pendingSearches: SearchItem[] = []
+  const items: WebActivityItem[] = []
+  const pendingSearches: WebActivitySearchItem[] = []
   for (const el of kids) {
     if (el.tagName === "shiny-web-search") {
-      const search: SearchItem = {
+      const search: WebActivitySearchItem = {
         kind: "search",
         query: prop(el, "query") ?? "",
         sources: null,
@@ -100,7 +88,7 @@ function parseItems(node?: Element): Item[] {
   return items
 }
 
-function domainOf(s: Source): string {
+function domainOf(s: WebActivitySource): string {
   return s.domain || domainFromUrl(s.url)
 }
 
@@ -110,12 +98,17 @@ function faviconUrl(domain: string): string {
   return `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`
 }
 
+/**
+ * Renders one web-activity burst (searches + fetches) as a collapsible
+ * timeline. Takes structured items — built by the reducer from web_* wire
+ * blocks, or by WebActivityBridge from a <shiny-web-activity> HAST subtree
+ * on the markup path.
+ */
 export const WebActivity = memo(function WebActivity({
-  node,
+  items,
 }: WebActivityProps) {
   const [expanded, setExpanded] = useState(false)
   const deriveFavicon = useAsideFavicon()
-  const items = parseItems(node)
   if (items.length === 0) return null
 
   const headerText = items.some((it) => it.kind === "search")
@@ -171,7 +164,7 @@ export const WebActivity = memo(function WebActivity({
                       </div>
                       {sources.length > 0 && (
                         <div className="shiny-web-activity__results">
-                          {sources.map((s, j) => {
+                          {sources.map((s) => {
                             const domain = domainOf(s)
                             const safe = isSafeUrl(s.url)
                             const Row = safe ? "a" : "span"
@@ -242,3 +235,13 @@ export const WebActivity = memo(function WebActivity({
     </div>
   )
 })
+
+/**
+ * Component-map bridge for the markup path: a <shiny-web-activity> element
+ * (grouped by rehypeGroupWebActivity out of server-authored markup, e.g. R
+ * until its Phase 3 port) parses into the structured items WebActivity
+ * renders.
+ */
+export const WebActivityBridge = (({ node }: { node?: Element }) => (
+  <WebActivity items={parseItems(node)} />
+)) as ComponentType<unknown>
