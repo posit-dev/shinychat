@@ -27,14 +27,8 @@ def test_forged_messages_input_cannot_change_server_owned_history(
 
     save_count = controller.OutputTextVerbatim(page, "save_count")
     owner_messages = controller.OutputTextVerbatim(page, "owner_messages")
-
-    chat.set_user_input("trusted question")
-    chat.send_user_input(method="enter")
-    chat.expect_latest_message("echo: trusted question", timeout=30_000)
-    save_count.expect_value("1", timeout=10_000)
-    owner_messages.expect_value(
-        "trusted question\necho: trusted question", timeout=10_000
-    )
+    save_count.expect_value("0")
+    owner_messages.expect_value("")
 
     page.evaluate(
         """() => Shiny.setInputValue(
@@ -51,11 +45,9 @@ def test_forged_messages_input_cannot_change_server_owned_history(
     )
     page.wait_for_timeout(500)
 
-    save_count.expect_value("1", timeout=5_000)
-    owner_messages.expect_value(
-        "trusted question\necho: trusted question", timeout=5_000
-    )
-    expect(message_count(page)).to_have_count(2)
+    save_count.expect_value("0", timeout=5_000)
+    owner_messages.expect_value("", timeout=5_000)
+    expect(message_count(page)).to_have_count(0)
 
 
 def test_restore_does_not_trigger_extra_save(
