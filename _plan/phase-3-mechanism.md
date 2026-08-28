@@ -610,12 +610,6 @@ child or the phase.
   consumption/mutation, and leave arbitrary concurrent `ClientWithTurns`
   mutation attribution unsupported. The exchange-owned provider journal is
   backlog `shinychat#m3q6`; no queue or reconciliation is added.
-- **Current handoff (2026-08-28):** the 1053 disposition is recorded and
-  implementation scope is limited to that contract plus strict JSON
-  canonicalization. Preserve the existing serial recorder lock, state
-  capture points, restore/rewind boundaries, and one-display-stream
-  transcript admission. Do not add a client journal, queue, or reconciliation
-  path.
 - **3/3 PATCH disposition (2026-08-28; roborev job `1055`):** the follow-up
   `shinychat#t9ee` decision is a narrow extension of the existing
   `_validate_mapping_keys` recursion. Before JSON-mode model serialization, it
@@ -626,6 +620,14 @@ child or the phase.
   mapping keys has a file-store regression proving rejection before any write.
   This PATCH changes no ownership, concurrency, or reconciliation behavior and
   does not revise the REPLACE contract above.
+- **Current handoff (2026-08-28):** `shinychat#t9ee` landed the REPLACE
+  contract and strict key-validation follow-ups in `9329e01a`, `3a5c9270`,
+  `ce8af410`, `0b0c64e1`, and `8553a2cb`. Jobs `1053`, `1054`, and `1055`
+  are closed stale on their respective fixes; fresh job `1056` found no
+  issues. Ruff, Pyright, focused key-validation tests, and the broader
+  non-browser suite pass except for the known unrelated Markdown MIME failure
+  (`715 passed, 1 skipped, 1 failed`). The child is committed and awaits
+  required human review; its next consumer remains Phase 4 restore/rewind.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
