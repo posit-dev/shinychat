@@ -164,6 +164,7 @@ class _PendingResponseSettlement:
     consumers: tuple[_ResponseSettlementConsumer, ...]
     owner_task: asyncio.Task[Any] | None = None
     completion: asyncio.Future[None] | None = None
+    cancel_scheduled_delivery: CancelCallback | None = None
 
 
 _response_settlement_delivery: ContextVar[
@@ -1788,7 +1789,7 @@ class Chat:
         delivery = _PendingResponseSettlement(consumers)
         self._pending_response_settlements.append(delivery)
 
-        reactive.on_flushed(
+        delivery.cancel_scheduled_delivery = reactive.on_flushed(
             lambda: self._deliver_response_settlement(delivery), once=True
         )
 
@@ -1809,7 +1810,11 @@ class Chat:
         completion = asyncio.get_running_loop().create_future()
         delivery.owner_task = task
         delivery.completion = completion
+        if delivery.cancel_scheduled_delivery is not None:
+            delivery.cancel_scheduled_delivery()
+            delivery.cancel_scheduled_delivery = None
 
+        delivery_error: BaseException | None = None
         try:
             from shiny import reactive
             from shiny.session import session_context
@@ -1821,30 +1826,70 @@ class Chat:
                         continue
                     delivery_token = _response_settlement_delivery.set(delivery)
                     try:
-                        try:
-                            await consumer.callback()
-                        except BaseException as error:
-                            if (
-                                isinstance(error, asyncio.CancelledError)
-                                and task.cancelling()
-                            ):
-                                raise
-                            try:
-                                warnings.warn(
-                                    f"Chat response settlement callback failed: {error}",
-                                    stacklevel=2,
-                                )
-                            except BaseException:
-                                pass
+                        await self._deliver_response_settlement_consumer(
+                            consumer
+                        )
                     finally:
                         _response_settlement_delivery.reset(delivery_token)
+        except BaseException as error:
+            delivery_error = error
+            raise
         finally:
             try:
                 self._pending_response_settlements.remove(delivery)
             except ValueError:
                 pass
             if not completion.done():
-                completion.set_result(None)
+                if delivery_error is None:
+                    completion.set_result(None)
+                elif isinstance(delivery_error, asyncio.CancelledError):
+                    completion.cancel()
+                else:
+                    completion.set_exception(delivery_error)
+                    # A destructive waiter may not have reached the shared
+                    # completion future before the owner failed.
+                    completion.exception()
+
+    async def _deliver_response_settlement_consumer(
+        self, consumer: _ResponseSettlementConsumer
+    ) -> None:
+        """Deliver one consumer while keeping cancellation ownership explicit."""
+        try:
+            consumer_task = asyncio.ensure_future(consumer.callback())
+        except BaseException as error:
+            try:
+                warnings.warn(
+                    f"Chat response settlement callback failed: {error}",
+                    stacklevel=2,
+                )
+            except BaseException:
+                pass
+            return
+
+        try:
+            await asyncio.wait((consumer_task,))
+        except asyncio.CancelledError:
+            consumer_task.cancel()
+            try:
+                await asyncio.wait((consumer_task,))
+            except BaseException:
+                pass
+            try:
+                consumer_task.result()
+            except BaseException:
+                pass
+            raise
+
+        try:
+            consumer_task.result()
+        except BaseException as error:
+            try:
+                warnings.warn(
+                    f"Chat response settlement callback failed: {error}",
+                    stacklevel=2,
+                )
+            except BaseException:
+                pass
 
     @asynccontextmanager
     async def _destructive_history_mutation(self):
