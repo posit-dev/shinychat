@@ -507,10 +507,20 @@ child or the phase.
   persistence serialization only, not a queue, admission/response-scheduling
   change, CAS, or multi-writer support. Job `1042` remains open until the
   implementation commit makes it stale.
-- **Provisional:** no Phase 3 mechanism decision remains open. The
+- **Current handoff (2026-08-28):** `shinychat#19dk` implemented those
+  decisions in `2227c9fb` and `73755c4f`, then fixed the ordinary terminal
+  stream-status finding from roborev job `1043` in `b074ab9c`. Focused checks
+  pass. Roborev job `1044` found a new initialization-policy conflict:
+  `_init_chat` can emit pre-input content before history has a partition, but
+  capturing it durably requires buffering until the restore decision. That
+  buffer is an init-window mechanism deferred to Phase 5 and prohibited by
+  this task's scope. Do not implement it here. `shinychat#19dk` is parked
+  with job `1044` open pending a coordinator decision on whether pre-partition
+  capture is required in Phase 3 and, if so, which owner/lifecycle may hold it.
+- **Provisional:** the pre-partition capture decision above is open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
   keystone’s narrow replay method deliberately does not enter the
   init/restore window; Phase 4 and Phase 5 retain full restore semantics and
-  its guard decision. Next after a clean `shinychat#19dk` review is the
-  separate state-hooks-and-baseline child; no state capture landed here.
+  its guard decision. The separate state-hooks-and-baseline child remains
+  blocked behind a clean `shinychat#19dk` review; no state capture landed here.
