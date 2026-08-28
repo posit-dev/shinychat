@@ -1910,17 +1910,15 @@ class Chat:
         """Reserve destructive transcript admission through settlement and mutation."""
         task = asyncio.current_task()
         delivery = _response_settlement_delivery.get()
-        if (
-            delivery is not None
-            and delivery[0] is self
-            and any(
-                delivery[1] is consumers
-                for consumers in self._pending_response_settlements
-            )
-        ):
-            raise RuntimeError(
-                "Cannot clear or restore messages while response settlement is being delivered."
-            )
+        if delivery is not None:
+            source_chat, delivered_consumers = delivery
+            if any(
+                delivered_consumers is consumers
+                for consumers in source_chat._pending_response_settlements
+            ):
+                raise RuntimeError(
+                    "Cannot clear or restore messages while response settlement is being delivered."
+                )
 
         transaction = self._destructive_history_transaction
         if transaction is not None and self._destructive_history_task is task:

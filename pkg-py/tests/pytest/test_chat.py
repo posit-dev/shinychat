@@ -5,6 +5,7 @@ import inspect
 import sys
 import threading
 import warnings
+from contextvars import copy_context
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, Callable, cast
@@ -760,23 +761,74 @@ def test_settlement_consumer_cannot_clear_before_later_consumers():
     )
 
 
-def test_settlement_consumer_can_clear_a_different_chat():
+def test_settlement_consumer_cannot_clear_a_different_chat_before_later_consumers():
+    rejected: list[str] = []
+    settled: list[tuple[ChatMessageDict, ...]] = []
+
     with session_context(test_session):
         source = Chat("settlement_source", history=False)
         other = Chat("settlement_other", history=False)
 
         async def clear_other() -> None:
-            await other.clear_messages()
+            with pytest.raises(RuntimeError, match="settlement is being delivered"):
+                await other.clear_messages()
+            rejected.append("clear")
+
+        async def observe_source() -> None:
+            settled.append(source.messages())
 
         source._on_response_settled(clear_other)
+        source._on_response_settled(observe_source)
         run_async(lambda: other.append_message("other response"))
         run_async(lambda: source.append_message("source response"))
         run_async(reactive.flush)
 
+    assert rejected == ["clear"]
+    assert settled == [
+        (ChatMessageDict(content="source response", role="assistant"),)
+    ]
     assert source.messages() == (
         ChatMessageDict(content="source response", role="assistant"),
     )
-    assert other.messages() == ()
+    assert other.messages() == (
+        ChatMessageDict(content="other response", role="assistant"),
+    )
+
+
+def test_reciprocal_settlement_mutations_fail_fast_without_deadlocking():
+    rejected: list[str] = []
+
+    with session_context(test_session):
+        chat_a = Chat("reciprocal_settlement_a", history=False)
+        chat_b = Chat("reciprocal_settlement_b", history=False)
+
+        async def clear_b() -> None:
+            with pytest.raises(RuntimeError, match="settlement is being delivered"):
+                await chat_b.clear_messages()
+            rejected.append("A->B")
+
+        async def clear_a() -> None:
+            with pytest.raises(RuntimeError, match="settlement is being delivered"):
+                await chat_a.clear_messages()
+            rejected.append("B->A")
+
+        chat_a._on_response_settled(clear_b)
+        chat_b._on_response_settled(clear_a)
+
+        async def settle_both() -> None:
+            await chat_a.append_message("response A")
+            await chat_b.append_message("response B")
+            await asyncio.wait_for(reactive.flush(), timeout=1)
+
+        run_async(settle_both)
+
+    assert rejected == ["A->B", "B->A"]
+    assert chat_a.messages() == (
+        ChatMessageDict(content="response A", role="assistant"),
+    )
+    assert chat_b.messages() == (
+        ChatMessageDict(content="response B", role="assistant"),
+    )
 
 
 def test_settlement_consumer_child_task_can_clear_after_delivery_completes():
@@ -799,7 +851,9 @@ def test_settlement_consumer_child_task_can_clear_after_delivery_completes():
 
         async def clear_during_settlement() -> None:
             nonlocal child_task
-            child_task = asyncio.create_task(clear_in_child())
+            child_task = copy_context().run(
+                asyncio.create_task, clear_in_child()
+            )
             await child_rejected.wait()
 
         async def observe_settlement() -> None:
@@ -812,6 +866,7 @@ def test_settlement_consumer_child_task_can_clear_after_delivery_completes():
             await chat.append_message("source response")
             await asyncio.wait_for(reactive.flush(), timeout=1)
             assert child_task is not None
+            assert not chat._pending_response_settlements
             release_child.set()
             await child_task
 
