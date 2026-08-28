@@ -889,6 +889,78 @@ chat_append <- function(
   chat_append_stream(id, stream, role = role, icon = icon, session = session)
 }
 
+# Session-process block-level html dependencies (raw dep objects stashed on
+# the block at construction via `attr(block, "shinychat_html_deps")`) and
+# attach them to the block's `html_deps` field. Returns a list with:
+#   block: the modified block (attribute removed, html_deps attached)
+#   deps: the processed deps (possibly empty) for the caller to merge into
+#         the envelope-level html_deps
+# Mirrors the rpx1 `_process_ui` pattern.
+process_block_deps <- function(block, session) {
+  deps <- attr(block, "shinychat_html_deps")
+  if (is.null(deps) || length(deps) == 0) {
+    return(list(block = block, deps = list()))
+  }
+  # Remove the attribute so it doesn't serialize
+  attr(block, "shinychat_html_deps") <- NULL
+  # Session-process the deps via the same path as message-level deps
+  processed <- process_ui(htmltools::tagList(!!!deps), session)
+  processed_deps <- processed[["deps"]] %||% list()
+  if (length(processed_deps) > 0) {
+    block$html_deps <- processed_deps
+  }
+  list(block = block, deps = processed_deps)
+}
+
+# Build wire segments from a shinychat_block or a mixed content list
+# (strings + blocks). Returns a list with:
+#   segments: ordered list of string segments ({content, content_type}) and
+#             bare block named lists (structured blocks)
+#   deps: all block-level html deps collected for the envelope
+build_wire_segments <- function(content, session) {
+  all_deps <- list()
+
+  if (inherits(content, "shinychat_block")) {
+    # Single block: process its deps, return as one-element segments list
+    block <- as.list(content)
+    result <- process_block_deps(block, session)
+    all_deps <- c(all_deps, result$deps)
+    list(segments = list(result$block), deps = all_deps)
+  } else {
+    # Mixed list: iterate elements, build segments in order
+    segments <- list()
+    for (item in content) {
+      if (inherits(item, "shinychat_block")) {
+        block <- as.list(item)
+        result <- process_block_deps(block, session)
+        all_deps <- c(all_deps, result$deps)
+        segments[[length(segments) + 1]] <- result$block
+      } else if (is.character(item) && !inherits(item, "html")) {
+        segments[[length(segments) + 1]] <- list(
+          content = as.character(item),
+          content_type = "markdown"
+        )
+      } else if (
+        inherits(item, c("html", "shiny.tag", "shiny.tag.list", "htmlwidget"))
+      ) {
+        ui <- process_ui(pre_process_ui(item), session)
+        all_deps <- c(all_deps, ui[["deps"]])
+        segments[[length(segments) + 1]] <- list(
+          content = paste0("\n\n", ui[["html"]], "\n\n"),
+          content_type = "html"
+        )
+      } else {
+        # Fallback: treat as markdown string
+        segments[[length(segments) + 1]] <- list(
+          content = as.character(item),
+          content_type = "markdown"
+        )
+      }
+    }
+    list(segments = segments, deps = all_deps)
+  }
+}
+
 #' Low-level function to append a message to a chat control
 #'
 #' For advanced users who want to control the message chunking behavior. Most
@@ -999,14 +1071,19 @@ chat_append_message <- function(
   if (is_thinking) {
     content <- unclass(content)
   }
+
+  is_block <- inherits(content, "shinychat_block")
+  is_mixed_list <- is.list(content) &&
+    !is_block &&
+    !inherits(content, c("shiny.tag", "shiny.tag.list", "html", "htmlwidget"))
+
   is_html <- inherits(
     content,
     c(
       "shiny.tag",
       "shiny.tag.list",
       "html",
-      "htmlwidget",
-      "shinychat_tool_card"
+      "htmlwidget"
     )
   )
   content_type <- if (is_thinking) {
@@ -1018,6 +1095,109 @@ chat_append_message <- function(
   }
 
   operation <- match.arg(operation)
+
+  icon_str <- resolve_icon_attr(icon)
+
+  if (is_block || is_mixed_list) {
+    # Build wire segments from the block(s) and any interleaved strings.
+    # Block deps are session-processed and attached to the block's
+    # html_deps field; all block deps are also collected for the envelope.
+    segments_result <- build_wire_segments(content, session)
+    wire_segments <- segments_result$segments
+    all_block_deps <- segments_result$deps
+
+    if (chunk_type == "start") {
+      # chunk_start carries the full message payload with inline segments
+      message_payload <- list(
+        role = msg[["role"]],
+        segments = wire_segments
+      )
+      if (!is.null(icon_str)) {
+        message_payload$icon <- icon_str
+      }
+      action <- list(type = "chunk_start", message = message_payload)
+      send_chat_action(
+        id,
+        action = action,
+        html_deps = all_block_deps,
+        session = session
+      )
+    } else if (chunk_type == "end") {
+      # Emit any remaining segments as chunk/block_insert, then chunk_end
+      for (seg in wire_segments) {
+        if ("type" %in% names(seg)) {
+          # Structured block
+          block_action <- list(type = "block_insert", block = seg)
+          send_chat_action(
+            id,
+            action = block_action,
+            html_deps = all_block_deps,
+            session = session
+          )
+        } else if (nzchar(seg$content)) {
+          chunk_action <- list(
+            type = "chunk",
+            content = seg$content,
+            operation = operation,
+            content_type = seg$content_type
+          )
+          send_chat_action(
+            id,
+            action = chunk_action,
+            html_deps = all_block_deps,
+            session = session
+          )
+        }
+      }
+      send_chat_action(id, action = list(type = "chunk_end"), session = session)
+    } else if (chunk_type == "intermediate") {
+      # A single block or mixed list arriving mid-stream: emit each segment
+      # in order (chunk for strings, block_insert for blocks).
+      for (seg in wire_segments) {
+        if ("type" %in% names(seg)) {
+          block_action <- list(type = "block_insert", block = seg)
+          send_chat_action(
+            id,
+            action = block_action,
+            html_deps = all_block_deps,
+            session = session
+          )
+        } else if (nzchar(seg$content)) {
+          chunk_action <- list(
+            type = "chunk",
+            content = seg$content,
+            operation = operation,
+            content_type = seg$content_type
+          )
+          send_chat_action(
+            id,
+            action = chunk_action,
+            html_deps = all_block_deps,
+            session = session
+          )
+        }
+      }
+    } else {
+      # chunk_type == "complete": message action with inline mixed segments
+      message_payload <- list(
+        role = msg[["role"]],
+        segments = wire_segments
+      )
+      if (!is.null(icon_str)) {
+        message_payload$icon <- icon_str
+      }
+      action <- list(type = "message", message = message_payload)
+      send_chat_action(
+        id,
+        action = action,
+        html_deps = all_block_deps,
+        session = session
+      )
+    }
+
+    invisible(NULL)
+    return(invisible(NULL))
+  }
 
   if (is.character(content) && !is_html) {
     # content is most likely a string, so avoid overhead in that case
@@ -1038,8 +1218,6 @@ chat_append_message <- function(
   }
 
   html_deps <- ui[["deps"]]
-
-  icon_str <- resolve_icon_attr(icon)
 
   if (chunk_type == "start") {
     message_payload <- list(
