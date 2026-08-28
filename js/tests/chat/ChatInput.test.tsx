@@ -53,7 +53,6 @@ function createMockTransport(): ChatTransport {
     sendInput: vi.fn(),
     sendCancel: vi.fn(),
     sendSlashCommand: vi.fn(),
-    sendMessagesSnapshot: vi.fn(),
     sendHistorySelect: vi.fn(),
     sendHistoryNew: vi.fn(),
     sendHistoryRename: vi.fn(),
@@ -68,8 +67,7 @@ function createMockTransport(): ChatTransport {
 // wire-shaped input via transport.sendInput. Tests assert against `dispatch`
 // and `transport.sendInput`, so this stub must match production behavior
 // closely enough for those assertions to hold without re-deriving ChatApp
-// state here (co-send of the messages snapshot is exercised at the ChatApp
-// level, not here).
+// state here.
 function makeSubmitUserInput(
   dispatch: (action: unknown) => void,
   transport: ChatTransport,

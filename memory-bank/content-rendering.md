@@ -51,11 +51,19 @@ After `split_html_islands()`:
 <shinychat-raw-html><div>More widget output</div></shinychat-raw-html>
 ```
 
-## HTML Dependencies: Client-Authoritative Round-Trip
+## HTML Dependencies: Server-Owned Message State
 
-Shiny HTML dependencies (`html_deps`) attached to a message follow a round-trip that keeps the client as the source of truth for chat history. `js/src/transport/shiny-transport.ts` renders each dependency (so its CSS/JS loads immediately) *and* attaches the serialized deps to the reducer action, rather than discarding them after rendering as it did previously. The reducer in `js/src/chat/state.ts` retains them per message as `ChatMessageData.htmlDeps`, and `buildMessagesSnapshot()` includes them when building the settled-message snapshot the client reports back to the server as the `${id}_messages:shinychat.messages` input.
+Shiny HTML dependencies (`html_deps`) attached to a message are sent with the
+server action and registered by `js/src/transport/shiny-transport.ts` before
+React receives that action. The reducer retains them with the local rendered
+message so subsequent client rendering has the dependencies it needs; it does
+not report a message snapshot back to the server.
 
-On the server, `messages_input_value()` (`pkg-py/src/shinychat/_input_handler.py`) deserializes that snapshot into `StoredMessage`s and parks each message's `htmlDeps` on `segments[0].html_deps` (`StoredSegment.html_deps` in `pkg-py/src/shinychat/_chat_types.py`). Because the deps travel with the message data itself, they persist through chat history and can be re-registered on restore — even in a brand-new browser session with no prior Shiny binding state. This is a new capability of the client-authoritative model; the R package does not have an equivalent round-trip.
+In Python, the `Chat` transcript records dependencies with the message after
+the corresponding server action is accepted for transport. History and
+bookmarks read those server-owned message specs, so restoring a message can
+re-register its dependencies in a new browser session without trusting a
+browser-reported transcript.
 
 ## Client-Side: The Markdown/HAST Pipeline
 

@@ -12,11 +12,10 @@ from shiny.ui import HTML
 from shinychat import Chat, chat_ui
 from shinychat.types import FileConversationStore, HistoryOptions
 
-# Regression app for client-authoritative history + out-of-band content: a
-# message appended outside the normal request/response turn (e.g. a
-# side-channel notice) must be part of the client's `${id}_messages`
-# snapshot, so it round-trips through a history save/restore just like the
-# "real" assistant reply.
+# Regression app for server-owned history + out-of-band content: a message
+# appended outside the normal request/response turn (e.g. a side-channel
+# notice) must be recorded by the server transcript, so it round-trips through
+# history save/restore just like the "real" assistant reply.
 #
 # `Chat(client=...)` auto-registers its own `on_user_submit` handler (see
 # `_setup_client` in `_chat.py`) that awaits `stream_async()` and appends the

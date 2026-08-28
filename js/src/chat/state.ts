@@ -1236,36 +1236,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
   }
 }
 
-export type SnapshotSegment = { content: string; content_type: ContentType }
-export type SnapshotMessage = {
-  role: "user" | "assistant"
-  segments: SnapshotSegment[]
-  attachments?: AttachmentPayload[]
-  htmlDeps?: HtmlDep[]
-}
-
-function blockToSegment(block: MessageBlock): SnapshotSegment {
-  if (block.type === "thinking") {
-    return { content: block.content, content_type: "thinking" }
-  }
-  return { content: block.content, content_type: block.contentType }
-}
-
-export function buildMessagesSnapshot(state: ChatState): SnapshotMessage[] {
-  return state.messages
-    .filter((m) => !m.isPlaceholder && !m.streaming)
-    .map((m) => {
-      const msg: SnapshotMessage = {
-        role: m.role,
-        segments: m.blocks.map(blockToSegment),
-      }
-      if (m.attachments && m.attachments.length > 0)
-        msg.attachments = m.attachments
-      if (m.htmlDeps && m.htmlDeps.length > 0) msg.htmlDeps = m.htmlDeps
-      return msg
-    })
-}
-
 /**
  * Re-route one settled message at a new grouping mode.
  *

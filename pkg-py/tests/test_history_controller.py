@@ -482,7 +482,7 @@ class _OwnerHistoryFakeChat(_FakeChat):
 
 
 @pytest.mark.anyio
-async def test_on_response_persists_owner_messages_not_reported_messages():
+async def test_on_response_persists_server_owned_messages():
     controller, _store = _make_controller()
     controller.chat = _OwnerHistoryFakeChat()  # type: ignore[assignment]
 

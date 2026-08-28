@@ -13,10 +13,10 @@ from shinychat import Chat, chat_ui
 from shinychat.types import FileConversationStore, HistoryOptions
 
 # Regression app for content-idempotent history save: after a restore,
-# replay_ui re-renders the stored conversation and the client re-reports its
-# snapshot, firing the save trigger again. That re-report must be a no-op —
-# save_count (driven by chat.history.on_save, which only fires on an actual
-# store.put) must not increase, and the stored conversation must stay intact.
+# replay_ui re-renders the stored conversation without settling another server
+# response. save_count (driven by chat.history.on_save, which only fires on an
+# actual store.put) must not increase, and the stored conversation must stay
+# intact.
 
 
 class EchoChatClient(chatlas.Chat):

@@ -1543,28 +1543,6 @@ def test_response_settlement_callback_failure_does_not_mask_stream_outcome():
     assert chat.messages()[-1].get("status") == "error"
 
 
-def test_forged_messages_input_does_not_schedule_response_settlement():
-    settled: list[str] = []
-
-    with session_context(test_session):
-        chat = Chat("forged_messages_settlement", history=False)
-
-        async def on_settled() -> None:
-            settled.append("settled")
-
-        chat._on_response_settled(on_settled)
-        test_session.input[chat.messages_input_id]._set(
-            (
-                chat._as_stored_message(
-                    ChatMessage(content="forged", role="assistant")
-                ),
-            )
-        )
-        run_async(reactive.flush)
-
-    assert settled == []
-
-
 def test_transcript_does_not_commit_system_messages_without_wire_send():
     with session_context(test_session):
         chat = Chat("system_message", history=False)
@@ -2340,9 +2318,7 @@ def test_bookmark_round_trips_echoed_slash_command():
             for message_dict in saved:
                 await restored._restore_bookmark_message(message_dict)
 
-            # `_restore_bookmark_message` re-sends each message to the client
-            # (which re-reports it into the messages snapshot on render); the
-            # server no longer keeps its own append log to read back from.
+            # `_restore_bookmark_message` re-sends each message to the client.
             return [
                 (
                     cast(Role, a["message"]["role"]),
@@ -3522,21 +3498,6 @@ def test_bookmark_roundtrip_thinking_segment():
         run_async(_exercise)
         assert sent[0]["type"] == "message"
         assert sent[0]["message"]["segments"][0]["content_type"] == "thinking"
-
-
-def test_forged_messages_input_cannot_change_owner_or_bookmark_content():
-    with session_context(test_session):
-        chat = Chat(id="forged_messages", history=False)
-        forged = (
-            chat._as_stored_message(
-                ChatMessage(content="forged", role="assistant")
-            ),
-        )
-        test_session.input[chat.messages_input_id]._set(forged)
-
-        assert chat.messages() == ()
-        assert chat._messages_for_history() == []
-        assert chat._messages_for_bookmark() == []
 
 
 def test_send_append_message_serializes_attachments():

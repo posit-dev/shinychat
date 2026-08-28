@@ -935,9 +935,6 @@ class ChatHistory:
 
         ids = HistoryInputIds.for_chat(chat.id)
         root_session.bookmark.exclude.extend(ids.all_ids())
-        # The retained legacy typed input carries StoredMessage objects, which
-        # Shiny cannot serialize into bookmark input.json.
-        root_session.bookmark.exclude.append(chat.messages_input_id)
 
         adapter = as_turns_adapter(chat_client)
         resolved_store = resolve_store(self._store)

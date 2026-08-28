@@ -6,7 +6,7 @@ from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
 
 
-def test_forged_message_report_cannot_trigger_bookmark(
+def test_forged_messages_input_cannot_trigger_bookmark(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     page.goto(local_app.url)
@@ -49,10 +49,8 @@ def test_bookmark_restore_preserves_user_messages(
     chat.expect_latest_message("You said: Hello", timeout=10_000)
 
     # Wait for the first bookmark URL so we can tell it apart from the second.
-    # (enable_bookmarking with bookmark_on="response" updates the URL after
-    # each response, but that update round-trips through a client -> server
-    # messages snapshot and is NOT synchronous with the reply becoming
-    # visible -- so it can lag behind expect_latest_message above.)
+    # enable_bookmarking with bookmark_on="response" updates the URL after
+    # server-side response settlement, which can lag behind rendering.
     page.wait_for_url(re.compile(r"\?_state_id_="), timeout=10_000)
     first_bookmark_url = page.url
 

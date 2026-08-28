@@ -1,5 +1,4 @@
-"""Registers the ``shinychat.userInput`` and ``shinychat.messages`` Shiny input
-handlers.
+"""Registers the ``shinychat.userInput`` Shiny input handler.
 
 The browser sends the user's submission as one composite value
 (``{text, attachments}``) tagged ``:shinychat.userInput``. Shiny routes any
@@ -8,10 +7,6 @@ this module must be imported for shinychat to work. The handler normalizes the
 composite into a ``UserInput``-compatible dict so ``Chat`` can read it without
 further coercion.
 
-The client also co-sends a legacy full UI message snapshot tagged
-``:shinychat.messages`` alongside the user input. Its handler remains during
-the compatibility window, but the snapshot is not transcript or persistence
-authority.
 """
 
 from __future__ import annotations
@@ -24,7 +19,6 @@ from ._attachments import (
     Attachment,
     validate_attachments,
 )
-from ._chat_types import StoredMessage, StoredSegment
 from ._typing_extensions import TypedDict
 
 if TYPE_CHECKING:
@@ -52,45 +46,3 @@ def _(value: Any, _name: "ResolvedId", _session: "Session") -> UserInputValue:
     return UserInputValue(
         text=str(value.get("text", "")), attachments=attachments
     )
-
-
-def messages_input_value(value: Any) -> list[StoredMessage]:
-    # Shiny's websocket JSON decoding converts every JSON array to a Python
-    # tuple (see shiny._utils.lists_to_tuples), so a JSON array arrives here
-    # as a tuple, not a list.
-    if not isinstance(value, (list, tuple)):
-        raise TypeError(
-            f"Expected list or tuple from shinychat.messages, got {type(value)!r}"
-        )
-    messages: list[StoredMessage] = []
-    for m in value:
-        # This is a legacy protocol input, so malformed data remains visible
-        # as a client/protocol error instead of being silently normalized.
-        # The browser reports dependencies at message scope. Store them once
-        # because StoredMessage.html_deps aggregates dependencies across segments.
-        html_deps = m.get("htmlDeps")
-        segments = [
-            StoredSegment(
-                content=s["content"],
-                content_type=s["content_type"],
-                html_deps=html_deps if i == 0 else None,
-            )
-            for i, s in enumerate(m.get("segments", []))
-        ]
-        attachments = [
-            Attachment.model_validate(a) for a in (m.get("attachments") or [])
-        ]
-        validate_attachments(attachments)
-        messages.append(
-            StoredMessage(
-                role=m["role"], segments=segments, attachments=attachments
-            )
-        )
-    return messages
-
-
-@input_handlers.add("shinychat.messages")
-def _(
-    value: Any, _name: "ResolvedId", _session: "Session"
-) -> list[StoredMessage]:
-    return messages_input_value(value)

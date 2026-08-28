@@ -6,10 +6,8 @@ from shinychat.playwright import ChatController
 def test_messages_includes_just_submitted_turn(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    """Regression test for client-authoritative UI state: `.messages()` must
-    read the client-reported snapshot, which is co-sent synchronously with the
-    user's submission, so it already includes the just-submitted user turn
-    inside `on_user_submit`."""
+    """Regression test for server-owned UI state: `.messages()` includes the
+    accepted user turn inside `on_user_submit`."""
     page.goto(local_app.url)
 
     chat = ChatController(page, "chat")

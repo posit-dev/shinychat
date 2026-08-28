@@ -349,7 +349,6 @@ class Chat:
 
         self.id = resolve_id(id)
         self.user_input_id = ResolvedId(f"{self.id}_user_input")
-        self.messages_input_id = ResolvedId(f"{self.id}_messages")
         self._slash_command_id = ResolvedId(f"{self.id}_slash_command")
         self._transform_user: TransformUserInputAsync | None = None
         self._transform_assistant: (
@@ -940,17 +939,6 @@ class Chat:
             res.append(chat_msg)
 
         return tuple(res)
-
-    def _reported_messages(self) -> tuple[StoredMessage, ...]:
-        # Legacy browser-reported UI snapshot retained for the later protocol
-        # cleanup. It is not an authority for transcript or persistence state.
-        from shiny.types import SilentException
-
-        try:
-            val = self._session.input[self.messages_input_id]()
-        except SilentException:
-            return ()
-        return tuple(val) if val else ()
 
     async def append_message(
         self,

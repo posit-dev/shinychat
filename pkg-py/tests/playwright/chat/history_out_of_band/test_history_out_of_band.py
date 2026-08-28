@@ -23,9 +23,8 @@ def test_out_of_band_message_survives_history_restore(
     """
     A message appended out-of-band (a second, independent `append_message`
     call inside `on_user_submit`, not the "reply" to the user's turn) must be
-    captured in the client-authoritative `${id}_messages` snapshot and thus
-    round-trip through a history save/restore, just like the primary
-    assistant reply does.
+    captured by the server-owned transcript and thus round-trip through a
+    history save/restore, just like the primary assistant reply does.
     """
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
