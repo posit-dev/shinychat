@@ -594,6 +594,47 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
 
 
 @pytest.mark.anyio
+async def test_v2_recorder_captures_postpartition_root_ui_but_not_greeting():
+    adapter = _FakeAdapter()
+    controller, _ = _make_controller(
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+    )
+
+    await controller.chat.set_greeting("ambient greeting")
+    await transcript.append(
+        TranscriptEntry(message=_stored_message("assistant", "pre-input UI")),
+        exchange_id=None,
+        send=_sent,
+    )
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "question")
+    )
+
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    root = record.nodes["n_0000"]
+    assert root.input is None
+    assert root.state["shinychat:turns"].mode == "snapshot"
+    assert root.state["shinychat:turns"].data == adapter.turns
+    assert [
+        message.as_stored_message().content for message in root.messages
+    ] == ["pre-input UI"]
+    assert all(
+        "ambient greeting" not in message.as_stored_message().content
+        for message in root.messages
+    )
+    assert record.nodes[exchange_id].input is not None
+    assert cast(Any, controller.chat).set_greeting_calls == ["ambient greeting"]
+
+
+@pytest.mark.anyio
 async def test_v2_recorder_runs_ordered_hooks_with_explicit_ids_and_removes_state():
     controller, _ = _make_controller(use_exchange_tree=True)
     recorder = controller._exchange_recorder
@@ -1488,6 +1529,30 @@ async def test_stream_recorder_failure_does_not_rollback_sent_transcript():
 
 
 @pytest.mark.anyio
+async def test_accepted_input_persistence_failure_is_open_and_preserves_input():
+    class FailingStore(InMemoryConversationStore):
+        async def put(
+            self, partition: ConversationPartition, record: Any
+        ) -> None:
+            raise RuntimeError("durability failure")
+
+    store = FailingStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+
+    with pytest.raises(RuntimeError, match="durability failure"):
+        await transcript.record_accepted_input_and_notify(
+            _stored_message("user", "accepted but not durable")
+        )
+
+    assert transcript.read()[-1].message.content == "accepted but not durable"
+    assert isinstance(recorder.record, ConversationRecordV2)
+    assert await store.list(part()) == []
+
+
+@pytest.mark.anyio
 async def test_terminal_state_capture_failure_propagates_without_rollback():
     class FailingStore(InMemoryConversationStore):
         fail = False
@@ -1715,6 +1780,26 @@ async def test_exchange_recorder_is_default_off_and_uses_v1_save_path():
 
     assert len(store.put_calls) == 1
     assert isinstance(store.put_calls[0][1], ConversationRecord)
+
+
+@pytest.mark.anyio
+async def test_v2_path_does_not_dual_write_through_v1_response_settlement():
+    store = _RecordingStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
+    assert len(store.put_calls) == 1
+    assert isinstance(store.put_calls[0][1], ConversationRecordV2)
+
+    await controller.on_response()
+
+    assert len(store.put_calls) == 1
+    assert all(isinstance(record, ConversationRecordV2) for _, record in store.put_calls)
 
 
 @pytest.mark.anyio

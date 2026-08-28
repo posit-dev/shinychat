@@ -50,6 +50,11 @@ STORE_MATRIX = {
     case["name"]: case
     for case in json.loads(STORE_MATRIX_PATH.read_text(encoding="utf-8"))
 }
+WORKED_EXAMPLE_PATH = (
+    Path(__file__).resolve().parent
+    / "fixtures"
+    / "history-v2-worked-example.json"
+)
 
 
 def _conv_dir(tmp_path: Path, rec: ConversationRecord) -> Path:
@@ -127,6 +132,37 @@ async def test_v2_put_get_round_trip_uses_one_atomic_document(
         tmp_path / sanitize_scope("chat") / sanitize_scope("alice") / rec.id
     )
     assert {path.name for path in conv_dir.iterdir()} == {"record.json"}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("backend", ["memory", "file"])
+async def test_v2_worked_example_round_trips_through_each_store(
+    backend: str, tmp_path: Path
+):
+    raw = json.loads(WORKED_EXAMPLE_PATH.read_text(encoding="utf-8"))
+    record = ConversationRecordV2.model_validate(raw)
+    partition = part(scope="worked-example")
+    store = (
+        InMemoryConversationStore()
+        if backend == "memory"
+        else FileConversationStore(dir=tmp_path)
+    )
+
+    await store.put(partition, record)
+    reader = (
+        store
+        if backend == "memory"
+        else FileConversationStore(dir=tmp_path)
+    )
+    loaded = await reader.get(partition, record.id)
+
+    assert isinstance(loaded, ConversationRecordV2)
+    assert loaded == record
+    assert loaded.path_node_ids() == ["x_00", "x_01", "x_03", "x_04"]
+    assert loaded.nodes["x_02"].status == "error"
+    assert loaded.nodes["x_02"].error is not None
+    assert loaded.nodes["x_02"].error.message == "Provider timeout"
+    assert loaded.nodes["x_04"].input is None
 
 
 @pytest.mark.anyio
