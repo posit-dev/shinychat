@@ -228,6 +228,37 @@ class _ExchangeRecorder:
         self._controller = controller
         self.record: ConversationRecordV2 | None = None
         self._stream_exchanges: dict[str, str] = {}
+        self._lock = asyncio.Lock()
+
+    def _new_record(self, *, title: str) -> ConversationRecordV2:
+        return new_conversation_record_v2(
+            title=title,
+            client_info={
+                str(key): str(value)
+                for key, value in self._controller.adapter.client_info().items()
+            },
+        )
+
+    def _content_exchange(self, exchange_id: str | None) -> str | None:
+        if self.record is None:
+            if exchange_id is not None:
+                return None
+            self.record = self._new_record(title="New chat")
+            return self.record.active_leaf
+        if exchange_id is not None:
+            return exchange_id if exchange_id in self.record.nodes else None
+        return self.record.open_inputless_exchange()
+
+    def _close_root_if_inactive(self) -> None:
+        assert self.record is not None
+        root_id = "n_0000"
+        root = self.record.nodes.get(root_id)
+        if (
+            root is not None
+            and root.status == "pending"
+            and root_id not in self._stream_exchanges.values()
+        ):
+            self.record.finish_exchange(root_id, "ok", None)
 
     async def accepted_input(
         self, exchange_id: str, message: StoredMessage
@@ -236,39 +267,35 @@ class _ExchangeRecorder:
         if controller.partition is None:
             raise RuntimeError("HistoryController not initialized")
 
-        if self.record is None:
-            title = " ".join(message.content.split())[:MAX_TITLE_LEN] or "New chat"
-            client_info = {
-                str(key): str(value)
-                for key, value in controller.adapter.client_info().items()
-            }
-            self.record = new_conversation_record_v2(
-                title=title,
-                client_info=client_info,
-            )
+        async with self._lock:
+            if self.record is None:
+                title = " ".join(message.content.split())[:MAX_TITLE_LEN] or "New chat"
+                self.record = self._new_record(title=title)
 
-        self.record.open_exchange(exchange_id, message)
-        await controller.store.put(controller.partition, self.record)
+            self._close_root_if_inactive()
+            self.record.open_exchange(exchange_id, message)
+            await controller.store.put(controller.partition, self.record)
 
     async def message_committed(
         self, exchange_id: str | None, entry: TranscriptEntry
     ) -> None:
-        if exchange_id is None or self.record is None:
-            return
-        if exchange_id not in self.record.nodes:
-            return
         if entry.message.role not in ("user", "assistant"):
             return
         if self._controller.partition is None:
             raise RuntimeError("HistoryController not initialized")
 
-        self.record.append_message(
-            exchange_id,
-            CapturedMessage.from_stored_message(entry.message, icon=entry.icon),
-        )
-        await self._controller.store.put(
-            self._controller.partition, self.record
-        )
+        async with self._lock:
+            target = self._content_exchange(exchange_id)
+            if target is None:
+                return
+            assert self.record is not None
+            self.record.append_message(
+                target,
+                CapturedMessage.from_stored_message(entry.message, icon=entry.icon),
+            )
+            await self._controller.store.put(
+                self._controller.partition, self.record
+            )
 
     async def stream_started(
         self,
@@ -276,38 +303,40 @@ class _ExchangeRecorder:
         exchange_id: str | None,
         entry: TranscriptEntry,
     ) -> None:
-        if exchange_id is None or self.record is None:
-            return
-        if exchange_id not in self.record.nodes:
-            return
         if self._controller.partition is None:
             raise RuntimeError("HistoryController not initialized")
 
-        self._stream_exchanges[stream_id] = exchange_id
-        self.record.append_stream_message(
-            exchange_id,
-            CapturedMessage.from_stored_message(entry.message, icon=entry.icon),
-        )
-        await self._controller.store.put(
-            self._controller.partition, self.record
-        )
+        async with self._lock:
+            target = self._content_exchange(exchange_id)
+            if target is None:
+                return
+            assert self.record is not None
+            self._stream_exchanges[stream_id] = target
+            self.record.append_stream_message(
+                target,
+                CapturedMessage.from_stored_message(entry.message, icon=entry.icon),
+            )
+            await self._controller.store.put(
+                self._controller.partition, self.record
+            )
 
     async def stream_updated(
         self, stream_id: str, entry: TranscriptEntry
     ) -> None:
-        exchange_id = self._stream_exchanges.get(stream_id)
-        if exchange_id is None or self.record is None:
-            return
         if self._controller.partition is None:
             raise RuntimeError("HistoryController not initialized")
 
-        self.record.replace_stream_message(
-            exchange_id,
-            CapturedMessage.from_stored_message(entry.message, icon=entry.icon),
-        )
-        await self._controller.store.put(
-            self._controller.partition, self.record
-        )
+        async with self._lock:
+            exchange_id = self._stream_exchanges.get(stream_id)
+            if exchange_id is None or self.record is None:
+                return
+            self.record.replace_stream_message(
+                exchange_id,
+                CapturedMessage.from_stored_message(entry.message, icon=entry.icon),
+            )
+            await self._controller.store.put(
+                self._controller.partition, self.record
+            )
 
     async def stream_finished(
         self,
@@ -315,17 +344,18 @@ class _ExchangeRecorder:
         status: Literal["ok", "cancelled", "error"],
         error: str | None,
     ) -> None:
-        exchange_id = self._stream_exchanges.get(stream_id)
-        if exchange_id is None or self.record is None:
-            return
         if self._controller.partition is None:
             raise RuntimeError("HistoryController not initialized")
 
-        self.record.finish_exchange(exchange_id, status, error)
-        await self._controller.store.put(
-            self._controller.partition, self.record
-        )
-        self._stream_exchanges.pop(stream_id, None)
+        async with self._lock:
+            exchange_id = self._stream_exchanges.get(stream_id)
+            if exchange_id is None or self.record is None:
+                return
+            self.record.finish_exchange(exchange_id, status, error)
+            await self._controller.store.put(
+                self._controller.partition, self.record
+            )
+            self._stream_exchanges.pop(stream_id, None)
 
     async def replay_active_path(
         self, record: ConversationRecordV2 | None = None

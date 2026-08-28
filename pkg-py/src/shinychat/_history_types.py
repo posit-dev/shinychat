@@ -336,6 +336,26 @@ class ConversationRecordV2(BaseModel):
         self.next_node_seq += 1
         self.updated_at = utcnow()
 
+    def open_inputless_exchange(self) -> str:
+        """Open a pending child for content sent outside a user exchange."""
+        exchange_id = f"n_{self.next_node_seq:04d}"
+        while exchange_id in self.nodes:
+            self.next_node_seq += 1
+            exchange_id = f"n_{self.next_node_seq:04d}"
+        parent_id = self.active_leaf
+        self.nodes[exchange_id] = ExchangeNode(
+            parent_id=parent_id,
+            created_at=utcnow(),
+            status="pending",
+        )
+        if parent_id is not None:
+            self.nodes[parent_id].children.append(exchange_id)
+            self.nodes[parent_id].selected_child = exchange_id
+        self.active_leaf = exchange_id
+        self.next_node_seq += 1
+        self.updated_at = utcnow()
+        return exchange_id
+
     def append_message(self, exchange_id: str, message: CapturedMessage) -> None:
         node = self.nodes.get(exchange_id)
         if node is None:
@@ -397,7 +417,7 @@ def new_conversation_record_v2(
             root_id: ExchangeNode(
                 parent_id=None,
                 created_at=now,
-                status="ok",
+                status="pending",
             )
         },
         active_leaf=root_id,

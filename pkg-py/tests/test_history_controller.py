@@ -2,6 +2,7 @@
 # is covered by Playwright e2e tests (Task 13). This file tests the pure
 # helpers that HistoryController delegates to.
 
+import asyncio
 import os
 import signal
 import subprocess
@@ -373,6 +374,7 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
     record = recorder.record
     assert isinstance(record, ConversationRecordV2)
     assert controller.record is None
+    assert record.nodes["n_0000"].status == "ok"
     node = record.nodes[exchange_id]
     assert node.status == "ok"
     assert node.input is not None and node.input.content == "hello"
@@ -456,6 +458,186 @@ async def test_v2_recorder_replaces_stream_projection_on_its_opening_exchange():
     assert record.nodes[second_exchange].status == "pending"
     assert record.active_leaf == second_exchange
     assert recorder._stream_exchanges == {}
+
+
+@pytest.mark.anyio
+async def test_v2_recorder_persists_pre_input_stream_on_pending_root() -> None:
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+
+    await transcript.start_stream(
+        stream_id="stream",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=None,
+        send=_sent,
+    )
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    root_id = record.active_leaf
+    assert root_id is not None
+    assert root_id == "n_0000"
+    assert record.title == "New chat"
+    assert record.nodes[root_id].input is None
+    assert record.nodes[root_id].status == "pending"
+
+    await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[],
+        message=_stored_message("assistant", "before input"),
+        operation="append",
+        send=_sent,
+    )
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "question")
+    )
+    await transcript.end_stream(
+        stream_id="stream",
+        status=None,
+        error=None,
+        send=_sent,
+    )
+
+    assert record.title == "New chat"
+    assert record.active_leaf == exchange_id
+    assert record.nodes[root_id].status == "ok"
+    assert [message.as_stored_message().content for message in record.nodes[root_id].messages] == [
+        "before input"
+    ]
+    assert record.nodes[exchange_id].input is not None
+
+
+@pytest.mark.anyio
+async def test_v2_recorder_creates_inputless_child_for_unowned_content() -> None:
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+    )
+
+    parent_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "question")
+    )
+    await transcript.append(
+        TranscriptEntry(message=_stored_message("assistant", "notice")),
+        exchange_id=None,
+        send=_sent,
+    )
+
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    child_id = record.active_leaf
+    assert child_id is not None
+    assert child_id != parent_id
+    child = record.nodes[child_id]
+    assert child.parent_id == parent_id
+    assert child.input is None
+    assert child.status == "ok"
+    assert [message.as_stored_message().content for message in child.messages] == [
+        "notice"
+    ]
+
+
+@pytest.mark.anyio
+async def test_v2_recorder_serializes_blocked_stream_projection_before_new_input():
+    class BlockingSnapshotStore(ConversationStore):
+        def __init__(self) -> None:
+            self.records: dict[str, ConversationRecordV2] = {}
+            self.block_next_put = False
+            self.blocked = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def list(self, partition: ConversationPartition) -> list[Any]:
+            return []
+
+        async def get(
+            self, partition: ConversationPartition, conv_id: str
+        ) -> ConversationRecordV2 | None:
+            return self.records.get(conv_id)
+
+        async def put(
+            self, partition: ConversationPartition, record: Any
+        ) -> None:
+            snapshot = record.model_copy(deep=True)
+            if self.block_next_put:
+                self.block_next_put = False
+                self.blocked.set()
+                await self.release.wait()
+            self.records[snapshot.id] = snapshot
+
+        async def delete(
+            self, partition: ConversationPartition, conv_id: str
+        ) -> None:
+            self.records.pop(conv_id, None)
+
+    store = BlockingSnapshotStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+    )
+    first_exchange = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "first")
+    )
+    await transcript.start_stream(
+        stream_id="stream",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=first_exchange,
+        send=_sent,
+    )
+
+    store.block_next_put = True
+    update = asyncio.create_task(
+        transcript.transition_stream(
+            stream_id="stream",
+            source_segments=[],
+            message=_stored_message("assistant", "partial"),
+            operation="append",
+            send=_sent,
+        )
+    )
+    await store.blocked.wait()
+    next_input = asyncio.create_task(
+        transcript.record_accepted_input_and_notify(
+            _stored_message("user", "second")
+        )
+    )
+    await asyncio.sleep(0)
+    assert not next_input.done()
+
+    store.release.set()
+    await update
+    second_exchange = await next_input
+
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    stored = store.records[record.id]
+    assert stored.active_leaf == second_exchange
+    assert second_exchange in stored.nodes
+    assert stored.nodes[first_exchange].messages[-1].as_stored_message().content == (
+        "partial"
+    )
 
 
 @pytest.mark.anyio
@@ -575,6 +757,7 @@ async def test_stream_recorder_failure_does_not_rollback_sent_transcript():
 @pytest.mark.parametrize(
     ("checkpoint", "expected_content", "expected_status", "expected_error"),
     [
+        ("pre-input-start", [""], "pending", None),
         ("input", [], "pending", None),
         ("start", [""], "pending", None),
         ("update-one", ["first"], "pending", None),
@@ -638,6 +821,15 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
                 on_stream_updated=recorder.stream_updated,
                 on_stream_finished=recorder.stream_finished,
             )
+            if sys.argv[2] == "pre-input-start":
+                await transcript.start_stream(
+                    stream_id="stream",
+                    entry=TranscriptEntry(message=message("assistant", "")),
+                    owner_task=None,
+                    exchange_id=None,
+                    send=sent,
+                )
+                os.kill(os.getpid(), signal.SIGKILL)
             exchange_id = await transcript.record_accepted_input_and_notify(
                 message("user", "question")
             )
@@ -699,7 +891,12 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
         ConversationPartition(chat_id="kill", scope="scope"), metas[0].id
     )
     assert isinstance(record, ConversationRecordV2)
-    node = next(node for node in record.nodes.values() if node.input is not None)
+    if checkpoint == "pre-input-start":
+        assert record.title == "New chat"
+        node = record.nodes["n_0000"]
+        assert node.input is None
+    else:
+        node = next(node for node in record.nodes.values() if node.input is not None)
     assert node.status == expected_status
     assert (
         [message.as_stored_message().content for message in node.messages]
