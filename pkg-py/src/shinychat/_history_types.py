@@ -58,6 +58,28 @@ class ConversationNode(BaseModel):
 MIN_SCHEMA_VERSION = 1
 MAX_SCHEMA_VERSION = 1
 
+# Version marker on stored UI message dicts (``ConversationNode.ui`` entries).
+# Old persisted UI (string-only, no ``version`` key) is detected by the
+# absence of this field and discarded at replay time, re-derived from the
+# node's stored turns via ``normalize_message`` (P4 turns-based restore;
+# kata#c15v). The marker's presence — not its value — is what counts: old UI
+# is never migrated, only ever discarded and re-derived at the current
+# version, so there are never stored old-version messages to migrate.
+STORED_UI_VERSION = 1
+
+
+def is_stored_ui_versioned(ui: list[dict[str, Any]] | None) -> bool:
+    """Whether a node's stored UI carries the structured-format marker.
+
+    Checks the first message only: derived (versioned) messages always lead a
+    node's UI list; any unversioned entries after them are out-of-band
+    client-snapshot messages preserved from the save-time snapshot.
+    """
+    if not ui:
+        return False
+    first = ui[0]
+    return isinstance(first, dict) and first.get("version") is not None
+
 
 class UnsupportedSchemaVersionError(ValueError):
     def __init__(self, version: object) -> None:

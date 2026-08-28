@@ -21,6 +21,7 @@ from shinychat._history_store import (
 )
 from shinychat._history_types import (
     MAX_SCHEMA_VERSION,
+    STORED_UI_VERSION,
     ConversationRecord,
     UnsupportedSchemaVersionError,
     new_conversation_record,
@@ -32,6 +33,44 @@ def msg(role: str) -> dict[str, object]:
         "role": role,
         "segments": [{"content": role, "content_type": "markdown"}],
     }
+
+
+def derived(role: str, content: str) -> dict[str, object]:
+    """The stored UI message a plain-text turn group derives to (P4).
+
+    History save now derives node UI server-side from the turn group rather
+    than persisting the client-reported snapshot, so stored messages carry
+    the turn's content and the structured-format version marker.
+    """
+    return {
+        "role": role,
+        "segments": [{"content": content, "content_type": "markdown"}],
+        "version": STORED_UI_VERSION,
+    }
+
+
+def chatlas_tool_group() -> list[Any]:
+    """A serialized chatlas tool-call exchange (request, result, final text),
+    round-tripped through JSON dicts exactly as the history store persists
+    them."""
+    from chatlas import Turn
+    from chatlas.types import (
+        ContentText,
+        ContentToolRequest,
+        ContentToolResult,
+    )
+    from shinychat._chat_bookmark import serialize_chatlas_turn
+
+    req = ContentToolRequest(
+        id="x", name="get_weather", arguments={"city": "Duluth"}
+    )
+    res = ContentToolResult(value="Sunny", request=req)
+    turns = [
+        Turn(role="assistant", contents=[req]),
+        Turn(role="user", contents=[res]),
+        Turn(role="assistant", contents=[ContentText(text="It's sunny.")]),
+    ]
+    return [serialize_chatlas_turn(t) for t in turns]
 
 
 def part(
@@ -52,8 +91,10 @@ def test_extend_appends_only_new_groups_with_ui_by_role():
     assert len(rec.nodes) == 2
     path = rec.path_node_ids()
     assert rec.nodes[path[0]].turns == [{"role": "user", "content": "q1"}]
-    assert rec.nodes[path[0]].ui == [msg("user")]
-    assert rec.nodes[path[1]].ui == [msg("assistant")]
+    # Stored UI is derived server-side from the turn groups (P4), not from
+    # the client-reported snapshot.
+    assert rec.nodes[path[0]].ui == [derived("user", "q1")]
+    assert rec.nodes[path[1]].ui == [derived("assistant", "a1")]
 
     groups += [
         [{"role": "user", "content": "q2"}],
@@ -62,7 +103,7 @@ def test_extend_appends_only_new_groups_with_ui_by_role():
     all_msgs = [msg("user"), msg("assistant"), msg("user"), msg("assistant")]
     extend_record_linear(rec, groups, all_msgs, ui_offset=2)
     assert len(rec.nodes) == 4
-    assert rec.nodes[rec.path_node_ids()[2]].ui == [msg("user")]
+    assert rec.nodes[rec.path_node_ids()[2]].ui == [derived("user", "q2")]
 
 
 def test_extend_groups_tool_exchange_into_single_node():
@@ -70,31 +111,12 @@ def test_extend_groups_tool_exchange_into_single_node():
         "role": "user",
         "contents": [{"content_type": "text", "text": "weather?"}],
     }
-    asst_req = {
-        "role": "assistant",
-        "contents": [
-            {
-                "content_type": "tool_request",
-                "id": "x",
-                "name": "get_weather",
-                "arguments": {},
-            }
-        ],
-    }
-    user_res = {
-        "role": "user",
-        "contents": [
-            {"content_type": "tool_result", "id": "x", "value": "Sunny"}
-        ],
-    }
-    asst_final = {
-        "role": "assistant",
-        "contents": [{"content_type": "text", "text": "It's sunny."}],
-    }
+    tool_group = chatlas_tool_group()
+    asst_req, user_res, asst_final = tool_group
 
     groups = [
         [user_turn],
-        [asst_req, user_res, asst_final],
+        tool_group,
     ]
     msgs = [msg("user"), msg("assistant")]
     rec = new_conversation_record(title="t")
@@ -108,8 +130,24 @@ def test_extend_groups_tool_exchange_into_single_node():
 
     assert len(user_node.turns) == 1
     assert len(asst_node.turns) == 3
-    assert user_node.ui == [msg("user")]
-    assert asst_node.ui == [msg("assistant")]
+    assert user_node.ui == [derived("user", "weather?")]
+
+    # The tool-call exchange derives to ONE stored UI message carrying the
+    # structured tool_request/tool_result blocks (P4) — the client snapshot
+    # used to drop these entirely.
+    assert asst_node.ui is not None and len(asst_node.ui) == 1
+    asst_ui = asst_node.ui[0]
+    assert asst_ui["version"] == STORED_UI_VERSION
+    assert asst_ui["role"] == "assistant"
+    block_types = [b["type"] for b in asst_ui["blocks"]]
+    assert block_types == ["tool_request", "tool_result"]
+    assert asst_ui["blocks"][0]["request_id"] == "x"
+    assert asst_ui["blocks"][1]["value"] == "Sunny"
+    # Interleaved layout: the final text follows the two blocks.
+    assert asst_ui["block_positions"] == [0, 0]
+    assert asst_ui["segments"] == [
+        {"content": "It's sunny.", "content_type": "markdown"}
+    ]
 
     # path_turns() must flatten back to all 4 original turns
     assert rec.path_turns() == [user_turn, asst_req, user_res, asst_final]
@@ -121,14 +159,17 @@ def test_extend_attaches_extra_assistant_msgs_to_last_node():
         [{"role": "user", "content": "q"}],
         [{"role": "assistant", "content": "a"}],
     ]
+    oob_ui = msg("assistant")  # out-of-band: no matching turn group
     msgs = [
         msg("user"),
         msg("assistant"),
-        msg("assistant"),
+        oob_ui,
     ]
     extend_record_linear(rec, groups, msgs, ui_offset=0)
     path = rec.path_node_ids()
-    assert rec.nodes[path[1]].ui == [msg("assistant"), msg("assistant")]
+    # Derived messages consume the first two client-reported messages; the
+    # out-of-band extra is preserved from the snapshot on the last node.
+    assert rec.nodes[path[1]].ui == [derived("assistant", "a"), oob_ui]
 
 
 def test_extend_attaches_late_ui_message_when_turn_groups_already_caught_up():
@@ -161,7 +202,13 @@ def test_extend_attaches_late_ui_message_when_turn_groups_already_caught_up():
         for node_id in rec.path_node_ids()
         for m in (rec.nodes[node_id].ui or [])
     ]
-    assert all_ui == [user_ui, oob_ui, streamed_ui]
+    # The first two slots hold the server-derived UI (P4); the late-arriving
+    # message is preserved from the client snapshot.
+    assert all_ui == [
+        derived("user", "q"),
+        derived("assistant", "a"),
+        streamed_ui,
+    ]
 
 
 def test_extend_noop_when_no_new_groups():
@@ -173,16 +220,20 @@ def test_extend_noop_when_no_new_groups():
     assert rec.model_dump() == before
 
 
-def test_extend_with_no_new_ui_messages_leaves_ui_none():
+def test_extend_derives_ui_even_without_client_messages():
+    # The client snapshot is no longer the persisted UI source (P4): new
+    # nodes get server-derived UI from their turn groups even when no
+    # client-reported messages arrive with the save.
     rec = new_conversation_record(title="t")
     groups = [
         [{"role": "user", "content": "q"}],
         [{"role": "assistant", "content": "a"}],
     ]
-    msgs = [msg("user"), msg("assistant")]
-    extend_record_linear(rec, groups, msgs, ui_offset=2)
+    extend_record_linear(rec, groups, [], ui_offset=0)
     assert len(rec.nodes) == 2
-    assert all(node.ui is None for node in rec.nodes.values())
+    path = rec.path_node_ids()
+    assert rec.nodes[path[0]].ui == [derived("user", "q")]
+    assert rec.nodes[path[1]].ui == [derived("assistant", "a")]
 
 
 # --- content-idempotent save guard (unit-level, no Shiny session needed) ----
@@ -191,6 +242,8 @@ def test_extend_with_no_new_ui_messages_leaves_ui_none():
 class _FakeChat:
     def __init__(self) -> None:
         self.set_greeting_calls: list[Any] = []
+        # No session: derived UI messages keep raw (unprocessed) html deps.
+        self._session = None
 
     def _messages_for_bookmark(self) -> list[Any]:
         return []
@@ -1576,6 +1629,7 @@ class _TrackingChat:
         self.actions: list[dict[str, Any]] = []
         self.cleared: bool = False
         self.set_greeting_calls: list[Any] = []
+        self._session = None
 
     def _messages_for_bookmark(self) -> list[dict[str, Any]]:
         return list(self.messages_)
@@ -2077,3 +2131,296 @@ async def test_switch_to_resends_sibling_metadata_for_branched_conversation():
     assert len(sibling_actions) == 1
     # n_0005 (message index 2) is the active branch's fork point: 2nd of 2 siblings.
     assert sibling_actions[0]["data"] == {2: {"index": 1, "total": 2}}
+
+
+# ---------------------------------------------------------------------------
+# P4: turns-based restore (kata#c15v)
+# ---------------------------------------------------------------------------
+
+
+def _user_turn_dict(text: str) -> dict[str, Any]:
+    return {
+        "role": "user",
+        "contents": [{"content_type": "text", "text": text}],
+    }
+
+
+class _ToolTurnsAdapter:
+    """Adapter over a fixed chatlas tool-call exchange (user question, then
+    an assistant-request/user-result/assistant-final group)."""
+
+    def __init__(self) -> None:
+        self.user_turn = _user_turn_dict("weather?")
+        self.tool_group = chatlas_tool_group()
+
+    def get_turns_json(self) -> list[Any]:
+        return [self.user_turn, *self.tool_group]
+
+    def get_turns_grouped(self) -> list[list[Any]]:
+        return [[self.user_turn], self.tool_group]
+
+    def set_turns_json(self, turns: list[Any]) -> None:
+        pass
+
+    def client_info(self) -> dict[str, Any]:
+        return {}
+
+
+@pytest.mark.anyio
+async def test_on_response_stores_derived_ui_with_structured_blocks():
+    # P4: history save derives UI server-side from the turn group, so the
+    # stored message carries the structured blocks the client snapshot
+    # drops (`StoredMessage.blocks` is never populated from the client).
+    controller, _store = _make_controller()
+    controller.adapter = _ToolTurnsAdapter()  # type: ignore[assignment]
+
+    await controller.on_response()
+
+    record = controller.record
+    assert record is not None
+    path = record.path_node_ids()
+    assert len(path) == 2
+
+    asst_ui = record.nodes[path[1]].ui
+    assert asst_ui is not None and len(asst_ui) == 1
+    stored = asst_ui[0]
+    assert stored["version"] == STORED_UI_VERSION
+    assert stored["role"] == "assistant"
+    assert [b["type"] for b in stored["blocks"]] == [
+        "tool_request",
+        "tool_result",
+    ]
+    assert stored["blocks"][0]["tool_name"] == "get_weather"
+    assert stored["blocks"][1]["value"] == "Sunny"
+    assert stored["block_positions"] == [0, 0]
+    assert stored["segments"] == [
+        {"content": "It's sunny.", "content_type": "markdown"}
+    ]
+
+
+@pytest.mark.anyio
+async def test_replay_emits_derived_blocks_inline_in_segments():
+    # Replay of a versioned stored message re-interleaves the structured
+    # blocks into the emitted message action's segments (wire_segments()).
+    from shiny.express._stub_session import ExpressStubSession
+    from shiny.session import session_context
+    from shinychat import Chat
+
+    with session_context(ExpressStubSession()):
+        chat = Chat(id="chat_replay_blocks")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        controller = HistoryController(
+            chat=chat,  # type: ignore[arg-type]
+            adapter=_ToolTurnsAdapter(),  # type: ignore[arg-type]
+            store=_RecordingStore(),
+            title_fn=None,
+            title_enabled=False,
+            client=None,
+        )
+        controller.partition = part()
+
+        await controller.on_response()
+        record = controller.record
+        assert record is not None
+
+        sent.clear()
+        await controller.replay_ui(record)
+
+    message_actions = [a for a in sent if a["type"] == "message"]
+    assert len(message_actions) == 2
+
+    asst_segments = message_actions[1]["message"]["segments"]
+    kinds = [s.get("type", "string") for s in asst_segments]
+    assert kinds == ["tool_request", "tool_result", "string"]
+    assert asst_segments[0]["request_id"] == "x"
+    assert asst_segments[1]["status"] == "success"
+    assert asst_segments[2] == {
+        "content": "It's sunny.",
+        "content_type": "markdown",
+    }
+
+
+@pytest.mark.anyio
+async def test_replay_discards_old_format_ui_and_rederives_from_turns():
+    # Old persisted UI (string-only, no version marker) is never re-parsed:
+    # it is discarded and re-derived from the node's stored turns, so the
+    # tool card comes back as a structured block rather than vanishing.
+    rec = new_conversation_record(title="t")
+    rec.append_linear([_user_turn_dict("weather?")], ui=[msg("user")])
+    rec.append_linear(
+        chatlas_tool_group(),
+        # Old-format stored UI: no version marker, string-only segments.
+        ui=[
+            {
+                "role": "assistant",
+                "segments": [
+                    {"content": "It's sunny.", "content_type": "markdown"}
+                ],
+            }
+        ],
+    )
+
+    chat = _TrackingChat()
+    controller, _store = _make_controller()
+    controller.chat = chat  # type: ignore[assignment]
+
+    await controller.replay_ui(rec)
+
+    assert len(chat.messages_) == 2
+    # The old-format user message was discarded and re-derived from the turn.
+    assert chat.messages_[0]["version"] == STORED_UI_VERSION
+    assert chat.messages_[0]["segments"] == [
+        {"content": "weather?", "content_type": "markdown"}
+    ]
+    # The assistant message now carries the structured blocks.
+    asst = chat.messages_[1]
+    assert asst["version"] == STORED_UI_VERSION
+    assert [b["type"] for b in asst["blocks"]] == [
+        "tool_request",
+        "tool_result",
+    ]
+
+
+@pytest.mark.anyio
+async def test_replay_falls_back_to_text_when_turns_missing():
+    # A node with neither usable UI nor turns degrades to a single empty
+    # text-only message (lossy but never broken).
+    rec = new_conversation_record(title="t")
+    node_id = rec.append_linear([], ui=None)
+
+    chat = _TrackingChat()
+    controller, _store = _make_controller()
+    controller.chat = chat  # type: ignore[assignment]
+
+    await controller.replay_ui(rec)
+
+    assert chat.messages_ == [
+        {
+            "version": STORED_UI_VERSION,
+            "role": "assistant",
+            "segments": [{"content": "", "content_type": "markdown"}],
+        }
+    ]
+    assert rec.nodes[node_id].ui is None  # replay does not write back
+
+
+@pytest.mark.anyio
+async def test_replay_rederives_text_only_when_ui_missing():
+    # ui=None with plain-text turns: re-derive from the turns (this replaces
+    # the old turn_fallback_markdown-only path with full normalization).
+    rec = new_conversation_record(title="t")
+    rec.append_linear([_user_turn_dict("hi")], ui=None)
+    rec.append_linear(
+        [
+            {
+                "role": "assistant",
+                "contents": [{"content_type": "text", "text": "hello"}],
+            }
+        ],
+        ui=None,
+    )
+
+    chat = _TrackingChat()
+    controller, _store = _make_controller()
+    controller.chat = chat  # type: ignore[assignment]
+
+    await controller.replay_ui(rec)
+
+    assert chat.messages_ == [
+        derived("user", "hi"),
+        derived("assistant", "hello"),
+    ]
+
+
+@pytest.mark.anyio
+async def test_out_of_band_message_survives_save_and_replay():
+    # A message reported by the client that doesn't correspond to any turn
+    # group (e.g. appended via append_message() outside the submit flow) is
+    # preserved from the snapshot on the fallback node and replays after the
+    # derived messages.
+    controller, _store = _make_controller()
+    chat = _TrackingChat()
+    controller.chat = chat  # type: ignore[assignment]
+    adapter = _ToolTurnsAdapter()
+    controller.adapter = adapter  # type: ignore[assignment]
+
+    note = {
+        "role": "assistant",
+        "segments": [
+            {
+                "content": "Note: rate limit reset.",
+                "content_type": "markdown",
+            }
+        ],
+    }
+    chat.messages_ = [msg("user"), msg("assistant"), note]
+
+    await controller.on_response()
+
+    record = controller.record
+    assert record is not None
+    path = record.path_node_ids()
+    leaf_ui = record.nodes[path[1]].ui
+    assert leaf_ui is not None and len(leaf_ui) == 2
+    assert leaf_ui[0]["version"] == STORED_UI_VERSION  # derived
+    assert leaf_ui[1] == note  # out-of-band extra, preserved as-is
+
+    chat.messages_ = []
+    await controller.replay_ui(record)
+
+    assert len(chat.messages_) == 3
+    assert chat.messages_[2] == note
+    assert [b["type"] for b in chat.messages_[1]["blocks"]] == [
+        "tool_request",
+        "tool_result",
+    ]
+
+
+@pytest.mark.anyio
+async def test_save_replay_continue_save_bookkeeping():
+    # Offset/bookkeeping across a save → replay → continue → save cycle:
+    # the re-reported snapshot after replay must not re-save, and a
+    # following genuine response appends exactly one new node.
+    controller, store = _make_controller()
+    chat = _ReplayFakeChat()
+    controller.chat = chat  # type: ignore[assignment]
+    adapter = _GrowingFakeAdapter()
+    controller.adapter = adapter  # type: ignore[assignment]
+    adapter.turns = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+    ]
+
+    await controller.on_response()
+    assert len(store.put_calls) == 1
+    record = controller.record
+    assert record is not None
+
+    await controller.replay_ui(record)
+    assert controller.ui_offset == 2
+
+    # Client re-reports the restored snapshot: no new save.
+    await controller.on_response()
+    assert len(store.put_calls) == 1
+
+    # A genuine new exchange appends exactly one derived message per group.
+    adapter.turns += [
+        {"role": "user", "content": "more"},
+        {"role": "assistant", "content": "sure"},
+    ]
+    chat.messages = [
+        *chat.messages,
+        msg("user"),
+        msg("assistant"),
+    ]
+    await controller.on_response()
+    assert len(store.put_calls) == 2
+    assert len(record.path_node_ids()) == 4
+    new_node = record.nodes[record.path_node_ids()[3]]
+    assert new_node.ui == [derived("assistant", "sure")]
