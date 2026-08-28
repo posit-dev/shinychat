@@ -438,14 +438,20 @@ child or the phase.
 
 ## Current handoff
 
-- **Landed:** Phase 2 is closed; the Phase 3 mechanism is approved; gate items
-  1-4 passed in `shinychat#ztvz`; Q2 in `shinychat#98jz` selected the
-  single-document layout after split failed the mandatory recovery
-  prerequisite; rejected split performance evidence remains recorded.
-- **Next:** human review of `shinychat#98jz`, then create the keystone v2
-  slice child for `shinychat#qf2r`.
+- **Landed:** `shinychat#vdhn` keystone commits `c5e33a62` and `75791d96`
+  add the v2 exchange schema, default-off private flag, single-document
+  atomic file-store path, awaited accepted-input and complete-message capture,
+  and minimal active-path display replay through
+  `_restore_bookmark_message`. Flag-on sessions skip the v1 response-
+  settlement saver, so they do not dual-write. Streaming persistence, state
+  hooks, baseline capture, full restore/bootstrap behavior, and branching
+  remain untouched.
+- **Next:** roborev review the coherent keystone range
+  `c5e33a62..75791d96`, disposition findings under the escalation valve, then
+  leave `shinychat#vdhn` open with `needs-review` for the human round.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
-  single-document atomic temp-file plus `os.replace()` layout is selected;
-  its production schema and implementation remain for the keystone task.
-  Split recovery/tail-repair work is explicitly rejected and must not be
-  restarted without a new design decision.
+  single-document atomic temp-file plus `os.replace()` layout remains
+  selected; split recovery/tail-repair remains explicitly rejected. The
+  keystone’s narrow replay method deliberately does not enter the
+  init/restore window; Phase 4 and Phase 5 retain full restore semantics and
+  its guard decision.
