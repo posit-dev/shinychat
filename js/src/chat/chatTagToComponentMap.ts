@@ -29,8 +29,11 @@ export const chatTagToComponentMap: Record<string, ComponentType<unknown>> = {
 // <shiny-tool-result value-type="html"> in such content must never resolve
 // to a tool bridge — its value would reach innerHTML (stored XSS). Route
 // tool tags in untrusted content to EscapedIsland so they display as the
-// literal markup the model wrote. Trusted content (html-typed blocks,
-// greetings) keeps the full map above.
+// literal markup the model wrote. The same holds for the web data carriers:
+// a forged <shiny-web-search>/<shiny-web-fetch> must never group (via
+// rehypeGroupWebActivity) into live web-activity chrome. Trusted content
+// (html-typed blocks, greetings) keeps the full map above; the structured
+// web_search/web_search_results/web_fetch blocks are the trusted channel.
 export const untrustedChatTagToComponentMap: Record<
   string,
   ComponentType<unknown>
@@ -38,4 +41,8 @@ export const untrustedChatTagToComponentMap: Record<
   ...chatTagToComponentMap,
   "shiny-tool-request": EscapedIsland,
   "shiny-tool-result": EscapedIsland,
+  "shiny-web-activity": EscapedIsland,
+  "shiny-web-search": EscapedIsland,
+  "shiny-web-search-results": EscapedIsland,
+  "shiny-web-fetch": EscapedIsland,
 }

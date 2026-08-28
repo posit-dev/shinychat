@@ -193,7 +193,10 @@ describe("ChatApp integration: full message flow", () => {
             {
               content:
                 '<shiny-web-search query="R 4.5.0 release date"></shiny-web-search>',
-              content_type: "markdown",
+              // html-typed is the server-authored markup channel; the same
+              // element in markdown-typed content is model-authored and
+              // renders as inert text (see spoofed-tool-markup.test.tsx).
+              content_type: "html",
             },
           ],
         },
