@@ -608,7 +608,20 @@ chat_server <- function(
       # overwrite the scalar mid-stream and cross-label spans.
       hist_ctrl <- history_controller()
       if (!is.null(hist_ctrl)) {
-        set_client_conversation_id(client, hist_ctrl$ensure_conversation_id())
+        # Surface failures (e.g. url-mode send_navigate in
+        # on_active_id_change) through the standard error path rather than
+        # letting them escape the observer, matching Python.
+        tryCatch(
+          set_client_conversation_id(client, hist_ctrl$ensure_conversation_id()),
+          error = function(e) {
+            shiny::showNotification(
+              sanitized_error_message(e),
+              type = "error",
+              duration = NULL
+            )
+            rlang::warn("Error resolving the active conversation ID", parent = e)
+          }
+        )
       }
 
       append_stream_task$invoke(
