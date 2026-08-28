@@ -529,12 +529,16 @@ async def test_v2_recorder_ignores_prepartition_content_without_failing_send():
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
         on_message_committed=recorder.message_committed,
         on_stream_started=recorder.stream_started,
         on_stream_updated=recorder.stream_updated,
         on_stream_finished=recorder.stream_finished,
     )
 
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "early input")
+    )
     assert await transcript.append(
         TranscriptEntry(message=_stored_message("assistant", "initial")),
         exchange_id=None,
