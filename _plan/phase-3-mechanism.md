@@ -446,9 +446,15 @@ child or the phase.
   settlement saver, so they do not dual-write. Streaming persistence, state
   hooks, baseline capture, full restore/bootstrap behavior, and branching
   remain untouched.
-- **Next:** roborev review the coherent keystone range
-  `c5e33a62..75791d96`, disposition findings under the escalation valve, then
-  leave `shinychat#vdhn` open with `needs-review` for the human round.
+- **Next:** roborev jobs `1033` and `1035` were fixed and closed by commits
+  `29e23dce` and `3e4b1385`. Job `1036` produced the third finding against
+  the v2 record-boundary mechanism, so the escalation valve is open. Its
+  concern is exact-type rejection of same-schema record subclasses in the
+  in-memory overwrite guard. Recommended disposition: **PATCH** by comparing
+  the already-validated schema versions instead of exact model types; this
+  preserves cross-version isolation without adding a new mechanism. Do not
+  implement past this decision until the coordinator confirms patch versus
+  replace.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
