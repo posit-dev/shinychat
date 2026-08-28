@@ -1,7 +1,7 @@
 # Plan: exchange-tree conversation history
 
 **Status:** committed · Phase 0 complete, Phase 1 in review, Phase 2 complete,
-Phase 3 mechanism agreed; Q2 benchmark pending · 2026-08-28
+Phase 3 mechanism agreed; Q2 selects split store layout · 2026-08-28
 **Kata:** epic `shinychat#6d0d` · Phase 1 `shinychat#g49a` · Phase 2
 `shinychat#kjyt` · Phase 3 `shinychat#qf2r` (the `kata` CLI issue tracker).
 All abbreviated Kata IDs below belong to the `shinychat` project;
@@ -405,14 +405,13 @@ does) and clear user way-pointing through the deprecation window.
 
 `main`'s `ConversationStore` plus the Phase 1 durability batch is the
 starting point. This path is overwhelmingly write-hot: optimize for fast,
-correct writes and reasonable reads. Two candidate layouts go to the Q2
-benchmark:
+correct writes and reasonable reads. Q2 compared two candidate layouts:
 
 - **(a) Single document** — the whole record rewritten atomically per save.
 - **(b) Split layout** — the exchange tree (small by construction: ids,
   pointers, statuses, inputs) rewritten atomically as a whole;
-  `messages` appended to a per-conversation jsonl as they settle; `state`
-  entries as one file per node.
+  `messages` and `state` appended as immutable revisions and resolved from
+  the latest revisions referenced by the tree.
 
 The benchmark must be realistic to count: 140k+-token transcripts with many
 tool calls and several forks, measured on the hot write path. This is a
@@ -423,6 +422,19 @@ under both, and under (b) tree edits adjust pointers without flushing
 orphaned message/state data — orphans are accepted, never reconciled. Store
 formats stay independent per language (already decided); the shared
 contract is fixture matrices over the record shape, not bytes.
+
+**Q2 resolved (2026-08-28): choose the split layout.** The deterministic v2
+workload had 153,348 message/state-content tokens, 200 exchanges, five
+forks, and the implicit root (206 nodes total). With three warm-ups and 25
+measured repetitions on APFS, every hot-write category cleared the threshold:
+the smallest median improvement was 6.90x, and the smallest p95 improvement
+was 2.50x. The 100-stream-update path was 723.305 ms median / 750.249 ms p95
+for a single document and 103.388 ms median / 299.660 ms p95 for split.
+Cold full reads were 3.861 ms versus 5.315 ms (1.38x slower for split), within
+the 2x limit. Split therefore passes Q2's >=2x median, >=1.5x p95, and <=2x
+cold-read threshold. The full raw samples, byte counts,
+environment, and failure-injection evidence are in
+`phase-3-mechanism.md`'s Q2 result.
 
 ### 3.11 Conversation management and client-side work
 
@@ -552,7 +564,7 @@ signed off by the driver before code (process.md §3.4).
 | # | Question | Cheapest check |
 |---|---|---|
 | Q1 | Which init-window guard: input-disabled-until-restore vs defer-one-submission? | Prototype both in a demo app; measure restore-decision latency (a day). |
-| Q2 | Single-document vs split store layout (§3.10)? | `hyperfine` write latency for both layouts at 140k+ tokens, many tool calls, several forks (an hour). |
+| Q2 | Resolved 2026-08-28: split store layout (§3.10). | 153,348-token deterministic workload; 25 repetitions after three warm-ups. Every hot write cleared the threshold (minimum 6.90x median, 2.50x p95); cold reads cost 1.38x. |
 | Q3 | Does the *client wire* need node ids, or does `main`'s positional edit/navigate addressing survive adversarial use? (Record nodes have ids regardless.) | Port the predecessor branch's edit/navigate Playwright tests; upgrade the wire narrowly only on red. |
 | Q4 | Provider version skew tolerance? | Save turns under current ellmer/chatlas, replay under the adjacent release (half a day). |
 

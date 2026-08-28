@@ -1,6 +1,6 @@
 # Phase 3 mechanism: exchange record, capture, and store (Python)
 
-**Status:** agreed 2026-08-28; store layout blocked on Q2 benchmark
+**Status:** agreed 2026-08-28; Q2 selects split store layout
 **Phase:** plan.md §4, Phase 3
 **Kata:** parent `shinychat#qf2r` under epic `shinychat#6d0d`
 **Review base:** `175d9acffc0f7e31e65fbeb3c3ba079f20f00972`
@@ -36,7 +36,7 @@ No feature code starts until all of these are recorded on `shinychat#qf2r`:
    class; Phase 5 owns degrade-with-warning behavior and must not be pulled
    forward.
 5. Q2's layout benchmark is complete and its result is written into this note
-   and plan.md §3.10/§5.
+   and plan.md §3.10/§5. Passed on 2026-08-28; result below.
 
 Gate items 1–4 passed on 2026-08-28 in `shinychat#ztvz`:
 
@@ -51,7 +51,7 @@ Gate items 1–4 passed on 2026-08-28 in `shinychat#ztvz`:
 
 The Python non-browser suite passed 651 tests with one skip and one unrelated
 failure: the known platform-dependent Markdown MIME assertion tracked by
-`shinychat#4z6p`. Q2 remains the only incomplete entry-gate item.
+`shinychat#4z6p`. Q2 was the only incomplete entry-gate item.
 
 ## Record schema
 
@@ -275,15 +275,93 @@ write-state, rollback, and recovery machinery. Record raw results, environment,
 and the selected layout here, then update plan.md Q2. Delete the losing
 prototype before feature code.
 
-**Q2 result:** pending.
+### Q2 result (2026-08-28): select split
+
+The disposable benchmark used one deterministic v2 logical record with 206
+nodes: the implicit root, 200 mainline exchanges, and five fork siblings.
+Each exchange has a multi-segment assistant message and a four-turn
+user/tool-call/tool-result/assistant state entry. The generated
+message/state content totals 153,348 whitespace-delimited tokens
+(`3,863,027` bytes as the single JSON document).
+
+The single prototype serialized the whole record to a temporary file and
+used `os.replace()`. The split prototype atomically replaced a tree/metadata
+document, appended immutable message/state revisions, and had the tree
+reference the revisions to resolve on read. A revision written before a tree
+replacement but never referenced is an allowed orphan. Both prototypes were
+deleted after this result was recorded; no production store code was added.
+
+Measurements used `time.perf_counter_ns()` around only the stated operation,
+after three warm-ups and across 25 sequential repetitions on the same local
+filesystem. p95 is the nearest-rank 95th percentile. The cold read creates a
+fresh store object and fully reconstructs the record without an application
+cache; macOS filesystem cache remains outside the benchmark's control.
+`hyperfine 1.20.0` separately cross-checked the 100-stream-update command
+with the same three warm-ups and 25 runs: 835.2 ms mean for single and 315.4
+ms mean for split (2.65x faster for split, including process setup).
+
+| Operation | Single median / p95 (ms) | Split median / p95 (ms) | Bytes written (single / split) |
+|---|---:|---:|---:|
+| Accepted-input write | 7.151 / 7.853 | 0.948 / 1.088 | 3,863,772 / 186,218 |
+| 100 stream-update writes | 723.305 / 750.249 | 103.388 / 299.660 | 386,273,900 / 19,425,784 |
+| Terminal state capture | 7.200 / 7.681 | 1.043 / 1.395 | 3,864,052 / 195,425 |
+| Pointer-only tree update | 7.195 / 8.289 | 0.910 / 1.218 | 3,863,042 / 185,466 |
+| Cold full-record read | 3.861 / 4.954 | 5.315 / 6.412 | n/a |
+| Process-restart pointer write | 69.541 / 88.842 | 67.956 / 129.266 | 3,863,042 / 185,466 |
+
+Raw measured samples in milliseconds, in run order:
+
+```text
+single accepted-input: 7.186, 6.913, 6.967, 7.092, 6.963, 7.226, 7.405, 7.413, 7.292, 7.151, 7.127, 6.995, 7.044, 6.839, 7.133, 7.006, 7.209, 7.196, 7.176, 7.371, 7.063, 7.853, 7.212, 7.068, 7.930
+split accepted-input: 0.917, 1.011, 0.917, 0.985, 0.910, 0.933, 1.088, 1.023, 1.065, 1.102, 0.903, 0.948, 0.959, 1.040, 0.943, 0.944, 0.989, 0.915, 0.946, 0.933, 0.922, 0.955, 1.085, 0.937, 0.948
+single 100 stream updates: 714.188, 724.149, 719.005, 721.495, 713.765, 711.784, 715.800, 721.510, 750.249, 715.394, 732.219, 723.193, 723.305, 716.873, 728.164, 727.319, 726.167, 724.237, 761.695, 729.836, 732.705, 719.967, 717.903, 732.315, 729.416
+split 100 stream updates: 107.228, 107.363, 103.860, 102.225, 107.248, 299.660, 104.123, 99.381, 99.746, 102.162, 228.319, 99.295, 99.203, 119.877, 100.116, 98.939, 317.416, 103.388, 102.050, 107.139, 100.427, 278.090, 105.535, 99.128, 101.353
+single terminal capture: 6.848, 7.025, 7.389, 8.626, 7.200, 7.307, 7.341, 7.254, 7.184, 7.084, 6.961, 6.781, 7.052, 7.278, 7.331, 6.714, 7.681, 7.406, 7.128, 7.142, 7.446, 6.802, 7.162, 7.359, 7.296
+split terminal capture: 1.283, 1.026, 1.062, 1.067, 1.018, 1.033, 1.395, 1.033, 1.010, 1.043, 1.040, 1.060, 1.270, 1.020, 1.215, 1.000, 1.079, 1.200, 1.040, 1.016, 1.018, 1.008, 1.132, 1.491, 1.177
+single pointer update: 7.155, 6.930, 7.140, 7.199, 7.326, 7.081, 7.291, 6.961, 7.049, 6.963, 7.086, 6.964, 6.940, 7.119, 7.952, 7.322, 8.037, 7.456, 7.719, 8.289, 9.626, 7.258, 7.417, 7.150, 7.195
+split pointer update: 0.911, 0.936, 0.932, 0.884, 0.895, 0.910, 0.894, 0.896, 1.008, 0.887, 0.892, 1.218, 0.987, 0.889, 0.978, 1.045, 0.891, 1.167, 0.882, 0.920, 1.278, 0.902, 0.901, 0.892, 0.948
+single cold read: 3.362, 3.603, 4.107, 3.456, 3.749, 4.048, 3.884, 4.028, 4.292, 3.336, 4.087, 5.605, 3.353, 3.595, 4.092, 3.909, 3.685, 4.088, 3.454, 4.954, 3.739, 3.456, 3.568, 3.944, 3.861
+split cold read: 6.140, 5.100, 6.412, 5.082, 5.247, 5.600, 5.260, 5.073, 5.249, 5.490, 5.437, 4.798, 5.640, 5.095, 5.543, 4.846, 5.328, 5.241, 5.315, 4.877, 5.525, 4.976, 5.615, 5.458, 6.539
+single restart write: 59.155, 57.391, 74.233, 69.541, 78.252, 71.863, 59.861, 82.612, 69.885, 88.842, 62.447, 71.454, 71.538, 64.970, 94.444, 87.140, 77.725, 63.999, 88.157, 57.026, 56.259, 69.320, 57.577, 56.358, 60.851
+split restart write: 54.386, 129.266, 73.926, 69.447, 65.610, 64.280, 66.784, 68.908, 67.469, 71.139, 62.734, 67.956, 70.067, 73.579, 68.209, 232.134, 64.021, 69.228, 64.396, 63.896, 63.190, 58.702, 55.127, 68.760, 70.615
+```
+
+Environment: macOS 26.5.2 (25F84), Darwin 25.5.0 arm64, Python 3.10.21,
+APFS on `/System/Volumes/Data`, 4 KiB filesystem blocks, and 93 GiB free at
+measurement time. No benchmark commands ran concurrently.
+
+Failure injection used `SIGKILL` on a child process at each named write stage,
+then instantiated a fresh store and reconstructed the complete logical
+record. This is process-kill evidence, not a power-loss/fsync claim:
+
+| Candidate and injection point | Visible revision after fresh read |
+|---|---|
+| Single: injected failure before `os.replace()` | old |
+| Single: kill before `os.replace()` | old |
+| Single: kill after `os.replace()` | new |
+| Split: injected failure after message-revision append | old |
+| Split: kill after message-revision append | old |
+| Split: kill after state-revision append | old |
+| Split: kill after atomic tree replacement | new |
+
+Every hot-write category clears the required threshold. The smallest
+improvements are 6.90x median for terminal state capture
+(`7.200 / 1.043`) and 2.50x p95 for 100 stream updates
+(`750.249 / 299.660`); the 100-stream-update median is also 7.00x
+(`723.305 / 103.388`). Cold reads cost `5.315 / 3.861 = 1.38x`.
+Split therefore clears the >=2x median and >=1.5x p95 improvements without
+exceeding the <=2x cold-read limit, so it is selected. The process-restart
+write is also marginally faster at median for split but has a worse p95; that
+non-selection metric is recorded here rather than hidden.
 
 ## Keystone and stacked work
 
 After the gate and Q2 sign-off, create stacked child issues in this order:
 
-1. **Gate + benchmark.** Verify instruments, add the unreplayable-turn fixture
-   shape, benchmark both layouts, decide Q2, and delete the losing prototype.
-   This is documentation/test-instrument work, not feature hardening.
+1. **Gate + benchmark (complete).** Instruments and shared fixtures passed in
+   `shinychat#ztvz`; Q2 selected the split layout in `shinychat#98jz`. Both
+   disposable store prototypes are deleted. This was documentation/test-
+   instrument work, not feature hardening.
 2. **Keystone v2 slice.** Land the v2 schema and one flag-guarded production
    path for accepted input, one complete assistant message, atomic persistence,
    and minimal active-path display replay through `_restore_bookmark_message`.
@@ -314,12 +392,13 @@ child or the phase.
   `make py-check-tests FILTER=...`, then the applicable full Python gate.
 - No JS/SCSS or R packaged-asset change in Phase 3.
 
-## Initial handoff
+## Current handoff
 
-- **Landed:** Phase 2 is closed; Phase 3 parent `shinychat#qf2r` is claimed;
-  the driver approved this mechanism on 2026-08-28; gate items 1–4 passed in
-  `shinychat#ztvz`.
-- **Next:** execute the Q2 benchmark, record the layout decision, then create
-  the remaining stacked child issues.
-- **Provisional:** only the file-store layout remains provisional. No feature
-  code starts until Q2 is recorded here and in the durable plan.
+- **Landed:** Phase 2 is closed; the Phase 3 mechanism is approved; gate items
+  1-4 passed in `shinychat#ztvz`; Q2 in `shinychat#98jz` selected the split
+  layout with recorded measurements and failure-injection evidence.
+- **Next:** human review of `shinychat#98jz`, then create the keystone v2
+  slice child for `shinychat#qf2r`.
+- **Provisional:** no Phase 3 mechanism decision remains open. The split
+  layout is the selected file-store direction; its production schema and
+  implementation remain for the keystone task.
