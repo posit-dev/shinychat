@@ -382,6 +382,7 @@ async def test_clear_preserves_input_accepted_while_transport_is_pending() -> (
     )
     send_started = anyio.Event()
     release_send = anyio.Event()
+    accepted_exchanges: list[str] = []
 
     async def blocked_send() -> None:
         send_started.set()
@@ -393,13 +394,13 @@ async def test_clear_preserves_input_accepted_while_transport_is_pending() -> (
     async with anyio.create_task_group() as task_group:
         task_group.start_soon(clear)
         await send_started.wait()
-        exchange_id = transcript.record_accepted_input(
-            entry("user", "accepted").message
+        accepted_exchanges.append(
+            transcript.record_accepted_input(entry("user", "accepted").message)
         )
         release_send.set()
 
     assert [item.message.content for item in transcript.read()] == ["accepted"]
-    assert transcript.open_exchange_id == exchange_id
+    assert transcript.open_exchange_id == accepted_exchanges[0]
 
 
 @pytest.mark.anyio
