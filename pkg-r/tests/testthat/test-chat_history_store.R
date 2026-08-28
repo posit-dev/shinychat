@@ -701,6 +701,26 @@ test_that("store fixture matrix: doubles in turns round-trip", {
   expect_identical(restored$nodes$n_0001$turns[[1]]$value, case$value)
 })
 
+test_that("store fixture matrix: unreplayable turn value persists", {
+  case <- store_fixture_case("unreplayable_turn_value")
+  dir <- withr::local_tempdir()
+  store <- FileConversationStore$new(dir = dir)
+  rec <- new_conversation_record("opaque turn")
+  rec$nodes$n_0001 <- list(
+    parent = NULL,
+    children = list(),
+    turns = list(list(role = "assistant", value = case$value)),
+    ui = NULL,
+    selected_child = NULL
+  )
+  rec$current_leaf <- "n_0001"
+
+  store$put(part(), rec)
+
+  restored <- FileConversationStore$new(dir = dir)$get(part(), rec$id)
+  expect_identical(restored$nodes$n_0001$turns[[1]]$value, case$value)
+})
+
 test_that("store fixture matrix: malformed jsonl lines warn visibly", {
   case <- store_fixture_case("malformed_jsonl_line")
   dir <- withr::local_tempdir()

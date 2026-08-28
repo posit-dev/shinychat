@@ -354,6 +354,22 @@ async def test_store_fixture_matrix_doubles_round_trip(
 
 
 @pytest.mark.anyio
+async def test_store_fixture_matrix_unreplayable_turn_value_persists(
+    store: FileConversationStore,
+    tmp_path: Path,
+):
+    value = STORE_MATRIX["unreplayable_turn_value"]["value"]
+    rec = new_conversation_record(title="opaque turn")
+    rec.append_linear([{"role": "assistant", "value": value}])
+
+    await store.put(part(), rec)
+
+    got = await FileConversationStore(dir=tmp_path).get(part(), rec.id)
+    assert got is not None
+    assert got.path_turns() == [{"role": "assistant", "value": value}]
+
+
+@pytest.mark.anyio
 async def test_store_fixture_matrix_malformed_jsonl_line_warns(
     store: FileConversationStore,
     tmp_path: Path,

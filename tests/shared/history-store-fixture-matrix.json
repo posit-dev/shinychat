@@ -4,6 +4,16 @@
     "value": 3.141592653589793
   },
   {
+    "name": "unreplayable_turn_value",
+    "value": {
+      "class": "opaque::UnreplayableValue",
+      "version": 1,
+      "props": {
+        "token": "preserve-without-replay"
+      }
+    }
+  },
+  {
     "name": "malformed_jsonl_line",
     "line": "{not valid json"
   },

@@ -16,13 +16,20 @@ test_that("chat_server() accepts history = TRUE", {
   skip_if_not_installed("ellmer")
 
   client <- mock_chat_client()
+  chat_module <- NULL
 
   shiny::testServer(
     function(input, output, session) {
-      chat_server("chat", client, history = TRUE, session = session)
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = TRUE,
+        session = session
+      )
     },
     {
-      expect_true(TRUE)
+      expect_true(is.environment(chat_module$history))
+      expect_identical(chat_module$history$save(), FALSE)
     }
   )
 })
@@ -31,13 +38,20 @@ test_that("chat_server() accepts history = FALSE", {
   skip_if_not_installed("ellmer")
 
   client <- mock_chat_client()
+  chat_module <- NULL
 
   shiny::testServer(
     function(input, output, session) {
-      chat_server("chat", client, history = FALSE, session = session)
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = FALSE,
+        session = session
+      )
     },
     {
-      expect_true(TRUE)
+      expect_true(is.environment(chat_module$history))
+      expect_identical(chat_module$history$save(), FALSE)
     }
   )
 })
@@ -164,10 +178,16 @@ test_that("chat_server() accepts history = history_options() config", {
 
   shiny::testServer(
     function(input, output, session) {
-      chat_server("chat", client, history = config, session = session)
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = config,
+        session = session
+      )
     },
     {
-      expect_true(TRUE)
+      expect_true(is.environment(chat_module$history))
+      expect_identical(chat_module$history$save(), FALSE)
     }
   )
 })
