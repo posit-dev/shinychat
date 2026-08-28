@@ -29,6 +29,7 @@ from ._history_title import (
     fallback_title,
     generate_title,
 )
+
 # NB: shiny is imported lazily inside methods throughout this module; a
 # top-level import would be circular (shiny.ui._chat imports shinychat).
 from ._history_types import (
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
     from htmltools import HTML, Tag, TagList
     from shiny import reactive
     from shiny.module import ResolvedId
+    from shiny.reactive._reactives import Effect_
 
     from ._chat import Chat
     from ._chat_types import ChatGreeting
@@ -782,6 +784,12 @@ class ChatHistory:
         self._controller: HistoryController | None = None
         self._save_callbacks: "list[Callable[[dict[str, Any]], None]]" = []
         self._restore_callbacks: "list[Callable[[dict[str, Any]], None]]" = []
+        # Session-level registrations made by `_start()`, tracked so they can
+        # be released when the owning Chat is destroyed (e.g. same-id
+        # reconstruction) instead of leaking until session end.
+        self._effects: "list[Effect_]" = []
+        self._session_end_cancel: "Callable[[], None] | None" = None
+        self._on_session_end: "Callable[[], None] | None" = None
         cfg = config if config is not None else HistoryOptions()
         self._store: "ConversationStore | Literal['auto', 'memory', 'file']" = (
             cfg.store
@@ -797,6 +805,29 @@ class ChatHistory:
         """Enable chat history for the current session. No-op if already started."""
         if not self._started:
             self._start()
+
+    def _teardown(self) -> None:
+        """
+        Release session-level registrations when the owning `Chat` is destroyed
+        or replaced by a same-id reconstruction.
+
+        Destroys the history input effects — which otherwise keep answering the
+        shared input ids and retain the old controller for the rest of the
+        session — unregisters the session-end callback, and runs the cleanup
+        that session end would have run. No-op if history never started; safe
+        to call more than once.
+        """
+        for effect in self._effects:
+            effect.destroy()
+        self._effects.clear()
+        cancel = self._session_end_cancel
+        self._session_end_cancel = None
+        if cancel is not None:
+            cancel()
+        on_end = self._on_session_end
+        self._on_session_end = None
+        if on_end is not None:
+            on_end()
 
     def conversation_id(self) -> str | None:
         """
@@ -1247,9 +1278,26 @@ class ChatHistory:
                 await notify_error("Could not navigate messages", e)
 
         def _on_session_end() -> None:
+            # The session consumed the registration by firing it; keep the
+            # tracked state truthful so a later `_teardown()` won't re-run.
+            self._session_end_cancel = None
+            self._on_session_end = None
             if stamp_cancel is not None:
                 stamp_cancel()
             controller.cancel_pending()
 
-        session.on_ended(_on_session_end)
+        self._effects.extend(
+            [
+                _init_history,
+                _save_on_response,
+                _on_select,
+                _on_new,
+                _on_rename,
+                _on_delete,
+                _on_edit,
+                _on_navigate,
+            ]
+        )
+        self._on_session_end = _on_session_end
+        self._session_end_cancel = session.on_ended(_on_session_end)
         self._started = True
