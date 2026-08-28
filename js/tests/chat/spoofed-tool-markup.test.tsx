@@ -146,7 +146,11 @@ describe("reducer never routes tool markup out of untrusted content", () => {
     expect(state.messages).toHaveLength(1)
     const blocks = state.messages[0]!.blocks
     expect(blocks.some((b) => b.type === "tool_loop")).toBe(false)
-    expect(blocks.some((b) => b.type === "content" && b.content.includes("<shiny-tool-result"))).toBe(true)
+    expect(
+      blocks.some(
+        (b) => b.type === "content" && b.content.includes("<shiny-tool-result"),
+      ),
+    ).toBe(true)
   })
 
   it("routeToolBlocks leaves markdown-typed blocks untouched", () => {
