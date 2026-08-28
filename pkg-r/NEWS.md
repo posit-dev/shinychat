@@ -2,6 +2,9 @@
 
 ## New features and improvements
 
+* `chat_ui()` now uses a wider default content width on large displays while
+  preserving its existing width on smaller windows. (#364)
+
 * Added `page_chat()` for full-window chat pages with persistent chat
   navigation, responsive sidebars, optional page-specific sidebars, and
   drawers. Use it instead of
