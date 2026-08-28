@@ -160,8 +160,12 @@ class _ResponseSettlementConsumer:
     cancelled: bool = False
 
 
+_ResponseSettlementDelivery = tuple[
+    "Chat", tuple[_ResponseSettlementConsumer, ...]
+]
+
 _response_settlement_delivery: ContextVar[
-    tuple[_ResponseSettlementConsumer, ...] | None
+    _ResponseSettlementDelivery | None
 ] = ContextVar("_response_settlement_delivery", default=None)
 
 
@@ -1853,7 +1857,7 @@ class Chat:
             for consumer in consumers:
                 if consumer.cancelled:
                     continue
-                delivery_token = _response_settlement_delivery.set(consumers)
+                delivery_token = _response_settlement_delivery.set((self, consumers))
                 try:
                     await self._deliver_response_settlement_consumer(consumer)
                 finally:
@@ -1905,7 +1909,15 @@ class Chat:
     async def _destructive_history_mutation(self):
         """Reserve destructive transcript admission through settlement and mutation."""
         task = asyncio.current_task()
-        if _response_settlement_delivery.get() is not None:
+        delivery = _response_settlement_delivery.get()
+        if (
+            delivery is not None
+            and delivery[0] is self
+            and any(
+                delivery[1] is consumers
+                for consumers in self._pending_response_settlements
+            )
+        ):
             raise RuntimeError(
                 "Cannot clear or restore messages while response settlement is being delivered."
             )

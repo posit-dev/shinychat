@@ -760,20 +760,47 @@ def test_settlement_consumer_cannot_clear_before_later_consumers():
     )
 
 
-def test_settlement_consumer_child_task_cannot_clear_before_later_consumers():
+def test_settlement_consumer_can_clear_a_different_chat():
+    with session_context(test_session):
+        source = Chat("settlement_source", history=False)
+        other = Chat("settlement_other", history=False)
+
+        async def clear_other() -> None:
+            await other.clear_messages()
+
+        source._on_response_settled(clear_other)
+        run_async(lambda: other.append_message("other response"))
+        run_async(lambda: source.append_message("source response"))
+        run_async(reactive.flush)
+
+    assert source.messages() == (
+        ChatMessageDict(content="source response", role="assistant"),
+    )
+    assert other.messages() == ()
+
+
+def test_settlement_consumer_child_task_can_clear_after_delivery_completes():
     rejected: list[str] = []
     settled: list[tuple[ChatMessageDict, ...]] = []
 
     with session_context(test_session):
         chat = Chat("settlement_child_reentrant_clear", history=False)
+        child_task: asyncio.Task[None] | None = None
+        child_rejected = asyncio.Event()
+        release_child = asyncio.Event()
 
         async def clear_in_child() -> None:
             with pytest.raises(RuntimeError, match="settlement is being delivered"):
                 await chat.clear_messages()
             rejected.append("clear")
+            child_rejected.set()
+            await release_child.wait()
+            await chat.clear_messages()
 
         async def clear_during_settlement() -> None:
-            await asyncio.create_task(clear_in_child())
+            nonlocal child_task
+            child_task = asyncio.create_task(clear_in_child())
+            await child_rejected.wait()
 
         async def observe_settlement() -> None:
             settled.append(chat.messages())
@@ -784,6 +811,9 @@ def test_settlement_consumer_child_task_cannot_clear_before_later_consumers():
         async def flush_response() -> None:
             await chat.append_message("source response")
             await asyncio.wait_for(reactive.flush(), timeout=1)
+            assert child_task is not None
+            release_child.set()
+            await child_task
 
         with warnings.catch_warnings():
             warnings.simplefilter("error")
@@ -793,9 +823,7 @@ def test_settlement_consumer_child_task_cannot_clear_before_later_consumers():
     assert settled == [
         (ChatMessageDict(content="source response", role="assistant"),)
     ]
-    assert chat.messages() == (
-        ChatMessageDict(content="source response", role="assistant"),
-    )
+    assert chat.messages() == ()
 
 
 def test_cancelled_response_settlement_consumer_skips_pending_delivery():
