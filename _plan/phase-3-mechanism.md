@@ -532,10 +532,27 @@ child or the phase.
   pass. The full Python gate passes its 191 Playwright tests and has only the
   known unrelated `shinychat#4z6p` Markdown MIME failure (690 passed,
   1 skipped, 1 failed) in the non-browser suite.
+- **Landed (2026-08-28):** `shinychat#t9ee` commit `64523395` adds the
+  recorder-owned, ordered internal state-capture registry and registers the
+  blessed `shinychat:turns` consumer through it. The hook receives an
+  explicit node id and `root_close`, `stream_finish`, or `node_close` reason.
+  It snapshots the implicit root (including the chatlas system prompt), then
+  writes exact-prefix deltas or a full snapshot after any earlier-turn
+  rewrite; the canonical baseline always includes the system prompt for
+  chatlas. First input keeps an active root stream pending; later input
+  captures the active node before opening its child; terminal streams capture
+  their explicit opening exchange before status and the single locked atomic
+  write. Tests cover ordered upsert/remove semantics, generic and chatlas
+  behavior, fallback, terminal errors/cancellation, old-stream attribution,
+  node-close capture, active-root status, and persistence failure
+  propagation. Ruff, Pyright, focused checks (34 Playwright; 347 non-browser)
+  pass; the full gate passes 191 Playwright tests and has only
+  `shinychat#4z6p` (698 passed, 1 skipped, 1 failed). Coherent task-range
+  review is pending.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
   keystone’s narrow replay method deliberately does not enter the
   init/restore window; Phase 4 and Phase 5 retain full restore semantics and
-  its guard decision. The separate state-hooks-and-baseline child remains
-  blocked behind a clean `shinychat#19dk` review; no state capture landed here.
+  its guard decision. The state-hooks-and-baseline child is awaiting review;
+  restore/rewind consumers remain Phase 4 work.
