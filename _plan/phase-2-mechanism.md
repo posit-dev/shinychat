@@ -199,8 +199,9 @@ single-session atom and starts only after every Python consumer has moved.
 - **Verification:** focused Make selection passed (2 Playwright, 109
   non-browser); `make py-check-format`, `make py-check-types`, and
   `make py-check` passed (189 Playwright, 609 non-browser).
-- **Next:** `shinychat#ch09` remains open and `needs-review` for independent
-  rereview; do not move on to `shinychat#dy7g`.
+- **Historical review state (2026-08-27):** at that point,
+  `shinychat#ch09` remained open pending independent rereview and
+  `shinychat#dy7g` was not advanced.
 - **Provisional decisions:** none.
 - **Final rereview disposition (2026-08-27; Luna rereview; roborev job 1009,
   `6f6c55ed-0e0f-476b-8080-f176e35b9f91`):** retain the existing decision to
@@ -217,9 +218,8 @@ single-session atom and starts only after every Python consumer has moved.
   history/bookmark persistence authority needed for forged-input integrity into
   `shinychat#ch09`; `shinychat#dy7g` retains deletion/cleanup of the legacy
   report handler, stale deduplication, `ui_offset`, and remaining consumer
-  migration. Keep `shinychat#ch09` open with `needs-review` and truthful
-  attention metadata. **Next:** finish the `shinychat#ch09` rereview; do not
-  close or advance it.
+  migration. At that point, `shinychat#ch09` remained open pending the
+  rereview and `shinychat#dy7g` was not advanced.
 - **Final rereview fixes landed (2026-08-27; `8a903b31`, `7a0eeaa0`):**
   terminal cleanup now preserves and re-raises the original generator/body
   error or cancellation while the owner records the matching terminal status;
@@ -233,8 +233,6 @@ single-session atom and starts only after every Python consumer has moved.
   Playwright, 24 non-browser); full `pkg-py/tests/pytest/test_chat.py` passed
   (98); `make py-check-format` and `make py-check-types` passed; `make
   py-check` passed (191 Playwright, 616 non-browser).
-- **Next:** `shinychat#ch09` remains open with `needs-review` for independent
-  rereview; do not move on to `shinychat#dy7g`.
 - **Terminal outcome correction landed (2026-08-27; roborev job 1010):** both
   stream finalizers now classify cancellation while awaiting the terminal
   `chunk_end` after a normal body as `cancelled`, preserve no error payload,
@@ -246,5 +244,21 @@ single-session atom and starts only after every Python consumer has moved.
   `pkg-py/tests/pytest/test_chat.py` (102), relevant Playwright stream/context
   coverage (2), `make py-check-format`, `make py-check-types`, and `make
   py-check` passed (191 Playwright, 620 non-browser).
-- **Next:** `shinychat#ch09` remains open with `needs-review` for independent
-  rereview; do not move on to `shinychat#dy7g`.
+- **Completion and next handoff (2026-08-27; `shinychat#ch09` →
+  `shinychat#dy7g`):** `shinychat#ch09` is complete. Final evidence is
+  implementation commit
+  `e89fdf690d6b792c2c2937c2c923dd8ee34978fd`, full `make py-check` passed
+  with 191 Playwright and 620 non-browser tests, Luna rereview clean,
+  roborev job 1011 UUID `7ff311de-cee8-4b85-abc6-ac11d5c84eea` passed, and
+  roborev jobs 1008-1011 are closed. The final fixes preserve the original
+  generator exception/cancellation outcome through terminal cleanup,
+  propagate accumulated dependencies through transformed replacements
+  (including suppressed chunks), and eliminate forged report side effects.
+  This supersedes the earlier needs-review/rereview/Next status entries.
+  The next handoff is `shinychat#dy7g`, which remains open: `shinychat#ch09`
+  owns the narrow history/bookmark persistence authority required for
+  forged-input integrity, while `shinychat#dy7g` owns the remaining consumer
+  migration and legacy report-handler cleanup, including stale
+  deduplication, `ui_offset`, the Python report handler/input surface, and
+  restore/switch/clear/out-of-band/etc consumer migration. `dy7g` work is not
+  complete.
