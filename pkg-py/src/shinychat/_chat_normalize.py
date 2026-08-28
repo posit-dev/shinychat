@@ -421,6 +421,10 @@ try:
         content = ""
         deps: list[HTMLDependency] = []
         blocks: list[StructuredBlock] = []
+        # Ordered interleaving of string runs and structured blocks, so the
+        # wire emission can reproduce the turn's original content order
+        # (text/tool-result/text must not arrive as text/text/tool-result).
+        parts: list[str | StructuredBlock] = []
         for x in message.contents:
             # Normalize and wrap per item, mirroring R's
             # `contents_shinychat_wrapped()`.
@@ -435,14 +439,23 @@ try:
             # dropped and the item's UI would arrive unstyled and unscripted.
             deps += item.html_deps
             # Structured blocks (e.g. `tool_result`) can't be concatenated
-            # into the content string; they travel alongside it. (Their exact
-            # interleaving with the string content is lost — strings first.)
+            # into the content string; they travel alongside it.
             blocks.extend(item.blocks)
+            if item.content:
+                # Coalesce adjacent string items into one run: string runs
+                # and blocks strictly alternate in `parts`.
+                if parts and isinstance(parts[-1], str):
+                    parts[-1] += item.content
+                else:
+                    parts.append(item.content)
+            parts.extend(item.blocks)
         if all(isinstance(x, ContentToolResult) for x in message.contents):
             role = "assistant"
         else:
             role = message.role
-        result = ChatMessage(content=content, role=role, blocks=blocks)
+        result = ChatMessage(
+            content=content, role=role, blocks=blocks, parts=parts or None
+        )
         result.html_deps = deps + result.html_deps
         return result
 

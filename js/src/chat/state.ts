@@ -17,6 +17,7 @@ import {
   regroupToolLoop,
   routeToolBlocks,
   structuredBlockToLoop,
+  structuredCallsToLoop,
   supersededRequestIds,
 } from "./tool-model"
 import type { ToolLoopBlock, ToolGrouping } from "./tool-model"
@@ -1344,12 +1345,30 @@ function rerouteMessage(
   grouping: ToolGrouping,
 ): ChatMessageData {
   if (!msg.blocks.some((b) => b.type === "tool_loop")) return msg
-  const raw: MessageBlock[] = msg.blocks.map((b) => {
-    if (b.type !== "tool_loop") return b
+  const raw: MessageBlock[] = msg.blocks.flatMap((b): MessageBlock[] => {
+    if (b.type !== "tool_loop") return [b]
+    const structuredCalls = b.groups
+      .flatMap((g) => g.calls)
+      .filter((c) => c.structured === true)
+    if (structuredCalls.length === 0) {
+      // A purely markup-derived loop unwinds back into a content block — the
+      // router's own input — so routeToolBlocks re-parses it below. An empty
+      // content slice has nothing to re-parse; re-group the held calls.
+      if (b.content === "") return [regroupToolLoop(b, grouping)]
+      return [
+        { type: "content", content: b.content, contentType: b.contentType },
+      ]
+    }
     // A structured-derived loop carries no raw content slice to unwind and
     // re-parse; re-derive its groups from the calls it already holds.
-    if (b.content === "") return regroupToolLoop(b, grouping)
-    return { type: "content", content: b.content, contentType: b.contentType }
+    if (b.content === "") return [regroupToolLoop(b, grouping)]
+    // A mixed loop (a markup-derived slice merged with structured calls)
+    // splits: the markup re-parses below and the structured calls survive as
+    // their own loop. mergeAdjacentLoops recombines them downstream.
+    return [
+      { type: "content", content: b.content, contentType: b.contentType },
+      structuredCallsToLoop(structuredCalls, grouping),
+    ]
   })
   const blocks = routeToolBlocks(
     raw,

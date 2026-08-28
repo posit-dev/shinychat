@@ -279,6 +279,7 @@ class ChatMessage:
         content_type: "ContentType | None" = None,
         attachments: "list[Attachment] | None" = None,
         blocks: "list[StructuredBlock] | None" = None,
+        parts: "list[str | StructuredBlock] | None" = None,
     ):
         self.role: Role = role
         self.attachments: list[Attachment] = [
@@ -292,6 +293,13 @@ class ChatMessage:
         # alongside the string content. They travel the wire as typed
         # segments/`block_insert` actions, never as markup in `content`.
         self.blocks: list[StructuredBlock] = list(blocks) if blocks else []
+        # Ordered interleaving of string runs and structured blocks, set only
+        # when the message was normalized from multi-part content (e.g. a
+        # chatlas `Turn` with text/tool-result/text). `content` and `blocks`
+        # remain the flat views; `parts` preserves the original order so wire
+        # emission can reproduce it. String runs and blocks strictly
+        # alternate (adjacent string items are coalesced).
+        self.parts: list[str | StructuredBlock] | None = parts
 
         # content _can_ be a TagChild, but it's most likely just a string (of
         # markdown), so only process it if it's not a string.
@@ -463,6 +471,12 @@ class StoredMessage(BaseModel):
     # separately from the string `segments` (which keep their flat
     # content/content_type shape); `wire_segments()` recombines them.
     blocks: list[StructuredBlock] = []
+    # Parallel to `blocks`: how many string `segments` precede each block in
+    # the source content. Set only when the message was normalized from
+    # multi-part content (e.g. a chatlas `Turn`) that interleaves string runs
+    # and blocks; `wire_segments()` then re-interleaves instead of appending
+    # all blocks after the string segments.
+    block_positions: list[int] | None = None
 
     @property
     def content(self) -> str:
@@ -484,11 +498,27 @@ class StoredMessage(BaseModel):
             {"content": s.content, "content_type": s.content_type}
             for s in self.segments
         ]
-        # TODO(structured-content): blocks currently always follow the string
-        # segments; a message that interleaves strings and blocks (e.g. a
-        # multi-content Turn) loses its exact interleaving here.
-        segments.extend(self.blocks)
-        return segments
+        if self.block_positions is None or len(self.block_positions) != len(
+            self.blocks
+        ):
+            # Flat layout: blocks follow the string segments.
+            segments.extend(self.blocks)
+            return segments
+        # Multi-part layout (e.g. a chatlas `Turn` with text/tool-result/
+        # text): re-interleave each block at its recorded position so the
+        # wire order matches the source content order.
+        out: list[MessagePayloadSegment] = []
+        positioned = list(zip(self.block_positions, self.blocks))
+        bi = 0
+        for i, seg in enumerate(segments):
+            while bi < len(positioned) and positioned[bi][0] <= i:
+                out.append(positioned[bi][1])
+                bi += 1
+            out.append(seg)
+        while bi < len(positioned):
+            out.append(positioned[bi][1])
+            bi += 1
+        return out
 
     @classmethod
     def from_chat_message(
@@ -496,15 +526,46 @@ class StoredMessage(BaseModel):
         message: ChatMessage,
         html_deps: list[SerializedDep] | None = None,
     ) -> StoredMessage:
+        parts = message.parts
+        if not parts or not any(isinstance(p, str) for p in parts):
+            # Flat layout (also covers a blocks-only multi-part message: with
+            # no string runs to interleave with, appending blocks after the
+            # single — possibly empty — string segment is already correct,
+            # and keeps a segment to carry `html_deps`).
+            return cls(
+                role=message.role,
+                segments=[
+                    StoredSegment(
+                        content=str(message.content),
+                        content_type=message.content_type,
+                        html_deps=html_deps,
+                    )
+                ],
+                attachments=message.attachments,
+                blocks=list(message.blocks),
+            )
+        # Multi-part layout: split the string runs into their own segments so
+        # the blocks can be re-interleaved at their original positions.
+        segments: list[StoredSegment] = []
+        blocks: list[StructuredBlock] = []
+        positions: list[int] = []
+        for part in parts:
+            if isinstance(part, str):
+                segments.append(
+                    StoredSegment(
+                        content=part,
+                        content_type=message.content_type,
+                    )
+                )
+            else:
+                positions.append(len(segments))
+                blocks.append(part)
+        if segments:
+            segments[0].html_deps = html_deps
         return cls(
             role=message.role,
-            segments=[
-                StoredSegment(
-                    content=str(message.content),
-                    content_type=message.content_type,
-                    html_deps=html_deps,
-                )
-            ],
+            segments=segments,
             attachments=message.attachments,
-            blocks=list(message.blocks),
+            blocks=blocks,
+            block_positions=positions or None,
         )

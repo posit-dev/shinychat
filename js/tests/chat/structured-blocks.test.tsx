@@ -345,4 +345,57 @@ describe("structured loops survive regrouping", () => {
     const { container } = renderMessages(state.messages)
     expectToolCard(container, "72F and sunny")
   })
+
+  it("SET_TOOL_GROUPING keeps both calls of a mixed markup+structured loop", () => {
+    // A markup-derived result and a structured block merge into ONE loop on
+    // arrival. That loop is mixed: it carries a raw content slice (the
+    // markup) AND a call with `structured: true` provenance. Rerouting must
+    // not unwind the whole loop into its content slice — that would re-parse
+    // the markup call but silently drop the structured one.
+    const markup =
+      '<shiny-tool-result data-shinychat-react request-id="call-markup" tool-name="get_weather" status="success" value="rain later" value-type="text"></shiny-tool-result>'
+    let state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: markup, content_type: "html" },
+          toolResultBlock({ request_id: "call-structured" }),
+        ],
+      },
+    })
+
+    // On arrival: one merged loop holding both calls, markup slice intact.
+    let loop = state.messages[0]!.blocks[0]!
+    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    expect(loop.content).toContain("<shiny-tool-result")
+    let calls = loop.groups.flatMap((g) => g.calls)
+    expect(calls.map((c) => c.requestId)).toEqual([
+      "call-markup",
+      "call-structured",
+    ])
+    expect(calls[1]!.structured).toBe(true)
+
+    state = chatReducer(state, { type: "SET_TOOL_GROUPING", grouping: "all" })
+
+    // After the regroup: still one loop, and BOTH calls survive — the
+    // markup-derived one re-parsed from the content slice and the
+    // structured-derived one re-grouped from its stored call data.
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    loop = blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    calls = loop.groups.flatMap((g) => g.calls)
+    expect(calls.map((c) => c.requestId)).toEqual([
+      "call-markup",
+      "call-structured",
+    ])
+    expect(
+      calls.find((c) => c.requestId === "call-structured")!.structured,
+    ).toBe(true)
+
+    const { container } = renderMessages(state.messages)
+    expectToolCard(container, "72F and sunny")
+  })
 })

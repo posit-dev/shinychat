@@ -59,6 +59,14 @@ export interface ToolCallItem {
    */
   customDisplay?: boolean
   /**
+   * Wire provenance: this call arrived as a structured wire block (e.g.
+   * `tool_result`), not markup parsed out of a loop's `content` slice. A
+   * structured call has no raw content to re-parse, so rerouteMessage
+   * re-groups it from the stored call data — even when a merge has given its
+   * loop a nonempty `content` (mixed markup+structured loop).
+   */
+  structured?: true
+  /**
    * Character offset of the result element within its source content block.
    * Used by the current presentation layer to order migrated payloads.
    */
@@ -432,6 +440,7 @@ export function toolResultBlockToCall(block: ToolResultBlock): ToolCallItem {
     localId: block.request_id || `__anon-structured-${uuid()}`,
     toolName: block.tool_name,
     status: block.status,
+    structured: true,
   }
   if (block.title !== undefined) call.title = block.title
   if (block.icon !== undefined) call.icon = block.icon
@@ -480,8 +489,9 @@ export function structuredBlockToLoop(
   const call = toolResultBlockToCall(block)
   return {
     type: "tool_loop",
-    // A structured-derived loop has no raw content slice to re-parse; the
-    // empty content marks it (rerouteMessage re-groups it from its calls).
+    // A structured-derived loop has no raw content slice to re-parse; its
+    // calls carry `structured: true` so rerouteMessage re-groups them from
+    // the stored call data instead.
     content: "",
     contentType: "html",
     grouping,
@@ -519,6 +529,24 @@ export function regroupToolLoop(
 ): ToolLoopBlock {
   const calls = loop.groups.flatMap((g) => g.calls)
   return { ...loop, grouping, groups: groupCalls(calls, grouping) }
+}
+
+/**
+ * Build a structured-derived loop from calls split out of a mixed
+ * markup+structured loop during rerouting: the calls keep their
+ * `structured: true` provenance and the loop has no raw content slice.
+ */
+export function structuredCallsToLoop(
+  calls: ToolCallItem[],
+  grouping: ToolGrouping,
+): ToolLoopBlock {
+  return {
+    type: "tool_loop",
+    content: "",
+    contentType: "html",
+    grouping,
+    groups: groupCalls(calls, grouping),
+  }
 }
 
 /**

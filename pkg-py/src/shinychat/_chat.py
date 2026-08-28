@@ -1182,6 +1182,10 @@ class Chat:
 
         if operation == "replace":
             msg.content = stream_content
+            # The replace payload is the whole accumulated stream content, so
+            # this chunk's per-part ordering no longer applies; its blocks (if
+            # any) emit after the replaced content.
+            msg.parts = None
 
         try:
             if self._needs_transform(msg):
@@ -1490,7 +1494,9 @@ class Chat:
             action: ChatAction = {"type": "chunk_start", "message": msg_payload}
             await self._send_action(action, message.html_deps)
         elif chunk == "end":
-            if content:
+            if message.blocks:
+                await self._send_message_parts(message, operation)
+            elif content:
                 chunk_action: ChatAction = {
                     "type": "chunk",
                     "content": content,
@@ -1498,24 +1504,14 @@ class Chat:
                     "content_type": content_type,
                 }
                 await self._send_action(chunk_action, message.html_deps)
-            await self._send_block_inserts(message)
             await self._send_action({"type": "chunk_end"})
         elif chunk is True:
             if message.blocks:
-                # A chunk carrying structured blocks: string content (if any)
-                # still travels as a `chunk` action, then one `block_insert`
-                # per structured block — actions go out in segment order. An
-                # empty string part is skipped so it can't open a spurious
-                # empty content block ahead of the block.
-                if content:
-                    chunk_action = {
-                        "type": "chunk",
-                        "content": content,
-                        "operation": operation,
-                        "content_type": content_type,
-                    }
-                    await self._send_action(chunk_action, message.html_deps)
-                await self._send_block_inserts(message)
+                # A chunk carrying structured blocks: string content travels
+                # as `chunk` actions and blocks as `block_insert` actions,
+                # emitted in wire-segment order so interleaved content (e.g.
+                # text/tool-result/text) keeps its order mid-stream.
+                await self._send_message_parts(message, operation)
             else:
                 chunk_action = {
                     "type": "chunk",
@@ -1533,6 +1529,35 @@ class Chat:
         for block in message.blocks:
             action: ChatAction = {"type": "block_insert", "block": block}
             await self._send_action(action, message.html_deps)
+
+    async def _send_message_parts(
+        self,
+        message: StoredMessage,
+        operation: Literal["append", "replace"],
+    ) -> None:
+        """Emit a block-carrying message's wire segments as an ordered action
+        sequence mid-stream: string segments travel as `chunk` actions and
+        structured blocks as `block_insert` actions, so content interleaved
+        in the source message (e.g. text/tool-result/text) keeps its order.
+        An empty string part is skipped so it can't open a spurious empty
+        content block ahead of a block."""
+        for seg in message.wire_segments():
+            # NB: an inline `in` check (not a TypeGuard) so pyright narrows
+            # both branches of the TypedDict union.
+            if "type" in seg:
+                block_action: ChatAction = {
+                    "type": "block_insert",
+                    "block": seg,
+                }
+                await self._send_action(block_action, message.html_deps)
+            elif seg["content"]:
+                chunk_action: ChatAction = {
+                    "type": "chunk",
+                    "content": seg["content"],
+                    "operation": operation,
+                    "content_type": seg["content_type"],
+                }
+                await self._send_action(chunk_action, message.html_deps)
 
     def _messages_for_bookmark(self) -> list[dict[str, Any]]:
         from shiny import reactive
@@ -1678,6 +1703,9 @@ class Chat:
                 content=content,
                 role=res.role,
                 attachments=message.attachments,
+                # The transform rewrites the string content only; structured
+                # blocks (e.g. `tool_result`) carry through unchanged.
+                blocks=message.blocks,
             ),
             html_deps=res.html_deps,
         )
