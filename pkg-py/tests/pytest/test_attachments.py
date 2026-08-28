@@ -295,3 +295,49 @@ def test_attachment_from_path(tmp_path):
     assert a.name == "note.md"
     assert a.mime == "text/markdown"
     assert a.size == 4
+
+
+def test_attachment_from_path_md_mime_independent_of_platform(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+):
+    """``.md`` must resolve to ``text/markdown`` even when the platform MIME
+    database returns ``application/octet-stream`` (as on some macOS/Python
+    combinations)."""
+    monkeypatch.setattr(
+        "shinychat._attachments.mimetypes",
+        type(
+            "_StubMimetypes",
+            (),
+            {
+                "guess_type": staticmethod(
+                    lambda name: ("application/octet-stream", None)
+                ),
+            },
+        ),
+    )
+    p = tmp_path / "note.md"
+    p.write_text("# hi")
+    a = Attachment.from_path(str(p))
+    assert a.mime == "text/markdown"
+
+
+def test_attachment_from_path_explicit_mime_preserved(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+):
+    """An explicit ``mime=`` argument takes precedence over the extension
+    mapping."""
+    p = tmp_path / "note.md"
+    p.write_text("# hi")
+    a = Attachment.from_path(str(p), mime="text/plain")
+    assert a.mime == "text/plain"
+
+
+def test_attachment_from_path_qmd_resolves_markdown(tmp_path):
+    """``.qmd`` is not in the platform MIME database but should resolve to
+    ``text/markdown`` via the package mapping."""
+    p = tmp_path / "doc.qmd"
+    p.write_text("content")
+    a = Attachment.from_path(str(p))
+    assert a.mime == "text/markdown"
