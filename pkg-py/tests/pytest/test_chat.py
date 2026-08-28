@@ -881,6 +881,93 @@ def test_settlement_consumer_child_task_can_clear_after_delivery_completes():
     assert chat.messages() == ()
 
 
+def test_nested_settlement_child_stays_blocked_until_outer_delivery_dequeues():
+    rejected: list[str] = []
+    child_task: asyncio.Task[None] | None = None
+
+    with session_context(test_session):
+        chat_a = Chat("nested_settlement_source", history=False)
+        chat_b = Chat("nested_settlement_target", history=False)
+        b_dequeued = asyncio.Event()
+        child_rejected = asyncio.Event()
+        retry_child = asyncio.Event()
+
+        async def clear_in_child() -> None:
+            await b_dequeued.wait()
+            with pytest.raises(RuntimeError, match="settlement is being delivered"):
+                await chat_b.clear_messages()
+            rejected.append("while A is pending")
+            child_rejected.set()
+            await retry_child.wait()
+            await chat_b.clear_messages()
+
+        async def settle_b() -> None:
+            nonlocal child_task
+            child_task = copy_context().run(
+                asyncio.create_task, clear_in_child()
+            )
+
+        async def settle_a() -> None:
+            await chat_b.append_message("response B")
+            await chat_b._join_response_settlement_pump()
+            assert not chat_b._pending_response_settlements
+            b_dequeued.set()
+            await child_rejected.wait()
+
+        chat_a._on_response_settled(settle_a)
+        chat_b._on_response_settled(settle_b)
+
+        async def _exercise() -> None:
+            await chat_a.append_message("response A")
+            await asyncio.wait_for(reactive.flush(), timeout=1)
+            assert child_task is not None
+            assert not chat_a._pending_response_settlements
+            retry_child.set()
+            await child_task
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            run_async(_exercise)
+
+    assert rejected == ["while A is pending"]
+    assert chat_a.messages() == (
+        ChatMessageDict(content="response A", role="assistant"),
+    )
+    assert chat_b.messages() == ()
+
+
+def test_independent_task_is_not_blocked_by_another_chat_settlement():
+    with session_context(test_session):
+        chat_a = Chat("independent_settlement_source", history=False)
+        chat_b = Chat("independent_settlement_target", history=False)
+        settlement_started = asyncio.Event()
+        release_settlement = asyncio.Event()
+
+        async def settle_a() -> None:
+            settlement_started.set()
+            await release_settlement.wait()
+
+        chat_a._on_response_settled(settle_a)
+
+        async def _exercise() -> None:
+            await chat_a.append_message("response A")
+            flush = asyncio.create_task(reactive.flush())
+            await settlement_started.wait()
+
+            clear_b = asyncio.create_task(chat_b.clear_messages())
+            await asyncio.wait_for(clear_b, timeout=1)
+
+            release_settlement.set()
+            await asyncio.wait_for(flush, timeout=1)
+
+        run_async(_exercise)
+
+    assert chat_a.messages() == (
+        ChatMessageDict(content="response A", role="assistant"),
+    )
+    assert chat_b.messages() == ()
+
+
 def test_cancelled_response_settlement_consumer_skips_pending_delivery():
     settled: list[str] = []
 

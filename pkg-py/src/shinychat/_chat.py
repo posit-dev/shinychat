@@ -164,9 +164,11 @@ _ResponseSettlementDelivery = tuple[
     "Chat", tuple[_ResponseSettlementConsumer, ...]
 ]
 
-_response_settlement_delivery: ContextVar[
-    _ResponseSettlementDelivery | None
-] = ContextVar("_response_settlement_delivery", default=None)
+_ResponseSettlementDeliveries = tuple[_ResponseSettlementDelivery, ...]
+
+_response_settlement_deliveries: ContextVar[
+    _ResponseSettlementDeliveries
+] = ContextVar("_response_settlement_deliveries", default=())
 
 
 def _consume_task_result(task: asyncio.Future[Any]) -> None:
@@ -1857,11 +1859,13 @@ class Chat:
             for consumer in consumers:
                 if consumer.cancelled:
                     continue
-                delivery_token = _response_settlement_delivery.set((self, consumers))
+                delivery_token = _response_settlement_deliveries.set(
+                    _response_settlement_deliveries.get() + ((self, consumers),)
+                )
                 try:
                     await self._deliver_response_settlement_consumer(consumer)
                 finally:
-                    _response_settlement_delivery.reset(delivery_token)
+                    _response_settlement_deliveries.reset(delivery_token)
 
     async def _deliver_response_settlement_consumer(
         self, consumer: _ResponseSettlementConsumer
@@ -1909,16 +1913,15 @@ class Chat:
     async def _destructive_history_mutation(self):
         """Reserve destructive transcript admission through settlement and mutation."""
         task = asyncio.current_task()
-        delivery = _response_settlement_delivery.get()
-        if delivery is not None:
-            source_chat, delivered_consumers = delivery
-            if any(
-                delivered_consumers is consumers
-                for consumers in source_chat._pending_response_settlements
-            ):
-                raise RuntimeError(
-                    "Cannot clear or restore messages while response settlement is being delivered."
-                )
+        deliveries = _response_settlement_deliveries.get()
+        if any(
+            delivered_consumers is consumers
+            for source_chat, delivered_consumers in deliveries
+            for consumers in source_chat._pending_response_settlements
+        ):
+            raise RuntimeError(
+                "Cannot clear or restore messages while response settlement is being delivered."
+            )
 
         transaction = self._destructive_history_transaction
         if transaction is not None and self._destructive_history_task is task:
