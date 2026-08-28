@@ -257,6 +257,278 @@ def test_chat_message_html_block_deps_collected_on_block_and_message():
     assert [d.name for d in m.html_deps] == ["testlib"]
 
 
+def test_chat_message_block_html_deps_stashes_dep_objects():
+    """ChatMessage.__init__ stashes dep OBJECTS per block index in
+    _block_html_deps so the session-aware send path can serialize them
+    through _process_ui. The block's raw as_dict() is the no-session
+    fallback. See kata#rpx1."""
+    from htmltools import HTMLDependency
+    from shinychat._chat_types import ChatMessage
+
+    dep = HTMLDependency(
+        "testlib", "1.0", source={"href": "/test"}, script={"src": "test.js"}
+    )
+    m = ChatMessage(content=TagList(div("x"), dep))
+
+    assert len(m.blocks) == 1
+    # _block_html_deps maps block index → dep objects
+    assert 0 in m._block_html_deps
+    stashed = m._block_html_deps[0]
+    assert len(stashed) == 1
+    assert isinstance(stashed[0], HTMLDependency)
+    assert stashed[0].name == "testlib"
+
+
+def test_chat_message_block_html_deps_multiple_blocks_indexed():
+    """When content produces multiple html_blocks, _block_html_deps maps
+    each block index to its dep objects. See kata#rpx1."""
+    from htmltools import HTMLDependency
+    from shinychat._chat_types import ChatMessage
+
+    dep1 = HTMLDependency(
+        "lib1", "1.0", source={"href": "/a"}, script={"src": "a.js"}
+    )
+    dep2 = HTMLDependency(
+        "lib2", "2.0", source={"href": "/b"}, script={"src": "b.js"}
+    )
+    react_el = Tag(
+        "shiny-tool-result", data_shinychat_react=True, request_id="abc"
+    )
+    # The React element splits the content into two islands, each with its
+    # own dep, producing two html_blocks.
+    m = ChatMessage(content=TagList(div("x"), dep1, react_el, div("y"), dep2))
+
+    assert len(m.blocks) == 2
+    assert set(m._block_html_deps.keys()) == {0, 1}
+    assert [d.name for d in m._block_html_deps[0]] == ["lib1"]
+    assert [d.name for d in m._block_html_deps[1]] == ["lib2"]
+
+
+def test_as_stored_message_processes_block_deps_with_session():
+    """_as_stored_message overwrites block-level raw as_dict() html_deps
+    with session-processed deps (route-registered hrefs, lib_prefix
+    applied). See kata#rpx1."""
+    from typing import Any, cast
+
+    from htmltools import HTMLDependency, TagList
+    from shiny import Inputs, Session
+    from shiny.module import ResolvedId
+    from shiny.session import session_context
+    from shinychat import Chat
+    from shinychat._chat_types import ChatMessage
+
+    class _ProcessUISession:
+        ns: ResolvedId = ResolvedId("")
+        app: object = None
+        id: str = "process-ui-session"
+
+        def __init__(self) -> None:
+            self.input = Inputs({}, ns=ResolvedId)
+
+        def on_ended(self, callback: object) -> None:
+            pass
+
+        def on_destroy(self, callback: object) -> None:
+            pass
+
+        def _increment_busy_count(self) -> None:
+            pass
+
+        def _process_ui(self, ui: object) -> dict[str, object]:
+            rendered = TagList(cast(Any, ui)).render()
+            return {
+                "html": rendered["html"],
+                "deps": [
+                    {**d.as_dict(), "from_session": self.id}
+                    for d in rendered["dependencies"]
+                ],
+            }
+
+        async def send_custom_message(
+            self, type: str, message: dict[str, Any]
+        ) -> None:
+            pass
+
+    session = cast(Session, _ProcessUISession())
+    with session_context(session):
+        chat = Chat(id="chat")
+        dep = HTMLDependency(
+            "testlib",
+            "1.0",
+            source={"href": "/test"},
+            script={"src": "test.js"},
+        )
+        msg = ChatMessage(content=TagList(div("x"), dep))
+        stored = chat._as_stored_message(msg)
+
+        assert len(stored.blocks) == 1
+        block = cast("HtmlBlock", stored.blocks[0])
+        block_deps = block.get("html_deps")
+        assert block_deps is not None
+        # Processed deps carry the session marker
+        assert block_deps[0].get("from_session") == "process-ui-session"
+        assert block_deps[0]["name"] == "testlib"
+
+
+def test_as_stored_message_no_session_keeps_raw_deps():
+    """Without a session, _as_stored_message cannot process block deps;
+    the raw as_dict() fallback on the block survives. See kata#rpx1."""
+    from typing import Any, cast
+
+    from htmltools import HTMLDependency
+    from shiny import Inputs, Session
+    from shiny.module import ResolvedId
+    from shiny.session import session_context
+    from shinychat import Chat
+    from shinychat._chat_types import ChatMessage
+
+    class _NoProcessSession:
+        ns: ResolvedId = ResolvedId("")
+        app: object = None
+        id: str = "no-process-session"
+
+        def __init__(self) -> None:
+            self.input = Inputs({}, ns=ResolvedId)
+
+        def on_ended(self, callback: object) -> None:
+            pass
+
+        def on_destroy(self, callback: object) -> None:
+            pass
+
+        def _increment_busy_count(self) -> None:
+            pass
+
+        async def send_custom_message(
+            self, type: str, message: dict[str, Any]
+        ) -> None:
+            pass
+
+    session = cast(Session, _NoProcessSession())
+    with session_context(session):
+        chat = Chat(id="chat")
+        # Simulate the no-session path: _serialize_html_deps returns None
+        cast(Any, chat)._session = None
+        dep = HTMLDependency(
+            "testlib",
+            "1.0",
+            source={"href": "/test"},
+            script={"src": "test.js"},
+        )
+        msg = ChatMessage(content=TagList(div("x"), dep))
+        stored = chat._as_stored_message(msg)
+
+        assert len(stored.blocks) == 1
+        block = cast("HtmlBlock", stored.blocks[0])
+        block_deps = block.get("html_deps")
+        # No session → _serialize_html_deps returns None → raw as_dict() stays
+        assert block_deps is not None
+        assert "from_session" not in block_deps[0]
+        assert block_deps[0]["name"] == "testlib"
+
+
+def test_append_message_emits_processed_block_deps():
+    """Wire-level: append_message with html_block content carrying a
+    dependency → the block_insert action's block html_deps are
+    session-processed. See kata#rpx1."""
+    import asyncio
+    import threading
+    from typing import Any, cast
+
+    from htmltools import HTMLDependency, TagList
+    from shiny import Inputs, Session
+    from shiny.module import ResolvedId
+    from shiny.session import session_context
+    from shinychat import Chat
+    from shinychat._chat_types import ChatMessage
+
+    class _CaptureSession:
+        ns: ResolvedId = ResolvedId("")
+        app: object = None
+        id: str = "capture-session"
+
+        def __init__(self) -> None:
+            self.input = Inputs({}, ns=ResolvedId)
+            self.envelopes: list[dict[str, Any]] = []
+
+        def on_ended(self, callback: object) -> None:
+            pass
+
+        def on_destroy(self, callback: object) -> None:
+            pass
+
+        def _increment_busy_count(self) -> None:
+            pass
+
+        def _process_ui(self, ui: object) -> dict[str, object]:
+            rendered = TagList(cast(Any, ui)).render()
+            return {
+                "html": rendered["html"],
+                "deps": [
+                    {**d.as_dict(), "from_session": self.id}
+                    for d in rendered["dependencies"]
+                ],
+            }
+
+        async def send_custom_message(
+            self, type: str, message: dict[str, Any]
+        ) -> None:
+            self.envelopes.append(message)
+
+    mock_session = _CaptureSession()
+    session = cast(Session, mock_session)
+    with session_context(session):
+        chat = Chat(id="chat")
+        dep = HTMLDependency(
+            "testlib",
+            "1.0",
+            source={"href": "/test"},
+            script={"src": "test.js"},
+        )
+        msg = ChatMessage(content=TagList(div("x"), dep))
+
+        errors: list[BaseException] = []
+
+        def _run() -> None:
+            try:
+                asyncio.run(chat.append_message(msg))
+            except BaseException as err:
+                errors.append(err)
+
+        t = threading.Thread(target=_run)
+        t.start()
+        t.join()
+        if errors:
+            raise errors[0]
+
+        # Find the block_insert action in the captured envelopes
+        block_inserts = [
+            e
+            for e in mock_session.envelopes
+            if e["action"]["type"] == "block_insert"
+        ]
+        # Non-streaming message with blocks emits via _send_message_parts
+        # (block_insert actions) — but actually for chunk=False, it sends a
+        # "message" action with segments. Check both paths.
+        if block_inserts:
+            block = block_inserts[0]["action"]["block"]
+        else:
+            # The "message" action carries segments including the block
+            msg_envelopes = [
+                e for e in mock_session.envelopes if e["action"]["type"] == "message"
+            ]
+            assert msg_envelopes, (
+                f"Expected message action, got {[e['action']['type'] for e in mock_session.envelopes]}"
+            )
+            segments = msg_envelopes[0]["action"]["message"]["segments"]
+            block = next(s for s in segments if s.get("type") == "html_block")
+
+        block_deps = block.get("html_deps")
+        assert block_deps is not None
+        assert block_deps[0].get("from_session") == "capture-session"
+        assert block_deps[0]["name"] == "testlib"
+
+
 def test_chat_message_mixed_content_wire_segments_preserve_order():
     """StoredMessage round-trip: wire_segments() reproduces the block/string
     interleaving recorded in `parts`."""

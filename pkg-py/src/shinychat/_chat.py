@@ -1698,14 +1698,17 @@ class Chat:
         if content is None:
             return None
 
+        # The transform rewrites the string content only; structured blocks
+        # carry through unchanged. Reuse the already-processed blocks from
+        # res (whose html_deps were session-processed in _as_stored_message)
+        # rather than message.blocks (which carry raw as_dict() deps). See
+        # kata#rpx1.
         return StoredMessage.from_chat_message(
             ChatMessage(
                 content=content,
                 role=res.role,
                 attachments=message.attachments,
-                # The transform rewrites the string content only; structured
-                # blocks (e.g. `tool_result`) carry through unchanged.
-                blocks=message.blocks,
+                blocks=list(res.blocks),
             ),
             html_deps=res.html_deps,
         )
@@ -1734,7 +1737,27 @@ class Chat:
             return message
 
         html_deps = self._serialize_html_deps(message.html_deps)
-        return StoredMessage.from_chat_message(message, html_deps=html_deps)
+        stored = StoredMessage.from_chat_message(message, html_deps=html_deps)
+        # Overwrite each block's raw as_dict() html_deps with session-processed
+        # deps (route-registered hrefs, lib_prefix applied). ChatMessage stores
+        # dep OBJECTS per block in _block_html_deps; here we have the session
+        # so _serialize_html_deps can run them through _process_ui. See
+        # kata#rpx1.
+        block_dep_objects = getattr(message, "_block_html_deps", None)
+        if block_dep_objects:
+            for idx, dep_objs in block_dep_objects.items():
+                if idx < len(stored.blocks):
+                    processed = self._serialize_html_deps(dep_objs)
+                    block = stored.blocks[idx]
+                    if "html_deps" in block:
+                        if processed is not None:
+                            block["html_deps"] = processed
+                        else:
+                            # No session: keep the raw as_dict() fallback
+                            # already on the block (mirrors _serialize_html_deps
+                            # returning None without a session).
+                            pass
+        return stored
 
     def user_input(self) -> "UserInput | None":
         """

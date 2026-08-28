@@ -408,6 +408,15 @@ class ChatMessage:
         # emission can reproduce it. String runs and blocks strictly
         # alternate (adjacent string items are coalesced).
         self.parts: list[str | StructuredBlock] | None = parts
+        # Parallel to self.blocks: HTMLDependency OBJECTS per block index,
+        # keyed by position in self.blocks. ChatMessage.__init__ has no
+        # session, so it cannot call session._process_ui to register
+        # web-dependency routes / apply lib_prefix. Instead it stashes the
+        # raw dep objects here; at send/persist time _as_stored_message
+        # (which has the session) serializes them through _process_ui and
+        # overwrites the block's raw as_dict() html_deps with the processed
+        # dicts. See kata#rpx1.
+        self._block_html_deps: dict[int, list[HTMLDependency]] = {}
 
         # content _can_ be a TagChild, but it's most likely just a string (of
         # markdown), so only process it if it's not a string.
@@ -422,6 +431,10 @@ class ChatMessage:
             # (tag-like) content.
             split = split_html_islands(content)
             content_parts: list[str | StructuredBlock] = []
+            # Parallel to content_parts: dep objects for each block entry
+            # (None for string entries). Used to populate _block_html_deps
+            # after self.blocks is derived. See kata#rpx1.
+            content_part_deps: list[list[HTMLDependency] | None] = []
             for item in split:
                 if (
                     isinstance(item, (Tag, TagifiedTag))
@@ -441,7 +454,19 @@ class ChatMessage:
                         "content": island_html,
                     }
                     if island_deps:
+                        # Stash the dep OBJECTS for this block so the
+                        # session-aware send path (_as_stored_message) can
+                        # serialize them through session._process_ui
+                        # (registering web-dependency routes and applying
+                        # lib_prefix). The raw as_dict() copy here is the
+                        # no-session fallback — mirroring
+                        # _serialize_html_deps returning None without a
+                        # session — and is overwritten at send time when a
+                        # session is available. See kata#rpx1.
                         block["html_deps"] = [d.as_dict() for d in island_deps]
+                        content_part_deps.append(island_deps)
+                    else:
+                        content_part_deps.append(None)
                     content_parts.append(block)
                 else:
                     # Bare React element: render it bare and keep it as a
@@ -454,8 +479,11 @@ class ChatMessage:
                     run = f"\n\n{rendered['html']}\n\n"
                     if content_parts and isinstance(content_parts[-1], str):
                         content_parts[-1] += run
+                        # content_part_deps already has None for the string
+                        # entry; coalescing doesn't change that.
                     else:
                         content_parts.append(run)
+                        content_part_deps.append(None)
             residual_html = "".join(
                 p for p in content_parts if isinstance(p, str)
             )
@@ -476,6 +504,18 @@ class ChatMessage:
             # list so ordering is consistent.
             merged_parts = list(content_parts) + supplied_blocks
             self.blocks = [p for p in merged_parts if not isinstance(p, str)]
+            # Map block index → dep objects. content_parts entries are
+            # parallel to content_part_deps; supplied_blocks carry no dep
+            # objects (they arrive pre-serialized). Walk content_parts in
+            # order, counting only block entries, and pull deps from the
+            # parallel content_part_deps list. See kata#rpx1.
+            block_idx = 0
+            for i, p in enumerate(content_parts):
+                if not isinstance(p, str):
+                    block_deps = content_part_deps[i]
+                    if block_deps:
+                        self._block_html_deps[block_idx] = block_deps
+                    block_idx += 1
             # Only set parts when the content was multi-part (string + block
             # interleaving). A single block with no string content keeps
             # parts = None so the flat layout path in from_chat_message
