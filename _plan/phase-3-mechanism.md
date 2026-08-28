@@ -384,8 +384,9 @@ Review dispositions: job `1028`'s partial-append finding was accepted and
 verified by the disposable check above. Its prototype-retention finding was
 declined because `shinychat#98jz` requires all disposable benchmark code to be
 deleted. Job `1029`'s follow-on recovery finding triggered the 3/3 valve and
-the split replacement decision. The concise split performance evidence
-remains above as a rejected result; its full raw samples were disposable.
+the split replacement decision. The rejected split performance evidence and
+full raw measured samples remain above; only the executable prototypes and
+harnesses were disposable.
 
 Split had the required hot-write latency improvements and a 1.38x cold-read
 penalty; the summary table above preserves those rejected performance
