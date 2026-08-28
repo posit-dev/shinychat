@@ -548,7 +548,12 @@ child or the phase.
   propagation. Ruff, Pyright, focused checks (34 Playwright; 347 non-browser)
   pass; the full gate passes 191 Playwright tests and has only
   `shinychat#4z6p` (698 passed, 1 skipped, 1 failed). Coherent task-range
-  review is pending.
+  review job `1049` found one accepted Medium turn-entry accumulation issue:
+  a later capture could overwrite an earlier node delta. Commit `65b69e68`
+  retains prior deltas, extends snapshots with later deltas, and covers a
+  completed stream followed by the next input. Job `1049` is closed stale on
+  that fix (1 finding, 1/3 toward the escalation valve); fresh review is
+  pending.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
