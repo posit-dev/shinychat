@@ -210,6 +210,49 @@ async def test_failed_stream_transport_emits_no_start_or_update_capture_event() 
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("path", ["normal", "failed", "abort"])
+async def test_stream_terminal_callback_runs_when_persistence_fails(
+    path: str,
+) -> None:
+    terminal: list[None] = []
+
+    async def fail_finished(
+        _stream_id: str, _status: str, _error: str | None
+    ) -> None:
+        raise RuntimeError("persistence failed")
+
+    transcript = ChatTranscript(
+        on_stream_terminal=lambda: terminal.append(None),
+        on_stream_finished=fail_finished,
+    )
+    await start_stream(transcript)
+
+    async def unsent() -> bool:
+        return False
+
+    with pytest.raises(RuntimeError, match="persistence failed"):
+        if path == "normal":
+            await transcript.end_stream(
+                stream_id="stream",
+                status=None,
+                error=None,
+                send=sent,
+            )
+        elif path == "failed":
+            await transcript.end_stream(
+                stream_id="stream",
+                status=None,
+                error=None,
+                send=unsent,
+            )
+        else:
+            await transcript.abort_stream("stream", status="error")
+
+    assert terminal == [None]
+    assert transcript.active_stream_id is None
+
+
+@pytest.mark.anyio
 async def test_transport_failure_emits_no_message_capture_event() -> None:
     captured: list[TranscriptEntry] = []
 

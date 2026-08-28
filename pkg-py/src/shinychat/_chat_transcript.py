@@ -292,12 +292,14 @@ class ChatTranscript:
                 )
                 self._stream = None
                 self._notify_change()
-                await self._notify_stream_finished(
-                    stream_id,
-                    "error",
-                    error or "Could not send message stream end.",
-                )
-                self._notify_stream_terminal()
+                try:
+                    await self._notify_stream_finished(
+                        stream_id,
+                        "error",
+                        error or "Could not send message stream end.",
+                    )
+                finally:
+                    self._notify_stream_terminal()
                 return False
 
             if prepared_segments is not None:
@@ -309,10 +311,12 @@ class ChatTranscript:
             self._set_stream_status(stream.entry, status, error)
             self._stream = None
             self._notify_change()
-            await self._notify_stream_finished(
-                stream_id, status or "ok", error
-            )
-            self._notify_stream_terminal()
+            try:
+                await self._notify_stream_finished(
+                    stream_id, status or "ok", error
+                )
+            finally:
+                self._notify_stream_terminal()
             return True
         finally:
             self._release_transaction(transaction)
@@ -332,8 +336,10 @@ class ChatTranscript:
         self._set_stream_status(stream.entry, status, error)
         self._stream = None
         self._notify_change()
-        await self._notify_stream_finished(stream_id, status, error)
-        self._notify_stream_terminal()
+        try:
+            await self._notify_stream_finished(stream_id, status, error)
+        finally:
+            self._notify_stream_terminal()
 
     async def clear(
         self, *, send: AsyncActionSend, transaction: object | None = None
