@@ -159,6 +159,22 @@ async def test_v2_worked_example_round_trips_through_each_store(
     assert isinstance(loaded, ConversationRecordV2)
     assert loaded == record
     assert loaded.path_node_ids() == ["x_00", "x_01", "x_03", "x_04"]
+    path_inputs = [
+        loaded.nodes[node_id].input
+        for node_id in loaded.path_node_ids()
+        if loaded.nodes[node_id].input is not None
+    ]
+    assert all(message is not None for message in path_inputs)
+    assert [message.content for message in path_inputs if message is not None] == [
+        "Summarize the attached CSV",
+        "Now plot revenue by month",
+    ]
+    assert [
+        message.as_stored_message().content
+        for node_id in loaded.path_node_ids()
+        for message in loaded.nodes[node_id].messages
+        if message.role == "user"
+    ] == []
     assert loaded.nodes["x_02"].status == "error"
     assert loaded.nodes["x_02"].error is not None
     assert loaded.nodes["x_02"].error.message == "Provider timeout"

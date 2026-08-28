@@ -53,17 +53,6 @@
       },
       "messages": [
         {
-          "role": "user",
-          "segments": [
-            {
-              "content": "Summarize the attached CSV",
-              "content_type": "markdown"
-            }
-          ],
-          "icon": null,
-          "attachments": []
-        },
-        {
           "role": "assistant",
           "segments": [
             {
@@ -110,19 +99,7 @@
         ],
         "attachments": []
       },
-      "messages": [
-        {
-          "role": "user",
-          "segments": [
-            {
-              "content": "Now plot revenue by month",
-              "content_type": "markdown"
-            }
-          ],
-          "icon": null,
-          "attachments": []
-        }
-      ],
+      "messages": [],
       "state": {},
       "error": {
         "message": "Provider timeout"
@@ -147,17 +124,6 @@
         "attachments": []
       },
       "messages": [
-        {
-          "role": "user",
-          "segments": [
-            {
-              "content": "Now plot revenue by month",
-              "content_type": "markdown"
-            }
-          ],
-          "icon": null,
-          "attachments": []
-        },
         {
           "role": "assistant",
           "segments": [

@@ -595,25 +595,59 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
 
 @pytest.mark.anyio
 async def test_v2_recorder_captures_postpartition_root_ui_but_not_greeting():
+    from shiny.module import ResolvedId
+    from shiny.session import session_context
+    from shinychat import Chat
+
+    class GreetingSession:
+        ns = ResolvedId("")
+        app: object = None
+        id = "history-acceptance-session"
+
+        async def send_custom_message(
+            self, _type: str, _message: Any
+        ) -> None:
+            pass
+
+        def on_ended(self, _callback: object) -> Callable[[], None]:
+            return lambda: None
+
+        def on_destroy(self, _callback: object) -> None:
+            pass
+
+        def _increment_busy_count(self) -> None:
+            pass
+
+        def _decrement_busy_count(self) -> None:
+            pass
+
+    session = GreetingSession()
+    with session_context(cast(Any, session)):
+        real_chat = Chat("history_acceptance", history=False)
+
     adapter = _FakeAdapter()
     controller, _ = _make_controller(
         use_exchange_tree=True,
         adapter=adapter,
     )
+    controller.chat = real_chat  # type: ignore[assignment]
     recorder = controller._exchange_recorder
     assert recorder is not None
-    transcript = ChatTranscript(
+    real_chat._transcript.set_capture_callbacks(
         on_accepted_input=recorder.accepted_input,
         on_message_committed=recorder.message_committed,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
     )
 
-    await controller.chat.set_greeting("ambient greeting")
-    await transcript.append(
+    await real_chat.set_greeting("ambient greeting")
+    await real_chat._transcript.append(
         TranscriptEntry(message=_stored_message("assistant", "pre-input UI")),
         exchange_id=None,
         send=_sent,
     )
-    exchange_id = await transcript.record_accepted_input_and_notify(
+    exchange_id = await real_chat._transcript.record_accepted_input_and_notify(
         _stored_message("user", "question")
     )
 
@@ -631,7 +665,6 @@ async def test_v2_recorder_captures_postpartition_root_ui_but_not_greeting():
         for message in root.messages
     )
     assert record.nodes[exchange_id].input is not None
-    assert cast(Any, controller.chat).set_greeting_calls == ["ambient greeting"]
 
 
 @pytest.mark.anyio
@@ -1547,8 +1580,11 @@ async def test_accepted_input_persistence_failure_is_open_and_preserves_input():
             _stored_message("user", "accepted but not durable")
         )
 
+    exchange_id = transcript.open_exchange_id
+    assert exchange_id is not None
     assert transcript.read()[-1].message.content == "accepted but not durable"
     assert isinstance(recorder.record, ConversationRecordV2)
+    assert exchange_id in recorder.record.nodes
     assert await store.list(part()) == []
 
 
