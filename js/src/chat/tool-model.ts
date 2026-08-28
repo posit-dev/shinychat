@@ -325,6 +325,16 @@ export function structuredBlockToLoop(
     )
     return null
   }
+  if (
+    type === "tool_result" &&
+    (block as { status?: unknown }).status !== "success" &&
+    (block as { status?: unknown }).status !== "error"
+  ) {
+    console.warn(
+      `Ignoring malformed tool_result block: status must be "success" or "error"`,
+    )
+    return null
+  }
   const call =
     type === "tool_request"
       ? toolRequestBlockToCall(block as ToolRequestBlock)

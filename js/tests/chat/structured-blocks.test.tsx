@@ -289,6 +289,33 @@ describe("structured tool_result block via message.segments", () => {
     expect(blocks.map((b) => b.type)).toEqual(["content"])
     expect(warn).toHaveBeenCalledTimes(2)
   })
+
+  it("ignores a tool_result with a missing/invalid status with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const noStatus = (({ status, ...rest }) => rest)(
+      toolResultBlock(),
+    ) as unknown as StructuredBlock
+    const badStatus = {
+      ...toolResultBlock(),
+      status: "pending",
+    } as unknown as StructuredBlock
+
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "just text", content_type: "markdown" },
+          noStatus,
+          badStatus,
+        ],
+      },
+    })
+
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["content"])
+    expect(warn).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe("structured tool_result block via block_insert mid-stream", () => {
