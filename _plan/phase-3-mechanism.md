@@ -134,6 +134,15 @@ Keep two owners with non-overlapping responsibilities:
 - One new private `_ExchangeRecorder`, owned by `HistoryController`, owns the
   active v2 record, capture baselines, internal state hooks, and store writes.
 
+Accepted input and explicit display-stream attribution are transcript
+operations; they do not make concurrent mutations of one shared attached
+turn client attributable. The built-in chatlas handler rejects a second lazy
+provider stream before consumption or client mutation under the existing
+one-display-stream contract. A snapshot-only `ClientWithTurns` adapter cannot
+attribute arbitrary concurrent client mutations. An exchange-owned provider
+journal is future backlog `shinychat#m3q6`; no queue or reconciliation is
+added.
+
 Do not add a second transcript, settlement revision, response queue, cursor,
 or reconciliation pass. The top-level Phase 3 addition is one recorder; the
 schema models and hook callables are data contracts, not lifecycle owners.
@@ -253,6 +262,15 @@ The blessed Python hook is registered as `shinychat:turns`:
   is still an exact prefix, otherwise `mode: "snapshot"`;
 - after either result, the full current serialized sequence becomes the new
   baseline.
+
+The baseline is a serial snapshot of the one attached client, not an
+exchange-owned mutation journal. Accepted input and display-stream
+attribution can cross node boundaries, but the built-in chatlas second lazy
+provider stream is rejected before consumption/mutation, so two provider
+streams are never reconciled against this baseline. Generic `ClientWithTurns`
+snapshots cannot attribute arbitrary concurrent client mutations; an
+exchange-owned provider journal is backlog `shinychat#m3q6`. No queue or
+reconciliation is added.
 
 The baseline stores per-turn canonical JSON fingerprints plus the serialized
 turn count. Prefix comparison checks every baseline fingerprint; checking
@@ -573,15 +591,24 @@ child or the phase.
   turn-baseline mechanism: an older stream that terminates after a newer
   admitted input can capture the newer exchange's client turns, and distinct
   Python keys can collapse to one JSON string key during normalization. This
-  reaches the new 3/3 escalation valve. **PARKED:** do not patch either
-  finding before the coordinator's patch-or-replace decision. The grounded
-  recommendation is **REPLACE** the global turn-baseline attribution strategy:
+  reached the new 3/3 escalation valve and was parked pending the
+  coordinator's patch-or-replace decision. The grounded recommendation was
+  **REPLACE** the global turn-baseline attribution strategy:
   the older-stream finding is a structural conflict with the required
   admission/attribution rule and the no-reconciliation constraint, not a
-  local serialization bug. Retain the generic hook registry and record shape,
-  but re-derive a capture strategy that can keep late-stream state separate
-  from a newer exchange without positional turn matching, cursor
-  reconciliation, a queue, or a second lifecycle owner.
+  local serialization bug. The coordinator's 2026-08-28 disposition is
+  **REPLACE the acceptance behavior with the explicit contract above**, not
+  patch the global baseline: retain the generic hook registry and record
+  shape, reject the built-in chatlas second lazy provider stream before
+  consumption/mutation, and leave arbitrary concurrent `ClientWithTurns`
+  mutation attribution unsupported. The exchange-owned provider journal is
+  backlog `shinychat#m3q6`; no queue or reconciliation is added.
+- **Current handoff (2026-08-28):** the 1053 disposition is recorded and
+  implementation scope is limited to that contract plus strict JSON
+  canonicalization. Preserve the existing serial recorder lock, state
+  capture points, restore/rewind boundaries, and one-display-stream
+  transcript admission. Do not add a client journal, queue, or reconciliation
+  path.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The

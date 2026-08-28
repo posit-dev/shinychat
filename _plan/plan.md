@@ -248,16 +248,15 @@ Known edges, decided here:
   has **no** guard today — concurrent streams can interleave
   `chunk_start`/`chunk_end` with no id on the wire. R gets a stream id; the
   record-side attribution uses it.
-- **Admission** (input arriving mid-stream): **admission**, decided
-  2026-08-27, aligned with #311's draft. An admitted input closes the
-  previous node and opens a new one; the still-running stream keeps writing
-  to its own node via attribution. This is an attribution decision, not a
-  response-scheduling mechanism (clarified 2026-08-27): Phase 2 adds no
-  queue and keeps the current one-display-stream wire contract. Starting a
-  second output stream while one is active fails explicitly. A future
-  workflow that enables overlapping submissions must choose response
-  scheduling separately; it must not move attribution out of the send
-  choke point.
+- **Admission and display attribution are separate contracts:** an admitted
+  input closes the previous node and opens a new one; an already-running
+  display stream keeps writing to its own node through its explicit stream
+  correlation. Neither decision makes concurrent mutations of one shared
+  attached turn client attributable. The built-in chatlas handler therefore
+  rejects a second lazy provider stream before it is consumed or mutates the
+  client, under the existing one-display-stream wire contract. No queue or
+  custom concurrent-client mutation support is added; a future overlapping
+  submission workflow must choose response scheduling separately.
 
 ### 3.4 State capture: the blessed turns integration
 
@@ -289,6 +288,15 @@ records the client's turns under the `shinychat:turns` entry:
   input closes (stream generator / promise — the stream-finish signals in
   §3.3), and again as a catch-up at node close, which records turn
   mutations no stream reported.
+- **One shared client:** admitted inputs and explicit display-stream
+  attribution may span node boundaries, but turn-state capture remains a
+  serial operation over the one attached client. The built-in chatlas second
+  lazy provider stream is rejected before consumption/mutation by §3.3, so
+  this contract is not asked to reconcile two provider mutations.
+- **Snapshot limitation:** a generic `ClientWithTurns` exposes only a current
+  snapshot and cannot attribute arbitrary concurrent client mutations to an
+  exchange. An exchange-owned provider journal is future backlog
+  `shinychat#m3q6`; no queue or reconciliation is added here.
 - **Record verbatim ("shinychat records, it doesn't decide").** Capture
   asserts nothing about client commit behavior. ellmer/chatlas store
   partial results on interruption, so a cancelled or errored node's turns
@@ -380,6 +388,14 @@ automatic capture does *not* give a manual app is state resume; that is
 what a custom `state` entry is for, and the *public* registration API is
 deferred until the contract has been proven by the in-tree consumers
 (turns; and the hooks' use by restore/rewind themselves).
+
+Accepted input and explicit display-stream attribution are not state
+ownership. The blessed turns hook serially observes one shared attached client;
+the built-in chatlas second lazy provider stream is rejected before
+consumption/mutation under the one-display-stream contract. A snapshot-only
+`ClientWithTurns` hook cannot attribute arbitrary concurrent client mutations.
+An exchange-owned provider journal is future backlog `shinychat#m3q6`; this
+contract adds no queue or reconciliation.
 
 ### 3.8 Bookmarking subsumed
 
