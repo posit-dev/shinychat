@@ -1,7 +1,7 @@
 # Plan: exchange-tree conversation history
 
 **Status:** committed · Phase 0 complete, Phase 1 in review, Phase 2 complete,
-Phase 3 planning · 2026-08-28
+Phase 3 mechanism agreed; Q2 benchmark pending · 2026-08-28
 **Kata:** epic `shinychat#6d0d` · Phase 1 `shinychat#g49a` · Phase 2
 `shinychat#kjyt` · Phase 3 `shinychat#qf2r` (the `kata` CLI issue tracker).
 All abbreviated Kata IDs below belong to the `shinychat` project;

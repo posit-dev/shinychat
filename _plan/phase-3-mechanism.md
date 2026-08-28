@@ -1,6 +1,6 @@
 # Phase 3 mechanism: exchange record, capture, and store (Python)
 
-**Status:** proposed for driver sign-off; store layout blocked on Q2 benchmark
+**Status:** agreed 2026-08-28; store layout blocked on Q2 benchmark
 **Phase:** plan.md §4, Phase 3
 **Kata:** parent `shinychat#qf2r` under epic `shinychat#6d0d`
 **Context:** `phase-2-mechanism.md` is closed historical context. This note is
@@ -34,6 +34,21 @@ No feature code starts until all of these are recorded on `shinychat#qf2r`:
    forward.
 5. Q2's layout benchmark is complete and its result is written into this note
    and plan.md §3.10/§5.
+
+Gate items 1–4 passed on 2026-08-28 in `shinychat#ztvz`:
+
+- the full Python Playwright suite passed (191 tests);
+- temporary broken-fixture checks failed at the intended assertion in both
+  consumers (Python: 1 failed, 12 passed; R: 1 failed, 30 passed);
+- no vacuous history pins remain; dependency-presence skips executed in the
+  full environment;
+- shared fixtures now cover doubles, malformed JSONL, and opaque
+  unreplayable-turn values in both languages (`b36373ba`, review fix
+  `deb691a9`).
+
+The Python non-browser suite passed 651 tests with one skip and one unrelated
+failure: the known platform-dependent Markdown MIME assertion tracked by
+`shinychat#4z6p`. Q2 remains the only incomplete entry-gate item.
 
 ## Record schema
 
@@ -95,11 +110,11 @@ class ErrorEntry(BaseModel):
 ```
 
 The node id is the key in `nodes`; it is not duplicated inside the node.
-`active_leaf` replaces v1's `current_leaf`. `input` owns the accepted
-optimistic user message, including attachments. `messages` owns only content
-the server successfully emitted after that input; restore renders `input`
-first, then `messages`. This resolves the worked example's intentionally
-non-schema shape without duplicating user content.
+`active_leaf` replaces v1's `current_leaf`. `input` owns the accepted user
+submission, including attachments. `messages` owns only content the server
+successfully emitted after that input; restore renders `input` first, then
+`messages`. This resolves the worked example's intentionally non-schema shape
+without duplicating user content.
 
 The generic `state` map is present from the first v2 fixture. `messages` never
 becomes a state entry. Extra error fields require a later requirement and
@@ -298,10 +313,10 @@ child or the phase.
 
 ## Initial handoff
 
-- **Landed:** Phase 2 is closed; Phase 3 parent `shinychat#qf2r` is created,
-  claimed, and stamped for `feat/history-exchange-tree`.
-- **Next:** obtain driver review of this note, execute the entry gate and Q2
-  benchmark, record the layout decision, then create the stacked child issues.
-- **Provisional:** the schema, event flow, hook contract, and work stack above
-  are proposed; no feature code starts until the note is agreed and Q2 is no
-  longer pending.
+- **Landed:** Phase 2 is closed; Phase 3 parent `shinychat#qf2r` is claimed;
+  the driver approved this mechanism on 2026-08-28; gate items 1–4 passed in
+  `shinychat#ztvz`.
+- **Next:** execute the Q2 benchmark, record the layout decision, then create
+  the remaining stacked child issues.
+- **Provisional:** only the file-store layout remains provisional. No feature
+  code starts until Q2 is recorded here and in the durable plan.
