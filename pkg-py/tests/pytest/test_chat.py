@@ -28,6 +28,7 @@ from shinychat._history_store import (
     ConversationPartition,
     InMemoryConversationStore,
 )
+from shinychat._history_types import new_conversation_record
 from shinychat._utils_types import MISSING
 
 # ----------------------------------------------------------------------
@@ -486,6 +487,77 @@ def test_new_chat_drains_response_into_the_original_history_record_once():
     assert record.response_count == 1
     assert controller.record is None
     assert chat.messages() == ()
+
+
+def test_cancelled_new_chat_does_not_mutate_while_settlement_is_blocked():
+    class _HistoryAdapter:
+        def __init__(self) -> None:
+            self.turns = [
+                {"role": "user", "content": "prompt"},
+                {"role": "assistant", "content": "source response"},
+            ]
+
+        def get_turns_json(self) -> list[dict[str, str]]:
+            return list(self.turns)
+
+        def get_turns_grouped(self) -> list[list[dict[str, str]]]:
+            return [[turn] for turn in self.turns]
+
+        def set_turns_json(self, turns: list[dict[str, str]]) -> None:
+            self.turns = list(turns)
+
+        def client_info(self) -> dict[str, str]:
+            return {}
+
+    with session_context(test_session):
+        chat = Chat("cancelled_new_chat_settlement", history=False)
+        store = InMemoryConversationStore()
+        adapter = _HistoryAdapter()
+        controller = HistoryController(
+            chat=chat,
+            adapter=adapter,  # type: ignore[arg-type]
+            store=store,
+            title_fn=None,
+            title_enabled=False,
+            client=None,
+        )
+        partition = ConversationPartition(chat_id=chat.id, scope="cancelled")
+        controller.partition = partition
+        active = new_conversation_record(title="active")
+        controller.record = active
+        callback_started = asyncio.Event()
+
+        async def block_settlement() -> None:
+            callback_started.set()
+            await asyncio.Event().wait()
+
+        chat._on_response_settled(block_settlement)
+        chat._on_response_settled(controller.on_response)
+
+        async def _exercise() -> None:
+            await store.put(partition, active)
+            await chat.append_message("source response")
+            new_chat = asyncio.create_task(controller.new_chat())
+            await callback_started.wait()
+
+            new_chat.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await new_chat
+
+        run_async(_exercise)
+
+    assert chat.messages() == (
+        ChatMessageDict(content="source response", role="assistant"),
+    )
+    assert controller.record is active
+    assert adapter.turns == [
+        {"role": "user", "content": "prompt"},
+        {"role": "assistant", "content": "source response"},
+    ]
+    assert run_async_result(lambda: store.get(partition, active.id)) is active
+    assert len(run_async_result(lambda: store.list(partition))) == 1
+    assert active.response_count == 0
+    assert chat._pending_response_settlements == []
 
 
 def test_clear_waits_for_an_in_flight_flush_settlement():

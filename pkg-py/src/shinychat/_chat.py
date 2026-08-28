@@ -1824,6 +1824,11 @@ class Chat:
                         try:
                             await consumer.callback()
                         except BaseException as error:
+                            if (
+                                isinstance(error, asyncio.CancelledError)
+                                and task.cancelling()
+                            ):
+                                raise
                             try:
                                 warnings.warn(
                                     f"Chat response settlement callback failed: {error}",
