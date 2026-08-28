@@ -153,8 +153,16 @@ ResponseSettlementCallback = Callable[[], Awaitable[None]]
 
 
 @dataclass(eq=False)
+class _ResponseSettlementConsumer:
+    callback: ResponseSettlementCallback
+    cancelled: bool = False
+
+
+@dataclass(eq=False)
 class _PendingResponseSettlement:
-    callbacks: tuple[ResponseSettlementCallback, ...]
+    consumers: tuple[_ResponseSettlementConsumer, ...]
+    owner_task: asyncio.Task[Any] | None = None
+    completion: asyncio.Future[None] | None = None
 
 
 @dataclass(frozen=True)
@@ -358,7 +366,9 @@ class Chat:
         self.drawer: ChatDrawerController = ChatDrawerController(self)
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
         self._greeting_content: str | None = None
-        self._response_settlement_callbacks: list[ResponseSettlementCallback] = []
+        self._response_settlement_callbacks: list[
+            _ResponseSettlementConsumer
+        ] = []
         self._pending_response_settlements: list[
             _PendingResponseSettlement
         ] = []
@@ -1750,24 +1760,26 @@ class Chat:
         self, callback: ResponseSettlementCallback
     ) -> CancelCallback:
         """Register a private callback for a completed response lifecycle."""
-        self._response_settlement_callbacks.append(callback)
+        consumer = _ResponseSettlementConsumer(callback)
+        self._response_settlement_callbacks.append(consumer)
 
         def cancel() -> None:
+            consumer.cancelled = True
             try:
-                self._response_settlement_callbacks.remove(callback)
+                self._response_settlement_callbacks.remove(consumer)
             except ValueError:
                 pass
 
         return cancel
 
     def _schedule_response_settlement(self) -> None:
-        callbacks = tuple(self._response_settlement_callbacks)
-        if not callbacks:
+        consumers = tuple(self._response_settlement_callbacks)
+        if not consumers:
             return
 
         from shiny import reactive
 
-        delivery = _PendingResponseSettlement(callbacks)
+        delivery = _PendingResponseSettlement(consumers)
         self._pending_response_settlements.append(delivery)
 
         reactive.on_flushed(
@@ -1777,24 +1789,47 @@ class Chat:
     async def _deliver_response_settlement(
         self, delivery: _PendingResponseSettlement
     ) -> None:
-        try:
-            self._pending_response_settlements.remove(delivery)
-        except ValueError:
+        task = asyncio.current_task()
+        if task is None:
+            raise RuntimeError("Response settlement delivery requires a task.")
+
+        completion = delivery.completion
+        if completion is not None:
+            if delivery.owner_task is task:
+                return
+            await asyncio.shield(completion)
             return
 
-        from shiny import reactive
-        from shiny.session import session_context
+        completion = asyncio.get_running_loop().create_future()
+        delivery.owner_task = task
+        delivery.completion = completion
 
-        context = reactive.Context()
-        with session_context(self._session), context():
-            for callback in delivery.callbacks:
-                try:
-                    await callback()
-                except BaseException as error:
-                    warnings.warn(
-                        f"Chat response settlement callback failed: {error}",
-                        stacklevel=2,
-                    )
+        try:
+            from shiny import reactive
+            from shiny.session import session_context
+
+            context = reactive.Context()
+            with session_context(self._session), context():
+                for consumer in delivery.consumers:
+                    if consumer.cancelled:
+                        continue
+                    try:
+                        await consumer.callback()
+                    except BaseException as error:
+                        try:
+                            warnings.warn(
+                                f"Chat response settlement callback failed: {error}",
+                                stacklevel=2,
+                            )
+                        except BaseException:
+                            pass
+        finally:
+            try:
+                self._pending_response_settlements.remove(delivery)
+            except ValueError:
+                pass
+            if not completion.done():
+                completion.set_result(None)
 
     @asynccontextmanager
     async def _destructive_history_mutation(self):

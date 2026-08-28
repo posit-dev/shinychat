@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import sys
 import threading
+import warnings
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, cast
@@ -27,7 +28,6 @@ from shinychat._history_store import (
     ConversationPartition,
     InMemoryConversationStore,
 )
-from shinychat._history_types import new_conversation_record
 from shinychat._utils_types import MISSING
 
 # ----------------------------------------------------------------------
@@ -488,54 +488,28 @@ def test_new_chat_drains_response_into_the_original_history_record_once():
     assert chat.messages() == ()
 
 
-def test_new_chat_blocks_stream_admission_while_settlement_drains():
-    class _HistoryAdapter:
-        def __init__(self) -> None:
-            self.turns = [{"role": "assistant", "content": "source response"}]
-
-        def get_turns_json(self) -> list[dict[str, str]]:
-            return list(self.turns)
-
-        def get_turns_grouped(self) -> list[list[dict[str, str]]]:
-            return [[turn] for turn in self.turns]
-
-        def set_turns_json(self, turns: list[dict[str, str]]) -> None:
-            self.turns = list(turns)
-
-        def client_info(self) -> dict[str, str]:
-            return {}
-
+def test_clear_waits_for_an_in_flight_flush_settlement():
     with session_context(test_session):
-        chat = Chat("settlement_drain_stream_admission", history=False)
-        store = InMemoryConversationStore()
-        adapter = _HistoryAdapter()
-        controller = HistoryController(
-            chat=chat,
-            adapter=adapter,  # type: ignore[arg-type]
-            store=store,
-            title_fn=None,
-            title_enabled=False,
-            client=None,
-        )
-        partition = ConversationPartition(chat_id=chat.id, scope="test")
-        controller.partition = partition
+        chat = Chat("settlement_drain_in_flight_flush", history=False)
         callback_started = asyncio.Event()
         release_callback = asyncio.Event()
+        settled: list[tuple[ChatMessageDict, ...]] = []
 
         async def suspend_settlement() -> None:
             callback_started.set()
             await release_callback.wait()
+            settled.append(chat.messages())
 
         chat._on_response_settled(suspend_settlement)
 
         async def _exercise() -> None:
-            active = new_conversation_record(title="active")
-            controller.record = active
-            await store.put(partition, active)
             await chat.append_message("source response")
-            clear = asyncio.create_task(controller.new_chat())
+            flush = asyncio.create_task(reactive.flush())
             await callback_started.wait()
+            assert len(chat._pending_response_settlements) == 1
 
+            clear = asyncio.create_task(chat.clear_messages())
+            await asyncio.sleep(0)
             with pytest.raises(
                 RuntimeError,
                 match="Cannot start a message stream while another",
@@ -547,20 +521,38 @@ def test_new_chat_blocks_stream_admission_while_settlement_drains():
             assert chat.messages() == (
                 ChatMessageDict(content="source response", role="assistant"),
             )
-            assert adapter.turns == [
-                {"role": "assistant", "content": "source response"}
-            ]
-            assert controller.record is active
-            assert len(await store.list(partition)) == 1
+            assert not clear.done()
+            assert len(chat._pending_response_settlements) == 1
+            assert chat.messages() == (
+                ChatMessageDict(content="source response", role="assistant"),
+            )
 
             release_callback.set()
-            await clear
+            await asyncio.gather(flush, clear)
 
         run_async(_exercise)
 
     assert chat.messages() == ()
-    assert adapter.turns == []
-    assert controller.record is None
+    assert settled == [
+        (ChatMessageDict(content="source response", role="assistant"),)
+    ]
+
+
+def test_cancelled_response_settlement_consumer_skips_pending_delivery():
+    settled: list[str] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_cancel_pending", history=False)
+
+        async def on_settled() -> None:
+            settled.append("settled")
+
+        cancel = chat._on_response_settled(on_settled)
+        run_async(lambda: chat.append_message("source response"))
+        cancel()
+        run_async(reactive.flush)
+
+    assert settled == []
 
 
 def test_clear_without_a_pending_response_settlement_invokes_no_consumers():
@@ -601,6 +593,44 @@ def test_clear_drains_each_pending_consumer_despite_consumer_failure():
     assert settled == [
         (ChatMessageDict(content="source response", role="assistant"),)
     ]
+
+
+def test_clear_drains_all_consumers_when_callback_warning_is_an_error():
+    settled: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_warning_error", history=False)
+
+        async def broken_callback() -> None:
+            raise RuntimeError("callback failed")
+
+        async def on_settled() -> None:
+            settled.append(chat.messages())
+
+        chat._on_response_settled(broken_callback)
+        chat._on_response_settled(on_settled)
+
+        async def end_errored_stream() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="stream"
+            )
+            await chat._append_message_chunk(
+                "",
+                chunk="end",
+                stream_id="stream",
+                status="error",
+                error="response failed",
+            )
+
+        run_async(end_errored_stream)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            run_async(chat.clear_messages)
+        run_async(reactive.flush)
+
+    assert len(settled) == 1
+    assert settled[0][-1].get("status") == "error"
+    assert chat.messages() == ()
 
 
 def test_multiple_complete_responses_in_one_flush_settle_once_each():
