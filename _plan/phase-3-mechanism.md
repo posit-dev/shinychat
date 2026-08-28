@@ -161,14 +161,14 @@ already-committed transcript remains truthful about content that reached the
 browser; retrying persistence writes the current node projection
 idempotently. Do not roll back browser-visible content or transcript state.
 
-Before `HistoryController.partition` is established by the restore decision,
-recorder callbacks are inert: they return without creating a record, changing
-stream attribution, writing the store, or failing the originating send. Phase
-3 does not claim durability for those preselection emissions. Phase 5 owns
-the selected init-window guard, which covers all capture-eligible initial
-sends as well as user submission before selection. Do not add a preselection
-buffer, provisional record or merge, queue, timer, reconciliation, or second
-owner.
+While `HistoryController.partition is None`, recorder callbacks are inert:
+they return without creating a record, changing stream attribution, writing
+the store, or failing the originating send. Phase 3 does not claim durability
+for those preselection emissions or guard any later unresolved restore window.
+Phase 5 owns the selected init-window guard, which covers all capture-eligible
+initial sends as well as user submission before selection. Do not add a
+preselection buffer, provisional record or merge, queue, timer,
+reconciliation, or second owner.
 
 The recorder serializes each callback's complete record mutation (including
 its private stream-id association change) and awaited `store.put()` with one
@@ -521,12 +521,13 @@ child or the phase.
   stream-status finding from roborev job `1043` in `b074ab9c`. Focused checks
   pass. Roborev job `1044` identified pre-partition recorder failures during
   initial sends. The coordinator chose **DEFER**: Phase 3 callbacks are
-  inert/non-throwing until partition/restore selection; Phase 5 owns the
-  guard for all capture-eligible initial sends and user submission. No buffer,
-  provisional record or merge, queue, timer, reconciliation, or second owner
-  is added. Commit `65a9e8cb` restores safe no-op behavior and regression
-  coverage for complete and streamed pre-partition sends. Job `1044` is closed
-  stale on that fix; fresh job `1046` reviews `b4f446e8..65a9e8cb`.
+  inert/non-throwing while `partition is None`; Phase 5 owns the guard for all
+  capture-eligible initial sends and user submission. No buffer, provisional
+  record or merge, queue, timer, reconciliation, or second owner is added.
+  Commit `65a9e8cb` restores safe no-op behavior and regression coverage for
+  complete and streamed pre-partition sends. Job `1044` is closed stale on
+  that fix; job `1046` accepted a coverage addition and confirmed that the
+  later unresolved restore window remains Phase 5 scope.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The

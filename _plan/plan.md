@@ -330,12 +330,13 @@ with a warning rather than failing the restore.
 4. **Init/restore race:** the one hard-core window that survives every
    design. The smallest guard, chosen by prototype (open question Q1):
    (a) input disabled until the restore decision resolves, or (b) defer the
-   one racing submission. Until that decision, Phase 3 recorder callbacks are
-   inert and must not fail the originating capture-eligible send. Phase 5's
-   selected guard covers capture-eligible initial sends as well as user
-   submission, preventing them before selection; Phase 3 does not claim
-   durability for preselection emissions. No preselection buffer, provisional
-   record or merge, queue, timer, reconciliation, or second owner.
+   one racing submission. While `HistoryController.partition is None`, Phase 3
+   recorder callbacks are inert and must not fail the originating
+   capture-eligible send. Phase 5's selected guard covers capture-eligible
+   initial sends as well as user submission, preventing them before selection;
+   Phase 3 does not claim durability for preselection emissions or guard any
+   later unresolved restore window. No preselection buffer, provisional record
+   or merge, queue, timer, reconciliation, or second owner.
 
 ### 3.6 Branching, editing, retries, actions (R1, R3, R7)
 
