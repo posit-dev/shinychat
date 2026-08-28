@@ -22,9 +22,55 @@ SerializedDep = dict[str, object]
 ContentType = Literal["markdown", "html", "text", "thinking"]
 
 
-class MessagePayloadSegment(TypedDict):
+class StringSegment(TypedDict):
     content: str
     content_type: ContentType
+
+
+class ToolResultBlock(TypedDict):
+    """
+    A typed, server-authored tool result envelope (mirrors `ToolResultBlock`
+    in `js/src/transport/types.ts`). The envelope itself is the trust signal:
+    only the server can construct these blocks.
+    """
+
+    type: Literal["tool_result"]
+    version: Literal[1]
+    # Correlates with the request; keys transcript-wide request suppression.
+    request_id: str
+    tool_name: str
+    # "running" is NOT a wire value; the client derives it from an unpaired
+    # request.
+    status: Literal["success", "error"]
+    value: NotRequired[str]
+    value_type: NotRequired[
+        Literal["html", "markdown", "text", "code", "content_extra"]
+    ]
+    request_call: NotRequired[str]
+    title: NotRequired[str]  # HTML -> RawHTML
+    icon: NotRequired[str]  # HTML -> RawHTML
+    intent: NotRequired[str]  # text -> escaped
+    label: NotRequired[str]  # text -> escaped
+    value_preview: NotRequired[str]  # text -> escaped
+    grouping: NotRequired[Literal["none", "tool", "all"]]
+    show_request: NotRequired[bool]
+    expanded: NotRequired[bool]
+    open_style: NotRequired[Literal["minimal", "framed"]]
+    full_screen: NotRequired[bool]
+    # Internal-only: set by wrap_custom_tool_result, never author-facing.
+    custom_display: NotRequired[bool]
+    footer: NotRequired[str]  # HTML -> RawHTML
+
+
+# The union of typed blocks carried in `MessagePayload.segments` (outside a
+# stream) or via a `block_insert` action (mid-stream). Only `tool_result`
+# flows end-to-end so far; the union grows per the design.
+StructuredBlock = ToolResultBlock
+
+# One entry of `MessagePayload.segments`: a string segment
+# (`{content, content_type}`) or a structured block (discriminated by the
+# presence of `type`).
+MessagePayloadSegment = Union[StringSegment, StructuredBlock]
 
 
 class MessagePayload(TypedDict):
@@ -54,6 +100,16 @@ class ChunkAction(TypedDict):
 
 class ChunkEndAction(TypedDict):
     type: Literal["chunk_end"]
+
+
+class BlockInsertAction(TypedDict):
+    """
+    Delivers one complete structured block while a message stream is in
+    flight. The client appends it to the in-flight message's block list.
+    """
+
+    type: Literal["block_insert"]
+    block: StructuredBlock
 
 
 class ClearAction(TypedDict):
@@ -173,6 +229,7 @@ ChatAction = Union[
     ChunkStartAction,
     ChunkAction,
     ChunkEndAction,
+    BlockInsertAction,
     ClearAction,
     UpdateInputAction,
     RemoveLoadingAction,
@@ -221,6 +278,7 @@ class ChatMessage:
         role: Role = "assistant",
         content_type: "ContentType | None" = None,
         attachments: "list[Attachment] | None" = None,
+        blocks: "list[StructuredBlock] | None" = None,
     ):
         self.role: Role = role
         self.attachments: list[Attachment] = [
@@ -230,6 +288,10 @@ class ChatMessage:
         self.content_type: ContentType = (
             content_type if content_type is not None else "markdown"
         )
+        # Server-authored structured blocks (e.g. `tool_result`) carried
+        # alongside the string content. They travel the wire as typed
+        # segments/`block_insert` actions, never as markup in `content`.
+        self.blocks: list[StructuredBlock] = list(blocks) if blocks else []
 
         # content _can_ be a TagChild, but it's most likely just a string (of
         # markdown), so only process it if it's not a string.
@@ -397,6 +459,10 @@ class StoredMessage(BaseModel):
     role: Role
     segments: list[StoredSegment]
     attachments: list[Attachment] = []
+    # Server-authored structured blocks carried by this message. Stored
+    # separately from the string `segments` (which keep their flat
+    # content/content_type shape); `wire_segments()` recombines them.
+    blocks: list[StructuredBlock] = []
 
     @property
     def content(self) -> str:
@@ -414,10 +480,15 @@ class StoredMessage(BaseModel):
         return deps or None
 
     def wire_segments(self) -> list[MessagePayloadSegment]:
-        return [
+        segments: list[MessagePayloadSegment] = [
             {"content": s.content, "content_type": s.content_type}
             for s in self.segments
         ]
+        # TODO(structured-content): blocks currently always follow the string
+        # segments; a message that interleaves strings and blocks (e.g. a
+        # multi-content Turn) loses its exact interleaving here.
+        segments.extend(self.blocks)
+        return segments
 
     @classmethod
     def from_chat_message(
@@ -435,4 +506,5 @@ class StoredMessage(BaseModel):
                 )
             ],
             attachments=message.attachments,
+            blocks=list(message.blocks),
         )

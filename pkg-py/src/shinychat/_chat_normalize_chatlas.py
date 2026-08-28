@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, Union
 
 from htmltools import (
     HTML,
+    HTMLDependency,
     MetadataNode,
     RenderedHTML,
     ReprHtml,
@@ -19,7 +20,7 @@ from packaging import version
 from pydantic import BaseModel, field_serializer, field_validator
 from typing_extensions import TypeAliasType
 
-from ._chat_types import ChatMessage
+from ._chat_types import ChatMessage, ToolResultBlock
 from ._htmltools_serialization import SerializedHTML, serialize_htmltools
 
 if TYPE_CHECKING:
@@ -536,14 +537,86 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
     )
 
 
+def tool_result_block(
+    component: ToolResultComponent,
+) -> "tuple[ToolResultBlock, list[HTMLDependency]]":
+    """Build the structured `tool_result` wire block from a card component.
+
+    Mirrors `ToolResultComponent.tagify()`'s rendering — icon, html-typed
+    value, and footer are rendered to HTML strings and their dependencies
+    collected — but produces the typed envelope instead of
+    `<shiny-tool-result>` markup. The envelope (not markup scanned out of the
+    text channel) is what the client turns into trusted tool UI.
+    """
+    deps: list[HTMLDependency] = []
+
+    block: ToolResultBlock = {
+        "type": "tool_result",
+        "version": 1,
+        "request_id": component.request_id,
+        "tool_name": component.tool_name,
+        "status": component.status,
+        "value_type": component.value_type,
+        # Booleans are real booleans on the wire (no bare-attribute semantics).
+        # `show_request` defaults True on the component, so emit it always.
+        "show_request": component.show_request,
+    }
+
+    if component.tool_title is not None:
+        block["title"] = component.tool_title
+    if component.intent is not None:
+        block["intent"] = component.intent
+    if component.request_call:
+        block["request_call"] = component.request_call
+    if component.label is not None:
+        block["label"] = component.label
+    if component.value_preview is not None:
+        block["value_preview"] = component.value_preview
+    if component.grouping is not None:
+        block["grouping"] = component.grouping
+    if component.expanded:
+        block["expanded"] = True
+    if component.full_screen:
+        block["full_screen"] = True
+    if component.custom_display:
+        block["custom_display"] = True
+    if component.open_style == "framed":
+        block["open_style"] = "framed"
+
+    # Icon strings are HTML and never get escaped
+    if component.icon is not None:
+        icon_ui = TagList(component.icon).render()
+        block["icon"] = str(icon_ui["html"])
+        deps.extend(icon_ui["dependencies"])
+
+    if component.value is not None:
+        if component.value_type == "html":
+            value_ui = TagList(component.value).render()
+            block["value"] = str(value_ui["html"])
+            deps.extend(value_ui["dependencies"])
+        else:
+            block["value"] = str(component.value)
+
+    if component.footer is not None:
+        footer_ui = TagList(component.footer).render()
+        block["footer"] = str(footer_ui["html"])
+        deps.extend(footer_ui["dependencies"])
+
+    return block, deps
+
+
 def tool_result_message(result: Tagifiable) -> ChatMessage:
     """Wrap shinychat's rich tool card in a marker message."""
-    cls = (
-        ShinyToolCardMessage
-        if isinstance(result, ToolResultComponent)
-        else ChatMessage
-    )
-    return cls(content=result)
+    if isinstance(result, ToolResultComponent):
+        # The default rich path emits the structured `tool_result` envelope,
+        # not tagified `<shiny-tool-result>` markup. (The tagify code above is
+        # retained for now; the legacy/none overrides still return non-
+        # component Tagifiables and keep the markup path.)
+        block, deps = tool_result_block(result)
+        msg = ShinyToolCardMessage(content="", blocks=[block])
+        msg.html_deps = deps + msg.html_deps
+        return msg
+    return ChatMessage(content=result)
 
 
 def wrap_custom_tool_result(

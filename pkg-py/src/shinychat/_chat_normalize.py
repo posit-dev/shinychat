@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, TypeGuard
 
 from htmltools import HTML, HTMLDependency, Tag, Tagifiable, TagList
 
-from ._chat_types import ChatMessage
+from ._chat_types import ChatMessage, StructuredBlock
 
 if TYPE_CHECKING:
     from chatlas.types import ContentToolResult
@@ -420,6 +420,7 @@ try:
     def _(message: Turn):
         content = ""
         deps: list[HTMLDependency] = []
+        blocks: list[StructuredBlock] = []
         for x in message.contents:
             # Normalize and wrap per item, mirroring R's
             # `contents_shinychat_wrapped()`.
@@ -433,11 +434,15 @@ try:
             # is concatenated, so per-item dependencies would otherwise be
             # dropped and the item's UI would arrive unstyled and unscripted.
             deps += item.html_deps
+            # Structured blocks (e.g. `tool_result`) can't be concatenated
+            # into the content string; they travel alongside it. (Their exact
+            # interleaving with the string content is lost — strings first.)
+            blocks.extend(item.blocks)
         if all(isinstance(x, ContentToolResult) for x in message.contents):
             role = "assistant"
         else:
             role = message.role
-        result = ChatMessage(content=content, role=role)
+        result = ChatMessage(content=content, role=role, blocks=blocks)
         result.html_deps = deps + result.html_deps
         return result
 

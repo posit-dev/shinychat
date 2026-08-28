@@ -600,14 +600,20 @@ async def test_custom_tool_result_error_renders_like_a_successful_one(
 @pytest.mark.anyio
 async def test_plain_tool_result_is_not_misread_as_custom_display() -> None:
     """shinychat's own tool card (no author override) must never carry
-    `custom-display` -- that attribute is reserved for the bypass path."""
+    `custom_display` -- that flag is reserved for the bypass path."""
     result = _result(_request(tool=_tool()))
     sent = await _stream_custom_result(result)
 
     assert len(sent) == 1
-    html = sent[0].content
-    assert "<shiny-tool-result" in html
-    assert "custom-display" not in html
+    msg = sent[0]
+    # A plain tool result now normalizes to a structured `tool_result` block
+    # carried on the message, not `<shiny-tool-result>` markup in the content
+    # string (the envelope, not scanned markup, is the client's trust signal).
+    assert "<shiny-tool-result" not in msg.content
+    assert len(msg.blocks) == 1
+    block = msg.blocks[0]
+    assert block["type"] == "tool_result"
+    assert "custom_display" not in block
 
 
 def test_plain_tool_result_uses_marker_message() -> None:
@@ -828,3 +834,107 @@ async def test_custom_text_result_stays_routable(
     assert "<shiny-tool-result" in html
     assert "custom-display" in html
     assert 'value-type="text"' in html
+
+
+# ---------------------------------------------------------------------------
+# 6. Structured `tool_result` blocks: the typed envelope (not tagified
+#    `<shiny-tool-result>` markup) is what travels the wire.
+# ---------------------------------------------------------------------------
+
+
+def test_plain_tool_result_normalizes_to_structured_block() -> None:
+    """A plain ContentToolResult must normalize to a ChatMessage carrying a
+    structured `tool_result` block -- the envelope, not markup scanned out of
+    the text channel, is the client's trust signal."""
+    result = _result(_request(tool=_tool()))
+
+    msg = message_content(result)
+
+    assert "<shiny-tool-result" not in msg.content
+    assert len(msg.blocks) == 1
+    block = msg.blocks[0]
+    assert block["type"] == "tool_result"
+    assert block["version"] == 1
+    assert block["request_id"] == "call-1"
+    assert block["tool_name"] == "my_tool"
+    assert block["status"] == "success"
+    # `value`/`value_type` are NotRequired on the wire; `.get()` keeps the
+    # access total while still asserting presence-with-value.
+    assert block.get("value") == "2"
+    assert block.get("value_type") == "code"
+
+
+@pytest.mark.anyio
+async def test_stream_emits_block_insert_action_for_structured_block() -> None:
+    """Mid-stream, a structured block must travel as a `block_insert` action
+    (never as markup inside a `chunk`), while string content keeps flowing
+    through ordered `chunk` actions."""
+    from shiny.express._stub_session import ExpressStubSession
+    from shiny.session import session_context
+    from shinychat import Chat
+
+    sent: list[Any] = []
+
+    async def capture_action(action: Any, deps: Any = None) -> None:
+        sent.append(action)
+
+    with session_context(ExpressStubSession()):
+        chat = Chat(id="chat")
+        chat._send_action = capture_action  # type: ignore[method-assign]
+        await chat._append_message_chunk("", chunk="start", stream_id="s1")
+        await chat._append_message_chunk("working", chunk=True, stream_id="s1")
+        await chat._append_message_chunk(
+            _result(_request(tool=_tool())), stream_id="s1"
+        )
+        await chat._append_message_chunk("done", chunk=True, stream_id="s1")
+
+    types = [a["type"] for a in sent]
+    assert types == ["chunk_start", "chunk", "block_insert", "chunk"]
+
+    chunks = [a for a in sent if a["type"] == "chunk"]
+    assert [c["content"] for c in chunks] == ["working", "done"]
+    assert all("<shiny-tool-result" not in c["content"] for c in chunks)
+
+    block_action = sent[2]
+    assert block_action["block"]["type"] == "tool_result"
+    assert block_action["block"]["request_id"] == "call-1"
+
+
+@pytest.mark.anyio
+async def test_append_message_includes_structured_block_in_segments() -> None:
+    """A non-streaming `append_message` must carry the structured block as a
+    typed entry in the message payload's `segments` (`block_insert` is only
+    for mid-stream delivery)."""
+    from shiny.express._stub_session import ExpressStubSession
+    from shiny.session import session_context
+    from shinychat import Chat
+
+    sent: list[Any] = []
+
+    async def capture_action(action: Any, deps: Any = None) -> None:
+        sent.append(action)
+
+    with session_context(ExpressStubSession()):
+        chat = Chat(id="chat")
+        chat._send_action = capture_action  # type: ignore[method-assign]
+        await chat.append_message(_result(_request(tool=_tool())))
+
+    assert len(sent) == 1
+    action = sent[0]
+    assert action["type"] == "message"
+    segments = action["message"]["segments"]
+
+    block_segments = [s for s in segments if s.get("type") == "tool_result"]
+    assert len(block_segments) == 1
+    block = block_segments[0]
+    assert block["version"] == 1
+    assert block["request_id"] == "call-1"
+    assert block["tool_name"] == "my_tool"
+    assert block["status"] == "success"
+    assert block["value"] == "2"
+    assert block["value_type"] == "code"
+
+    string_segments = [s for s in segments if "content" in s]
+    assert all(
+        "<shiny-tool-result" not in s["content"] for s in string_segments
+    )

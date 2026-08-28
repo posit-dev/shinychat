@@ -1498,17 +1498,40 @@ class Chat:
                     "content_type": content_type,
                 }
                 await self._send_action(chunk_action, message.html_deps)
+            await self._send_block_inserts(message)
             await self._send_action({"type": "chunk_end"})
         elif chunk is True:
-            chunk_action = {
-                "type": "chunk",
-                "content": content,
-                "operation": operation,
-                "content_type": content_type,
-            }
-            await self._send_action(chunk_action, message.html_deps)
+            if message.blocks:
+                # A chunk carrying structured blocks: string content (if any)
+                # still travels as a `chunk` action, then one `block_insert`
+                # per structured block — actions go out in segment order. An
+                # empty string part is skipped so it can't open a spurious
+                # empty content block ahead of the block.
+                if content:
+                    chunk_action = {
+                        "type": "chunk",
+                        "content": content,
+                        "operation": operation,
+                        "content_type": content_type,
+                    }
+                    await self._send_action(chunk_action, message.html_deps)
+                await self._send_block_inserts(message)
+            else:
+                chunk_action = {
+                    "type": "chunk",
+                    "content": content,
+                    "operation": operation,
+                    "content_type": content_type,
+                }
+                await self._send_action(chunk_action, message.html_deps)
         else:
             action = {"type": "message", "message": msg_payload}
+            await self._send_action(action, message.html_deps)
+
+    async def _send_block_inserts(self, message: StoredMessage) -> None:
+        """Emit one `block_insert` action per structured block in the message."""
+        for block in message.blocks:
+            action: ChatAction = {"type": "block_insert", "block": block}
             await self._send_action(action, message.html_deps)
 
     def _messages_for_bookmark(self) -> list[dict[str, Any]]:
@@ -1522,6 +1545,10 @@ class Chat:
             d = m.model_dump(exclude_none=True)
             if not d.get("attachments"):
                 d.pop("attachments", None)
+            # Keep the persisted shape unchanged for messages without
+            # structured blocks (bookmarks stay readable by older versions).
+            if not d.get("blocks"):
+                d.pop("blocks", None)
             dumps.append(d)
         return dumps
 
