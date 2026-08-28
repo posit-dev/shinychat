@@ -552,7 +552,11 @@ child or the phase.
   a later capture could overwrite an earlier node delta. Commit `65b69e68`
   retains prior deltas, extends snapshots with later deltas, and covers a
   completed stream followed by the next input. Job `1049` is closed stale on
-  that fix (1 finding, 1/3 toward the escalation valve); fresh review is
+  that fix. Fresh job `1050` found that a supported generic
+  `model_dump(mode="json")` turn reached JSON canonicalization unnormalized.
+  Commit `8f992a58` normalizes it through `TurnsAdapter` and exercises the v2
+  root capture path with a model-backed client. Job `1050` is closed stale on
+  that fix (2 findings, 2/3 toward the escalation valve); fresh review is
   pending.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
