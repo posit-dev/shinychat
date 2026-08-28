@@ -231,6 +231,39 @@ def test_echoed_slash_command_records_once_before_its_callback():
     ]
 
 
+def test_echoed_slash_command_capture_error_removes_loading_message():
+    session = cast(Session, _MockSession())
+    actions: list[dict[str, Any]] = []
+    errors: list[BaseException] = []
+
+    with session_context(session):
+        chat = Chat("echoed_slash_capture_error", history=False)
+
+        async def _capture_error(message: ChatMessage) -> None:
+            del message
+            raise RuntimeError("capture failed")
+
+        async def _capture_action(action: dict[str, Any], _deps: Any = None) -> None:
+            actions.append(action)
+
+        async def _capture_exception(error: BaseException) -> None:
+            errors.append(error)
+
+        chat._record_accepted_user_input_with_capture = _capture_error
+        chat._raise_exception = _capture_exception  # type: ignore[method-assign]
+        chat._send_action = _capture_action  # type: ignore[method-assign]
+
+        cast(Any, session.input[chat._slash_command_id])._set(
+            {"command": "greet", "userText": "world", "echo": True}
+        )
+        run_async(reactive.flush)
+
+    assert len(errors) == 1
+    assert isinstance(errors[0], RuntimeError)
+    assert str(errors[0]) == "capture failed"
+    assert any(action["type"] == "remove_loading" for action in actions)
+
+
 def test_side_effect_only_slash_command_preserves_callback_without_echo():
     session = cast(Session, _MockSession())
     callback_state: list[tuple[str, tuple[Any, ...], str | None]] = []

@@ -446,15 +446,15 @@ child or the phase.
   settlement saver, so they do not dual-write. Streaming persistence, state
   hooks, baseline capture, full restore/bootstrap behavior, and branching
   remain untouched.
-- **Next:** roborev jobs `1033` and `1035` were fixed and closed by commits
-  `29e23dce` and `3e4b1385`. Job `1036` produced the third finding against
-  the v2 record-boundary mechanism, so the escalation valve is open. Its
-  concern is exact-type rejection of same-schema record subclasses in the
-  in-memory overwrite guard. Recommended disposition: **PATCH** by comparing
-  the already-validated schema versions instead of exact model types; this
-  preserves cross-version isolation without adding a new mechanism. Do not
-  implement past this decision until the coordinator confirms patch versus
-  replace.
+- **Review:** roborev jobs `1033` and `1035` were fixed and closed by commits
+  `29e23dce` and `3e4b1385`. Job `1036` was the third v2 record-boundary
+  finding, so the escalation valve applied. The approved **PATCH** landed in
+  `d3f3a05b`: after validating both records, the in-memory overwrite guard
+  compares `schema_version` values rather than concrete model types. This
+  preserves cross-version rejection and admits valid same-schema subclasses
+  without a new mechanism. Job `1037` found an ordinary echoed-slash-command
+  error-path gap; the capture call now uses the existing handler
+  `try`/`except`/`finally`, with a regression test. Its fresh review is next.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
