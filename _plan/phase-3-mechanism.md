@@ -453,8 +453,9 @@ child or the phase.
   compares `schema_version` values rather than concrete model types. This
   preserves cross-version rejection and admits valid same-schema subclasses
   without a new mechanism. Job `1037` found an ordinary echoed-slash-command
-  error-path gap; the capture call now uses the existing handler
-  `try`/`except`/`finally`, with a regression test. Its fresh review is next.
+  error-path gap; `f1a22356` moves capture into the existing handler
+  `try`/`except`/`finally`, with a regression test. Fresh roborev job `1038`
+  found no issues.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
