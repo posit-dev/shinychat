@@ -25,8 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changes
 
-* `page_chat()` uses a wider content column on large displays while preserving
-  its existing width on smaller windows.
+* `page_chat()` uses a wider content column on large displays while preserving its existing width on smaller windows.
 
 * `chat_ui()` / `Chat.ui()` and `page_chat()` no longer show an assistant icon by default. Pass `icon_assistant=True` to restore the built-in robot icon, or supply your own icon as before. (#345)
 
