@@ -1,8 +1,8 @@
 # Plan: exchange-tree conversation history
 
 **Status:** committed · Phase 0 complete, Phase 1 in review, Phase 2 complete,
-Phase 3 mechanism agreed; Q2 selects single-document atomic layout after
-split rejection · 2026-08-28
+Phase 3 acceptance evidence complete and awaiting human review; Q2 selects
+single-document atomic layout after split rejection · 2026-08-28
 **Kata:** epic `shinychat#6d0d` · Phase 1 `shinychat#g49a` · Phase 2
 `shinychat#kjyt` · Phase 3 `shinychat#qf2r` (the `kata` CLI issue tracker).
 All abbreviated Kata IDs below belong to the `shinychat` project;
@@ -547,7 +547,8 @@ signed off by the driver before code (process.md §3.4).
   `Chat.messages()` is synchronous in the same flush; the revised shared
   transcript fixture passes in Python; a forged messages input cannot
   mutate transcript or history (hard transport rejection is acceptable).
-- **Phase 3 — exchange record + capture + store (Python; `shinychat#qf2r`).**
+- **Phase 3 — exchange record + capture + store (Python; `shinychat#qf2r`;
+  acceptance evidence complete 2026-08-28, human review pending).**
   Node schema,
   choke-point capture, baseline snapshot at first input, delta/snapshot
   turn capture, eager writes + lazy close, statuses, incremental atomic

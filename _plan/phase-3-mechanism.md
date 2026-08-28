@@ -635,3 +635,78 @@ child or the phase.
   init/restore window; Phase 4 and Phase 5 retain full restore semantics and
   its guard decision. The state-hooks-and-baseline child is awaiting review;
   restore/rewind consumers remain Phase 4 work.
+
+## Final acceptance evidence (2026-08-28)
+
+The acceptance atom `shinychat#nr6k` adds only Python tests and the
+deterministic fixture
+`pkg-py/tests/fixtures/history-v2-worked-example.json`. The fixture is
+validated as `ConversationRecordV2` and round-tripped through both
+`InMemoryConversationStore` and a fresh `FileConversationStore`; its active
+path, failed retry sibling, input-less node, error, and state entries are
+asserted after reload. The file store remains one `record.json` document.
+
+The production-path coverage in `test_history_controller.py` now includes:
+
+- the process-kill matrix at `test_stream_capture_survives_process_kill_and_file_store_reload`
+  for pre-input root start, accepted input, stream start, two representative
+  updates, and terminal `ok`, `error`, and `cancelled`; every checkpoint
+  reloads the accepted input, successfully sent partial content, and coherent
+  status/error from the atomic file store;
+- post-partition pre-input UI capture and real `Chat.set_greeting()` exclusion,
+  root snapshot, input-less nodes, explicit opening-exchange stream attribution,
+  pending-to-terminal status transitions, exact-prefix delta capture,
+  snapshot fallback after an earlier-turn rewrite, terminal verbatim state,
+  and node-close catch-up;
+- the default-off v1 path, the v2 no-dual-write path, resident cross-schema
+  overwrite rejection in both stores, and open accepted-input/stream
+  persistence failures;
+- the existing atomic replacement failure tests, including injected
+  serialization/append/rename failures, old-document preservation, and the
+  Q2 kill-stage evidence for old-or-new visibility.
+
+Ruff and Pyright pass. The focused `make py-check-tests
+FILTER='history or transcript'` gate passes 34 Playwright tests and 368
+non-browser tests; the final full
+`make py-check` passes all 191 Playwright tests and 720 non-browser tests with
+one skip. The only failure is the pre-existing, platform-dependent
+`shinychat#4z6p` assertion
+`pkg-py/tests/pytest/test_attachments.py::test_attachment_from_path`
+(expected `text/markdown`, received `application/octet-stream`); no Phase 3
+test or production path is implicated.
+
+## Cumulative review and deletion pass
+
+The cumulative audit covers
+`175d9acffc0f7e31e65fbeb3c3ba079f20f00972..HEAD`. The Phase 3 production
+shape remains one new lifecycle owner, `_ExchangeRecorder`, beside the
+existing `ChatTranscript`; `ConversationRecordV2`/`ExchangeNode` and the
+capture context are data contracts, not additional owners. The retained
+private stream-id map, recorder-local async lock, named capture registry, and
+single-document `_put_v2` each map directly to the mechanism note. The v1
+response-settlement path, v1 split JSONL store, and the default-off flag are
+transitional machinery retained for the committed Phase 3–7 compatibility
+boundary; deleting them now would violate the flag-off and legacy-preserving
+requirements. The narrow v2 replay helper remains the Phase 4 handoff.
+
+No Phase 3 acceptance change introduced a queue, cursor, reconciliation pass,
+settlement dependency, rendered/display HTML storage, split persistence or
+split recovery. V2 `on_response()` is inert, so v2 durability does not depend
+on the v1 settlement path; v2 stores wire message specs and provider state,
+never rendered HTML. No retained top-level abstraction was deletable without
+pulling Phase 4 or Phase 7 scope forward.
+
+Coherent roborev job `1057` reviewed `c22ea1ad` and found three acceptance-test
+gaps: duplicated fixture input messages, a disconnected greeting fake, and a
+missing open-exchange assertion. The coordinator chose **PATCH** within the
+acceptance-test mechanism. `00e0b5e4` fixes all three; job `1057` was closed
+stale on that commit. Fresh coherent job `1058` reviewed the acceptance
+range and found no issues. Earlier Phase 3 review chains and their
+patch/replace/defer dispositions are recorded above; no open acceptance
+review remains.
+
+## Final handoff
+
+Landed: `c22ea1ad` and `00e0b5e4` complete the Phase 3 acceptance fixture and production-path test matrix.
+Next: human review of `shinychat#nr6k`, then Phase 4 may consume the v2 replay/state contracts.
+Boundary: Phase 3 adds no restore/branch/rewind/bookmark, init guard, degradation, public hook, legacy, JS/SCSS, R, queue, or reconciliation work.
