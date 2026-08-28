@@ -519,6 +519,72 @@ async def test_v2_recorder_persists_pre_input_stream_on_pending_root() -> None:
 
 
 @pytest.mark.anyio
+async def test_v2_recorder_ignores_prepartition_content_without_failing_send():
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+    )
+    controller.partition = None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_message_committed=recorder.message_committed,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+
+    assert await transcript.append(
+        TranscriptEntry(message=_stored_message("assistant", "initial")),
+        exchange_id=None,
+        send=_sent,
+    )
+    assert await transcript.start_stream(
+        stream_id="early",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=None,
+        send=_sent,
+    )
+    assert await transcript.transition_stream(
+        stream_id="early",
+        source_segments=[],
+        message=_stored_message("assistant", "partial"),
+        operation="append",
+        send=_sent,
+    )
+    assert await transcript.end_stream(
+        stream_id="early",
+        status=None,
+        error=None,
+        send=_sent,
+    )
+    assert recorder.record is None
+    assert recorder._stream_exchanges == {}
+    conversation_metas = await store.list(part())
+    assert conversation_metas == []
+
+    controller.partition = part()
+    assert await transcript.start_stream(
+        stream_id="persisted",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=None,
+        send=_sent,
+    )
+
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    root_id = record.active_leaf
+    assert root_id == "n_0000"
+    root = record.nodes[root_id]
+    assert root.status == "pending"
+    assert root.messages[0].as_stored_message().content == ""
+    assert recorder._stream_exchanges == {"persisted": "n_0000"}
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     ("status", "error"),
     [

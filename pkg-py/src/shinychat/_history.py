@@ -265,7 +265,7 @@ class _ExchangeRecorder:
     ) -> None:
         controller = self._controller
         if controller.partition is None:
-            raise RuntimeError("HistoryController not initialized")
+            return
 
         async with self._lock:
             if self.record is None:
@@ -282,7 +282,7 @@ class _ExchangeRecorder:
         if entry.message.role not in ("user", "assistant"):
             return
         if self._controller.partition is None:
-            raise RuntimeError("HistoryController not initialized")
+            return
 
         async with self._lock:
             target = self._content_exchange(exchange_id)
@@ -304,7 +304,7 @@ class _ExchangeRecorder:
         entry: TranscriptEntry,
     ) -> None:
         if self._controller.partition is None:
-            raise RuntimeError("HistoryController not initialized")
+            return
 
         async with self._lock:
             target = self._content_exchange(exchange_id)
@@ -324,7 +324,7 @@ class _ExchangeRecorder:
         self, stream_id: str, entry: TranscriptEntry
     ) -> None:
         if self._controller.partition is None:
-            raise RuntimeError("HistoryController not initialized")
+            return
 
         async with self._lock:
             exchange_id = self._stream_exchanges.get(stream_id)
@@ -345,7 +345,7 @@ class _ExchangeRecorder:
         error: str | None,
     ) -> None:
         if self._controller.partition is None:
-            raise RuntimeError("HistoryController not initialized")
+            return
 
         async with self._lock:
             exchange_id = self._stream_exchanges.get(stream_id)
