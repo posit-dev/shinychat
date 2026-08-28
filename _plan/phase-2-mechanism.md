@@ -376,3 +376,13 @@ single-session atom and starts only after every Python consumer has moved.
   non-browser tests. JS, R, packaged assets, and the legacy
   `shinychat.messages` handler/input/parser remain untouched for
   `shinychat#47fa`. `shinychat#dy7g` remains open with `needs-review`.
+- **Mechanism closeout evidence (2026-08-28; `shinychat#dy7g`;
+  `a8f85899`, `f1ffcce5`, `4c59c81d` after `4c4356d2`):** lifecycle settlement
+  hardening now waits for pending or in-flight external delivery to drain
+  before destructive mutation, settles cancellation after scheduling,
+  isolates warning-as-error consumer failures, and rejects direct or
+  child-task reentrant destructive mutations. After reactive-lock arbitration,
+  browser input/replay needs no new protocol. Full Python verification passed:
+  Ruff, Pyright, 191 Playwright tests, and 645 non-browser tests. No JS, R,
+  packaged-asset, or `shinychat#47fa` changes landed. Roborev rereview job
+  `1012` was clean with no issues found.
