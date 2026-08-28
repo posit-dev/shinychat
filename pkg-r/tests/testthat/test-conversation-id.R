@@ -568,7 +568,6 @@ test_that("set_client() does not seed a saved conversation's ID", {
       )
       cid_wait_idle(session, mod)
 
-      # Save the active conversation: its ID now belongs to a stored record.
       ctrl <- get_session_chat_bookmark_info(
         session,
         "chat.history-controller"

@@ -521,13 +521,11 @@ chat_server <- function(
     client <<- new_client
 
     # Capture the active conversation identity before re-registering
-    # history, but only when it's an unsaved draft. A saved conversation's
-    # ID belongs to a stored record: if the replacement controller's init
-    # won't restore it (e.g. restore_mode = "none", or any failed restore),
-    # seeding that ID would leave the controller thinking the record is an
-    # unsaved draft, and the next save would overwrite the stored record.
-    # Saved conversations instead get their ID back when init restores the
-    # record, or a fresh ID on the next submission when it doesn't.
+    # history, but only for unsaved drafts: seeding a saved conversation's
+    # ID when init won't restore its record (restore_mode = "none", failed
+    # restore) would make the next save overwrite the stored record. Saved
+    # conversations get their ID back from the restore, or a fresh one on
+    # the next submission.
     old_ctrl <- get_session_chat_bookmark_info(
       session,
       paste0(id, ".history-controller")

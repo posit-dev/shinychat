@@ -29,6 +29,8 @@ from ._history_title import (
     fallback_title,
     generate_title,
 )
+# NB: shiny is imported lazily inside methods throughout this module; a
+# top-level import would be circular (shiny.ui._chat imports shinychat).
 from ._history_types import (
     ConversationRecord,
     check_schema_version,
@@ -234,9 +236,7 @@ class HistoryController:
         # identified draft (submitted but not yet saved) has an ID and no
         # record. All record/identity mutations go through
         # activate_record()/clear_active() so that when a record exists, its
-        # `id` equals the active ID. (NB: shiny is imported lazily throughout
-        # this module — a top-level import would be circular, since
-        # shiny.ui._chat imports shinychat.)
+        # `id` equals the active ID.
         from shiny import reactive
 
         self._active_id: "reactive.Value[str | None]" = reactive.Value(None)
