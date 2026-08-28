@@ -912,6 +912,79 @@ process_block_deps <- function(block, session) {
   list(block = block, deps = processed_deps)
 }
 
+# Build wire segments from non-string HTML content (tag/tag.list/htmlwidget)
+# by splitting it through split_html_islands. Island wrappers
+# (<shiny-chat-raw-html>) become html_block structured blocks (content =
+# rendered HTML, raw deps stashed on the block attr for send-time processing).
+# Bare data-shinychat-react elements stay string parts (wrapped in \n\n,
+# content_type "html"). Adjacent strings coalesce.
+# Mirrors Python's ChatMessage.__init__ non-string content path.
+build_html_island_segments <- function(content, session) {
+  islands <- split_html_islands(content)
+  if (length(islands) == 0) {
+    return(list(segments = list(), deps = list()))
+  }
+
+  segments <- list()
+  all_deps <- list()
+
+  for (item in islands) {
+    if (
+      inherits(item, "shiny.tag") &&
+        identical(item$name, "shiny-chat-raw-html")
+    ) {
+      # Island wrapper: render its children (not the wrapper itself) as
+      # the block's trusted HTML content, collecting deps.
+      children <- as.list(item$children)
+      rendered <- htmltools::renderTags(htmltools::tagList(!!!children))
+      island_html <- as.character(rendered$html)
+      island_deps <- rendered$dependencies
+      all_deps <- c(all_deps, island_deps)
+
+      block <- new_html_block(island_html)
+      if (length(island_deps) > 0) {
+        attr(block, "shinychat_html_deps") <- island_deps
+      }
+      # Process block deps (session-process + attach to block)
+      result <- process_block_deps(block, session)
+      all_deps <- c(all_deps, result$deps)
+      segments[[length(segments) + 1]] <- result$block
+    } else {
+      # Bare React element: render it bare and keep it as a string part
+      rendered <- htmltools::renderTags(item)
+      all_deps <- c(all_deps, rendered$dependencies)
+      run <- paste0("\n\n", as.character(rendered$html), "\n\n")
+      # Coalesce with previous string segment if adjacent
+      if (
+        length(segments) > 0 &&
+          is.character(segments[[length(segments)]]$content) &&
+          !"type" %in% names(segments[[length(segments)]])
+      ) {
+        segments[[length(segments)]]$content <-
+          paste0(segments[[length(segments)]]$content, run)
+      } else {
+        segments[[length(segments) + 1]] <- list(
+          content = run,
+          content_type = "html"
+        )
+      }
+    }
+  }
+
+  list(segments = segments, deps = all_deps)
+}
+
+new_html_block <- function(content) {
+  structure(
+    list(
+      type = "html_block",
+      version = 1L,
+      content = content
+    ),
+    class = c("shinychat_html_block", "shinychat_block")
+  )
+}
+
 # Build wire segments from a shinychat_block or a mixed content list
 # (strings + blocks). Returns a list with:
 #   segments: ordered list of string segments ({content, content_type}) and
@@ -1077,15 +1150,17 @@ chat_append_message <- function(
     !is_block &&
     !inherits(content, c("shiny.tag", "shiny.tag.list", "html", "htmlwidget"))
 
-  is_html <- inherits(
+  # Non-string HTML content (tag/tag.list/htmlwidget) goes through the
+  # html_block island-splitting path. String-typed HTML (character with
+  # class "html", i.e. htmltools::HTML()) keeps the legacy string-segment
+  # path (island machinery retained per design). Mirrors Python's
+  # ChatMessage.__init__ non-string content branch.
+  is_non_string_html <- inherits(
     content,
-    c(
-      "shiny.tag",
-      "shiny.tag.list",
-      "html",
-      "htmlwidget"
-    )
+    c("shiny.tag", "shiny.tag.list", "htmlwidget")
   )
+  is_string_html <- is.character(content) && inherits(content, "html")
+  is_html <- is_non_string_html || is_string_html
   content_type <- if (is_thinking) {
     "thinking"
   } else if (is_html) {
@@ -1098,11 +1173,16 @@ chat_append_message <- function(
 
   icon_str <- resolve_icon_attr(icon)
 
-  if (is_block || is_mixed_list) {
-    # Build wire segments from the block(s) and any interleaved strings.
+  if (is_block || is_mixed_list || is_non_string_html) {
+    # Build wire segments from the block(s), mixed list, or non-string HTML
+    # content (split into html_block islands + bare React string parts).
     # Block deps are session-processed and attached to the block's
     # html_deps field; all block deps are also collected for the envelope.
-    segments_result <- build_wire_segments(content, session)
+    if (is_non_string_html) {
+      segments_result <- build_html_island_segments(content, session)
+    } else {
+      segments_result <- build_wire_segments(content, session)
+    }
     wire_segments <- segments_result$segments
     all_block_deps <- segments_result$deps
 
@@ -1203,10 +1283,11 @@ chat_append_message <- function(
     # content is most likely a string, so avoid overhead in that case
     ui <- list(html = content, deps = NULL)
   } else {
-    # process_ui() does *not* render markdown->HTML, but it does:
-    # 1. Extract and register HTMLdependency()s with the session.
-    # 2. Returns a HTML string representation of the TagChild
-    #    (i.e., `div()` -> `"<div>"`).
+    # String-typed HTML (htmltools::HTML() — character with class "html")
+    # keeps the legacy string-segment path: process through pre_process_ui
+    # (which applies split_html_islands for the island machinery) and send
+    # as a single html content_type segment. Non-string HTML (tag/tag.list/
+    # htmlwidget) was already handled above via build_html_island_segments.
     ui <- process_ui(pre_process_ui(content), session)
   }
 

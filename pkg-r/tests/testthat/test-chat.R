@@ -791,6 +791,188 @@ test_that("chat_append_message() streaming emits block_insert for web blocks", {
   expect_equal(captured[[3]]$action$type, "chunk_end")
 })
 
+test_that("chat_append_message() non-string HTML tag produces html_block segment", {
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- list(
+        action = action,
+        html_deps = html_deps
+      )
+      invisible()
+    }
+  )
+  session <- shiny::MockShinySession$new()
+
+  # A plain tag (no data-shinychat-react) → island wrapper → html_block
+  content <- htmltools::div("Hello world")
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = content),
+    chunk = FALSE,
+    session = session
+  )
+
+  expect_length(captured, 1)
+  msg <- captured[[1]]$action
+  expect_equal(msg$type, "message")
+  segments <- msg$message$segments
+  expect_length(segments, 1)
+
+  # Should be an html_block
+  expect_equal(segments[[1]]$type, "html_block")
+  expect_equal(segments[[1]]$version, 1L)
+  expect_match(segments[[1]]$content, "Hello world", fixed = TRUE)
+  expect_match(segments[[1]]$content, "<div", fixed = TRUE)
+})
+
+test_that("chat_append_message() React element stays as string html segment", {
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- list(
+        action = action,
+        html_deps = html_deps
+      )
+      invisible()
+    }
+  )
+  session <- shiny::MockShinySession$new()
+
+  # A tag with data-shinychat-react → bare element → string html segment
+  content <- htmltools::tag(
+    "shiny-custom",
+    list(`data-shinychat-react` = NA, "content")
+  )
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = content),
+    chunk = FALSE,
+    session = session
+  )
+
+  expect_length(captured, 1)
+  msg <- captured[[1]]$action
+  expect_equal(msg$type, "message")
+  segments <- msg$message$segments
+  expect_length(segments, 1)
+
+  # Should be a string html segment (not an html_block)
+  expect_null(segments[[1]]$type)
+  expect_equal(segments[[1]]$content_type, "html")
+  expect_match(segments[[1]]$content, "shiny-custom", fixed = TRUE)
+})
+
+test_that("chat_append_message() mixed tag list produces html_block + string segments", {
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- list(
+        action = action,
+        html_deps = html_deps
+      )
+      invisible()
+    }
+  )
+  session <- shiny::MockShinySession$new()
+
+  # A tagList with a React element and a plain tag
+  content <- htmltools::tagList(
+    htmltools::tag("shiny-react-thing", list(`data-shinychat-react` = NA)),
+    htmltools::div("trusted HTML")
+  )
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = content),
+    chunk = FALSE,
+    session = session
+  )
+
+  expect_length(captured, 1)
+  msg <- captured[[1]]$action
+  expect_equal(msg$type, "message")
+  segments <- msg$message$segments
+  expect_length(segments, 2)
+
+  # Segment 1: React element → string html segment
+  expect_null(segments[[1]]$type)
+  expect_equal(segments[[1]]$content_type, "html")
+  expect_match(segments[[1]]$content, "shiny-react-thing", fixed = TRUE)
+
+  # Segment 2: plain div → html_block
+  expect_equal(segments[[2]]$type, "html_block")
+  expect_equal(segments[[2]]$version, 1L)
+  expect_match(segments[[2]]$content, "trusted HTML", fixed = TRUE)
+})
+
+test_that("chat_append_message() htmltools::HTML() string keeps legacy string path", {
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- list(
+        action = action,
+        html_deps = html_deps
+      )
+      invisible()
+    }
+  )
+  session <- shiny::MockShinySession$new()
+
+  # htmltools::HTML() is character with class "html" → legacy string path
+  content <- htmltools::HTML("<p>raw html</p>")
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = content),
+    chunk = FALSE,
+    session = session
+  )
+
+  expect_length(captured, 1)
+  msg <- captured[[1]]$action
+  expect_equal(msg$type, "message")
+  segments <- msg$message$segments
+  expect_length(segments, 1)
+
+  # Should be a string html segment (not an html_block)
+  expect_null(segments[[1]]$type)
+  expect_equal(segments[[1]]$content_type, "html")
+  expect_match(segments[[1]]$content, "<p>raw html</p>", fixed = TRUE)
+})
+
+test_that("chat_append_message() streaming emits block_insert for html_block", {
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- list(
+        action = action,
+        html_deps = html_deps
+      )
+      invisible()
+    }
+  )
+  session <- shiny::MockShinySession$new()
+
+  content <- htmltools::div("block content")
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = content),
+    chunk = "end",
+    session = session
+  )
+
+  # block_insert for the html_block
+  expect_equal(captured[[1]]$action$type, "block_insert")
+  expect_equal(captured[[1]]$action$block$type, "html_block")
+  expect_match(
+    captured[[1]]$action$block$content,
+    "block content",
+    fixed = TRUE
+  )
+
+  # chunk_end
+  expect_equal(captured[[2]]$action$type, "chunk_end")
+})
+
 test_that("chat_server() exposes a failed response until the next succeeds", {
   local_mocked_bindings(
     chat_restore = function(...) invisible(NULL),
