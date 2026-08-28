@@ -56,6 +56,39 @@ exchange nodes; it does not introduce the persistent node schema.
 - The legacy pending-message queue is deleted. Complete output cannot be sent
   through the one-stream wire while a stream is active.
 
+### Lifecycle settlement and destructive-state drain
+
+- **Normal settlement:** a committed terminal response normally settles its
+  private lifecycle-local consumer delivery at `reactive.on_flushed`. The
+  delivery is pending until that flush and is invoked exactly once for that
+  terminal response. It carries callback work and lifecycle identity, not
+  response content.
+- **Destructive-state preflight and drain:** every history destructive
+  operation, including switch, new chat, active delete, and
+  restore/rebuild/replay paths, must preflight and reject an active stream
+  before any history or source mutation. After that preflight passes, drain
+  all pending terminal settlements exactly once, then perform the first
+  mutation. This prevents partial history mutation before
+  `Chat.clear_messages()` rejects an active stream.
+- A clear with no pending settlement invokes no consumers. A clear while a
+  stream is active remains rejected; it does not become a waiting admission
+  path or a partial clear.
+- This is a private lifecycle-local pending-delivery mechanism, not a
+  response/output queue. It adds no content queue, waiting stream admission,
+  or client protocol change.
+- Consumer failures remain isolated: one history or bookmark consumer failure
+  cannot suppress other consumers or change the response, source mutation, or
+  terminal outcome.
+
+The rationale is ordering, not buffering. `reactive.on_flushed` remains the
+normal path because it settles after the committed terminal response has
+reached the lifecycle boundary. A destructive clear or replacement can
+otherwise erase the live source before that flush callback runs; draining the
+pending delivery first preserves the source long enough for each consumer to
+settle once. The delivery state is private and lifecycle-local so this ordering
+rule does not create response scheduling, content retention, or a client-facing
+protocol.
+
 ### Revised #311 contract
 
 Reuse #311's transaction pattern, defensive copies, segment coalescing,
@@ -311,3 +344,19 @@ single-session atom and starts only after every Python consumer has moved.
   selections, `make py-check-format`, `make py-check-types`, and full
   `make py-check` (191 Playwright, 632 non-browser). `shinychat#dy7g`
   remains open with `needs-review`.
+- **Approved settlement-drain handoff (2026-08-28; `shinychat#dy7g`):**
+  terminal responses normally settle consumers at `reactive.on_flushed`.
+  Every history destructive operation, including switch, new chat, active
+  delete, and restore/rebuild/replay paths, preflights and rejects an active
+  stream before any history or source mutation; after that preflight passes,
+  it drains pending terminal settlements exactly once and then mutates. This
+  prevents partial history mutation before `Chat.clear_messages()` rejects
+  an active stream. A clear with no pending settlement invokes no consumers.
+  A clear while a stream is active remains rejected.
+  This is private lifecycle-local pending delivery, not a response/output
+  queue: no content queue, waiting stream admission, or client protocol
+  change.
+  Consumer failures stay isolated. Carry these invariants into the
+  implementation and regression review; leave the normal `on_flushed` path,
+  issue status/owner/relationships, `needs-review`, and
+  `work.attention="ok"` unchanged.
