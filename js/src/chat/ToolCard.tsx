@@ -1,4 +1,4 @@
-import { useState, useMemo, useId, type ReactNode, type Ref } from "react"
+import { useState, useId, type ReactNode, type Ref } from "react"
 import { bareDot, plus } from "../utils/icons"
 import { fullscreenEnter } from "./useFullscreen"
 import { RawHTML } from "./RawHTML"
@@ -60,14 +60,6 @@ export function ToolCard({
     : ""
   const formattedTitle = `<span class="tool-title-name">${displayName}</span>${labelPart}`
 
-  // Memoize dangerouslySetInnerHTML objects so React 19 sees stable
-  // references and skips unnecessary innerHTML resets on re-render.
-  const iconDSIH = useMemo(() => ({ __html: iconHtml }), [iconHtml])
-  const titleDSIH = useMemo(
-    () => ({ __html: formattedTitle }),
-    [formattedTitle],
-  )
-
   function handleClick(e: React.MouseEvent) {
     e.preventDefault()
     const card = e.currentTarget.closest(".shiny-tool-card")
@@ -97,13 +89,15 @@ export function ToolCard({
         aria-expanded={expanded}
         aria-controls={contentId}
       >
-        <div
+        <RawHTML
+          html={iconHtml}
           className={`tool-icon${classStatus ? ` ${classStatus}` : ""}`}
-          dangerouslySetInnerHTML={iconDSIH}
+          displayContents={false}
         />
-        <div
+        <RawHTML
+          html={formattedTitle}
           className={`tool-title${classStatus ? ` ${classStatus}` : ""}`}
-          dangerouslySetInnerHTML={titleDSIH}
+          displayContents={false}
         />
         {statusNote && (
           <div

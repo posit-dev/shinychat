@@ -25,6 +25,7 @@ import {
 } from "./tool-presentation"
 import { ToolResult, ToolResultValue } from "./ToolResult"
 import { ToolRequest } from "./ToolRequest"
+import { RawHTML } from "./RawHTML"
 import { useChatStopScroll } from "./context"
 import { useFadingValue } from "./useFadingText"
 import { bareDot, chevronDown, exclamationCircleFill } from "../utils/icons"
@@ -98,7 +99,7 @@ function renderLeaf(item: ToolCallItem, open: boolean): ReactNode {
 }
 
 // One tool's stretch of the header: its name, then its own ×N. A title is
-// `dangerouslySetInnerHTML` because server-provided titles may carry markup.
+// injected via `RawHTML` because server-provided titles may carry markup.
 function TitleSegment({
   segment,
   showVerb,
@@ -119,10 +120,9 @@ function TitleSegment({
   return (
     <>
       {visible.title != null ? (
-        <span
-          {...nameProps}
-          dangerouslySetInnerHTML={{ __html: visible.title }}
-        />
+        <span {...nameProps}>
+          <RawHTML html={visible.title} />
+        </span>
       ) : (
         <span {...nameProps}>
           {visible.verb}
@@ -223,9 +223,10 @@ function ToolCallRow({
           setOpen((v) => !v)
         }}
       >
-        <span
+        <RawHTML
+          html={glyph}
           className={`shiny-chat-tool-call-row__status${statusClass}`}
-          dangerouslySetInnerHTML={{ __html: glyph }}
+          displayContents={false}
         />
         {label && (
           <span className="shiny-chat-tool-call-row__label">
@@ -359,9 +360,10 @@ function ToolGroupRow({
           setExpanded((v) => !v)
         }}
       >
-        <span
+        <RawHTML
+          html={glyph}
           className={`shiny-chat-tool-group__glyph${anyRunning ? " running" : ""}`}
-          dangerouslySetInnerHTML={{ __html: glyph }}
+          displayContents={false}
         />
         {/* The title sits at this exact depth in both shapes, so it survives a
                 1→N growth and can crossfade across it. The ×N lives inside the
