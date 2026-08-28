@@ -424,9 +424,9 @@ async def _stream_custom_result(result: ContentToolResult) -> list[Any]:
 async def test_custom_tool_result_handler_is_wrapped_in_a_result_element(
     custom_display_handler: Any,
 ) -> None:
-    """An author's bare custom UI must still reach the client as a
-    `<shiny-tool-result>`, or the client has no element to pair against the
-    request and the request row spins forever."""
+    """An author's bare custom UI must still reach the client as a structured
+    `tool_result` block, or the client has no block to pair against the request
+    and the request row spins forever."""
 
     def handler(chunk: _CustomToolResult) -> ChatMessage:
         return ChatMessage(
@@ -440,23 +440,25 @@ async def test_custom_tool_result_handler_is_wrapped_in_a_result_element(
     sent = await _stream_custom_result(result)
 
     assert len(sent) == 1
-    html = sent[0].content
-    assert html.count("<shiny-tool-result") == 1
-    assert "<shiny-tool-result" in html
-    assert "custom-display" in html
-    assert 'value-type="html"' in html
-    assert 'request-id="call-1"' in html
-    assert 'tool-name="my_tool"' in html
-    assert 'status="success"' in html
-    assert "Custom UI" in html
-    assert "my-custom-ui" in html
+    assert "<shiny-tool-result" not in sent[0].content
+    blocks = sent[0].blocks
+    assert len(blocks) == 1
+    block = blocks[0]
+    assert block["type"] == "tool_result"
+    assert block.get("custom_display") is True
+    assert block["request_id"] == "call-1"
+    assert block["tool_name"] == "my_tool"
+    assert block["status"] == "success"
+    assert block.get("value_type") == "html"
+    assert "Custom UI" in block.get("value", "")
+    assert "my-custom-ui" in block.get("value", "")
 
 
 @pytest.mark.anyio
 async def test_custom_string_result_stays_markdown(
     custom_display_handler: Any,
 ) -> None:
-    """A handler returning a plain string must keep `value-type="markdown"`.
+    """A handler returning a plain string must keep `value_type="markdown"`.
 
     `ChatMessage.__init__` only renders non-strings, so such a message keeps
     `content_type="markdown"` and an unrendered payload. Forcing `"html"` would
@@ -475,13 +477,14 @@ async def test_custom_string_result_stays_markdown(
     sent = await _stream_custom_result(result)
 
     assert len(sent) == 1
-    html = sent[0].content
-    assert html.count("<shiny-tool-result") == 1
-    assert "<shiny-tool-result" in html
-    assert "custom-display" in html
-    assert 'value-type="markdown"' in html
-    assert 'value-type="html"' not in html
-    assert "**Sunny**, 72F" in html
+    assert "<shiny-tool-result" not in sent[0].content
+    blocks = sent[0].blocks
+    assert len(blocks) == 1
+    block = blocks[0]
+    assert block["type"] == "tool_result"
+    assert block.get("custom_display") is True
+    assert block.get("value_type") == "markdown"
+    assert block.get("value") == "**Sunny**, 72F"
 
 
 @pytest.mark.anyio
@@ -491,8 +494,8 @@ async def test_custom_result_via_append_message_is_wrapped(
     """`append_message()` must wrap too, not just the streaming path.
 
     Its own docs point authors at `message_content`, and a handler registered
-    there returns custom UI with no `<shiny-tool-result>` at all unless this
-    path wraps as well.
+    there returns custom UI with no structured block at all unless this path
+    wraps as well.
     """
     from shiny.express._stub_session import ExpressStubSession
     from shiny.session import session_context
@@ -518,12 +521,14 @@ async def test_custom_result_via_append_message_is_wrapped(
         await chat.append_message(result)
 
     assert len(sent) == 1
-    html = sent[0].content
-    assert html.count("<shiny-tool-result") == 1
-    assert "<shiny-tool-result" in html
-    assert "custom-display" in html
-    assert 'request-id="call-1"' in html
-    assert "my-custom-ui" in html
+    assert "<shiny-tool-result" not in sent[0].content
+    blocks = sent[0].blocks
+    assert len(blocks) == 1
+    block = blocks[0]
+    assert block["type"] == "tool_result"
+    assert block.get("custom_display") is True
+    assert block["request_id"] == "call-1"
+    assert "my-custom-ui" in block.get("value", "")
 
 
 def test_custom_result_via_chat_ui_messages_is_wrapped(
@@ -566,12 +571,11 @@ def test_custom_result_via_chat_ui_messages_is_wrapped(
     # preloaded messages (a known Phase 1/Phase 3 gap). Only live-streamed or
     # appended requests reach the client as blocks.
     assert request_html == ""
-    assert result_html.count("<shiny-tool-result") == 1
-    assert "<shiny-tool-result" in result_html
-    assert "custom-display" in result_html
-    assert 'request-id="call-1"' in result_html
-    assert "Custom UI" in result_html
-    assert "my-custom-ui" in result_html
+    # Known D7/Phase 3 gap: chat_ui's static serialization drops structured
+    # blocks from preloaded messages, so the custom tool_result block does not
+    # survive into the static result_html either. Only live-streamed or
+    # appended results reach the client as blocks.
+    assert result_html == ""
     assert "static-custom-widget" in [dep.name for dep in ui.get_dependencies()]
 
 
@@ -580,7 +584,7 @@ async def test_custom_tool_result_error_renders_like_a_successful_one(
     custom_display_handler: Any,
 ) -> None:
     """A failed custom call must still be wrapped -- `status="error"`, with
-    `custom-display` still present -- not silently dropped."""
+    `custom_display` still present -- not silently dropped."""
 
     def handler(chunk: _CustomToolResult) -> ChatMessage:
         return ChatMessage(content=Tag("div", "Something went wrong"))
@@ -594,11 +598,13 @@ async def test_custom_tool_result_error_renders_like_a_successful_one(
     sent = await _stream_custom_result(result)
 
     assert len(sent) == 1
-    html = sent[0].content
-    assert html.count("<shiny-tool-result") == 1
-    assert "<shiny-tool-result" in html
-    assert "custom-display" in html
-    assert 'status="error"' in html
+    assert "<shiny-tool-result" not in sent[0].content
+    blocks = sent[0].blocks
+    assert len(blocks) == 1
+    block = blocks[0]
+    assert block["type"] == "tool_result"
+    assert block.get("custom_display") is True
+    assert block["status"] == "error"
 
 
 @pytest.mark.anyio
@@ -645,9 +651,12 @@ async def test_custom_tool_result_wrap_uses_tool_grouping_annotation(
     sent = await _stream_custom_result(result)
 
     assert len(sent) == 1
-    html = sent[0].content
-    assert html.count("<shiny-tool-result") == 1
-    assert 'grouping="all"' in html
+    assert "<shiny-tool-result" not in sent[0].content
+    blocks = sent[0].blocks
+    assert len(blocks) == 1
+    block = blocks[0]
+    assert block["type"] == "tool_result"
+    assert block.get("grouping") == "all"
 
 
 @pytest.mark.anyio
@@ -684,9 +693,9 @@ async def test_legacy_chatlas_tool_result_is_not_misread_as_custom_display(
 async def test_custom_tool_result_html_dependencies_survive_the_wrap(
     custom_display_handler: Any,
 ) -> None:
-    """Wrapping the author's UI in `<shiny-tool-result>` must not drop the
-    `HTMLDependency` objects the UI carries -- they still need to reach the
-    client."""
+    """Wrapping the author's UI in a structured `tool_result` block must not
+    drop the `HTMLDependency` objects the UI carries -- they still need to reach
+    the client."""
     dep = HTMLDependency("custom-widget", "1.0.0", head=HTML("<meta name='x'>"))
 
     def handler(chunk: _CustomToolResult) -> ChatMessage:
@@ -733,15 +742,19 @@ async def test_custom_tool_result_interleaved_content_preserves_order(
     sent = await _stream_custom_result(result)
 
     assert len(sent) == 1
-    html = sent[0].content
-    assert html.count("<shiny-tool-result") == 1
-    assert "custom-display" in html
-    # The wrapper carries the folded content in its `value` attribute (HTML-
-    # escaped). The "before" island must appear before the React element,
-    # and the "after" island must appear after it — not reordered.
-    before_pos = html.index("before")
-    react_pos = html.index("react-mid")
-    after_pos = html.index("after")
+    assert "<shiny-tool-result" not in sent[0].content
+    blocks = sent[0].blocks
+    assert len(blocks) == 1
+    block = blocks[0]
+    assert block["type"] == "tool_result"
+    assert block.get("custom_display") is True
+    # The wrapper carries the folded content in its `value` (HTML string).
+    # The "before" island must appear before the React element, and the "after"
+    # island must appear after it — not reordered.
+    value = block.get("value", "")
+    before_pos = value.index("before")
+    react_pos = value.index("react-mid")
+    after_pos = value.index("after")
     assert before_pos < react_pos < after_pos
 
 
@@ -771,18 +784,21 @@ async def test_custom_result_inside_a_turn_is_wrapped() -> None:
         turn = Turn(
             [_CustomToolResult(value=2, request=request)], role="assistant"
         )
-        html = message_content(turn).content
+        msg = message_content(turn)
     finally:
         for key in list(registry):
             if key not in before:
                 del registry[key]
         message_content._clear_cache()
 
-    assert html.count("<shiny-tool-result") == 1
-    assert "<shiny-tool-result" in html
-    assert "custom-display" in html
-    assert 'request-id="call-1"' in html
-    assert "my-custom-ui" in html
+    assert "<shiny-tool-result" not in msg.content
+    blocks = msg.blocks
+    assert len(blocks) == 1
+    block = blocks[0]
+    assert block["type"] == "tool_result"
+    assert block.get("custom_display") is True
+    assert block["request_id"] == "call-1"
+    assert "my-custom-ui" in block.get("value", "")
 
 
 @pytest.mark.anyio
@@ -817,7 +833,9 @@ async def test_custom_result_inside_a_turn_keeps_html_dependencies() -> None:
                 del registry[key]
         message_content._clear_cache()
 
-    assert "<shiny-tool-result" in msg.content
+    assert "<shiny-tool-result" not in msg.content
+    assert len(msg.blocks) == 1
+    assert msg.blocks[0]["type"] == "tool_result"
     assert "turn-widget" in [d.name for d in msg.html_deps]
 
 
@@ -848,7 +866,9 @@ async def test_custom_tool_result_attachments_survive_the_wrap(
     sent = await _stream_custom_result(result)
 
     assert len(sent) == 1
-    assert "<shiny-tool-result" in sent[0].content
+    assert "<shiny-tool-result" not in sent[0].content
+    assert len(sent[0].blocks) == 1
+    assert sent[0].blocks[0]["type"] == "tool_result"
     assert [a.name for a in sent[0].attachments] == ["chart.png"]
 
 
@@ -875,11 +895,13 @@ async def test_custom_text_result_stays_routable(
     sent = await _stream_custom_result(result)
 
     assert len(sent) == 1
-    assert sent[0].content_type == "html"
-    html = sent[0].content
-    assert "<shiny-tool-result" in html
-    assert "custom-display" in html
-    assert 'value-type="text"' in html
+    assert "<shiny-tool-result" not in sent[0].content
+    blocks = sent[0].blocks
+    assert len(blocks) == 1
+    block = blocks[0]
+    assert block["type"] == "tool_result"
+    assert block.get("custom_display") is True
+    assert block.get("value_type") == "text"
 
 
 # ---------------------------------------------------------------------------

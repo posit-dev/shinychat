@@ -557,7 +557,13 @@ def _is_tool_result(value: object) -> TypeGuard["ContentToolResult"]:
 
 
 def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
-    """Wrap custom tool-result UI in a routable result element."""
+    """Emit a custom tool-result as a structured ``tool_result`` block.
+
+    The author's custom UI is carried as the block's ``value`` (with
+    ``custom_display: True``) so the JS client pairs it with the pending
+    ``tool_request`` row — the markup routing path was removed, so only
+    the structured block reaches the client's tool-presentation layer.
+    """
     if not _is_tool_result(message):
         return msg
 
@@ -571,6 +577,7 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
             is_legacy,
             resolve_tool_annotations,
             tool_display_override,
+            tool_result_message,
             wrap_custom_tool_result,
         )
     except ImportError:
@@ -594,8 +601,8 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
     # ChatMessage.__init__ now emits html_block structured blocks for
     # non-string (tag-like) content instead of inlining the rendered HTML
     # into the content string. Fold the block content back so the wrapper
-    # receives the author's full UI (wrapping an empty value would produce
-    # an empty `<shiny-tool-result>`).
+    # receives the author's full UI (an empty value would produce an
+    # empty structured `tool_result` block).
     # When `parts` is set, rebuild from the ordered interleaving so mixed
     # content (e.g. a React element between two islands) keeps its original
     # order. Without `parts`, fall back to concatenating the string content
@@ -621,11 +628,16 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
         grouping=annotations.grouping,
     )
 
-    result = ChatMessage(
-        content=wrapped,
-        role=msg.role,
-        attachments=msg.attachments,
-    )
+    # Emit a structured `tool_result` block (with `custom_display: True`)
+    # instead of `<shiny-tool-result>` markup. The markup routing was
+    # removed from the JS client, so the structured block is the only path
+    # that pairs the custom UI with the pending `tool_request` row.
+    # `tool_result_message` builds the block from the ToolResultComponent
+    # the same way the default rich path does (tool_result_block →
+    # ShinyToolCardMessage).
+    result = tool_result_message(wrapped)
+    result.role = msg.role
+    result.attachments = msg.attachments
     result.html_deps = list(msg.html_deps) + list(result.html_deps)
     return result
 
