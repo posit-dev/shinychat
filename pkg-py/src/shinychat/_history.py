@@ -5,7 +5,6 @@ import dataclasses
 import inspect
 import json
 import warnings
-from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, cast
 
@@ -23,6 +22,7 @@ from ._chat_types import (
 from ._history_bookmark import delete_bookmark_state, extract_state_id
 from ._history_client import (
     TurnsAdapter,
+    _validate_mapping_keys,
     as_turns_adapter,
     turn_fallback_markdown,
 )
@@ -255,25 +255,11 @@ class _ExchangeRecorder:
         self._capture_hooks[name] = hook
 
     @staticmethod
-    def _validate_mapping_keys(value: Any) -> None:
-        if isinstance(value, Mapping):
-            for key, nested in value.items():
-                if not isinstance(key, str):
-                    raise ValueError(
-                        "Non-string mapping key in turn data; "
-                        "JSON object keys must already be strings."
-                    )
-                _ExchangeRecorder._validate_mapping_keys(nested)
-        elif isinstance(value, (list, tuple)):
-            for nested in value:
-                _ExchangeRecorder._validate_mapping_keys(nested)
-
-    @staticmethod
     def _canonical_turns(
         turns: list[dict[str, Any]],
     ) -> tuple[list[dict[str, Any]], list[str]]:
         for turn in turns:
-            _ExchangeRecorder._validate_mapping_keys(turn)
+            _validate_mapping_keys(turn)
         serialized = [
             json.loads(json.dumps(turn, allow_nan=False, separators=(",", ":")))
             for turn in turns

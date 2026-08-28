@@ -1,9 +1,24 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Protocol, runtime_checkable
 
 from ._chat_bookmark import is_chatlas_chat_client, serialize_chatlas_turn
 from ._chat_client import ChatClient
+
+
+def _validate_mapping_keys(value: Any) -> None:
+    if isinstance(value, Mapping):
+        for key, nested in value.items():
+            if not isinstance(key, str):
+                raise ValueError(
+                    "Non-string mapping key in turn data; "
+                    "JSON object keys must already be strings."
+                )
+            _validate_mapping_keys(nested)
+    elif isinstance(value, (list, tuple)):
+        for nested in value:
+            _validate_mapping_keys(nested)
 
 
 @runtime_checkable
@@ -40,12 +55,14 @@ class TurnsAdapter:
             turns = raw.get_turns(include_system_prompt=include_system_prompt)
             return [serialize_chatlas_turn(t) for t in turns]
         turns = raw.get_turns()
-        return [
-            turn.model_dump(mode="json")
-            if hasattr(turn, "model_dump")
-            else turn
-            for turn in turns
-        ]
+        serialized: list[dict[str, Any]] = []
+        for turn in turns:
+            if hasattr(turn, "model_dump"):
+                _validate_mapping_keys(turn.model_dump(mode="python"))
+                serialized.append(turn.model_dump(mode="json"))
+            else:
+                serialized.append(turn)
+        return serialized
 
     def is_chatlas(self) -> bool:
         return is_chatlas_chat_client(self._turns_client())

@@ -713,6 +713,43 @@ async def test_v2_recorder_captures_model_backed_generic_turns():
 
 
 @pytest.mark.anyio
+async def test_v2_recorder_rejects_model_key_collision_before_file_store(
+    tmp_path: Path,
+):
+    from shinychat._history_store import FileConversationStore
+
+    class ModelTurn(BaseModel):
+        values: dict[Any, str]
+
+    class ModelClient:
+        def __init__(self) -> None:
+            self.turns = [ModelTurn(values={2: "two", "2": "string"})]
+
+        def get_turns(self) -> list[ModelTurn]:
+            return list(self.turns)
+
+        def set_turns(self, turns: list[ModelTurn]) -> None:
+            self.turns = list(turns)
+
+    store = FileConversationStore(tmp_path)
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+        adapter=TurnsAdapter(ModelClient()),  # type: ignore[arg-type]
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+
+    with pytest.raises(ValueError, match="Non-string mapping key"):
+        await transcript.record_accepted_input_and_notify(
+            _stored_message("user", "one")
+        )
+
+    assert await store.list(part()) == []
+
+
+@pytest.mark.anyio
 async def test_v2_recorder_captures_delta_then_snapshot_on_earlier_turn_rewrite():
     adapter = _FakeAdapter()
     controller, _ = _make_controller(use_exchange_tree=True, adapter=adapter)

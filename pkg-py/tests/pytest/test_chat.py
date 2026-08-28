@@ -9,6 +9,7 @@ from contextvars import copy_context
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, Callable, cast
+from unittest.mock import MagicMock
 
 import pytest
 from htmltools import HTML, HTMLDependency, TagList, tags
@@ -358,6 +359,78 @@ def test_accepted_input_records_while_an_older_stream_is_active():
     assert callback_state[0][1] is not None
     assert callback_state[0][1] != older_exchange
     assert chat._transcript.active_stream_id == "older-stream"
+
+
+@pytest.mark.anyio
+async def test_builtin_chatlas_handler_rejects_second_lazy_response():
+    chatlas = pytest.importorskip("chatlas")
+
+    session = cast(Session, _MockSession())
+    provider = MagicMock()
+    provider.name = "deterministic"
+    provider.model = "deterministic"
+    first_provider_call = asyncio.Event()
+    release_first_response = asyncio.Event()
+    provider_calls: list[dict[str, Any]] = []
+
+    async def chat_perform_async(**kwargs: Any):
+        provider_calls.append(kwargs)
+        first_provider_call.set()
+
+        async def response():
+            await release_first_response.wait()
+            if False:
+                yield None
+
+        return response()
+
+    provider.chat_perform_async = chat_perform_async
+    errors: list[BaseException] = []
+
+    with session_context(session):
+        client = chatlas.Chat(provider)
+        chat = Chat("builtin_lazy_stream", client=client, history=False)
+
+        async def capture_error(error: BaseException) -> None:
+            errors.append(error)
+
+        chat._raise_exception = capture_error  # type: ignore[method-assign]
+
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "first", "attachments": [], "seq": 1}
+        )
+        await reactive.flush()
+        await asyncio.wait_for(first_provider_call.wait(), timeout=1)
+        with reactive.isolate():
+            first_stream = chat._latest_stream()
+
+        assert chat._transcript.active_stream_id is not None
+        assert len(provider_calls) == 1
+
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "second", "attachments": [], "seq": 2}
+        )
+        await reactive.flush()
+        await asyncio.sleep(0)
+
+        assert [entry.message.content for entry in chat._transcript.read()] == [
+            "first",
+            "",
+            "second",
+        ]
+        assert chat._transcript.active_stream_id is not None
+        assert len(provider_calls) == 1
+        assert all(
+            "second" not in str(turn.model_dump(mode="json"))
+            for turn in client.get_turns()
+        )
+        assert errors
+        assert isinstance(errors[0], RuntimeError)
+        assert "second message stream" in str(errors[0])
+
+        release_first_response.set()
+        first_stream.cancel()
+        await asyncio.sleep(0)
 
 
 def test_transcript_contains_complete_append_immediately_after_send():
