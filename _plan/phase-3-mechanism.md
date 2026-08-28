@@ -456,7 +456,7 @@ child or the phase.
   Focused checks passed (Ruff, Pyright, 34 Playwright, 328 non-browser);
   the full gate passed Ruff, Pyright, and 191 Playwright tests, with only
   the known unrelated `shinychat#4z6p` MIME failure in the non-browser suite
-  (677 passed, 1 skipped, 1 failed).
+  (679 passed, 1 skipped, 1 failed after the review fix).
 - **Review:** roborev jobs `1033` and `1035` were fixed and closed by commits
   `29e23dce` and `3e4b1385`. Job `1036` was the third v2 record-boundary
   finding, so the escalation valve applied. The approved **PATCH** landed in
@@ -466,9 +466,13 @@ child or the phase.
   without a new mechanism. Job `1037` found an ordinary echoed-slash-command
   error-path gap; `f1a22356` moves capture into the existing handler
   `try`/`except`/`finally`, with a regression test. Fresh roborev job `1038`
-  found no issues. `shinychat#19dk` awaits its coherent task-range review;
-  no earlier review finding applies to this new streaming-attribution
-  mechanism.
+  found no issues. Roborev job `1040` found two Medium callback-failure
+  issues in the new streaming-attribution mechanism: a post-send start
+  persistence failure could strand the browser stream, and terminal
+  persistence failure could mask its original error with a second abort.
+  Both were accepted and fixed in `e582a6b1`; the job was closed stale on the
+  fix. This is a 2/3 recurrence chain, below the escalation valve. A fresh
+  coherent review is pending.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
