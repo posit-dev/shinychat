@@ -1077,9 +1077,7 @@ describe("structured html_block via message.segments", () => {
       },
     })
 
-    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual([
-      "html_block",
-    ])
+    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual(["html_block"])
     const block = state.messages[0]!.blocks[0]!
     if (block.type !== "html_block") throw new Error("expected html_block")
     expect(block.content).toBe("<p class='island'>User island</p>")
