@@ -220,3 +220,18 @@ single-session atom and starts only after every Python consumer has moved.
   migration. Keep `shinychat#ch09` open with `needs-review` and truthful
   attention metadata. **Next:** finish the `shinychat#ch09` rereview; do not
   close or advance it.
+- **Final rereview fixes landed (2026-08-27; `8a903b31`, `7a0eeaa0`):**
+  terminal cleanup now preserves and re-raises the original generator/body
+  error or cancellation while the owner records the matching terminal status;
+  transformed replacement sends and owner entries retain all accumulated
+  source dependencies, including suppressed chunks; and history/automatic
+  bookmark persistence now observes the existing owner revision with terminal
+  assistant/no-active-stream gating. The legacy report handler remains for
+  `shinychat#dy7g`, but forged reports cannot mutate transcript, history, or
+  bookmarks.
+- **Verification:** focused transcript/history/bookmark selection passed (16
+  Playwright, 24 non-browser); full `pkg-py/tests/pytest/test_chat.py` passed
+  (98); `make py-check-format` and `make py-check-types` passed; `make
+  py-check` passed (191 Playwright, 616 non-browser).
+- **Next:** `shinychat#ch09` remains open with `needs-review` for independent
+  rereview; do not move on to `shinychat#dy7g`.
