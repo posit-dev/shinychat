@@ -1835,6 +1835,16 @@ class Chat:
     async def _destructive_history_mutation(self):
         """Reserve destructive transcript admission through settlement and mutation."""
         task = asyncio.current_task()
+        if any(
+            delivery.owner_task is task
+            and delivery.completion is not None
+            and not delivery.completion.done()
+            for delivery in self._pending_response_settlements
+        ):
+            raise RuntimeError(
+                "Cannot clear or restore messages while response settlement is being delivered."
+            )
+
         transaction = self._destructive_history_transaction
         if transaction is not None and self._destructive_history_task is task:
             self._destructive_history_depth += 1

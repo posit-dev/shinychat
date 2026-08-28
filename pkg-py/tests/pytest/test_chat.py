@@ -538,6 +538,37 @@ def test_clear_waits_for_an_in_flight_flush_settlement():
     ]
 
 
+def test_settlement_consumer_cannot_clear_before_later_consumers():
+    rejected: list[str] = []
+    settled: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(test_session):
+        chat = Chat("settlement_reentrant_clear", history=False)
+
+        async def clear_during_settlement() -> None:
+            with pytest.raises(RuntimeError, match="settlement is being delivered"):
+                await chat.clear_messages()
+            rejected.append("clear")
+
+        async def observe_settlement() -> None:
+            settled.append(chat.messages())
+
+        chat._on_response_settled(clear_during_settlement)
+        chat._on_response_settled(observe_settlement)
+        run_async(lambda: chat.append_message("source response"))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            run_async(reactive.flush)
+
+    assert rejected == ["clear"]
+    assert settled == [
+        (ChatMessageDict(content="source response", role="assistant"),)
+    ]
+    assert chat.messages() == (
+        ChatMessageDict(content="source response", role="assistant"),
+    )
+
+
 def test_cancelled_response_settlement_consumer_skips_pending_delivery():
     settled: list[str] = []
 
