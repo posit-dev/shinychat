@@ -8,8 +8,9 @@
 #' @return A list of tag children ready to be serialized.
 #' @noRd
 split_html_islands <- function(content) {
-  # Convert to tags so custom classes (e.g., shinychat_tool_card)
-  # resolve their data-shinychat-react attribute
+  # Convert to tags so custom classes resolve their data-shinychat-react
+  # attribute. (Tool blocks no longer go through this path — they are
+  # `shinychat_block` objects handled directly by `chat_append_message`.)
   content <- htmltools::as.tags(content)
 
   if (inherits(content, "shiny.tag")) {
