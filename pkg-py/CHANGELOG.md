@@ -27,8 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * `chat_ui()` / `Chat.ui()` and `page_chat()` no longer show an assistant icon by default. Pass `icon_assistant=True` to restore the built-in robot icon, or supply your own icon as before. (#345)
 
-* The avatar-independent pending indicator now provides public CSS hooks for
-  replacing its animated dots with custom content.
+* The avatar-independent pending indicator now provides public CSS hooks for replacing its animated dots with custom content.
 
 * The CSS classes used by the external-link dialog, thinking display, and tool-result images/PDFs now use the `.shiny-chat-*` prefix instead of `.shinychat-*`. The thinking display's custom properties and animation names have likewise changed from `--shinychat-thinking-*` / `shinychat-thinking-*` to `--shiny-chat-thinking-*` / `shiny-chat-thinking-*`. Update any custom CSS that targets these identifiers. (#285, #286)
 
