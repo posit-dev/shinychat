@@ -442,3 +442,11 @@ single-session atom and starts only after every Python consumer has moved.
   from the Phase 2 branch point. Independent integration review found and
   resolved the obsolete exclusion and stale comments; final verification
   review was clean. Next work is Phase 2 acceptance/next unblocked task.
+- **Review closeout (2026-08-28; `shinychat#47fa`):** independent Terra
+  review approved the implementation and test evidence. Roborev job `1024`
+  is closed; its R packaged-asset finding is declined as pre-resolved by the
+  durable Python-only asset decision, with R packaged assets frozen until
+  Phase 6. `shinychat#47fa` is closed with branch
+  `feat/history-exchange-tree`, owner `garrick`, and
+  `work.attention="ok"`. Keep `shinychat#kjyt` open pending the final phase
+  review and closeout.
