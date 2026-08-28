@@ -268,11 +268,15 @@ function messagePayloadToData(
   for (const seg of msg.segments) {
     if (isStructuredSegment(seg)) {
       // Structured blocks are server-authored and arrive render-ready:
-      // convert to a tool loop / web activity on arrival. Tool UI is never
-      // legitimate in a user message (mirrors the role gate);
-      // web activity is likewise assistant-only.
-      if (msg.role === "user") {
-        console.warn("Ignoring structured block in a user-role message")
+      // convert to a tool loop / web activity on arrival. Tool UI and web
+      // activity are never legitimate in a user message. An html_block,
+      // however, is a server-attested trusted-HTML envelope that is valid
+      // in any role (e.g. a user message whose content was authored with
+      // tags on the server), so it passes through regardless of role.
+      if (msg.role === "user" && seg.type !== "html_block") {
+        console.warn(
+          "Ignoring non-html_block structured block in a user-role message",
+        )
         continue
       }
       if (isWebActivityWireBlock(seg)) {
@@ -1043,8 +1047,13 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         )
         return state
       }
-      if (last.role === "user") {
-        console.warn("Ignoring block_insert action for a user-role message")
+      // Tool and web-activity blocks are assistant-only; an html_block is a
+      // server-attested trusted-HTML envelope valid in any role, so it is
+      // allowed through for user-role messages too.
+      if (last.role === "user" && action.block.type !== "html_block") {
+        console.warn(
+          "Ignoring non-html_block block_insert for a user-role message",
+        )
         return state
       }
 

@@ -1068,13 +1068,43 @@ describe("structured html_block via message.segments", () => {
     expect(state.messages[0]!.htmlDeps).toEqual([blockDep, envDep])
   })
 
-  it("ignores html_block in a user-role message with a warning", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+  it("renders html_block in a user-role message", () => {
     const state = chatReducer(makeState(), {
       type: "message",
       message: {
         role: "user",
-        segments: [htmlBlock()],
+        segments: [htmlBlock({ content: "<p class='island'>User island</p>" })],
+      },
+    })
+
+    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual([
+      "html_block",
+    ])
+    const block = state.messages[0]!.blocks[0]!
+    if (block.type !== "html_block") throw new Error("expected html_block")
+    expect(block.content).toBe("<p class='island'>User island</p>")
+
+    const { container } = renderMessages(state.messages)
+    const island = container.querySelector(".island")
+    expect(island).not.toBeNull()
+    expect(island!.innerHTML).toBe("User island")
+  })
+
+  it("still ignores non-html_block structured blocks in a user-role message", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const toolResult: StructuredBlock = {
+      type: "tool_result",
+      version: 1,
+      request_id: "r1",
+      tool_name: "my_tool",
+      status: "success",
+      value: "42",
+    }
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "user",
+        segments: [toolResult],
       },
     })
 
