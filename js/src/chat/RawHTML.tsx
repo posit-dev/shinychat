@@ -9,11 +9,26 @@ import { ShinyLifecycleContext } from "./context"
 export function RawHTML({
   html,
   className,
+  as: Tag = "div",
+  bind = true,
   displayContents = true,
   fillable = true,
 }: {
   html: string
   className?: string
+  /**
+   * The element to render. Use "span" when the island sits in a
+   * phrasing-content context (a <span> or <button>), where a <div> would be
+   * invalid nesting.
+   */
+  as?: "div" | "span"
+  /**
+   * Whether to bindAll/unbindAll this island with Shiny (default true). Pass
+   * `false` when the same server HTML is mounted elsewhere — e.g. an expanded
+   * tool row also mounts the full card — so that only one copy owns the
+   * bindings; binding both would register duplicate Shiny ids.
+   */
+  bind?: boolean
   displayContents?: boolean
   /**
    * Whether to join the fill layout when the parent is a fill container, so a
@@ -23,7 +38,7 @@ export function RawHTML({
    */
   fillable?: boolean
 }) {
-  const ref = useRef<HTMLDivElement>(null)
+  const ref = useRef<HTMLElement | null>(null)
   const [isFillCarrier, setIsFillCarrier] = useState(false)
   const shiny = useContext(ShinyLifecycleContext)
 
@@ -38,20 +53,27 @@ export function RawHTML({
       fillable && !!parent?.classList.contains("html-fill-container"),
     )
 
-    if (shiny && html) {
+    if (shiny && html && bind) {
       shiny.bindAll(el)
     }
 
     return () => {
-      if (shiny && el) {
+      if (shiny && bind) {
         shiny.unbindAll(el)
       }
     }
-  }, [html, shiny, fillable])
+    // `Tag` is a dep because switching it remounts the element (React swaps a
+    // div for a span), and the new node needs its innerHTML set and bindings
+    // re-established; the cleanup unbinds the old node.
+  }, [html, shiny, fillable, bind, Tag])
 
   return (
-    <div
-      ref={ref}
+    <Tag
+      // A callback ref because Tag's union type gives the ref prop a union of
+      // HTMLDivElement/HTMLSpanElement types; HTMLElement is the common base.
+      ref={(el: HTMLElement | null) => {
+        ref.current = el
+      }}
       className={
         isFillCarrier
           ? `html-fill-item html-fill-container${className ? ` ${className}` : ""}`

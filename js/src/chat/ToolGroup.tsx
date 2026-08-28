@@ -103,9 +103,15 @@ function renderLeaf(item: ToolCallItem, open: boolean): ReactNode {
 function TitleSegment({
   segment,
   showVerb,
+  bind,
 }: {
   segment: ToolCallSegment
   showVerb: boolean
+  /**
+   * Passed through to the title's RawHTML. False when the header's expansion
+   * also mounts the full card, so the card's copy owns the Shiny bindings.
+   */
+  bind?: boolean
 }): ReactNode {
   const name = toolSegmentName(segment, showVerb)
   // A tool's title changes under it as the call settles (the definition title
@@ -121,7 +127,7 @@ function TitleSegment({
     <>
       {visible.title != null ? (
         <span {...nameProps}>
-          <RawHTML html={visible.title} />
+          <RawHTML html={visible.title} as="span" bind={bind} />
         </span>
       ) : (
         <span {...nameProps}>
@@ -148,9 +154,16 @@ function TitleSegment({
 // would show ungrouped — joined by ", ". A homogeneous group has a single
 // segment and renders exactly as it always has: the title span (plus its ×N),
 // unwrapped, straight into the row's flex layout.
-function GroupTitle({ segments }: { segments: ToolCallSegment[] }): ReactNode {
+function GroupTitle({
+  segments,
+  bind,
+}: {
+  segments: ToolCallSegment[]
+  /** See the `bind` prop on TitleSegment. */
+  bind?: boolean
+}): ReactNode {
   if (segments.length === 1) {
-    return <TitleSegment segment={segments[0]!} showVerb={true} />
+    return <TitleSegment segment={segments[0]!} showVerb={true} bind={bind} />
   }
 
   const { shown, overflowText } = toolHeaderSegments(segments)
@@ -160,7 +173,7 @@ function GroupTitle({ segments }: { segments: ToolCallSegment[] }): ReactNode {
         <Fragment key={segment.toolName}>
           {i > 0 && ", "}
           <span className="shiny-chat-tool-group__segment">
-            <TitleSegment segment={segment} showVerb={showVerb} />
+            <TitleSegment segment={segment} showVerb={showVerb} bind={bind} />
           </span>
         </Fragment>
       ))}
@@ -223,8 +236,14 @@ function ToolCallRow({
           setOpen((v) => !v)
         }}
       >
+        {/* When the row is open the Tier-3 card below mounts the same server
+            HTML (icon/title), so the card owns the Shiny bindings and this
+            copy must not re-bind them; collapsed, this is the only mounted
+            copy and it must bind. */}
         <RawHTML
           html={glyph}
+          as="span"
+          bind={!open}
           className={`shiny-chat-tool-call-row__status${statusClass}`}
           displayContents={false}
         />
@@ -360,8 +379,14 @@ function ToolGroupRow({
           setExpanded((v) => !v)
         }}
       >
+        {/* The header's glyph and title stay mounted while the body below is
+            open, where the same server HTML renders again — the single-call
+            card directly, or a Tier-2 row's card. The mounted card owns the
+            Shiny bindings, so these copies bind only while collapsed. */}
         <RawHTML
           html={glyph}
+          as="span"
+          bind={!expanded}
           className={`shiny-chat-tool-group__glyph${anyRunning ? " running" : ""}`}
           displayContents={false}
         />
@@ -371,7 +396,7 @@ function ToolGroupRow({
                 show, and a homogeneous one has exactly one segment, so its badge
                 lands beside the title either way. */}
         <span className="shiny-chat-tool-group__titlewrap">
-          <GroupTitle segments={identity.segments} />
+          <GroupTitle segments={identity.segments} bind={!expanded} />
           {label && (
             <span className="shiny-chat-tool-group__label">
               {": "}

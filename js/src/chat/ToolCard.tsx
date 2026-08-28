@@ -89,13 +89,17 @@ export function ToolCard({
         aria-expanded={expanded}
         aria-controls={contentId}
       >
+        {/* Spans, not divs: the header is a <button>, which only permits
+            phrasing content. */}
         <RawHTML
           html={iconHtml}
+          as="span"
           className={`tool-icon${classStatus ? ` ${classStatus}` : ""}`}
           displayContents={false}
         />
         <RawHTML
           html={formattedTitle}
+          as="span"
           className={`tool-title${classStatus ? ` ${classStatus}` : ""}`}
           displayContents={false}
         />
