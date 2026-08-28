@@ -603,7 +603,9 @@ chat_server <- function(
 
       # Resolve the active conversation ID before model work begins and set
       # it on the client as a scalar: later history switches, new-chat
-      # actions, or client swaps must not relabel in-flight work.
+      # actions, or client swaps must not relabel in-flight work. This
+      # assumes one active stream per client; overlapping submissions could
+      # overwrite the scalar mid-stream and cross-label spans.
       hist_ctrl <- history_controller()
       if (!is.null(hist_ctrl)) {
         set_client_conversation_id(client, hist_ctrl$ensure_conversation_id())

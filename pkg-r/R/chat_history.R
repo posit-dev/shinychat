@@ -66,7 +66,9 @@ HistoryController <- R6::R6Class(
 
     # Reactive read of the active conversation ID: `NULL` for an empty draft,
     # otherwise the ID the eventual `ConversationRecord` will (or already
-    # does) carry. Allocated on first user submission, before model work.
+    # does) carry. Allocated at the first user submission (before model
+    # work) for `chat_server()` apps, or at first save for standalone
+    # `chat_enable_history()` use.
     # Like any reactive read, this requires a reactive context; non-reactive
     # callers must wrap it in shiny::isolate().
     conversation_id = function() {
