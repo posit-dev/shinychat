@@ -2570,7 +2570,6 @@ class Chat:
         root_session = session.root_scope()
         for suffix in (
             "_user_input",
-            "_messages",
             "_cancel",
             "_slash_command",
             "_greeting_requested",

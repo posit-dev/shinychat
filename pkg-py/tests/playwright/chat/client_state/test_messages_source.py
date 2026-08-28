@@ -16,5 +16,5 @@ def test_messages_includes_just_submitted_turn(
     chat.set_user_input("hello")
     chat.send_user_input(method="enter")
 
-    # On first submit the snapshot carries exactly the 1 user turn.
+    # On first submit the server-owned transcript contains exactly the 1 user turn.
     expect(page.locator("#count")).to_have_text("1", timeout=10 * 1000)

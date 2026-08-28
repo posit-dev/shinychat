@@ -442,9 +442,7 @@ async def test_each_response_settlement_captures_current_app_state():
 
 
 class _ReplayFakeChat(_FakeChat):
-    """Fake chat whose `_messages_for_bookmark()` reflects whatever
-    `replay_ui` last restored, so `on_response` sees the same re-report a
-    real client would send after a restore."""
+    """Fake chat whose server-owned message store reflects the latest replay."""
 
     def __init__(self) -> None:
         super().__init__()
