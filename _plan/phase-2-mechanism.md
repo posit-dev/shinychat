@@ -165,15 +165,29 @@ single-session atom and starts only after every Python consumer has moved.
   races; accepting races violates the agreed transactional contract. This is
   the narrowly approved exception to the no-new-flag tripwire, not a response
   queue.
-- **Landed (`shinychat#ch09`; `cee6312f`):** implemented the approved private
-  fail-fast transcript admission token across complete, stream, clear, and
-  restore mutations; stream and complete attribution are captured before
-  asynchronous transforms, terminal suppression closes the stream, and the
-  history settlement compatibility trigger remains intact.
+- **Implementation landed/in review (`shinychat#ch09`; `cee6312f`):**
+  implemented the approved private fail-fast transcript admission token across
+  complete, stream, clear, and restore mutations; stream and complete
+  attribution are captured before asynchronous transforms, terminal
+  suppression closes the stream, and the history settlement compatibility
+  trigger remains intact.
 - **Verification (`shinychat#ch09`):** focused transcript/chat/matrix tests
   passed (68), Playwright history-idempotence passed (2), `make py-check-format`
   and `make py-check-types` passed, and `make py-check` passed (189 Playwright,
   599 non-browser tests).
-- **Next:** `shinychat#ch09` is complete; `shinychat#dy7g` moves bookmark and
-  current-history consumers to server state.
+- **Review handoff (2026-08-27; roborev job 1008,
+  `edff995a-586d-4725-9d8a-f9ef8db076f0`; independent Luna review):**
+  implementation is landed/in review. Disposition: patch the existing
+  transcript owner, not replace it. Batched follow-up: terminal
+  transform/final send must best-effort close the wire and owner while
+  preserving the original error and partials; reserve output admission before
+  async preparation; suppressed chunks retain source accumulation; replace
+  preserves accumulated dependencies; greeting mutates only after successful
+  clear; clear commit preserves accepted input arriving during its send; and
+  terminal false cannot strand the stream. Forged-input disposition:
+  `_reported_messages` remains a settlement trigger only; history content must
+  come from the owner in `shinychat#ch09`; the separate bookmark consumer is
+  already scoped to `shinychat#dy7g` and is not duplicated here.
+- **Next:** finish the `shinychat#ch09` review; do not move on to
+  `shinychat#dy7g`.
 - **Provisional decisions:** none.
