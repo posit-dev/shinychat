@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, AsyncIterable, Literal, Union
+from typing import Any, AsyncIterable, Callable, Literal, Union, cast
 
 from htmltools import HTML, HTMLDependency, Tag, TagChild, TagifiedTag, TagList
 from pydantic import BaseModel
@@ -794,3 +794,63 @@ class StoredMessage(BaseModel):
             blocks=blocks,
             block_positions=positions or None,
         )
+
+
+def serialize_html_deps(
+    deps: list[HTMLDependency] | None,
+    session: Any,
+) -> list[SerializedDep] | None:
+    """Serialize HTML dependencies through the session's ``_process_ui``.
+
+    Session processing registers web-dependency routes and applies
+    ``lib_prefix``; without a session there is nothing to serialize against,
+    so ``None`` is returned (callers then keep any raw ``as_dict()`` fallback
+    already present). See kata#rpx1.
+    """
+    if not deps:
+        return None
+    if session is None:
+        return None
+    processed = session._process_ui(TagList(*deps))
+    return cast(list[SerializedDep], processed["deps"])
+
+
+def _assemble_stored_message(
+    message: ChatMessage,
+    serialize_deps: "Callable[[list[HTMLDependency] | None], list[SerializedDep] | None]",
+) -> StoredMessage:
+    """Assemble a :class:`StoredMessage`, session-processing html deps.
+
+    ``ChatMessage`` stashes raw :class:`~htmltools.HTMLDependency` objects
+    per block in ``_block_html_deps`` (it has no session at construction
+    time); ``serialize_deps`` serializes dep objects for the current session
+    (registering web-dependency routes, applying ``lib_prefix``), and each
+    block's raw ``as_dict()`` ``html_deps`` fallback is overwritten with the
+    processed form. See kata#rpx1.
+    """
+    html_deps = serialize_deps(message.html_deps)
+    stored = StoredMessage.from_chat_message(message, html_deps=html_deps)
+    for idx, dep_objs in message._block_html_deps.items():
+        if idx < len(stored.blocks):
+            processed = serialize_deps(dep_objs)
+            block = stored.blocks[idx]
+            if "html_deps" in block:
+                if processed is not None:
+                    block["html_deps"] = processed
+                # No session: keep the raw as_dict() fallback already on the
+                # block (mirrors serialize_html_deps returning None without a
+                # session).
+    return stored
+
+
+def as_stored_message(message: ChatMessage, session: Any) -> StoredMessage:
+    """Assemble a :class:`StoredMessage` from a :class:`ChatMessage`.
+
+    This is the in-memory wire assembly shared by live send
+    (:meth:`Chat._send_append_message`), history save (turns-based
+    derivation), and replay emission. Message-level and per-block html deps
+    are session-processed through ``session._process_ui`` (see kata#rpx1).
+    """
+    return _assemble_stored_message(
+        message, lambda deps: serialize_html_deps(deps, session)
+    )

@@ -73,7 +73,9 @@ from ._chat_types import (
     SerializedDep,
     SlashCommandDef,
     StoredMessage,
+    _assemble_stored_message,
     chat_greeting,
+    serialize_html_deps,
 )
 from ._drawer import ChatDrawerController
 from ._history import ChatHistory, HistoryOptions
@@ -1722,12 +1724,7 @@ class Chat:
     def _serialize_html_deps(
         self, deps: list[HTMLDependency] | None
     ) -> list[SerializedDep] | None:
-        if not deps:
-            return None
-        if self._session is None:
-            return None
-        processed = self._session._process_ui(TagList(*deps))
-        return cast(list[SerializedDep], processed["deps"])
+        return serialize_html_deps(deps, self._session)
 
     def _as_stored_message(
         self,
@@ -1736,28 +1733,13 @@ class Chat:
         if isinstance(message, StoredMessage):
             return message
 
-        html_deps = self._serialize_html_deps(message.html_deps)
-        stored = StoredMessage.from_chat_message(message, html_deps=html_deps)
         # Overwrite each block's raw as_dict() html_deps with session-processed
         # deps (route-registered hrefs, lib_prefix applied). ChatMessage stores
         # dep OBJECTS per block in _block_html_deps; here we have the session
-        # so _serialize_html_deps can run them through _process_ui. See
+        # so _serialize_html_deps can run them through _process_ui. Routed
+        # through the (overridable) method to preserve that seam. See
         # kata#rpx1.
-        block_dep_objects = getattr(message, "_block_html_deps", None)
-        if block_dep_objects:
-            for idx, dep_objs in block_dep_objects.items():
-                if idx < len(stored.blocks):
-                    processed = self._serialize_html_deps(dep_objs)
-                    block = stored.blocks[idx]
-                    if "html_deps" in block:
-                        if processed is not None:
-                            block["html_deps"] = processed
-                        else:
-                            # No session: keep the raw as_dict() fallback
-                            # already on the block (mirrors _serialize_html_deps
-                            # returning None without a session).
-                            pass
-        return stored
+        return _assemble_stored_message(message, self._serialize_html_deps)
 
     def user_input(self) -> "UserInput | None":
         """
