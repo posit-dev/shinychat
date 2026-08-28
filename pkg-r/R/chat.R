@@ -1285,11 +1285,46 @@ chat_append_message <- function(
 }
 
 restore_history_message <- function(chat_id, message, session) {
+  # Build string segments from stored segments
+  string_segments <- lapply(message$segments, function(seg) {
+    list(content = seg$content, content_type = seg$content_type)
+  })
+
+  # Re-interleave stored blocks into the wire segments, mirroring Python's
+  # StoredMessage.wire_segments(). If block_positions is NULL or its length
+  # does not match blocks, blocks are appended after the string segments
+  # (flat layout). Otherwise each block is inserted after the number of
+  # string segments recorded in its matching block_positions entry.
+  blocks <- message$blocks
+  block_positions <- message$block_positions
+  if (is.null(blocks) || length(blocks) == 0) {
+    wire_segments <- string_segments
+  } else if (
+    is.null(block_positions) ||
+      length(block_positions) != length(blocks)
+  ) {
+    # Flat layout: blocks follow the string segments
+    wire_segments <- c(string_segments, blocks)
+  } else {
+    # Multi-part layout: re-interleave each block at its recorded position
+    wire_segments <- list()
+    bi <- 1L
+    for (i in seq_along(string_segments)) {
+      while (bi <= length(blocks) && block_positions[[bi]] <= i - 1L) {
+        wire_segments[[length(wire_segments) + 1]] <- blocks[[bi]]
+        bi <- bi + 1L
+      }
+      wire_segments[[length(wire_segments) + 1]] <- string_segments[[i]]
+    }
+    while (bi <= length(blocks)) {
+      wire_segments[[length(wire_segments) + 1]] <- blocks[[bi]]
+      bi <- bi + 1L
+    }
+  }
+
   message_payload <- list(
     role = message$role,
-    segments = lapply(message$segments, function(seg) {
-      list(content = seg$content, content_type = seg$content_type)
-    })
+    segments = wire_segments
   )
   if (!is.null(message$attachments) && length(message$attachments) > 0) {
     message_payload$attachments <- message$attachments
