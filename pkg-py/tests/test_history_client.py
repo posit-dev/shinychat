@@ -45,6 +45,19 @@ def test_chatlas_adapter_round_trip():
     assert [t.role for t in client.get_turns()] == ["user", "assistant"]
 
 
+def test_chatlas_adapter_includes_system_prompt_when_requested():
+    chatlas = pytest.importorskip("chatlas")
+    client = chatlas.ChatOpenAI(api_key="fake", system_prompt="be precise")
+    client.set_turns([chatlas.Turn(role="user", contents="hi")])
+
+    adapter = as_turns_adapter(client)
+    assert [turn["role"] for turn in adapter.get_turns_json()] == ["user"]
+    assert [turn["role"] for turn in adapter.get_turns_json(include_system_prompt=True)] == [
+        "system",
+        "user",
+    ]
+
+
 def test_chatlas_adapter_serializes_dict_tool_result_display():
     chatlas = pytest.importorskip("chatlas")
     result = chatlas.ContentToolResult(

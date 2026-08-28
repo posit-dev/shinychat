@@ -32,12 +32,18 @@ class TurnsAdapter:
             return self._client.value
         return self._client
 
-    def get_turns_json(self) -> list[dict[str, Any]]:
+    def get_turns_json(
+        self, *, include_system_prompt: bool = False
+    ) -> list[dict[str, Any]]:
         raw = self._turns_client()
-        turns = raw.get_turns()
         if is_chatlas_chat_client(raw):
+            turns = raw.get_turns(include_system_prompt=include_system_prompt)
             return [serialize_chatlas_turn(t) for t in turns]
+        turns = raw.get_turns()
         return list(turns)
+
+    def is_chatlas(self) -> bool:
+        return is_chatlas_chat_client(self._turns_client())
 
     def get_turns_grouped(self) -> list[list[dict[str, Any]]]:
         turns = self.get_turns_json()

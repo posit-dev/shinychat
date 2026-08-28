@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import inspect
+import json
 import warnings
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, cast
+
+from pydantic import JsonValue
 
 from ._attachments import Attachment, validate_attachments
 from ._chat_transcript import TranscriptEntry
@@ -39,6 +43,7 @@ from ._history_types import (
     CapturedMessage,
     ConversationRecord,
     ConversationRecordV2,
+    StateEntry,
     check_schema_version,
     new_conversation_id,
     new_conversation_record,
@@ -56,6 +61,18 @@ if TYPE_CHECKING:
 
 
 _EXCHANGE_TREE_HISTORY_V2 = False
+
+
+CaptureReason = Literal["root_close", "stream_finish", "node_close"]
+CaptureHook = Callable[
+    ["CaptureContext"], Awaitable[StateEntry | None] | StateEntry | None
+]
+
+
+@dataclasses.dataclass(frozen=True)
+class CaptureContext:
+    node_id: str
+    reason: CaptureReason
 
 
 @dataclasses.dataclass(frozen=True)
@@ -229,6 +246,67 @@ class _ExchangeRecorder:
         self.record: ConversationRecordV2 | None = None
         self._stream_exchanges: dict[str, str] = {}
         self._lock = asyncio.Lock()
+        self._capture_hooks: dict[str, CaptureHook] = {}
+        self._turn_baseline: list[str] = []
+        self._register_capture_hook("shinychat:turns", self._capture_turns)
+
+    def _register_capture_hook(self, name: str, hook: CaptureHook) -> None:
+        self._capture_hooks[name] = hook
+
+    @staticmethod
+    def _canonical_turns(
+        turns: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[str]]:
+        serialized = [
+            json.loads(json.dumps(turn, sort_keys=True, separators=(",", ":")))
+            for turn in turns
+        ]
+        return serialized, [
+            json.dumps(turn, sort_keys=True, separators=(",", ":"))
+            for turn in serialized
+        ]
+
+    def _capture_turns(self, context: CaptureContext) -> StateEntry:
+        adapter = self._controller.adapter
+        include_system_prompt = getattr(adapter, "is_chatlas", lambda: False)()
+        turns, fingerprints = self._canonical_turns(
+            adapter.get_turns_json(include_system_prompt=include_system_prompt)
+        )
+        is_prefix = (
+            len(self._turn_baseline) <= len(fingerprints)
+            and self._turn_baseline == fingerprints[: len(self._turn_baseline)]
+        )
+        if context.reason == "root_close" or not is_prefix:
+            mode: Literal["delta", "snapshot"] = "snapshot"
+            data = turns
+        else:
+            mode = "delta"
+            data = turns[len(self._turn_baseline) :]
+
+        self._turn_baseline = fingerprints
+        return StateEntry(
+            kind="chatlas"
+            if getattr(adapter, "is_chatlas", lambda: False)()
+            else "turns",
+            version=1,
+            mode=mode,
+            data=cast(JsonValue, data),
+        )
+
+    async def _capture_state(
+        self, node_id: str, reason: CaptureReason
+    ) -> None:
+        assert self.record is not None
+        node = self.record.nodes[node_id]
+        context = CaptureContext(node_id=node_id, reason=reason)
+        for name, hook in self._capture_hooks.items():
+            entry = hook(context)
+            if inspect.isawaitable(entry):
+                entry = await entry
+            if entry is None:
+                node.state.pop(name, None)
+            else:
+                node.state[name] = entry
 
     def _new_record(self, *, title: str) -> ConversationRecordV2:
         return new_conversation_record_v2(
@@ -271,8 +349,17 @@ class _ExchangeRecorder:
             if self.record is None:
                 title = " ".join(message.content.split())[:MAX_TITLE_LEN] or "New chat"
                 self.record = self._new_record(title=title)
-
-            self._close_root_if_inactive()
+            root_id = "n_0000"
+            is_first_input = not any(
+                node.input is not None for node in self.record.nodes.values()
+            )
+            if is_first_input:
+                await self._capture_state(root_id, "root_close")
+                self._close_root_if_inactive()
+            else:
+                active_leaf = self.record.active_leaf
+                assert active_leaf is not None
+                await self._capture_state(active_leaf, "node_close")
             self.record.open_exchange(exchange_id, message)
             await controller.store.put(controller.partition, self.record)
 
@@ -351,6 +438,7 @@ class _ExchangeRecorder:
             exchange_id = self._stream_exchanges.get(stream_id)
             if exchange_id is None or self.record is None:
                 return
+            await self._capture_state(exchange_id, "stream_finish")
             self.record.finish_exchange(exchange_id, status, error)
             await self._controller.store.put(
                 self._controller.partition, self.record

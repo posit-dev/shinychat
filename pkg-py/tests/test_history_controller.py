@@ -33,6 +33,7 @@ from shinychat._history_types import (
     MAX_SCHEMA_VERSION,
     ConversationRecord,
     ConversationRecordV2,
+    StateEntry,
     UnsupportedSchemaVersionError,
     new_conversation_record,
 )
@@ -255,11 +256,40 @@ class _FakeChat:
 
 
 class _FakeAdapter:
-    def get_turns_json(self) -> list[Any]:
-        return [
+    def __init__(self, *, chatlas: bool = False) -> None:
+        self.chatlas = chatlas
+        self.turns: list[dict[str, Any]] = [
             {"role": "user", "content": "hello"},
             {"role": "assistant", "content": "hi there"},
         ]
+        self.system_turns: list[dict[str, Any]] = [
+            {"role": "system", "content": "be precise"},
+            *self.turns,
+        ]
+
+    def get_turns_json(
+        self, *, include_system_prompt: bool = False
+    ) -> list[dict[str, Any]]:
+        turns = getattr(
+            self,
+            "turns",
+            [
+                {"role": "user", "content": "hello"},
+                {"role": "assistant", "content": "hi there"},
+            ],
+        )
+        if include_system_prompt:
+            return list(
+                getattr(
+                    self,
+                    "system_turns",
+                    [{"role": "system", "content": "be precise"}, *turns],
+                )
+            )
+        return list(turns)
+
+    def is_chatlas(self) -> bool:
+        return getattr(self, "chatlas", False)
 
     def get_turns_grouped(self) -> list[list[Any]]:
         return [[t] for t in self.get_turns_json()]
@@ -322,11 +352,12 @@ def _make_controller(
     save_callbacks: list[Callable[[dict[str, Any]], None]] | None = None,
     *,
     use_exchange_tree: bool = False,
+    adapter: _FakeAdapter | None = None,
 ) -> tuple[HistoryController, Any]:
     resolved_store = store if store is not None else _RecordingStore()
     controller = HistoryController(
         chat=_FakeChat(),  # type: ignore[arg-type]
-        adapter=_FakeAdapter(),  # type: ignore[arg-type]
+        adapter=adapter or _FakeAdapter(),  # type: ignore[arg-type]
         store=resolved_store,
         title_fn=None,
         title_enabled=False,
@@ -405,11 +436,208 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
 
 
 @pytest.mark.anyio
+async def test_v2_recorder_runs_ordered_hooks_with_explicit_ids_and_removes_state():
+    controller, _ = _make_controller(use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    observed: list[tuple[str, str, str]] = []
+
+    def first(context: Any) -> StateEntry:
+        observed.append(("first", context.node_id, context.reason))
+        return StateEntry(
+            kind="test",
+            version=1,
+            mode="snapshot",
+            data={"reason": context.reason},
+        )
+
+    def second(context: Any) -> StateEntry:
+        observed.append(("second", context.node_id, context.reason))
+        return StateEntry(
+            kind="test",
+            version=1,
+            mode="snapshot",
+            data={"node": context.node_id},
+        )
+
+    recorder._register_capture_hook("first", first)
+    recorder._register_capture_hook("second", second)
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    await transcript.record_accepted_input_and_notify(_stored_message("user", "one"))
+
+    root = recorder.record.nodes["n_0000"]  # type: ignore[union-attr]
+    assert observed == [
+        ("first", "n_0000", "root_close"),
+        ("second", "n_0000", "root_close"),
+    ]
+    assert root.state["first"].data == {"reason": "root_close"}
+    assert root.state["second"].data == {"node": "n_0000"}
+
+    recorder._register_capture_hook("first", lambda _context: None)
+    await recorder._capture_state("n_0000", "node_close")
+    assert "first" not in root.state
+    assert root.state["second"].data == {"node": "n_0000"}
+
+
+@pytest.mark.anyio
+async def test_v2_recorder_snapshots_chatlas_system_prompt_at_root_close():
+    adapter = _FakeAdapter(chatlas=True)
+    controller, _ = _make_controller(use_exchange_tree=True, adapter=adapter)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_finished=recorder.stream_finished,
+    )
+
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
+
+    root_state = recorder.record.nodes["n_0000"].state["shinychat:turns"]  # type: ignore[union-attr]
+    assert root_state.kind == "chatlas"
+    assert root_state.mode == "snapshot"
+    assert root_state.data == adapter.system_turns
+
+    new_turn = {"role": "assistant", "content": "later"}
+    adapter.turns.append(new_turn)
+    adapter.system_turns.append(new_turn)
+    await transcript.start_stream(
+        stream_id="stream",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+    await transcript.end_stream(
+        stream_id="stream",
+        status=None,
+        error=None,
+        send=_sent,
+    )
+    state = recorder.record.nodes[exchange_id].state["shinychat:turns"]  # type: ignore[union-attr]
+    assert state.mode == "delta"
+    assert state.data == [new_turn]
+
+
+@pytest.mark.anyio
+async def test_v2_recorder_captures_delta_then_snapshot_on_earlier_turn_rewrite():
+    adapter = _FakeAdapter()
+    controller, _ = _make_controller(use_exchange_tree=True, adapter=adapter)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_finished=recorder.stream_finished,
+    )
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
+    adapter.turns.append({"role": "user", "content": "one"})
+    await transcript.start_stream(
+        stream_id="first",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+    await transcript.end_stream(
+        stream_id="first",
+        status=None,
+        error=None,
+        send=_sent,
+    )
+    state = recorder.record.nodes[exchange_id].state["shinychat:turns"]  # type: ignore[union-attr]
+    assert state.mode == "delta"
+    assert state.data == [{"role": "user", "content": "one"}]
+
+    adapter.turns[0]["content"] = "rewritten"
+    adapter.turns.append({"role": "assistant", "content": "later"})
+    await transcript.start_stream(
+        stream_id="second",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+    await transcript.end_stream(
+        stream_id="second",
+        status=None,
+        error=None,
+        send=_sent,
+    )
+    state = recorder.record.nodes[exchange_id].state["shinychat:turns"]  # type: ignore[union-attr]
+    assert state.mode == "snapshot"
+    assert state.data == adapter.turns
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("status", ["error", "cancelled"])
+async def test_v2_recorder_captures_terminal_turns_verbatim(status: str):
+    adapter = _FakeAdapter()
+    controller, _ = _make_controller(use_exchange_tree=True, adapter=adapter)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_finished=recorder.stream_finished,
+    )
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
+    adapter.turns.append({"role": "assistant", "content": "partial"})
+    await transcript.start_stream(
+        stream_id="stream",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+    await transcript.end_stream(
+        stream_id="stream",
+        status=status,  # type: ignore[arg-type]
+        error="provider failure" if status == "error" else None,
+        send=_sent,
+    )
+
+    state = recorder.record.nodes[exchange_id].state["shinychat:turns"]  # type: ignore[union-attr]
+    assert state.mode == "delta"
+    assert state.data == [{"role": "assistant", "content": "partial"}]
+
+
+@pytest.mark.anyio
+async def test_v2_recorder_captures_active_node_before_next_input():
+    adapter = _FakeAdapter()
+    controller, _ = _make_controller(use_exchange_tree=True, adapter=adapter)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    first_exchange = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
+    adapter.turns.append({"role": "user", "content": "one"})
+
+    await transcript.record_accepted_input_and_notify(_stored_message("user", "two"))
+
+    node = recorder.record.nodes[first_exchange]  # type: ignore[union-attr]
+    assert node.status == "pending"
+    assert node.state["shinychat:turns"].mode == "delta"
+    assert node.state["shinychat:turns"].data == [
+        {"role": "user", "content": "one"}
+    ]
+
+
+@pytest.mark.anyio
 async def test_v2_recorder_replaces_stream_projection_on_its_opening_exchange():
     store = InMemoryConversationStore()
+    adapter = _FakeAdapter()
     controller, _ = _make_controller(
         store=store,
         use_exchange_tree=True,
+        adapter=adapter,
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -441,6 +669,7 @@ async def test_v2_recorder_replaces_stream_projection_on_its_opening_exchange():
     second_exchange = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "second")
     )
+    adapter.turns.append({"role": "assistant", "content": "late first response"})
     await transcript.end_stream(
         stream_id="stream",
         status=None,
@@ -455,7 +684,11 @@ async def test_v2_recorder_replaces_stream_projection_on_its_opening_exchange():
     assert [message.as_stored_message().content for message in first.messages] == [
         "partial"
     ]
+    assert first.state["shinychat:turns"].data == [
+        {"role": "assistant", "content": "late first response"}
+    ]
     assert record.nodes[second_exchange].status == "pending"
+    assert "shinychat:turns" not in record.nodes[second_exchange].state
     assert record.active_leaf == second_exchange
     assert recorder._stream_exchanges == {}
 
@@ -502,6 +735,8 @@ async def test_v2_recorder_persists_pre_input_stream_on_pending_root() -> None:
     exchange_id = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "question")
     )
+    assert record.nodes[root_id].status == "pending"
+    assert record.nodes[root_id].state["shinychat:turns"].mode == "snapshot"
     await transcript.end_stream(
         stream_id="stream",
         status=None,
@@ -879,6 +1114,61 @@ async def test_stream_recorder_failure_does_not_rollback_sent_transcript():
 
 
 @pytest.mark.anyio
+async def test_terminal_state_capture_failure_propagates_without_rollback():
+    class FailingStore(InMemoryConversationStore):
+        fail = False
+
+        async def put(
+            self, partition: ConversationPartition, record: Any
+        ) -> None:
+            if self.fail:
+                raise RuntimeError("durability failure")
+            await super().put(partition, record)
+
+    adapter = _FakeAdapter()
+    store = FailingStore()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_finished=recorder.stream_finished,
+    )
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "question")
+    )
+    await transcript.start_stream(
+        stream_id="stream",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+    adapter.turns.append({"role": "assistant", "content": "partial"})
+    store.fail = True
+
+    with pytest.raises(RuntimeError, match="durability failure"):
+        await transcript.end_stream(
+            stream_id="stream",
+            status="error",
+            error="provider failure",
+            send=_sent,
+        )
+
+    node = recorder.record.nodes[exchange_id]  # type: ignore[union-attr]
+    assert node.state["shinychat:turns"].data == [
+        {"role": "assistant", "content": "partial"}
+    ]
+    assert node.status == "error"
+    assert transcript.active_stream_id is None
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     ("checkpoint", "expected_content", "expected_status", "expected_error"),
     [
@@ -936,7 +1226,11 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
             store = FileConversationStore(sys.argv[1])
             controller = SimpleNamespace(
                 partition=ConversationPartition(chat_id="kill", scope="scope"),
-                adapter=SimpleNamespace(client_info=lambda: {}),
+                adapter=SimpleNamespace(
+                    client_info=lambda: {},
+                    get_turns_json=lambda **_kwargs: [],
+                    is_chatlas=lambda: False,
+                ),
                 store=store,
             )
             recorder = _ExchangeRecorder(controller)
@@ -2237,7 +2531,9 @@ async def test_on_response_saved_fires_when_new_data_is_saved():
     ]
 
     class _GrowingAdapter(_FakeAdapter):
-        def get_turns_json(self) -> list[Any]:
+        def get_turns_json(
+            self, *, include_system_prompt: bool = False
+        ) -> list[Any]:
             return turns
 
     async def hook(record: Any) -> None:
