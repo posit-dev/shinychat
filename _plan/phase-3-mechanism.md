@@ -161,6 +161,15 @@ already-committed transcript remains truthful about content that reached the
 browser; retrying persistence writes the current node projection
 idempotently. Do not roll back browser-visible content or transcript state.
 
+Before `HistoryController.partition` is established by the restore decision,
+recorder callbacks are inert: they return without creating a record, changing
+stream attribution, writing the store, or failing the originating send. Phase
+3 does not claim durability for those preselection emissions. Phase 5 owns
+the selected init-window guard, which covers all capture-eligible initial
+sends as well as user submission before selection. Do not add a preselection
+buffer, provisional record or merge, queue, timer, reconciliation, or second
+owner.
+
 The recorder serializes each callback's complete record mutation (including
 its private stream-id association change) and awaited `store.put()` with one
 private `asyncio.Lock`. This preserves the one-recorder, in-process ordering
@@ -510,14 +519,14 @@ child or the phase.
 - **Current handoff (2026-08-28):** `shinychat#19dk` implemented those
   decisions in `2227c9fb` and `73755c4f`, then fixed the ordinary terminal
   stream-status finding from roborev job `1043` in `b074ab9c`. Focused checks
-  pass. Roborev job `1044` found a new initialization-policy conflict:
-  `_init_chat` can emit pre-input content before history has a partition, but
-  capturing it durably requires buffering until the restore decision. That
-  buffer is an init-window mechanism deferred to Phase 5 and prohibited by
-  this task's scope. Do not implement it here. `shinychat#19dk` is parked
-  with job `1044` open pending a coordinator decision on whether pre-partition
-  capture is required in Phase 3 and, if so, which owner/lifecycle may hold it.
-- **Provisional:** the pre-partition capture decision above is open. The
+  pass. Roborev job `1044` identified pre-partition recorder failures during
+  initial sends. The coordinator chose **DEFER**: Phase 3 callbacks are
+  inert/non-throwing until partition/restore selection; Phase 5 owns the
+  guard for all capture-eligible initial sends and user submission. No buffer,
+  provisional record or merge, queue, timer, reconciliation, or second owner
+  is added. The `shinychat#19dk` fix restores safe no-op behavior and leaves
+  job `1044` open only until its corrective review is requested.
+- **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
   keystone’s narrow replay method deliberately does not enter the
