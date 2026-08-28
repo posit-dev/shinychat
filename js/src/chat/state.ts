@@ -14,7 +14,7 @@ import type { AttachmentPayload } from "./attachments"
 import { uuid } from "../utils/uuid"
 import { codeRanges } from "./markdown-code-ranges"
 import {
-  appendCallToToolLoop,
+  appendToolLoopBlock,
   regroupToolLoop,
   structuredBlockToLoop,
   supersededRequestIds,
@@ -300,19 +300,9 @@ function messagePayloadToData(
       const loop = structuredBlockToLoop(seg, grouping)
       if (loop) {
         // Merge into an adjacent trailing tool loop when one exists (one
-        // agentic loop), re-deriving groups from the combined calls —
-        // mirrors the block_insert path.
-        const tail = rawBlocks[rawBlocks.length - 1]
-        const call = loop.groups[0]?.calls[0]
-        if (tail?.type === "tool_loop" && call) {
-          rawBlocks[rawBlocks.length - 1] = appendCallToToolLoop(
-            tail,
-            call,
-            grouping,
-          )
-        } else {
-          rawBlocks.push(loop)
-        }
+        // agentic loop), tolerating a whitespace-only content block between
+        // carriers — mirrors appendWebActivityBlock.
+        rawBlocks = appendToolLoopBlock(rawBlocks, loop, grouping)
       }
       continue
     }
@@ -985,8 +975,12 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       }
 
       if (action.operation === "replace") {
+        // A content replace swaps out the running content block but must
+        // preserve structured blocks that arrived mid-stream (thinking,
+        // tool_loop, web_activity, html_block) — filtering out only content
+        // blocks rather than keeping only thinking.
         const newBlocks: MessageBlock[] = blocks.filter(
-          (b) => b.type === "thinking",
+          (b) => b.type !== "content",
         )
         newBlocks.push({
           type: "content",
@@ -1097,18 +1091,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         blocks.push(htmlBlockToRenderBlock(htmlBlock))
       } else if (loop) {
         // Merge into an adjacent trailing tool loop when one exists (one
-        // agentic loop), re-deriving groups from the combined calls.
-        const tail = blocks[blocks.length - 1]
-        const call = loop.groups[0]?.calls[0]
-        if (tail?.type === "tool_loop" && call) {
-          blocks[blocks.length - 1] = appendCallToToolLoop(
-            tail,
-            call,
-            state.toolGrouping,
-          )
-        } else {
-          blocks.push(loop)
-        }
+        // agentic loop), tolerating a whitespace-only content block between
+        // carriers — mirrors appendWebActivityBlock.
+        blocks = appendToolLoopBlock(blocks, loop, state.toolGrouping)
       }
 
       return {

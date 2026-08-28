@@ -189,6 +189,29 @@ describe("structured tool_result block via message.segments", () => {
     expect(calls.map((c) => c.requestId)).toEqual(["call-1", "call-2"])
   })
 
+  it("tolerates whitespace-only content between tool blocks", () => {
+    // Mirrors the web whitespace-tolerance test: a whitespace-only string
+    // segment between tool blocks is dropped, merging them into one loop.
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          toolResultBlock({ request_id: "call-1" }),
+          { content: " \n", content_type: "markdown" },
+          toolResultBlock({ request_id: "call-2", value: "rain later" }),
+        ],
+      },
+    })
+
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    const loop = blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const calls = loop.groups.flatMap((g) => g.calls)
+    expect(calls.map((c) => c.requestId)).toEqual(["call-1", "call-2"])
+  })
+
   it("maps the full field surface onto the ToolCallItem", () => {
     const state = chatReducer(makeState(), {
       type: "message",
@@ -346,6 +369,34 @@ describe("structured tool_result block via block_insert mid-stream", () => {
     expect(calls.map((c) => c.requestId)).toEqual(["call-1", "call-2"])
   })
 
+  it("tolerates whitespace-only content between tool blocks mid-stream", () => {
+    // Mirrors the web whitespace-tolerance test: a whitespace-only content
+    // chunk between block_insert tool blocks is dropped, merging them into
+    // one loop.
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolResultBlock({ request_id: "call-1" }),
+    })
+    // A whitespace-only content chunk lands between the tool blocks.
+    state = chatReducer(state, {
+      type: "chunk",
+      content: " \n",
+      operation: "append",
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolResultBlock({ request_id: "call-2", value: "rain later" }),
+    })
+
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    const loop = blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const calls = loop.groups.flatMap((g) => g.calls)
+    expect(calls.map((c) => c.requestId)).toEqual(["call-1", "call-2"])
+  })
+
   it("does not disturb thinking-tag/fence stream state", () => {
     let state = startStream(makeState())
     // Open a code fence, then insert a block: the fence state must survive.
@@ -365,6 +416,42 @@ describe("structured tool_result block via block_insert mid-stream", () => {
       "content",
       "tool_loop",
     ])
+  })
+
+  it("survives a chunk(replace) after block_insert — structured blocks preserved", () => {
+    // chunk operation:"replace" used to filter to thinking-only, wiping
+    // structured blocks mid-stream. It must filter out only content blocks,
+    // keeping tool_loop / web_activity / html_block.
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "Before the call. ",
+      operation: "append",
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolResultBlock(),
+    })
+    expect(state.streamingMessage!.blocks.map((b) => b.type)).toEqual([
+      "content",
+      "tool_loop",
+    ])
+
+    // A replace chunk must swap the content block but keep the tool_loop.
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "Replaced content.",
+      operation: "replace",
+    })
+
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop", "content"])
+    const loop = blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    expect(loop.groups.flatMap((g) => g.calls)).toHaveLength(1)
+    const content = blocks[1]!
+    if (content.type !== "content") throw new Error("expected content")
+    expect(content.content).toBe("Replaced content.")
   })
 
   it("is a no-op with a warning when no stream is in flight", () => {

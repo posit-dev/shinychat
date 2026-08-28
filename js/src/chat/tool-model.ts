@@ -4,7 +4,7 @@ import type {
   ToolRequestBlock,
   ToolResultBlock,
 } from "../transport/types"
-import type { ChatMessageData } from "./state"
+import type { ChatMessageData, MessageBlock } from "./state"
 import { uuid } from "../utils/uuid"
 import type { ToolResultOpenStyle } from "./tool-protocol"
 
@@ -347,6 +347,37 @@ export function appendCallToToolLoop(
     grouping,
     groups: groupCalls(calls, grouping),
   }
+}
+
+/**
+ * Append a one-call tool loop (from a structured block) to a message's block
+ * list, merging into an adjacent trailing tool loop when one is reachable —
+ * tolerating a whitespace-only content block between carriers, exactly as
+ * `appendWebActivityBlock` tolerates whitespace between web_* blocks (the
+ * whitespace is dropped; any other block ends the run and starts a new loop).
+ */
+export function appendToolLoopBlock(
+  blocks: MessageBlock[],
+  loop: ToolLoopBlock,
+  grouping: ToolGrouping,
+): MessageBlock[] {
+  const out = [...blocks]
+  let tail = out[out.length - 1]
+  if (tail?.type === "content" && tail.content.trim() === "") {
+    const prev = out[out.length - 2]
+    if (prev?.type === "tool_loop") {
+      // The whitespace-only separator is part of the run; drop it.
+      out.pop()
+      tail = prev
+    }
+  }
+  const call = loop.groups[0]?.calls[0]
+  if (tail?.type === "tool_loop" && call) {
+    out[out.length - 1] = appendCallToToolLoop(tail, call, grouping)
+  } else {
+    out.push(loop)
+  }
+  return out
 }
 
 /**
