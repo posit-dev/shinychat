@@ -1,9 +1,10 @@
 # Plan: exchange-tree conversation history
 
-**Status:** committed · Phase 0 complete, Phase 1 in review, Phase 2 ready · 2026-08-27
+**Status:** committed · Phase 0 complete, Phase 1 in review, Phase 2 complete,
+Phase 3 planning · 2026-08-28
 **Kata:** epic `shinychat#6d0d` · Phase 1 `shinychat#g49a` · Phase 2
-`shinychat#kjyt` (the `kata` CLI issue tracker). All abbreviated Kata IDs
-below belong to the `shinychat` project;
+`shinychat#kjyt` · Phase 3 `shinychat#qf2r` (the `kata` CLI issue tracker).
+All abbreviated Kata IDs below belong to the `shinychat` project;
 planning history in closed issue `kvhc`
 **Predecessor:** `feat/turn-history-sync-redesign` (stopped; see the
 [retrospective report](../_dev/todos/pending/2026-08-13_client-turns-history-sync/retrospective/report.md))
@@ -491,7 +492,8 @@ signed off by the driver before code (process.md §3.4).
   and fixture value-class coverage is an acceptance criterion of kata
   `bxwf`.)
   *Done when:* the three PRs merged (or in review) on `main`.
-- **Phase 2 — server-authoritative core (Python).** Echo deletion,
+- **Phase 2 — server-authoritative core (Python; complete 2026-08-28).**
+  Echo deletion,
   transactional send-then-commit, synchronous `messages()` — #311's core,
   re-derived cleanly from the draft's design (decided: no rebase attempt).
   Land the exchange-open signal and stream attribution here. The client
@@ -505,13 +507,17 @@ signed off by the driver before code (process.md §3.4).
   `Chat.messages()` is synchronous in the same flush; the revised shared
   transcript fixture passes in Python; a forged messages input cannot
   mutate transcript or history (hard transport rejection is acceptable).
-- **Phase 3 — exchange record + capture + store (Python).** Node schema,
+- **Phase 3 — exchange record + capture + store (Python; `shinychat#qf2r`).**
+  Node schema,
   choke-point capture, baseline snapshot at first input, delta/snapshot
   turn capture, eager writes + lazy close, statuses, incremental atomic
   saves. Benchmark the two store layouts (Q2) before keeping any
   append-only machinery. Keystone commit first: one flag-guarded path
   from submit → captured node → stored record → restored display, however
   ugly.
+  See `phase-3-mechanism.md`; its store-layout section remains blocked on
+  Q2's required benchmark, and no feature code starts before that result is
+  recorded and the phase note is agreed.
   *Done when:* kill the process mid-stream at any point and reload — the
   record contains the user's input, all specs sent so far, and a coherent
   status; the worked example in §3.1 round-trips through the store.
