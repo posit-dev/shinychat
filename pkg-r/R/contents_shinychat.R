@@ -96,7 +96,7 @@ opt_shinychat_tool_display <- function() {
 #'   res$value <- gt::as_raw_html(gt::gt(content@value))
 #'   res$value_type <- "html"
 #'   # ...and update the tool result title to include the location name
-#'   res$tool_title <- paste("Got weather forecast for", content@location_name)
+#'   res$title <- paste("Got weather forecast for", content@location_name)
 #'   res$label <- content@location_name
 #'   res$value_preview <- paste(nrow(content@value), "hourly readings")
 #'
@@ -294,6 +294,9 @@ new_tool_card <- function(type, request_id, tool_name, ...) {
 
   classes <- c(
     paste0("shinychat_tool_", sub("^tool_", "", type)),
+    # Retained so the console/Rmd display methods (format/print/knit_print)
+    # keep dispatching; the chat wire path keys off `shinychat_block`.
+    "shinychat_tool_card",
     "shinychat_block"
   )
 
@@ -467,6 +470,8 @@ tool_card_as_tags <- function(x) {
   }
 
   names(x) <- gsub("_", "-", names(x))
+  # The wire field is `title`; the static markup attribute is `tool-title`.
+  names(x)[names(x) == "title"] <- "tool-title"
 
   deps <- list(
     htmltools::findDependencies(x$value),
@@ -477,7 +482,7 @@ tool_card_as_tags <- function(x) {
 
   tag <- htmltools::tag(
     tag_name,
-    dots_list(type = NULL, !!!x, !!!deps, .homonyms = "first")
+    dots_list(type = NULL, version = NULL, !!!x, !!!deps, .homonyms = "first")
   )
   htmltools::tagAppendAttributes(tag, `data-shinychat-react` = NA)
 }
@@ -525,9 +530,12 @@ method(contents_shinychat, ellmer::ContentToolRequest) <- function(
     "tool_request",
     request_id = content@id,
     tool_name = content@name,
-    arguments = jsonlite::toJSON(content@arguments, auto_unbox = TRUE),
+    arguments = as.character(jsonlite::toJSON(
+      content@arguments,
+      auto_unbox = TRUE
+    )),
     intent = content@arguments[["_intent"]],
-    tool_title = as.character(annotations$title),
+    title = as.character(annotations$title),
     # The tool *definition* icon. The result element sends the result's own
     # icon (falling back to this one), so the client needs both to tell a
     # result-specific icon from the tool's shared identity.
@@ -559,7 +567,7 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   } else {
     # formatting the request fails if tool is not present
     # (ellmer v0.3.0, tidyverse/ellmer#691)
-    request_call <- jsonlite::toJSON(
+    request_call <- as.character(jsonlite::toJSON(
       list(
         id = content@request@id,
         name = content@request@name,
@@ -567,7 +575,7 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
       ),
       auto_unbox = TRUE,
       pretty = 2
-    )
+    ))
   }
 
   # Render HTML fields to strings, collecting deps
@@ -593,7 +601,7 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     request_call = request_call,
     status = if (tool_errored(content)) "error" else "success",
     tool_name = content@request@name,
-    tool_title = as.character(display$title %||% annotations$title),
+    title = as.character(display$title %||% annotations$title),
     icon = icon_rendered$html,
     intent = content@request@arguments[["_intent"]],
     show_request = isTRUE(display$show_request %||% TRUE),

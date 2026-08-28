@@ -75,6 +75,27 @@ def test_tool_wire_protocol_fixture_matches_python_serialization() -> None:
     assert _render(result) == fixture["result"]
 
 
+def test_tool_wire_protocol_fixture_matches_structured_blocks() -> None:
+    """The structured-block wire contract (kata#c15v): both languages emit
+    these exact block payloads; the markup above is the legacy tagify path."""
+    from shinychat._chat_normalize_chatlas import (
+        tool_request_block,
+        tool_result_block,
+    )
+
+    fixture_path = (
+        Path(__file__).parents[1] / "fixtures" / "tool-wire-protocol.json"
+    )
+    fixture = json.loads(fixture_path.read_text())
+    request, result = _protocol_components()
+
+    request_block, _ = tool_request_block(request)
+    result_block, _ = tool_result_block(result)
+
+    assert request_block == fixture["blocks"]["request"]
+    assert result_block == fixture["blocks"]["result"]
+
+
 def test_minimal_tool_result_open_style_is_not_serialized() -> None:
     request = ContentToolRequest(
         id="wire-default",

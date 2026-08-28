@@ -62,7 +62,7 @@ test_that("custom contents_shinychat() output for a successful tool result is wr
   expect_equal(block$status, "success")
 
   # Fields deliberately absent from the custom-display wrap.
-  expect_null(block$tool_title)
+  expect_null(block$title)
   expect_null(block$request_call)
 })
 

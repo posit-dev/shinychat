@@ -33,5 +33,39 @@
       "customDisplay": false,
       "footer": "<span>footer</span>"
     }
+  },
+  "blocks": {
+    "request": {
+      "type": "tool_request",
+      "version": 1,
+      "request_id": "wire-1",
+      "tool_name": "search",
+      "title": "Searching",
+      "intent": "Find docs",
+      "arguments": "{\"q\":\"shiny\"}",
+      "grouping": "all",
+      "icon": "<i>search</i>"
+    },
+    "result": {
+      "type": "tool_result",
+      "version": 1,
+      "request_id": "wire-1",
+      "tool_name": "search",
+      "status": "success",
+      "value_type": "markdown",
+      "show_request": true,
+      "title": "Searched",
+      "intent": "Find docs",
+      "request_call": "search(q=\"shiny\")",
+      "label": "docs",
+      "value_preview": "3 results",
+      "grouping": "all",
+      "expanded": true,
+      "full_screen": true,
+      "open_style": "framed",
+      "icon": "<i>done</i>",
+      "value": "Result body",
+      "footer": "<span>footer</span>"
+    }
   }
 }

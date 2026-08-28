@@ -111,7 +111,7 @@ test_that("tool card serialization matches the shared wire fixture", {
     "tool_request",
     request_id = "wire-1",
     tool_name = "search",
-    tool_title = "Searching",
+    title = "Searching",
     icon = "<i>search</i>",
     intent = "Find docs",
     arguments = '{"q":"shiny"}',
@@ -121,7 +121,7 @@ test_that("tool card serialization matches the shared wire fixture", {
     "tool_result",
     request_id = "wire-1",
     tool_name = "search",
-    tool_title = "Searched",
+    title = "Searched",
     icon = "<i>done</i>",
     intent = "Find docs",
     status = "success",
@@ -138,36 +138,36 @@ test_that("tool card serialization matches the shared wire fixture", {
     open_style = "framed"
   )
 
-  # Structured block fields match the wire fixture's expected shape
-  req_expected <- fixture$expected$request
-  expect_equal(request$type, "tool_request")
-  expect_equal(request$version, 1L)
-  expect_equal(request$request_id, req_expected$requestId)
-  expect_equal(request$tool_name, req_expected$toolName)
-  expect_equal(request$tool_title, req_expected$definitionTitle)
-  expect_equal(request$icon, req_expected$definitionIcon)
+  # Structured block fields match the wire fixture's structured contract
+  req_expected <- fixture$blocks$request
+  expect_equal(request$type, req_expected$type)
+  expect_equal(request$version, req_expected$version)
+  expect_equal(request$request_id, req_expected$request_id)
+  expect_equal(request$tool_name, req_expected$tool_name)
+  expect_equal(request$title, req_expected$title)
+  expect_equal(request$icon, req_expected$icon)
   expect_equal(request$intent, req_expected$intent)
   expect_equal(request$arguments, req_expected$arguments)
   expect_equal(request$grouping, req_expected$grouping)
 
-  res_expected <- fixture$expected$result
-  expect_equal(result$type, "tool_result")
-  expect_equal(result$version, 1L)
-  expect_equal(result$request_id, res_expected$requestId)
-  expect_equal(result$tool_name, res_expected$toolName)
-  expect_equal(result$tool_title, res_expected$title)
+  res_expected <- fixture$blocks$result
+  expect_equal(result$type, res_expected$type)
+  expect_equal(result$version, res_expected$version)
+  expect_equal(result$request_id, res_expected$request_id)
+  expect_equal(result$tool_name, res_expected$tool_name)
+  expect_equal(result$title, res_expected$title)
   expect_equal(result$icon, res_expected$icon)
   expect_equal(result$intent, res_expected$intent)
   expect_equal(result$status, res_expected$status)
   expect_equal(result$label, res_expected$label)
-  expect_equal(result$value_preview, res_expected$valuePreview)
+  expect_equal(result$value_preview, res_expected$value_preview)
   expect_equal(result$value, res_expected$value)
-  expect_equal(result$value_type, res_expected$valueType)
-  expect_equal(result$request_call, res_expected$requestCall)
-  expect_equal(result$show_request, res_expected$showRequest)
-  expect_equal(result$full_screen, res_expected$fullScreen)
+  expect_equal(result$value_type, res_expected$value_type)
+  expect_equal(result$request_call, res_expected$request_call)
+  expect_equal(result$show_request, res_expected$show_request)
+  expect_equal(result$full_screen, res_expected$full_screen)
   expect_equal(result$expanded, res_expected$expanded)
-  expect_equal(result$open_style, res_expected$openStyle)
+  expect_equal(result$open_style, res_expected$open_style)
   expect_equal(result$footer, res_expected$footer)
   expect_equal(result$grouping, res_expected$grouping)
 })
@@ -183,7 +183,7 @@ test_that("ContentToolRequest handles tool annotations", {
   res <- contents_shinychat(request)
 
   expect_s3_class(res, "shinychat_tool_request")
-  expect_equal(res$tool_title, "Weather Tool")
+  expect_equal(res$title, "Weather Tool")
 })
 
 test_that("ContentToolRequest emits the tool definition icon and its dependencies", {
@@ -317,7 +317,7 @@ test_that("ContentToolResult with additional display options from result", {
   expect_equal(res$value_type, "html")
   expect_false(res$show_request)
   expect_true(res$expanded)
-  expect_equal(res$tool_title, "Custom Title")
+  expect_equal(res$title, "Custom Title")
 })
 
 test_that("ContentToolResult serializes framed open style only when requested", {
@@ -336,11 +336,10 @@ test_that("ContentToolResult serializes framed open style only when requested", 
   expect_null(contents_shinychat(minimal)$open_style)
 })
 
-test_that("mutating a card's tool_title overrides the annotation title", {
+test_that("mutating a card's title overrides the annotation title", {
   # The documented pattern for a custom result class (see the
   # `contents_shinychat()` example): call the super method, then mutate the
-  # card. The field is `tool_title`, which the client reads as the block's
-  # `title` field -- `res$title` would silently add an unread field instead.
+  # card. The field is `title` — the wire field the client reads.
   local_shinychat_tool_display(opt = "rich")
 
   result <- new_tool_result(
@@ -350,11 +349,10 @@ test_that("mutating a card's tool_title overrides the annotation title", {
     )
   )
   res <- contents_shinychat(result)
-  expect_equal(res$tool_title, "Static")
+  expect_equal(res$title, "Static")
 
-  res$tool_title <- "Dynamic for Portland"
-  expect_equal(res$tool_title, "Dynamic for Portland")
-  expect_null(res$title)
+  res$title <- "Dynamic for Portland"
+  expect_equal(res$title, "Dynamic for Portland")
 })
 
 test_that("ContentToolResult with HTML() title preserves markup", {
@@ -371,7 +369,7 @@ test_that("ContentToolResult with HTML() title preserves markup", {
   )
   res <- contents_shinychat(result)
   # title is rendered to an HTML string via as.character()
-  expect_equal(res$tool_title, "Map of <i>Paris</i>")
+  expect_equal(res$title, "Map of <i>Paris</i>")
 })
 
 test_that("ContentToolResult handles icon and dependencies from tool definition", {
@@ -1137,12 +1135,12 @@ test_that("basic tool display suppresses custom display metadata but keeps annot
 
   req_res <- contents_shinychat(request)
   expect_s3_class(req_res, "shinychat_tool_request")
-  expect_equal(req_res$tool_title, "Weather Tool")
+  expect_equal(req_res$title, "Weather Tool")
   expect_equal(req_res$grouping, "all")
 
   tool_res <- contents_shinychat(result)
   expect_s3_class(tool_res, "shinychat_tool_result")
-  expect_equal(tool_res$tool_title, "Weather Tool")
+  expect_equal(tool_res$title, "Weather Tool")
   expect_equal(tool_res$grouping, "all")
   expect_null(tool_res$label)
   expect_null(tool_res$value_preview)

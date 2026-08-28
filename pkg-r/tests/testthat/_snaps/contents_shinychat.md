@@ -83,12 +83,5 @@
       i To display HTML content for tool results in shinychat, create a tool result with `extra = list(display = list(html = ...))`.
       i You can also use `markdown` or `text` items in `display` to show Markdown or plain text, respectively.
     Output
-                 type         version      request_id       tool_name    request_call 
-        "tool_result"             "1"       "test-id"     "test-tool" "`test-tool`()" 
-               status      tool_title            icon          intent    show_request 
-            "success"              ""          "NULL"          "NULL"          "TRUE" 
-             expanded     full_screen      open_style          footer        grouping 
-              "FALSE"         "FALSE"          "NULL"          "NULL"          "NULL" 
-                label   value_preview           value      value_type 
-               "NULL"          "NULL"            "{}"          "code" 
+      [1] "<shiny-tool-result request-id=\"test-id\" tool-name=\"test-tool\" request-call=\"`test-tool`()\" status=\"success\" show-request=\"TRUE\" expanded=\"FALSE\" full-screen=\"FALSE\" value=\"{}\" value-type=\"code\" data-shinychat-react></shiny-tool-result>"
 
