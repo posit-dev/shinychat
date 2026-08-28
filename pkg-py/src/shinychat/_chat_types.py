@@ -212,6 +212,8 @@ class ChatMessageDict(TypedDict):
     role: Role
     html_deps: NotRequired[list[SerializedDep]]
     attachments: NotRequired[list[Attachment]]
+    status: NotRequired[Literal["cancelled", "error"]]
+    error: NotRequired[dict[str, str]]
 
 
 class ChatMessage:

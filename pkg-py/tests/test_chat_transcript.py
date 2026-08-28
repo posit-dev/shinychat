@@ -3,7 +3,7 @@ from __future__ import annotations
 import anyio
 import pytest
 from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
-from shinychat._chat_types import ChatMessage, StoredMessage
+from shinychat._chat_types import ChatMessage, ContentSegment, StoredMessage
 
 
 def entry(
@@ -23,6 +23,27 @@ async def sent() -> bool:
 
 async def sent_action() -> None:
     return None
+
+
+def segment(content: str, content_type: str = "markdown") -> ContentSegment:
+    return ContentSegment(
+        content=content,
+        content_type=content_type,  # type: ignore[arg-type]
+    )
+
+
+async def start_stream(
+    transcript: ChatTranscript,
+    *,
+    stream_id: str = "stream",
+    owner_task: object | None = None,
+) -> None:
+    await transcript.start_stream(
+        stream_id=stream_id,
+        entry=entry("assistant", ""),
+        owner_task=owner_task,
+        send=sent,
+    )
 
 
 @pytest.mark.anyio
@@ -85,6 +106,32 @@ async def test_append_commits_the_pre_send_snapshot() -> None:
 
 
 @pytest.mark.anyio
+async def test_complete_append_captures_exchange_before_awaiting_send() -> None:
+    transcript = ChatTranscript()
+    opening_exchange = transcript.record_accepted_input(
+        entry("user", "first").message
+    )
+    send_started = anyio.Event()
+    release_send = anyio.Event()
+
+    async def send() -> bool:
+        send_started.set()
+        await release_send.wait()
+        return True
+
+    async def append_response() -> None:
+        await transcript.append(entry("assistant", "first response"), send=send)
+
+    async with anyio.create_task_group() as task_group:
+        task_group.start_soon(append_response)
+        await send_started.wait()
+        transcript.record_accepted_input(entry("user", "second").message)
+        release_send.set()
+
+    assert transcript.read()[2].exchange_id == opening_exchange
+
+
+@pytest.mark.anyio
 async def test_failed_send_leaves_committed_messages_unchanged() -> None:
     transcript = ChatTranscript()
     await transcript.append(entry("user", "kept"), send=sent)
@@ -135,3 +182,192 @@ def test_accepted_input_opens_a_new_opaque_exchange() -> None:
         "first",
         "second",
     ]
+
+
+@pytest.mark.anyio
+async def test_stream_transitions_commit_only_after_their_send() -> None:
+    transcript = ChatTranscript()
+    await start_stream(transcript)
+
+    async def fail() -> bool:
+        raise RuntimeError("chunk failed")
+
+    with pytest.raises(RuntimeError, match="chunk failed"):
+        await transcript.transition_stream(
+            stream_id="stream",
+            source_segments=[segment("discarded")],
+            message=entry("assistant", "discarded").message,
+            operation="append",
+            send=fail,
+        )
+
+    assert transcript.stream_segments("stream") == []
+    assert transcript.read()[0].message.content == ""
+
+
+@pytest.mark.anyio
+async def test_stream_start_reserves_admission_before_awaiting_send() -> None:
+    transcript = ChatTranscript()
+    send_started = anyio.Event()
+    release_send = anyio.Event()
+
+    async def blocked_send() -> bool:
+        send_started.set()
+        await release_send.wait()
+        return True
+
+    async def start_first_stream() -> None:
+        await transcript.start_stream(
+            stream_id="first",
+            entry=entry("assistant", ""),
+            owner_task=None,
+            send=blocked_send,
+        )
+
+    async with anyio.create_task_group() as task_group:
+        task_group.start_soon(start_first_stream)
+        await send_started.wait()
+        with pytest.raises(RuntimeError, match="second message stream"):
+            await start_stream(transcript, stream_id="second")
+        release_send.set()
+
+    assert transcript.active_stream_id == "first"
+
+
+@pytest.mark.anyio
+async def test_failed_stream_start_rolls_back_its_reservation() -> None:
+    transcript = ChatTranscript()
+
+    async def fail() -> bool:
+        raise RuntimeError("start failed")
+
+    with pytest.raises(RuntimeError, match="start failed"):
+        await transcript.start_stream(
+            stream_id="failed",
+            entry=entry("assistant", ""),
+            owner_task=None,
+            send=fail,
+        )
+
+    assert transcript.active_stream_id is None
+    await start_stream(transcript, stream_id="next")
+
+
+@pytest.mark.anyio
+async def test_stream_replacement_commits_mixed_segments_and_nested_checkpoint() -> (
+    None
+):
+    transcript = ChatTranscript()
+    await start_stream(transcript)
+    await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[segment("reasoning", "thinking")],
+        message=entry("assistant", "reasoning").message,
+        operation="append",
+        send=sent,
+    )
+    transcript.set_stream_checkpoint(
+        "stream", [segment("reasoning", "thinking")]
+    )
+    await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[
+            segment("reasoning", "thinking"),
+            segment("answer"),
+        ],
+        message=entry("assistant", "reasoninganswer").message,
+        operation="replace",
+        send=sent,
+    )
+
+    committed = transcript.read()[0]
+    assert [
+        (segment.content, segment.content_type)
+        for segment in transcript.stream_segments("stream")
+    ] == [("reasoning", "thinking"), ("answer", "markdown")]
+    assert committed.message.content == "reasoninganswer"
+
+
+@pytest.mark.anyio
+async def test_stream_abort_preserves_sent_partial_and_error_status() -> None:
+    transcript = ChatTranscript()
+    await start_stream(transcript)
+    await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[segment("kept")],
+        message=entry("assistant", "kept").message,
+        operation="append",
+        send=sent,
+    )
+
+    transcript.abort_stream(
+        "stream", status="error", error="terminal send failed"
+    )
+
+    committed = transcript.read()[0]
+    assert committed.message.content == "kept"
+    assert committed.status == "error"
+    assert committed.error == {"message": "terminal send failed"}
+    assert transcript.active_stream_id is None
+
+
+@pytest.mark.anyio
+async def test_stream_captures_its_opening_exchange_after_new_input() -> None:
+    transcript = ChatTranscript()
+    old_exchange = transcript.record_accepted_input(
+        entry("user", "old").message
+    )
+    await start_stream(transcript)
+    transcript.record_accepted_input(entry("user", "new").message)
+    await transcript.end_stream(
+        stream_id="stream",
+        source_segments=[segment("old response")],
+        message=entry("assistant", "old response").message,
+        operation="append",
+        status=None,
+        error=None,
+        send=sent,
+    )
+
+    assert transcript.read()[1].exchange_id == old_exchange
+    assert transcript.open_exchange_id != old_exchange
+
+
+@pytest.mark.anyio
+async def test_active_stream_rejects_complete_append_and_second_start() -> None:
+    transcript = ChatTranscript()
+    await start_stream(transcript)
+
+    with pytest.raises(
+        RuntimeError, match="complete message.*stream is active"
+    ):
+        await transcript.append(entry("assistant", "blocked"), send=sent)
+    with pytest.raises(RuntimeError, match="second message stream"):
+        await start_stream(transcript, stream_id="other")
+
+
+@pytest.mark.anyio
+async def test_clear_and_restore_reject_active_stream_and_defensive_projection() -> (
+    None
+):
+    transcript = ChatTranscript()
+    await start_stream(transcript)
+    projection = transcript.read()
+    projection[0].message.segments[0].content = "mutated"
+
+    with pytest.raises(RuntimeError, match="clear or restore"):
+        await transcript.clear(send=sent_action)
+    with pytest.raises(RuntimeError, match="clear or restore"):
+        transcript.replace([entry("assistant", "restored")])
+
+    assert transcript.read()[0].message.content == ""
+    await transcript.end_stream(
+        stream_id="stream",
+        status=None,
+        error=None,
+        send=sent,
+    )
+    await transcript.clear(send=sent_action)
+
+    assert transcript.read() == ()
+    assert transcript.active_stream_id is None

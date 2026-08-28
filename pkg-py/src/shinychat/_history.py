@@ -1193,12 +1193,12 @@ class ChatHistory:
             await controller.notify_settled(controller.record is not None)
 
         @reactive.effect
-        @reactive.event(chat.messages, ignore_init=True)
+        @reactive.event(chat._reported_messages, ignore_init=True)
         async def _save_on_response():
             if controller.partition is None:
                 return
-            messages = chat.messages()
-            if messages and messages[-1].get("role") == "assistant":
+            messages = chat._reported_messages()
+            if messages and messages[-1].role == "assistant":
                 try:
                     await controller.on_response()
                 except Exception as e:

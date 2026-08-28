@@ -107,6 +107,7 @@ def test_messages_token_limits_raises():
 def test_transcript_contains_accepted_input_before_submit_callback():
     session = cast(Session, _MockSession())
     seen: list[tuple[Any, ...]] = []
+    public_seen: list[tuple[ChatMessageDict, ...]] = []
 
     with session_context(session):
         chat = Chat("accepted_input", history=False)
@@ -114,6 +115,7 @@ def test_transcript_contains_accepted_input_before_submit_callback():
         @chat.on_user_submit
         async def _() -> None:
             seen.append(chat._transcript.read())
+            public_seen.append(chat.messages())
 
         cast(Any, session.input[chat.user_input_id])._set(
             {"text": "message from user", "attachments": []}
@@ -123,6 +125,9 @@ def test_transcript_contains_accepted_input_before_submit_callback():
     assert len(seen) == 1
     assert [entry.message.content for entry in seen[0]] == ["message from user"]
     assert chat._transcript.open_exchange_id is not None
+    assert public_seen == [
+        (ChatMessageDict(content="message from user", role="user"),)
+    ]
 
 
 def test_echoed_slash_command_records_once_before_its_callback():
@@ -221,7 +226,11 @@ def test_accepted_input_records_while_an_older_stream_is_active():
             ChatMessage(content="older exchange", role="user")
         )
         older_exchange = chat._transcript.open_exchange_id
-        chat._current_stream_id = "older-stream"
+        run_async(
+            lambda: chat._append_message_chunk(
+                "", chunk="start", stream_id="older-stream"
+            )
+        )
 
         @chat.on_user_submit
         async def _() -> None:
@@ -241,11 +250,14 @@ def test_accepted_input_records_while_an_older_stream_is_active():
         run_async(reactive.flush)
 
     assert len(callback_state) == 1
-    assert callback_state[0][0] == ["older exchange", "next exchange"]
+    assert callback_state[0][0] == [
+        "older exchange",
+        "",
+        "next exchange",
+    ]
     assert callback_state[0][1] is not None
     assert callback_state[0][1] != older_exchange
-    assert chat._current_stream_id == "older-stream"
-    assert chat._pending_messages == []
+    assert chat._transcript.active_stream_id == "older-stream"
 
 
 def test_transcript_contains_complete_append_immediately_after_send():
@@ -278,6 +290,25 @@ def test_transcript_complete_mutations_invalidate_reactive_dependents():
         run_async(reactive.flush)
 
     assert seen == [[], ["server message"], []]
+
+
+def test_messages_reactively_reads_the_transcript_revision():
+    with session_context(test_session):
+        chat = Chat("messages_reactive", history=False)
+        seen: list[tuple[ChatMessageDict, ...]] = []
+
+        @reactive.effect
+        def _():
+            seen.append(chat.messages())
+
+        run_async(reactive.flush)
+        run_async(lambda: chat.append_message("server message"))
+        run_async(reactive.flush)
+
+    assert seen == [
+        (),
+        (ChatMessageDict(content="server message", role="assistant"),),
+    ]
 
 
 def test_transcript_does_not_commit_system_messages_without_wire_send():
@@ -1318,9 +1349,13 @@ def test_stream_thinking_creates_thinking_segment():
         by_content = {a["content"]: a["content_type"] for a in chunk_actions}
         assert by_content["reasoning"] == "thinking"
         assert by_content["answer"] == "markdown"
+        assert [
+            (segment.content, segment.content_type)
+            for segment in chat._transcript.read()[0].message.segments
+        ] == [("reasoning", "thinking"), ("answer", "markdown")]
 
 
-def test_message_stream_context_flushes_queued_appends():
+def test_message_stream_context_rejects_complete_appends():
     with session_context(test_session):
         chat = Chat(id="chat")
         sent: list[dict[str, Any]] = []
@@ -1333,20 +1368,236 @@ def test_message_stream_context_flushes_queued_appends():
         async def _exercise() -> None:
             async with chat.message_stream_context() as stream:
                 await stream.append("streamed")
-                await chat.append_message("queued")
+                with pytest.raises(
+                    RuntimeError, match="complete message.*stream is active"
+                ):
+                    await chat.append_message("rejected")
 
         run_async(_exercise)
 
-        assert sent[-1] == {
-            "type": "message",
-            "message": {
-                "role": "assistant",
-                "segments": [{"content": "queued", "content_type": "markdown"}],
-            },
-        }
         assert [entry.message.content for entry in chat._transcript.read()] == [
-            "queued"
+            "streamed"
         ]
+
+
+def test_nested_message_stream_context_restores_outer_checkpoint():
+    with session_context(test_session):
+        chat = Chat(id="nested_stream", history=False)
+
+        async def _exercise() -> None:
+            async with chat.message_stream_context() as outer:
+                await outer.append("prefix")
+                async with chat.message_stream_context() as inner:
+                    await inner.append(" draft")
+                    await inner.replace(" final")
+                await outer.append(" done")
+
+        run_async(_exercise)
+
+    assert [entry.message.content for entry in chat._transcript.read()] == [
+        "prefix final done"
+    ]
+
+
+def test_stream_preserves_sent_partial_on_chunk_failure():
+    with session_context(test_session):
+        chat = Chat(id="partial_error", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+            if action.get("type") == "chunk" and action["content"] == "lost":
+                raise RuntimeError("chunk send failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _stream():
+            yield "kept"
+            yield "lost"
+
+        with pytest.raises(RuntimeError, match="chunk send failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": "chunk send failed"}
+    assert chat.messages() == (
+        {
+            "content": "kept",
+            "role": "assistant",
+            "status": "error",
+            "error": {"message": "chunk send failed"},
+        },
+    )
+    assert sent[-1] == {"type": "chunk_end"}
+
+
+def test_stream_start_send_failure_does_not_commit():
+    with session_context(test_session):
+        chat = Chat(id="start_error", history=False)
+
+        async def _fail(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_start":
+                raise RuntimeError("start send failed")
+
+        chat._send_action = _fail  # type: ignore[method-assign]
+
+        async def _stream():
+            yield "not sent"
+
+        with pytest.raises(RuntimeError, match="start send failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    assert chat._transcript.read() == ()
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_preserves_sent_partial_when_terminal_send_fails():
+    with session_context(test_session):
+        chat = Chat(id="terminal_error", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("end send failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _stream():
+            yield "kept"
+
+        with pytest.raises(RuntimeError, match="end send failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": "end send failed"}
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_commits_final_transformed_content_before_chunk_end_failure():
+    with session_context(test_session):
+        chat = Chat(id="terminal_transformed_error", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("end send failed")
+
+        async def _transform(content: str, chunk: str, done: bool) -> str:
+            return f"{content} final" if done else content
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transform_assistant = _transform
+
+        async def _stream():
+            yield "partial"
+
+        with pytest.raises(RuntimeError, match="end send failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "partial final"
+    assert entry.status == "error"
+    assert entry.error == {"message": "end send failed"}
+
+
+def test_stream_cancellation_preserves_sent_partial():
+    with session_context(test_session):
+        chat = Chat(id="partial_cancelled", history=False)
+
+        async def _stream():
+            yield "kept"
+            raise asyncio.CancelledError()
+
+        with pytest.raises(asyncio.CancelledError):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "cancelled"
+    assert entry.error is None
+
+
+def test_stream_captures_exchange_before_newer_input():
+    with session_context(test_session):
+        chat = Chat(id="stream_exchange", history=False)
+        chat._record_accepted_user_input(
+            ChatMessage(content="old request", role="user")
+        )
+        old_exchange = chat._transcript.open_exchange_id
+
+        async def _exercise() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="old-stream"
+            )
+            chat._record_accepted_user_input(
+                ChatMessage(content="new request", role="user")
+            )
+            await chat._append_message_chunk(
+                "old response", chunk=True, stream_id="old-stream"
+            )
+            await chat._append_message_chunk(
+                "", chunk="end", stream_id="old-stream"
+            )
+
+        run_async(_exercise)
+
+    stream_entry = chat._transcript.read()[1]
+    assert stream_entry.exchange_id == old_exchange
+    assert chat._transcript.open_exchange_id != old_exchange
+    assert stream_entry.message.content == "old response"
+
+
+def test_second_root_stream_is_rejected():
+    with session_context(test_session):
+        chat = Chat(id="second_stream", history=False)
+
+        async def _exercise() -> None:
+            await chat._append_message_chunk("", chunk="start", stream_id="one")
+            with pytest.raises(RuntimeError, match="second message stream"):
+                await chat._append_message_chunk(
+                    "", chunk="start", stream_id="two"
+                )
+            await chat._append_message_chunk("", chunk="end", stream_id="one")
+
+        run_async(_exercise)
+
+
+def test_clear_and_restore_reject_an_active_stream_without_invalidating_it():
+    with session_context(test_session):
+        chat = Chat(id="clear_during_stream", history=False)
+
+        async def _exercise() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="stream"
+            )
+            with pytest.raises(RuntimeError, match="clear or restore"):
+                await chat.clear_messages()
+            with pytest.raises(RuntimeError, match="clear or restore"):
+                await chat._restore_bookmark_message(
+                    {
+                        "role": "assistant",
+                        "segments": [
+                            {
+                                "content": "restored",
+                                "content_type": "markdown",
+                            }
+                        ],
+                    }
+                )
+            await chat._append_message_chunk(
+                "still active", chunk=True, stream_id="stream"
+            )
+            await chat._append_message_chunk(
+                "", chunk="end", stream_id="stream"
+            )
+
+        run_async(_exercise)
+
+    assert [entry.message.content for entry in chat._transcript.read()] == [
+        "still active"
+    ]
 
 
 def test_thinking_stream_stores_segment_not_tags():
@@ -1734,15 +1985,13 @@ def test_wire_segments_excludes_attachments():
 def test_messages_surfaces_attachments():
     from shiny import reactive
     from shinychat._attachments import Attachment
-    from shinychat._chat_types import ChatMessage, StoredMessage
+    from shinychat._chat_types import ChatMessage
 
     with session_context(test_session):
         chat = Chat(id="chat")
 
-        # `.messages()` reads the client-reported snapshot input, not the
-        # server-side append log, so seed that input directly.
-        reported = (
-            StoredMessage.from_chat_message(
+        run_async(
+            lambda: chat.append_message(
                 ChatMessage(
                     "see attached",
                     role="assistant",
@@ -1752,14 +2001,9 @@ def test_messages_surfaces_attachments():
                         ),
                     ],
                 )
-            ),
-            StoredMessage.from_chat_message(
-                ChatMessage("plain text", role="assistant")
-            ),
+            )
         )
-        # Input values are read-only from application code; `_set()` is the
-        # same mechanism Shiny itself uses to deliver client-reported values.
-        test_session.input[chat.messages_input_id]._set(reported)
+        run_async(lambda: chat.append_message(ChatMessage("plain text")))
 
         with reactive.isolate():
             msgs = chat.messages()

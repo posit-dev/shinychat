@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import os
@@ -18,7 +19,6 @@ from typing import (
     NamedTuple,
     Optional,
     Sequence,
-    Tuple,
     Union,
     cast,
     overload,
@@ -56,7 +56,6 @@ from ._chat_normalize import (
 )
 from ._chat_segments import (
     append_to_segments,
-    copy_segments,
     has_mixed_content_types,
     segments_content,
     segments_deps,
@@ -68,7 +67,6 @@ from ._chat_types import (
     ChatMessage,
     ChatMessageDict,
     ClearAction,
-    ContentSegment,
     GreetingOptions,
     MessagePayload,
     SerializedDep,
@@ -166,13 +164,6 @@ class UserInput(NamedTuple):
 
 
 ChunkOption = Literal["start", "end", True, False]
-
-PendingMessage = Tuple[
-    Any,
-    ChunkOption,
-    Literal["append", "replace"],
-    Union[str, None],
-]
 
 
 class Chat:
@@ -350,14 +341,6 @@ class Chat:
                 on_error = "actual"
 
         self.on_error = on_error
-
-        # Chunked messages get accumulated (using this property) before changing state
-        self._current_stream_segments: list[ContentSegment] = []
-        self._current_stream_id: str | None = None
-        self._pending_messages: list[PendingMessage] = []
-
-        # For tracking message stream state when entering/exiting nested streams
-        self._message_stream_segments_checkpoint: list[ContentSegment] = []
 
         # Keep track of effects so we can destroy them when the chat is destroyed
         self._effects: list["Effect_"] = []
@@ -860,13 +843,9 @@ class Chat:
 
         Note
         ----
-        This reflects the messages the browser has rendered and reported back,
-        so it is *eventually* consistent: it returns an empty tuple until the
-        client's first report, and a message passed to
-        :meth:`~shinychat.Chat.append_message` does not appear here until the
-        browser has rendered it and echoed its snapshot to the server. Read it
-        reactively (e.g. in an `.on_user_submit()` callback) rather than
-        expecting it to update synchronously right after appending.
+        This reflects accepted user input and messages successfully sent by the
+        server. It updates synchronously after accepted input and successful
+        appends; streamed messages are visible as their sent chunks accumulate.
 
         Returns
         -------
@@ -890,15 +869,27 @@ class Chat:
                 "Use your LLM provider (e.g., chatlas, LangChain) to manage conversation context instead."
             )
 
-        messages = self._reported_messages()
+        try:
+            self._transcript_revision()
+        except RuntimeError as error:
+            if str(error) != "No current reactive context":
+                raise
+            from shiny import reactive
 
+            with reactive.isolate():
+                self._transcript_revision()
         res: list[ChatMessageDict] = []
-        for m in messages:
+        for entry in self._transcript.read():
+            m = entry.message
             chat_msg = ChatMessageDict(content=str(m.content), role=m.role)
             if m.html_deps:
                 chat_msg["html_deps"] = m.html_deps
             if m.attachments:
                 chat_msg["attachments"] = m.attachments
+            if entry.status is not None:
+                chat_msg["status"] = entry.status
+            if entry.error is not None:
+                chat_msg["error"] = entry.error
             res.append(chat_msg)
 
         return tuple(res)
@@ -1051,11 +1042,6 @@ class Chat:
         similar) is specified in model's completion method.
         :::
         """
-        # If we're in a stream, queue the message.
-        if self._current_stream_id:
-            self._pending_messages.append((message, False, "append", None))
-            return
-
         msg = normalize_message(message)
         msg = await self._transform_message(msg)
         if msg is None:
@@ -1144,35 +1130,57 @@ class Chat:
         `.message_stream_context()` before the mixed content if you need a clean
         checkpoint to replace back to.
         """
-        # Checkpoint the current stream state so operation="replace" can return to it
-        old_checkpoint = self._message_stream_segments_checkpoint
-        self._message_stream_segments_checkpoint = copy_segments(
-            self._current_stream_segments
-        )
-
-        # No stream currently exists, start one
-        stream_id = self._current_stream_id
+        stream_id = self._transcript.active_stream_id
         is_root_stream = stream_id is None
+        started = False
         if is_root_stream:
             stream_id = _utils.private_random_id()
-            await self._append_message_chunk(
+            started = await self._append_message_chunk(
                 "", chunk="start", stream_id=stream_id
             )
+            if not started:
+                raise RuntimeError("Could not start a message stream.")
+        elif not self._transcript.stream_is_owned_by(asyncio.current_task()):
+            raise RuntimeError(
+                "Cannot start a second message stream while a message stream is active."
+            )
+
+        old_checkpoint = self._transcript.stream_checkpoint(stream_id)
+        self._transcript.set_stream_checkpoint(
+            stream_id, self._transcript.stream_segments(stream_id)
+        )
+        status: Literal["cancelled", "error"] | None = None
+        error: str | None = None
 
         try:
             yield MessageStream(self, stream_id)
+        except asyncio.CancelledError:
+            status = "cancelled"
+            raise
+        except BaseException as e:
+            status = "error"
+            error = str(e)
+            raise
         finally:
-            # Restore the checkpoint
-            self._message_stream_segments_checkpoint = old_checkpoint
+            self._transcript.set_stream_checkpoint(stream_id, old_checkpoint)
 
             # If this was the root stream, end it
-            if is_root_stream:
-                await self._append_message_chunk(
-                    "",
-                    chunk="end",
-                    stream_id=stream_id,
-                )
-                await self._flush_pending_messages()
+            if is_root_stream and started:
+                try:
+                    await self._append_message_chunk(
+                        "",
+                        chunk="end",
+                        stream_id=stream_id,
+                        status=status,
+                        error=error,
+                    )
+                except BaseException as terminal_error:
+                    self._transcript.abort_stream(
+                        stream_id,
+                        status="error",
+                        error=str(terminal_error),
+                    )
+                    raise
 
     async def _append_message_chunk(
         self,
@@ -1182,23 +1190,43 @@ class Chat:
         stream_id: str,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | bool | None = None,
-    ) -> None:
-        # If currently we're in a *different* stream, queue the message chunk
-        if self._current_stream_id and self._current_stream_id != stream_id:
-            self._pending_messages.append(
-                (message, chunk, operation, stream_id)
-            )
-            return
-
-        self._current_stream_id = stream_id
-
+        status: Literal["cancelled", "error"] | None = None,
+        error: str | None = None,
+    ) -> bool:
         # Normalize various message types into a ChatMessage()
         msg = normalize_message_chunk(message)
         chunk_deps = msg.html_deps or []
+        if chunk == "start":
+            if self._needs_transform(msg):
+                msg = await self._transform_message(msg, chunk=chunk)
+                if msg is None:
+                    return False
+            stored = self._as_stored_message(msg)
+            entry = TranscriptEntry(
+                message=stored,
+                icon=_resolve_icon_attr(icon),
+            )
+
+            async def send_start() -> bool:
+                return await self._send_append_message(
+                    message=stored,
+                    chunk=chunk,
+                    operation=operation,
+                    icon=icon,
+                )
+
+            return await self._transcript.start_stream(
+                stream_id=stream_id,
+                entry=entry,
+                owner_task=asyncio.current_task(),
+                send=send_start,
+            )
+
+        current_segments = self._transcript.stream_segments(stream_id)
 
         if operation == "replace":
             if has_mixed_content_types(
-                self._message_stream_segments_checkpoint
+                self._transcript.stream_checkpoint(stream_id)
             ):
                 raise ValueError(
                     "Cannot `.replace()` a stream whose checkpoint spans multiple "
@@ -1207,55 +1235,81 @@ class Chat:
                     "cannot be restored. Open a `.message_stream_context()` before the "
                     "mixed content to get a clean checkpoint, or use `.append()`."
                 )
-            self._current_stream_segments = copy_segments(
-                self._message_stream_segments_checkpoint
-            )
+            current_segments = self._transcript.stream_checkpoint(stream_id)
 
         append_to_segments(
-            self._current_stream_segments,
+            current_segments,
             msg.content,
             msg.content_type,
             chunk_deps or None,
         )
 
-        stream_content = segments_content(self._current_stream_segments)
+        stream_content = segments_content(current_segments)
 
         if operation == "replace":
             msg.content = stream_content
 
-        try:
-            if self._needs_transform(msg):
-                # Transforming may change the meaning of msg.content to be a *replace*
-                # not *append*. So, update msg.content and the operation accordingly.
-                chunk_content = msg.content
-                msg.content = stream_content
-                operation = "replace"
-                msg = await self._transform_message(
-                    msg, chunk=chunk, chunk_content=chunk_content
-                )
-                # Act like nothing happened if transformed to None
-                if msg is None:
-                    return
-                if chunk == "end":
-                    stream_deps = segments_deps(self._current_stream_segments)
-                    serialized_deps = self._serialize_html_deps(stream_deps)
-                    # _transform_message returns a single-segment StoredMessage, so all stream
-                    # deps belong on segments[0].
-                    if serialized_deps and msg.segments:
-                        msg.segments[0].html_deps = serialized_deps
+        if self._needs_transform(msg):
+            # Transforming may change the meaning of msg.content to be a *replace*
+            # not *append*. So, update msg.content and the operation accordingly.
+            chunk_content = msg.content
+            msg.content = stream_content
+            operation = "replace"
+            msg = await self._transform_message(
+                msg, chunk=chunk, chunk_content=chunk_content
+            )
+            # Act like nothing happened if transformed to None
+            if msg is None:
+                return False
+            if chunk == "end":
+                stream_deps = segments_deps(current_segments)
+                serialized_deps = self._serialize_html_deps(stream_deps)
+                # _transform_message returns a single-segment StoredMessage, so all stream
+                # deps belong on segments[0].
+                if serialized_deps and msg.segments:
+                    msg.segments[0].html_deps = serialized_deps
 
-            # Send the message to the client
-            await self._send_append_message(
-                message=msg,
-                chunk=chunk,
+        stored = self._as_stored_message(msg)
+
+        async def send_transition() -> bool:
+            return await self._send_append_message(
+                message=stored,
+                chunk=True,
                 operation=operation,
                 icon=icon,
             )
-        finally:
-            if chunk == "end":
-                self._current_stream_id = None
-                self._current_stream_segments = []
-                self._message_stream_segments_checkpoint = []
+
+        if chunk == "end":
+            # A terminal transformed message is a separate observable chunk
+            # send. Commit it before sending chunk_end so a failed close cannot
+            # erase content that reached the browser.
+            if any(segment.content for segment in stored.segments):
+                await self._transcript.transition_stream(
+                    stream_id=stream_id,
+                    source_segments=current_segments,
+                    message=stored,
+                    operation=operation,
+                    send=send_transition,
+                )
+
+            async def send_end() -> bool:
+                await self._send_action({"type": "chunk_end"})
+                return True
+
+            return await self._transcript.end_stream(
+                stream_id=stream_id,
+                status=status,
+                error=error,
+                send=send_end,
+            )
+
+        return await self._transcript.transition_stream(
+            stream_id=stream_id,
+            source_segments=current_segments,
+            message=stored,
+            operation=operation,
+            send=send_transition,
+        )
 
     async def append_message_stream(
         self,
@@ -1462,33 +1516,44 @@ class Chat:
         id = _utils.private_random_id()
 
         empty = ChatMessageDict(content="", role="assistant")
-        await self._append_message_chunk(
-            empty, chunk="start", stream_id=id, icon=icon
-        )
-
+        started = False
+        status: Literal["cancelled", "error"] | None = None
+        error: str | None = None
         try:
+            started = await self._append_message_chunk(
+                empty, chunk="start", stream_id=id, icon=icon
+            )
+            if not started:
+                return ""
             async for msg in message:
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
             # The string returned to the caller mirrors StoredMessage.content
             # (thinking wrapped in <thinking> tags), not segments_content's bare join.
-            return "".join(str(s) for s in self._current_stream_segments)
+            return "".join(str(s) for s in self._transcript.stream_segments(id))
+        except asyncio.CancelledError:
+            status = "cancelled"
+            raise
+        except BaseException as e:
+            status = "error"
+            error = str(e)
+            raise
         finally:
-            await self._append_message_chunk(empty, chunk="end", stream_id=id)
-            await self._flush_pending_messages()
-
-    async def _flush_pending_messages(self):
-        pending = self._pending_messages
-        self._pending_messages = []
-        for msg, chunk, operation, stream_id in pending:
-            if chunk is False:
-                await self.append_message(msg)
-            else:
-                await self._append_message_chunk(
-                    msg,
-                    chunk=chunk,
-                    operation=operation,
-                    stream_id=cast(str, stream_id),
-                )
+            if started:
+                try:
+                    await self._append_message_chunk(
+                        empty,
+                        chunk="end",
+                        stream_id=id,
+                        status=status,
+                        error=error,
+                    )
+                except BaseException as terminal_error:
+                    self._transcript.abort_stream(
+                        id,
+                        status="error",
+                        error=str(terminal_error),
+                    )
+                    raise
 
     # Send a message to the UI
     async def _send_append_message(
@@ -1567,6 +1632,7 @@ class Chat:
         return dumps
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
+        self._transcript.assert_no_active_stream()
         try:
             stored = StoredMessage.model_validate(message_dict)
         except ValidationError as e:
@@ -1869,6 +1935,7 @@ class Chat:
             react to the request to generate a new one via
             :meth:`~shinychat.Chat.set_greeting`.
         """
+        self._transcript.assert_no_active_stream()
         action: ClearAction = {"type": "clear"}
         if greeting:
             self._greeting_content = None
