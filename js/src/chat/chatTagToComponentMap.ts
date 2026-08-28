@@ -1,20 +1,14 @@
 import type { ComponentType } from "react"
-import { ToolRequestBridge } from "./ToolRequestBridge"
-import { ToolResultBridge } from "./ToolResultBridge"
 import { Aside } from "./Aside"
 import { AsideGroup } from "./AsideGroup"
 import { EscapedIsland } from "../markdown/EscapedIsland"
 
-// Complete tool elements are routed from structured wire blocks before
-// Markdown rendering. These bridges are fallback-only for incomplete or
-// otherwise unrouted elements in TRUSTED (html-typed or server-authored)
-// content. Keep this map limited to fields with truthful leaf-card behavior:
-// grouping and value-preview describe routed presentation, while
-// custom-display deliberately renders nothing until the complete router path
-// can preserve its standalone payload semantics.
+// Trusted (html-typed or server-authored) content resolves custom element
+// tags through this map. Tool requests and results are now routed exclusively
+// from structured wire blocks (tool_request / tool_result) before Markdown
+// rendering, so they no longer appear here. The remaining entries cover
+// aside grouping, whose trusted-path behavior is still markup-driven.
 export const chatTagToComponentMap: Record<string, ComponentType<unknown>> = {
-  "shiny-tool-request": ToolRequestBridge as ComponentType<unknown>,
-  "shiny-tool-result": ToolResultBridge as ComponentType<unknown>,
   "shiny-aside": Aside as ComponentType<unknown>,
   "shiny-aside-group": AsideGroup as ComponentType<unknown>,
 }

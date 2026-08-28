@@ -38,50 +38,6 @@ describe("MarkdownContent (pure)", () => {
     expect(container.textContent).toContain("tail")
   })
 
-  it("renders React-backed tool tags from html content", () => {
-    const { container } = render(
-      <MarkdownContent
-        content={
-          '<shiny-tool-request data-shinychat-react request-id="req-html" tool-name="test" arguments="{}"></shiny-tool-request>'
-        }
-        contentType="html"
-        tagToComponentMap={chatTagToComponentMap}
-      />,
-    )
-
-    expect(container.querySelector(".shiny-tool-card")).not.toBeNull()
-  })
-
-  it("renders an ordinary tool result through the fallback bridge", () => {
-    const { container } = render(
-      <MarkdownContent
-        content={
-          '<shiny-tool-result request-id="req-html-result" tool-name="test" value="done" value-type="text"></shiny-tool-result>'
-        }
-        contentType="html"
-        tagToComponentMap={chatTagToComponentMap}
-      />,
-    )
-
-    expect(container.querySelector(".shiny-tool-card")).not.toBeNull()
-    expect(container.textContent).toContain("done")
-  })
-
-  it("renders no card for custom-display through the fallback bridge", () => {
-    const { container } = render(
-      <MarkdownContent
-        content={
-          '<shiny-tool-result request-id="req-custom" tool-name="test" value="&lt;p&gt;custom&lt;/p&gt;" value-type="html" custom-display></shiny-tool-result>'
-        }
-        contentType="html"
-        tagToComponentMap={chatTagToComponentMap}
-      />,
-    )
-
-    expect(container.querySelector(".shiny-tool-card")).toBeNull()
-    expect(container.textContent).not.toContain("custom")
-  })
-
   it("groups a <shiny-aside> tag in html content into an aside pill", () => {
     const { container } = render(
       <MarkdownContent
@@ -183,24 +139,6 @@ describe("MarkdownContent (pure)", () => {
 
     expect(container.querySelector("shiny-tool-result")).not.toBeNull()
     expect(container.querySelector(".shiny-tool-card")).toBeNull()
-  })
-
-  it("renders tool tags as top-level React components (server splits content)", () => {
-    // The server now splits HTML islands around data-shinychat-react elements,
-    // so tool tags arrive as top-level elements (not wrapped in an HTML island).
-    const content =
-      '<shiny-tool-request data-shinychat-react request-id="req-1" tool-name="test" arguments="{}"></shiny-tool-request>'
-
-    const { container } = render(
-      <MarkdownContent
-        content={content}
-        contentType="markdown"
-        tagToComponentMap={chatTagToComponentMap}
-      />,
-    )
-
-    // The tool request bridge renders .shiny-tool-card
-    expect(container.querySelector(".shiny-tool-card")).not.toBeNull()
   })
 
   it("shows streaming dot when streaming=true", () => {

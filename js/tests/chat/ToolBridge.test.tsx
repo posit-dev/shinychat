@@ -100,9 +100,11 @@ describe("Tool component bridge rendering", () => {
           role: "assistant",
           segments: [
             {
-              content:
-                '<shiny-tool-request data-shinychat-react request-id="req-2" tool-name="get_weather" arguments="{}"></shiny-tool-request>',
-              content_type: "html",
+              type: "tool_request",
+              version: 1,
+              request_id: "req-2",
+              tool_name: "get_weather",
+              arguments: "{}",
             },
           ],
         },
@@ -117,9 +119,13 @@ describe("Tool component bridge rendering", () => {
           role: "assistant",
           segments: [
             {
-              content:
-                '<shiny-tool-result data-shinychat-react request-id="req-2" tool-name="get_weather" status="success" value="Sunny, 72°F" value-type="text"></shiny-tool-result>',
-              content_type: "html",
+              type: "tool_result",
+              version: 1,
+              request_id: "req-2",
+              tool_name: "get_weather",
+              status: "success",
+              value: "Sunny, 72°F",
+              value_type: "text",
             },
           ],
         },
@@ -581,9 +587,16 @@ describe("Tool component bridge rendering", () => {
           role: "assistant",
           segments: [
             {
-              content:
-                '<shiny-tool-result data-shinychat-react request-id="req-empty" tool-name="get_weather" status="success" value="" value-type="text" show-request full-screen expanded></shiny-tool-result>',
-              content_type: "html",
+              type: "tool_result",
+              version: 1,
+              request_id: "req-empty",
+              tool_name: "get_weather",
+              status: "success",
+              value: "",
+              value_type: "text",
+              show_request: true,
+              full_screen: true,
+              expanded: true,
             },
           ],
         },
