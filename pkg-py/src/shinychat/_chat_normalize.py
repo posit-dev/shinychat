@@ -1,13 +1,19 @@
 from __future__ import annotations
 
-import json
 import sys
 from functools import singledispatch
 from typing import TYPE_CHECKING, Any, TypeGuard
 
 from htmltools import HTML, HTMLDependency, Tag, Tagifiable, TagList
 
-from ._chat_types import ChatMessage, StructuredBlock
+from ._chat_types import (
+    ChatMessage,
+    StructuredBlock,
+    WebFetchBlock,
+    WebSearchBlock,
+    WebSearchResultsBlock,
+    WebSearchSource,
+)
 
 if TYPE_CHECKING:
     from chatlas.types import ContentToolResult
@@ -311,13 +317,16 @@ try:
         def _(message: ContentToolRequestSearch):
             if tool_display_override() == "none":
                 return ChatMessage(content="")
-            return ChatMessage(
-                content=Tag(
-                    "shiny-web-search",
-                    data_shinychat_react=True,
-                    query=message.query,
-                )
-            )
+            # The structured `web_search` envelope, not tagified
+            # `<shiny-web-search>` markup: the envelope (not markup scanned
+            # out of the text channel) is what the client turns into trusted
+            # web-activity UI.
+            block: WebSearchBlock = {
+                "type": "web_search",
+                "version": 1,
+                "query": message.query,
+            }
+            return ChatMessage(content="", blocks=[block])
 
         @message_content_chunk.register
         def _(chunk: ContentToolRequestSearch):
@@ -327,20 +336,21 @@ try:
         def _(message: ContentToolResponseSearch):
             if tool_display_override() == "none":
                 return ChatMessage(content="")
-            sources = [
-                {
-                    "url": s.url,
-                    "title": s.title,
-                }
-                for s in message.sources
-            ]
-            return ChatMessage(
-                content=Tag(
-                    "shiny-web-search-results",
-                    data_shinychat_react=True,
-                    sources=json.dumps(sources),
-                )
-            )
+            # Sources ride as a real JSON array on the block, not a
+            # stringified attribute; `title` is omitted when chatlas didn't
+            # report one.
+            sources: list[WebSearchSource] = []
+            for s in message.sources:
+                source: WebSearchSource = {"url": s.url}
+                if s.title is not None:
+                    source["title"] = s.title
+                sources.append(source)
+            block: WebSearchResultsBlock = {
+                "type": "web_search_results",
+                "version": 1,
+                "sources": sources,
+            }
+            return ChatMessage(content="", blocks=[block])
 
         @message_content_chunk.register
         def _(chunk: ContentToolResponseSearch):
@@ -358,14 +368,16 @@ try:
         def _(message: ContentToolResponseFetch):
             if tool_display_override() == "none":
                 return ChatMessage(content="")
-            return ChatMessage(
-                content=Tag(
-                    "shiny-web-fetch",
-                    data_shinychat_react=True,
-                    url=message.url,
-                    status=message.status,
-                )
-            )
+            block: WebFetchBlock = {
+                "type": "web_fetch",
+                "version": 1,
+                "url": message.url,
+            }
+            # chatlas reports `status` as None when the provider didn't
+            # supply one; the key is then simply absent on the wire.
+            if message.status is not None:
+                block["status"] = message.status
+            return ChatMessage(content="", blocks=[block])
 
         @message_content_chunk.register
         def _(chunk: ContentToolResponseFetch):

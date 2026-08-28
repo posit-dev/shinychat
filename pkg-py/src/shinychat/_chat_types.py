@@ -83,10 +83,69 @@ class ToolResultBlock(TypedDict):
     footer: NotRequired[str]  # HTML -> RawHTML
 
 
+class WebSearchSource(TypedDict):
+    """
+    One source in a `web_search_results` block (mirrors `WebSearchSource` in
+    `js/src/transport/types.ts`): a real JSON array entry, not a stringified
+    attribute. `url` is required; `title`/`domain` are display hints (the
+    client derives a domain from the URL when absent).
+    """
+
+    url: str
+    title: NotRequired[str]
+    domain: NotRequired[str]
+
+
+class WebSearchBlock(TypedDict):
+    """
+    A typed, server-authored web-search envelope (mirrors `WebSearchBlock`
+    in `js/src/transport/types.ts`). The envelope itself is the trust signal:
+    only the server can construct these blocks. Consecutive web_* blocks
+    group client-side into one `web_activity` block on arrival.
+    """
+
+    type: Literal["web_search"]
+    version: Literal[1]
+    query: str
+
+
+class WebSearchResultsBlock(TypedDict):
+    """
+    The results paired with a preceding `web_search` (mirrors
+    `WebSearchResultsBlock` in `js/src/transport/types.ts`): the client
+    attaches the sources to the earliest still-pending search in the
+    activity (the adjacency pairing `WebActivity.parseItems` uses on the
+    markup path).
+    """
+
+    type: Literal["web_search_results"]
+    version: Literal[1]
+    sources: list[WebSearchSource]
+
+
+class WebFetchBlock(TypedDict):
+    """
+    A typed, server-authored web-fetch envelope (mirrors `WebFetchBlock` in
+    `js/src/transport/types.ts`).
+    """
+
+    type: Literal["web_fetch"]
+    version: Literal[1]
+    url: str
+    # Absent when the server didn't report one (chatlas allows None).
+    status: NotRequired[Literal["success", "error"]]
+
+
 # The union of typed blocks carried in `MessagePayload.segments` (outside a
 # stream) or via a `block_insert` action (mid-stream). The union grows per
 # the design.
-StructuredBlock = Union[ToolRequestBlock, ToolResultBlock]
+StructuredBlock = Union[
+    ToolRequestBlock,
+    ToolResultBlock,
+    WebSearchBlock,
+    WebSearchResultsBlock,
+    WebFetchBlock,
+]
 
 # One entry of `MessagePayload.segments`: a string segment
 # (`{content, content_type}`) or a structured block (discriminated by the
