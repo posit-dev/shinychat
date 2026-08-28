@@ -144,6 +144,18 @@ single-session atom and starts only after every Python consumer has moved.
   caller intent. `shinychat#ch09` deletes that queue. Legacy browser snapshots,
   bookmarks, and history UI records have no message-icon field, so restore
   emits and records no per-message icon until the later consumer cutovers.
+- **Escalation disposition and handoff (2026-08-27; before implementation
+  resumes):** a batched review of `shinychat#ch09` found the concurrent-start
+  admission race, final-chunk loss on `chunk_end` failure, missing owner
+  revision/history bridge (with the consumer follow-up in
+  `shinychat#dy7g`), active-stream clear/restore invalidation, complete
+  attribution, fixture gaps, and type gaps. The coordinator's disposition is
+  **PATCH the existing transcript owner, not replace it**: these are missing
+  enforcement or coverage of the already agreed transaction and attribution
+  contract, and require no new mechanism. Switch this mechanism from
+  iterative review to batched range review. Preserve all of that follow-up
+  scope for the resumed implementation and treat this entry as the handoff
+  before implementation resumes.
 - **Next:** `shinychat#ch09` adds transactional stream ownership and
   attribution, deletes the legacy pending-message queue, and switches the
   public projection to the owner.
