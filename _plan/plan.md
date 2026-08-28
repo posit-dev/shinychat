@@ -1,7 +1,8 @@
 # Plan: exchange-tree conversation history
 
 **Status:** committed · Phase 0 complete, Phase 1 in review, Phase 2 complete,
-Phase 3 mechanism agreed; Q2 selects split store layout · 2026-08-28
+Phase 3 mechanism agreed; Q2 selects single-document atomic layout after
+split rejection · 2026-08-28
 **Kata:** epic `shinychat#6d0d` · Phase 1 `shinychat#g49a` · Phase 2
 `shinychat#kjyt` · Phase 3 `shinychat#qf2r` (the `kata` CLI issue tracker).
 All abbreviated Kata IDs below belong to the `shinychat` project;
@@ -416,25 +417,30 @@ correct writes and reasonable reads. Q2 compared two candidate layouts:
 The benchmark must be realistic to count: 140k+-token transcripts with many
 tool calls and several forks, measured on the hot write path. This is a
 testable, quantifiable decision — do not pre-optimize for a problem the
-benchmark may show doesn't exist. Either outcome avoids the
-staging/rollback/tombstone invariant family: the tree write is atomic-whole
-under both, and under (b) tree edits adjust pointers without flushing
-orphaned message/state data — orphans are accepted, never reconciled. Store
-formats stay independent per language (already decided); the shared
-contract is fixture matrices over the record shape, not bytes.
+benchmark may show doesn't exist. The mandatory selection gate is atomic
+coherence under killed or failed writes, including interrupted immutable
+revision writes. Latency cannot select a candidate that fails correctness or
+requires unbenchmarked tail-repair/recovery machinery. Store formats stay
+independent per language (already decided); the shared contract is fixture
+matrices over the record shape, not bytes.
 
-**Q2 resolved (2026-08-28): choose the split layout.** The deterministic v2
-workload had 153,348 message/state-content tokens, 200 exchanges, five
-forks, and the implicit root (206 nodes total). With three warm-ups and 25
-measured repetitions on APFS, every hot-write category cleared the threshold:
-the smallest median improvement was 6.90x, and the smallest p95 improvement
-was 2.50x. The 100-stream-update path was 723.305 ms median / 750.249 ms p95
-for a single document and 103.388 ms median / 299.660 ms p95 for split.
-Cold full reads were 3.861 ms versus 5.315 ms (1.38x slower for split), within
-the 2x limit. Split therefore passes Q2's >=2x median, >=1.5x p95, and <=2x
-cold-read threshold. The full raw samples, byte counts,
-environment, and failure-injection evidence are in
-`phase-3-mechanism.md`'s Q2 result.
+**Q2 resolved (2026-08-28): choose single-document; reject split.** The
+deterministic v2 workload had 153,348 message/state-content tokens, 200
+exchanges, five forks, and the implicit root (206 nodes total). With three
+warm-ups and 25 measured repetitions on APFS, split met the latency thresholds:
+the smallest median improvement was 6.90x, the smallest p95 improvement was
+2.50x, and cold reads were 1.38x slower. Its 100-stream-update path was
+723.305 ms median / 750.249 ms p95 for single versus 103.388 ms median /
+299.660 ms p95 for split.
+
+Split nevertheless failed the mandatory coherent-recovery prerequisite:
+after an interrupted immutable JSONL append, a later append can concatenate
+with the unterminated tail and make the newly referenced revision unreadable.
+Repairing or isolating that tail would be unbenchmarked recovery machinery,
+so the latency result cannot select split. Single-document atomic
+temp-file-plus-`os.replace()` therefore wins Q2; its failure stages expose old
+before replacement and new after replacement. The concise split measurements
+and escalation evidence are retained in `phase-3-mechanism.md`.
 
 ### 3.11 Conversation management and client-side work
 
@@ -523,13 +529,12 @@ signed off by the driver before code (process.md §3.4).
   Node schema,
   choke-point capture, baseline snapshot at first input, delta/snapshot
   turn capture, eager writes + lazy close, statuses, incremental atomic
-  saves. Benchmark the two store layouts (Q2) before keeping any
-  append-only machinery. Keystone commit first: one flag-guarded path
+  saves. Q2 selected single-document atomic persistence after rejecting split
+  recovery. Keystone commit first: one flag-guarded path
   from submit → captured node → stored record → restored display, however
   ugly.
-  See `phase-3-mechanism.md`; its store-layout section remains blocked on
-  Q2's required benchmark, and no feature code starts before that result is
-  recorded and the phase note is agreed.
+  See `phase-3-mechanism.md`; no feature code starts before the recorded Q2
+  decision and updated phase note are reviewed.
   *Done when:* kill the process mid-stream at any point and reload — the
   record contains the user's input, all specs sent so far, and a coherent
   status; the worked example in §3.1 round-trips through the store.
@@ -564,7 +569,7 @@ signed off by the driver before code (process.md §3.4).
 | # | Question | Cheapest check |
 |---|---|---|
 | Q1 | Which init-window guard: input-disabled-until-restore vs defer-one-submission? | Prototype both in a demo app; measure restore-decision latency (a day). |
-| Q2 | Resolved 2026-08-28: split store layout (§3.10). | 153,348-token deterministic workload; 25 repetitions after three warm-ups. Every hot write cleared the threshold (minimum 6.90x median, 2.50x p95); cold reads cost 1.38x. |
+| Q2 | Resolved 2026-08-28: single-document atomic layout; split rejected on coherent-recovery failure (§3.10). | 153,348-token deterministic workload; 25 repetitions after three warm-ups. Split met latency thresholds (minimum 6.90x median, 2.50x p95; cold reads 1.38x slower) but failed interrupted-append recovery. |
 | Q3 | Does the *client wire* need node ids, or does `main`'s positional edit/navigate addressing survive adversarial use? (Record nodes have ids regardless.) | Port the predecessor branch's edit/navigate Playwright tests; upgrade the wire narrowly only on red. |
 | Q4 | Provider version skew tolerance? | Save turns under current ellmer/chatlas, replay under the adjacent release (half a day). |
 

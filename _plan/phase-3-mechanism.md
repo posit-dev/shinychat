@@ -1,6 +1,7 @@
 # Phase 3 mechanism: exchange record, capture, and store (Python)
 
-**Status:** agreed 2026-08-28; Q2 selects split store layout
+**Status:** agreed 2026-08-28; Q2 selects single-document atomic layout after
+split rejection
 **Phase:** plan.md §4, Phase 3
 **Kata:** parent `shinychat#qf2r` under epic `shinychat#6d0d`
 **Review base:** `175d9acffc0f7e31e65fbeb3c3ba079f20f00972`
@@ -244,8 +245,8 @@ Errored and cancelled streams capture the client exactly as it exists.
 ## Persistence and Q2 benchmark
 
 `ConversationStore` retains `list`, `get`, `put`, and `delete`; custom stores
-continue to receive a complete logical `ConversationRecord`. The file-store
-layout is the only open mechanism decision.
+continue to receive a complete logical `ConversationRecord`. Q2 resolves the
+file-store layout below as single-document atomic replacement.
 
 Benchmark both candidates using the same deterministic v2 record:
 
@@ -270,12 +271,14 @@ Candidates:
 
 Selection rule: choose single-document unless split improves median hot-write
 latency by at least 2× **and** p95 by at least 1.5× without worsening cold read
-by more than 2×. This deliberately charges the split layout for its additional
-write-state, rollback, and recovery machinery. Record raw results, environment,
-and the selected layout here, then update plan.md Q2. Delete the losing
-prototype before feature code.
+by more than 2× **and** proves coherent old-or-new visibility for killed or
+failed writes, including interrupted immutable-revision writes. This
+correctness prerequisite is mandatory; latency cannot select a candidate that
+fails it or requires unbenchmarked tail-repair/recovery machinery. Record raw
+results, environment, and the selected layout here, then update plan.md Q2.
+Delete all disposable benchmark prototypes before feature code.
 
-### Q2 result (2026-08-28): select split
+### Q2 result (2026-08-28): select single-document; reject split
 
 The disposable benchmark used one deterministic v2 logical record with 206
 nodes: the implicit root, 200 mainline exchanges, and five fork siblings.
@@ -309,23 +312,6 @@ ms mean for split (2.65x faster for split, including process setup).
 | Cold full-record read | 3.861 / 4.954 | 5.315 / 6.412 | n/a |
 | Process-restart pointer write | 69.541 / 88.842 | 67.956 / 129.266 | 3,863,042 / 185,466 |
 
-Raw measured samples in milliseconds, in run order:
-
-```text
-single accepted-input: 7.186, 6.913, 6.967, 7.092, 6.963, 7.226, 7.405, 7.413, 7.292, 7.151, 7.127, 6.995, 7.044, 6.839, 7.133, 7.006, 7.209, 7.196, 7.176, 7.371, 7.063, 7.853, 7.212, 7.068, 7.930
-split accepted-input: 0.917, 1.011, 0.917, 0.985, 0.910, 0.933, 1.088, 1.023, 1.065, 1.102, 0.903, 0.948, 0.959, 1.040, 0.943, 0.944, 0.989, 0.915, 0.946, 0.933, 0.922, 0.955, 1.085, 0.937, 0.948
-single 100 stream updates: 714.188, 724.149, 719.005, 721.495, 713.765, 711.784, 715.800, 721.510, 750.249, 715.394, 732.219, 723.193, 723.305, 716.873, 728.164, 727.319, 726.167, 724.237, 761.695, 729.836, 732.705, 719.967, 717.903, 732.315, 729.416
-split 100 stream updates: 107.228, 107.363, 103.860, 102.225, 107.248, 299.660, 104.123, 99.381, 99.746, 102.162, 228.319, 99.295, 99.203, 119.877, 100.116, 98.939, 317.416, 103.388, 102.050, 107.139, 100.427, 278.090, 105.535, 99.128, 101.353
-single terminal capture: 6.848, 7.025, 7.389, 8.626, 7.200, 7.307, 7.341, 7.254, 7.184, 7.084, 6.961, 6.781, 7.052, 7.278, 7.331, 6.714, 7.681, 7.406, 7.128, 7.142, 7.446, 6.802, 7.162, 7.359, 7.296
-split terminal capture: 1.283, 1.026, 1.062, 1.067, 1.018, 1.033, 1.395, 1.033, 1.010, 1.043, 1.040, 1.060, 1.270, 1.020, 1.215, 1.000, 1.079, 1.200, 1.040, 1.016, 1.018, 1.008, 1.132, 1.491, 1.177
-single pointer update: 7.155, 6.930, 7.140, 7.199, 7.326, 7.081, 7.291, 6.961, 7.049, 6.963, 7.086, 6.964, 6.940, 7.119, 7.952, 7.322, 8.037, 7.456, 7.719, 8.289, 9.626, 7.258, 7.417, 7.150, 7.195
-split pointer update: 0.911, 0.936, 0.932, 0.884, 0.895, 0.910, 0.894, 0.896, 1.008, 0.887, 0.892, 1.218, 0.987, 0.889, 0.978, 1.045, 0.891, 1.167, 0.882, 0.920, 1.278, 0.902, 0.901, 0.892, 0.948
-single cold read: 3.362, 3.603, 4.107, 3.456, 3.749, 4.048, 3.884, 4.028, 4.292, 3.336, 4.087, 5.605, 3.353, 3.595, 4.092, 3.909, 3.685, 4.088, 3.454, 4.954, 3.739, 3.456, 3.568, 3.944, 3.861
-split cold read: 6.140, 5.100, 6.412, 5.082, 5.247, 5.600, 5.260, 5.073, 5.249, 5.490, 5.437, 4.798, 5.640, 5.095, 5.543, 4.846, 5.328, 5.241, 5.315, 4.877, 5.525, 4.976, 5.615, 5.458, 6.539
-single restart write: 59.155, 57.391, 74.233, 69.541, 78.252, 71.863, 59.861, 82.612, 69.885, 88.842, 62.447, 71.454, 71.538, 64.970, 94.444, 87.140, 77.725, 63.999, 88.157, 57.026, 56.259, 69.320, 57.577, 56.358, 60.851
-split restart write: 54.386, 129.266, 73.926, 69.447, 65.610, 64.280, 66.784, 68.908, 67.469, 71.139, 62.734, 67.956, 70.067, 73.579, 68.209, 232.134, 64.021, 69.228, 64.396, 63.896, 63.190, 58.702, 55.127, 68.760, 70.615
-```
-
 Environment: macOS 26.5.2 (25F84), Darwin 25.5.0 arm64, Python 3.10.21,
 APFS on `/System/Volumes/Data`, 4 KiB filesystem blocks, and 93 GiB free at
 measurement time. No benchmark commands ran concurrently.
@@ -344,9 +330,9 @@ record. This is process-kill evidence, not a power-loss/fsync claim:
 | Split: kill after state-revision append | old |
 | Split: kill after atomic tree replacement | new |
 
-#### Partial-append follow-up (2026-08-28; roborev job 1028)
+#### Split result and escalation (2026-08-28; roborev jobs 1028 and 1029)
 
-The accepted review fix recreated a narrow disposable harness inline with
+The partial-append check recreated a narrow disposable harness inline with
 Python's standard library. Each temporary store started with complete
 `old-message` and `old-state` JSONL revisions and an atomic tree document
 referencing both. A child process appended only a prefix of one new immutable
@@ -370,29 +356,36 @@ The child processes exited from `SIGKILL` as expected. All temporary
 directories and the inline harness were removed after the run; no benchmark
 or failure harness was retained.
 
-Review dispositions for roborev job `1028`: the partial-append interruption
-finding is **accepted** and covered by the follow-up above. The prototype
-retention finding is **declined** because `shinychat#98jz` requires all
-disposable benchmark code to be deleted; the raw samples, workload
-description, environment, and these procedures are the durable audit
-evidence. This remains a documentation/evidence fix only.
+The partial-prefix cases all exposed the old record, but roborev job `1029`
+found that appending a later revision after an unterminated tail can
+concatenate records and make the newly referenced revision unreadable. This
+is the third finding against split persistence. Under the escalation valve,
+the orchestrator chose **REPLACE**: no tail-repair or split-recovery
+prototype will be built, and split is rejected regardless of its latency.
 
-Every hot-write category clears the required threshold. The smallest
-improvements are 6.90x median for terminal state capture
-(`7.200 / 1.043`) and 2.50x p95 for 100 stream updates
-(`750.249 / 299.660`); the 100-stream-update median is also 7.00x
-(`723.305 / 103.388`). Cold reads cost `5.315 / 3.861 = 1.38x`.
-Split therefore clears the >=2x median and >=1.5x p95 improvements without
-exceeding the <=2x cold-read limit, so it is selected. The process-restart
-write is also marginally faster at median for split but has a worse p95; that
-non-selection metric is recorded here rather than hidden.
+Review dispositions: job `1028`'s partial-append finding was accepted and
+verified by the disposable check above. Its prototype-retention finding was
+declined because `shinychat#98jz` requires all disposable benchmark code to be
+deleted. Job `1029`'s follow-on recovery finding triggered the 3/3 valve and
+the split replacement decision. The concise split performance evidence
+remains above as a rejected result; its full raw samples were disposable.
+
+Split had the required hot-write latency improvements and a 1.38x cold-read
+penalty; the summary table above preserves those rejected performance
+measurements.
+
+Single-document therefore wins Q2. Its temporary-file write exposes the old
+record before `os.replace()` and the new record after it, without an append
+tail or a separate recovery protocol. Both disposable prototypes were
+deleted after the measurements; no production store code was added.
 
 ## Keystone and stacked work
 
 After the gate and Q2 sign-off, create stacked child issues in this order:
 
 1. **Gate + benchmark (complete).** Instruments and shared fixtures passed in
-   `shinychat#ztvz`; Q2 selected the split layout in `shinychat#98jz`. Both
+   `shinychat#ztvz`; Q2 selected the single-document layout in
+   `shinychat#98jz` after split failed the recovery prerequisite. Both
    disposable store prototypes are deleted. This was documentation/test-
    instrument work, not feature hardening.
 2. **Keystone v2 slice.** Land the v2 schema and one flag-guarded production
@@ -428,12 +421,13 @@ child or the phase.
 ## Current handoff
 
 - **Landed:** Phase 2 is closed; the Phase 3 mechanism is approved; gate items
-  1-4 passed in `shinychat#ztvz`; Q2 in `shinychat#98jz` selected the split
-  layout with recorded measurements and complete-append plus partial-append
-  failure-injection evidence.
+  1-4 passed in `shinychat#ztvz`; Q2 in `shinychat#98jz` selected the
+  single-document layout after split failed the mandatory recovery
+  prerequisite; rejected split performance evidence remains recorded.
 - **Next:** human review of `shinychat#98jz`, then create the keystone v2
   slice child for `shinychat#qf2r`.
-- **Provisional:** no Phase 3 mechanism decision remains open. The split
-  layout is the selected file-store direction; its production schema and
-  implementation remain for the keystone task. The review-fix harness was
-  disposable and is not retained.
+- **Provisional:** no Phase 3 mechanism decision remains open. The
+  single-document atomic temp-file plus `os.replace()` layout is selected;
+  its production schema and implementation remain for the keystone task.
+  Split recovery/tail-repair work is explicitly rejected and must not be
+  restarted without a new design decision.
