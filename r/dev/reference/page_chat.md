@@ -32,7 +32,7 @@ page_chat(
   messages = NULL,
   greeting = NULL,
   placeholder = "Enter a message...",
-  width = "min(680px, 100%)",
+  width = "min(clamp(680px, 50vw, 760px), 100%)",
   icon_assistant = NULL,
   icon_send = NULL,
   enable_cancel = NULL,

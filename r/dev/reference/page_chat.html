@@ -93,7 +93,7 @@ composes <code>page_chat()</code> with <code><a href="chat_app.html">chat_server
 <span>  messages <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  greeting <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  placeholder <span class="op">=</span> <span class="st">"Enter a message..."</span>,</span>
-<span>  width <span class="op">=</span> <span class="st">"min(680px, 100%)"</span>,</span>
+<span>  width <span class="op">=</span> <span class="st">"min(clamp(680px, 50vw, 760px), 100%)"</span>,</span>
 <span>  icon_assistant <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  icon_send <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  enable_cancel <span class="op">=</span> <span class="cn">NULL</span>,</span>

@@ -4,6 +4,11 @@
 
 ### New features and improvements
 
+- [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+  now uses a wider default content width on large displays while
+  preserving its existing width on smaller windows.
+  ([\#364](https://github.com/posit-dev/shinychat/issues/364))
+
 - Added
   [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
   for full-window chat pages with persistent chat navigation, responsive
