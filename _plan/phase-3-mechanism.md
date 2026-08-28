@@ -525,9 +525,13 @@ child or the phase.
   capture-eligible initial sends and user submission. No buffer, provisional
   record or merge, queue, timer, reconciliation, or second owner is added.
   Commit `65a9e8cb` restores safe no-op behavior and regression coverage for
-  complete and streamed pre-partition sends. Job `1044` is closed stale on
-  that fix; job `1046` accepted a coverage addition and confirmed that the
-  later unresolved restore window remains Phase 5 scope.
+  complete and streamed pre-partition sends; `642d85aa` adds accepted-input
+  coverage. Commits `a754f645` and `d73e6f3c` record the precise Phase 3/5
+  boundary. Jobs `1044` and `1046` are closed stale on their fixes; fresh job
+  `1047` found no issues. Ruff, Pyright, and focused history/transcript tests
+  pass. The full Python gate passes its 191 Playwright tests and has only the
+  known unrelated `shinychat#4z6p` Markdown MIME failure (690 passed,
+  1 skipped, 1 failed) in the non-browser suite.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
