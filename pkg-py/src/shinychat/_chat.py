@@ -530,10 +530,9 @@ class Chat:
                     else None
                 )
                 # Older chatlas / non-chatlas clients lack this binding;
-                # their telemetry simply goes without the ID. Setting the ID
-                # as a scalar on the client assumes one active stream per
-                # client: overlapping submissions could overwrite it
-                # mid-stream and cross-label the earlier stream's spans.
+                # their telemetry simply goes without the ID. The scalar
+                # handoff assumes one active stream per client; overlapping
+                # submissions could cross-label spans.
                 client = chat_client.value
                 if hasattr(client, "conversation_id"):
                     client.conversation_id = conversation_id

@@ -274,9 +274,8 @@ class HistoryController:
         """
         Reactive read of the active conversation ID: ``None`` for an empty
         draft, otherwise the ID the eventual ``ConversationRecord`` will (or
-        already does) carry. Allocated at the first user submission (before
-        model work) for ``chat_app()`` apps, or at first save for standalone
-        history use.
+        already does) carry. Allocated at first user submission for
+        ``chat_app()`` apps, or at first save for standalone history use.
 
         Like any reactive read, this requires a reactive context;
         non-reactive callers must wrap it in ``shiny.reactive.isolate()``.

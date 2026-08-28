@@ -603,14 +603,13 @@ chat_server <- function(
 
       # Resolve the active conversation ID before model work begins and set
       # it on the client as a scalar: later history switches, new-chat
-      # actions, or client swaps must not relabel in-flight work. This
-      # assumes one active stream per client; overlapping submissions could
-      # overwrite the scalar mid-stream and cross-label spans.
+      # actions, or client swaps must not relabel in-flight work. Assumes
+      # one active stream per client; overlapping submissions could
+      # cross-label spans.
       hist_ctrl <- history_controller()
       if (!is.null(hist_ctrl)) {
-        # Surface failures (e.g. url-mode send_navigate in
-        # on_active_id_change) through the standard error path rather than
-        # letting them escape the observer, matching Python.
+        # Match Python: surface failures (e.g. url-mode send_navigate)
+        # through the standard error path instead of escaping the observer.
         tryCatch(
           set_client_conversation_id(client, hist_ctrl$ensure_conversation_id()),
           error = function(e) {
