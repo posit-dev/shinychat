@@ -1,10 +1,7 @@
 import { memo, useState } from "react"
-import type { ComponentType } from "react"
-import type { Element, ElementContent } from "hast"
 import { externalLinkAttributes } from "../markdown/plugins/rehypeExternalLinks"
 import { isSafeUrl } from "../markdown/urlSanitize"
 import {
-  normalizeSources,
   type WebActivityItem,
   type WebActivitySearchItem,
   type WebActivitySource,
@@ -15,78 +12,6 @@ import { domainFromUrl } from "./domain"
 
 interface WebActivityProps {
   items: WebActivityItem[]
-}
-
-function prop(el: Element, name: string): string | undefined {
-  const v = el.properties?.[name]
-  return typeof v === "string" ? v : undefined
-}
-
-function parseSources(json?: string): WebActivitySource[] {
-  if (!json) return []
-  try {
-    return normalizeSources(JSON.parse(json))
-  } catch {
-    return []
-  }
-}
-
-/**
- * Parse a <shiny-web-activity> HAST subtree (the markup path) into
- * structured items. Search↔results pairing uses a pending-search queue: a
- * results element attaches its sources to the earliest search still lacking
- * them, or becomes a query-less search item when none is pending. The
- * reducer's applyWebBlock re-expresses this same pairing for web_* blocks.
- *
- * The wrapper's `citedSources` property (attached by
- * rehypeAttachCitedSources when a burst has no provider result list) is the
- * markup-path form of the answer-citation fallback; the structured path
- * carries it as `cited_sources` on the web_search block instead.
- */
-function parseItems(node?: Element): WebActivityItem[] {
-  if (!node) return []
-  const citedSources = parseSources(prop(node, "citedSources"))
-  const kids = (node.children ?? []).filter(
-    (c: ElementContent): c is Element => c.type === "element",
-  )
-  const items: WebActivityItem[] = []
-  const pendingSearches: WebActivitySearchItem[] = []
-  for (const el of kids) {
-    if (el.tagName === "shiny-web-search") {
-      const search: WebActivitySearchItem = {
-        kind: "search",
-        query: prop(el, "query") ?? "",
-        sources: null,
-        citedSources: [],
-      }
-      items.push(search)
-      pendingSearches.push(search)
-    } else if (el.tagName === "shiny-web-search-results") {
-      const sources = parseSources(prop(el, "sources"))
-      const search = pendingSearches.shift()
-      if (search) {
-        search.sources = sources
-      } else {
-        items.push({
-          kind: "search",
-          query: "",
-          sources,
-          citedSources: [],
-        })
-      }
-    } else if (el.tagName === "shiny-web-fetch") {
-      const url = prop(el, "url")
-      if (url) items.push({ kind: "fetch", url, status: prop(el, "status") })
-    }
-  }
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index]!
-    if (item.kind === "search" && item.sources === null) {
-      item.citedSources = citedSources
-      break
-    }
-  }
-  return items
 }
 
 function domainOf(s: WebActivitySource): string {
@@ -102,8 +27,7 @@ function faviconUrl(domain: string): string {
 /**
  * Renders one web-activity burst (searches + fetches) as a collapsible
  * timeline. Takes structured items — built by the reducer from web_* wire
- * blocks, or by WebActivityBridge from a <shiny-web-activity> HAST subtree
- * on the markup path.
+ * blocks.
  */
 export const WebActivity = memo(function WebActivity({
   items,
@@ -236,13 +160,3 @@ export const WebActivity = memo(function WebActivity({
     </div>
   )
 })
-
-/**
- * Component-map bridge for the markup path: a <shiny-web-activity> element
- * (grouped by rehypeGroupWebActivity out of server-authored markup, e.g. R
- * until its Phase 3 port) parses into the structured items WebActivity
- * renders.
- */
-export const WebActivityBridge = (({ node }: { node?: Element }) => (
-  <WebActivity items={parseItems(node)} />
-)) as ComponentType<unknown>

@@ -115,9 +115,11 @@ describe("ChatInputState / ChatToolState isolation", () => {
           role: "assistant",
           segments: [
             {
-              content:
-                '<shiny-tool-request request-id="r2" tool-name="bar" arguments="{}"></shiny-tool-request>',
-              content_type: "html",
+              type: "tool_request",
+              version: 1,
+              request_id: "r2",
+              tool_name: "bar",
+              arguments: "{}",
             },
           ],
         },

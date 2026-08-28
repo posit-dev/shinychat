@@ -420,58 +420,10 @@ describe("structured loops survive regrouping", () => {
     expectToolCard(container, "72F and sunny")
   })
 
-  it("SET_TOOL_GROUPING keeps both calls of a mixed markup+structured loop", () => {
-    // A markup-derived result and a structured block merge into ONE loop on
-    // arrival. That loop is mixed: it carries a raw content slice (the
-    // markup) AND a call with `structured: true` provenance. Rerouting must
-    // not unwind the whole loop into its content slice — that would re-parse
-    // the markup call but silently drop the structured one.
-    const markup =
-      '<shiny-tool-result data-shinychat-react request-id="call-markup" tool-name="get_weather" status="success" value="rain later" value-type="text"></shiny-tool-result>'
-    let state = chatReducer(makeState(), {
-      type: "message",
-      message: {
-        role: "assistant",
-        segments: [
-          { content: markup, content_type: "html" },
-          toolResultBlock({ request_id: "call-structured" }),
-        ],
-      },
-    })
-
-    // On arrival: one merged loop holding both calls, markup slice intact.
-    let loop = state.messages[0]!.blocks[0]!
-    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual(["tool_loop"])
-    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
-    expect(loop.content).toContain("<shiny-tool-result")
-    let calls = loop.groups.flatMap((g) => g.calls)
-    expect(calls.map((c) => c.requestId)).toEqual([
-      "call-markup",
-      "call-structured",
-    ])
-    expect(calls[1]!.structured).toBe(true)
-
-    state = chatReducer(state, { type: "SET_TOOL_GROUPING", grouping: "all" })
-
-    // After the regroup: still one loop, and BOTH calls survive — the
-    // markup-derived one re-parsed from the content slice and the
-    // structured-derived one re-grouped from its stored call data.
-    const blocks = state.messages[0]!.blocks
-    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
-    loop = blocks[0]!
-    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
-    calls = loop.groups.flatMap((g) => g.calls)
-    expect(calls.map((c) => c.requestId)).toEqual([
-      "call-markup",
-      "call-structured",
-    ])
-    expect(
-      calls.find((c) => c.requestId === "call-structured")!.structured,
-    ).toBe(true)
-
-    const { container } = renderMessages(state.messages)
-    expectToolCard(container, "72F and sunny")
-  })
+  // Deleted: "SET_TOOL_GROUPING keeps both calls of a mixed markup+structured
+  // loop" — tested markup routing (html-typed segment with tool markup
+  // merging into a structured tool loop). That machinery is intentionally
+  // gone (kata#h6g2, D6); structured blocks are the sole trusted channel.
 })
 
 describe("structured tool_request block via message.segments", () => {
@@ -714,8 +666,8 @@ describe("structured web_* blocks via message.segments", () => {
     ])
 
     // The results block attached its sources to the still-pending search;
-    // the fetch appended a standalone item (parseItems' adjacency pairing,
-    // re-expressed over structured arrival).
+    // the fetch appended a standalone item (adjacency pairing re-expressed
+    // over structured arrival in web-activity-model.ts).
     const activity = blocks[1]!
     if (activity.type !== "web_activity")
       throw new Error("expected web_activity")
@@ -751,8 +703,8 @@ describe("structured web_* blocks via message.segments", () => {
         role: "assistant",
         segments: [
           webSearchBlock(),
-          // rehypeGroupWebActivity tolerates whitespace text nodes between
-          // carriers; the structured path drops the whitespace-only block.
+          // The grouping logic tolerates whitespace-only string segments
+          // between carriers; the structured path drops the whitespace.
           { content: " \n", content_type: "markdown" },
           webSearchResultsBlock(),
           webFetchBlock(),

@@ -16,9 +16,7 @@ import { codeRanges } from "./markdown-code-ranges"
 import {
   appendCallToToolLoop,
   regroupToolLoop,
-  routeToolBlocks,
   structuredBlockToLoop,
-  structuredCallsToLoop,
   supersededRequestIds,
 } from "./tool-model"
 import type { ToolLoopBlock, ToolGrouping } from "./tool-model"
@@ -34,7 +32,7 @@ import type {
 
 export {
   deriveToolGroupIdentity,
-  routeToolBlocks,
+  structuredBlockToLoop,
   supersededRequestIds,
 } from "./tool-model"
 export type {
@@ -271,7 +269,7 @@ function messagePayloadToData(
     if (isStructuredSegment(seg)) {
       // Structured blocks are server-authored and arrive render-ready:
       // convert to a tool loop / web activity on arrival. Tool UI is never
-      // legitimate in a user message (mirrors routeToolBlocks' role gate);
+      // legitimate in a user message (mirrors the role gate);
       // web activity is likewise assistant-only.
       if (msg.role === "user") {
         console.warn("Ignoring structured block in a user-role message")
@@ -279,7 +277,7 @@ function messagePayloadToData(
       }
       if (isWebActivityWireBlock(seg)) {
         // Consecutive web_* blocks group into ONE web_activity block on
-        // arrival (re-expressing rehypeGroupWebActivity over blocks).
+        // arrival (the structured form of web-activity grouping).
         const webBlock = asWebActivityWireBlock(seg)
         if (webBlock) rawBlocks = appendWebActivityBlock(rawBlocks, webBlock)
         continue
@@ -296,14 +294,29 @@ function messagePayloadToData(
         continue
       }
       const loop = structuredBlockToLoop(seg, grouping)
-      if (loop) rawBlocks.push(loop)
+      if (loop) {
+        // Merge into an adjacent trailing tool loop when one exists (one
+        // agentic loop), re-deriving groups from the combined calls —
+        // mirrors the block_insert path.
+        const tail = rawBlocks[rawBlocks.length - 1]
+        const call = loop.groups[0]?.calls[0]
+        if (tail?.type === "tool_loop" && call) {
+          rawBlocks[rawBlocks.length - 1] = appendCallToToolLoop(
+            tail,
+            call,
+            grouping,
+          )
+        } else {
+          rawBlocks.push(loop)
+        }
+      }
       continue
     }
     rawBlocks.push(...splitThinkingBlocks(seg.content, seg.content_type))
   }
-  // routeToolBlocks only scans content blocks; tool_loop blocks pass through
-  // (adjacent ones coalesce in mergeAdjacentLoops).
-  const blocks = routeToolBlocks(rawBlocks, grouping, msg.role)
+  // Blocks are already built from structured segments; content segments don't
+  // contain tool markers that need routing anymore.
+  const blocks = rawBlocks
   const attachments: AttachmentPayload[] = msg.attachments ?? []
   const contentOnly = contentFromBlocks(blocks)
 
@@ -1457,46 +1470,17 @@ export function buildMessagesSnapshot(state: ChatState): SnapshotMessage[] {
 /**
  * Re-route one settled message at a new grouping mode.
  *
- * A `tool_loop` carries the raw content slice it was parsed from, so unwinding
- * it back into a content block recovers the router's own input — no reparse of
- * the message, no server round-trip. Thinking blocks pass straight through
- * unchanged — they render in place at every mode and break the run either way.
+ * All loops are structured-derived (content === ""), so re-grouping just
+ * calls regroupToolLoop on each tool_loop block. Thinking blocks pass straight
+ * through unchanged — they render in place at every mode.
  */
 function rerouteMessage(
   msg: ChatMessageData,
   grouping: ToolGrouping,
 ): ChatMessageData {
   if (!msg.blocks.some((b) => b.type === "tool_loop")) return msg
-  const raw: MessageBlock[] = msg.blocks.flatMap((b): MessageBlock[] => {
-    if (b.type !== "tool_loop") return [b]
-    const structuredCalls = b.groups
-      .flatMap((g) => g.calls)
-      .filter((c) => c.structured === true)
-    if (structuredCalls.length === 0) {
-      // A purely markup-derived loop unwinds back into a content block — the
-      // router's own input — so routeToolBlocks re-parses it below. An empty
-      // content slice has nothing to re-parse; re-group the held calls.
-      if (b.content === "") return [regroupToolLoop(b, grouping)]
-      return [
-        { type: "content", content: b.content, contentType: b.contentType },
-      ]
-    }
-    // A structured-derived loop carries no raw content slice to unwind and
-    // re-parse; re-derive its groups from the calls it already holds.
-    if (b.content === "") return [regroupToolLoop(b, grouping)]
-    // A mixed loop (a markup-derived slice merged with structured calls)
-    // splits: the markup re-parses below and the structured calls survive as
-    // their own loop. mergeAdjacentLoops recombines them downstream.
-    return [
-      { type: "content", content: b.content, contentType: b.contentType },
-      structuredCallsToLoop(structuredCalls, grouping),
-    ]
-  })
-  const blocks = routeToolBlocks(
-    raw,
-    grouping,
-    msg.role,
-    msg.insideFence ?? false,
+  const blocks = msg.blocks.map((b) =>
+    b.type === "tool_loop" ? regroupToolLoop(b, grouping) : b,
   )
   return { ...msg, blocks, content: contentFromBlocks(blocks) }
 }
@@ -1526,20 +1510,9 @@ function finalizeMessage(
     }
   }
 
-  // `msg.insideFence` is the streaming tag state machine's own flag, mirrored
-  // onto the message as chunks arrive. Still set here means the stream ended
-  // (cancelled, truncated, errored) with a code fence open, so keep shielding
-  // what follows that fence: a documented tool-tag example must not pop into
-  // live tool UI at the instant of finalization. Messages that never streamed
-  // — preloaded/restored transcripts — never have the flag, so they keep
-  // routing real tool elements even past a stray ``` (see `codeRanges`).
-  const blocks = routeToolBlocks(
-    rebuilt,
-    grouping,
-    msg.role,
-    msg.insideFence ?? false,
-  )
-  const content = contentFromBlocks(blocks)
+  // Blocks pass through unchanged (thinking finalization + splitThinkingBlocks
+  // stays). No tool routing needed — blocks are already structured.
+  const content = contentFromBlocks(rebuilt)
 
-  return { ...msg, content, streaming: false, blocks }
+  return { ...msg, content, streaming: false, blocks: rebuilt }
 }

@@ -4,15 +4,9 @@ import type {
   ToolRequestBlock,
   ToolResultBlock,
 } from "../transport/types"
-import type { ChatMessageData, MessageBlock } from "./state"
+import type { ChatMessageData } from "./state"
 import { uuid } from "../utils/uuid"
-import {
-  containsToolMarker,
-  isRoutableContentType,
-  parseToolEvents,
-  type ToolEvent,
-  type ToolResultOpenStyle,
-} from "./tool-protocol"
+import type { ToolResultOpenStyle } from "./tool-protocol"
 
 /** How a loop's tool calls are aggregated in the condensed view. */
 export type ToolGrouping = "none" | "tool" | "all"
@@ -115,75 +109,6 @@ export interface ToolGroupIdentity {
   icon?: string
   count: number
   segments: ToolCallSegment[]
-}
-
-function applyEvent(
-  item: ToolCallItem,
-  event: ToolEvent,
-  sourceBlock: number,
-): void {
-  if (event.toolName) item.toolName = event.toolName
-  if (event.grouping !== undefined) item.grouping = event.grouping
-  if (event.intent !== undefined) item.intent = event.intent
-
-  if (event.kind === "request") {
-    if (event.definitionTitle !== undefined) {
-      item.definitionTitle = event.definitionTitle
-    }
-    if (event.definitionIcon !== undefined) {
-      item.definitionIcon = event.definitionIcon
-    }
-    if (event.arguments !== undefined) item.arguments = event.arguments
-    return
-  }
-
-  if (event.title !== undefined) item.title = event.title
-  if (event.icon !== undefined) item.icon = event.icon
-  item.status = event.status
-  if (event.label !== undefined) item.label = event.label
-  if (event.valuePreview !== undefined) item.valuePreview = event.valuePreview
-  if (event.value !== undefined) item.value = event.value
-  if (event.valueType !== undefined) item.valueType = event.valueType
-  if (event.requestCall !== undefined) item.requestCall = event.requestCall
-  if (event.footer !== undefined) item.footer = event.footer
-  item.showRequest = event.showRequest
-  item.fullScreen = event.fullScreen
-  item.openStyle = event.openStyle
-  item.expanded = event.expanded
-  item.customDisplay = event.customDisplay
-  item.resolveIndex = event.start
-  item.resolveBlock = sourceBlock
-}
-
-/**
- * Pair normalized protocol events into lifecycle calls. Events without a
- * request identifier receive stable loop-local identities; those ids
- * intentionally never enter transcript supersession.
- */
-export function pairToolEvents(
-  events: ToolEvent[],
-  anonScope: string,
-  sourceBlock: number,
-): ToolCallItem[] {
-  const order: string[] = []
-  const byId = new Map<string, ToolCallItem>()
-  events.forEach((event, i) => {
-    const requestId = event.requestId
-    const id = requestId || `__anon-${anonScope}-${i}`
-    let item = byId.get(id)
-    if (!item) {
-      item = {
-        requestId,
-        localId: id,
-        toolName: event.toolName,
-        status: "running",
-      }
-      byId.set(id, item)
-      order.push(id)
-    }
-    applyEvent(item, event, sourceBlock)
-  })
-  return order.map((id) => byId.get(id)!)
 }
 
 // An aggregated set keeps the static definition title so the header stays
@@ -300,146 +225,18 @@ function groupCalls(
   })
 }
 
-function makeToolLoopBlock(
-  events: ToolEvent[],
-  content: string,
-  contentType: ContentType,
-  grouping: ToolGrouping,
-  anonScope: string,
-  sourceBlock: number,
-): ToolLoopBlock {
-  const calls = pairToolEvents(events, anonScope, sourceBlock)
-  return {
-    type: "tool_loop",
-    content,
-    contentType,
-    grouping,
-    groups: groupCalls(calls, grouping),
-  }
-}
-
-/**
- * Pure content router: split content blocks around runs of tool elements,
- * emitting ToolLoopBlocks. It is replayable for history restore and rerenders.
- */
-export function routeToolBlocks(
-  blocks: MessageBlock[],
-  grouping: ToolGrouping,
-  // "system" is reachable from the server even though the client message
-  // model only names "user" | "assistant".
-  role: string,
-  shieldOpenFence = false,
-): MessageBlock[] {
-  // Tool elements are server-authored. In a user message, routing would bypass
-  // MarkdownContent's escaping and sanitization and allow typed spoofing.
-  if (role === "user") return blocks
-
-  const out: MessageBlock[] = []
-
-  blocks.forEach((block, blockIndex) => {
-    if (
-      block.type !== "content" ||
-      !isRoutableContentType(block.contentType) ||
-      !containsToolMarker(block.content)
-    ) {
-      out.push(block)
-      return
-    }
-    const events = parseToolEvents(
-      block.content,
-      block.contentType,
-      shieldOpenFence,
-    )
-    if (events.length === 0) {
-      out.push(block)
-      return
-    }
-
-    const contentType = block.contentType
-    let cursor = 0
-    let loopStart = -1
-    let loopEvents: ToolEvent[] = []
-
-    const flush = () => {
-      if (loopEvents.length === 0) return
-      out.push(
-        makeToolLoopBlock(
-          loopEvents,
-          block.content.slice(loopStart, cursor),
-          contentType,
-          grouping,
-          `${blockIndex}:${loopStart}`,
-          blockIndex,
-        ),
-      )
-      loopEvents = []
-      loopStart = -1
-    }
-
-    for (const event of events) {
-      const between = block.content.slice(cursor, event.start)
-      if (between.trim() !== "") {
-        flush()
-        out.push({ type: "content", content: between, contentType })
-      }
-      if (loopEvents.length === 0) loopStart = event.start
-      loopEvents.push(event)
-      cursor = event.end
-    }
-    flush()
-
-    const tail = block.content.slice(cursor)
-    if (tail.trim() !== "") {
-      out.push({ type: "content", content: tail, contentType })
-    }
-  })
-
-  return mergeAdjacentLoops(out, grouping)
-}
-
-// Coalesce loops that are adjacent and share a content type, so grouping spans
-// the whole run without changing the rendering type of either source block.
-function mergeAdjacentLoops(
-  blocks: MessageBlock[],
-  grouping: ToolGrouping,
-): MessageBlock[] {
-  const out: MessageBlock[] = []
-  for (const block of blocks) {
-    const prev = out[out.length - 1]
-    if (
-      block.type === "tool_loop" &&
-      prev?.type === "tool_loop" &&
-      prev.contentType === block.contentType
-    ) {
-      const calls = [...prev.groups.flatMap((g) => g.calls)]
-      const combinedContent = prev.content + block.content
-      const combinedCalls = calls.concat(block.groups.flatMap((g) => g.calls))
-      out[out.length - 1] = {
-        type: "tool_loop",
-        content: combinedContent,
-        contentType: prev.contentType,
-        grouping,
-        groups: groupCalls(combinedCalls, grouping),
-      }
-    } else {
-      out.push(block)
-    }
-  }
-  return out
-}
-
 /**
  * Convert a structured `tool_request` wire block into a lifecycle call. The
  * envelope is server-authored, so its fields map directly onto the call — no
  * markup parsing, no attribute decoding, no entity decoding. An unpaired
- * request is a running call (pairToolEvents' convention for new request
+ * request is a running call (convention for new request
  * ids); the matching `tool_result` block settles it, and transcript-wide
  * supersession then hides the request row.
  */
 export function toolRequestBlockToCall(block: ToolRequestBlock): ToolCallItem {
   const call: ToolCallItem = {
     requestId: block.request_id,
-    // pairToolEvents' convention: the request id, or a synthetic loop-local
+    // convention: the request id, or a synthetic loop-local
     // id that never enters transcript supersession.
     localId: block.request_id || `__anon-structured-${uuid()}`,
     toolName: block.tool_name,
@@ -466,7 +263,7 @@ export function toolRequestBlockToCall(block: ToolRequestBlock): ToolCallItem {
 export function toolResultBlockToCall(block: ToolResultBlock): ToolCallItem {
   const call: ToolCallItem = {
     requestId: block.request_id,
-    // pairToolEvents' convention: the request id, or a synthetic loop-local
+    // convention: the request id, or a synthetic loop-local
     // id that never enters transcript supersession.
     localId: block.request_id || `__anon-structured-${uuid()}`,
     toolName: block.tool_name,
@@ -535,7 +332,7 @@ export function structuredBlockToLoop(
 
 /**
  * Append a structured-derived call to an existing tool loop, re-deriving the
- * groups from the combined call list (mirrors mergeAdjacentLoops).
+ * groups from the combined call list.
  */
 export function appendCallToToolLoop(
   loop: ToolLoopBlock,
@@ -566,28 +363,8 @@ export function regroupToolLoop(
 }
 
 /**
- * Build a structured-derived loop from calls split out of a mixed
- * markup+structured loop during rerouting: the calls keep their
- * `structured: true` provenance and the loop has no raw content slice.
- */
-export function structuredCallsToLoop(
-  calls: ToolCallItem[],
-  grouping: ToolGrouping,
-): ToolLoopBlock {
-  return {
-    type: "tool_loop",
-    content: "",
-    contentType: "html",
-    grouping,
-    groups: groupCalls(calls, grouping),
-  }
-}
-
-/**
  * The request identifiers whose result has rendered somewhere in the
  * transcript.
- * This mirrors routeToolBlocks' role, content-type, and fence gates so a
- * result refused by the router cannot suppress a request row.
  */
 export function supersededRequestIds(
   messages: ChatMessageData[],
@@ -601,35 +378,16 @@ export function supersededRequestIds(
 
 function collectResultIds(msg: ChatMessageData, into: Set<string>): void {
   if (msg.role === "user") return
-  const shieldOpenFence = msg.streaming === true || msg.insideFence === true
 
   for (const block of msg.blocks) {
-    if (block.type === "tool_loop") {
-      // Keep migrated custom calls here: transcript suppression depends on the
-      // lifecycle model, not on the presentation layer's visible subset.
-      for (const group of block.groups) {
-        for (const call of group.calls) {
-          if (call.status !== "running" && call.requestId) {
-            into.add(call.requestId)
-          }
+    if (block.type !== "tool_loop") continue
+    // Keep migrated custom calls here: transcript suppression depends on the
+    // lifecycle model, not on the presentation layer's visible subset.
+    for (const group of block.groups) {
+      for (const call of group.calls) {
+        if (call.status !== "running" && call.requestId) {
+          into.add(call.requestId)
         }
-      }
-      continue
-    }
-    if (
-      block.type !== "content" ||
-      !isRoutableContentType(block.contentType) ||
-      !containsToolMarker(block.content)
-    ) {
-      continue
-    }
-    for (const event of parseToolEvents(
-      block.content,
-      block.contentType,
-      shieldOpenFence,
-    )) {
-      if (event.kind === "result" && event.requestId) {
-        into.add(event.requestId)
       }
     }
   }

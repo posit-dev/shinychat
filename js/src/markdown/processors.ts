@@ -18,11 +18,9 @@ import {
   rehypeEscapeReservedIslands,
 } from "./plugins/rehypeEscapeReservedIslands"
 import { rehypeUnwrapBlockCEs } from "./plugins/rehypeUnwrapBlockCEs"
-import { rehypeGroupWebActivity } from "./plugins/rehypeGroupWebActivity"
 import { rehypeAttachAsidesToPreviousParagraph } from "./plugins/rehypeAttachAsidesToPreviousParagraph"
 import { rehypeGroupAsides } from "./plugins/rehypeGroupAsides"
 import { rehypeGroundedAsides } from "./plugins/rehypeGroundedAsides"
-import { rehypeAttachCitedSources } from "./plugins/rehypeAttachCitedSources"
 import { rehypeMarkTrailingAsides } from "./plugins/markTrailingAsides"
 import { rehypeLazyContinuation } from "./plugins/rehypeLazyContinuation"
 import {
@@ -59,11 +57,9 @@ function makeMarkdownProcessor(escapeReservedIslands: boolean) {
     .use(rehypeRewriteAsideFromTemplate)
     .use(rehypeLazyContinuation)
     .use(rehypeUnwrapBlockCEs)
-    .use(rehypeGroupWebActivity)
     .use(rehypeAttachAsidesToPreviousParagraph)
     .use(rehypeGroundedAsides)
     .use(rehypeGroupAsides)
-    .use(rehypeAttachCitedSources)
     .use(rehypeMarkTrailingAsides)
     .use(rehypeUncontrolledInputs)
     .use(rehypeAccessibleSuggestions)
@@ -89,11 +85,9 @@ export const trustedMarkdownProcessor = makeMarkdownProcessor(false)
  * parse5-parsed HTML fragment.
  */
 export const htmlProcessor = unified()
-  .use(rehypeGroupWebActivity)
   .use(rehypeAttachAsidesToPreviousParagraph)
   .use(rehypeGroundedAsides)
   .use(rehypeGroupAsides)
-  .use(rehypeAttachCitedSources)
   .use(rehypeMarkTrailingAsides)
   .use(rehypeUncontrolledInputs)
   .use(rehypeAccessibleSuggestions)

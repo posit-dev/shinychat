@@ -9,7 +9,6 @@ import {
 } from "react"
 import {
   deriveToolGroupIdentity,
-  routeToolBlocks,
   type ChatMessageData,
   type MessageBlock,
 } from "./state"
@@ -123,19 +122,10 @@ export const ChatMessage = memo(function ChatMessage({
   const editRef = useRef<TiptapInputHandle>(null)
   const isUser = message.role === "user"
 
-  // Finalized messages already carry routed tool_loop blocks (built in the
-  // reducer). While streaming, tool elements still live in content blocks, so
-  // route them at render time — with the same grouping — so tool calls show
-  // the Tier UI live and don't pop into it on finalize. An incomplete trailing
-  // tool element stays as prose (the router leaves it) until it closes, and so
-  // does everything after a code fence that has not been closed yet.
-  const blocks = useMemo(
-    () =>
-      message.streaming
-        ? routeToolBlocks(message.blocks, toolGrouping, message.role, true)
-        : message.blocks,
-    [message.streaming, message.blocks, message.role, toolGrouping],
-  )
+  // Finalized messages already carry tool_loop blocks (built in the reducer
+  // from structured wire blocks). While streaming, tool elements arrive as
+  // structured block_insert actions, so message.blocks is always current.
+  const blocks = message.blocks
 
   // Tool UI is never legitimate in a user message, so don't hand the bridges to
   // one. Defense in depth alongside the router's role gate: an html-typed user

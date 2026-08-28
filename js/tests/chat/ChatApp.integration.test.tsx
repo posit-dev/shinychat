@@ -189,16 +189,18 @@ describe("ChatApp integration: full message flow", () => {
         type: "chunk_start",
         message: {
           role: "assistant",
-          segments: [
-            {
-              content:
-                '<shiny-web-search query="R 4.5.0 release date"></shiny-web-search>',
-              // html-typed is the server-authored markup channel; the same
-              // element in markdown-typed content is model-authored and
-              // renders as inert text (see spoofed-tool-markup.test.tsx).
-              content_type: "html",
-            },
-          ],
+          segments: [],
+        },
+      })
+    })
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "block_insert",
+        block: {
+          type: "web_search",
+          version: 1,
+          query: "R 4.5.0 release date",
         },
       })
     })
