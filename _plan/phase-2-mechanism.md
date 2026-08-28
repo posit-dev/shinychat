@@ -202,3 +202,21 @@ single-session atom and starts only after every Python consumer has moved.
 - **Next:** `shinychat#ch09` remains open and `needs-review` for independent
   rereview; do not move on to `shinychat#dy7g`.
 - **Provisional decisions:** none.
+- **Final rereview disposition (2026-08-27; Luna rereview; roborev job 1009,
+  `6f6c55ed-0e0f-476b-8080-f176e35b9f91`):** retain the existing decision to
+  patch the owner, not replace it. Required fixes:
+  1. Preserve the original generator exception/cancelled status when terminal cleanup also fails.
+  2. Propagate accumulated dependencies whenever a transformed replacement becomes visible, including after suppressed chunks.
+  3. Eliminate forged report side effects.
+
+  This explicitly supersedes the prior `_reported_messages`
+  compatibility-trigger decision: browser input cannot be a settlement trigger
+  because triggering a save/bookmark is state mutation. Use the existing owner
+  revision/`Chat.messages()` plus checks for terminal assistant state and no
+  active stream; add no new revision, flag, or queue. Move the narrow
+  history/bookmark persistence authority needed for forged-input integrity into
+  `shinychat#ch09`; `shinychat#dy7g` retains deletion/cleanup of the legacy
+  report handler, stale deduplication, `ui_offset`, and remaining consumer
+  migration. Keep `shinychat#ch09` open with `needs-review` and truthful
+  attention metadata. **Next:** finish the `shinychat#ch09` rereview; do not
+  close or advance it.
