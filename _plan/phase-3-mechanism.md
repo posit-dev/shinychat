@@ -558,16 +558,13 @@ child or the phase.
   root capture path with a model-backed client. Job `1050` is closed stale on
   that fix. Fresh job `1051` found that canonical turn fingerprinting sorts
   Python mapping keys before JSON normalization, so valid mixed numeric/string
-  keys can raise `TypeError`. This is the third finding in the turn-baseline
-  mechanism (3/3 escalation valve). **PARKED:** no implementation follows
-  this finding pending the coordinator's patch-or-replace decision. The
-  grounded recommendation is **PATCH**: first perform one unsorted JSON
-  serialize/parse normalization (which makes mapping keys strings), then
-  produce the sorted canonical fingerprint. That keeps the explicitly
-  required full-prefix comparison, generic registry, recorder lock, and
-  state-entry contract intact; replacing the mechanism would discard the
-  Phase 3-required root/delta/snapshot behavior without addressing a global
-  shape defect.
+  keys can raise `TypeError`. This was the third finding in the turn-baseline
+  mechanism (3/3 escalation valve). The coordinator chose **PATCH**:
+  `70c2ce81` first performs unsorted JSON serialize/parse normalization
+  (which makes mapping keys strings), then produces the sorted canonical
+  fingerprint. The patch preserves non-JSON validation failures and adds
+  mixed-key plus stable-prefix regression coverage. Job `1051` is closed
+  stale on the fix; fresh review is pending.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
