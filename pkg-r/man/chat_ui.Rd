@@ -10,7 +10,7 @@ chat_ui(
   messages = NULL,
   greeting = NULL,
   placeholder = "Enter a message...",
-  width = "min(680px, 100\%)",
+  width = "min(clamp(680px, 50vw, 760px), 100\%)",
   height = "auto",
   fill = TRUE,
   icon_assistant = NULL,
