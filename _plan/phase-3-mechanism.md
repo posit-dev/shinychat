@@ -446,6 +446,17 @@ child or the phase.
   settlement saver, so they do not dual-write. Streaming persistence, state
   hooks, baseline capture, full restore/bootstrap behavior, and branching
   remain untouched.
+- **Landed:** `shinychat#19dk` commit `5afc93dc` adds awaited
+  `stream_started`, `stream_updated`, and `stream_finished` recorder events.
+  A private recorder map keeps each stream associated with its opening
+  exchange; stream updates replace one assembled captured message, and
+  terminal `ok`, `error`, or `cancelled` status is atomically persisted.
+  Process-kill/reload coverage uses the production transcript, recorder, and
+  file store after input, start, two updates, and every terminal status.
+  Focused checks passed (Ruff, Pyright, 34 Playwright, 328 non-browser);
+  the full gate passed Ruff, Pyright, and 191 Playwright tests, with only
+  the known unrelated `shinychat#4z6p` MIME failure in the non-browser suite
+  (677 passed, 1 skipped, 1 failed).
 - **Review:** roborev jobs `1033` and `1035` were fixed and closed by commits
   `29e23dce` and `3e4b1385`. Job `1036` was the third v2 record-boundary
   finding, so the escalation valve applied. The approved **PATCH** landed in
@@ -455,10 +466,13 @@ child or the phase.
   without a new mechanism. Job `1037` found an ordinary echoed-slash-command
   error-path gap; `f1a22356` moves capture into the existing handler
   `try`/`except`/`finally`, with a regression test. Fresh roborev job `1038`
-  found no issues.
+  found no issues. `shinychat#19dk` awaits its coherent task-range review;
+  no earlier review finding applies to this new streaming-attribution
+  mechanism.
 - **Provisional:** no Phase 3 mechanism decision remains open. The
   single-document atomic temp-file plus `os.replace()` layout remains
   selected; split recovery/tail-repair remains explicitly rejected. The
   keystone’s narrow replay method deliberately does not enter the
   init/restore window; Phase 4 and Phase 5 retain full restore semantics and
-  its guard decision.
+  its guard decision. Next after a clean `shinychat#19dk` review is the
+  separate state-hooks-and-baseline child; no state capture landed here.
