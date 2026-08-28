@@ -371,6 +371,38 @@ async def test_blocked_clear_rejects_stream_start_and_replace_immediately() -> (
 
 
 @pytest.mark.anyio
+async def test_clear_preserves_input_accepted_while_transport_is_pending() -> (
+    None
+):
+    transcript = ChatTranscript()
+    await transcript.append(
+        entry("assistant", "cleared"),
+        exchange_id=transcript.open_exchange_id,
+        send=sent,
+    )
+    send_started = anyio.Event()
+    release_send = anyio.Event()
+
+    async def blocked_send() -> None:
+        send_started.set()
+        await release_send.wait()
+
+    async def clear() -> None:
+        await transcript.clear(send=blocked_send)
+
+    async with anyio.create_task_group() as task_group:
+        task_group.start_soon(clear)
+        await send_started.wait()
+        exchange_id = transcript.record_accepted_input(
+            entry("user", "accepted").message
+        )
+        release_send.set()
+
+    assert [item.message.content for item in transcript.read()] == ["accepted"]
+    assert transcript.open_exchange_id == exchange_id
+
+
+@pytest.mark.anyio
 async def test_cancelled_complete_append_releases_its_admission() -> None:
     transcript = ChatTranscript()
     send_started = anyio.Event()
@@ -431,6 +463,53 @@ async def test_stream_replacement_commits_mixed_segments_and_nested_checkpoint()
 
 
 @pytest.mark.anyio
+async def test_stream_replacement_merges_serialized_dependencies() -> None:
+    transcript = ChatTranscript()
+    await start_stream(transcript)
+    await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[segment("first")],
+        message=StoredMessage.model_validate(
+            {
+                "role": "assistant",
+                "segments": [
+                    {
+                        "content": "first",
+                        "content_type": "markdown",
+                        "html_deps": [{"name": "first"}],
+                    }
+                ],
+            }
+        ),
+        operation="append",
+        send=sent,
+    )
+    await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[segment("replacement")],
+        message=StoredMessage.model_validate(
+            {
+                "role": "assistant",
+                "segments": [
+                    {
+                        "content": "replacement",
+                        "content_type": "markdown",
+                        "html_deps": [{"name": "second"}],
+                    }
+                ],
+            }
+        ),
+        operation="replace",
+        send=sent,
+    )
+
+    assert transcript.read()[0].message.html_deps == [
+        {"name": "first"},
+        {"name": "second"},
+    ]
+
+
+@pytest.mark.anyio
 async def test_stream_abort_preserves_sent_partial_and_error_status() -> None:
     transcript = ChatTranscript()
     await start_stream(transcript)
@@ -450,6 +529,35 @@ async def test_stream_abort_preserves_sent_partial_and_error_status() -> None:
     assert committed.message.content == "kept"
     assert committed.status == "error"
     assert committed.error == {"message": "terminal send failed"}
+    assert transcript.active_stream_id is None
+
+
+@pytest.mark.anyio
+async def test_unsent_stream_end_closes_with_error_status() -> None:
+    transcript = ChatTranscript()
+    await start_stream(transcript)
+    await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[segment("kept")],
+        message=entry("assistant", "kept").message,
+        operation="append",
+        send=sent,
+    )
+
+    async def unsent() -> bool:
+        return False
+
+    assert not await transcript.end_stream(
+        stream_id="stream",
+        status=None,
+        error=None,
+        send=unsent,
+    )
+
+    committed = transcript.read()[0]
+    assert committed.message.content == "kept"
+    assert committed.status == "error"
+    assert committed.error == {"message": "Could not send message stream end."}
     assert transcript.active_stream_id is None
 
 
