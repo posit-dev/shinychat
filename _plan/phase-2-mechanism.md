@@ -450,3 +450,25 @@ single-session atom and starts only after every Python consumer has moved.
   `feat/history-exchange-tree`, owner `garrick`, and
   `work.attention="ok"`. Keep `shinychat#kjyt` open pending the final phase
   review and closeout.
+
+## Final Phase 2 closeout
+
+- **Approval (2026-08-28):** the final adversarial review approved the Phase 2
+  mechanism and acceptance evidence. The closed children are
+  `shinychat#6s8q`, `shinychat#ch09`, `shinychat#dy7g`, and
+  `shinychat#47fa`. Their recorded evidence includes the independent reviews
+  and closed roborev jobs 1007, 1011, 1012, 1016, 1017, 1019, and 1024.
+- **Acceptance evidence:** the recorded Python gates and focused regressions
+  pass for the landed work; the final full-gate records 191 Playwright passes,
+  654 non-browser passes, and one skip, with the sole non-browser failure the
+  pre-existing unrelated `.md` MIME assertion tracked by
+  `shinychat#4z6p`. Generated minified-bundle whitespace is a normal,
+  nonblocking generated-file diff detail.
+- **Assets and scope:** `js/dist` matches the Python packaged assets, while
+  the R packaged assets remain unchanged from the Phase 2 branch point by
+  intentional Python-only asset decision. Residual unrelated backlog is
+  `shinychat#4z6p` and `shinychat#wsmt`; neither is part of Phase 2.
+- **Phase 3 handoff:** Phase 2 leaves the server-authoritative Python
+  transcript and consumer cutover complete. Phase 3 can introduce exchange
+  records, capture, and storage; it should preserve the Python-only asset
+  boundary until the planned R port in Phase 6.
