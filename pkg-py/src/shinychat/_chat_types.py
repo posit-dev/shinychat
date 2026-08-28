@@ -107,6 +107,10 @@ class WebSearchBlock(TypedDict):
     type: Literal["web_search"]
     version: Literal[1]
     query: str
+    # Answer-citation fallback (the structured re-expression of the markup
+    # path's rehypeAttachCitedSources): sources the answer cited, shown only
+    # while no provider results attach to this search.
+    cited_sources: NotRequired[list[WebSearchSource]]
 
 
 class WebSearchResultsBlock(TypedDict):

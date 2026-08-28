@@ -462,6 +462,11 @@ try:
                 else:
                     parts.append(item.content)
             parts.extend(item.blocks)
+        # Carry cited sources explicitly on the structured web_search block:
+        # the markup path's rehypeAttachCitedSources fallback can't fire for
+        # structured blocks (they never appear as markup siblings of the
+        # citation asides).
+        _attach_cited_sources(message.contents, blocks)
         if all(isinstance(x, ContentToolResult) for x in message.contents):
             role = "assistant"
         else:
@@ -481,6 +486,55 @@ try:
     # shinychat_contents() method for Chat, but Python doesn't.
 except ImportError:
     pass
+
+
+def _attach_cited_sources(
+    contents: list[Any], blocks: list[StructuredBlock]
+) -> None:
+    """
+    Mirror the markup path's rehypeAttachCitedSources fallback for structured
+    web blocks: when a turn produced search requests and answer citations but
+    no provider search results, carry the cited sources on the last
+    `web_search` block so the client can show them while no results attach.
+    Mutates `blocks` in place (the same dicts are referenced by `parts`).
+    """
+    if not any(b["type"] == "web_search" for b in blocks):
+        return
+    # Provider results win; cited sources are only a fallback when the turn
+    # has no results at all (hasSearchResults in rehypeAttachCitedSources).
+    if any(b["type"] == "web_search_results" for b in blocks):
+        return
+    try:
+        from chatlas.types import ContentCitation, WebSource
+    except ImportError:
+        return
+    # Merge by URL (first occurrence wins; a later title fills a missing
+    # one), mirroring mergeSources in rehypeAttachCitedSources.
+    cited: list[WebSearchSource] = []
+    by_url: dict[str, WebSearchSource] = {}
+    for x in contents:
+        if not isinstance(x, ContentCitation) or not isinstance(
+            x.source, WebSource
+        ):
+            continue
+        existing = by_url.get(x.source.url)
+        if existing is not None:
+            if "title" not in existing and x.source.title:
+                existing["title"] = x.source.title
+            continue
+        source: WebSearchSource = {"url": x.source.url}
+        if x.source.title:
+            source["title"] = x.source.title
+        by_url[x.source.url] = source
+        cited.append(source)
+    if not cited:
+        return
+    # parseItems reads the wrapper's citedSources onto the last pending
+    # search; attach to the last web_search block here.
+    for b in reversed(blocks):
+        if b["type"] == "web_search":
+            b["cited_sources"] = cited
+            return
 
 
 def normalize_message(message: Any) -> ChatMessage:

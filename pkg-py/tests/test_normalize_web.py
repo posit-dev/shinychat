@@ -1,5 +1,7 @@
+from chatlas import Turn
 from chatlas.types import (
     ContentCitation,
+    ContentText,
     ContentToolRequestFetch,
     ContentToolRequestSearch,
     ContentToolResponseFetch,
@@ -166,6 +168,83 @@ def test_citation_preserves_cited_quote_without_grounded_span():
 def test_citation_without_source_renders_nothing():
     msg = message_content(ContentCitation())
     assert msg.content == ""
+
+
+def test_turn_search_with_citations_but_no_results_carries_cited_sources():
+    # The structured re-expression of the markup path's
+    # rehypeAttachCitedSources fallback: the turn's citations ride the
+    # web_search block explicitly so the client can show them while no
+    # provider results attach.
+    msg = message_content(
+        Turn(
+            [
+                ContentToolRequestSearch(query="ggplot2 release date"),
+                ContentText(text="According to "),
+                ContentCitation(
+                    source=WebSource(url="https://a.com", title="Alpha")
+                ),
+                ContentCitation(source=WebSource(url="https://b.com")),
+                # Duplicate URL merges; a later title fills a missing one.
+                ContentCitation(
+                    source=WebSource(url="https://b.com", title="Beta")
+                ),
+            ],
+            role="assistant",
+        )
+    )
+    search_blocks = [b for b in msg.blocks if b["type"] == "web_search"]
+    assert search_blocks == [
+        {
+            "type": "web_search",
+            "version": 1,
+            "query": "ggplot2 release date",
+            "cited_sources": [
+                {"url": "https://a.com", "title": "Alpha"},
+                {"url": "https://b.com", "title": "Beta"},
+            ],
+        }
+    ]
+    # The citation asides still render into the content string as before.
+    assert msg.content.count("data-citation") == 3
+
+
+def test_turn_search_with_results_does_not_carry_cited_sources():
+    # Provider results win: cited sources are only a fallback when the turn
+    # has no search results at all.
+    msg = message_content(
+        Turn(
+            [
+                ContentToolRequestSearch(query="ggplot2 release date"),
+                ContentToolResponseSearch(
+                    sources=[WebSource(url="https://results.com")]
+                ),
+                ContentCitation(source=WebSource(url="https://a.com")),
+            ],
+            role="assistant",
+        )
+    )
+    search_blocks = [b for b in msg.blocks if b["type"] == "web_search"]
+    assert search_blocks == [
+        {
+            "type": "web_search",
+            "version": 1,
+            "query": "ggplot2 release date",
+        }
+    ]
+
+
+def test_turn_citations_without_search_stay_markup_only():
+    msg = message_content(
+        Turn(
+            [
+                ContentText(text="Hello "),
+                ContentCitation(source=WebSource(url="https://a.com")),
+            ],
+            role="assistant",
+        )
+    )
+    assert msg.blocks == []
+    assert "data-citation" in msg.content
 
 
 def test_tool_display_none_suppresses(monkeypatch):
