@@ -156,6 +156,15 @@ single-session atom and starts only after every Python consumer has moved.
   iterative review to batched range review. Preserve all of that follow-up
   scope for the resumed implementation and treat this entry as the handoff
   before implementation resumes.
+- **Admission decision (2026-08-27; `shinychat#ch09`):** permit one private
+  fail-fast transcript admission token spanning prepare/send/commit. It
+  rejects overlapping transcript mutations immediately; it never waits,
+  queues, or retries, and it is cleared in `finally`. It creates no client
+  protocol. Async sends yield, so atomic reservation is required to enforce
+  explicit second-output failure and prevent complete append/clear/restore
+  races; accepting races violates the agreed transactional contract. This is
+  the narrowly approved exception to the no-new-flag tripwire, not a response
+  queue.
 - **Next:** `shinychat#ch09` adds transactional stream ownership and
   attribution, deletes the legacy pending-message queue, and switches the
   public projection to the owner.
