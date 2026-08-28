@@ -1,16 +1,7 @@
 """
-Regression app for stale `ui_offset` after restore (see `replay_ui` in
-`_history.py`).
-
-`replay_ui` used to set `self.ui_offset` from
-`len(self.chat._messages_for_bookmark())`, which reads the client-reported
-`${id}_messages` input. That input is only updated by the BROWSER,
-asynchronously, so immediately after `replay_ui`'s synchronous restore loop
-it still holds the PREVIOUS conversation's snapshot. That stale offset then
-clips the next turn's UI out of `extend_record_linear`'s
-`ui_messages[ui_offset:]` slice, so the new node is saved with no `node.ui`
-and later restores fall back to lossy `turn_fallback_markdown` (losing rich
-HTML).
+Regression app for server-owned transcript reconstruction after restore (see
+`replay_ui` in `_history.py`). The next response must rebuild the active path
+from the server transcript without duplicating prior UI or losing rich HTML.
 
 Each assistant reply carries a distinctive rich-UI marker (a styled
 `<div>` with an HTMLDependency-provided border color) keyed to the turn
@@ -66,9 +57,8 @@ class EchoChatClient(chatlas.Chat):
         )
 
         # Rich-UI reply: a styled card carrying an HTMLDependency, distinct
-        # per turn via `user_input`. This is what must survive a *second*
-        # restore intact -- if `ui_offset` goes stale, this card is dropped
-        # from `node.ui` and the restore falls back to plain echoed text.
+        # per turn via `user_input`. This must survive a second restore
+        # intact, alongside the streamed reply that follows it.
         assert self.shinychat_chat is not None
         await self.shinychat_chat.append_message(
             TagList(

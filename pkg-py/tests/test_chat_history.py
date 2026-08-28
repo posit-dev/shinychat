@@ -39,6 +39,28 @@ class _MockSession:
         return True
 
 
+class _HistoryBookmark:
+    def __init__(self) -> None:
+        self.exclude: list[ResolvedId] = []
+        self.store: str | None = None
+        self._restore_context = None
+
+    def on_bookmark(self, fn: object) -> Callable[[], None]:
+        return lambda: None
+
+
+class _HistoryBookmarkSession(_MockSession):
+    def __init__(self) -> None:
+        super().__init__()
+        self.bookmark = _HistoryBookmark()
+
+    def is_stub_session(self) -> bool:
+        return False
+
+    def root_scope(self) -> "_HistoryBookmarkSession":
+        return self
+
+
 def _make_chat(history: "bool | HistoryOptions" = True) -> Chat:
     session = cast(Any, _MockSession())
     with session_context(session):
@@ -68,6 +90,22 @@ def test_history_config_defaults_preserved():
     chat = _make_chat(history=HistoryOptions(store="memory"))
     assert chat.history._store == "memory"
     assert chat.history._restore_mode == "browser"  # default preserved
+
+
+def test_history_excludes_legacy_messages_input_from_bookmarks():
+    session = cast(Any, _HistoryBookmarkSession())
+    with session_context(session):
+        chat = Chat("history_bookmark_exclude", client=MagicMock(), history=False)
+
+    with (
+        session_context(session),
+        patch("shiny.reactive.effect", lambda fn: fn),
+        patch("shinychat._history.as_turns_adapter"),
+        patch("shinychat._history.resolve_store"),
+    ):
+        chat.history._start()
+
+    assert chat.messages_input_id in session.bookmark.exclude
 
 
 def test_on_save_registers_callback():

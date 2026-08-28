@@ -46,9 +46,7 @@ def test_extend_appends_only_new_groups_with_ui_by_role():
         [{"role": "user", "content": "q1"}],
         [{"role": "assistant", "content": "a1"}],
     ]
-    extend_record_linear(
-        rec, groups, [msg("user"), msg("assistant")], ui_offset=0
-    )
+    extend_record_linear(rec, groups, [msg("user"), msg("assistant")])
     assert len(rec.nodes) == 2
     path = rec.path_node_ids()
     assert rec.nodes[path[0]].turns == [{"role": "user", "content": "q1"}]
@@ -60,7 +58,7 @@ def test_extend_appends_only_new_groups_with_ui_by_role():
         [{"role": "assistant", "content": "a2"}],
     ]
     all_msgs = [msg("user"), msg("assistant"), msg("user"), msg("assistant")]
-    extend_record_linear(rec, groups, all_msgs, ui_offset=2)
+    extend_record_linear(rec, groups, all_msgs)
     assert len(rec.nodes) == 4
     assert rec.nodes[rec.path_node_ids()[2]].ui == [msg("user")]
 
@@ -98,7 +96,7 @@ def test_extend_groups_tool_exchange_into_single_node():
     ]
     msgs = [msg("user"), msg("assistant")]
     rec = new_conversation_record(title="t")
-    extend_record_linear(rec, groups, msgs, ui_offset=0)
+    extend_record_linear(rec, groups, msgs)
 
     assert len(rec.nodes) == 2
     path = rec.path_node_ids()
@@ -126,7 +124,7 @@ def test_extend_attaches_extra_assistant_msgs_to_last_node():
         msg("assistant"),
         msg("assistant"),
     ]
-    extend_record_linear(rec, groups, msgs, ui_offset=0)
+    extend_record_linear(rec, groups, msgs)
     path = rec.path_node_ids()
     assert rec.nodes[path[1]].ui == [msg("assistant"), msg("assistant")]
 
@@ -147,14 +145,11 @@ def test_extend_attaches_late_ui_message_when_turn_groups_already_caught_up():
     streamed_ui = msg("assistant")
 
     # Save #1: two new turn groups, two UI messages.
-    extend_record_linear(rec, groups, [user_ui, oob_ui], ui_offset=0)
+    extend_record_linear(rec, groups, [user_ui, oob_ui])
     assert len(rec.nodes) == 2
 
-    # Save #2: same turn groups (streaming added no new turn), but one more
-    # UI message has arrived since the last save.
-    extend_record_linear(
-        rec, groups, [user_ui, oob_ui, streamed_ui], ui_offset=2
-    )
+    # Save #2 reconstructs the active path from the whole server transcript.
+    extend_record_linear(rec, groups, [user_ui, oob_ui, streamed_ui])
 
     all_ui = [
         m
@@ -164,28 +159,54 @@ def test_extend_attaches_late_ui_message_when_turn_groups_already_caught_up():
     assert all_ui == [user_ui, oob_ui, streamed_ui]
 
 
-def test_extend_noop_when_no_new_groups():
+def test_extend_rebuilds_without_duplicate_ui_when_groups_are_unchanged():
     rec = new_conversation_record(title="t")
     groups = [[{"role": "user", "content": "q"}]]
-    extend_record_linear(rec, groups, [msg("user")], ui_offset=0)
-    before = rec.model_dump()
-    extend_record_linear(rec, groups, [msg("user")], ui_offset=1)
-    assert rec.model_dump() == before
+    message = msg("user")
+    extend_record_linear(rec, groups, [message])
+    extend_record_linear(rec, groups, [message])
+    assert rec.nodes[rec.path_node_ids()[0]].ui == [message]
 
 
-def test_extend_with_no_new_ui_messages_leaves_ui_none():
+def test_extend_rebuilds_each_response_under_its_own_user_turn():
+    rec = new_conversation_record(title="t")
+    groups = [
+        [{"role": "user", "content": "q1"}],
+        [{"role": "assistant", "content": "a1"}],
+        [{"role": "user", "content": "q2"}],
+        [{"role": "assistant", "content": "a2"}],
+    ]
+    q1 = msg("user")
+    a1 = msg("assistant")
+    q2 = msg("user")
+    a2 = msg("assistant")
+
+    extend_record_linear(rec, groups, [q1, a1, q2, a2])
+
+    path = rec.path_node_ids()
+    assert rec.nodes[path[0]].ui == [q1]
+    assert rec.nodes[path[1]].ui == [a1]
+    assert rec.nodes[path[2]].ui == [q2]
+    assert rec.nodes[path[3]].ui == [a2]
+
+
+def test_extend_with_ui_messages_reconstructs_them():
     rec = new_conversation_record(title="t")
     groups = [
         [{"role": "user", "content": "q"}],
         [{"role": "assistant", "content": "a"}],
     ]
     msgs = [msg("user"), msg("assistant")]
-    extend_record_linear(rec, groups, msgs, ui_offset=2)
+    extend_record_linear(rec, groups, msgs)
     assert len(rec.nodes) == 2
-    assert all(node.ui is None for node in rec.nodes.values())
+    assert [
+        message
+        for node_id in rec.path_node_ids()
+        for message in (rec.nodes[node_id].ui or [])
+    ] == msgs
 
 
-# --- content-idempotent save guard (unit-level, no Shiny session needed) ----
+# --- response settlement persistence (unit-level, no Shiny session needed) ---
 
 
 class _FakeChat:
@@ -247,11 +268,6 @@ class _RecordingStore(ConversationStore):
         self, partition: ConversationPartition, conv_id: str
     ) -> None:
         pass
-
-
-class _FailingStore(_RecordingStore):
-    async def put(self, partition: ConversationPartition, record: Any) -> None:
-        raise OSError("disk full")
 
 
 class _PartitionCaptureStore(ConversationStore):
@@ -399,7 +415,7 @@ async def test_namespaced_chat_ids_are_distinct_partitions():
 
 
 @pytest.mark.anyio
-async def test_on_response_no_new_data_does_not_overwrite_saved_values():
+async def test_each_response_settlement_captures_current_app_state():
     controller, store = _make_controller()
     accent = "info"
 
@@ -414,8 +430,8 @@ async def test_on_response_no_new_data_does_not_overwrite_saved_values():
     accent = "danger"
     await controller.on_response()
 
-    assert len(store.put_calls) == 1, "no-op flush should not persist again"
-    assert controller.record.values["accent"] == "info"
+    assert len(store.put_calls) == 2
+    assert controller.record.values["accent"] == "danger"
 
 
 class _ReplayFakeChat(_FakeChat):
@@ -475,11 +491,7 @@ async def test_on_response_persists_owner_messages_not_reported_messages():
 
 
 @pytest.mark.anyio
-async def test_replay_rereport_does_not_resave_or_truncate():
-    # Simulates the real restore sequence: on_response() saves a
-    # conversation with per-node UI, replay_ui() restores it (re-rendering
-    # the stored UI into the fake chat), and the client's post-restore
-    # re-report of that identical snapshot must not trigger another save.
+async def test_replay_ui_reconstructs_saved_server_transcript():
     controller, store = _make_controller()
     chat = _ReplayFakeChat()
     controller.chat = chat  # type: ignore[assignment]
@@ -489,7 +501,6 @@ async def test_replay_rereport_does_not_resave_or_truncate():
     assert len(store.put_calls) == 1
     record = controller.record
     assert record is not None
-    saved_node_count = len(record.path_node_ids())
     saved_ui = [
         m
         for nid in record.path_node_ids()
@@ -498,61 +509,6 @@ async def test_replay_rereport_does_not_resave_or_truncate():
 
     await controller.replay_ui(record)
     assert chat.messages == saved_ui, "replay must reconstruct the full UI"
-
-    # Client re-reports the exact restored snapshot (same length/content).
-    await controller.on_response()
-
-    assert len(store.put_calls) == 1, "re-report must not trigger another save"
-    assert controller.record is record, (
-        "restore re-report must not swap records"
-    )
-    assert len(record.path_node_ids()) == saved_node_count, (
-        "restored conversation must not be truncated"
-    )
-
-
-# --- ui_offset atomicity (not advanced when store.put raises) ----------------
-
-
-def _make_failing_controller() -> HistoryController:
-    store = _FailingStore()
-    controller = HistoryController(
-        chat=_FakeChat(),  # type: ignore[arg-type]
-        adapter=_FakeAdapter(),  # type: ignore[arg-type]
-        store=store,  # type: ignore[arg-type]
-        title_fn=None,
-        title_enabled=False,
-        client=None,
-    )
-    controller.partition = part()
-    return controller
-
-
-@pytest.mark.anyio
-async def test_ui_offset_unchanged_when_on_response_store_put_raises():
-    controller = _make_failing_controller()
-    initial_offset = controller.ui_offset
-
-    with pytest.raises(OSError):
-        await controller.on_response()
-
-    assert controller.ui_offset == initial_offset, (
-        "ui_offset must not advance when store.put() raises"
-    )
-
-
-@pytest.mark.anyio
-async def test_ui_offset_unchanged_when_save_current_store_put_raises():
-    controller = _make_failing_controller()
-    controller.record = new_conversation_record(title="t")
-    initial_offset = controller.ui_offset
-
-    with pytest.raises(OSError):
-        await controller.save()
-
-    assert controller.ui_offset == initial_offset, (
-        "ui_offset must not advance when store.put() raises"
-    )
 
 
 @pytest.mark.anyio
@@ -1504,6 +1460,27 @@ async def test_on_response_saved_fires_when_new_data_is_saved():
 
     assert len(fired) == 2
     assert fired[0] == fired[1]  # same conversation id both times
+
+
+@pytest.mark.anyio
+async def test_switch_new_and_delete_do_not_settle_response_for_another_record():
+    controller, store, _chat = _make_nav_controller()
+    active = new_conversation_record(title="active")
+    target = new_conversation_record(title="target")
+    store.records[target.id] = target
+    controller.record = active
+    settled: list[str] = []
+
+    async def on_response_saved(record: ConversationRecord) -> None:
+        settled.append(record.id)
+
+    controller.on_response_saved = on_response_saved
+
+    await controller.switch_to(target.id)
+    await controller.new_chat()
+    await controller.delete(active.id)
+
+    assert settled == []
 
 
 @pytest.mark.anyio
