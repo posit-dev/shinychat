@@ -29,7 +29,7 @@ run_stream_capture <- function(result, env = parent.frame()) {
   captured
 }
 
-test_that("custom contents_shinychat() output for a successful tool result is wrapped in <shiny-tool-result>", {
+test_that("custom contents_shinychat() output for a successful tool result is wrapped in a tool_result block", {
   local_shinychat_tool_display(opt = "rich")
 
   SuccessCustomToolResult <- S7::new_class(
@@ -48,20 +48,22 @@ test_that("custom contents_shinychat() output for a successful tool result is wr
   captured <- run_stream_capture(result)
   expect_length(captured, 1)
 
-  html <- as.character(htmltools::as.tags(captured[[1]]))
-
-  expect_match(html, "<shiny-tool-result", fixed = TRUE)
-  expect_match(html, "custom-display", fixed = TRUE)
-  expect_match(html, 'request-id="req-1"', fixed = TRUE)
-  expect_match(html, 'tool-name="get_weather"', fixed = TRUE)
-  expect_match(html, 'value-type="html"', fixed = TRUE)
-  expect_match(html, "my-custom", fixed = TRUE)
-  expect_match(html, "Sunny, 72F", fixed = TRUE)
+  block <- captured[[1]]
+  expect_s3_class(block, "shinychat_block")
+  expect_equal(block$type, "tool_result")
+  expect_equal(block$version, 1L)
+  expect_equal(block$request_id, "req-1")
+  expect_equal(block$tool_name, "get_weather")
+  expect_equal(block$value_type, "html")
+  expect_true(block$custom_display)
+  expect_false(block$show_request)
+  expect_match(block$value, "my-custom", fixed = TRUE)
+  expect_match(block$value, "Sunny, 72F", fixed = TRUE)
+  expect_equal(block$status, "success")
 
   # Fields deliberately absent from the custom-display wrap.
-  expect_no_match(html, "tool-title", fixed = TRUE)
-  expect_no_match(html, "request-call", fixed = TRUE)
-  expect_no_match(html, "show-request", fixed = TRUE)
+  expect_null(block$tool_title)
+  expect_null(block$request_call)
 })
 
 test_that("a character custom result stays markdown rather than becoming raw HTML", {
@@ -87,12 +89,11 @@ test_that("a character custom result stays markdown rather than becoming raw HTM
   captured <- run_stream_capture(result)
   expect_length(captured, 1)
 
-  html <- as.character(htmltools::as.tags(captured[[1]]))
-
-  expect_match(html, "<shiny-tool-result", fixed = TRUE)
-  expect_match(html, "custom-display", fixed = TRUE)
-  expect_match(html, 'value-type="markdown"', fixed = TRUE)
-  expect_no_match(html, 'value-type="html"', fixed = TRUE)
+  block <- captured[[1]]
+  expect_s3_class(block, "shinychat_block")
+  expect_equal(block$value_type, "markdown")
+  expect_equal(block$value, "**Sunny**, 72F")
+  expect_true(block$custom_display)
 })
 
 test_that("an HTML() custom result is still marked as html", {
@@ -118,10 +119,10 @@ test_that("an HTML() custom result is still marked as html", {
   captured <- run_stream_capture(result)
   expect_length(captured, 1)
 
-  html <- as.character(htmltools::as.tags(captured[[1]]))
-
-  expect_match(html, 'value-type="html"', fixed = TRUE)
-  expect_match(html, "my-custom", fixed = TRUE)
+  block <- captured[[1]]
+  expect_s3_class(block, "shinychat_block")
+  expect_equal(block$value_type, "html")
+  expect_match(block$value, "my-custom", fixed = TRUE)
 })
 
 test_that("a failed custom tool call renders like a successful one", {
@@ -146,12 +147,11 @@ test_that("a failed custom tool call renders like a successful one", {
   captured <- run_stream_capture(result)
   expect_length(captured, 1)
 
-  html <- as.character(htmltools::as.tags(captured[[1]]))
-
-  expect_match(html, "<shiny-tool-result", fixed = TRUE)
-  expect_match(html, 'status="error"', fixed = TRUE)
-  expect_match(html, "custom-display", fixed = TRUE)
-  expect_match(html, "my-custom", fixed = TRUE)
+  block <- captured[[1]]
+  expect_s3_class(block, "shinychat_block")
+  expect_equal(block$status, "error")
+  expect_true(block$custom_display)
+  expect_match(block$value, "my-custom", fixed = TRUE)
 })
 
 test_that("the grouping annotation travels through the custom-display wrap", {
@@ -176,11 +176,10 @@ test_that("the grouping annotation travels through the custom-display wrap", {
   captured <- run_stream_capture(result)
   expect_length(captured, 1)
 
-  html <- as.character(htmltools::as.tags(captured[[1]]))
-
-  expect_match(html, "<shiny-tool-result", fixed = TRUE)
-  expect_match(html, "custom-display", fixed = TRUE)
-  expect_match(html, 'grouping="all"', fixed = TRUE)
+  block <- captured[[1]]
+  expect_s3_class(block, "shinychat_block")
+  expect_true(block$custom_display)
+  expect_equal(block$grouping, "all")
 })
 
 test_that("shinychat's own tool result card is not misread as custom", {
@@ -191,10 +190,10 @@ test_that("shinychat's own tool result card is not misread as custom", {
   captured <- run_stream_capture(result)
   expect_length(captured, 1)
 
-  html <- as.character(htmltools::as.tags(captured[[1]]))
-
-  expect_match(html, "<shiny-tool-result", fixed = TRUE)
-  expect_no_match(html, "custom-display", fixed = TRUE)
+  block <- captured[[1]]
+  expect_s3_class(block, "shinychat_block")
+  expect_equal(block$type, "tool_result")
+  expect_null(block$custom_display)
 })
 
 test_that("the documented S7::super() extend pattern is not misread as custom", {
@@ -219,11 +218,11 @@ test_that("the documented S7::super() extend pattern is not misread as custom", 
   captured <- run_stream_capture(result)
   expect_length(captured, 1)
 
-  html <- as.character(htmltools::as.tags(captured[[1]]))
-
-  expect_match(html, "<shiny-tool-result", fixed = TRUE)
-  expect_no_match(html, "custom-display", fixed = TRUE)
-  expect_match(html, "mutated value", fixed = TRUE)
+  block <- captured[[1]]
+  expect_s3_class(block, "shinychat_block")
+  expect_equal(block$type, "tool_result")
+  expect_null(block$custom_display)
+  expect_equal(block$value, "mutated value")
 })
 
 test_that("no element is emitted for a tool result when tool_display is none", {
@@ -271,15 +270,12 @@ test_that("HTML dependencies on custom tool UI survive the wrap", {
   captured <- run_stream_capture(result)
   expect_length(captured, 1)
 
-  tags <- htmltools::as.tags(captured[[1]])
-  html <- as.character(tags)
-
-  expect_match(html, "<shiny-tool-result", fixed = TRUE)
-  dep_names <- vapply(
-    htmltools::findDependencies(tags),
-    function(d) d$name,
-    character(1)
-  )
+  block <- captured[[1]]
+  expect_s3_class(block, "shinychat_block")
+  expect_true(block$custom_display)
+  # Raw dep objects ride as an attribute until session-processing at send time
+  block_deps <- attr(block, "shinychat_html_deps")
+  dep_names <- vapply(block_deps, function(d) d$name, character(1))
   expect_true("custom-tool-dep" %in% dep_names)
 })
 
@@ -305,10 +301,9 @@ test_that("a custom result with no @request emits bare tags, no wrap", {
   captured <- run_stream_capture(result)
   expect_length(captured, 1)
 
+  # No wrap: the author's tags pass through as-is (not a shinychat_block)
+  expect_false(inherits(captured[[1]], "shinychat_block"))
   html <- as.character(htmltools::as.tags(captured[[1]]))
-
-  expect_no_match(html, "<shiny-tool-result", fixed = TRUE)
-  expect_no_match(html, "custom-display", fixed = TRUE)
   expect_match(html, "my-custom", fixed = TRUE)
 })
 
@@ -342,12 +337,22 @@ test_that("merge_ellmer_turn_group() wraps custom tool output on restore", {
   )
 
   message <- merge_ellmer_turn_group(list(turn), tools = list())
-  html <- as.character(htmltools::as.tags(message$content))
+  content <- message$content
+  expect_true(is.list(content))
 
-  expect_match(html, "<shiny-tool-result", fixed = TRUE)
-  expect_match(html, "custom-display", fixed = TRUE)
-  expect_match(html, 'request-id="req-restore"', fixed = TRUE)
-  expect_match(html, "my-custom", fixed = TRUE)
+  # The custom result is wrapped in a tool_result block
+  result_blocks <- Filter(
+    function(x) {
+      inherits(x, "shinychat_block") && identical(x$type, "tool_result")
+    },
+    content
+  )
+  expect_length(result_blocks, 1)
+  block <- result_blocks[[1]]
+  expect_s3_class(block, "shinychat_block")
+  expect_true(block$custom_display)
+  expect_equal(block$request_id, "req-restore")
+  expect_match(block$value, "my-custom", fixed = TRUE)
 })
 
 test_that("contents_shinychat(Turn) wraps custom tool output", {
@@ -370,11 +375,21 @@ test_that("contents_shinychat(Turn) wraps custom tool output", {
     )
   )
 
-  html <- as.character(htmltools::as.tags(contents_shinychat(turn)))
+  content <- contents_shinychat(turn)
+  expect_true(is.list(content))
 
-  expect_match(html, "<shiny-tool-result", fixed = TRUE)
-  expect_match(html, "custom-display", fixed = TRUE)
-  expect_match(html, 'request-id="req-turn"', fixed = TRUE)
+  # The custom result is wrapped in a tool_result block
+  result_blocks <- Filter(
+    function(x) {
+      inherits(x, "shinychat_block") && identical(x$type, "tool_result")
+    },
+    content
+  )
+  expect_length(result_blocks, 1)
+  block <- result_blocks[[1]]
+  expect_s3_class(block, "shinychat_block")
+  expect_true(block$custom_display)
+  expect_equal(block$request_id, "req-turn")
 })
 
 test_that("the wrap is idempotent, so a normal tool card is not double-wrapped", {
@@ -390,11 +405,9 @@ test_that("the wrap is idempotent, so a normal tool card is not double-wrapped",
   twice <- wrap_custom_tool_result(result, once)
 
   expect_identical(once, twice)
-  expect_no_match(
-    as.character(htmltools::as.tags(once)),
-    "custom-display",
-    fixed = TRUE
-  )
+  # A normal tool result block is not custom
+  expect_s3_class(once, "shinychat_block")
+  expect_null(once$custom_display)
 })
 
 test_that("the wrapped conversion boundary passes ordinary stream values through", {

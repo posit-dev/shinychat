@@ -437,6 +437,235 @@ test_that("chat_append_message() emits segment payloads incl. thinking", {
   expect_equal(chunk$content_type, "thinking")
 })
 
+test_that("chat_append_message() non-streaming message carries inline mixed segments", {
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- list(
+        action = action,
+        html_deps = html_deps
+      )
+      invisible()
+    }
+  )
+  session <- shiny::MockShinySession$new()
+
+  # Build a tool_request block and a tool_result block
+  req_block <- new_tool_card(
+    "tool_request",
+    request_id = "req-1",
+    tool_name = "get_weather",
+    intent = "Check weather",
+    arguments = '{"location": "NYC"}'
+  )
+  res_block <- structure(
+    list(
+      type = "tool_result",
+      version = 1L,
+      request_id = "req-1",
+      tool_name = "get_weather",
+      status = "success",
+      value = "Sunny, 72F",
+      value_type = "markdown"
+    ),
+    class = c("shinychat_tool_result", "shinychat_block")
+  )
+
+  # Non-streaming: chunk = FALSE emits a single "message" action with
+  # inline segments preserving order: string, block, string, block
+  chat_append_message(
+    "chat",
+    list(
+      role = "assistant",
+      content = list("Hello ", req_block, " world ", res_block)
+    ),
+    chunk = FALSE,
+    session = session
+  )
+
+  expect_length(captured, 1)
+  msg <- captured[[1]]$action
+  expect_equal(msg$type, "message")
+  expect_equal(msg$message$role, "assistant")
+
+  segments <- msg$message$segments
+  expect_length(segments, 4)
+
+  # Segment 1: string -> markdown
+  expect_equal(segments[[1]]$content, "Hello ")
+  expect_equal(segments[[1]]$content_type, "markdown")
+
+  # Segment 2: tool_request block
+  expect_equal(segments[[2]]$type, "tool_request")
+  expect_equal(segments[[2]]$request_id, "req-1")
+  expect_equal(segments[[2]]$tool_name, "get_weather")
+
+  # Segment 3: string -> markdown
+  expect_equal(segments[[3]]$content, " world ")
+  expect_equal(segments[[3]]$content_type, "markdown")
+
+  # Segment 4: tool_result block
+  expect_equal(segments[[4]]$type, "tool_result")
+  expect_equal(segments[[4]]$request_id, "req-1")
+  expect_equal(segments[[4]]$status, "success")
+  expect_equal(segments[[4]]$value, "Sunny, 72F")
+})
+
+test_that("chat_append_message() streaming emits chunk_start, interleaved chunk/block_insert, chunk_end", {
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- list(
+        action = action,
+        html_deps = html_deps
+      )
+      invisible()
+    }
+  )
+  session <- shiny::MockShinySession$new()
+
+  req_block <- new_tool_card(
+    "tool_request",
+    request_id = "req-s1",
+    tool_name = "search",
+    intent = "Search",
+    arguments = '{"q": "shiny"}'
+  )
+  res_block <- structure(
+    list(
+      type = "tool_result",
+      version = 1L,
+      request_id = "req-s1",
+      tool_name = "search",
+      status = "success",
+      value = "Found 3 results",
+      value_type = "markdown"
+    ),
+    class = c("shinychat_tool_result", "shinychat_block")
+  )
+
+  # chunk = "start": carries the full message payload with inline segments
+  chat_append_message(
+    "chat",
+    list(
+      role = "assistant",
+      content = list("Starting ", req_block)
+    ),
+    chunk = "start",
+    session = session
+  )
+
+  # chunk = TRUE (intermediate): emit each segment in order
+  chat_append_message(
+    "chat",
+    list(
+      role = "assistant",
+      content = list(" processing ", res_block)
+    ),
+    chunk = TRUE,
+    session = session
+  )
+
+  # chunk = "end": emit remaining segments, then chunk_end
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = list(" done")),
+    chunk = "end",
+    session = session
+  )
+
+  # chunk_start
+  expect_equal(captured[[1]]$action$type, "chunk_start")
+  expect_equal(captured[[1]]$action$message$role, "assistant")
+  expect_length(captured[[1]]$action$message$segments, 2)
+  expect_equal(captured[[1]]$action$message$segments[[1]]$content, "Starting ")
+  expect_equal(captured[[1]]$action$message$segments[[2]]$type, "tool_request")
+
+  # intermediate: chunk for string, block_insert for block
+  expect_equal(captured[[2]]$action$type, "chunk")
+  expect_equal(captured[[2]]$action$content, " processing ")
+  expect_equal(captured[[2]]$action$content_type, "markdown")
+
+  expect_equal(captured[[3]]$action$type, "block_insert")
+  expect_equal(captured[[3]]$action$block$type, "tool_result")
+  expect_equal(captured[[3]]$action$block$request_id, "req-s1")
+
+  # end: chunk for string, then chunk_end
+  expect_equal(captured[[4]]$action$type, "chunk")
+  expect_equal(captured[[4]]$action$content, " done")
+
+  expect_equal(captured[[5]]$action$type, "chunk_end")
+})
+
+test_that("chat_append_message() block-level html deps are session-processed and on the block", {
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- list(
+        action = action,
+        html_deps = html_deps
+      )
+      invisible()
+    }
+  )
+  session <- shiny::MockShinySession$new()
+
+  dep <- htmltools::htmlDependency(
+    name = "block-test-dep",
+    version = "2.0.0",
+    src = ".",
+    script = "test.js"
+  )
+
+  # Build a tool_result block with a raw htmlDependency stashed on the
+  # shinychat_html_deps attribute (as new_tool_card / contents_shinychat do)
+  res_block <- structure(
+    list(
+      type = "tool_result",
+      version = 1L,
+      request_id = "req-d1",
+      tool_name = "compute",
+      status = "success",
+      value = "42",
+      value_type = "markdown"
+    ),
+    class = c("shinychat_tool_result", "shinychat_block")
+  )
+  attr(res_block, "shinychat_html_deps") <- list(dep)
+
+  # Non-streaming: the dep is session-processed and attached to the block's
+  # html_deps field; it also appears in the envelope-level html_deps
+  chat_append_message(
+    "chat",
+    list(role = "assistant", content = res_block),
+    chunk = FALSE,
+    session = session
+  )
+
+  expect_length(captured, 1)
+  msg <- captured[[1]]$action
+  expect_equal(msg$type, "message")
+
+  # The block in the segments has html_deps attached
+  block_seg <- msg$message$segments[[1]]
+  expect_equal(block_seg$type, "tool_result")
+  expect_false(is.null(block_seg$html_deps))
+  dep_names <- vapply(block_seg$html_deps, function(d) d$name, character(1))
+  expect_true("block-test-dep" %in% dep_names)
+
+  # The dep also appears in the envelope-level html_deps
+  expect_false(is.null(captured[[1]]$html_deps))
+  env_dep_names <- vapply(
+    captured[[1]]$html_deps,
+    function(d) d$name,
+    character(1)
+  )
+  expect_true("block-test-dep" %in% env_dep_names)
+
+  # The raw attribute is stripped from the block
+  expect_null(attr(block_seg, "shinychat_html_deps"))
+})
+
 test_that("chat_server() exposes a failed response until the next succeeds", {
   local_mocked_bindings(
     chat_restore = function(...) invisible(NULL),

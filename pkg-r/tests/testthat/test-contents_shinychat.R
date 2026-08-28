@@ -89,21 +89,14 @@ test_that("ContentToolRequest rich display", {
 
   res <- contents_shinychat(request)
   expect_s3_class(res, "shinychat_tool_request")
+  expect_s3_class(res, "shinychat_block")
+  expect_equal(res$type, "tool_request")
+  expect_equal(res$version, 1L)
   expect_equal(res$request_id, "test-123")
   expect_equal(res$tool_name, "weather")
   expect_equal(res$intent, "Check weather")
   expect_equal(
     jsonlite::fromJSON(res$arguments),
-    list(`_intent` = "Check weather", location = "NYC")
-  )
-
-  res_tags <- as.tags(res)
-  expect_equal(res_tags$name, "shiny-tool-request")
-  expect_equal(res_tags$attribs$"request-id", "test-123")
-  expect_equal(res_tags$attribs[["tool-name"]], "weather")
-  expect_equal(res_tags$attribs$intent, "Check weather")
-  expect_equal(
-    jsonlite::fromJSON(res_tags$attribs$arguments),
     list(`_intent` = "Check weather", location = "NYC")
   )
 })
@@ -115,7 +108,7 @@ test_that("tool card serialization matches the shared wire fixture", {
   )
 
   request <- new_tool_card(
-    "request",
+    "tool_request",
     request_id = "wire-1",
     tool_name = "search",
     tool_title = "Searching",
@@ -125,7 +118,7 @@ test_that("tool card serialization matches the shared wire fixture", {
     grouping = "all"
   )
   result <- new_tool_card(
-    "result",
+    "tool_result",
     request_id = "wire-1",
     tool_name = "search",
     tool_title = "Searched",
@@ -137,16 +130,46 @@ test_that("tool card serialization matches the shared wire fixture", {
     value = "Result body",
     value_type = "markdown",
     request_call = 'search(q="shiny")',
-    show_request = NA,
-    full_screen = NA,
-    expanded = NA,
+    show_request = TRUE,
+    full_screen = TRUE,
+    expanded = TRUE,
     footer = "<span>footer</span>",
     grouping = "all",
     open_style = "framed"
   )
 
-  expect_identical(format(as.tags(request)), fixture$request)
-  expect_identical(format(as.tags(result)), fixture$result)
+  # Structured block fields match the wire fixture's expected shape
+  req_expected <- fixture$expected$request
+  expect_equal(request$type, "tool_request")
+  expect_equal(request$version, 1L)
+  expect_equal(request$request_id, req_expected$requestId)
+  expect_equal(request$tool_name, req_expected$toolName)
+  expect_equal(request$tool_title, req_expected$definitionTitle)
+  expect_equal(request$icon, req_expected$definitionIcon)
+  expect_equal(request$intent, req_expected$intent)
+  expect_equal(request$arguments, req_expected$arguments)
+  expect_equal(request$grouping, req_expected$grouping)
+
+  res_expected <- fixture$expected$result
+  expect_equal(result$type, "tool_result")
+  expect_equal(result$version, 1L)
+  expect_equal(result$request_id, res_expected$requestId)
+  expect_equal(result$tool_name, res_expected$toolName)
+  expect_equal(result$tool_title, res_expected$title)
+  expect_equal(result$icon, res_expected$icon)
+  expect_equal(result$intent, res_expected$intent)
+  expect_equal(result$status, res_expected$status)
+  expect_equal(result$label, res_expected$label)
+  expect_equal(result$value_preview, res_expected$valuePreview)
+  expect_equal(result$value, res_expected$value)
+  expect_equal(result$value_type, res_expected$valueType)
+  expect_equal(result$request_call, res_expected$requestCall)
+  expect_equal(result$show_request, res_expected$showRequest)
+  expect_equal(result$full_screen, res_expected$fullScreen)
+  expect_equal(result$expanded, res_expected$expanded)
+  expect_equal(result$open_style, res_expected$openStyle)
+  expect_equal(result$footer, res_expected$footer)
+  expect_equal(result$grouping, res_expected$grouping)
 })
 
 test_that("ContentToolRequest handles tool annotations", {
@@ -180,13 +203,11 @@ test_that("ContentToolRequest emits the tool definition icon and its dependencie
   )
   res <- contents_shinychat(new_tool_request(tool = tool))
 
-  expect_equal(res$icon, tool@annotations$icon)
-
-  res_tags <- as.tags(res)
-  expect_equal(format(res_tags$attribs$icon), '<i class="icon"></i>')
-  expect_true(
-    list(icon_dep) %in% htmltools::findDependencies(res_tags$children)
-  )
+  # The icon is rendered to an HTML string on the structured block
+  expect_equal(res$icon, '<i class="icon"></i>')
+  # Raw dep objects ride as an attribute until session-processing at send time
+  block_deps <- attr(res, "shinychat_html_deps")
+  expect_true("test" %in% vapply(block_deps, function(d) d$name, character(1)))
 })
 
 test_that("ContentToolRequest emits no icon when the tool has no icon annotation", {
@@ -195,7 +216,6 @@ test_that("ContentToolRequest emits no icon when the tool has no icon annotation
   res <- contents_shinychat(new_tool_request(tool = new_tool()))
 
   expect_null(res$icon)
-  expect_null(as.tags(res)$attribs$icon)
 })
 
 test_that("ContentToolResult requires an associated `@request` property", {
@@ -261,22 +281,20 @@ test_that("ContentToolResult with custom text display", {
 
   res <- contents_shinychat(result)
   expect_s3_class(res, "shinychat_tool_result")
+  expect_s3_class(res, "shinychat_block")
+  expect_equal(res$type, "tool_result")
+  expect_equal(res$version, 1L)
   expect_equal(res$request_id, result@request@id)
   expect_equal(res$tool_name, result@request@name)
   expect_equal(res$status, "success")
   expect_equal(res$value, "Success!")
   expect_equal(res$value_type, "text")
-  expect_equal(res$show_request, NA)
-  expect_null(res$expanded)
-
-  res_tags <- as.tags(res)
-  expect_s3_class(res_tags, "shiny.tag")
-  expect_equal(res_tags$name, "shiny-tool-result")
-  expect_equal(res_tags$attribs$status, "success")
-  expect_equal(res_tags$attribs$value, "Success!")
-  expect_equal(res_tags$attribs$"value-type", "text")
-  expect_equal(res_tags$attribs[["show-request"]], NA)
-  expect_null(res_tags$attribs$expanded)
+  # show_request defaults to TRUE (real boolean)
+  expect_true(res$show_request)
+  # expanded defaults to FALSE (real boolean)
+  expect_false(res$expanded)
+  # full_screen defaults to FALSE (real boolean)
+  expect_false(res$full_screen)
 })
 
 test_that("ContentToolResult with additional display options from result", {
@@ -297,16 +315,9 @@ test_that("ContentToolResult with additional display options from result", {
   expect_s3_class(res, "shinychat_tool_result")
   expect_equal(res$value, "<p>test</p>")
   expect_equal(res$value_type, "html")
-  expect_equal(res$show_request, NULL)
-  expect_equal(res$expanded, NA)
+  expect_false(res$show_request)
+  expect_true(res$expanded)
   expect_equal(res$tool_title, "Custom Title")
-
-  res_tags <- as.tags(res)
-  expect_equal(res_tags$attribs$value, "<p>test</p>")
-  expect_equal(res_tags$attribs$"value-type", "html")
-  expect_equal(res_tags$attribs[["show-request"]], NULL)
-  expect_equal(res_tags$attribs$expanded, NA)
-  expect_equal(res_tags$attribs[["tool-title"]], "Custom Title")
 })
 
 test_that("ContentToolResult serializes framed open style only when requested", {
@@ -321,19 +332,15 @@ test_that("ContentToolResult serializes framed open style only when requested", 
     extra = list(display = tool_result_display())
   )
 
-  expect_equal(
-    as.tags(contents_shinychat(framed))$attribs[["open-style"]],
-    "framed"
-  )
-  expect_null(as.tags(contents_shinychat(minimal))$attribs[["open-style"]])
+  expect_equal(contents_shinychat(framed)$open_style, "framed")
+  expect_null(contents_shinychat(minimal)$open_style)
 })
 
 test_that("mutating a card's tool_title overrides the annotation title", {
   # The documented pattern for a custom result class (see the
   # `contents_shinychat()` example): call the super method, then mutate the
-  # card. The field is `tool_title`, which renders as the `tool-title`
-  # attribute the client reads -- `res$title` would silently add an unread
-  # `title` attribute instead.
+  # card. The field is `tool_title`, which the client reads as the block's
+  # `title` field -- `res$title` would silently add an unread field instead.
   local_shinychat_tool_display(opt = "rich")
 
   result <- new_tool_result(
@@ -346,9 +353,8 @@ test_that("mutating a card's tool_title overrides the annotation title", {
   expect_equal(res$tool_title, "Static")
 
   res$tool_title <- "Dynamic for Portland"
-  res_tags <- as.tags(res)
-  expect_equal(res_tags$attribs[["tool-title"]], "Dynamic for Portland")
-  expect_null(res_tags$attribs$title)
+  expect_equal(res$tool_title, "Dynamic for Portland")
+  expect_null(res$title)
 })
 
 test_that("ContentToolResult with HTML() title preserves markup", {
@@ -364,15 +370,8 @@ test_that("ContentToolResult with HTML() title preserves markup", {
     )
   )
   res <- contents_shinychat(result)
-  expect_s3_class(res$tool_title, "html")
-  expect_equal(as.character(res$tool_title), "Map of <i>Paris</i>")
-
-  # htmltools always escapes attribute values, but the browser decodes them,
-  # so JS getAttribute() returns the original HTML string. The Playwright
-
-  # test (test_html_title.py) verifies the end-to-end rendering.
-  res_tags <- as.tags(res)
-  expect_equal(res_tags$attribs[["tool-title"]], HTML("Map of <i>Paris</i>"))
+  # title is rendered to an HTML string via as.character()
+  expect_equal(res$tool_title, "Map of <i>Paris</i>")
 })
 
 test_that("ContentToolResult handles icon and dependencies from tool definition", {
@@ -397,13 +396,11 @@ test_that("ContentToolResult handles icon and dependencies from tool definition"
 
   res <- contents_shinychat(result)
   expect_s3_class(res, "shinychat_tool_result")
-  expect_equal(res$icon, tool@annotations$icon)
-
-  res_tags <- as.tags(res)
-  expect_equal(format(res_tags$attribs$icon), '<i class="icon"></i>')
-  expect_true(
-    list(icon_dep) %in% htmltools::findDependencies(res_tags$children)
-  )
+  # The icon is rendered to an HTML string on the structured block
+  expect_equal(res$icon, '<i class="icon"></i>')
+  # Raw dep objects ride as an attribute until session-processing at send time
+  block_deps <- attr(res, "shinychat_html_deps")
+  expect_true("test" %in% vapply(block_deps, function(d) d$name, character(1)))
 })
 
 test_that("ContentToolResult formats request_call correctly", {
@@ -758,7 +755,7 @@ test_that("warns when `display` is not a list", {
     extra = list(display = htmltools::tags$p("test"))
   )
   expect_snapshot(
-    as.tags(contents_shinychat(result))
+    format(contents_shinychat(result))
   )
 })
 
@@ -944,9 +941,9 @@ test_that("malformed display flags serialize to their defaults", {
   expect_warning(res <- contents_shinychat(result), class = "rlang_warning")
 
   # Defaults: the request is shown, the card is collapsed and not full screen
-  expect_equal(res$show_request, NA)
-  expect_null(res$expanded)
-  expect_null(res$full_screen)
+  expect_true(res$show_request)
+  expect_false(res$expanded)
+  expect_false(res$full_screen)
 
   # A well-formed bare list is still honored end to end
   result_ok <- new_tool_result(
@@ -961,9 +958,9 @@ test_that("malformed display flags serialize to their defaults", {
     )
   )
   res_ok <- contents_shinychat(result_ok)
-  expect_null(res_ok$show_request)
-  expect_equal(res_ok$expanded, NA)
-  expect_equal(res_ok$full_screen, NA)
+  expect_false(res_ok$show_request)
+  expect_true(res_ok$expanded)
+  expect_true(res_ok$full_screen)
 })
 
 test_that("as_tool_result_display() warns and returns an empty object for non-list input", {
@@ -1006,12 +1003,6 @@ test_that("S3 display object and equivalent bare list serialize identically", {
   res_s3$request_id <- NULL
   res_list$request_id <- NULL
   expect_equal(res_s3, res_list)
-
-  tags_s3 <- as.tags(contents_shinychat(result_s3))
-  tags_list <- as.tags(contents_shinychat(result_list))
-  tags_s3$attribs$"request-id" <- NULL
-  tags_list$attribs$"request-id" <- NULL
-  expect_equal(format(tags_s3), format(tags_list))
 })
 
 test_that("tool_result_value() selects markdown when only markdown is provided", {
@@ -1046,9 +1037,6 @@ test_that("ContentToolRequest emits grouping from tool annotations", {
   res <- contents_shinychat(request)
 
   expect_equal(res$grouping, "all")
-
-  res_tags <- as.tags(res)
-  expect_equal(res_tags$attribs$grouping, "all")
 })
 
 test_that("ContentToolResult emits grouping from tool annotations", {
@@ -1062,12 +1050,9 @@ test_that("ContentToolResult emits grouping from tool annotations", {
   res <- contents_shinychat(result)
 
   expect_equal(res$grouping, "all")
-
-  res_tags <- as.tags(res)
-  expect_equal(res_tags$attribs$grouping, "all")
 })
 
-test_that("invalid tool annotation grouping is dropped (no attribute emitted)", {
+test_that("invalid tool annotation grouping is dropped (no field emitted)", {
   local_shinychat_tool_display(opt = "rich")
 
   tool <- new_tool(annotations = list(grouping = "bogus"))
@@ -1078,8 +1063,6 @@ test_that("invalid tool annotation grouping is dropped (no attribute emitted)", 
   res <- contents_shinychat(result)
 
   expect_null(res$grouping)
-  res_tags <- as.tags(res)
-  expect_null(res_tags$attribs$grouping)
 })
 
 test_that("basic tool display suppresses custom display metadata but keeps annotations", {
