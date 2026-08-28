@@ -428,3 +428,15 @@ single-session atom and starts only after every Python consumer has moved.
   immutable task-lineage stack, with regressions covering outer-delivery
   blocking and independent cross-`Chat` mutation. The `shinychat#dy7g`
   issue state remains unchanged.
+- **Completion and echo-deletion handoff (2026-08-28; `shinychat#dy7g` →
+  `shinychat#47fa`):** `shinychat#dy7g` is closed with implementation commits
+  `8e63c43b`, `d7c43878`, `8a42c535`, and `a08c6def`. Focused settlement
+  regressions, Ruff, Pyright, and the unrestricted full gate passed with 191
+  Playwright and 654 non-browser tests passed, 1 skipped; the sole unrelated
+  `.md` MIME failure is tracked by `shinychat#4z6p`. Roborev jobs 1016,
+  1017, 1019, and 1020 are closed; 1020 passed with no issues found.
+  `shinychat#47fa` is now unblocked, claimed, and active on
+  `feat/history-exchange-tree` with `work.attention="ok"`. Its atomic scope
+  remains JS reporter deletion, Python echo-protocol deletion, Python-only
+  asset rebuild/copy, and the Phase 2 acceptance audit; R packaged assets
+  remain unchanged.
