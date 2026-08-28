@@ -1182,8 +1182,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       // Re-routing the settled transcript is what makes `tool-grouping` a live
       // attribute rather than one that only governs future messages: the router
       // is a pure function of (blocks, grouping, role), so the same content
-      // regroups at the new mode. The streaming message needs nothing —
-      // ChatMessage routes it at render time off the context value.
+      // regroups at the new mode. The in-flight stream's blocks are already
+      // structured, so it regroups through the same pure reroute — leaving it
+      // alone would strand the message in the old mode when it settles.
       //
       // The no-op guard is load-bearing: ChatApp dispatches once on mount to
       // adopt the prop, and re-routing there would throw away every group's
@@ -1193,6 +1194,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         ...state,
         toolGrouping: action.grouping,
         messages: state.messages.map((m) => rerouteMessage(m, action.grouping)),
+        streamingMessage: state.streamingMessage
+          ? rerouteMessage(state.streamingMessage, action.grouping)
+          : null,
       }
     }
 

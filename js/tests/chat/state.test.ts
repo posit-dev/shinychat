@@ -1982,6 +1982,27 @@ describe("toolGrouping state wiring (Phase 1)", () => {
       expect(after).toBe(before)
     })
 
+    it("regroups the in-flight streaming message too", () => {
+      let state = makeState({ toolGrouping: "tool" })
+      state = chatReducer(state, {
+        type: "chunk_start",
+        message: { role: "assistant", segments: [] },
+      })
+      for (const block of twoTools) {
+        state = chatReducer(state, { type: "block_insert", block })
+      }
+      expect(loopGroups(state.streamingMessage!)).toHaveLength(2)
+
+      const next = chatReducer(state, {
+        type: "SET_TOOL_GROUPING",
+        grouping: "all",
+      })
+
+      const groups = loopGroups(next.streamingMessage!)
+      expect(groups).toHaveLength(1)
+      expect(groups[0]!.count).toBe(2)
+    })
+
     it("leaves a message with no tool calls untouched", () => {
       const before = chatReducer(makeState({ toolGrouping: "tool" }), {
         type: "message",
