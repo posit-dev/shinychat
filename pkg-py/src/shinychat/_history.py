@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import warnings
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal
 
 from ._attachments import Attachment, validate_attachments
@@ -354,8 +355,10 @@ class HistoryController:
         check_schema_version(record.schema_version)
         await self.store.put(partition, record)
 
-    async def _prepare_destructive_mutation(self) -> None:
-        await self.chat._prepare_destructive_history_mutation()
+    @asynccontextmanager
+    async def _destructive_mutation(self):
+        async with self.chat._destructive_history_mutation():
+            yield
 
     # -- save -----------------------------------------------------------
 
@@ -517,59 +520,55 @@ class HistoryController:
         if target is None:
             raise RuntimeError(f"Conversation {conv_id!r} no longer exists.")
 
-        await self._prepare_destructive_mutation()
-        await self.save_current()
-        if self.on_pre_switch is not None:
-            skip = await self.on_pre_switch(target)
-            if skip:
-                return
-        self.adapter.set_turns_json(target.path_turns())
-        await self.replay_ui(target)
-        await self.activate_record(target)
-        self._restore_app_state(target.values or {})
-        await self._send_sibling_metadata()
-        await self.send_history_update()
+        async with self._destructive_mutation():
+            await self.save_current()
+            if self.on_pre_switch is not None:
+                skip = await self.on_pre_switch(target)
+                if skip:
+                    return
+            self.adapter.set_turns_json(target.path_turns())
+            await self.replay_ui(target)
+            await self.activate_record(target)
+            self._restore_app_state(target.values or {})
+            await self._send_sibling_metadata()
+            await self.send_history_update()
 
     async def new_chat(self) -> None:
-        await self._prepare_destructive_mutation()
-        await self.save_current()
-        self.adapter.set_turns_json([])
-        await self.chat.clear_messages()
-        # Announce the cleared state even when the active ID is already None:
-        # in URL/bookmark restore modes the browser may still carry a stale
-        # conversation param (e.g. after a failed restore) that only
-        # on_active_id_change(None) clears.
-        was_identified = self._active_id_now() is not None
-        await self.clear_active()
-        if not was_identified and self.on_active_id_change is not None:
-            await self.on_active_id_change(None)
-        # A fresh chat is never a restore: resolve the greeting the same way
-        # the initial settle does, so it doesn't just rely on a stale/absent
-        # cached value from that first resolution.
-        await self.notify_settled(False)
-        await self.send_history_update()
+        async with self._destructive_mutation():
+            await self.save_current()
+            self.adapter.set_turns_json([])
+            await self.chat.clear_messages()
+            was_identified = self._active_id_now() is not None
+            await self.clear_active()
+            if not was_identified and self.on_active_id_change is not None:
+                await self.on_active_id_change(None)
+            # A fresh chat is never a restore: resolve the greeting the same way
+            # the initial settle does, so it doesn't just rely on a stale/absent
+            # cached value from that first resolution.
+            await self.notify_settled(False)
+            await self.send_history_update()
 
     async def replay_ui(self, record: ConversationRecord) -> None:
-        await self._prepare_destructive_mutation()
-        await self.chat.clear_messages()
-        # A restored conversation is never a "new chat" — the app's
-        # greeting doesn't belong here, regardless of `persistent`.
-        await self.chat.set_greeting(None)
-        for node_id in record.path_node_ids():
-            node = record.nodes[node_id]
-            stored = node.ui or [
-                {
-                    "role": node.turns[-1].get("role", "assistant"),
-                    "segments": [
-                        {
-                            "content": turn_fallback_markdown(node.turns[-1]),
-                            "content_type": "markdown",
-                        }
-                    ],
-                }
-            ]
-            for message_dict in stored:
-                await self.chat._restore_bookmark_message(message_dict)
+        async with self._destructive_mutation():
+            await self.chat.clear_messages()
+            # A restored conversation is never a "new chat" — the app's
+            # greeting doesn't belong here, regardless of `persistent`.
+            await self.chat.set_greeting(None)
+            for node_id in record.path_node_ids():
+                node = record.nodes[node_id]
+                stored = node.ui or [
+                    {
+                        "role": node.turns[-1].get("role", "assistant"),
+                        "segments": [
+                            {
+                                "content": turn_fallback_markdown(node.turns[-1]),
+                                "content_type": "markdown",
+                            }
+                        ],
+                    }
+                ]
+                for message_dict in stored:
+                    await self.chat._restore_bookmark_message(message_dict)
 
     # -- list mutations ----------------------------------------------------
 
@@ -594,15 +593,15 @@ class HistoryController:
     async def delete(self, conv_id: str) -> None:
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
-        await self._prepare_destructive_mutation()
-        if self.on_evict is not None:
-            await self.on_evict(conv_id)
-        await self.store.delete(self.partition, conv_id)
-        if self.record is not None and self.record.id == conv_id:
-            await self.clear_active()
-            self.adapter.set_turns_json([])
-            await self.chat.clear_messages()
-        await self.send_history_update()
+        async with self._destructive_mutation():
+            if self.on_evict is not None:
+                await self.on_evict(conv_id)
+            await self.store.delete(self.partition, conv_id)
+            if self.record is not None and self.record.id == conv_id:
+                await self.clear_active()
+                self.adapter.set_turns_json([])
+                await self.chat.clear_messages()
+            await self.send_history_update()
 
     # -- branch navigation --------------------------------------------------
 
@@ -651,16 +650,16 @@ class HistoryController:
                 return
             target = siblings[current_pos + 1]
 
-        await self._prepare_destructive_mutation()
-        leaf = self.record.subtree_leaf(target)
-        self.record.set_current_leaf(leaf)
-        self.adapter.set_turns_json(self.record.path_turns())
-        await self.replay_ui(self.record)
-        await self._send_sibling_metadata()
-        if self.partition is None:
-            raise RuntimeError("HistoryController not initialized")
-        await self._put_record(self.partition, self.record)
-        await self.send_history_update()
+        async with self._destructive_mutation():
+            leaf = self.record.subtree_leaf(target)
+            self.record.set_current_leaf(leaf)
+            self.adapter.set_turns_json(self.record.path_turns())
+            await self.replay_ui(self.record)
+            await self._send_sibling_metadata()
+            if self.partition is None:
+                raise RuntimeError("HistoryController not initialized")
+            await self._put_record(self.partition, self.record)
+            await self.send_history_update()
 
     async def handle_edit(
         self,
@@ -674,39 +673,39 @@ class HistoryController:
         node_id, _ = self.record.node_id_for_message_index(message_index)
         fork_parent = self.record.nodes[node_id].parent
 
-        await self._prepare_destructive_mutation()
-        # Branching happens implicitly: truncating current_leaf here means the next
-        # append_linear (from the resubmit's on_response) creates a sibling under
-        # fork_parent, not a child of the old leaf. We don't call branch_from here
-        # because there's no new turn content yet — that arrives via on_response.
-        self.record.set_current_leaf(fork_parent)
-        self.adapter.set_turns_json(self.record.path_turns())
-        await self.replay_ui(self.record)
-        await self._send_sibling_metadata()
-        action: UpdateInputAction = {
-            "type": "update_input",
-            "value": content,
-            "submit": True,
-        }
-        if attachments is not None:
-            # Same normalize-then-validate pattern as the regular (non-edit)
-            # send path in _input_handler.py and Chat.update_user_input —
-            # never trust client-side attachment validation alone.
-            parsed = [Attachment.model_validate(a) for a in attachments]
-            validate_attachments(parsed)
-            action["attachments"] = [
-                {
-                    "mime": a.mime,
-                    "data_url": a.data_url,
-                    "name": a.name,
-                    "size": a.size,
-                }
-                for a in parsed
-            ]
-            # Edits always replace the attachment set — the client's staged
-            # tray is a single source of truth, never a delta to append.
-            action["attachment_mode"] = "set"
-        await self.chat._send_action(action)
+        async with self._destructive_mutation():
+            # Branching happens implicitly: truncating current_leaf here means the next
+            # append_linear (from the resubmit's on_response) creates a sibling under
+            # fork_parent, not a child of the old leaf. We don't call branch_from here
+            # because there's no new turn content yet — that arrives via on_response.
+            self.record.set_current_leaf(fork_parent)
+            self.adapter.set_turns_json(self.record.path_turns())
+            await self.replay_ui(self.record)
+            await self._send_sibling_metadata()
+            action: UpdateInputAction = {
+                "type": "update_input",
+                "value": content,
+                "submit": True,
+            }
+            if attachments is not None:
+                # Same normalize-then-validate pattern as the regular (non-edit)
+                # send path in _input_handler.py and Chat.update_user_input —
+                # never trust client-side attachment validation alone.
+                parsed = [Attachment.model_validate(a) for a in attachments]
+                validate_attachments(parsed)
+                action["attachments"] = [
+                    {
+                        "mime": a.mime,
+                        "data_url": a.data_url,
+                        "name": a.name,
+                        "size": a.size,
+                    }
+                    for a in parsed
+                ]
+                # Edits always replace the attachment set — the client's staged
+                # tray is a single source of truth, never a delta to append.
+                action["attachment_mode"] = "set"
+            await self.chat._send_action(action)
 
     # -- protocol ----------------------------------------------------------
 
@@ -1132,16 +1131,16 @@ class ChatHistory:
                     await notify_error("Could not load conversation", e)
                     target = None
                 if target is not None:
-                    await controller._prepare_destructive_mutation()
-                    adapter.set_turns_json(target.path_turns())
-                    await controller.replay_ui(target)
-                    await controller.activate_record(target)
-                    controller._restore_app_state(target.values or {})
-                    await controller._send_sibling_metadata()
-                    await controller.send_history_update()
-                    initialized = True
-                    await controller.notify_settled(True)
-                    return
+                    async with controller._destructive_mutation():
+                        adapter.set_turns_json(target.path_turns())
+                        await controller.replay_ui(target)
+                        await controller.activate_record(target)
+                        controller._restore_app_state(target.values or {})
+                        await controller._send_sibling_metadata()
+                        await controller.send_history_update()
+                        initialized = True
+                        await controller.notify_settled(True)
+                        return
 
             # Priority 2: restore from the mode-specific ID source.
             # Reading these inputs may raise SilentException if the browser
@@ -1168,12 +1167,12 @@ class ChatHistory:
                     await notify_error("Could not load conversation", e)
                     pointed = None
                 if pointed is not None:
-                    await controller._prepare_destructive_mutation()
-                    adapter.set_turns_json(pointed.path_turns())
-                    await controller.replay_ui(pointed)
-                    await controller.activate_record(pointed)
-                    controller._restore_app_state(pointed.values or {})
-                    await controller._send_sibling_metadata()
+                    async with controller._destructive_mutation():
+                        adapter.set_turns_json(pointed.path_turns())
+                        await controller.replay_ui(pointed)
+                        await controller.activate_record(pointed)
+                        controller._restore_app_state(pointed.values or {})
+                        await controller._send_sibling_metadata()
             await controller.send_history_update()
             initialized = True
             await controller.notify_settled(controller.record is not None)

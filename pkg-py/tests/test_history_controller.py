@@ -3,6 +3,7 @@
 # helpers that HistoryController delegates to.
 
 import warnings
+from contextlib import asynccontextmanager
 from datetime import timedelta
 from typing import Any, Callable, cast
 from unittest.mock import AsyncMock
@@ -226,8 +227,10 @@ class _FakeChat:
     async def clear_messages(self) -> None:
         pass
 
-    async def _prepare_destructive_history_mutation(self) -> None:
+    @asynccontextmanager
+    async def _destructive_history_mutation(self):
         self.destructive_preflight_calls += 1
+        yield
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
         pass
@@ -691,12 +694,14 @@ async def test_active_stream_rejects_history_switch_before_partial_mutation():
     controller.record = active
     store.records[target.id] = target
 
-    async def reject_active_stream() -> None:
+    @asynccontextmanager
+    async def reject_active_stream():
         raise RuntimeError(
             "Cannot clear or restore messages while a message stream is active."
         )
+        yield
 
-    chat._prepare_destructive_history_mutation = reject_active_stream  # type: ignore[method-assign]
+    chat._destructive_history_mutation = reject_active_stream  # type: ignore[method-assign]
 
     with pytest.raises(RuntimeError, match="stream is active"):
         await controller.switch_to(target.id)
@@ -717,12 +722,14 @@ async def test_active_stream_rejects_destructive_history_paths_before_mutation(
     controller.record = active
     store.records[active.id] = active
 
-    async def reject_active_stream() -> None:
+    @asynccontextmanager
+    async def reject_active_stream():
         raise RuntimeError(
             "Cannot clear or restore messages while a message stream is active."
         )
+        yield
 
-    chat._prepare_destructive_history_mutation = reject_active_stream  # type: ignore[method-assign]
+    chat._destructive_history_mutation = reject_active_stream  # type: ignore[method-assign]
 
     with pytest.raises(RuntimeError, match="stream is active"):
         if operation == "new_chat":
@@ -1670,8 +1677,9 @@ class _TrackingChat:
         self.messages_ = []
         self.cleared = True
 
-    async def _prepare_destructive_history_mutation(self) -> None:
-        pass
+    @asynccontextmanager
+    async def _destructive_history_mutation(self):
+        yield
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
         self.messages_.append(message_dict)

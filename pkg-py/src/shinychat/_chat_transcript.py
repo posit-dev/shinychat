@@ -277,9 +277,13 @@ class ChatTranscript:
         self._notify_change()
         self._notify_stream_terminal()
 
-    async def clear(self, *, send: AsyncActionSend) -> None:
+    async def clear(
+        self, *, send: AsyncActionSend, transaction: object | None = None
+    ) -> None:
         """Send the clear action, then discard the committed transcript."""
-        transaction = self._reserve_clear_or_restore()
+        transaction, release = self._use_transaction(
+            transaction, self._reserve_clear_or_restore
+        )
         retained_from = len(self._entries)
         try:
             await send()
@@ -292,7 +296,8 @@ class ChatTranscript:
             )
             self._notify_change()
         finally:
-            self._release_transaction(transaction)
+            if release:
+                self._release_transaction(transaction)
 
     def replace(self, entries: Sequence[TranscriptEntry]) -> None:
         """Replace the committed transcript after a caller has restored it."""

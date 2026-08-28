@@ -362,6 +362,9 @@ class Chat:
         self._pending_response_settlements: list[
             _PendingResponseSettlement
         ] = []
+        self._destructive_history_transaction: object | None = None
+        self._destructive_history_task: asyncio.Task[Any] | None = None
+        self._destructive_history_depth = 0
 
         # Initialize chat state and user input effect
         from shiny import reactive
@@ -402,10 +405,12 @@ class Chat:
 
             # TODO: deprecate messages once we start promoting managing LLM message
             # state through other means
-            async def _append_init_messages():
+            async def _append_init_messages(
+                transaction: object | None = None,
+            ) -> None:
                 for msg in messages:
                     await self._append_complete_message(
-                        msg, settle=False
+                        msg, settle=False, transaction=transaction
                     )
 
             @reactive.effect
@@ -1062,9 +1067,12 @@ class Chat:
         *,
         icon: HTML | Tag | TagList | bool | None = None,
         settle: bool,
+        transaction: object | None = None,
     ) -> None:
         exchange_id = self._transcript.open_exchange_id
-        transaction = self._transcript._reserve_complete_append()
+        transaction, release = self._transcript._use_transaction(
+            transaction, self._transcript._reserve_complete_append
+        )
         try:
             msg = normalize_message(message)
             msg = await self._transform_message(msg)
@@ -1092,7 +1100,8 @@ class Chat:
             if committed and settle and stored.role == "assistant":
                 self._schedule_response_settlement()
         finally:
-            self._transcript._release_transaction(transaction)
+            if release:
+                self._transcript._release_transaction(transaction)
 
     @asynccontextmanager
     async def message_stream_context(self):
@@ -1787,13 +1796,35 @@ class Chat:
                         stacklevel=2,
                     )
 
-    async def _prepare_destructive_history_mutation(self) -> None:
-        """Reject an active stream and settle terminal responses before mutation."""
-        self._transcript.assert_can_clear_or_restore()
-        while self._pending_response_settlements:
-            await self._deliver_response_settlement(
-                self._pending_response_settlements[0]
-            )
+    @asynccontextmanager
+    async def _destructive_history_mutation(self):
+        """Reserve destructive transcript admission through settlement and mutation."""
+        task = asyncio.current_task()
+        transaction = self._destructive_history_transaction
+        if transaction is not None and self._destructive_history_task is task:
+            self._destructive_history_depth += 1
+            try:
+                yield transaction
+            finally:
+                self._destructive_history_depth -= 1
+            return
+
+        transaction = self._transcript._reserve_clear_or_restore()
+        self._destructive_history_transaction = transaction
+        self._destructive_history_task = task
+        self._destructive_history_depth = 1
+        try:
+            while self._pending_response_settlements:
+                await self._deliver_response_settlement(
+                    self._pending_response_settlements[0]
+                )
+            yield transaction
+        finally:
+            self._destructive_history_depth -= 1
+            if self._destructive_history_depth == 0:
+                self._transcript._release_transaction(transaction)
+                self._destructive_history_transaction = None
+                self._destructive_history_task = None
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
         try:
@@ -1820,17 +1851,18 @@ class Chat:
             )
             return
 
-        await self._prepare_destructive_history_mutation()
-        entry = TranscriptEntry(message=stored)
+        async with self._destructive_history_mutation() as transaction:
+            entry = TranscriptEntry(message=stored)
 
-        async def send() -> bool:
-            return await self._send_append_message(stored)
+            async def send() -> bool:
+                return await self._send_append_message(stored)
 
-        await self._transcript.append(
-            entry,
-            exchange_id=self._transcript.open_exchange_id,
-            send=send,
-        )
+            await self._transcript.append(
+                entry,
+                exchange_id=self._transcript.open_exchange_id,
+                send=send,
+                transaction=transaction,
+            )
 
     def transform_user_input(self, *args: object, **kwargs: object) -> object:
         raise TypeError(
@@ -2110,10 +2142,10 @@ class Chat:
         async def send() -> None:
             await self._send_action(action)
 
-        await self._prepare_destructive_history_mutation()
-        await self._transcript.clear(send=send)
-        if greeting:
-            self._greeting_content = None
+        async with self._destructive_history_mutation() as transaction:
+            await self._transcript.clear(send=send, transaction=transaction)
+            if greeting:
+                self._greeting_content = None
 
     def get_greeting(self) -> str | None:
         """
@@ -2502,20 +2534,20 @@ class Chat:
             # and `self.messages()` are never initialized due to
             # calling `self._init_chat.destroy()` above
 
-            await self._prepare_destructive_history_mutation()
-            if resolved_bookmark_id_msgs_str not in state.values:
-                # If no messages to restore, display the `__init__(messages=)` messages
-                await self._append_init_messages()
-                return
+            async with self._destructive_history_mutation() as transaction:
+                if resolved_bookmark_id_msgs_str not in state.values:
+                    # If no messages to restore, display the `__init__(messages=)` messages
+                    await self._append_init_messages(transaction)
+                    return
 
-            msgs: list[Any] = state.values[resolved_bookmark_id_msgs_str]
-            if not isinstance(msgs, list):
-                raise ValueError(
-                    f"Bookmark value with id (`{resolved_bookmark_id_msgs_str}`) must be a list of messages."
-                )
+                msgs: list[Any] = state.values[resolved_bookmark_id_msgs_str]
+                if not isinstance(msgs, list):
+                    raise ValueError(
+                        f"Bookmark value with id (`{resolved_bookmark_id_msgs_str}`) must be a list of messages."
+                    )
 
-            for message_dict in msgs:
-                await self._restore_bookmark_message(message_dict)
+                for message_dict in msgs:
+                    await self._restore_bookmark_message(message_dict)
 
         @root_session.bookmark.on_restore
         async def _on_restore_greeting(state: RestoreState):

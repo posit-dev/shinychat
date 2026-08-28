@@ -27,6 +27,7 @@ from shinychat._history_store import (
     ConversationPartition,
     InMemoryConversationStore,
 )
+from shinychat._history_types import new_conversation_record
 from shinychat._utils_types import MISSING
 
 # ----------------------------------------------------------------------
@@ -485,6 +486,81 @@ def test_new_chat_drains_response_into_the_original_history_record_once():
     assert record.response_count == 1
     assert controller.record is None
     assert chat.messages() == ()
+
+
+def test_new_chat_blocks_stream_admission_while_settlement_drains():
+    class _HistoryAdapter:
+        def __init__(self) -> None:
+            self.turns = [{"role": "assistant", "content": "source response"}]
+
+        def get_turns_json(self) -> list[dict[str, str]]:
+            return list(self.turns)
+
+        def get_turns_grouped(self) -> list[list[dict[str, str]]]:
+            return [[turn] for turn in self.turns]
+
+        def set_turns_json(self, turns: list[dict[str, str]]) -> None:
+            self.turns = list(turns)
+
+        def client_info(self) -> dict[str, str]:
+            return {}
+
+    with session_context(test_session):
+        chat = Chat("settlement_drain_stream_admission", history=False)
+        store = InMemoryConversationStore()
+        adapter = _HistoryAdapter()
+        controller = HistoryController(
+            chat=chat,
+            adapter=adapter,  # type: ignore[arg-type]
+            store=store,
+            title_fn=None,
+            title_enabled=False,
+            client=None,
+        )
+        partition = ConversationPartition(chat_id=chat.id, scope="test")
+        controller.partition = partition
+        callback_started = asyncio.Event()
+        release_callback = asyncio.Event()
+
+        async def suspend_settlement() -> None:
+            callback_started.set()
+            await release_callback.wait()
+
+        chat._on_response_settled(suspend_settlement)
+
+        async def _exercise() -> None:
+            active = new_conversation_record(title="active")
+            controller.record = active
+            await store.put(partition, active)
+            await chat.append_message("source response")
+            clear = asyncio.create_task(controller.new_chat())
+            await callback_started.wait()
+
+            with pytest.raises(
+                RuntimeError,
+                match="Cannot start a message stream while another",
+            ):
+                await chat._append_message_chunk(
+                    "", chunk="start", stream_id="blocked"
+                )
+
+            assert chat.messages() == (
+                ChatMessageDict(content="source response", role="assistant"),
+            )
+            assert adapter.turns == [
+                {"role": "assistant", "content": "source response"}
+            ]
+            assert controller.record is active
+            assert len(await store.list(partition)) == 1
+
+            release_callback.set()
+            await clear
+
+        run_async(_exercise)
+
+    assert chat.messages() == ()
+    assert adapter.turns == []
+    assert controller.record is None
 
 
 def test_clear_without_a_pending_response_settlement_invokes_no_consumers():
