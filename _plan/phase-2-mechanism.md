@@ -386,3 +386,30 @@ single-session atom and starts only after every Python consumer has moved.
   Ruff, Pyright, 191 Playwright tests, and 645 non-browser tests. No JS, R,
   packaged-asset, or `shinychat#47fa` changes landed. Roborev rereview job
   `1012` was clean with no issues found.
+- **Settlement pump replacement handoff (2026-08-28; `shinychat#dy7g`):**
+  roborev review `1015` invoked the three-findings escalation valve, and the
+  user selected **DELETE/REPLACE** of the N-independent per-delivery
+  settlement-task topology. Commit `8e63c43b` implements exactly one
+  Chat-owned FIFO pump: one callback-tuple deque, one runner, and one
+  `on_flushed` wake-up. It preserves no response content, shielded
+  normal/destructive joins, cancellation isolation, unsubscribe,
+  `ContextVar` reentrancy rejection, active-stream preflight, terminal
+  outcomes, and session-teardown cancellation. Terra's high-reasoning
+  architectural review found no Phase 2 defect, and the deletion pass found
+  no old per-delivery settlement abstractions. The focused FIFO test passed
+  (1 selected); Ruff passed; Pyright reported 0 errors. Full
+  `UV_CACHE_DIR=/tmp/shinychat-uv-cache make py-check` could not proceed past
+  `uv run playwright install`, which was network-idle for more than five
+  minutes; therefore no current full-suite result or known `.md` MIME result
+  was obtained. No JS/R/assets or `shinychat#47fa` files changed. Next action:
+  retry full `py-check` where Playwright setup completes.
+- **Direct-suite follow-up (2026-08-28; `shinychat#dy7g`):** bypassing the
+  installer yielded 652 non-browser passes, 1 skip, and the known unrelated
+  `.md` MIME failure in `test_attachment_from_path`. All 191 Playwright tests
+  fail before application assertions when Chromium launch returns
+  `bootstrap_check_in ... Permission denied`; this applied to the restricted
+  runner, not the feature. An unrestricted exact full-gate retry passed Ruff,
+  Pyright, and all 191 Playwright tests. Its non-browser result was 652
+  passes, 1 skip, and only the known unrelated `.md` MIME failure, so
+  `make py-check` exits nonzero solely for that pre-existing test. No source
+  files changed.
