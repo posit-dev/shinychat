@@ -64,6 +64,57 @@ HistoryController <- R6::R6Class(
       invisible()
     },
 
+    # Reactive read of the active conversation ID: `NULL` for an empty draft,
+    # otherwise the ID the eventual `ConversationRecord` will (or already
+    # does) carry. Allocated at first user submission for `chat_server()`
+    # apps, or at first save for standalone `chat_enable_history()` use.
+    # Like any reactive read, this requires a reactive context; non-reactive
+    # callers must wrap it in shiny::isolate().
+    conversation_id = function() {
+      private$active_id_rv()
+    },
+
+    # Returns the active conversation ID, allocating one when the active
+    # conversation is an empty draft. Repeated calls for the same active
+    # conversation return the same ID.
+    ensure_conversation_id = function() {
+      id <- shiny::isolate(private$active_id_rv())
+      if (is.null(id)) {
+        id <- new_conversation_id()
+        private$set_active_id(id)
+      }
+      id
+    },
+
+    # Activate a stored record. This (with clear_active()) is the shared
+    # operation every restore/switch/init/delete/new-chat path must use, so
+    # that `record` and the active ID never move independently:
+    # when `record` is not NULL, the active ID must equal `record$id`.
+    activate_record = function(record) {
+      self$record <- record
+      private$set_active_id(record$id)
+      invisible()
+    },
+
+    clear_active = function() {
+      self$record <- NULL
+      private$set_active_id(NULL)
+      invisible()
+    },
+
+    # Seed a replacement controller (chat_server()'s set_client()) with the
+    # previous controller's active ID, so an unsaved identified draft keeps
+    # its identity across history re-registration. Never creates a record.
+    seed_conversation_id = function(id) {
+      if (!is.null(self$record)) {
+        rlang::abort(
+          "Cannot seed a conversation ID on a controller with an active record."
+        )
+      }
+      private$set_active_id(id)
+      invisible()
+    },
+
     initialize = function(
       chat_id,
       client,
@@ -77,6 +128,7 @@ HistoryController <- R6::R6Class(
       private$title_fn <- if (is.function(title)) title else NULL
       private$title_enabled <- !is.null(title)
       private$session <- session
+      private$active_id_rv <- shiny::reactiveVal(NULL)
       private$max_store_bytes <- if (!is.null(options$max_store_mb)) {
         # Bytes must stay a double: as.integer() overflows R's 32-bit integer
         # range at max_store_mb >= 2048, yielding NA.
@@ -118,10 +170,14 @@ HistoryController <- R6::R6Class(
       }
 
       if (first_save) {
-        self$record <- new_conversation_record(
+        # Adopt the active ID allocated at submission time (or allocate one
+        # now for standalone chat_enable_history() users), so the saved
+        # record carries the identity model work was already tagged with.
+        self$activate_record(new_conversation_record(
           title = fallback_title(recorded_turns),
-          client_info = get_client_info(private$client)
-        )
+          client_info = get_client_info(private$client),
+          id = self$ensure_conversation_id()
+        ))
       }
 
       self$record <- extend_record_linear(
@@ -140,12 +196,6 @@ HistoryController <- R6::R6Class(
 
       if (!is.null(self$on_response_saved)) {
         self$on_response_saved(self$record)
-      }
-
-      if (first_save) {
-        if (!is.null(self$on_active_id_change)) {
-          self$on_active_id_change(self$record$id)
-        }
       }
 
       self$send_history_update()
@@ -201,12 +251,9 @@ HistoryController <- R6::R6Class(
 
       set_turns_recorded(private$client, record_path_turns(target))
       self$replay_ui(target)
-      self$record <- target
+      self$activate_record(target)
       self$restore_app_state(target$values %||% list())
       self$send_sibling_metadata()
-      if (!is.null(self$on_active_id_change)) {
-        self$on_active_id_change(target$id)
-      }
       self$send_history_update()
     },
 
@@ -214,9 +261,14 @@ HistoryController <- R6::R6Class(
       self$save_current()
       private$client$set_turns(list())
       chat_clear(private$chat_id, session = private$session)
-      self$record <- NULL
       self$ui_offset <- 0
-      if (!is.null(self$on_active_id_change)) {
+      # Announce the cleared state even when the active ID is already NULL:
+      # in URL/bookmark restore modes the browser may still carry a stale
+      # conversation param (e.g. after a failed restore) that only
+      # on_active_id_change(NULL) clears.
+      was_identified <- !is.null(shiny::isolate(private$active_id_rv()))
+      self$clear_active()
+      if (!was_identified && !is.null(self$on_active_id_change)) {
         self$on_active_id_change(NULL)
       }
       # A fresh chat is never a restore: resolve the greeting the same way
@@ -255,11 +307,8 @@ HistoryController <- R6::R6Class(
       private$store$delete(self$partition, conv_id)
 
       if (!is.null(self$record) && identical(conv_id, self$record$id)) {
-        self$record <- NULL
+        self$clear_active()
         self$ui_offset <- 0
-        if (!is.null(self$on_active_id_change)) {
-          self$on_active_id_change(NULL)
-        }
         private$client$set_turns(list())
         chat_clear(private$chat_id, session = private$session)
       }
@@ -567,6 +616,26 @@ HistoryController <- R6::R6Class(
     on_save = NULL,
     on_restore = NULL,
     max_store_bytes = NULL,
+    # Active conversation identity, separate from `record`: an identified
+    # draft (submitted but not yet saved) has an ID and no record. Created in
+    # initialize(): a reactiveVal defined inline here would have its closure
+    # environment replaced by R6, breaking it.
+    active_id_rv = NULL,
+
+    # Single writer for the active ID; notifies on_active_id_change only on
+    # an actual change (e.g. first save after ensure_conversation_id() does
+    # not re-fire). The change-check read is isolated: controller methods run
+    # both inside and outside reactive contexts.
+    set_active_id = function(id) {
+      if (identical(shiny::isolate(private$active_id_rv()), id)) {
+        return(invisible())
+      }
+      private$active_id_rv(id)
+      if (!is.null(self$on_active_id_change)) {
+        self$on_active_id_change(id)
+      }
+      invisible()
+    },
 
     capture_app_state = function() {
       values <- list()
@@ -973,13 +1042,11 @@ chat_enable_history <- function(
           set_turns_recorded(client, record_path_turns(target))
           if (restore_ui) {
             controller$replay_ui(target)
-          }
-          controller$record <- target
-          if (restore_ui) {
             restore_after_first_flush(target$values)
           } else {
             controller$ui_offset <- record_ui_count(target)
           }
+          controller$activate_record(target)
           controller$send_sibling_metadata()
           controller$send_history_update()
           initialized <<- TRUE
@@ -1010,13 +1077,11 @@ chat_enable_history <- function(
         set_turns_recorded(client, record_path_turns(target))
         if (restore_ui) {
           controller$replay_ui(target)
-        }
-        controller$record <- target
-        if (restore_ui) {
           restore_after_first_flush(target$values)
         } else {
           controller$ui_offset <- record_ui_count(target)
         }
+        controller$activate_record(target)
         controller$send_sibling_metadata()
       }
     }
