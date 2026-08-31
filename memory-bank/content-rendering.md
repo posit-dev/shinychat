@@ -4,11 +4,13 @@ This document explains how chat message content flows from the server (Python/R)
 
 ## Overview
 
-A chat message's HTML content passes through three stages:
+A chat message carries an ordered list of segments: string segments (markdown/html/text/thinking) and structured content blocks (tool requests, tool results, web activity, raw-HTML islands). String segments pass through three stages:
 
 1. **Server-side preparation** (Python/R) — wraps raw HTML in `<shinychat-raw-html>` tags
 2. **Client-side parsing** (unified/rehype) — parses the content string into a HAST (HTML Abstract Syntax Tree)
 3. **React rendering** — converts the HAST into React elements, with special handling for certain tags
+
+Structured blocks bypass the HAST pipeline entirely — the client converts them to render-model blocks on arrival and dispatches directly to the right component (see [Structured Content Blocks](#structured-content-blocks)).
 
 ```
 Server (Python/R)                    Client (JS)
@@ -28,28 +30,137 @@ TagList/htmltools output             Message string
                                     (with component mapping)
 ```
 
+## Structured Content Blocks
+
+Tool UI, web activity, and block-level raw HTML islands no longer travel as
+markup embedded in the content string. They arrive as **structured content
+blocks**: typed JSON envelopes (`{type, version: 1, ...}`) that only the
+server can construct. The envelope — not markup scanned out of the text
+channel — is the trust signal.
+
+### Wire model
+
+`MessagePayload.segments` is an ordered union of string segments
+(`{content, content_type: "markdown"|"html"|"text"|"thinking"}`) and
+structured blocks (`SegmentPayload` in `js/src/transport/types.ts`). Block
+types: `tool_request`, `tool_result`, `web_search`, `web_search_results`,
+`web_fetch`, `html_block`. Streaming `chunk` actions only ever target
+string segments; structured blocks arrive complete. Every block carries
+`version: 1` as a forward-compatibility marker — the client warns and skips
+a block whose version it predates (`structuredBlockToLoop`,
+`asWebActivityWireBlock`, `asHtmlBlock`), rather than breaking the message
+around it.
+
+### Delivery
+
+Outside a stream, blocks are inline in `message.segments`. Mid-stream, a
+`block_insert` action delivers one complete block to the in-flight message
+(`js/src/chat/state.ts`, `block_insert` case). A no-op with `console.warn`
+when no stream is in flight. The thinking-tag/fence state machine operates
+only on string content and is deliberately untouched by `block_insert`.
+
+### Client conversion
+
+`messagePayloadToData` walks `segments` in order and converts each block to
+its render-model form on arrival:
+
+- **Role gate** — non-`html_block` structured blocks in a user-role message
+  are ignored with a warning. Tool UI and web activity are never
+  legitimate in a user message. An `html_block` is a server-attested
+  trusted-HTML envelope valid in any role (e.g. a user message whose content
+  was authored with tags on the server), so it passes through regardless.
+- **Per-type guards** — each block type is defensively narrowed: unknown
+  types and unsupported versions warn and no-op (`structuredBlockToLoop`,
+  `asWebActivityWireBlock`, `asHtmlBlock`). Required fields are
+  type-checked; malformed blocks are skipped.
+- **Tool-loop merging** — a `tool_request`/`tool_result` block becomes a
+  one-call `ToolLoopBlock` (`structuredBlockToLoop`). `appendToolLoopBlock`
+  merges it into an adjacent trailing tool loop when one is reachable,
+  tolerating a whitespace-only content block between carriers (the
+  whitespace is dropped; any other block ends the run and starts a new
+  loop). This is the structured re-expression of the old `routeToolBlocks`
+  adjacency grouping — same logic, operating on typed blocks instead of
+  parsed markup.
+- **Web-activity merging** — consecutive `web_*` blocks group into one
+  `WebActivityBlock` on arrival (`appendWebActivityBlock`), with the same
+  whitespace-only tolerance. Search↔results pairing works by adjacency
+  (`applyWebBlock` attaches results to the earliest still-pending search),
+  exactly as the markup path's `WebActivity.parseItems` did. The group
+  wrapper never appears on the wire.
+- **`html_block`** — arrives render-ready as an `HtmlBlock` render-model
+  block carrying `content` and block-level `htmlDeps`.
+
+### Restore
+
+Both servers re-derive structured blocks from stored turns; old persisted UI
+state is discarded, never re-parsed for trust. Python adopts R's
+turns-based restore: a `Turn` normalizes its contents into an ordered
+interleaving of string runs and structured blocks (`parts`), and
+`StoredMessage.wire_segments()` re-interleaves them at the recorded
+positions so the wire order matches the source content order
+(text/tool-result/text must not arrive as text/text/tool-result).
+Persisted UI markup is never scanned for trust — the envelope is
+re-constructed from the turn record on every restore.
+
+## The Trust Invariant
+
+The structured envelope **is** the trust signal. Only the server can
+construct a block, so the fields it carries are server-attested. The
+client never infers trust from `content_type` or from markup parsed out of
+the text channel for structured blocks.
+
+**Server-attested HTML fields** render through the single audited
+`RawHTML` sink (`js/src/chat/RawHTML.tsx`):
+
+- `tool_result.value` when `value_type: "html"` — rendered by
+  `ToolResultValue` (`ToolResult.tsx`)
+- `tool_result.title` and `tool_result.icon` (also `tool_request.title`,
+  `tool_request.icon`) — rendered by `ToolCard.tsx` through `RawHTML`
+  (the title span and icon span)
+- `tool_result.footer` — rendered by `ToolCard.tsx` through `RawHTML`
+- `html_block.content` — rendered by `HtmlBlockContent`
+  (`ChatMessage.tsx`) through `RawHTML`
+
+**Text fields** are escaped: `intent`, `label`, `value_preview`,
+`tool_name`, `query` (web search), `url` (web fetch).
+
+**Code-block fields** render as markdown code blocks (escaped):
+`arguments` (tool request), `request_call` (tool result).
+
+Model output travels only in string segments and can never instantiate
+tool UI. The spoofed-`<shiny-tool-result>` XSS class — where a model
+emitted a forged `<shiny-tool-result value-type="html" value="…">` as
+ordinary assistant markdown and reached `RawHTML` → `innerHTML` with zero
+user interaction — is eliminated by construction: no markup is ever
+scanned out of the text channel for trust. The untrusted component map
+(`untrustedChatTagToComponentMap`) still maps tool/web tags to
+`EscapedIsland` as defense in depth, so a forged tag in a markdown string
+segment renders as visible literal text rather than a real (empty) DOM
+element.
+
 ## Server-Side: HTML Islands
 
-The server sends message content as an HTML string. Some of that content is "React-native" (custom elements like `<shiny-tool-request>` that map to React components), and some is "opaque" server-rendered HTML (Shiny widgets, htmltools output) that React should not manage.
+The server sends message content as an HTML string. Some of that content is "React-native" (custom elements that map to React components), and some is "opaque" server-rendered HTML (Shiny widgets, htmltools output) that React should not manage.
 
 The `split_html_islands()` function (in both `pkg-py/src/shinychat/_html_islands.py` and `pkg-r/R/html_islands.R`) separates these two kinds of content:
 
 - Elements with a `data-shinychat-react` attribute are emitted **bare** — they'll be mapped to React components on the client.
 - Everything else is wrapped in `<shinychat-raw-html>...</shinychat-raw-html>` — these become "HTML islands" that React won't manage.
 
-Example input:
+Tool elements (`<shiny-tool-request>`/`<shiny-tool-result>` with `data-shinychat-react`) are no longer emitted into content strings — tool UI travels as structured blocks now (see [Structured Content Blocks](#structured-content-blocks)). `split_html_islands()` still exists for `html_block` derivation: `ChatMessage.__init__` walks its output, turning `<shiny-chat-raw-html>` wrappers into `html_block` structured blocks (block-level raw HTML islands only; inline islands are unsupported) and rendering bare React elements as residual string content.
+
+Example input (non-string, tag-like content):
 ```html
 <div>Some widget output</div>
-<shiny-tool-result data-shinychat-react request-id="req-1" ...></shiny-tool-result>
 <div>More widget output</div>
 ```
 
 After `split_html_islands()`:
 ```html
-<shinychat-raw-html><div>Some widget output</div></shinychat-raw-html>
-<shiny-tool-result data-shinychat-react request-id="req-1" ...></shiny-tool-result>
-<shinychat-raw-html><div>More widget output</div></shinychat-raw-html>
+<shinychat-raw-html><div>Some widget output</div><div>More widget output</div></shinychat-raw-html>
 ```
+
+`ChatMessage.__init__` then renders the wrapper's children and emits an `html_block` structured block carrying the trusted HTML and its dependencies.
 
 ## HTML Dependencies: Client-Authoritative Round-Trip
 
@@ -91,11 +202,13 @@ mapping. This is a defense in depth backstop for Markdown and the primary
 protection for `content_type="html"`, whose processor intentionally performs
 minimal HTML parsing.
 
-Chat messages have a different transport contract: an HTML content block is
-trusted, server-authored output and intentionally retains the live raw-island
-mapping. Model output is sent as Markdown and uses `markdownProcessor`.
-Supporting untrusted HTML blocks in chat would require adding per-block
-provenance to that wire format rather than inferring trust in the client.
+Chat messages now carry structured content blocks alongside string
+segments. Trust comes from the typed envelope — only the server can
+construct a block — not from `content_type` inference. The legacy
+`content_type: "html"` string-segment path (island machinery) is retained
+during the transition and remains trusted-by-channel; `html_block` is the
+structured replacement. Model output travels only in string segments and
+can never instantiate tool UI.
 
 ### Two-Stage Rendering
 
@@ -111,7 +224,9 @@ provenance to that wire format rather than inferring trust in the client.
 - `pre` → `CopyableCodeBlock`
 - `table` → `BootstrapTable`
 - `shinychat-raw-html` → inline adapter that renders `RawHTML`
-- Additional mappings can be passed via `tagToComponentMap` (e.g., `shiny-tool-request` → `ToolRequestBridge`)
+- Additional mappings can be passed via `tagToComponentMap` (e.g., `shiny-aside` → `Aside`)
+
+Tool requests and results are now routed exclusively from structured wire blocks (`tool_request` / `tool_result`) before Markdown rendering, so they no longer appear in the component map. The untrusted map (`untrustedChatTagToComponentMap`) still maps `shiny-tool-request`, `shiny-tool-result`, and `shiny-web-*` tags to `EscapedIsland` — a defense-in-depth spoof guard so a forged tag in a markdown string segment renders as visible literal text rather than a real (empty) DOM element.
 
 The `passNode: true` option means mapped components receive the raw HAST `Element` node as a prop, in addition to any converted children.
 
@@ -164,7 +279,7 @@ The `RawHTML` component instance (and its wrapper div) persists as long as React
 - The element's **key changes** between renders
 - The element's **position shifts** in a sibling list without stable keys
 
-In practice, HTML islands contain server-generated content (tool results, widgets) that doesn't change during streaming — the streaming content is the LLM's markdown response, which is typically separate.
+In practice, HTML islands contain server-generated content (widgets, `html_block` islands) that doesn't change during streaming — the streaming content is the LLM's markdown response, which is typically separate.
 
 ### Layout Semantics
 
@@ -175,7 +290,7 @@ When used for HTML islands (via the `displayContents` prop), `RawHTML` also hand
 
 ## The rehypeUnwrapBlockCEs Plugin
 
-Markdown parsers treat inline HTML as inline content and wrap it in `<p>` tags. When the "inline" HTML is actually a block-level custom element (like `<shiny-tool-request>` or `<shinychat-raw-html>`), this produces invalid HTML (`<p>` cannot contain block elements).
+Markdown parsers treat inline HTML as inline content and wrap it in `<p>` tags. When the "inline" HTML is actually a block-level custom element (like `<shinychat-raw-html>`), this produces invalid HTML (`<p>` cannot contain block elements).
 
 The `rehypeUnwrapBlockCEs` plugin (`js/src/markdown/plugins/rehypeUnwrapBlockCEs.ts`) fixes this by visiting the HAST after parsing and promoting block-level custom elements out of `<p>` parents. It splits the `<p>` into separate elements:
 
@@ -186,13 +301,15 @@ After:  <p>text </p> <shinychat-raw-html>...</shinychat-raw-html> <p>more text</
 
 ## Where RawHTML is Used
 
-`RawHTML` is used in three contexts:
+`RawHTML` is used in five contexts:
 
 1. **HTML islands** — via the `shinychat-raw-html` component mapping in `MarkdownContent.tsx`. The inline adapter extracts the raw HTML from the HAST node and passes it to `RawHTML` with `displayContents` enabled.
-2. **Tool card footers** — `ToolCard.tsx` uses `RawHTML` for server-rendered footer content.
-3. **Tool result values** — `ToolResult.tsx` uses `RawHTML` when the result's `valueType` is `"html"`.
+2. **Tool card title and icon** — `ToolCard.tsx` uses `RawHTML` (as `span`) for the server-attested `title` and `icon` fields. These were previously ad-hoc `dangerouslySetInnerHTML`; the structured-block trust invariant routes them through the single audited sink.
+3. **Tool card footers** — `ToolCard.tsx` uses `RawHTML` for server-rendered footer content.
+4. **Tool result values** — `ToolResult.tsx` uses `RawHTML` when the result's `valueType` is `"html"`.
+5. **`html_block` content** — `HtmlBlockContent` (`ChatMessage.tsx`) renders a structured `html_block`'s server-attested HTML through `RawHTML`. Block-level dependencies are rendered via `shiny.renderDependencies` *before* the HTML mounts (the `depsReady` gate), so a dynamically-sent island's styles/scripts are in place before its markup — and its Shiny bindings — attach.
 
-In all three cases, the purpose is the same: inject server-rendered HTML that React should not reconcile, preserving Shiny bindings.
+In all cases, the purpose is the same: inject server-rendered HTML that React should not reconcile, preserving Shiny bindings.
 
 ## Known Inefficiency: The HAST Round-Trip
 
@@ -207,4 +324,4 @@ For HTML islands, the content goes through a round-trip:
 
 Steps 2-5 are wasted work — the inner HTML is parsed into a tree, converted to React elements (thrown away), serialized back to a string, and injected as raw HTML. The content could theoretically go straight from step 1 to step 6.
 
-This round-trip exists because the entire message is one string that goes through the unified pipeline together. Avoiding it would require either pre-extracting island content before the pipeline or restructuring the transport layer to send content as separate segments. Neither is worth the added complexity given that the inefficiency has no observable performance impact.
+This round-trip exists because a legacy `html` string segment goes through the unified pipeline together with the rest of the message. The structured `html_block` already bypasses it — `HtmlBlockContent` passes the block's `content` straight to `RawHTML` with no HAST parse. The round-trip remains only for the retained island machinery (`html` string segments with `<shinychat-raw-html>` markup), which is itself slated for retirement once the transition completes.
