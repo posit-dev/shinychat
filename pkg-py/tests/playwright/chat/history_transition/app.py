@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, cast
 from unittest.mock import MagicMock
 
 import chatlas
@@ -9,6 +9,7 @@ from chatlas import Turn
 from chatlas._turn import AssistantTurn
 from shiny import App, Inputs, Outputs, Session, reactive, render, ui
 from shinychat import Chat, chat_ui
+from shinychat._chat_types import ChatAction
 from shinychat.types import HistoryOptions
 
 
@@ -137,7 +138,7 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         }
         if protocol is not missing:
             action["transition_protocol"] = protocol
-        await chat._send_action(action)
+        await chat._send_action(cast(ChatAction, action))
 
     async def set_protocol(protocol: object, label: str) -> None:
         await send_history_update_for_test(protocol)
