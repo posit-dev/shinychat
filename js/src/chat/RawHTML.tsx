@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState } from "react"
+import { useContext, useEffect, useRef, useState, type RefObject } from "react"
 import { ShinyLifecycleContext } from "./context"
 
 // Uses a ref to opt out of React's DOM management, preventing React from
@@ -6,14 +6,8 @@ import { ShinyLifecycleContext } from "./context"
 //
 // When ShinyLifecycleContext is available, automatically calls bindAll/unbindAll
 // scoped to this element — each RawHTML instance manages its own Shiny bindings.
-export function RawHTML({
-  html,
-  className,
-  as: Tag = "div",
-  bind = true,
-  displayContents = true,
-  fillable = true,
-}: {
+
+export interface RawHTMLProps {
   html: string
   className?: string
   /**
@@ -35,8 +29,19 @@ export function RawHTML({
    * its content, and promoting it makes it split the free space with the body.
    */
   fillable?: boolean
-}) {
-  const ref = useRef<HTMLElement | null>(null)
+}
+
+export function RawHTML(props: RawHTMLProps) {
+  if (props.as === "span") return <RawHTMLSpan {...props} />
+  return <RawHTMLDiv {...props} />
+}
+
+function useRawHtmlEffect(
+  ref: RefObject<HTMLElement | null>,
+  html: string,
+  bind: boolean,
+  fillable: boolean,
+) {
   const [isFillCarrier, setIsFillCarrier] = useState(false)
   const shiny = useContext(ShinyLifecycleContext)
 
@@ -60,21 +65,53 @@ export function RawHTML({
         shiny.unbindAll(el)
       }
     }
-    // `Tag` is a dep because switching it remounts the element.
-  }, [html, shiny, fillable, bind, Tag])
+  }, [html, shiny, fillable, bind, ref])
+
+  return { isFillCarrier }
+}
+
+function useRawHtmlClassName(
+  isFillCarrier: boolean,
+  className: string | undefined,
+) {
+  return isFillCarrier
+    ? `html-fill-item html-fill-container${className ? ` ${className}` : ""}`
+    : className
+}
+
+function RawHTMLDiv({
+  html,
+  className,
+  bind = true,
+  displayContents = true,
+  fillable = true,
+}: RawHTMLProps) {
+  const ref = useRef<HTMLDivElement>(null)
+  const { isFillCarrier } = useRawHtmlEffect(ref, html, bind, fillable)
 
   return (
-    <Tag
-      // Callback ref: Tag's union type gives the ref prop a union of
-      // HTMLDivElement/HTMLSpanElement types; HTMLElement is the common base.
-      ref={(el: HTMLElement | null) => {
-        ref.current = el
-      }}
-      className={
-        isFillCarrier
-          ? `html-fill-item html-fill-container${className ? ` ${className}` : ""}`
-          : className
-      }
+    <div
+      ref={ref}
+      className={useRawHtmlClassName(isFillCarrier, className)}
+      style={displayContents ? { display: "contents" } : undefined}
+    />
+  )
+}
+
+function RawHTMLSpan({
+  html,
+  className,
+  bind = true,
+  displayContents = true,
+  fillable = true,
+}: RawHTMLProps) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const { isFillCarrier } = useRawHtmlEffect(ref, html, bind, fillable)
+
+  return (
+    <span
+      ref={ref}
+      className={useRawHtmlClassName(isFillCarrier, className)}
       style={displayContents ? { display: "contents" } : undefined}
     />
   )
