@@ -487,3 +487,56 @@ evidence: focused tests 10 passed/126 deselected; `make py-format` passed;
 1073 is closed. `shinychat#ykxh` remains open with `needs-review`,
 `work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`;
 `shinychat#5r50` remains blocked and unstarted.
+
+### Roborev 1079 escalation: lifecycle boundary decision required (2026-08-31)
+
+Roborev job `1079` reviewed code commit
+`2e1f9f0837ce8e499930d5aac5a9750083b88207` and returned `FAIL` with a valid
+Medium finding at `pkg-py/src/shinychat/_history.py:875`: `new_chat()` and
+`delete()` reserve destructive transcript admission before waiting for the
+recorder lock. A concurrent input can enter the transcript during that wait,
+be cleared locally, and then have its recorder callback persist into a new
+conversation, leaving transcript and history inconsistent. Job `1079` remains
+open; no review closure was performed.
+
+This is finding 3/3 against the replacement submechanism, so the mandatory
+three-findings valve fires. **Decision: DELETE/REPLACE** the interpretation
+that the recorder lock alone is the lifecycle transaction. Retain the
+existing recorder lock for persistence serialization, but do not treat it as
+the admission, cleanup, and callback boundary.
+
+The required ordering is:
+
+```text
+transcript-admission boundary -> recorder lock -> cleanup/None callback -> release
+```
+
+The policy conflict is unresolved and requires Garrick's choice before any
+implementation:
+
+- The existing transcript test preserves an input accepted while clear is
+  pending.
+- The Phase 4 mechanism note says destructive lifecycle operations reject
+  conflicting admission.
+
+Garrick must choose one of:
+
+1. **Reject:** reject input admitted during the narrow `new_chat()` or active
+   `delete()` wait, preserving the destructive-operation boundary.
+2. **Preserve:** preserve that input coherently as input to the new
+   conversation by reordering or detaching the clear operation.
+
+No implementation may begin before this choice is recorded. After the choice,
+the required regressions cover blocked `put(A)` versus active delete, blocked
+callback A versus `new_chat()` with callback order `[A, None]`, concurrent
+input during the blocked lifecycle wait under the selected policy, and
+failure/cancellation at each awaited lock-held cleanup and callback boundary.
+Once implemented, review must use one batched range review covering the
+replacement chain.
+
+The escalation remains within R2's durable-record/session-continuity trace and
+R7's existing-primitives trace. Scope exclusions remain: no queue, timer,
+CAS, second record owner, new lock, restore/bookmark mechanism, or init-window
+guard. `shinychat#ykxh` is parked for Garrick escalation, remains open with
+`needs-review` and `work.attention="blocked"`, and
+`shinychat#5r50` remains blocked and unstarted.
