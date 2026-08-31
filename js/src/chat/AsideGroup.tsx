@@ -1,9 +1,8 @@
-import { memo, useEffect, useId, useState, type ComponentType } from "react"
+import { memo, useEffect, useId, useState } from "react"
 import { FloatingPortal, FloatingFocusManager } from "@floating-ui/react"
 import type { Element as HastElement } from "hast"
 import { toHtml } from "hast-util-to-html"
 import { MarkdownContent } from "../markdown/MarkdownContent"
-import { EscapedIsland } from "../markdown/EscapedIsland"
 import { ASIDE_PENDING_ATTR } from "../markdown/plugins/markTrailingAsides"
 import { externalLinkAttributes } from "../markdown/plugins/rehypeExternalLinks"
 import { useAsideFavicon } from "./context"
@@ -12,6 +11,7 @@ import { citationEntriesFromAsides, type CitationEntry } from "./citations"
 import { domainFromUrl } from "./domain"
 import { portalTheme } from "./portalTheme"
 import { useDismissiblePopover } from "./useDismissiblePopover"
+import { trustGatedEscapes } from "./chatTagToComponentMap"
 
 export interface CitationMetadata {
   title?: string
@@ -38,23 +38,6 @@ interface AsideGroupViewProps {
   entries: AsideEntry[]
   pending?: boolean
   untrusted?: boolean
-}
-
-// Security: untrusted (model-authored) asides must never resolve tool/web/island
-// tags to live components in the popover body reparse — there is no sanitize
-// step. Every trust-gated tag renders as inert text via EscapedIsland.
-const untrustedAsideBodyTagToComponentMap: Record<
-  string,
-  ComponentType<unknown>
-> = {
-  "shiny-chat-raw-html": EscapedIsland,
-  "shinychat-raw-html": EscapedIsland,
-  "shiny-tool-request": EscapedIsland,
-  "shiny-tool-result": EscapedIsland,
-  "shiny-web-activity": EscapedIsland,
-  "shiny-web-search": EscapedIsland,
-  "shiny-web-search-results": EscapedIsland,
-  "shiny-web-fetch": EscapedIsland,
 }
 
 function prop(el: HastElement, name: string): string | undefined {
@@ -392,9 +375,7 @@ export const AsideGroupView = memo(function AsideGroupView({
                     contentType="html"
                     streaming={false}
                     tagToComponentMap={
-                      untrusted
-                        ? untrustedAsideBodyTagToComponentMap
-                        : undefined
+                      untrusted ? trustGatedEscapes : undefined
                     }
                   />
                 </div>
