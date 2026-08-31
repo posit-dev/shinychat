@@ -150,7 +150,7 @@ build_stored_message_from_content <- function(
     if (is_html && !is.null(session)) {
       for (p in parts) {
         if (is.character(p) && inherits(p, "html")) {
-          ui <- process_ui(pre_process_ui(p), session)
+          ui <- process_ui(p, session)
           all_deps <- c(all_deps, ui[["deps"]])
         }
       }
@@ -173,7 +173,7 @@ build_stored_message_from_content <- function(
       } else if (is.character(part)) {
         is_html_part <- inherits(part, "html")
         if (is_html_part && !is.null(session)) {
-          ui <- process_ui(pre_process_ui(part), session)
+          ui <- process_ui(part, session)
           all_deps <- c(all_deps, ui[["deps"]])
           segments <- c(
             segments,
@@ -194,27 +194,26 @@ build_stored_message_from_content <- function(
       } else if (
         inherits(part, c("shiny.tag", "shiny.tag.list", "htmlwidget"))
       ) {
-        # Non-string HTML content: session-process and add as html segment
-        if (!is.null(session)) {
-          ui <- process_ui(pre_process_ui(part), session)
-          all_deps <- c(all_deps, ui[["deps"]])
-          segments <- c(
-            segments,
-            list(list(
-              content = paste0("\n\n", ui[["html"]], "\n\n"),
-              content_type = "html"
-            ))
-          )
+        # Non-string HTML content: split into html_block islands + bare
+        # React string runs via the shared island derivation — matching the
+        # send path (build_html_island_segments) and Python's ChatMessage
+        # non-string branch, with no <shiny-chat-raw-html> wrapper tags
+        # (kata#af81). Block wire segments join `blocks` with their
+        # positions recorded; residual string runs join `segments`.
+        island_result <- if (!is.null(session)) {
+          build_html_island_segments(part, session)
         } else {
-          rendered <- htmltools::renderTags(part)
-          all_deps <- c(all_deps, rendered$dependencies)
-          segments <- c(
-            segments,
-            list(list(
-              content = paste0("\n\n", as.character(rendered$html), "\n\n"),
-              content_type = "html"
-            ))
-          )
+          build_html_island_segments_static(part)
+        }
+        all_deps <- c(all_deps, island_result$deps)
+        for (seg in island_result$segments) {
+          if ("type" %in% names(seg)) {
+            # Record the position (number of string segments so far)
+            positions <- c(positions, length(segments))
+            blocks <- c(blocks, list(seg))
+          } else {
+            segments <- c(segments, list(seg))
+          }
         }
       } else {
         # Fallback: treat as markdown string
