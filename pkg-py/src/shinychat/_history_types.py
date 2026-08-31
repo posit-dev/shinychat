@@ -65,6 +65,17 @@ MAX_SCHEMA_VERSION = 1
 # kata#c15v). The marker's presence — not its value — is what counts: old UI
 # is never migrated, only ever discarded and re-derived at the current
 # version, so there are never stored old-version messages to migrate.
+#
+# Parity note (kata#af81): the R package bumped its marker to v2 and requires
+# an exact match because R's v1 derivation rendered trusted tag content
+# through ``pre_process_ui()``, embedding ``<shiny-chat-raw-html>`` island
+# wrapper tags in persisted segment content — wrappers the client no longer
+# resolves. Python's versioned stored UI never had that problem: the marker
+# and the turns-based derivation were introduced (kata#c15v) after the
+# html_block migration (kata#mhyd), which renders island children directly
+# into ``html_block`` envelopes without wrapper tags. Python v1 records are
+# therefore safe to replay as-is and stay at v1 — bumping would needlessly
+# discard clean persisted UI (including out-of-band messages).
 STORED_UI_VERSION = 1
 
 
