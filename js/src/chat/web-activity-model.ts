@@ -152,29 +152,55 @@ export function applyWebBlock(
   return { type: "web_activity", items }
 }
 
+/** Structural check for a grouped web-activity block in any block list. */
+function isWebActivityBlock(block: unknown): block is WebActivityBlock {
+  return (
+    typeof block === "object" &&
+    block !== null &&
+    (block as { type?: unknown }).type === "web_activity"
+  )
+}
+
 /**
- * Append one web_* wire block to a message's block list, grouping it into
- * the trailing web activity when one is reachable — tolerating a
+ * Chat's whitespace-separator check: a whitespace-only content block
+ * between web_* carriers is part of the run (dropped on grouping),
+ * mirroring rehypeGroupWebActivity's tolerance of whitespace text nodes.
+ */
+export function isWhitespaceContentBlock(
+  block: MessageBlock | WebActivityBlock,
+): boolean {
+  return block.type === "content" && block.content.trim() === ""
+}
+
+/**
+ * Append one web_* wire block to a block list, grouping it into the
+ * trailing web activity when one is reachable — tolerating a
  * whitespace-only string segment between carriers, exactly as
  * rehypeGroupWebActivity tolerates whitespace text nodes (the whitespace is
  * dropped; any other block ends the run and starts a new activity). A lone
  * web block forms an activity on its own.
+ *
+ * Generic over the list's entry shape so Chat (MessageBlock[]) and
+ * MarkdownStream (StreamSegment[]) share the one grouping/pairing
+ * implementation; `isWhitespaceText` identifies a droppable whitespace
+ * separator in the caller's shape (e.g. isWhitespaceContentBlock for Chat).
  */
-export function appendWebActivityBlock(
-  blocks: MessageBlock[],
+export function appendWebActivityBlock<T>(
+  blocks: (T | WebActivityBlock)[],
   block: WebActivityWireBlock,
-): MessageBlock[] {
-  const out = [...blocks]
+  isWhitespaceText: (block: T | WebActivityBlock) => boolean,
+): (T | WebActivityBlock)[] {
+  const out: (T | WebActivityBlock)[] = [...blocks]
   let tail = out[out.length - 1]
-  if (tail?.type === "content" && tail.content.trim() === "") {
+  if (tail !== undefined && isWhitespaceText(tail)) {
     const prev = out[out.length - 2]
-    if (prev?.type === "web_activity") {
+    if (isWebActivityBlock(prev)) {
       // The whitespace-only separator is part of the run; drop it.
       out.pop()
       tail = prev
     }
   }
-  if (tail?.type === "web_activity") {
+  if (isWebActivityBlock(tail)) {
     out[out.length - 1] = applyWebBlock(tail, block)
   } else {
     out.push(applyWebBlock(null, block))

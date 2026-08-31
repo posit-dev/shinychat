@@ -24,6 +24,7 @@ import {
   appendWebActivityBlock,
   asWebActivityWireBlock,
   isWebActivityWireBlock,
+  isWhitespaceContentBlock,
 } from "./web-activity-model"
 import type {
   WebActivityBlock,
@@ -248,7 +249,12 @@ export function messagePayloadToData(
         // Consecutive web_* blocks group into ONE web_activity block on
         // arrival (the structured form of web-activity grouping).
         const webBlock = asWebActivityWireBlock(seg)
-        if (webBlock) rawBlocks = appendWebActivityBlock(rawBlocks, webBlock)
+        if (webBlock)
+          rawBlocks = appendWebActivityBlock(
+            rawBlocks,
+            webBlock,
+            isWhitespaceContentBlock,
+          )
         continue
       }
       if (seg.type === "html_block") {
@@ -1060,7 +1066,11 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       }
 
       if (webBlock) {
-        blocks = appendWebActivityBlock(blocks, webBlock)
+        blocks = appendWebActivityBlock(
+          blocks,
+          webBlock,
+          isWhitespaceContentBlock,
+        )
       } else if (htmlBlock) {
         blocks.push(htmlBlockToRenderBlock(htmlBlock))
       } else if (loop) {
