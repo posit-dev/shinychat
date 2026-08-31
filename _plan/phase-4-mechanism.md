@@ -869,5 +869,5 @@ requires Garrick's authorization before any implementation resumes.
 
 Current state: `shinychat#ykxh` remains open with `needs-review`,
 `work.attention="blocked"`, and
-`work.branch="feat/history-exchange-tree"`. Roborev `1079` remains open and
-unclosed; `shinychat#5r50` remains blocked and unstarted.
+`work.branch="feat/history-exchange-tree"`. Roborev `1079` was closed after
+`ace09c52`; `shinychat#5r50` remains blocked and unstarted.
