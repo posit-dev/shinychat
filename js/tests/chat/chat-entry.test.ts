@@ -443,17 +443,14 @@ describe("data-initial-messages attribute", () => {
       JSON.stringify(entries),
     )
 
-    // The tool_request/tool_result pair renders as real tool UI…
     expect(host.querySelector(".shiny-chat-tool-group")).not.toBeNull()
     expect(host.querySelector(".shiny-tool-card")).not.toBeNull()
     expect(host.textContent).toContain("72F and sunny")
 
-    // …and the html_block renders through the RawHTML island path.
     const island = host.querySelector(".island")
     expect(island).not.toBeNull()
     expect(island!.innerHTML).toBe("Island HTML")
 
-    // Mixed string/structured segments render in wire order.
     const text = host.textContent ?? ""
     expect(text.indexOf("Before the call.")).toBeLessThan(
       text.indexOf("72F and sunny"),
@@ -493,14 +490,12 @@ describe("data-initial-messages attribute", () => {
       },
     ]
 
-    // Default ("tool") grouping: one group per tool name -> two group rows.
     const grouped = await bootContainer(
       "attr-grouping-default",
       JSON.stringify(makeEntries()),
     )
     expect(grouped.querySelectorAll(".shiny-chat-tool-group")).toHaveLength(2)
 
-    // tool-grouping="all": both calls collapse into a single group row.
     const all = await bootContainer(
       "attr-grouping-all",
       JSON.stringify(makeEntries()),
@@ -542,10 +537,8 @@ describe("data-initial-messages attribute", () => {
     expect(warn).toHaveBeenCalledWith(
       "Ignoring non-html_block structured block in a user-role message",
     )
-    // The tool block is dropped…
     expect(host.querySelector(".shiny-chat-tool-group")).toBeNull()
     expect(host.querySelector(".shiny-tool-card")).toBeNull()
-    // …but the message (and its trusted html_block) survives.
     expect(host.textContent).toContain("User says hi")
     const island = host.querySelector(".island")
     expect(island).not.toBeNull()

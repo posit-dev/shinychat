@@ -110,22 +110,17 @@ export const ChatMessage = memo(function ChatMessage({
   const isUser = message.role === "user"
 
   // Finalized messages already carry tool_loop blocks (built in the reducer
-  // from structured wire blocks). While streaming, tool elements arrive as
+  // from structured wire blocks); while streaming, tool elements arrive as
   // structured block_insert actions, so message.blocks is always current.
   const blocks = message.blocks
 
-  // Tool UI is never legitimate in a user message, so don't hand the bridges to
-  // one. Defense in depth alongside the router's role gate: an html-typed user
-  // block skips the router entirely and goes through `htmlProcessor` — no
-  // remarkEscapeHtml, no rehypeSanitize — so without this the tags would still
-  // resolve to real tool cards. Withholding the map leaves them inert elements.
-  //
-  // The same reasoning applies per content type: markdown-typed blocks are
-  // model-authored (untrusted), so they get a map whose tool tags render as
-  // escaped, inert text — closing the fallback path that would otherwise let a
-  // forged <shiny-tool-result value-type="html"> reach innerHTML without ever
-  // being routed. Only html-typed blocks (server-authored) get the real
-  // bridges, as a fallback for tool elements the router left behind.
+  // Tool UI is never legitimate in a user message, so don't hand the bridges
+  // to one. An html-typed user block skips the router entirely and goes
+  // through `htmlProcessor` — no remarkEscapeHtml, no rehypeSanitize — so
+  // without this the tags would still resolve to real tool cards.
+  // Markdown-typed blocks are model-authored (untrusted), so they get a map
+  // whose tool tags render as escaped, inert text. Only html-typed blocks
+  // (server-authored) get the real bridges.
   const mapForContentType = (contentType: ContentType) =>
     isUser
       ? undefined
@@ -446,17 +441,14 @@ export const ChatMessage = memo(function ChatMessage({
       )
     }
 
-    // A structured web activity (web_search/web_search_results/web_fetch
-    // blocks, grouped by the reducer on arrival) renders directly — no
-    // markup round-trip through the markdown pipeline.
+    // A structured web activity renders directly — no markdown-pipeline
+    // round-trip.
     if (block.type === "web_activity") {
       return <WebActivity key={i} items={block.items} />
     }
 
-    // A structured raw-HTML island (an html_block block): server-authored
-    // trusted HTML rendered directly through the shared RawHTML sink — no
-    // markdown-pipeline round-trip, and opaque to the thinking/fence state
-    // machine by construction.
+    // A structured raw-HTML island: server-authored trusted HTML rendered
+    // directly through the shared RawHTML sink.
     if (block.type === "html_block") {
       return (
         <HtmlBlockContent

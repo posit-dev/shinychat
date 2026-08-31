@@ -249,7 +249,6 @@ describe("Tool component bridge rendering", () => {
 
     expect(document.querySelector(".spinner-border")).toBeTruthy()
 
-    // Stream the result as a structured block_insert
     act(() => {
       transport.fire("test-chat", {
         type: "chunk_start",
@@ -683,10 +682,6 @@ describe("Tool component bridge rendering", () => {
   })
 
   it("does not mount an HTML payload in tool_name when the card is expanded", () => {
-    // tool_name is model-influenced (chatlas sets it from the tool-call
-    // payload). When no server-attested title is provided, the fallback
-    // `${toolName}()` is interpolated into the RawHTML title span, so the
-    // name must be escaped — never mounted as a live element.
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()
 
@@ -722,14 +717,9 @@ describe("Tool component bridge rendering", () => {
       })
     })
 
-    // The tool group row renders; expanded:true seeds the disclosure open so
-    // the leaf card (whose header carries the title span — the RawHTML sink
-    // under test) is already visible without clicking.
     expect(document.querySelector(".shiny-chat-tool-group__row")).toBeTruthy()
     expect(document.querySelector(".shiny-tool-card")).toBeTruthy()
 
-    // The malicious tool_name must not mount as a live <img> element anywhere
-    // in the document — it must render as escaped text in the title span.
     expect(document.querySelector('img[src="x"]')).toBeNull()
     expect(document.body.textContent).toContain("<img src=x onerror=alert(1)>")
   })

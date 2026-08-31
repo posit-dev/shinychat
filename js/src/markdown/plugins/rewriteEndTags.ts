@@ -1,9 +1,4 @@
-/**
- * Rewrites selected HTML end tags with a single monotonic scan.
- *
- * This follows the tokenizer states that affect tag recognition rather than
- * trying to encode HTML's permissive grammar in a regular expression.
- */
+/** Rewrites selected HTML tags with a single tokenizer-aware monotonic scan. */
 
 const RAW_TEXT_TAGS = new Set([
   "iframe",
@@ -42,11 +37,7 @@ type TagEnd = {
   selfClosingSlash: number | null
 }
 
-/**
- * Scan from immediately after a tag name through the tokenizer's attribute
- * states. End-tag attributes are parse errors, but browsers still tokenize
- * them and emit the end tag.
- */
+/** Scan from after a tag name through the tokenizer's attribute states. */
 function scanTagEnd(value: string, pos: number): TagEnd | null {
   let i = pos
 
@@ -139,10 +130,7 @@ function skipBogusComment(value: string, pos: number): number {
   return end === -1 ? value.length : end + 1
 }
 
-/**
- * Raw-text and RCDATA elements only recognize an appropriate end tag.
- * Everything else, including a reserved-island spelling, is text.
- */
+/** Raw-text and RCDATA elements only recognize their own end tag. */
 function skipRawText(value: string, pos: number, tagName: string): number {
   let i = pos
   while (i < value.length) {
@@ -159,13 +147,7 @@ function skipRawText(value: string, pos: number, tagName: string): number {
   return value.length
 }
 
-/**
- * Replace emitted `</tag ...>` tokens with `replacement`.
- *
- * Matching is ASCII-case-insensitive, like the HTML tokenizer. Candidates in
- * comments, attributes, and raw-text elements are ignored. The scan never
- * moves backwards, so runtime is O(value.length).
- */
+/** Replace emitted `</tag ...>` tokens with `replacement` (ASCII-case-insensitive). */
 export function rewriteEndTagsHtml(
   value: string,
   tag: string,
@@ -187,12 +169,8 @@ export type HtmlTagRewrite = {
 
 /**
  * Rewrite emitted start and end tags in one tokenizer-aware pass.
- *
- * Object keys must be lowercase ASCII tag names. Start-tag replacements only
- * replace `<tag`; attributes remain byte-for-byte intact. For a tokenizer-
- * recognized self-closing start tag, `/>` is normalized to `>` plus
- * `selfClosingEnd`, preventing a non-void replacement element from swallowing
- * the following document.
+ * Start-tag replacements only replace `<tag`; attributes stay intact.
+ * A self-closing `/>` is normalized to `>` plus `selfClosingEnd`.
  */
 export function rewriteTagsHtml(
   value: string,
@@ -220,9 +198,8 @@ export function rewriteTagsHtml(
     const nameStart = open + (isEndTag ? 2 : 1)
     const firstNameChar = value.charAt(nameStart)
     if (!isAsciiAlpha(firstNameChar)) {
-      // Invalid end-tag openers become bogus comments through the next `>`.
-      // Invalid start-tag openers emit `<` as text, so a later `<` remains
-      // eligible to open a real tag.
+      // Invalid end-tag openers become bogus comments; invalid start-tag
+      // openers emit `<` as text.
       if (isEndTag) {
         i = skipBogusComment(value, nameStart)
         continue

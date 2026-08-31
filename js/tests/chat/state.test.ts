@@ -511,10 +511,6 @@ describe("chatReducer", () => {
       expect(contentBlocks[0]).toEqual({
         type: "content",
         content: "new",
-        // Uniform replace semantics (kata#0r4g): the replace supersedes the
-        // whole in-flight message, so the wiped html block's contentType is
-        // not inherited — a replace without an explicit content_type starts
-        // fresh as markdown.
         contentType: "markdown",
       })
       expect(next.streamingMessage!.content).toBe("new")
@@ -1793,8 +1789,6 @@ describe("supersededRequestIds", () => {
     value_type: "text",
   })
 
-  // Routed the way the reducer routes a finalized message: each structured
-  // block becomes a one-call tool loop on arrival.
   function routed(
     blocks: Array<ToolRequestBlock | ToolResultBlock>,
     overrides: Partial<ChatMessageData> = {},
@@ -1812,10 +1806,6 @@ describe("supersededRequestIds", () => {
     }
   }
 
-  // Raw, the way a streaming message's blocks look until ChatMessage routes
-  // them at render time. With structured blocks the streaming message also
-  // carries tool_loop blocks (via block_insert), so the shape is the same —
-  // only the `streaming` flag differs.
   function unrouted(
     blocks: Array<ToolRequestBlock | ToolResultBlock>,
     overrides: Partial<ChatMessageData> = {},

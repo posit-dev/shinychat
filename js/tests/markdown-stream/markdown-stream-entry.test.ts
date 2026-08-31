@@ -1,16 +1,3 @@
-/**
- * Tests for MarkdownStreamElement pending-message queue.
- *
- * Messages that arrive at handleMessage() before the React component calls
- * onApiReady (setting this.api) must be queued and replayed in order once
- * the API becomes available. This file verifies that queue/flush/clear
- * behaviour without relying on full React rendering.
- *
- * Strategy: we import the module (which registers the custom element), create
- * an instance, and interact with its public/private interface directly via
- * type casts. The onApiReady callback is captured by spying on
- * createElement so we can invoke it manually without mounting React.
- */
 import {
   describe,
   it,
@@ -22,10 +9,6 @@ import {
 } from "vitest"
 import { act, waitFor } from "@testing-library/react"
 import type { HtmlDep, StructuredBlock } from "../../src/transport/types"
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 type ContentMessage = {
   id: string
@@ -41,7 +24,6 @@ type IsStreamingMessage = {
   isStreaming: boolean
 }
 
-/** Minimal MarkdownStreamApi mock. */
 function createMockApi() {
   return {
     appendContent: vi.fn(),
@@ -53,10 +35,6 @@ function createMockApi() {
   }
 }
 
-/**
- * Access private fields on MarkdownStreamElement via a typed cast.
- * This keeps the production code clean while letting tests inspect internals.
- */
 type ElementInternals = {
   api: ReturnType<typeof createMockApi> | null
   pendingMessages: (ContentMessage | IsStreamingMessage)[]
@@ -68,23 +46,15 @@ function internals(el: HTMLElement): ElementInternals {
   return el as unknown as ElementInternals
 }
 
-// ---------------------------------------------------------------------------
-// Setup — register custom element & stub window.Shiny
-// ---------------------------------------------------------------------------
-
 beforeAll(async () => {
-  // Stub window.Shiny before importing the module so the message handler
-  // registration at module level doesn't throw.
   ;(window as unknown as Record<string, unknown>).Shiny = {
     addCustomMessageHandler: vi.fn(),
   }
 
-  // Import the module; this registers <shiny-markdown-stream> as a side effect.
   await import("../../src/markdown-stream/markdown-stream-entry")
 })
 
 beforeEach(() => {
-  // Reset Shiny stub between tests (fresh vi.fn() counts).
   ;(window as unknown as Record<string, unknown>).Shiny = {
     addCustomMessageHandler: vi.fn(),
   }
@@ -94,13 +64,6 @@ afterEach(() => {
   document.body.innerHTML = ""
 })
 
-// ---------------------------------------------------------------------------
-// Helper: create an element and capture the onApiReady callback without
-// actually mounting React. We do this by patching the instance's internals
-// directly — connectedCallback is never called, so reactRoot stays null and
-// the React tree is never rendered.
-// ---------------------------------------------------------------------------
-
 function createElement_(): {
   el: HTMLElement
   simulateApiReady: (api: ReturnType<typeof createMockApi>) => void
@@ -108,8 +71,6 @@ function createElement_(): {
   const el = document.createElement("shiny-markdown-stream") as HTMLElement &
     ElementInternals
 
-  // Manually wire the onApiReady flush logic by exposing a helper that mimics
-  // what the onApiReady callback inside connectedCallback does.
   function simulateApiReady(api: ReturnType<typeof createMockApi>) {
     const intr = internals(el)
     intr.api = api
@@ -122,10 +83,6 @@ function createElement_(): {
   return { el, simulateApiReady }
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 describe("MarkdownStreamElement — pending message queue", () => {
   it("renders structured initial trust segments", async () => {
     const el = document.createElement("shiny-markdown-stream")
@@ -133,8 +90,6 @@ describe("MarkdownStreamElement — pending message queue", () => {
       "content-segments",
       JSON.stringify([
         { text: "## Markdown", trusted: false },
-        // Trusted HTML travels as raw markup — no island wrapper (the
-        // island tags are dead markup, neutralized as a spoof guard).
         {
           text: "<div data-trusted>HTML</div>",
           trusted: true,
@@ -202,7 +157,6 @@ describe("MarkdownStreamElement — pending message queue", () => {
     }
     const msg3: IsStreamingMessage = { id: "x", isStreaming: false }
 
-    // API not yet ready — all messages go to the queue
     const handle = el as unknown as {
       handleMessage: (m: ContentMessage | IsStreamingMessage) => void
     }
@@ -213,7 +167,6 @@ describe("MarkdownStreamElement — pending message queue", () => {
     expect(internals(el).pendingMessages).toHaveLength(3)
     expect(api.appendContent).not.toHaveBeenCalled()
 
-    // API becomes available — queue is flushed in order
     simulateApiReady(api)
 
     expect(internals(el).pendingMessages).toHaveLength(0)
@@ -226,7 +179,6 @@ describe("MarkdownStreamElement — pending message queue", () => {
     const { el, simulateApiReady } = createElement_()
     const api = createMockApi()
 
-    // API is ready before any messages arrive
     simulateApiReady(api)
 
     const msg: ContentMessage = {
@@ -258,13 +210,10 @@ describe("MarkdownStreamElement — pending message queue", () => {
       left.appendChild(el)
     })
 
-    // Wait for the React component to render the initial content (API ready).
     await waitFor(() => {
       expect(el.textContent).toContain("initial")
     })
 
-    // Stream additional content that lives only in React state — it is never
-    // written back to the `content` attribute.
     const handle = el as unknown as {
       handleMessage: (m: ContentMessage | IsStreamingMessage) => void
     }
@@ -282,7 +231,6 @@ describe("MarkdownStreamElement — pending message queue", () => {
       expect(el.textContent).toContain("streamed")
     })
 
-    // Move the element: disconnectedCallback -> connectedCallback.
     await act(async () => {
       right.appendChild(el)
     })
@@ -291,7 +239,6 @@ describe("MarkdownStreamElement — pending message queue", () => {
       expect(el.textContent).toContain("initial")
     })
 
-    // The streamed content must survive the move (proves React state preserved).
     expect(el.textContent).toContain("streamed")
   })
 
@@ -312,8 +259,6 @@ describe("MarkdownStreamElement — pending message queue", () => {
     handle.handleMessage(msg)
     expect(internals(el).pendingMessages).toHaveLength(1)
 
-    // Genuine removal: disconnect with no reconnect to cancel the deferred
-    // teardown, so the queue/api reset runs on the next tick.
     handle.disconnectedCallback()
     await new Promise((resolve) => setTimeout(resolve, 0))
 
@@ -373,8 +318,6 @@ describe("MarkdownStreamElement — structured block messages", () => {
       block: wireBlock("<div>fresh</div>"),
     })
 
-    // Uniform replace (kata#0r4g): wipe everything, then append the block —
-    // never a string-segment replace.
     expect(api.replaceContent).not.toHaveBeenCalled()
     expect(api.replaceWithBlock).toHaveBeenCalledWith({
       type: "html_block",
@@ -462,8 +405,6 @@ describe("MarkdownStreamElement — structured block messages", () => {
     })
 
     expect(api.appendContent).not.toHaveBeenCalled()
-    // Web blocks stay in wire form across the API boundary — the grouping
-    // machinery (appendWebActivityBlock) consumes wire blocks.
     expect(api.appendBlock).toHaveBeenCalledWith({
       type: "web_search",
       version: 1,
@@ -516,7 +457,6 @@ describe("MarkdownStreamElement — structured block messages", () => {
         operation: "append",
         trusted: true,
         segment_start: true,
-        // Missing the required `query` string.
         block: { type: "web_search", version: 1 } as unknown as StructuredBlock,
       })
 
@@ -586,7 +526,6 @@ describe("MarkdownStreamElement — structured block messages", () => {
 
     await waitFor(() => {
       expect(el.querySelector("h2")?.textContent).toBe("Markdown")
-      // The two adjacent web block entries grouped into ONE activity.
       const activities = el.querySelectorAll(".shiny-web-activity")
       expect(activities).toHaveLength(1)
       expect(activities[0]!.textContent).toContain("Searched the web")
@@ -602,7 +541,6 @@ describe("MarkdownStreamElement — structured block messages", () => {
         "content-segments",
         JSON.stringify([
           { text: "fine", trusted: false },
-          // Missing the required `sources` array.
           { block: { type: "web_search_results", version: 1 } },
         ]),
       )
@@ -611,8 +549,6 @@ describe("MarkdownStreamElement — structured block messages", () => {
         document.body.appendChild(el)
       })
 
-      // The whole provenance array fails closed to the untrusted fallback
-      // content (existing malformed-segments behavior).
       await waitFor(() => {
         expect(el.textContent).toContain("fallback content")
       })
@@ -675,8 +611,6 @@ describe("MarkdownStreamElement — structured block messages", () => {
         document.body.appendChild(el)
       })
 
-      // The whole provenance array fails closed to the untrusted fallback
-      // content (existing malformed-segments behavior).
       await waitFor(() => {
         expect(el.textContent).toContain("<shiny-chat-raw-html>")
       })

@@ -256,10 +256,6 @@ describe("MarkdownContent (pure)", () => {
   })
 
   it("renders a model-authored raw-HTML island as literal text", () => {
-    // Untrusted content is rendered with a component map whose island tags
-    // resolve to EscapedIsland (see MarkdownStream's untrusted components) —
-    // that map, not the markdown processor, is the spoof guard now that
-    // trusted HTML travels as structured html_block envelopes.
     const content =
       '<shiny-chat-raw-html><img data-forged="1" src="x"></shiny-chat-raw-html>'
     const { container } = render(

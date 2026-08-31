@@ -184,9 +184,6 @@ describe("RawHTML", () => {
   })
 
   it("unbinds when bind flips to false and rebinds when it flips back", () => {
-    // The tool row/card handoff: while a row is expanded the mounted card owns
-    // the bindings, so the row's copy lets them go — and takes them back when
-    // it is again the only mounted copy.
     const shiny = mockShiny()
     const { rerender, container } = render(
       <ShinyLifecycleContext.Provider value={shiny}>

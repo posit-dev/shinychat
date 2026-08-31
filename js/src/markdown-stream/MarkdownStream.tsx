@@ -31,20 +31,14 @@ export type ContentSegment = {
 }
 
 /**
- * One item of stream state: a string segment (with trust provenance), a
- * structured `html_block` island, or a grouped web-activity block. Blocks
- * are hard structural boundaries — adjacent same-trust string segments
- * merge, but a block never merges with anything (web_* wire blocks group
- * into the trailing activity on arrival, before they enter state).
+ * One item of stream state: a string segment, a structured `html_block`
+ * island, or a grouped web-activity block. Blocks are hard structural
+ * boundaries — adjacent same-trust string segments merge, but a block
+ * never merges with anything.
  */
 export type StreamSegment = ContentSegment | HtmlBlock | WebActivityBlock
 
-/**
- * A validated block accepted by the stream API: a render-model `html_block`
- * island, or a validated web_* wire block. Web blocks stay in wire form
- * across the API boundary because the grouping machinery
- * (appendWebActivityBlock) consumes wire blocks.
- */
+/** A validated block accepted by the stream API: an `html_block` island or a web_* wire block. */
 export type StreamBlock = HtmlBlock | WebActivityWireBlock
 
 /** Structural discrimination: string segments carry `text`; blocks a `type`. */
@@ -54,25 +48,14 @@ function isBlockSegment(
   return "type" in segment
 }
 
-/**
- * MarkdownStream's whitespace-separator check for appendWebActivityBlock: a
- * whitespace-only string segment between web_* carriers is part of the run
- * (dropped on grouping), mirroring rehypeGroupWebActivity's tolerance of
- * whitespace text nodes.
- */
+/** Whitespace-separator check for appendWebActivityBlock (mirrors rehypeGroupWebActivity). */
 export function isWhitespaceTextSegment(segment: StreamSegment): boolean {
   return !isBlockSegment(segment) && segment.text.trim() === ""
 }
 
-// Trusted segments resolve the aside data carriers through
-// chatTagToComponentMap (the same mappings Chat's trusted content gets).
-// Untrusted segments get them too — asides are data carriers, not trust
-// sinks (mirroring Chat's untrustedChatTagToComponentMap) — plus the
-// raw-html island escapes, which render a forged island tag as inert text
-// (trusted HTML travels as structured html_block segments instead). The
-// aside-group resolver is the untrusted variant: the popover body reparse
-// must keep these escapes, or a forged island inside an aside would
-// render as live markup when the popover opens.
+// Spoof guard: untrusted segments get the raw-html island escapes so a forged
+// island tag renders as inert text. The aside-group resolver is the untrusted
+// variant so the popover body reparse keeps these escapes.
 const untrustedStreamComponents: Record<string, ComponentType<unknown>> = {
   ...chatTagToComponentMap,
   "shiny-aside-group": UntrustedAsideGroup as ComponentType<unknown>,
@@ -96,17 +79,10 @@ export type MarkdownStreamApi = {
     trusted?: boolean,
     startSegment?: boolean,
   ) => void
-  /**
-   * Append one complete structured block: an `html_block` island lands as a
-   * hard boundary; a web_* block groups into the trailing web activity per
-   * appendWebActivityBlock's semantics.
-   */
+  /** Append one complete structured block (html_block or web_*). */
   appendBlock: (block: StreamBlock) => void
   replaceContent: (content: string, trusted?: boolean) => void
-  /**
-   * Uniform replace for a block-carrying message (kata#0r4g): wipe ALL
-   * segments and blocks, then append the block.
-   */
+  /** Uniform replace: wipe all segments and blocks, then append the block. */
   replaceWithBlock: (block: StreamBlock) => void
   setStreaming: (streaming: boolean) => void
   setContentType: (contentType: ContentType) => void
@@ -130,9 +106,8 @@ export function MarkdownStream({
   const [streaming, setStreaming] = useState(initialStreaming)
   const innerRef = useRef<HTMLDivElement>(null)
   const scrollParentRef = useRef<HTMLElement | null>(null)
-  // A deps-gated block renders nothing until its dependencies load; when it
-  // finally mounts, `segments` doesn't change. Count block mounts so the
-  // scroll-parent discovery and auto-scroll below re-run for that growth.
+  // Count block mounts so scroll-parent discovery and auto-scroll re-run
+  // when a deps-gated block finally mounts (segments doesn't change then).
   const [blockMounts, setBlockMounts] = useState(0)
   const handleBlockMounted = useCallback(() => {
     setBlockMounts((n) => n + 1)
@@ -193,7 +168,7 @@ export function MarkdownStream({
       setSegments((prev) => {
         const last = prev[prev.length - 1]
         // Blocks are hard boundaries: text only merges into a trailing
-        // string segment of equal trust, never into (or across) a block.
+        // string segment of equal trust.
         if (
           !startSegment &&
           last &&
@@ -210,15 +185,11 @@ export function MarkdownStream({
 
   const appendBlock = useCallback(
     (block: StreamBlock) => {
-      // Same pinnedness settle as appendContent: a block grows the DOM too.
       repinIfAtBottom()
       setSegments((prev) =>
         block.type === "html_block"
           ? [...prev, block]
-          : // A web_* block joins the trailing web activity when one is
-            // reachable (tolerating a whitespace-only text segment between
-            // carriers) — the shared grouping/pairing semantics.
-            appendWebActivityBlock(prev, block, isWhitespaceTextSegment),
+          : appendWebActivityBlock(prev, block, isWhitespaceTextSegment),
       )
     },
     [repinIfAtBottom],
@@ -231,8 +202,6 @@ export function MarkdownStream({
   const replaceWithBlock = useCallback(
     (block: StreamBlock) => {
       repinIfAtBottom()
-      // Uniform replace: wipe everything, then the block lands on an emptied
-      // stream (a web_* block starts a fresh activity).
       setSegments(
         block.type === "html_block" ? [block] : [applyWebBlock(null, block)],
       )
@@ -261,14 +230,8 @@ export function MarkdownStream({
       {segments.map((segment, index) =>
         isBlockSegment(segment) ? (
           segment.type === "web_activity" ? (
-            // A grouped web-activity block renders through the same
-            // component Chat uses — no markdown-pipeline round-trip.
             <WebActivity key={index} items={segment.items} />
           ) : (
-            // A structured raw-HTML island renders through the same sink Chat
-            // uses — no markdown-pipeline round-trip. The streaming dot lives
-            // in the markdown pipeline, so a trailing block shows no dot; it
-            // resumes with the next string segment.
             <HtmlBlockContent
               key={index}
               content={segment.content}

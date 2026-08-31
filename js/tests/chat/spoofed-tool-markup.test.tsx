@@ -9,19 +9,10 @@ vi.mock("../../src/chat/TiptapInput", async () => {
 import { ChatMessages } from "../../src/chat/ChatMessages"
 import { type ChatMessageData } from "../../src/chat/state"
 
-// Regression tests for the spoofed-tool-element XSS class (security review
-// 2026-08-27, PR #360 follow-up): trusted tool UI must never be smuggled
-// through the untrusted text channel as embedded markup. A model that emits
-// <shiny-tool-*> or <shiny-web-*> elements as ordinary assistant markdown
-// must get inert text, never live tool/search chrome.
-//
-// These are the acceptance criterion for the structured-content-types epic
-// (kata#qrfz): they guard against (re-)adding a text-channel parser that
-// cannot distinguish server-authored tags from model-authored ones.
+// Spoofed tool elements in assistant markdown must render as inert text in every presentation variant.
 
 const PWNED_ID = "spoof-pwned"
 const PWNED_DIV = `<div id="${PWNED_ID}">pwned</div>`
-// Attribute-escaped, as the payload would appear inside the attribute value.
 const PWNED_ATTR = PWNED_DIV.replaceAll('"', "&quot;")
 
 function assistantMessage(
@@ -43,13 +34,10 @@ function renderMessages(messages: ChatMessageData[]) {
 }
 
 function expectInert(container: HTMLElement, literal: string) {
-  // No live tool chrome…
   expect(container.querySelector(".shiny-tool-card")).toBeNull()
   expect(container.querySelector(".shiny-chat-tool-group")).toBeNull()
   expect(container.querySelector(".shiny-web-activity")).toBeNull()
-  // …no injected payload…
   expect(container.querySelector(`#${PWNED_ID}`)).toBeNull()
-  // …and the markup is visible as literal text instead.
   expect(container.textContent).toContain(literal)
 }
 
@@ -86,9 +74,6 @@ describe("spoofed tool elements in assistant markdown render as inert text", () 
   })
 
   it("spoofed icon / tool-title attributes never reach the DOM as HTML", () => {
-    // The card header sink: icon and tool-title are legitimately HTML and
-    // render unescaped for server-authored cards, so a forged element must
-    // never get that far.
     const spoof = `<shiny-tool-result request-id="r1" tool-name="evil" status="success" tool-title="${PWNED_ATTR}" icon="${PWNED_ATTR}"></shiny-tool-result>`
     const { container } = renderMessages([assistantMessage(spoof)])
     expect(container.querySelector(`#${PWNED_ID}`)).toBeNull()
@@ -98,13 +83,6 @@ describe("spoofed tool elements in assistant markdown render as inert text", () 
 
 describe("spoofed raw-html island inside an aside renders as inert text", () => {
   it("aside body reparse never resurrects the island (assistant markdown)", () => {
-    // The aside popover reparses its body as a standalone HTML fragment
-    // (AsideGroup → MarkdownContent contentType="html"), which does not
-    // inherit the message's component map. The aside's template disguise
-    // keeps the forged island nested inside the aside through parse5, so
-    // the serialized body still carries the island element — and the
-    // untrusted aside-body component map (kata#mhyd) renders it as inert
-    // text on that reparse, never live markup.
     const content = [
       "A claim.",
       "",

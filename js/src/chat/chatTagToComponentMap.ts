@@ -4,48 +4,27 @@ import { AsideGroup, UntrustedAsideGroup } from "./AsideGroup"
 import { EscapedIsland } from "../markdown/EscapedIsland"
 
 // Trusted (html-typed or server-authored) content resolves custom element
-// tags through this map. Tool requests and results are now routed exclusively
-// from structured wire blocks (tool_request / tool_result) before Markdown
-// rendering, so they no longer appear here. The remaining entries cover
-// aside grouping, whose trusted-path behavior is still markup-driven.
+// tags through this map. Tool requests and results are routed from
+// structured wire blocks before Markdown rendering, so they no longer
+// appear here.
 export const chatTagToComponentMap: Record<string, ComponentType<unknown>> = {
   "shiny-aside": Aside as ComponentType<unknown>,
   "shiny-aside-group": AsideGroup as ComponentType<unknown>,
 }
 
-// Security: markdown-typed chat content is model-authored (untrusted), and
-// thinking content is model-authored by definition. A forged
-// <shiny-tool-result value-type="html"> in such content must never resolve
-// to a tool bridge — its value would reach innerHTML (stored XSS). Route
-// tool tags in untrusted content to EscapedIsland so they display as the
-// literal markup the model wrote. The same holds for the web data carriers:
-// a forged <shiny-web-search>/<shiny-web-fetch> must never resolve to live
-// web-activity chrome. Trusted content (html-typed blocks, greetings) keeps
-// the full map above; the structured web_search/web_search_results/web_fetch
-// blocks are the trusted channel.
-//
-// The raw-HTML island tags are dead markup everywhere now (trusted HTML
-// travels as structured html_block envelopes), so the markdown processor
-// neutralizes them to inert text before the component map runs (see
-// rehypeNeutralizeIslands). The island entries here are defense in depth
-// beneath that processor-level guard — and the primary guard on paths that
-// reparse serialized markup without it, like the aside popover body.
-//
-// The assistant markdownProcessor has NO rehypeSanitize step, so without
-// these EscapedIsland entries the spoofed tags would render as real (empty)
-// DOM elements and the literal-text checks would fail. They are load-bearing
-// security guards.
+// Security: untrusted (model-authored) content must never resolve tool/web/
+// island tags to live components — there is no sanitize step. A forged
+// <shiny-tool-result value-type="html"> would reach innerHTML (stored XSS).
+// All trust-gated tags render as inert text via EscapedIsland. The island
+// entries are defense in depth beneath rehypeNeutralizeIslands and the
+// primary guard on reparsed paths (e.g. aside popover body).
 export const untrustedChatTagToComponentMap: Record<
   string,
   ComponentType<unknown>
 > = {
   ...chatTagToComponentMap,
   // Asides stay resolvable (data carriers, not trust sinks), but the
-  // popover body is reparsed as a standalone HTML fragment that would
-  // otherwise get MarkdownContent's default — trusted — map. The untrusted
-  // variant keeps the trust-gated tags escaped through that reparse, so a
-  // forged raw-HTML island inside an aside can never reach innerHTML when
-  // the popover opens (kata#mhyd).
+  // popover body reparse must keep trust-gated tags escaped.
   "shiny-aside-group": UntrustedAsideGroup as ComponentType<unknown>,
   "shiny-chat-raw-html": EscapedIsland,
   "shinychat-raw-html": EscapedIsland,

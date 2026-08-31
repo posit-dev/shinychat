@@ -121,8 +121,8 @@ export function ChatApp({
   submitKey,
 }: ChatAppProps) {
   const resolvedToolGrouping = toolGrouping ?? initialState.toolGrouping
-  // Put preloaded/restored messages through the same block-construction pass as
-  // live ones — thinking split first — so a restored transcript carries
+  // Put preloaded/restored messages through the same block-construction pass
+  // as live ones — thinking split first — so a restored transcript carries
   // identical ThinkingDisplay blocks.
   const messages = useMemo(
     () =>

@@ -236,10 +236,8 @@ function ToolCallRow({
           setOpen((v) => !v)
         }}
       >
-        {/* When the row is open the Tier-3 card below mounts the same server
-            HTML (icon/title), so the card owns the Shiny bindings and this
-            copy must not re-bind them; collapsed, this is the only mounted
-            copy and it must bind. */}
+        {/* The expanded card owns the Shiny bindings; this copy binds only
+            while collapsed. */}
         <RawHTML
           html={glyph}
           as="span"
@@ -379,10 +377,8 @@ function ToolGroupRow({
           setExpanded((v) => !v)
         }}
       >
-        {/* The header's glyph and title stay mounted while the body below is
-            open, where the same server HTML renders again — the single-call
-            card directly, or a Tier-2 row's card. The mounted card owns the
-            Shiny bindings, so these copies bind only while collapsed. */}
+        {/* The expanded card owns the Shiny bindings; these copies bind only
+            while collapsed. */}
         <RawHTML
           html={glyph}
           as="span"

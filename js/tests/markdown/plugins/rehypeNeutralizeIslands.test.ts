@@ -48,8 +48,6 @@ describe("raw-HTML island neutralizing (spoof guard)", () => {
   })
 
   it("neutralizes block children and preserves trailing markdown", () => {
-    // The disguise→template round-trip is what keeps parse5 from hoisting
-    // the block-level <div> out of the forged tag before the guard runs.
     const html = processMarkdown(
       [
         "<Shiny-Chat-Raw-Html>",

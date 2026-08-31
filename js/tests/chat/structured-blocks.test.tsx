@@ -27,11 +27,6 @@ import type {
 } from "../../src/transport/types"
 import type { ShinyLifecycle, HtmlDep } from "../../src/transport/types"
 
-// Keystone slice for the structured-content-types epic: `tool_request` and
-// `tool_result` structured blocks flow Python → wire → reducer → rendered
-// card, both via `message.segments` (settled) and via `block_insert`
-// (mid-stream). The envelope — not markup scanned out of a content string —
-// is what produces trusted tool UI.
 
 const toolResultBlock = (
   overrides: Partial<ToolResultBlock> = {},
@@ -99,7 +94,6 @@ const htmlBlock = (overrides: Partial<HtmlBlock> = {}): HtmlBlock => ({
   ...overrides,
 })
 
-/** A minimal mock ShinyLifecycle for deps-before-innerHTML ordering tests. */
 function mockShiny(): ShinyLifecycle {
   return {
     bindAll: vi.fn().mockResolvedValue(undefined),
@@ -109,7 +103,6 @@ function mockShiny(): ShinyLifecycle {
   }
 }
 
-/** Minimal HtmlDep stub for tests (the real type is opaque from shiny). */
 function fakeDep(name: string): HtmlDep {
   return { name, version: "1.0.0" } as unknown as HtmlDep
 }
@@ -123,9 +116,7 @@ function renderMessages(messages: ChatMessageData[]) {
 }
 
 function expectToolCard(container: HTMLElement, value: string) {
-  // The tool-loop chrome (condensed row)…
   expect(container.querySelector(".shiny-chat-tool-group")).not.toBeNull()
-  // …and, because the block is `expanded`, the drill-down card with the value.
   expect(container.querySelector(".shiny-tool-card")).not.toBeNull()
   expect(container.textContent).toContain(value)
 }
@@ -159,7 +150,6 @@ describe("structured tool_result block via message.segments", () => {
     const { container } = renderMessages(state.messages)
     expectToolCard(container, "72F and sunny")
 
-    // Content renders in segment order around the card.
     const text = container.textContent ?? ""
     expect(text.indexOf("Before the call.")).toBeLessThan(
       text.indexOf("72F and sunny"),
@@ -190,8 +180,6 @@ describe("structured tool_result block via message.segments", () => {
   })
 
   it("tolerates whitespace-only content between tool blocks", () => {
-    // Mirrors the web whitespace-tolerance test: a whitespace-only string
-    // segment between tool blocks is dropped, merging them into one loop.
     const state = chatReducer(makeState(), {
       type: "message",
       message: {
@@ -338,7 +326,6 @@ describe("structured tool_result block via block_insert mid-stream", () => {
       block: toolResultBlock(),
     })
 
-    // Mid-stream: the block is already render-ready in the streaming message.
     const midBlocks = state.streamingMessage!.blocks
     expect(midBlocks.map((b) => b.type)).toEqual(["content", "tool_loop"])
 
@@ -348,7 +335,6 @@ describe("structured tool_result block via block_insert mid-stream", () => {
       operation: "append",
     })
 
-    // A string chunk after a block_insert starts a NEW content block.
     const blocks = state.streamingMessage!.blocks
     expect(blocks.map((b) => b.type)).toEqual([
       "content",
@@ -397,15 +383,11 @@ describe("structured tool_result block via block_insert mid-stream", () => {
   })
 
   it("tolerates whitespace-only content between tool blocks mid-stream", () => {
-    // Mirrors the web whitespace-tolerance test: a whitespace-only content
-    // chunk between block_insert tool blocks is dropped, merging them into
-    // one loop.
     let state = startStream(makeState())
     state = chatReducer(state, {
       type: "block_insert",
       block: toolResultBlock({ request_id: "call-1" }),
     })
-    // A whitespace-only content chunk lands between the tool blocks.
     state = chatReducer(state, {
       type: "chunk",
       content: " \n",
@@ -426,7 +408,6 @@ describe("structured tool_result block via block_insert mid-stream", () => {
 
   it("does not disturb thinking-tag/fence stream state", () => {
     let state = startStream(makeState())
-    // Open a code fence, then insert a block: the fence state must survive.
     state = chatReducer(state, {
       type: "chunk",
       content: "```\nsome code",
@@ -446,9 +427,6 @@ describe("structured tool_result block via block_insert mid-stream", () => {
   })
 
   it("chunk(replace) after block_insert replaces ALL blocks uniformly", () => {
-    // kata#0r4g decision (2026-08-31): chunk operation:"replace" supersedes
-    // the whole in-flight message — structured blocks (tool_loop,
-    // web_activity, html_block) are content, not preserved events.
     let state = startStream(makeState())
     state = chatReducer(state, {
       type: "chunk",
@@ -464,7 +442,6 @@ describe("structured tool_result block via block_insert mid-stream", () => {
       "tool_loop",
     ])
 
-    // The replace chunk wipes the tool_loop along with the content block.
     state = chatReducer(state, {
       type: "chunk",
       content: "Replaced content.",
@@ -480,10 +457,6 @@ describe("structured tool_result block via block_insert mid-stream", () => {
   })
 
   it("empty chunk(replace) wipes blocks without leaving an empty content block", () => {
-    // Servers replace a block-carrying stream by sending a leading empty
-    // replace chunk (the wipe) and then re-emitting the message's parts as
-    // appends, so order is preserved and no spurious empty content block
-    // opens ahead of a block.
     let state = startStream(makeState())
     state = chatReducer(state, {
       type: "chunk",
@@ -504,7 +477,6 @@ describe("structured tool_result block via block_insert mid-stream", () => {
     expect(state.streamingMessage!.blocks).toEqual([])
     expect(state.streamingMessage!.content).toBe("")
 
-    // Parts re-emitted as appends land in order after the wipe.
     state = chatReducer(state, {
       type: "block_insert",
       block: htmlBlock({ content: "<div>final</div>" }),
@@ -521,9 +493,6 @@ describe("structured tool_result block via block_insert mid-stream", () => {
   })
 
   it("chunk(replace) while inside a code fence wipes the fenced content and starts fresh", () => {
-    // The wipe must work regardless of stream state: an open fence is part
-    // of the superseded message, so the replace resets the fence state
-    // machine along with the blocks.
     let state = startStream(makeState())
     state = chatReducer(state, {
       type: "chunk",
@@ -548,8 +517,6 @@ describe("structured tool_result block via block_insert mid-stream", () => {
   })
 
   it("chunk(replace) whose content contains markup replaces rather than appends", () => {
-    // Content with "<" routes through the thinking-tag state machine; the
-    // replace semantics must not depend on the chunk's content.
     let state = startStream(makeState())
     state = chatReducer(state, {
       type: "chunk",
@@ -563,7 +530,6 @@ describe("structured tool_result block via block_insert mid-stream", () => {
       operation: "replace",
     })
 
-    // The result is exactly the new content — nothing of the old survives.
     expect(state.streamingMessage!.content).toBe("<div>new content</div>")
     const blocks = state.streamingMessage!.blocks
     expect(blocks.map((b) => b.type)).toEqual(["content"])
@@ -573,8 +539,6 @@ describe("structured tool_result block via block_insert mid-stream", () => {
   })
 
   it("chunk(replace) with content_type thinking wipes content and leaves a single fresh thinking block", () => {
-    // The explicit-thinking branch also honors replace: the markdown
-    // content block is wiped and the thinking content starts fresh.
     let state = startStream(makeState())
     state = chatReducer(state, {
       type: "chunk",
@@ -607,7 +571,7 @@ describe("structured tool_result block via block_insert mid-stream", () => {
       type: "block_insert",
       block: toolResultBlock(),
     })
-    expect(state).toBe(before) // reference equality: untouched
+    expect(state).toBe(before)
     expect(warn).toHaveBeenCalled()
   })
 
@@ -653,10 +617,6 @@ describe("structured loops survive regrouping", () => {
     expectToolCard(container, "72F and sunny")
   })
 
-  // Deleted: "SET_TOOL_GROUPING keeps both calls of a mixed markup+structured
-  // loop" — tested markup routing (html-typed segment with tool markup
-  // merging into a structured tool loop). That machinery is intentionally
-  // gone (kata#h6g2, D6); structured blocks are the sole trusted channel.
 })
 
 describe("structured tool_request block via message.segments", () => {
@@ -681,8 +641,6 @@ describe("structured tool_request block via message.segments", () => {
       "content",
     ])
 
-    // An unpaired request derives a running call (pairToolEvents' convention
-    // for new request ids); "running" is never a wire value.
     const loop = blocks[1]!
     if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
     const call = loop.groups.flatMap((g) => g.calls)[0]!
@@ -690,12 +648,10 @@ describe("structured tool_request block via message.segments", () => {
     expect(call.structured).toBe(true)
 
     const { container } = renderMessages(state.messages)
-    // The condensed row renders the running call under its definition title.
     expect(container.querySelector(".shiny-chat-tool-group")).not.toBeNull()
     expect(container.textContent).toContain("Looking up weather")
     expect(container.textContent).toContain("Running…")
 
-    // Content renders in segment order around the row.
     const text = container.textContent ?? ""
     expect(text.indexOf("Before the call.")).toBeLessThan(
       text.indexOf("Looking up weather"),
@@ -722,8 +678,6 @@ describe("structured tool_request block via message.segments", () => {
     const loop = state.messages[0]!.blocks[0]!
     if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
     const call = loop.groups.flatMap((g) => g.calls)[0]!
-    // The request carries the tool *definition's* title/icon; the result's
-    // own title/icon settle over them when it arrives.
     expect(call).toMatchObject({
       requestId: "call-1",
       localId: "call-1",
@@ -736,7 +690,6 @@ describe("structured tool_request block via message.segments", () => {
       grouping: "none",
       structured: true,
     })
-    // A request carries no result-level fields.
     expect(call.title).toBeUndefined()
     expect(call.icon).toBeUndefined()
     expect(call.value).toBeUndefined()
@@ -751,8 +704,6 @@ describe("structured tool_request block via message.segments", () => {
       },
     })
 
-    // Both calls land in one merged loop — the request stays running in the
-    // lifecycle model (pairing is a presentation concern)…
     const blocks = state.messages[0]!.blocks
     expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
     const loop = blocks[0]!
@@ -765,8 +716,6 @@ describe("structured tool_request block via message.segments", () => {
       { requestId: "call-1", status: "success" },
     ])
 
-    // …but transcript-wide supersession (derived from the structured result
-    // block) hides the running request row, leaving the settled result card.
     const superseded = supersededRequestIds(state.messages, null)
     expect([...superseded]).toEqual(["call-1"])
     const { container } = render(
@@ -799,7 +748,6 @@ describe("structured tool_request block via block_insert mid-stream", () => {
       block: toolRequestBlock(),
     })
 
-    // Mid-stream: the block is already render-ready in the streaming message.
     const blocks = state.streamingMessage!.blocks
     expect(blocks.map((b) => b.type)).toEqual(["content", "tool_loop"])
     const loop = blocks[1]!
@@ -898,9 +846,6 @@ describe("structured web_* blocks via message.segments", () => {
       "content",
     ])
 
-    // The results block attached its sources to the still-pending search;
-    // the fetch appended a standalone item (adjacency pairing re-expressed
-    // over structured arrival in web-activity-model.ts).
     const activity = blocks[1]!
     if (activity.type !== "web_activity")
       throw new Error("expected web_activity")
@@ -917,7 +862,6 @@ describe("structured web_* blocks via message.segments", () => {
       { kind: "fetch", url: "https://example.net/article", status: "success" },
     ])
 
-    // The grouped activity renders without a markup round-trip.
     const { container } = renderMessages(state.messages)
     expect(container.querySelector(".shiny-web-activity")).not.toBeNull()
     const text = container.textContent ?? ""
@@ -936,8 +880,6 @@ describe("structured web_* blocks via message.segments", () => {
         role: "assistant",
         segments: [
           webSearchBlock(),
-          // The grouping logic tolerates whitespace-only string segments
-          // between carriers; the structured path drops the whitespace.
           { content: " \n", content_type: "markdown" },
           webSearchResultsBlock(),
           webFetchBlock(),
@@ -951,10 +893,8 @@ describe("structured web_* blocks via message.segments", () => {
     if (activity.type !== "web_activity")
       throw new Error("expected web_activity")
     expect(activity.items.map((it) => it.kind)).toEqual(["search", "fetch"])
-    // The dropped separator leaves no stray content behind.
     expect(state.messages[0]!.content).toBe("")
 
-    // A web-activity-only message still renders (hasContent counts it).
     const { container } = renderMessages(state.messages)
     expect(container.querySelector(".shiny-web-activity")).not.toBeNull()
   })
@@ -980,7 +920,6 @@ describe("structured web_* blocks via message.segments", () => {
     ])
     const first = blocks[0]!
     if (first.type !== "web_activity") throw new Error("expected web_activity")
-    // The first run's search never met its results: it stays pending.
     expect(first.items).toEqual([
       {
         kind: "search",
@@ -1027,7 +966,6 @@ describe("structured web_* blocks via message.segments", () => {
       },
     ])
 
-    // With no results attached, the fallback renders as cited sources.
     const { container } = renderMessages(state.messages)
     fireEvent.click(container.querySelector(".shiny-web-activity__header")!)
     expect(container.textContent).toContain("Cited sources")
@@ -1055,8 +993,6 @@ describe("structured web_* blocks via message.segments", () => {
       throw new Error("expected web_activity")
     const search = activity.items[0]!
     if (search.kind !== "search") throw new Error("expected search item")
-    // The results' sources pair onto the search; the cited sources stay on
-    // the item but lose to the real result list (`sources ?? citedSources`).
     expect(search.sources).toHaveLength(2)
     expect(search.citedSources).toEqual([
       { url: "https://example.com/cited", title: "Cited page" },
@@ -1105,7 +1041,6 @@ describe("structured web_* blocks via block_insert mid-stream", () => {
       block: webSearchBlock(),
     })
 
-    // The search sits pending in a fresh activity until its results arrive.
     const midBlocks = state.streamingMessage!.blocks
     expect(midBlocks.map((b) => b.type)).toEqual(["web_activity"])
     const midActivity = midBlocks[0]!
@@ -1125,8 +1060,6 @@ describe("structured web_* blocks via block_insert mid-stream", () => {
       block: webSearchResultsBlock(),
     })
 
-    // Pairing works across the block_insert boundary: the pending state
-    // lives in the item itself (sources === null).
     const blocks = state.streamingMessage!.blocks
     expect(blocks.map((b) => b.type)).toEqual(["web_activity"])
     const activity = blocks[0]!
@@ -1137,8 +1070,6 @@ describe("structured web_* blocks via block_insert mid-stream", () => {
     if (search.kind !== "search") throw new Error("expected search item")
     expect(search.sources).toHaveLength(2)
 
-    // A later search starts a new pending item; it doesn't disturb the
-    // already-paired one.
     state = chatReducer(state, {
       type: "block_insert",
       block: webSearchBlock({ query: "second query" }),
@@ -1172,7 +1103,6 @@ describe("structured web_* blocks via block_insert mid-stream", () => {
       block: webFetchBlock(),
     })
 
-    // Mid-stream: the burst is already grouped render-ready.
     expect(state.streamingMessage!.blocks.map((b) => b.type)).toEqual([
       "content",
       "web_activity",
@@ -1190,7 +1120,6 @@ describe("structured web_* blocks via block_insert mid-stream", () => {
     expect(header).not.toBeNull()
     expect(container.textContent).toContain("Searched the web")
 
-    // Collapsed by default; clicking the header expands the timeline.
     expect(container.querySelector(".shiny-web-activity__timeline")).toBeNull()
     fireEvent.click(header!)
     expect(header!.getAttribute("aria-expanded")).toBe("true")
@@ -1200,16 +1129,13 @@ describe("structured web_* blocks via block_insert mid-stream", () => {
     expect(container.textContent).toContain("weather in Duluth")
     expect(container.textContent).toContain("2 results")
     expect(container.textContent).toContain("Duluth weather")
-    // The title-less source falls back to its derived domain.
     expect(container.textContent).toContain("example.org")
-    // The fetch item renders with its URL and success status.
     expect(container.querySelector(".shiny-web-activity__fetch")).not.toBeNull()
     expect(container.textContent).toContain("https://example.net/article")
     expect(
       container.querySelector(".shiny-web-activity__status--ok"),
     ).not.toBeNull()
 
-    // Segment order around the activity is preserved.
     const text = container.textContent ?? ""
     expect(text.indexOf("Checking the web.")).toBeLessThan(
       text.indexOf("Searched the web"),
@@ -1261,7 +1187,6 @@ describe("structured html_block via message.segments", () => {
     expect(island).not.toBeNull()
     expect(island!.innerHTML).toBe("Island HTML")
 
-    // Content renders in segment order around the island.
     const text = container.textContent ?? ""
     expect(text.indexOf("Before the island.")).toBeLessThan(
       text.indexOf("Island HTML"),
@@ -1281,7 +1206,6 @@ describe("structured html_block via message.segments", () => {
       },
     })
 
-    // Block-level deps ride the message envelope so snapshots retain them.
     expect(state.messages[0]!.htmlDeps).toEqual([dep])
   })
 
@@ -1297,7 +1221,6 @@ describe("structured html_block via message.segments", () => {
       html_deps: [envDep],
     })
 
-    // Both sets merge onto the message.
     expect(state.messages[0]!.htmlDeps).toEqual([blockDep, envDep])
   })
 
@@ -1399,11 +1322,9 @@ describe("structured html_block via block_insert mid-stream", () => {
       block: htmlBlock({ content: "<p class='island'>Mid-stream island</p>" }),
     })
 
-    // Mid-stream: the block is already render-ready.
     const midBlocks = state.streamingMessage!.blocks
     expect(midBlocks.map((b) => b.type)).toEqual(["content", "html_block"])
 
-    // A string chunk after a block_insert starts a NEW content block.
     state = chatReducer(state, {
       type: "chunk",
       content: " After the island.",
@@ -1438,7 +1359,6 @@ describe("structured html_block via block_insert mid-stream", () => {
 
   it("does not disturb thinking-tag/fence stream state", () => {
     let state = startStream(makeState())
-    // Open a code fence, then insert an html_block: the fence state survives.
     state = chatReducer(state, {
       type: "chunk",
       content: "```\nsome code",
@@ -1450,7 +1370,6 @@ describe("structured html_block via block_insert mid-stream", () => {
       type: "block_insert",
       block: htmlBlock(),
     })
-    // The block is opaque to the fence state machine.
     expect(state.streamingMessage!.insideFence).toBe(true)
     expect(state.streamingMessage!.blocks.map((b) => b.type)).toEqual([
       "content",
@@ -1503,15 +1422,9 @@ describe("html_block deps-before-innerHTML ordering", () => {
       </ShinyLifecycleContext.Provider>,
     )
 
-    // While deps are pending, the island's innerHTML is NOT mounted.
-    // The HtmlBlockContent component returns null until depsReady.
     expect(container.querySelector(".island")).toBeNull()
     expect(shiny.renderDependencies).toHaveBeenCalledWith([dep])
 
-    // After deps resolve, the innerHTML mounts and Shiny binds it.
-    // The renderDependencies mock resolves on the next microtask; flush it
-    // so the component's useEffect callback runs and setDepsReady(true)
-    // re-renders with the island mounted.
     await act(async () => {
       await Promise.resolve()
       await Promise.resolve()
@@ -1536,7 +1449,6 @@ describe("html_block deps-before-innerHTML ordering", () => {
       </ShinyLifecycleContext.Provider>,
     )
 
-    // No deps → no deferred render; innerHTML is mounted immediately.
     expect(container.querySelector(".island")).not.toBeNull()
     expect(shiny.renderDependencies).not.toHaveBeenCalled()
     expect(shiny.bindAll).toHaveBeenCalled()

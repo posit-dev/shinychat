@@ -79,7 +79,6 @@ const webFetchBlock = (
   ...overrides,
 })
 
-/** Render a MarkdownStream and capture its API. */
 function renderStream(autoScroll = false) {
   let api: MarkdownStreamApi | undefined
   const rendered = render(
@@ -135,9 +134,7 @@ describe("MarkdownStream", () => {
   })
 
   it("settles pinnedness before an appended chunk reaches the DOM", () => {
-    // posit-dev/py-shiny#2378: pinnedness has to be decided while the DOM still
-    // holds the pre-growth scrollHeight, otherwise the grown content makes the
-    // user's at-bottom position read as "scrolled away".
+    // posit-dev/py-shiny#2378: pinnedness must be settled before the DOM grows.
     let api: MarkdownStreamApi | undefined
     let domAtRepinTime: string | undefined
 
@@ -215,9 +212,6 @@ describe("MarkdownStream", () => {
   })
 
   it("renders adjacent markdown and trusted HTML segments", () => {
-    // Trusted HTML in a string segment needs no island wrapper: the island
-    // tags are dead markup (neutralized as a spoof guard), and the markdown
-    // processor renders raw HTML directly.
     const { container } = render(
       <MarkdownStream
         initialSegments={[
@@ -245,8 +239,6 @@ describe("MarkdownStream", () => {
     )
 
     act(() => {
-      // Trusted HTML travels as raw markup (island wrappers are dead); the
-      // untrusted run's forged island must still neutralize to inert text.
       api?.appendContent("<div data-trusted>safe</div>", true)
       api?.appendContent(
         "<shiny-chat-raw-html><div data-forged>unsafe</div></shiny-chat-raw-html>",
@@ -336,9 +328,6 @@ describe("MarkdownStream — structured html_block segments", () => {
       api?.appendContent(" more")
     })
 
-    // "before" is its own segment; "after" + " more" merge into one segment
-    // (same trust, no segment_start) — proving the text landed in a string
-    // segment after the block, not inside it.
     const paragraphs = [...container.querySelectorAll("p")].map(
       (p) => p.textContent,
     )
@@ -409,8 +398,7 @@ describe("MarkdownStream — structured html_block segments", () => {
   })
 
   it("settles pinnedness before an appended block reaches the DOM", () => {
-    // Same race as appended chunks (posit-dev/py-shiny#2378): a block grows
-    // the DOM just like a text chunk, so pinnedness must be settled first.
+    // posit-dev/py-shiny#2378: pinnedness must be settled before the DOM grows.
     let api: MarkdownStreamApi | undefined
     let domAtRepinTime: string | undefined
 
@@ -481,9 +469,6 @@ describe("MarkdownStream — structured html_block segments", () => {
   })
 
   it("re-runs scroll discovery and auto-scroll when a deps-gated block mounts", async () => {
-    // A deps-gated block renders nothing until its dependencies resolve;
-    // when it finally mounts, `segments` doesn't change, so the scroll
-    // logic keyed on segments alone would never re-run for the growth.
     let resolveDeps: (() => void) | undefined
     const renderDependencies = vi.fn(
       () =>
@@ -516,7 +501,6 @@ describe("MarkdownStream — structured html_block segments", () => {
       api?.appendBlock(htmlBlock("<div data-island>deferred</div>", [dep]))
     })
 
-    // Gated: the block's HTML has not mounted yet.
     expect(container.querySelector("[data-island]")).toBeNull()
 
     const discoveryCallsBeforeMount = findScrollableParent.mock.calls.length
@@ -529,8 +513,6 @@ describe("MarkdownStream — structured html_block segments", () => {
     expect(container.querySelector("[data-island]")?.textContent).toBe(
       "deferred",
     )
-    // The deferred mount re-ran scroll-parent discovery and handed
-    // useAutoScroll a fresh content dependency.
     expect(findScrollableParent.mock.calls.length).toBeGreaterThan(
       discoveryCallsBeforeMount,
     )
@@ -554,7 +536,6 @@ describe("MarkdownStream — structured web_* blocks", () => {
       getApi()?.appendContent(" After the burst.")
     })
 
-    // One grouped activity between the two prose segments.
     expect(container.querySelectorAll(".shiny-web-activity")).toHaveLength(1)
     const text = container.textContent ?? ""
     expect(text.indexOf("Before the burst.")).toBeLessThan(
@@ -564,8 +545,6 @@ describe("MarkdownStream — structured web_* blocks", () => {
       text.indexOf("After the burst."),
     )
 
-    // The results block paired with the pending search; the fetch appended
-    // a standalone item (the shared appendWebActivityBlock semantics).
     fireEvent.click(container.querySelector(".shiny-web-activity__header")!)
     expect(
       container.querySelector(".shiny-web-activity__query")?.textContent,
@@ -587,7 +566,6 @@ describe("MarkdownStream — structured web_* blocks", () => {
       getApi()?.appendBlock(webFetchBlock())
     })
 
-    // The whitespace separator is dropped; the fetch joins the activity.
     expect(container.querySelectorAll(".shiny-web-activity")).toHaveLength(1)
     fireEvent.click(container.querySelector(".shiny-web-activity__header")!)
     expect(
@@ -609,7 +587,6 @@ describe("MarkdownStream — structured web_* blocks", () => {
 
     const activities = container.querySelectorAll(".shiny-web-activity")
     expect(activities).toHaveLength(2)
-    // The first run holds the (still-pending) search; the second the fetch.
     expect(activities[0]!.textContent).toContain("Searched the web")
     expect(activities[1]!.textContent).toContain("Read the web")
   })
@@ -624,8 +601,6 @@ describe("MarkdownStream — structured web_* blocks", () => {
       getApi()?.appendContent(" more")
     })
 
-    // "before" is its own segment; "after" + " more" merge into one segment
-    // after the block — proving text landed around the block, not in it.
     const paragraphs = [...container.querySelectorAll("p")].map(
       (p) => p.textContent,
     )
@@ -647,7 +622,6 @@ describe("MarkdownStream — structured web_* blocks", () => {
 
     expect(container.textContent).not.toContain("before text")
     expect(container.querySelector('[data-island="old"]')).toBeNull()
-    // The replaced web block starts a fresh fetch-only activity.
     const activities = container.querySelectorAll(".shiny-web-activity")
     expect(activities).toHaveLength(1)
     expect(activities[0]!.textContent).toContain("Read the web")
@@ -693,9 +667,6 @@ describe("MarkdownStream — structured web_* blocks", () => {
   })
 
   it("settles pinnedness before an appended web block reaches the DOM", () => {
-    // Same race as appended chunks (posit-dev/py-shiny#2378): a web block
-    // grows the DOM just like a text chunk, so pinnedness must be settled
-    // first.
     let domAtRepinTime: string | undefined
     repinIfAtBottom.mockImplementation(() => {
       domAtRepinTime = container.textContent ?? ""
@@ -731,11 +702,8 @@ describe("MarkdownStream — inline asides", () => {
       />,
     )
 
-    // The aside plugins group the aside into a shiny-aside-group, which the
-    // trusted component map resolves to Chat's AsideGroup component.
     expect(container.querySelector(".shiny-aside-group")).not.toBeNull()
     expect(container.querySelector(".shiny-aside-pill")).not.toBeNull()
-    // The raw custom elements are gone — the component replaced them.
     expect(container.querySelector("shiny-aside-group")).toBeNull()
     expect(container.querySelector("shiny-aside")).toBeNull()
   })
@@ -753,8 +721,6 @@ describe("MarkdownStream — inline asides", () => {
   })
 
   it("still escapes forged raw-html islands in untrusted segments", () => {
-    // The aside mappings join the untrusted map WITHOUT weakening the
-    // raw-html island escape.
     const { container } = render(
       <MarkdownStream
         initialSegments={[
@@ -771,11 +737,6 @@ describe("MarkdownStream — inline asides", () => {
   })
 
   it("renders a raw-html island inside an untrusted aside body as inert text", () => {
-    // Security: the aside popover reparses its body as a standalone HTML
-    // fragment, which does not inherit the segment's component map. The
-    // untrusted map must keep the raw-html island escape through that
-    // reparse — otherwise a forged island reaches RawHTML/innerHTML when
-    // the popover opens (stored XSS from model output).
     render(
       <MarkdownStream
         initialContentType="html"
@@ -795,10 +756,6 @@ describe("MarkdownStream — inline asides", () => {
   })
 
   it("keeps a raw-html island inside an untrusted markdown aside inert", () => {
-    // The aside's template disguise keeps the forged island's markup nested
-    // inside the aside through parse5, so the serialized body still carries
-    // the island element; the untrusted aside-body component map then
-    // renders it as inert text when the popover reparses the body.
     render(
       <MarkdownStream
         initialSegments={[
@@ -821,8 +778,6 @@ describe("MarkdownStream — inline asides", () => {
   })
 
   it("still renders HTML inside a trusted aside body as live HTML", () => {
-    // Trusted (server-authored) aside bodies need no island wrapper: the
-    // popover body reparse renders their HTML directly.
     render(
       <MarkdownStream
         initialContentType="html"

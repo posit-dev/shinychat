@@ -30,13 +30,7 @@ export interface AsideEntry {
 
 interface AsideGroupProps {
   node?: HastElement
-  /**
-   * Set when the aside arrived in untrusted (model-authored) content. The
-   * popover body is reparsed as a standalone HTML fragment that does not
-   * inherit the surrounding content's component map, so the untrusted
-   * escapes must be re-applied at that reparse (see
-   * untrustedAsideBodyTagToComponentMap).
-   */
+  /** Set when the aside arrived in untrusted (model-authored) content. */
   untrusted?: boolean
 }
 
@@ -46,15 +40,9 @@ interface AsideGroupViewProps {
   untrusted?: boolean
 }
 
-// Security: the popover body reparse (MarkdownContent below) uses
-// MarkdownContent's default component map unless told otherwise. An
-// aside arriving in untrusted content (e.g. a MarkdownStream segment with
-// contentType="html") can carry a forged <shiny-chat-raw-html> element in
-// its serialized body; without these entries the forged tags would render
-// as live markup when the popover opens instead of the inert text the
-// untrusted path guarantees. Mirror the top-level untrusted maps
-// (untrustedChatTagToComponentMap, MarkdownStream's untrusted components):
-// every trust-gated tag renders as the literal markup via EscapedIsland.
+// Security: untrusted (model-authored) asides must never resolve tool/web/island
+// tags to live components in the popover body reparse — there is no sanitize
+// step. Every trust-gated tag renders as inert text via EscapedIsland.
 const untrustedAsideBodyTagToComponentMap: Record<
   string,
   ComponentType<unknown>
@@ -181,14 +169,7 @@ export const AsideGroup = memo(function AsideGroup({
   )
 })
 
-/**
- * The aside-group resolver for untrusted component maps
- * (untrustedChatTagToComponentMap, MarkdownStream's untrusted components).
- * Asides stay resolvable in untrusted content — they are data carriers,
- * not trust sinks — but the popover body reparse must keep the untrusted
- * escapes so a forged raw-HTML island inside the aside renders as inert
- * text, never live markup, when the popover opens.
- */
+/** Aside-group resolver for untrusted component maps. */
 export const UntrustedAsideGroup = memo(function UntrustedAsideGroup({
   node,
 }: {

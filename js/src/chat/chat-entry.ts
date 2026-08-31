@@ -51,13 +51,9 @@ const CHAT_DRAWER_TAG = "shiny-chat-drawer"
 
 /**
  * Parse the `data-initial-messages` attribute: a JSON array of message
- * payloads (`{role, segments, icon?, attachments?}` — the same segments
- * union the `message` action carries) the server embeds on the container
- * when any initial message carries structured blocks. Each entry replays
- * through the same `messagePayloadToData()` conversion the reducer uses, so
- * tool/web/html_block blocks arrive render-ready. Returns null when the
- * payload is malformed (not valid JSON, or not an array) so the caller can
- * fall back to the static <shiny-chat-message> tags.
+ * payloads the server embeds when any initial message carries structured
+ * blocks. Each entry replays through `messagePayloadToData()`. Returns null
+ * when malformed so the caller can fall back to static tags.
  */
 function parseInitialMessagesAttr(
   raw: string,

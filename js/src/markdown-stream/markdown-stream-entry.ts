@@ -30,12 +30,7 @@ type ContentMessage = {
   html_deps?: HtmlDep[]
   trusted: boolean
   segment_start: boolean
-  /**
-   * A structured block payload (a message carries `content` XOR `block`).
-   * Blocks arrive complete and append-only. `html_block` and the web_*
-   * family are supported here; other types fail closed (dropped with a
-   * warning).
-   */
+  /** A structured block payload (a message carries `content` XOR `block`). */
   block?: StructuredBlock
 }
 
@@ -128,9 +123,7 @@ class MarkdownStreamElement extends HTMLElement {
       return
     }
 
-    // A message carries string content XOR a structured block. `operation`
-    // applies uniformly: "append" appends the block; "replace" wipes ALL
-    // segments+blocks, then appends the block if present (kata#0r4g).
+    // A message carries string content XOR a structured block.
     if (message.block !== undefined) {
       const block = asStreamBlock(message.block)
       if (!block) return
@@ -155,15 +148,7 @@ class MarkdownStreamElement extends HTMLElement {
   }
 }
 
-/**
- * Validate a structured block arriving on a markdown-stream message (or in
- * initial content-segments) and convert it to the form the stream API
- * accepts: an `html_block` becomes its render-model form; a web_* block is
- * validated via the shared asWebActivityWireBlock and stays in wire form
- * (the grouping machinery consumes wire blocks). Anything else — including
- * tool blocks, which are out of scope for streams — fails closed (dropped
- * with a warning), matching the client's other malformed-payload patterns.
- */
+/** Validate and convert a structured block to the form the stream API accepts. */
 function asStreamBlock(block: StructuredBlock): StreamBlock | null {
   if (isWebActivityWireBlock(block)) {
     return asWebActivityWireBlock(block)
@@ -180,13 +165,7 @@ function asStreamBlock(block: StructuredBlock): StreamBlock | null {
   return null
 }
 
-/**
- * The `content-segments` attribute is a JSON array of
- * `{text, trusted}` string segments and `{block: StructuredBlock}` entries
- * (`html_block` and the web_* family are supported; adjacent web_* entries
- * group into one web activity per appendWebActivityBlock). Any malformed
- * entry fails the whole array closed to a single untrusted text segment.
- */
+/** Parse the `content-segments` attribute (JSON array of text/block entries). */
 function readInitialSegments(
   el: HTMLElement,
   fallbackContent: string,
@@ -217,14 +196,11 @@ function readInitialSegments(
             continue
           }
         }
-        // Malformed provenance must fail closed.
         return [{ text: fallbackContent, trusted: false }]
       }
       return segments
     }
-  } catch {
-    // Malformed provenance must fail closed.
-  }
+  } catch {}
   return [{ text: fallbackContent, trusted: false }]
 }
 

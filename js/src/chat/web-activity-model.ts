@@ -23,11 +23,7 @@ export interface WebActivitySearchItem {
   sources: WebSearchSource[] | null
   /**
    * Answer-citation fallback, shown only while no provider results attach
-   * (sources === null). Populated on the markup path by
-   * rehypeAttachCitedSources (citations collected onto the
-   * <shiny-web-activity> wrapper; parseItems reads them onto the last
-   * pending search) or on the structured path by a web_search block's
-   * `cited_sources`.
+   * (sources === null). Populated by a web_search block's `cited_sources`.
    */
   citedSources: WebSearchSource[]
 }
@@ -41,9 +37,8 @@ export interface WebActivityFetchItem {
 export type WebActivityItem = WebActivitySearchItem | WebActivityFetchItem
 
 /**
- * A run of adjacent web_* blocks grouped into one activity on arrival — the
- * structured re-expression of rehypeGroupWebActivity's wrapper. The group
- * wrapper never appears on the wire.
+ * A run of adjacent web_* blocks grouped into one activity on arrival.
+ * The group wrapper never appears on the wire.
  */
 export interface WebActivityBlock {
   type: "web_activity"
@@ -64,9 +59,8 @@ export function isWebActivityWireBlock(
 
 /**
  * Defensively narrow a structured block to a supported web_* wire block.
- * `version` is a forward-compatibility marker: a block whose version this
- * client predates is ignored with a warning rather than breaking the
- * message around it (mirrors structuredBlockToLoop).
+ * A block whose version this client predates is ignored with a warning
+ * rather than breaking the message around it.
  */
 export function asWebActivityWireBlock(
   block: StructuredBlock,
@@ -94,11 +88,7 @@ export function asWebActivityWireBlock(
   return block
 }
 
-/**
- * Validate and dedupe (by URL) a sources payload. Shared by the structured
- * path (a real JSON array off the wire) and the markup path (a JSON string
- * attribute parsed by WebActivity's parseSources).
- */
+/** Validate and dedupe (by URL) a sources payload. */
 export function normalizeSources(value: unknown): WebSearchSource[] {
   if (!Array.isArray(value)) return []
   const seen = new Set<string>()
@@ -112,13 +102,12 @@ export function normalizeSources(value: unknown): WebSearchSource[] {
 }
 
 /**
- * Apply one web_* wire block to an activity, re-expressing
- * WebActivity.parseItems' adjacency pairing over structured arrival: a
- * results block attaches its sources to the earliest still-pending search
- * (parseItems' pending-search queue); one arriving with no pending search
- * becomes a query-less search item; a fetch block appends a standalone item.
- * The pending state lives in the items themselves (sources === null), so
- * pairing works across block_insert boundaries mid-stream.
+ * Apply one web_* wire block to an activity: a results block attaches its
+ * sources to the earliest still-pending search; one arriving with no
+ * pending search becomes a query-less search item; a fetch block appends a
+ * standalone item. The pending state lives in the items themselves
+ * (sources === null), so pairing works across block_insert boundaries
+ * mid-stream.
  */
 export function applyWebBlock(
   activity: WebActivityBlock | null,
@@ -130,9 +119,8 @@ export function applyWebBlock(
       kind: "search",
       query: block.query,
       sources: null,
-      // Answer-citation fallback carried explicitly on the block. A later
-      // results block's sources still win: the UI reads
-      // `sources ?? citedSources`.
+      // Answer-citation fallback. A later results block's sources still win:
+      // the UI reads `sources ?? citedSources`.
       citedSources: normalizeSources(block.cited_sources),
     })
   } else if (block.type === "web_search_results") {
@@ -161,11 +149,7 @@ function isWebActivityBlock(block: unknown): block is WebActivityBlock {
   )
 }
 
-/**
- * Chat's whitespace-separator check: a whitespace-only content block
- * between web_* carriers is part of the run (dropped on grouping),
- * mirroring rehypeGroupWebActivity's tolerance of whitespace text nodes.
- */
+/** Whitespace-only content block between web_* carriers is part of the run. */
 export function isWhitespaceContentBlock(
   block: MessageBlock | WebActivityBlock,
 ): boolean {
@@ -173,17 +157,11 @@ export function isWhitespaceContentBlock(
 }
 
 /**
- * Append one web_* wire block to a block list, grouping it into the
- * trailing web activity when one is reachable — tolerating a
- * whitespace-only string segment between carriers, exactly as
- * rehypeGroupWebActivity tolerates whitespace text nodes (the whitespace is
- * dropped; any other block ends the run and starts a new activity). A lone
- * web block forms an activity on its own.
- *
- * Generic over the list's entry shape so Chat (MessageBlock[]) and
- * MarkdownStream (StreamSegment[]) share the one grouping/pairing
- * implementation; `isWhitespaceText` identifies a droppable whitespace
- * separator in the caller's shape (e.g. isWhitespaceContentBlock for Chat).
+ * Append one web_* wire block to a block list, grouping into the trailing
+ * web activity when reachable — tolerating a whitespace-only separator
+ * (dropped; any other block ends the run). Generic over the list's entry
+ * shape so Chat (MessageBlock[]) and MarkdownStream (StreamSegment[]) share
+ * one implementation.
  */
 export function appendWebActivityBlock<T>(
   blocks: (T | WebActivityBlock)[],

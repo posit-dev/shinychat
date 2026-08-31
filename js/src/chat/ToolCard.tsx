@@ -54,10 +54,9 @@ export function ToolCard({
   const headerId = `tool-header${uid}`
   const contentId = `tool-content${uid}`
   const iconHtml = icon || bareDot
-  // toolTitle is server-attested HTML (developer-controlled, rendered raw);
-  // toolName is model-influenced text (chatlas sets it from the tool-call
-  // payload), so the fallback must be escaped before interpolation into the
-  // RawHTML title span.
+  // toolTitle is server-attested HTML (rendered raw); toolName is
+  // model-influenced text, so the fallback must be escaped before
+  // interpolation into the RawHTML title span.
   const displayName = toolTitle || `${escapeHtml(toolName)}()`
   const labelPart = label
     ? `: <span class="tool-title-label">${escapeHtml(label)}</span>`

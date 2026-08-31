@@ -27,11 +27,10 @@ export type MessagePayloadSegment = {
 export type StructuredBlockGrouping = "none" | "tool" | "all"
 
 /**
- * A typed, server-authored tool request envelope. The envelope itself is the
- * trust signal: only the server can construct these blocks, so trusted-HTML
- * fields (`title`, `icon`) render through the shared RawHTML sink while text
- * fields are escaped. The client derives a `running` call from an unpaired
- * request (a request with no result of the same `request_id` yet).
+ * Server-authored tool request envelope. The envelope is the trust signal:
+ * only the server constructs these blocks, so HTML fields render through
+ * RawHTML while text fields are escaped. An unpaired request is a `running`
+ * call.
  */
 export type ToolRequestBlock = {
   type: "tool_request"
@@ -39,9 +38,9 @@ export type ToolRequestBlock = {
   /** Correlates with the result; keys transcript-wide request suppression. */
   request_id: string
   tool_name: string
-  /** HTML → RawHTML (the tool definition's title; was tool-title/definitionTitle) */
+  /** HTML → RawHTML */
   title?: string
-  /** HTML → RawHTML (the tool definition's icon; was definitionIcon) */
+  /** HTML → RawHTML */
   icon?: string
   /** text → escaped */
   intent?: string
@@ -51,10 +50,10 @@ export type ToolRequestBlock = {
 }
 
 /**
- * A typed, server-authored tool result envelope. The envelope itself is the
- * trust signal: only the server can construct these blocks, so trusted-HTML
- * fields (`value` with `value_type: "html"`, `title`, `icon`, `footer`)
- * render through the shared RawHTML sink while text fields are escaped.
+ * Server-authored tool result envelope. The envelope is the trust signal:
+ * only the server constructs these blocks, so HTML fields (`value` with
+ * `value_type: "html"`, `title`, `icon`, `footer`) render through RawHTML
+ * while text fields are escaped.
  */
 export type ToolResultBlock = {
   type: "tool_result"
@@ -62,7 +61,6 @@ export type ToolResultBlock = {
   /** Correlates with the request; keys transcript-wide request suppression. */
   request_id: string
   tool_name: string
-  /** "running" is NOT a wire value; the client derives it from an unpaired request. */
   status: "success" | "error"
   value?: string
   value_type?: "html" | "markdown" | "text" | "code" | "content_extra"
@@ -88,11 +86,7 @@ export type ToolResultBlock = {
   footer?: string
 }
 
-/**
- * One source in a `web_search_results` block: a real JSON array entry, not a
- * stringified attribute. `url` is required; `title`/`domain` are display
- * hints (the client derives a domain from the URL when absent).
- */
+/** One source in a `web_search_results` block. */
 export type WebSearchSource = {
   url: string
   title?: string
@@ -100,67 +94,46 @@ export type WebSearchSource = {
 }
 
 /**
- * A typed, server-authored web-search envelope. The envelope itself is the
- * trust signal: only the server can construct these blocks. Consecutive
- * web_* blocks group client-side into one `web_activity` block on arrival.
+ * Server-authored web-search envelope. Consecutive web_* blocks group
+ * client-side into one `web_activity` block on arrival.
  */
 export type WebSearchBlock = {
   type: "web_search"
   version: 1
   query: string
-  /**
-   * Answer-citation fallback (the structured re-expression of
-   * rehypeAttachCitedSources): sources the answer cited, shown only while
-   * no provider results attach to this search.
-   */
+  /** Answer-citation fallback: shown only while no provider results attach. */
   cited_sources?: WebSearchSource[]
 }
 
-/**
- * The results paired with a preceding `web_search`: the client attaches the
- * sources to the earliest still-pending search in the activity (the
- * adjacency pairing `WebActivity.parseItems` uses on the markup path).
- */
+/** Results paired with a preceding `web_search`. */
 export type WebSearchResultsBlock = {
   type: "web_search_results"
   version: 1
   sources: WebSearchSource[]
 }
 
-/** A typed, server-authored web-fetch envelope. */
+/** Server-authored web-fetch envelope. */
 export type WebFetchBlock = {
   type: "web_fetch"
   version: 1
   url: string
-  /** Absent when the server didn't report one (chatlas allows None). */
   status?: "success" | "error"
 }
 
 /**
- * A typed, server-authored raw-HTML island — the structured channel that
- * replaced the retired `<shiny-chat-raw-html>` markup islands (kata#af81).
- * The envelope itself is the trust signal: only the server can construct
- * these blocks, so `content` renders through the shared RawHTML sink. The
- * block is opaque to the thinking-tag/fence state machine, which operates
- * only on string content.
+ * Server-authored raw-HTML island. The envelope is the trust signal: only the
+ * server constructs these blocks, so `content` renders through RawHTML.
  */
 export type HtmlBlock = {
   type: "html_block"
   version: 1
   /** Trusted HTML → RawHTML */
   content: string
-  /**
-   * Dependencies this island needs, rendered before its HTML mounts (the
-   * block-level complement to the envelope's `html_deps`).
-   */
+  /** Dependencies rendered before the island's HTML mounts. */
   html_deps?: HtmlDep[]
 }
 
-/**
- * Server-authored structured blocks carried in `MessagePayload.segments`
- * (outside a stream) or via a `block_insert` action (mid-stream). The union
- * grows per the design.
- */
+/** Server-authored structured blocks carried in segments or via block_insert. */
 export type StructuredBlock =
   | ToolRequestBlock
   | ToolResultBlock
@@ -169,11 +142,7 @@ export type StructuredBlock =
   | WebFetchBlock
   | HtmlBlock
 
-/**
- * One entry of `MessagePayload.segments`: a string segment
- * (`{content, content_type}`) or a structured block (discriminated by the
- * presence of `type`).
- */
+/** One entry of `MessagePayload.segments`: a string segment or a structured block. */
 export type SegmentPayload = MessagePayloadSegment | StructuredBlock
 
 export interface SlashCommandDef {
@@ -235,12 +204,7 @@ export type ChatAction =
     }
   | { type: "chunk_end" }
   | {
-      /**
-       * Delivers one complete structured block while a message stream is in
-       * flight. Appends to `streamingMessage.blocks`; a no-op (with a
-       * console.warn) when no stream is in flight. Never affects the
-       * thinking-tag/fence state machine, which operates only on strings.
-       */
+      /** Delivers one structured block mid-stream (appends to streamingMessage.blocks). */
       type: "block_insert"
       block: StructuredBlock
       html_deps?: HtmlDep[]

@@ -715,10 +715,6 @@ describe("ToolGroup", () => {
   })
 
   it("lets the expanded card own the Shiny bindings instead of binding the row's copies twice", () => {
-    // The header's glyph and title stay mounted when the row expands into the
-    // full card, and both render the same server HTML (the icon string is
-    // identical in both sinks). If both copies bound, every Shiny id in that
-    // HTML would register twice.
     const shiny: ShinyLifecycle = {
       bindAll: vi.fn().mockResolvedValue(undefined),
       unbindAll: vi.fn(),
@@ -754,18 +750,14 @@ describe("ToolGroup", () => {
     const headerTitle = container.querySelector(
       ".shiny-chat-tool-group__title > span",
     )!
-    // Collapsed: the row's copies are the only mounted ones, so they bind.
     expect(bindsFor(headerGlyph)).toBe(1)
     expect(bindsFor(headerTitle)).toBe(1)
 
     fireEvent.click(row)
-    // The card really did mount with the same icon HTML in its own sinks.
     const cardIcon = container.querySelector(".shiny-tool-card .tool-icon")!
     const cardTitle = container.querySelector(".shiny-tool-card .tool-title")!
     expect(headerGlyph.querySelector(".icon-web")).toBeTruthy()
     expect(cardIcon.querySelector(".icon-web")).toBeTruthy()
-    // The row's copies released their bindings; the card's copies bound. No
-    // element was ever bound twice.
     expect(shiny.unbindAll).toHaveBeenCalledWith(headerGlyph)
     expect(shiny.unbindAll).toHaveBeenCalledWith(headerTitle)
     expect(bindsFor(cardIcon)).toBe(1)
@@ -773,8 +765,6 @@ describe("ToolGroup", () => {
     expect(bindsFor(headerGlyph)).toBe(1)
     expect(bindsFor(headerTitle)).toBe(1)
 
-    // Collapsing again makes the row's copies the only mounted ones: they
-    // rebind, and the card's copies unbind on unmount.
     fireEvent.click(row)
     expect(shiny.unbindAll).toHaveBeenCalledWith(cardIcon)
     expect(bindsFor(headerGlyph)).toBe(2)

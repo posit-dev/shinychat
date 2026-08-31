@@ -47,9 +47,7 @@ export type {
   ToolLoopBlock,
 } from "./tool-model"
 export type { WebActivityBlock, WebActivityItem } from "./web-activity-model"
-// The html_block render model and its wire validators live in
-// html-block-model.ts (shared with MarkdownStream); re-exported here so
-// existing `./state` imports keep working.
+// Mirrors html-block-model.ts (shared with MarkdownStream).
 export { asHtmlBlock, htmlBlockToRenderBlock } from "./html-block-model"
 export type { HtmlBlock } from "./html-block-model"
 
@@ -217,10 +215,7 @@ export const initialState: ChatState = {
   },
 }
 
-/**
- * Segment union discrimination: string segments are `{content, content_type}`;
- * structured blocks carry a `type` discriminator (and `version`).
- */
+/** Discriminator: structured blocks carry `type`; string segments do not. */
 function isStructuredSegment(seg: SegmentPayload): seg is StructuredBlock {
   return "type" in seg
 }
@@ -233,12 +228,7 @@ export function messagePayloadToData(
   let htmlDeps: HtmlDep[] | undefined
   for (const seg of msg.segments) {
     if (isStructuredSegment(seg)) {
-      // Structured blocks are server-authored and arrive render-ready:
-      // convert to a tool loop / web activity on arrival. Tool UI and web
-      // activity are never legitimate in a user message. An html_block,
-      // however, is a server-attested trusted-HTML envelope that is valid
-      // in any role (e.g. a user message whose content was authored with
-      // tags on the server), so it passes through regardless of role.
+      // Tool UI and web activity are assistant-only; html_block is valid in any role.
       if (msg.role === "user" && seg.type !== "html_block") {
         console.warn(
           "Ignoring non-html_block structured block in a user-role message",
@@ -246,8 +236,6 @@ export function messagePayloadToData(
         continue
       }
       if (isWebActivityWireBlock(seg)) {
-        // Consecutive web_* blocks group into ONE web_activity block on
-        // arrival (the structured form of web-activity grouping).
         const webBlock = asWebActivityWireBlock(seg)
         if (webBlock)
           rawBlocks = appendWebActivityBlock(
@@ -258,9 +246,6 @@ export function messagePayloadToData(
         continue
       }
       if (seg.type === "html_block") {
-        // A raw-HTML island arrives render-ready. Its deps also ride the
-        // message so snapshots/persistence retain them (the envelope's own
-        // html_deps merge in the reducer cases below).
         const htmlBlock = asHtmlBlock(seg)
         if (htmlBlock) {
           rawBlocks.push(htmlBlockToRenderBlock(htmlBlock))
@@ -270,17 +255,12 @@ export function messagePayloadToData(
       }
       const loop = structuredBlockToLoop(seg, grouping)
       if (loop) {
-        // Merge into an adjacent trailing tool loop when one exists (one
-        // agentic loop), tolerating a whitespace-only content block between
-        // carriers — mirrors appendWebActivityBlock.
         rawBlocks = appendToolLoopBlock(rawBlocks, loop, grouping)
       }
       continue
     }
     rawBlocks.push(...splitThinkingBlocks(seg.content, seg.content_type))
   }
-  // Blocks are already built from structured segments; content segments don't
-  // contain tool markers that need routing anymore.
   const blocks = rawBlocks
   const attachments: AttachmentPayload[] = msg.attachments ?? []
   const contentOnly = contentFromBlocks(blocks)
@@ -445,9 +425,8 @@ function buildFenceCloseRe(marker: string): RegExp {
 function lastContentEndsWithNewline(blocks: MessageBlock[]): boolean {
   if (blocks.length === 0) return true
   const last = blocks[blocks.length - 1]!
-  // thinking and structured web_activity/html_block blocks are structural
-  // boundaries (a web_activity snapshots to an empty string; an html_block
-  // is a block-level island), equivalent to a newline.
+  // thinking/web_activity/html_block blocks are structural boundaries,
+  // equivalent to a trailing newline.
   if (
     last.type === "thinking" ||
     last.type === "web_activity" ||
@@ -708,7 +687,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     case "message": {
       const messages = removeLoadingMessage(state.messages)
       const data = messagePayloadToData(action.message, state.toolGrouping)
-      // Merge over any block-level deps collected from structured segments.
       if (action.html_deps)
         data.htmlDeps = mergeHtmlDeps(data.htmlDeps, action.html_deps)
       return {
@@ -727,7 +705,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       newMsg.blocks = newMsg.blocks.map((b) =>
         b.type === "thinking" ? { ...b, streaming: true } : b,
       )
-      // Merge over any block-level deps collected from structured segments.
       if (action.html_deps)
         newMsg.htmlDeps = mergeHtmlDeps(newMsg.htmlDeps, action.html_deps)
       return {
@@ -743,14 +720,8 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const last = state.streamingMessage
       if (!last || !last.streaming) return state
 
-      // Uniform replace semantics (kata#0r4g): a replace chunk supersedes
-      // the WHOLE in-flight message — every block (content, thinking,
-      // tool_loop, web_activity, html_block) is discarded, and the
-      // thinking-tag/fence state machine resets with it. Servers rely on
-      // this: they emit a leading empty replace chunk (the wipe) and then
-      // re-emit the message's parts as appends. So a replace is exactly a
-      // wipe followed by the normal append path, which must hold regardless
-      // of prior stream state or what the chunk's content contains.
+      // Uniform replace: a replace chunk supersedes the whole in-flight message
+      // (wipe all blocks, reset tag/fence state), then re-appends.
       if (action.operation === "replace") {
         const wipedState: ChatState = {
           ...state,
@@ -765,9 +736,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
             htmlDeps: mergeHtmlDeps(last.htmlDeps, action.html_deps),
           },
         }
-        // An empty replace is a pure wipe: no empty content block left.
         if (!action.content) return wipedState
-        // The append path re-merges html_deps, so don't carry them twice.
         return chatReducer(wipedState, {
           ...action,
           operation: "append",
@@ -961,8 +930,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         }
       }
 
-      // Standard non-thinking content path (append; replace was handled
-      // above as wipe-then-append)
+      // Standard non-thinking content path (append)
       const blocks = [...last.blocks]
 
       // Finalize any trailing thinking block
@@ -1011,9 +979,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "block_insert": {
-      // A structured block arriving mid-stream. Appends one complete block to
-      // the in-flight message; the thinking-tag/fence state machine operates
-      // only on string content and is deliberately left untouched here.
       const last = state.streamingMessage
       if (!last || !last.streaming) {
         console.warn(
@@ -1021,9 +986,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         )
         return state
       }
-      // Tool and web-activity blocks are assistant-only; an html_block is a
-      // server-attested trusted-HTML envelope valid in any role, so it is
-      // allowed through for user-role messages too.
+      // Tool and web-activity blocks are assistant-only; html_block is valid in any role.
       if (last.role === "user" && action.block.type !== "html_block") {
         console.warn(
           "Ignoring non-html_block block_insert for a user-role message",
@@ -1031,11 +994,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         return state
       }
 
-      // Convert the wire block to its render-model form up front; unknown
-      // types and unsupported versions warn and no-op. A web_* block joins
-      // the trailing web activity (tolerating whitespace between carriers);
-      // a tool block becomes a one-call tool loop; an html_block is already
-      // render-ready.
       let webBlock: WebActivityWireBlock | null = null
       let loop: ToolLoopBlock | null = null
       let htmlBlock: HtmlBlockWire | null = null
@@ -1050,8 +1008,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
       let blocks = [...last.blocks]
 
-      // Finalize any trailing streaming thinking block (mirrors the
-      // content-segment path in the "chunk" case).
+      // Finalize any trailing streaming thinking block (mirrors the "chunk" case).
       const lastBlock = blocks[blocks.length - 1]
       if (lastBlock?.type === "thinking" && lastBlock.streaming) {
         blocks[blocks.length - 1] = {
@@ -1074,9 +1031,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       } else if (htmlBlock) {
         blocks.push(htmlBlockToRenderBlock(htmlBlock))
       } else if (loop) {
-        // Merge into an adjacent trailing tool loop when one exists (one
-        // agentic loop), tolerating a whitespace-only content block between
-        // carriers — mirrors appendWebActivityBlock.
         blocks = appendToolLoopBlock(blocks, loop, state.toolGrouping)
       }
 
@@ -1085,12 +1039,8 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         streamingMessage: {
           ...last,
           blocks,
-          // Block-level deps ride the message too, so a snapshot of the
-          // settled message retains them.
           htmlDeps: mergeHtmlDeps(
             last.htmlDeps,
-            // Block deps first, then envelope deps — same order as the
-            // message/chunk_start paths.
             mergeHtmlDeps(htmlBlock?.html_deps, action.html_deps),
           ),
         },
@@ -1150,16 +1100,11 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "SET_TOOL_GROUPING": {
-      // Re-routing the settled transcript is what makes `tool-grouping` a live
-      // attribute rather than one that only governs future messages: the router
-      // is a pure function of (blocks, grouping, role), so the same content
-      // regroups at the new mode. The in-flight stream's blocks are already
-      // structured, so it regroups through the same pure reroute — leaving it
-      // alone would strand the message in the old mode when it settles.
-      //
-      // The no-op guard is load-bearing: ChatApp dispatches once on mount to
-      // adopt the prop, and re-routing there would throw away every group's
-      // expand state for no change in output.
+      // Re-routing makes `tool-grouping` a live attribute: the router is a pure
+      // function of (blocks, grouping, role), so the same content regroups at
+      // the new mode. The no-op guard is load-bearing: ChatApp dispatches once
+      // on mount, and re-routing there would throw away every group's expand
+      // state for no change in output.
       if (action.grouping === state.toolGrouping) return state
       return {
         ...state,
@@ -1428,9 +1373,6 @@ function blockToSegment(block: MessageBlock): SnapshotSegment {
     return { content: block.content, content_type: "thinking" }
   }
   if (block.type === "web_activity") {
-    // A structured web activity has no string form; mirror the
-    // structured-derived tool_loop snapshot (an empty segment keeps the
-    // block's position without inventing markup).
     return { content: "", content_type: "html" }
   }
   return { content: block.content, content_type: block.contentType }
@@ -1451,13 +1393,7 @@ export function buildMessagesSnapshot(state: ChatState): SnapshotMessage[] {
     })
 }
 
-/**
- * Re-route one settled message at a new grouping mode.
- *
- * All loops are structured-derived (content === ""), so re-grouping just
- * calls regroupToolLoop on each tool_loop block. Thinking blocks pass straight
- * through unchanged — they render in place at every mode.
- */
+/** Re-route one settled message at a new grouping mode. */
 function rerouteMessage(
   msg: ChatMessageData,
   grouping: ToolGrouping,
@@ -1494,8 +1430,6 @@ function finalizeMessage(
     }
   }
 
-  // Blocks pass through unchanged (thinking finalization + splitThinkingBlocks
-  // stays). No tool routing needed — blocks are already structured.
   const content = contentFromBlocks(rebuilt)
 
   return { ...msg, content, streaming: false, blocks: rebuilt }

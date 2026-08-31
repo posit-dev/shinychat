@@ -17,16 +17,14 @@ export function RawHTML({
   html: string
   className?: string
   /**
-   * The element to render. Use "span" when the island sits in a
-   * phrasing-content context (a <span> or <button>), where a <div> would be
-   * invalid nesting.
+   * Use "span" when the island sits in a phrasing-content context (a <span>
+   * or <button>), where a <div> would be invalid nesting.
    */
   as?: "div" | "span"
   /**
-   * Whether to bindAll/unbindAll this island with Shiny (default true). Pass
-   * `false` when the same server HTML is mounted elsewhere — e.g. an expanded
-   * tool row also mounts the full card — so that only one copy owns the
-   * bindings; binding both would register duplicate Shiny ids.
+   * Pass `false` when the same server HTML is mounted elsewhere (e.g. an
+   * expanded tool row also mounts the full card) so only one copy owns the
+   * Shiny bindings; binding both would register duplicate Shiny ids.
    */
   bind?: boolean
   displayContents?: boolean
@@ -62,14 +60,12 @@ export function RawHTML({
         shiny.unbindAll(el)
       }
     }
-    // `Tag` is a dep because switching it remounts the element (React swaps a
-    // div for a span), and the new node needs its innerHTML set and bindings
-    // re-established; the cleanup unbinds the old node.
+    // `Tag` is a dep because switching it remounts the element.
   }, [html, shiny, fillable, bind, Tag])
 
   return (
     <Tag
-      // A callback ref because Tag's union type gives the ref prop a union of
+      // Callback ref: Tag's union type gives the ref prop a union of
       // HTMLDivElement/HTMLSpanElement types; HTMLElement is the common base.
       ref={(el: HTMLElement | null) => {
         ref.current = el

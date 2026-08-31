@@ -78,17 +78,9 @@ export const ChatGreeting = memo(function ChatGreeting({
       <div className="shiny-chat-greeting-content">
         {greeting.blocks.map((block, i) =>
           block.contentType === "html" ? (
-            // Tag greetings arrive as a single trusted HTML string with
-            // content_type "html" and no island wrappers (kata#af81). Render
-            // the block through the HTML processor and the trusted component
-            // map — as ChatMessage does for html-typed content — so bare
-            // react carriers (<shiny-aside>, ...) resolve to their React
-            // components instead of staying inert custom elements, and bind
-            // the rendered subtree through ShinyBindScope so Shiny
-            // inputs/outputs in the greeting attach. Keyed by content so a
-            // replaced greeting remounts the scope (unbind-old → bind-new).
-            // Envelope-level html_deps are rendered by the transport before
-            // the greeting action dispatches, so no deps gate here.
+            // Render html-typed greeting blocks through the trusted component
+            // map and ShinyBindScope. Keyed by content so a replaced greeting
+            // remounts the scope (unbind-old → bind-new).
             <ShinyBindScope key={`${i}:${block.content}`}>
               <MarkdownContent
                 content={block.content}

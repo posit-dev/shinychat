@@ -11,12 +11,7 @@ import type { ToolResultOpenStyle } from "./tool-protocol"
 /** How a loop's tool calls are aggregated in the condensed view. */
 export type ToolGrouping = "none" | "tool" | "all"
 
-/**
- * One tool call — a request and/or its matching result, built from
- * structured tool_request/tool_result blocks in the reducer. It carries
- * both condensed-view metadata and the payload needed to render the leaf
- * card.
- */
+/** One tool call — a request and/or its matching result. */
 export interface ToolCallItem {
   /**
    * The server-emitted request identifier, which pairs a request with its
@@ -49,18 +44,9 @@ export interface ToolCallItem {
   fullScreen?: boolean
   openStyle?: ToolResultOpenStyle
   expanded?: boolean
-  /**
-   * Internal wire provenance: the server wrapped an author's custom UI in a
-   * real result element. Phase 3 decides how this fact affects placement.
-   */
+  /** Internal: the server wrapped an author's custom UI in a real result element. */
   customDisplay?: boolean
-  /**
-   * Wire provenance: this call arrived as a structured wire block (e.g.
-   * `tool_result`), not markup parsed out of a loop's `content` slice. A
-   * structured call has no raw content to re-parse, so rerouteMessage
-   * re-groups it from the stored call data — even when a merge has given its
-   * loop a nonempty `content` (mixed markup+structured loop).
-   */
+  /** True when this call arrived as a structured wire block, not parsed from markup. */
   structured?: true
   /**
    * Character offset of the result element within its source content block.
@@ -226,28 +212,15 @@ function groupCalls(
   })
 }
 
-/**
- * Convert a structured `tool_request` wire block into a lifecycle call. The
- * envelope is server-authored, so its fields map directly onto the call — no
- * markup parsing, no attribute decoding, no entity decoding. An unpaired
- * request is a running call (convention for new request
- * ids); the matching `tool_result` block settles it, and transcript-wide
- * supersession then hides the request row.
- */
+/** Convert a structured `tool_request` wire block into a lifecycle call. */
 export function toolRequestBlockToCall(block: ToolRequestBlock): ToolCallItem {
   const call: ToolCallItem = {
     requestId: block.request_id,
-    // convention: the request id, or a synthetic loop-local
-    // id that never enters transcript supersession.
     localId: block.request_id || `__anon-structured-${uuid()}`,
     toolName: block.tool_name,
-    // "running" is derived, never a wire value: a request with no result yet.
     status: "running",
     structured: true,
   }
-  // The request carries the tool *definition's* title/icon (the markup path's
-  // definitionTitle/definitionIcon); the result's own title/icon settle over
-  // them when it arrives.
   if (block.title !== undefined) call.definitionTitle = block.title
   if (block.icon !== undefined) call.definitionIcon = block.icon
   if (block.intent !== undefined) call.intent = block.intent
@@ -256,16 +229,10 @@ export function toolRequestBlockToCall(block: ToolRequestBlock): ToolCallItem {
   return call
 }
 
-/**
- * Convert a structured `tool_result` wire block into a lifecycle call. The
- * envelope is server-authored, so its fields map directly onto the call — no
- * markup parsing, no attribute decoding, no entity decoding.
- */
+/** Convert a structured `tool_result` wire block into a lifecycle call. */
 export function toolResultBlockToCall(block: ToolResultBlock): ToolCallItem {
   const call: ToolCallItem = {
     requestId: block.request_id,
-    // convention: the request id, or a synthetic loop-local
-    // id that never enters transcript supersession.
     localId: block.request_id || `__anon-structured-${uuid()}`,
     toolName: block.tool_name,
     status: block.status,
@@ -290,19 +257,11 @@ export function toolResultBlockToCall(block: ToolResultBlock): ToolCallItem {
   return call
 }
 
-/**
- * Convert a structured wire block into a render-ready ToolLoopBlock on
- * arrival (one block → one loop → one group → one call). Unknown block types
- * and unsupported versions are ignored with a warning — `version` is a
- * forward-compatibility marker, so a block this client predates must not
- * break the message around it.
- */
+/** Convert a structured wire block into a render-ready ToolLoopBlock (one block → one loop → one call). */
 export function structuredBlockToLoop(
   block: StructuredBlock,
   grouping: ToolGrouping,
 ): ToolLoopBlock | null {
-  // Read discriminator fields defensively: the wire is JSON and may carry
-  // block types/versions this client doesn't know yet.
   const type = (block as { type?: unknown }).type
   if (type !== "tool_request" && type !== "tool_result") {
     console.warn(`Ignoring unknown structured block type: ${String(type)}`)
@@ -341,9 +300,6 @@ export function structuredBlockToLoop(
       : toolResultBlockToCall(block as ToolResultBlock)
   return {
     type: "tool_loop",
-    // A structured-derived loop has no raw content slice to re-parse; its
-    // calls carry `structured: true` so rerouteMessage re-groups them from
-    // the stored call data instead.
     content: "",
     contentType: "html",
     grouping,
@@ -351,10 +307,7 @@ export function structuredBlockToLoop(
   }
 }
 
-/**
- * Append a structured-derived call to an existing tool loop, re-deriving the
- * groups from the combined call list.
- */
+/** Append a call to an existing tool loop, re-deriving the groups. */
 export function appendCallToToolLoop(
   loop: ToolLoopBlock,
   call: ToolCallItem,
@@ -371,11 +324,9 @@ export function appendCallToToolLoop(
 }
 
 /**
- * Append a one-call tool loop (from a structured block) to a message's block
- * list, merging into an adjacent trailing tool loop when one is reachable —
- * tolerating a whitespace-only content block between carriers, exactly as
- * `appendWebActivityBlock` tolerates whitespace between web_* blocks (the
- * whitespace is dropped; any other block ends the run and starts a new loop).
+ * Append a one-call tool loop to a message's block list, merging into an
+ * adjacent trailing tool loop — tolerating a whitespace-only content block
+ * between carriers (mirrors `appendWebActivityBlock`).
  */
 export function appendToolLoopBlock(
   blocks: MessageBlock[],
@@ -387,7 +338,6 @@ export function appendToolLoopBlock(
   if (tail?.type === "content" && tail.content.trim() === "") {
     const prev = out[out.length - 2]
     if (prev?.type === "tool_loop") {
-      // The whitespace-only separator is part of the run; drop it.
       out.pop()
       tail = prev
     }
@@ -401,11 +351,7 @@ export function appendToolLoopBlock(
   return out
 }
 
-/**
- * Re-derive a loop's groups at a new grouping mode from the calls it already
- * holds. Used for structured-derived loops, which carry no raw content slice
- * to unwind and re-parse the way markup-derived loops do.
- */
+/** Re-derive a loop's groups at a new grouping mode. */
 export function regroupToolLoop(
   loop: ToolLoopBlock,
   grouping: ToolGrouping,

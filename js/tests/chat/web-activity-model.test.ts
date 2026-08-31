@@ -1,10 +1,3 @@
-/**
- * Unit tests for the shared web-activity grouping machinery
- * (web-activity-model.ts). Chat's reducer exercises it over MessageBlock[]
- * in structured-blocks.test.tsx; these tests pin the generalized signature
- * directly — including the foreign segment shape MarkdownStream reuses it
- * with (kata#mhyd: one grouping/pairing implementation, two callers).
- */
 import { describe, it, expect } from "vitest"
 import {
   appendWebActivityBlock,
@@ -129,9 +122,6 @@ describe("appendWebActivityBlock over Chat MessageBlock lists", () => {
 })
 
 describe("appendWebActivityBlock over MarkdownStream-shaped segments", () => {
-  // MarkdownStream's string segments are `{text, trusted}` (no `type`
-  // discriminator); its whitespace check looks at the text. The grouping
-  // semantics are identical to Chat's — only the shape differs.
   type StreamishSegment =
     | { text: string; trusted: boolean }
     | { type: "html_block" }
@@ -182,7 +172,6 @@ describe("appendWebActivityBlock over MarkdownStream-shaped segments", () => {
       isWhitespaceText,
     )
 
-    // The whitespace separator is dropped; the fetch joins the activity.
     expect(segments).toHaveLength(1)
     expect(activityOf(segments).items.map((it) => it.kind)).toEqual([
       "search",
