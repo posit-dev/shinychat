@@ -21,6 +21,7 @@ import {
   afterEach,
 } from "vitest"
 import { act, waitFor } from "@testing-library/react"
+import type { HtmlDep, StructuredBlock } from "../../src/transport/types"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -28,10 +29,11 @@ import { act, waitFor } from "@testing-library/react"
 
 type ContentMessage = {
   id: string
-  content: string
+  content?: string
   operation: "append" | "replace"
   trusted: boolean
   segment_start: boolean
+  block?: StructuredBlock
 }
 
 type IsStreamingMessage = {
@@ -43,7 +45,9 @@ type IsStreamingMessage = {
 function createMockApi() {
   return {
     appendContent: vi.fn(),
+    appendBlock: vi.fn(),
     replaceContent: vi.fn(),
+    replaceWithBlock: vi.fn(),
     setStreaming: vi.fn(),
     setContentType: vi.fn(),
   }
@@ -313,5 +317,192 @@ describe("MarkdownStreamElement — pending message queue", () => {
 
     expect(internals(el).pendingMessages).toHaveLength(0)
     expect(internals(el).api).toBeNull()
+  })
+})
+
+describe("MarkdownStreamElement — structured block messages", () => {
+  const wireBlock = (content: string, html_deps?: HtmlDep[]): StructuredBlock =>
+    ({
+      type: "html_block",
+      version: 1,
+      content,
+      ...(html_deps ? { html_deps } : {}),
+    }) as StructuredBlock
+
+  it("dispatches a block message to appendBlock as a render-model block", () => {
+    const { el, simulateApiReady } = createElement_()
+    const api = createMockApi()
+    simulateApiReady(api)
+
+    const dep = { name: "testlib", version: "1.0" } as unknown as HtmlDep
+    const handle = el as unknown as {
+      handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+    }
+    handle.handleMessage({
+      id: "x",
+      operation: "append",
+      trusted: true,
+      segment_start: true,
+      block: wireBlock("<div>island</div>", [dep]),
+    })
+
+    expect(api.appendContent).not.toHaveBeenCalled()
+    expect(api.appendBlock).toHaveBeenCalledWith({
+      type: "html_block",
+      content: "<div>island</div>",
+      contentType: "html",
+      htmlDeps: [dep],
+    })
+  })
+
+  it("dispatches a block-carrying replace to replaceWithBlock", () => {
+    const { el, simulateApiReady } = createElement_()
+    const api = createMockApi()
+    simulateApiReady(api)
+
+    const handle = el as unknown as {
+      handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+    }
+    handle.handleMessage({
+      id: "x",
+      operation: "replace",
+      trusted: true,
+      segment_start: true,
+      block: wireBlock("<div>fresh</div>"),
+    })
+
+    // Uniform replace (kata#0r4g): wipe everything, then append the block —
+    // never a string-segment replace.
+    expect(api.replaceContent).not.toHaveBeenCalled()
+    expect(api.replaceWithBlock).toHaveBeenCalledWith({
+      type: "html_block",
+      content: "<div>fresh</div>",
+      contentType: "html",
+      htmlDeps: [],
+    })
+  })
+
+  it("drops a malformed html_block with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const { el, simulateApiReady } = createElement_()
+      const api = createMockApi()
+      simulateApiReady(api)
+
+      const handle = el as unknown as {
+        handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+      }
+      handle.handleMessage({
+        id: "x",
+        operation: "append",
+        trusted: true,
+        segment_start: true,
+        block: {
+          type: "html_block",
+          version: 99,
+          content: "<div>island</div>",
+        } as unknown as StructuredBlock,
+      })
+
+      expect(api.appendBlock).not.toHaveBeenCalled()
+      expect(api.replaceWithBlock).not.toHaveBeenCalled()
+      expect(warn).toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it("drops a non-html_block structured block with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const { el, simulateApiReady } = createElement_()
+      const api = createMockApi()
+      simulateApiReady(api)
+
+      const handle = el as unknown as {
+        handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+      }
+      handle.handleMessage({
+        id: "x",
+        operation: "append",
+        trusted: true,
+        segment_start: true,
+        block: {
+          type: "tool_request",
+          version: 1,
+          request_id: "r1",
+          tool_name: "my_tool",
+        },
+      })
+
+      expect(api.appendBlock).not.toHaveBeenCalled()
+      expect(api.replaceWithBlock).not.toHaveBeenCalled()
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("tool_request"))
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it("renders initial segments carrying block entries", async () => {
+    const el = document.createElement("shiny-markdown-stream")
+    el.setAttribute(
+      "content-segments",
+      JSON.stringify([
+        { text: "## Markdown", trusted: false },
+        {
+          block: {
+            type: "html_block",
+            version: 1,
+            content: "<div data-island>HTML</div>",
+          },
+        },
+      ]),
+    )
+
+    await act(async () => {
+      document.body.appendChild(el)
+    })
+
+    await waitFor(() => {
+      expect(el.querySelector("h2")?.textContent).toBe("Markdown")
+      expect(el.querySelector("[data-island]")?.textContent).toBe("HTML")
+    })
+  })
+
+  it("fails closed when an initial block entry is malformed", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const el = document.createElement("shiny-markdown-stream")
+      el.setAttribute(
+        "content",
+        "<shiny-chat-raw-html><div data-forged>unsafe</div></shiny-chat-raw-html>",
+      )
+      el.setAttribute(
+        "content-segments",
+        JSON.stringify([
+          { text: "fine", trusted: false },
+          {
+            block: {
+              type: "html_block",
+              version: 99,
+              content: "<div data-forged>unsafe</div>",
+            },
+          },
+        ]),
+      )
+
+      await act(async () => {
+        document.body.appendChild(el)
+      })
+
+      // The whole provenance array fails closed to the untrusted fallback
+      // content (existing malformed-segments behavior).
+      await waitFor(() => {
+        expect(el.textContent).toContain("<shiny-chat-raw-html>")
+      })
+      expect(el.querySelector("[data-forged]")).toBeNull()
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

@@ -4,10 +4,13 @@ import {
   MarkdownStream,
   type ContentSegment,
   type MarkdownStreamApi,
+  type StreamSegment,
 } from "./MarkdownStream"
 import { ShinyLifecycleContext } from "../chat/context"
+import { asHtmlBlock, htmlBlockToRenderBlock } from "../chat/html-block-model"
+import type { HtmlBlock } from "../chat/html-block-model"
 import { getShinyTransport } from "../transport/shiny-transport"
-import type { ContentType } from "../transport/types"
+import type { ContentType, StructuredBlock } from "../transport/types"
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
 // Single shared transport instance for standalone markdown-stream usage
@@ -15,11 +18,18 @@ const transport = getShinyTransport()
 
 type ContentMessage = {
   id: string
-  content: string
+  /** String content; absent when the message carries a structured `block`. */
+  content?: string
   operation: "append" | "replace"
   html_deps?: HtmlDep[]
   trusted: boolean
   segment_start: boolean
+  /**
+   * A structured block payload (a message carries `content` XOR `block`).
+   * Blocks arrive complete and append-only. Only `html_block` is supported
+   * here; other types fail closed (dropped with a warning).
+   */
+  block?: StructuredBlock
 }
 
 type IsStreamingMessage = {
@@ -111,11 +121,26 @@ class MarkdownStreamElement extends HTMLElement {
       return
     }
 
+    // A message carries string content XOR a structured block. `operation`
+    // applies uniformly: "append" appends the block; "replace" wipes ALL
+    // segments+blocks, then appends the block if present (kata#0r4g).
+    if (message.block !== undefined) {
+      const block = asStreamHtmlBlock(message.block)
+      if (!block) return
+      if (message.operation === "replace") {
+        this.api!.replaceWithBlock(block)
+      } else {
+        this.api!.appendBlock(block)
+      }
+      return
+    }
+
+    const content = message.content ?? ""
     if (message.operation === "replace") {
-      this.api!.replaceContent(message.content, message.trusted === true)
+      this.api!.replaceContent(content, message.trusted === true)
     } else if (message.operation === "append") {
       this.api!.appendContent(
-        message.content,
+        content,
         message.trusted === true,
         message.segment_start === true,
       )
@@ -123,31 +148,81 @@ class MarkdownStreamElement extends HTMLElement {
   }
 }
 
+/**
+ * Validate a structured block arriving on a markdown-stream message and
+ * convert it to its render-model form. Only `html_block` is supported;
+ * anything else fails closed (dropped with a warning), matching the
+ * client's other malformed-payload patterns.
+ */
+function asStreamHtmlBlock(block: StructuredBlock): HtmlBlock | null {
+  if ((block as { type?: unknown }).type !== "html_block") {
+    console.warn(
+      `Ignoring unsupported structured block in a markdown stream: ${String(
+        (block as { type?: unknown }).type,
+      )}`,
+    )
+    return null
+  }
+  const wire = asHtmlBlock(block)
+  return wire ? htmlBlockToRenderBlock(wire) : null
+}
+
+/**
+ * The `content-segments` attribute is a JSON array of
+ * `{text, trusted}` string segments and `{block: StructuredBlock}` entries
+ * (only `html_block` blocks are supported). Any malformed entry fails the
+ * whole array closed to a single untrusted text segment.
+ */
 function readInitialSegments(
   el: HTMLElement,
   fallbackContent: string,
-): ContentSegment[] | undefined {
+): StreamSegment[] | undefined {
   const encoded = el.getAttribute("content-segments")
   if (encoded === null) return undefined
 
   try {
     const value: unknown = JSON.parse(encoded)
-    if (
-      Array.isArray(value) &&
-      value.every(
-        (segment) =>
-          typeof segment === "object" &&
-          segment !== null &&
-          typeof (segment as Record<string, unknown>).text === "string" &&
-          typeof (segment as Record<string, unknown>).trusted === "boolean",
-      )
-    ) {
-      return value as ContentSegment[]
+    if (Array.isArray(value)) {
+      const segments: StreamSegment[] = []
+      for (const entry of value as unknown[]) {
+        if (isTextSegmentEntry(entry)) {
+          segments.push(entry)
+          continue
+        }
+        if (isBlockEntry(entry)) {
+          const wire = asHtmlBlock(entry.block)
+          if (wire) {
+            segments.push(htmlBlockToRenderBlock(wire))
+            continue
+          }
+        }
+        // Malformed provenance must fail closed.
+        return [{ text: fallbackContent, trusted: false }]
+      }
+      return segments
     }
   } catch {
     // Malformed provenance must fail closed.
   }
   return [{ text: fallbackContent, trusted: false }]
+}
+
+function isTextSegmentEntry(value: unknown): value is ContentSegment {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).text === "string" &&
+    typeof (value as Record<string, unknown>).trusted === "boolean"
+  )
+}
+
+function isBlockEntry(value: unknown): value is { block: StructuredBlock } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).block === "object" &&
+    (value as Record<string, unknown>).block !== null
+  )
 }
 
 function attributeToPropertyName(name: string): string {
