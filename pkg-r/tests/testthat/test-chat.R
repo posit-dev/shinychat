@@ -597,6 +597,62 @@ test_that("chat_append_message() streaming emits chunk_start, interleaved chunk/
   expect_equal(captured[[5]]$action$type, "chunk_end")
 })
 
+test_that("chat_append_message() replace with block content wipes before re-emitting parts", {
+  captured <- list()
+  local_mocked_bindings(
+    send_chat_action = function(id, action, html_deps = NULL, session) {
+      captured[[length(captured) + 1]] <<- list(
+        action = action,
+        html_deps = html_deps
+      )
+      invisible()
+    }
+  )
+  session <- shiny::MockShinySession$new()
+
+  res_block <- structure(
+    list(
+      type = "tool_result",
+      version = 1L,
+      request_id = "req-r1",
+      tool_name = "search",
+      status = "success",
+      value = "Found 3 results",
+      value_type = "markdown"
+    ),
+    class = c("shinychat_tool_result", "shinychat_block")
+  )
+
+  # Uniform replace semantics (kata#0r4g): a leading empty replace chunk
+  # wipes the in-flight message (structured blocks included), then every
+  # part is re-emitted as an append.
+  chat_append_message(
+    "chat",
+    list(
+      role = "assistant",
+      content = list("Before ", res_block, " After")
+    ),
+    chunk = TRUE,
+    operation = "replace",
+    session = session
+  )
+
+  expect_equal(captured[[1]]$action$type, "chunk")
+  expect_equal(captured[[1]]$action$operation, "replace")
+  expect_equal(captured[[1]]$action$content, "")
+
+  expect_equal(captured[[2]]$action$type, "chunk")
+  expect_equal(captured[[2]]$action$operation, "append")
+  expect_equal(captured[[2]]$action$content, "Before ")
+
+  expect_equal(captured[[3]]$action$type, "block_insert")
+  expect_equal(captured[[3]]$action$block$type, "tool_result")
+
+  expect_equal(captured[[4]]$action$type, "chunk")
+  expect_equal(captured[[4]]$action$operation, "append")
+  expect_equal(captured[[4]]$action$content, " After")
+})
+
 test_that("chat_append_message() block-level html deps are session-processed and on the block", {
   captured <- list()
   local_mocked_bindings(

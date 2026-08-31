@@ -1119,6 +1119,67 @@ process_block_deps_static <- function(block) {
   list(block = block, deps = as.list(deps))
 }
 
+# Emit a block-carrying message's wire segments mid-stream as an ordered
+# action sequence: string segments travel as `chunk` actions and structured
+# blocks as `block_insert` actions, so interleaved content keeps its order.
+# Empty string parts are skipped so they can't open a spurious empty content
+# block ahead of a block. Mirrors Python's Chat._send_message_parts().
+#
+# Under uniform replace semantics (kata#0r4g) a replace chunk supersedes the
+# whole in-flight message, structured blocks included. A replace therefore
+# sends a leading empty replace chunk (the wipe) before any part, then emits
+# every part as an append — otherwise a block emitted before the first
+# string part would be wiped by it, and a message with no string parts would
+# never replace at all.
+send_wire_segment_actions <- function(
+  id,
+  wire_segments,
+  operation,
+  html_deps,
+  session
+) {
+  if (operation == "replace") {
+    wipe_action <- list(
+      type = "chunk",
+      content = "",
+      operation = "replace",
+      content_type = "markdown"
+    )
+    send_chat_action(
+      id,
+      action = wipe_action,
+      html_deps = html_deps,
+      session = session
+    )
+    operation <- "append"
+  }
+  for (seg in wire_segments) {
+    if ("type" %in% names(seg)) {
+      # Structured block
+      block_action <- list(type = "block_insert", block = seg)
+      send_chat_action(
+        id,
+        action = block_action,
+        html_deps = html_deps,
+        session = session
+      )
+    } else if (nzchar(seg$content)) {
+      chunk_action <- list(
+        type = "chunk",
+        content = seg$content,
+        operation = operation,
+        content_type = seg$content_type
+      )
+      send_chat_action(
+        id,
+        action = chunk_action,
+        html_deps = html_deps,
+        session = session
+      )
+    }
+  }
+}
+
 # Session-free variant of build_html_island_segments for the static chat_ui()
 # path. Renders island children via htmltools::renderTags (no session
 # processing) and stashes raw dep objects on the block attr for
@@ -1523,59 +1584,24 @@ chat_append_message <- function(
       )
     } else if (chunk_type == "end") {
       # Emit any remaining segments as chunk/block_insert, then chunk_end
-      for (seg in wire_segments) {
-        if ("type" %in% names(seg)) {
-          # Structured block
-          block_action <- list(type = "block_insert", block = seg)
-          send_chat_action(
-            id,
-            action = block_action,
-            html_deps = all_block_deps,
-            session = session
-          )
-        } else if (nzchar(seg$content)) {
-          chunk_action <- list(
-            type = "chunk",
-            content = seg$content,
-            operation = operation,
-            content_type = seg$content_type
-          )
-          send_chat_action(
-            id,
-            action = chunk_action,
-            html_deps = all_block_deps,
-            session = session
-          )
-        }
-      }
+      send_wire_segment_actions(
+        id,
+        wire_segments,
+        operation = operation,
+        html_deps = all_block_deps,
+        session = session
+      )
       send_chat_action(id, action = list(type = "chunk_end"), session = session)
     } else if (chunk_type == "intermediate") {
       # A single block or mixed list arriving mid-stream: emit each segment
       # in order (chunk for strings, block_insert for blocks).
-      for (seg in wire_segments) {
-        if ("type" %in% names(seg)) {
-          block_action <- list(type = "block_insert", block = seg)
-          send_chat_action(
-            id,
-            action = block_action,
-            html_deps = all_block_deps,
-            session = session
-          )
-        } else if (nzchar(seg$content)) {
-          chunk_action <- list(
-            type = "chunk",
-            content = seg$content,
-            operation = operation,
-            content_type = seg$content_type
-          )
-          send_chat_action(
-            id,
-            action = chunk_action,
-            html_deps = all_block_deps,
-            session = session
-          )
-        }
-      }
+      send_wire_segment_actions(
+        id,
+        wire_segments,
+        operation = operation,
+        html_deps = all_block_deps,
+        session = session
+      )
     } else {
       # chunk_type == "complete": message action with inline mixed segments
       message_payload <- list(
