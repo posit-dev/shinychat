@@ -118,7 +118,9 @@ HistoryController <- R6::R6Class(
           # offset causes the next genuine save to reprocess these
           # already-saved client-snapshot messages as out-of-band extras
           # in extend_record_linear(), duplicating them in the record.
-          self$ui_offset <- length(messages)
+          # Monotonic: a shorter partial mid-restore report must not move
+          # the offset backward (roborev 1064).
+          self$ui_offset <- max(self$ui_offset, length(messages))
           return(invisible())
         }
       }

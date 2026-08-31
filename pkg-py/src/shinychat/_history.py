@@ -397,7 +397,9 @@ class HistoryController:
                 # reported message is already stored. Advance ui_offset so a
                 # later genuine save doesn't reprocess these as out-of-band
                 # "extras" (which would duplicate them in stored UI).
-                self.ui_offset = len(messages)
+                # Monotonic: a shorter partial mid-restore report must not
+                # move the offset backward (roborev 1064).
+                self.ui_offset = max(self.ui_offset, len(messages))
                 return
 
         if first_save:

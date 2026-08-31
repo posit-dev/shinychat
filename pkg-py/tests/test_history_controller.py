@@ -566,12 +566,25 @@ async def test_replay_rereport_then_new_turn_does_not_duplicate_ui():
     # snapshot, hitting the idempotent guard (early return, no save).
     await controller.replay_ui(record)
     assert chat.messages == saved_ui, "replay must reconstruct the full UI"
+    # Force a genuinely stale offset (replay_ui seeds it from the restore
+    # count; the reset paths — e.g. session-start restore where the delayed
+    # client snapshot hasn't caught up — can leave it behind). Without the
+    # production fix the guard below leaves it stale; with the fix it
+    # advances. (roborev 1064: must not pass vacuously.)
+    controller.ui_offset = 0
     await controller.on_response()
     assert len(store.put_calls) == 1, "re-report must not trigger another save"
     # The fix: ui_offset must advance even on the idempotent early return.
     assert controller.ui_offset == 2, (
         "ui_offset must advance past the re-reported snapshot"
     )
+
+    # A shorter partial mid-restore report also hits the guard but must not
+    # move the offset backward (roborev 1064 — monotonic advance).
+    chat.messages = [msg("user")]
+    await controller.on_response()
+    assert len(store.put_calls) == 1
+    assert controller.ui_offset == 2, "partial report must not rewind ui_offset"
 
     # Save #2: a genuine new turn arrives. With the stale-offset bug, the
     # two re-reported messages would be reprocessed as out-of-band extras

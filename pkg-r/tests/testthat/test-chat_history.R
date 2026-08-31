@@ -882,8 +882,11 @@ test_that("on_response() idempotent guard advances ui_offset so a later genuine 
   expect_equal(record_ui_count(ctrl$record), 2)
 
   # --- Step 2: Simulate a restore-triggered re-report of the same turns ---
-  # The idempotent guard fires (turns and messages did not grow). Without
-  # the fix, ui_offset would stay stale at 0 (or whatever it was before).
+  # The idempotent guard fires (turns and messages did not grow). Force a
+  # genuinely stale offset first (the reset paths can leave it behind when
+  # the delayed client snapshot hasn't caught up) so the test discriminates:
+  # without the production fix the guard leaves it stale (roborev 1064).
+  ctrl$ui_offset <- 0
   updated_at_before <- ctrl$record$updated_at
   ctrl$on_response(make_turns("Hello", "Hi there"))
 
@@ -891,6 +894,12 @@ test_that("on_response() idempotent guard advances ui_offset so a later genuine 
   expect_identical(ctrl$record$updated_at, updated_at_before)
   expect_equal(length(ctrl$record$nodes), 2)
   # The guard must have advanced ui_offset to match the reported messages.
+  expect_equal(ctrl$ui_offset, 2)
+
+  # A shorter partial mid-restore report also hits the guard but must not
+  # move the offset backward (monotonic advance).
+  report_client_messages(c("Hello"))
+  ctrl$on_response(make_turns("Hello", "Hi there"))
   expect_equal(ctrl$ui_offset, 2)
 
   # --- Step 3: Genuine new save with a second exchange (4 messages) ---
