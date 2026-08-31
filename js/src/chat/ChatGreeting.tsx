@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useContext, memo } from "react"
 import type { GreetingData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
+import { RawHTML } from "./RawHTML"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 import { ChatDispatchContext } from "./context"
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion"
@@ -75,16 +76,26 @@ export const ChatGreeting = memo(function ChatGreeting({
       {...(dismissing ? { "data-dismissing": "" } : {})}
     >
       <div className="shiny-chat-greeting-content">
-        {greeting.blocks.map((block, i) => (
-          <MarkdownContent
-            key={i}
-            content={block.content}
-            contentType={block.contentType}
-            role="assistant"
-            streaming={greeting.streaming && i === lastBlockIndex}
-            tagToComponentMap={chatTagToComponentMap}
-          />
-        ))}
+        {greeting.blocks.map((block, i) =>
+          block.contentType === "html" ? (
+            // Tag greetings arrive as a single trusted HTML string with
+            // content_type "html" and no island wrappers (kata#af81). Mount
+            // the block through the shared RawHTML sink — as HtmlBlockContent
+            // and the drawer do — so Shiny inputs/outputs in the greeting
+            // bind. Envelope-level html_deps are rendered by the transport
+            // before the greeting action dispatches, so no deps gate here.
+            <RawHTML key={i} html={block.content} />
+          ) : (
+            <MarkdownContent
+              key={i}
+              content={block.content}
+              contentType={block.contentType}
+              role="assistant"
+              streaming={greeting.streaming && i === lastBlockIndex}
+              tagToComponentMap={chatTagToComponentMap}
+            />
+          ),
+        )}
       </div>
     </div>
   )

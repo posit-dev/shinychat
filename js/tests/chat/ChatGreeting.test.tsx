@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, act } from "@testing-library/react"
 import { ChatGreeting } from "../../src/chat/ChatGreeting"
-import { ChatDispatchContext } from "../../src/chat/context"
+import {
+  ChatDispatchContext,
+  ShinyLifecycleContext,
+} from "../../src/chat/context"
 import type { GreetingData } from "../../src/chat/state"
 import type { AnyAction } from "../../src/chat/state"
+import type { ShinyLifecycle } from "../../src/transport/types"
 
 function renderWithDispatch(
   element: React.ReactElement,
@@ -96,6 +100,44 @@ describe("ChatGreeting", () => {
     const content = container.querySelector(".shiny-chat-greeting-content")
     expect(content).not.toBeNull()
     expect(content?.textContent).toContain("Welcome!")
+  })
+
+  it("binds Shiny UI in html-typed greeting content through the RawHTML sink", () => {
+    // Tag greetings arrive as a single trusted HTML string with
+    // content_type "html" and no island wrappers (kata#af81). The greeting
+    // must mount that block through RawHTML so Shiny inputs/outputs bind —
+    // the island-based binding path (RawHtmlIsland) no longer exists.
+    const shiny: ShinyLifecycle = {
+      bindAll: vi.fn(async () => {}),
+      unbindAll: vi.fn(),
+      renderDependencies: vi.fn(async () => {}),
+      showClientMessage: vi.fn(),
+    }
+    const html =
+      '<div class="shiny-plot-output" id="greeting-plot" style="width:100%;height:200px"></div>'
+
+    const { container, unmount } = render(
+      <ChatDispatchContext.Provider value={() => {}}>
+        <ShinyLifecycleContext.Provider value={shiny}>
+          <ChatGreeting
+            greeting={makeGreeting({
+              content: html,
+              contentType: "html",
+              blocks: [{ type: "content", content: html, contentType: "html" }],
+            })}
+          />
+        </ShinyLifecycleContext.Provider>
+      </ChatDispatchContext.Provider>,
+    )
+
+    const output = container.querySelector("#greeting-plot")
+    expect(output).not.toBeNull()
+    expect(shiny.bindAll).toHaveBeenCalledOnce()
+    const bindScope = vi.mocked(shiny.bindAll).mock.calls[0]![0] as HTMLElement
+    expect(bindScope.contains(output)).toBe(true)
+
+    unmount()
+    expect(shiny.unbindAll).toHaveBeenCalledOnce()
   })
 
   it("renders nothing when blocks are empty", () => {
