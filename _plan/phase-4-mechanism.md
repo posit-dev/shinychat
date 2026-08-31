@@ -836,3 +836,9 @@ reviewed; `shinychat#5r50` remains blocked. Attention remains blocked pending
 note review, and job `1079` remains open and unclosed. The current tracked
 non-note diff remains preserved with hash
 `46df02b9d29c657405121fda66e12e7b51a28b696e593da8c0d99d6921a3b10a`.
+
+### Client transition protocol handoff (2026-08-31)
+
+- Landed `ace09c52`: active New/Delete set a request-ID marker, block every client submission route, and clear only on matching Python `finally` completion; recorder persistence/destructive ordering remain intact.
+- Evidence: JS lint/test/build and `make update-dist` passed; focused history/controller and transition Playwright passed; `make py-check` passed with 193 Playwright and 768 non-browser tests (1 skipped).
+- Next: keep `shinychat#ykxh` open with `needs-review` and `work.attention=ok`; `shinychat#5r50` remains blocked; roborev `1079` closed after the fix commit.
