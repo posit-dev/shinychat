@@ -1060,3 +1060,28 @@ No production or generated files were changed, and no replacement test landed.
 `shinychat#ykxh` remains open with `needs-review` and
 `work.attention="blocked"` pending design/production disposition;
 `shinychat#5r50` remains blocked and unstarted.
+
+### Stale-completion browser provenance backlog disposition (2026-08-31)
+
+The stale-completion scenario is theoretically reachable. Exact UUID matching
+prevents completion A from clearing marker B except on a UUID collision.
+However, deterministic reproduction with the current fixture is impossible:
+Shiny serializes session reactive handlers, so a blocked real
+`_on_new`/`_on_delete` prevents fixture release and republish handlers from
+running, while remount hydration requires a server `history_update`. A timer
+is not credible synchronization.
+
+This is real but out of Phase 4 scope. Backlog issue
+`shinychat#n5d3` requests a future Playwright WebSocket proxy/harness that
+holds a real `history_transition_complete(A)` frame across remount and marker
+B, then forwards it to prove production-finally provenance deterministically.
+It is test-harness work only and is not a Phase 4 fix or blocker.
+
+Existing JS unit coverage proves UUID/exact-match/stale/remount/blocking
+behavior. Python coverage proves real finally success/error/cancellation and
+non-masking completion delivery. The current Playwright direct completion
+injection remains synthetic routing/remount coverage only and must not claim
+real production-finally provenance. The `bf9aee8c` fixture blocker is resolved
+by this backlog disposition. `shinychat#ykxh` remains open with
+`needs-review` and `work.attention="ok"` for human review/closure;
+`shinychat#5r50` remains blocked and unstarted.
