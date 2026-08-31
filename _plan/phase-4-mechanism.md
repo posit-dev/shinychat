@@ -842,3 +842,32 @@ non-note diff remains preserved with hash
 - Landed `ace09c52`: active New/Delete set a request-ID marker, block every client submission route, and clear only on matching Python `finally` completion; recorder persistence/destructive ordering remain intact.
 - Evidence: JS lint/test/build and `make update-dist` passed; focused history/controller and transition Playwright passed; `make py-check` passed with 193 Playwright and 768 non-browser tests (1 skipped).
 - Next: keep `shinychat#ykxh` open with `needs-review` and `work.attention=ok`; `shinychat#5r50` remains blocked; roborev `1079` closed after the fix commit.
+
+### Parked client-transition review handoff (2026-08-31)
+
+**Supersedes the preceding successful handoff only for further
+implementation.** Code commit `ace09c52` and documentation commit `37812e37`
+remain committed; neither is reverted or patched by this handoff.
+
+Independent review of `ace09c52`/`37812e37` accepted three findings against
+the approved client-only transition protocol:
+
+1. The shipped R bundle sends active New/Delete request IDs, but
+   `pkg-r/R/chat_history.R` never emits `history_transition_complete`;
+   R submissions can therefore remain permanently blocked.
+2. `HistoryStore.requestSequence` resets after cleanup/remount, allowing an
+   old completion to collide with a new `history-1`.
+3. The awaited completion send in Python `finally` can mask the original
+   handled failure or cancellation.
+
+These are three findings against the same mechanism, so the escalation valve
+fires. Disposition: park further implementation pending Garrick
+authorization. Recommended direction: add a Python server capability gate for
+marker activation, make no R P4 server changes, and leave R on its legacy
+behavior until Phase 6. This is a new cross-wire contract and therefore
+requires Garrick's authorization before any implementation resumes.
+
+Current state: `shinychat#ykxh` remains open with `needs-review`,
+`work.attention="blocked"`, and
+`work.branch="feat/history-exchange-tree"`. Roborev `1079` remains open and
+unclosed; `shinychat#5r50` remains blocked and unstarted.
