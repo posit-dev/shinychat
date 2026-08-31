@@ -73,9 +73,11 @@ from ._chat_types import (
     SerializedDep,
     SlashCommandDef,
     StoredMessage,
+    StringSegment,
     _assemble_stored_message,
     chat_greeting,
     initial_message_payload,
+    is_structured_segment,
     serialize_html_deps,
 )
 from ._drawer import ChatDrawerController
@@ -1554,22 +1556,22 @@ class Chat:
             await self._send_action(wipe_action, message.html_deps)
             operation = "append"
         for seg in message.wire_segments():
-            # NB: an inline `in` check (not a TypeGuard) so pyright narrows
-            # both branches of the TypedDict union.
-            if "type" in seg:
+            if is_structured_segment(seg):
                 block_action: ChatAction = {
                     "type": "block_insert",
                     "block": seg,
                 }
                 await self._send_action(block_action, message.html_deps)
-            elif seg["content"]:
-                chunk_action: ChatAction = {
-                    "type": "chunk",
-                    "content": seg["content"],
-                    "operation": operation,
-                    "content_type": seg["content_type"],
-                }
-                await self._send_action(chunk_action, message.html_deps)
+            else:
+                string_seg = cast(StringSegment, seg)
+                if string_seg["content"]:
+                    chunk_action: ChatAction = {
+                        "type": "chunk",
+                        "content": string_seg["content"],
+                        "operation": operation,
+                        "content_type": string_seg["content_type"],
+                    }
+                    await self._send_action(chunk_action, message.html_deps)
 
     def _messages_for_bookmark(self) -> list[dict[str, Any]]:
         from shiny import reactive

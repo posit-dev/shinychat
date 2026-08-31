@@ -11,7 +11,7 @@ from ._html_islands import (
     IslandBlockPart,
     derive_island_parts,
 )
-from ._typing_extensions import NotRequired, TypedDict
+from ._typing_extensions import NotRequired, TypedDict, TypeGuard
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
 Role = Literal["assistant", "user", "system"]
@@ -169,6 +169,12 @@ StreamBlock = Union[
 # One entry of `MessagePayload.segments`: a string segment or a structured
 # block (discriminated by the presence of `type`).
 MessagePayloadSegment = Union[StringSegment, StructuredBlock]
+
+
+def is_structured_segment(
+    seg: MessagePayloadSegment,
+) -> TypeGuard[StructuredBlock]:
+    return "type" in seg
 
 
 class MessagePayload(TypedDict):
@@ -818,11 +824,8 @@ def initial_message_payload(
     stored = StoredMessage.from_chat_message(message)
     segments: list[MessagePayloadSegment] = []
     for seg in stored.wire_segments():
-        # NB: an inline `in` check (not a TypeGuard) so pyright narrows
-        # both branches of the TypedDict union. Copy before stripping so
-        # the block dict stays intact for other consumers.
         stripped = seg
-        if "type" in stripped and "html_deps" in stripped:
+        if is_structured_segment(stripped) and "html_deps" in stripped:
             stripped = cast(
                 MessagePayloadSegment,
                 {k: v for k, v in stripped.items() if k != "html_deps"},
