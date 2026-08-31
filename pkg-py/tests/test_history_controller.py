@@ -572,9 +572,9 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
     node = record.nodes[exchange_id]
     assert node.status == "ok"
     assert node.input is not None and node.input.content == "hello"
-    assert [message.as_stored_message().content for message in node.messages] == [
-        "hi"
-    ]
+    assert [
+        message.as_stored_message().content for message in node.messages
+    ] == ["hi"]
 
     await controller.on_response()
     assert (await store.get(part(), record.id)) == record
@@ -713,11 +713,12 @@ async def test_v2_active_id_callback_retries_after_first_store_failure():
 
 
 @pytest.mark.anyio
-async def test_v2_blocked_old_write_cannot_publish_after_reset_before_successor():
+async def test_v2_active_delete_waits_for_blocked_write_and_clears_state():
     class BlockFirstStore(InMemoryConversationStore):
         started = asyncio.Event()
         release = asyncio.Event()
         first_put = True
+        events: list[str] = []
 
         async def put(
             self, partition: ConversationPartition, record: Any
@@ -726,55 +727,103 @@ async def test_v2_blocked_old_write_cannot_publish_after_reset_before_successor(
                 self.first_put = False
                 self.started.set()
                 await self.release.wait()
+            self.events.append("put")
             await super().put(partition, record)
+
+        async def delete(
+            self, partition: ConversationPartition, conv_id: str
+        ) -> None:
+            self.events.append("delete")
+            await super().delete(partition, conv_id)
 
     store = BlockFirstStore()
     controller, _ = _make_controller(store=store, use_exchange_tree=True)
     recorder = controller._exchange_recorder
     assert recorder is not None
     fake_chat = cast(_FakeChat, controller.chat)
-    announced: list[str | None] = []
+    fake_chat.messages = [_stored_message("assistant", "visible")]
+    published: list[str | None] = []
 
     async def update_url(conv_id: str | None) -> None:
-        announced.append(conv_id)
+        published.append(conv_id)
 
     controller.on_active_id_change = update_url
+
+    async def on_evict(_conv_id: str) -> None:
+        store.events.append("evict")
+
+    controller.on_evict = on_evict
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
     fake_chat._transcript = transcript
 
     first_write = asyncio.create_task(
         transcript.record_accepted_input_and_notify(
-            _stored_message("user", "first")
+            _stored_message("user", "A")
         )
     )
     await store.started.wait()
     first_id = controller._active_id_now()
     assert first_id is not None
 
-    await controller.new_chat()
-    second_write = asyncio.create_task(
-        transcript.record_accepted_input_and_notify(
-            _stored_message("user", "second")
-        )
-    )
+    controller.adapter.set_turns_json([{"role": "user", "content": "A"}])
+    delete_task = asyncio.create_task(controller.delete(first_id))
     await asyncio.sleep(0)
+    assert not delete_task.done()
+    assert store.events == []
+
     store.release.set()
     await first_write
-    await second_write
+    await delete_task
 
-    assert recorder.record is not None
-    second_id = recorder.record.id
-    assert second_id != first_id
-    assert announced == [None, second_id]
-    assert first_id not in announced
-    assert await store.get(part(), first_id) is not None
-    stored_second = await store.get(part(), second_id)
-    assert isinstance(stored_second, ConversationRecordV2)
-    second_leaf = stored_second.active_leaf
-    assert second_leaf is not None
-    second_node = stored_second.nodes[second_leaf]
-    assert second_node.input is not None
-    assert second_node.input.content == "second"
+    assert store.events == ["put", "evict", "delete"]
+    assert published == [first_id, None]
+    assert await store.get(part(), first_id) is None
+    assert recorder.record is None
+    assert controller._active_id_now() is None
+    assert controller.adapter.get_turns_json() == []
+    assert fake_chat._transcript.read() == ()
+    assert fake_chat.messages == []
+
+
+@pytest.mark.anyio
+async def test_v2_new_chat_waits_for_blocked_active_id_callback():
+    controller, _ = _make_controller(use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    fake_chat = cast(_FakeChat, controller.chat)
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    fake_chat._transcript = transcript
+    published: list[str | None] = []
+    callback_started = asyncio.Event()
+    release_callback = asyncio.Event()
+
+    async def update_url(conv_id: str | None) -> None:
+        published.append(conv_id)
+        if conv_id is not None:
+            callback_started.set()
+            await release_callback.wait()
+
+    controller.on_active_id_change = update_url
+    first_write = asyncio.create_task(
+        transcript.record_accepted_input_and_notify(
+            _stored_message("user", "A")
+        )
+    )
+    await callback_started.wait()
+    first_id = controller._active_id_now()
+    assert first_id is not None
+
+    new_chat = asyncio.create_task(controller.new_chat())
+    await asyncio.sleep(0)
+    assert not new_chat.done()
+
+    release_callback.set()
+    await first_write
+    await new_chat
+
+    assert published == [first_id, None]
+    assert recorder.record is None
+    assert controller._active_id_now() is None
 
 
 @pytest.mark.anyio
@@ -847,10 +896,10 @@ async def test_active_delete_clears_local_state_before_callback_failure(
     )
     fake_chat = cast(_FakeChat, controller.chat)
     fake_chat.messages = [_stored_message("assistant", "visible")]
-    fake_chat._transcript.record_accepted_input(_stored_message("user", "input"))
-    controller.adapter.set_turns_json(
-        [{"role": "user", "content": "input"}]
+    fake_chat._transcript.record_accepted_input(
+        _stored_message("user", "input")
     )
+    controller.adapter.set_turns_json([{"role": "user", "content": "input"}])
 
     recorder = controller._exchange_recorder
     if use_exchange_tree:
@@ -963,9 +1012,7 @@ async def test_v2_recorder_captures_postpartition_root_ui_but_not_greeting():
         app: object = None
         id = "history-acceptance-session"
 
-        async def send_custom_message(
-            self, _type: str, _message: Any
-        ) -> None:
+        async def send_custom_message(self, _type: str, _message: Any) -> None:
             pass
 
         def on_ended(self, _callback: object) -> Callable[[], None]:
@@ -1054,7 +1101,9 @@ async def test_v2_recorder_runs_ordered_hooks_with_explicit_ids_and_removes_stat
     recorder._register_capture_hook("first", first)
     recorder._register_capture_hook("second", second)
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
-    await transcript.record_accepted_input_and_notify(_stored_message("user", "one"))
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
 
     root = recorder.record.nodes["n_0000"]  # type: ignore[union-attr]
     assert observed == [
@@ -1391,7 +1440,9 @@ async def test_v2_recorder_captures_active_node_before_next_input():
     )
     adapter.turns.append({"role": "user", "content": "one"})
 
-    await transcript.record_accepted_input_and_notify(_stored_message("user", "two"))
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "two")
+    )
 
     node = recorder.record.nodes[first_exchange]  # type: ignore[union-attr]
     assert node.status == "pending"
@@ -1430,7 +1481,9 @@ async def test_v2_recorder_keeps_terminal_turn_delta_at_node_close():
         send=_sent,
     )
 
-    await transcript.record_accepted_input_and_notify(_stored_message("user", "two"))
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "two")
+    )
 
     state = recorder.record.nodes[first_exchange].state["shinychat:turns"]  # type: ignore[union-attr]
     assert state.mode == "delta"
@@ -1476,7 +1529,9 @@ async def test_v2_recorder_replaces_stream_projection_on_its_opening_exchange():
     second_exchange = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "second")
     )
-    adapter.turns.append({"role": "assistant", "content": "late first response"})
+    adapter.turns.append(
+        {"role": "assistant", "content": "late first response"}
+    )
     await transcript.end_stream(
         stream_id="stream",
         status=None,
@@ -1488,9 +1543,9 @@ async def test_v2_recorder_replaces_stream_projection_on_its_opening_exchange():
     assert isinstance(record, ConversationRecordV2)
     first = record.nodes[first_exchange]
     assert first.status == "ok"
-    assert [message.as_stored_message().content for message in first.messages] == [
-        "partial"
-    ]
+    assert [
+        message.as_stored_message().content for message in first.messages
+    ] == ["partial"]
     assert first.state["shinychat:turns"].data == [
         {"role": "assistant", "content": "late first response"}
     ]
@@ -1554,9 +1609,10 @@ async def test_v2_recorder_persists_pre_input_stream_on_pending_root() -> None:
     assert record.title == "New chat"
     assert record.active_leaf == exchange_id
     assert record.nodes[root_id].status == "ok"
-    assert [message.as_stored_message().content for message in record.nodes[root_id].messages] == [
-        "before input"
-    ]
+    assert [
+        message.as_stored_message().content
+        for message in record.nodes[root_id].messages
+    ] == ["before input"]
     assert record.nodes[exchange_id].input is not None
 
 
@@ -1686,7 +1742,9 @@ async def test_v2_recorder_reopens_terminal_exchange_for_a_new_stream(
 
 
 @pytest.mark.anyio
-async def test_v2_recorder_creates_inputless_child_for_unowned_content() -> None:
+async def test_v2_recorder_creates_inputless_child_for_unowned_content() -> (
+    None
+):
     store = InMemoryConversationStore()
     controller, _ = _make_controller(
         store=store,
@@ -1717,9 +1775,9 @@ async def test_v2_recorder_creates_inputless_child_for_unowned_content() -> None
     assert child.parent_id == parent_id
     assert child.input is None
     assert child.status == "ok"
-    assert [message.as_stored_message().content for message in child.messages] == [
-        "notice"
-    ]
+    assert [
+        message.as_stored_message().content for message in child.messages
+    ] == ["notice"]
 
 
 @pytest.mark.anyio
@@ -1802,9 +1860,9 @@ async def test_v2_recorder_serializes_blocked_stream_projection_before_new_input
     stored = store.records[record.id]
     assert stored.active_leaf == second_exchange
     assert second_exchange in stored.nodes
-    assert stored.nodes[first_exchange].messages[-1].as_stored_message().content == (
-        "partial"
-    )
+    assert stored.nodes[first_exchange].messages[
+        -1
+    ].as_stored_message().content == ("partial")
 
 
 @pytest.mark.anyio
@@ -1865,9 +1923,9 @@ async def test_v2_recorder_persists_stream_terminal_status(
     else:
         assert node.error is not None
         assert node.error.message == error
-    assert [message.as_stored_message().content for message in node.messages] == [
-        "partial"
-    ]
+    assert [
+        message.as_stored_message().content for message in node.messages
+    ] == ["partial"]
 
 
 @pytest.mark.anyio
@@ -2025,9 +2083,7 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
 ) -> None:
     from shinychat._history_store import FileConversationStore
 
-    source_root = str(
-        (Path(__file__).resolve().parents[1] / "src").resolve()
-    )
+    source_root = str((Path(__file__).resolve().parents[1] / "src").resolve())
     env = dict(os.environ)
     env["PYTHONPATH"] = (
         source_root
@@ -2150,7 +2206,9 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
 
     assert result.returncode == -signal.SIGKILL, result.stderr
     store = FileConversationStore(tmp_path)
-    metas = await store.list(ConversationPartition(chat_id="kill", scope="scope"))
+    metas = await store.list(
+        ConversationPartition(chat_id="kill", scope="scope")
+    )
     assert len(metas) == 1
     record = await store.get(
         ConversationPartition(chat_id="kill", scope="scope"), metas[0].id
@@ -2161,12 +2219,13 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
         node = record.nodes["n_0000"]
         assert node.input is None
     else:
-        node = next(node for node in record.nodes.values() if node.input is not None)
+        node = next(
+            node for node in record.nodes.values() if node.input is not None
+        )
     assert node.status == expected_status
-    assert (
-        [message.as_stored_message().content for message in node.messages]
-        == expected_content
-    )
+    assert [
+        message.as_stored_message().content for message in node.messages
+    ] == expected_content
     assert (
         node.error is None
         if expected_error is None
@@ -2206,7 +2265,10 @@ async def test_v2_path_does_not_dual_write_through_v1_response_settlement():
     await controller.on_response()
 
     assert len(store.put_calls) == 1
-    assert all(isinstance(record, ConversationRecordV2) for _, record in store.put_calls)
+    assert all(
+        isinstance(record, ConversationRecordV2)
+        for _, record in store.put_calls
+    )
 
 
 @pytest.mark.anyio

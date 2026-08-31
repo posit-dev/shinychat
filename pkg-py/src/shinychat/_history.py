@@ -224,10 +224,7 @@ def extend_record_linear(
                 next_user_index = index + 1
                 response_node_id = fallback
                 for response_id in path[next_user_index:]:
-                    if (
-                        record.nodes[response_id].turns[0].get("role")
-                        != "user"
-                    ):
+                    if record.nodes[response_id].turns[0].get("role") != "user":
                         response_node_id = response_id
                         break
                 break
@@ -308,9 +305,7 @@ class _ExchangeRecorder:
             data=cast(JsonValue, data),
         )
 
-    async def _capture_state(
-        self, node_id: str, reason: CaptureReason
-    ) -> None:
+    async def _capture_state(self, node_id: str, reason: CaptureReason) -> None:
         assert self.record is not None
         node = self.record.nodes[node_id]
         context = CaptureContext(node_id=node_id, reason=reason)
@@ -399,7 +394,10 @@ class _ExchangeRecorder:
 
         async with self._lock:
             if self.record is None:
-                title = " ".join(message.content.split())[:MAX_TITLE_LEN] or "New chat"
+                title = (
+                    " ".join(message.content.split())[:MAX_TITLE_LEN]
+                    or "New chat"
+                )
                 self.record = await self._new_record(title=title)
             root_id = "n_0000"
             is_first_input = not any(
@@ -430,7 +428,9 @@ class _ExchangeRecorder:
             assert self.record is not None
             self.record.append_message(
                 target,
-                CapturedMessage.from_stored_message(entry.message, icon=entry.icon),
+                CapturedMessage.from_stored_message(
+                    entry.message, icon=entry.icon
+                ),
             )
             await self._persist_record()
 
@@ -451,7 +451,9 @@ class _ExchangeRecorder:
             self._stream_exchanges[stream_id] = target
             self.record.append_stream_message(
                 target,
-                CapturedMessage.from_stored_message(entry.message, icon=entry.icon),
+                CapturedMessage.from_stored_message(
+                    entry.message, icon=entry.icon
+                ),
             )
             await self._persist_record()
 
@@ -467,7 +469,9 @@ class _ExchangeRecorder:
                 return
             self.record.replace_stream_message(
                 exchange_id,
-                CapturedMessage.from_stored_message(entry.message, icon=entry.icon),
+                CapturedMessage.from_stored_message(
+                    entry.message, icon=entry.icon
+                ),
             )
             await self._persist_record()
 
@@ -675,6 +679,14 @@ class HistoryController:
         async with self.chat._destructive_history_mutation():
             yield
 
+    @asynccontextmanager
+    async def _exchange_mutation(self):
+        if self._exchange_recorder is None:
+            yield
+            return
+        async with self._exchange_recorder._lock:
+            yield
+
     # -- save -----------------------------------------------------------
 
     async def on_response(self) -> None:
@@ -861,23 +873,24 @@ class HistoryController:
 
     async def new_chat(self) -> None:
         async with self._destructive_mutation():
-            await self.save_current()
-            self.adapter.set_turns_json([])
-            await self.chat.clear_messages()
-            # Announce the cleared state even when the active ID is already None:
-            # in URL/bookmark restore modes the browser may still carry a stale
-            # conversation param (e.g. after a failed restore) that only
-            # on_active_id_change(None) clears.
-            if self._exchange_recorder is not None:
-                self._exchange_recorder.reset()
-            await self.clear_active()
-            if self.on_active_id_change is not None:
-                await self.on_active_id_change(None)
-            # A fresh chat is never a restore: resolve the greeting the same way
-            # the initial settle does, so it doesn't just rely on a stale/absent
-            # cached value from that first resolution.
-            await self.notify_settled(False)
-            await self.send_history_update()
+            async with self._exchange_mutation():
+                await self.save_current()
+                self.adapter.set_turns_json([])
+                await self.chat.clear_messages()
+                # Announce the cleared state even when the active ID is already None:
+                # in URL/bookmark restore modes the browser may still carry a stale
+                # conversation param (e.g. after a failed restore) that only
+                # on_active_id_change(None) clears.
+                if self._exchange_recorder is not None:
+                    self._exchange_recorder.reset()
+                await self.clear_active()
+                if self.on_active_id_change is not None:
+                    await self.on_active_id_change(None)
+                # A fresh chat is never a restore: resolve the greeting the same way
+                # the initial settle does, so it doesn't just rely on a stale/absent
+                # cached value from that first resolution.
+                await self.notify_settled(False)
+                await self.send_history_update()
 
     async def replay_ui(self, record: ConversationRecord) -> None:
         async with self._destructive_mutation():
@@ -892,7 +905,9 @@ class HistoryController:
                         "role": node.turns[-1].get("role", "assistant"),
                         "segments": [
                             {
-                                "content": turn_fallback_markdown(node.turns[-1]),
+                                "content": turn_fallback_markdown(
+                                    node.turns[-1]
+                                ),
                                 "content_type": "markdown",
                             }
                         ],
@@ -925,25 +940,27 @@ class HistoryController:
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
         async with self._destructive_mutation():
-            if self.on_evict is not None:
-                await self.on_evict(conv_id)
-            await self.store.delete(self.partition, conv_id)
-            exchange_record = (
-                self._exchange_recorder.record
-                if self._exchange_recorder is not None
-                else None
-            )
-            if (self.record is not None and self.record.id == conv_id) or (
-                exchange_record is not None and exchange_record.id == conv_id
-            ):
-                if self._exchange_recorder is not None:
-                    self._exchange_recorder.reset()
-                await self.clear_active()
-                self.adapter.set_turns_json([])
-                await self.chat.clear_messages()
-                if self.on_active_id_change is not None:
-                    await self.on_active_id_change(None)
-            await self.send_history_update()
+            async with self._exchange_mutation():
+                if self.on_evict is not None:
+                    await self.on_evict(conv_id)
+                await self.store.delete(self.partition, conv_id)
+                exchange_record = (
+                    self._exchange_recorder.record
+                    if self._exchange_recorder is not None
+                    else None
+                )
+                if (self.record is not None and self.record.id == conv_id) or (
+                    exchange_record is not None
+                    and exchange_record.id == conv_id
+                ):
+                    if self._exchange_recorder is not None:
+                        self._exchange_recorder.reset()
+                    await self.clear_active()
+                    self.adapter.set_turns_json([])
+                    await self.chat.clear_messages()
+                    if self.on_active_id_change is not None:
+                        await self.on_active_id_change(None)
+                await self.send_history_update()
 
     # -- branch navigation --------------------------------------------------
 
