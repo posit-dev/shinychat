@@ -1085,3 +1085,24 @@ real production-finally provenance. The `bf9aee8c` fixture blocker is resolved
 by this backlog disposition. `shinychat#ykxh` remains open with
 `needs-review` and `work.attention="ok"` for human review/closure;
 `shinychat#5r50` remains blocked and unstarted.
+
+### P4.0 integration gate closure (2026-08-31)
+
+Garrick authorized closure after the complete implementation range passed
+batched Roborev review `1116` with `PASS` and no findings. The reviewed unit
+starts at parent `ba95e652c4d84fa1cce8c2694da708c62e0d7146` of `ace09c52` and
+ends at `4f9d8bfb4ae47f67a0cc886714ecbec72c6d8d28`, including the capability
+replacement, packaged assets, and both production Playwright test commits;
+later docs-only disposition commits were excluded.
+
+Verification: `uv run pytest
+pkg-py/tests/playwright/chat/history_transition -q` passed 6 tests;
+`make py-check-format` passed; the recorded full implementation gate remains
+green with JS lint/tests/build, `make update-dist`, focused Python and R
+checks, and `make py-check` evidence above. No unresolved review findings
+remain. The real browser provenance limitation is dispositioned to backlog
+`shinychat#n5d3` and is not a P4.0 blocker.
+
+`shinychat#ykxh` is closed. `shinychat#5r50` is now the ready, unblocked next
+Phase 4 keystone; no `shinychat#5r50` implementation has started. The Phase 4
+parent `shinychat#azvt` remains open with `work.attention="ok"`.
