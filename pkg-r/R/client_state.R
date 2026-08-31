@@ -87,8 +87,7 @@ method(client_set_ui, S7::new_S3_class(c("Chat", "R6"))) <-
 
     msgs <- contents_shinychat(client)
     lapply(msgs, function(msg_turn) {
-      is_list <- is.list(msg_turn$content) &&
-        !inherits(msg_turn$content, c("shiny.tag", "shiny.taglist"))
+      is_list <- is_bare_list(msg_turn$content)
 
       if (is_list) {
         stream <- coro::generator(function() {
