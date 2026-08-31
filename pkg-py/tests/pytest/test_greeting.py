@@ -6,7 +6,7 @@ import threading
 from typing import Any, cast
 
 import pytest
-from htmltools import HTML, HTMLDependency, tags
+from htmltools import HTML, HTMLDependency, Tag, TagList, tags
 from shiny.session import session_context
 from shinychat import Chat, chat_greeting, chat_ui
 from shinychat._chat_client import resolve_greeting
@@ -133,6 +133,16 @@ def test_chat_ui_tag_greeting_has_html_content_type():
     assert "hi" in payload["content"]
 
 
+def test_chat_ui_tag_greeting_payload_has_no_island_tags():
+    """The static greeting attribute carries flattened trusted html — no
+    <shiny-chat-raw-html> wrappers on the wire (kata#af81)."""
+    g = chat_greeting(tags.div("hi"))
+    tag = chat_ui("chat", greeting=g)
+    payload = _greeting_payload(tag)
+    assert "shiny-chat-raw-html" not in payload["content"]
+    assert "<div>hi</div>" in payload["content"]
+
+
 def test_chat_ui_no_greeting_no_attribute():
     tag = chat_ui("chat")
     rendered = tag.get_html_string()
@@ -155,6 +165,35 @@ def test_chat_greeting_tag_with_dependency_has_html_deps():
     assert g.content_type == "html"
     dep_names = [d.name for d in g.html_deps]
     assert "my-dep" in dep_names
+
+
+def test_chat_greeting_tag_content_emits_no_island_tags():
+    """Tag content flattens to a single trusted html string — the greeting
+    wire payload has no blocks channel, so no <shiny-chat-raw-html> island
+    wrappers are emitted (kata#af81)."""
+    g = chat_greeting(tags.div("hello"))
+    assert g.content_type == "html"
+    assert isinstance(g.content, str)
+    assert "shiny-chat-raw-html" not in g.content
+    assert "<div>hello</div>" in g.content
+
+
+def test_chat_greeting_react_element_stays_inline():
+    """Bare data-shinychat-react elements stay inline in the flattened
+    greeting html string (they resolve through the client's component map)."""
+    content = TagList(
+        tags.div("before"),
+        Tag("shiny-aside", data_shinychat_react=True),
+        tags.div("after"),
+    )
+    g = chat_greeting(content)
+    assert g.content_type == "html"
+    assert isinstance(g.content, str)
+    assert "shiny-chat-raw-html" not in g.content
+    assert "<div>before</div>" in g.content
+    assert "shiny-aside" in g.content
+    assert "data-shinychat-react" in g.content
+    assert "<div>after</div>" in g.content
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +296,23 @@ def test_set_greeting_html_sends_html_content_type():
     assert actions[0]["type"] == "greeting"
     assert actions[0]["content_type"] == "html"
     assert "<b>hi</b>" in actions[0]["content"]
+
+
+def test_set_greeting_tag_content_sends_no_island_tags():
+    """The greeting action carries flattened trusted html — no island tags
+    on the wire (kata#af81)."""
+    chat, spy = _make_spy_chat()
+
+    async def _run():
+        await chat.set_greeting(chat_greeting(tags.div("hi")))
+
+    _run_async(_run)
+    actions = _spy_actions(spy)
+    assert len(actions) == 1
+    assert actions[0]["type"] == "greeting"
+    assert actions[0]["content_type"] == "html"
+    assert "shiny-chat-raw-html" not in actions[0]["content"]
+    assert "<div>hi</div>" in actions[0]["content"]
 
 
 def test_set_greeting_stream_sends_start_chunks_end():

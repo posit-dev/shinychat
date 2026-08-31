@@ -10,7 +10,6 @@ from ._attachments import Attachment
 from ._html_islands import (
     IslandBlockPart,
     derive_island_parts,
-    split_html_islands,
 )
 from ._typing_extensions import NotRequired, TypedDict
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
@@ -440,11 +439,10 @@ class ChatMessage:
         # markdown), so only process it if it's not a string.
         deps: list[HTMLDependency] = []
         if not isinstance(content, str):
-            # Walk the split_html_islands() output via the shared
-            # derive_island_parts() helper (kata#mhyd): island wrappers
-            # (<shiny-chat-raw-html>) become HtmlBlock structured blocks
-            # carrying the trusted server-authored HTML; bare React elements
-            # are rendered and concatenated as the residual string content.
+            # Walk the shared derive_island_parts() partition (kata#mhyd):
+            # trusted non-React runs become HtmlBlock structured blocks
+            # carrying the server-authored HTML; bare React elements are
+            # rendered and concatenated as the residual string content.
             # The string-segment path (isinstance(content, str)) is retained
             # for string-typed content — this branch only fires for non-string
             # (tag-like) content.
@@ -576,8 +574,18 @@ class ChatGreeting:
         deps: list[HTMLDependency] = []
         content_type: ContentType = "markdown"
         if not isinstance(content, str):
-            split = split_html_islands(content)
-            ui = TagList(*split).render()
+            # Greetings are entirely server-authored, so the payload is
+            # trusted by construction: tag content renders as a single HTML
+            # string traveling as the greeting's `content` with
+            # content_type "html". Unlike ChatMessage there is no
+            # derive_island_parts() split — the greeting wire payload (both
+            # the chat_ui() attribute and the set_greeting() action) has no
+            # blocks channel, so there is nowhere to carry html_block
+            # envelopes — and no <shiny-chat-raw-html> island wrapper is
+            # emitted (kata#af81). Bare data-shinychat-react elements stay
+            # inline in the string and resolve through the client's
+            # component map.
+            ui = TagList(content).render()
             content, ui_deps = ui["html"], ui["dependencies"]
             deps = deps + ui_deps
             content = f"\n\n{content}\n\n"
