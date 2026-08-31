@@ -560,3 +560,31 @@ failed/cancelled transitions, and the existing persistence/publication barrier
 cases. The previously required batched range review remains after
 implementation. Job `1079` remains open and unclosed, and
 `shinychat#5r50` remains blocked.
+
+### Async-save clarification (2026-08-31)
+
+The async-save question is resolved as follows: Phase 4 keeps persistence
+awaited, serialized, and fail-open. Option A admission protection remains in
+force; this is the chosen correctness solution, not a performance
+optimization.
+
+Python's store API is awaitable, but the built-in file store's serialization,
+write, and replace operations run synchronously. Custom yielding stores may
+release the event loop for unrelated work while admission remains blocked.
+R persistence is synchronous, and the Phase 6 port carries the stabilized
+shape.
+
+Fire-and-forget or background saves are rejected for Phase 4. Correct
+ordering, error propagation, and teardown would require a queue/task owner or
+second owner, and would risk stale writes and process loss. The initial Phase
+4 implementation therefore retains awaited saves and provides no saving
+spinner or other visual affordance.
+
+Q2 evidence for a 3.86 MB, 206-node record shows ordinary writes at roughly
+7.15-7.20 ms median with p95 <= 8.29 ms; restart-pointer persistence has p95
+88.8 ms. Revisit this decision only with end-to-end slowness evidence, network
+filesystem evidence, R evidence, or real user reports. A history-UI spinner
+is a possible later affordance, not Phase 4 scope unless separately required.
+
+Implementation remains stopped until this note is reviewed. Job `1079`
+remains open and unclosed; `shinychat#5r50` remains blocked and unstarted.
