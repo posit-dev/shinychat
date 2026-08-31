@@ -594,3 +594,38 @@ is a possible later affordance, not Phase 4 scope unless separately required.
 
 Implementation remains stopped until this note is reviewed. Job `1079`
 remains open and unclosed; `shinychat#5r50` remains blocked and unstarted.
+
+### Option A implementation mechanism (required before implementation)
+
+Use the existing destructive transcript transaction with a narrow,
+strict-admission parameter, and enable that parameter only for active
+`new_chat()` and active `delete()`. The admission check occurs before
+transcript mutation, latest-input update, recorder callback, and the built-in
+`on_user_submit`/provider handlers. A rejected submission creates no server
+state. The strict-admission gate releases through the existing `finally` path
+on success, failure, or cancellation.
+
+The browser currently clears the editor and attachments and adds an
+optimistic user/loading pair before the server responds. Rejection therefore
+requires a correlated `input_rejected` action using the existing transport
+sequence identity. The reducer/UI must remove only the matching optimistic
+pair and restore its text and attachments; a stale rejection is a no-op.
+This protocol is required for draft retention. It is not a spinner, queue, or
+new state owner. Generic `clear()` and inactive `delete()` remain unchanged;
+generic clear remains Phase 5 scope.
+
+Before implementation resumes, add:
+
+- model/controller coverage for admission ordering, no server state or
+  callbacks on rejection, and gate reopening on success, failure, and
+  cancellation;
+- JavaScript reducer/UI coverage for correlated optimistic-pair removal,
+  text/attachment restoration, and stale-rejection no-op behavior;
+- the required asset rebuild with `make update-dist`, including all packaged
+  Python and R asset copies; and
+- Playwright coverage for pending active `new_chat()`/delete rejection,
+  retained-draft resubmission, and success/failure/cancellation transitions.
+
+Implementation remains stopped pending review of this note. Job `1079`
+remains open and unclosed, and `shinychat#5r50` remains blocked and
+unstarted.
