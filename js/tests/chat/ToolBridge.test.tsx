@@ -711,7 +711,7 @@ describe("Tool component bridge rendering", () => {
               type: "tool_result",
               version: 1,
               request_id: "req-xss",
-              tool_name: '<img src=x onerror=alert(1)>',
+              tool_name: "<img src=x onerror=alert(1)>",
               status: "success",
               value: "ok",
               value_type: "text",

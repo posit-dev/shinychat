@@ -132,7 +132,7 @@ describe("ToolCard", () => {
     // toolName is model-influenced (chatlas sets it from the tool-call payload)
     // and must never mount raw HTML through the RawHTML title span. Only the
     // server-attested toolTitle is trusted as raw HTML.
-    const payload = '<img src=x onerror=alert(1)>'
+    const payload = "<img src=x onerror=alert(1)>"
     const { container } = render(
       <ToolCard toolName={payload} initialExpanded={true}>
         <div>body</div>
