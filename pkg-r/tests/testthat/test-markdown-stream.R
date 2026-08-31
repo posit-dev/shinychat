@@ -556,3 +556,22 @@ test_that("output_markdown_stream() single react element keeps trusted fallback"
   expect_true(segments[[1]]$trusted)
   expect_identical(el$attribs[["content-trusted"]], "true")
 })
+
+test_that("bookmark-on-response preserves the stream result value", {
+  # roborev job 1098: chat_update_bookmark() must not replace the
+  # accumulated-content result with doBookmark()'s return value.
+  mock <- mock_stream_session()
+  bookmarked <- FALSE
+  mock$session$doBookmark <- function() {
+    bookmarked <<- TRUE
+    "bookmark-url"
+  }
+  set_session_bookmark_on_response(mock$session, "stream", TRUE)
+
+  value <- shiny::withReactiveDomain(mock$session, {
+    sync(markdown_stream("stream", "hello", session = mock$session))
+  })
+
+  expect_true(bookmarked)
+  expect_match(value, "hello", fixed = TRUE)
+})
