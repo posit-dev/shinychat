@@ -1,10 +1,11 @@
 # Plan: exchange-tree conversation history
 
-**Status:** committed · Phase 0 complete, Phase 1 in review, Phase 2 complete,
-Phase 3 acceptance evidence complete and awaiting human review; Q2 selects
-single-document atomic layout after split rejection · 2026-08-28
+**Status:** committed · Phase 0 complete, Phase 1 in review, Phases 2–3
+complete, Phase 4 mechanism planning in progress; Q2 selects single-document
+atomic layout after split rejection · 2026-08-31
 **Kata:** epic `shinychat#6d0d` · Phase 1 `shinychat#g49a` · Phase 2
-`shinychat#kjyt` · Phase 3 `shinychat#qf2r` (the `kata` CLI issue tracker).
+`shinychat#kjyt` · Phase 3 `shinychat#qf2r` · Phase 4 `shinychat#azvt`
+(the `kata` CLI issue tracker).
 All abbreviated Kata IDs below belong to the `shinychat` project;
 planning history in closed issue `kvhc`
 **Predecessor:** `feat/turn-history-sync-redesign` (stopped; see the
@@ -548,7 +549,7 @@ signed off by the driver before code (process.md §3.4).
   transcript fixture passes in Python; a forged messages input cannot
   mutate transcript or history (hard transport rejection is acceptable).
 - **Phase 3 — exchange record + capture + store (Python; `shinychat#qf2r`;
-  acceptance evidence complete 2026-08-28, human review pending).**
+  complete and closed 2026-08-31).**
   Node schema,
   choke-point capture, baseline snapshot at first input, delta/snapshot
   turn capture, eager writes + lazy close, statuses, incremental atomic
@@ -561,9 +562,12 @@ signed off by the driver before code (process.md §3.4).
   *Done when:* kill the process mid-stream at any point and reload — the
   record contains the user's input, all specs sent so far, and a coherent
   status; the worked example in §3.1 round-trips through the store.
-- **Phase 4 — restore + branching + bookmark pointer (Python).** Replay,
+- **Phase 4 — restore + branching + bookmark pointer (Python;
+  `shinychat#azvt`).** Replay,
   `set_turns`, rewind hook, the sibling primitive, retry affordance. Port
   the predecessor branch's edit/navigate Playwright suite to this base (Q3).
+  See `phase-4-mechanism.md`; Phase 3's mechanism note is completed context,
+  not a live source for Phase 4 decisions.
   *Done when:* the ported suite is green (or Q3's narrow upgrade is scoped);
   edit, retry, and regenerate all go through the one sibling primitive; a
   restored client continues the conversation correctly (turn count and
