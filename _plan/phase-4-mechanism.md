@@ -640,3 +640,30 @@ Before implementation resumes, add:
 Implementation remains stopped pending review of this note. Job `1079`
 remains open and unclosed, and `shinychat#5r50` remains blocked and
 unstarted.
+
+### Orchestrator compatibility decision (2026-08-31)
+
+During the strict active `new_chat()`/`delete()` window, only a valid
+sequenced composite input is eligible for a correlated rejection:
+`input_rejected(seq)`. Bare strings, composites without `seq`, and malformed
+payloads are rejected silently with no transcript, exchange node, recorder,
+latest-input, or provider side effect because their rollback cannot be safely
+correlated. The strict gate still releases through the existing `finally`
+path on success, failure, or cancellation.
+
+Outside the strict window, preserve current bare-string compatibility. The
+currently shipped browser already emits the composite input with `seq`, so
+ordinary users are unaffected. This is not a global hard gate or deprecation.
+R browser/handler parity remains Phase 6 scope, and public deprecation/removal
+remains Phase 7 scope. During implementation, correct the internal TypeScript
+transport comment; do not add public R documentation or `NEWS` entries now.
+
+Required coverage includes Python model/controller handling for valid,
+missing-sequence, bare-string, and malformed payloads; JavaScript reducer/UI
+correlation behavior; and Playwright strict-window rejection and
+outside-window compatibility. Future R parity coverage belongs to Phase 6.
+The existing `make update-dist` requirement applies to the JavaScript change
+and all packaged asset copies.
+
+Implementation remains stopped pending review of this note. Job `1079`
+remains open and unclosed; `shinychat#5r50` remains blocked and unstarted.
