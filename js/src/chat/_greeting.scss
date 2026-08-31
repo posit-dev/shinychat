@@ -129,8 +129,8 @@ shiny-chat-page
 }
 
 // "Restoring conversation…" indicator, shown while a history restore is
-// pending (the greeting is held). Centered over the message area as a
-// subtle pill; fades in gently since it only appears after a short delay.
+// pending (the greeting is held). It only appears after a short delay
+// (so fast restores never show it), hence the gentle fade-in.
 .shiny-chat-restoring {
   position: absolute;
   inset: 0;

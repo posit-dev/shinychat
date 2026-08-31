@@ -1153,9 +1153,10 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "greeting_settle": {
       // The server's restore decision is in (dispatched from ChatApp's
-      // history_update handling, or a safety timeout). A restored
-      // conversation is never a "new chat", so drop the held greeting;
-      // otherwise reveal it.
+      // history_update handling, or a safety timeout). Dropping the
+      // greeting on restore mirrors the server, which clears it during
+      // replay regardless of `persistent` ("a restored conversation is
+      // never a new chat") and re-sends it server-side on new_chat().
       const held = state.greeting
       if (!held || held.status !== "held") return state
       if (action.restored || state.messages.length > 0) {

@@ -72,7 +72,6 @@ describe("held greeting during history restore", () => {
   it("drops the held greeting when a conversation was restored", () => {
     const transport = renderApp(true)
     act(() => {
-      transport.fire("test-chat", { type: "greeting_clear" })
       transport.fire("test-chat", {
         type: "message",
         message: {
@@ -87,6 +86,17 @@ describe("held greeting during history restore", () => {
           { id: "c_1", title: "hi", created_at: "", updated_at: "" },
         ],
         active_id: "c_1",
+      })
+    })
+    expect(screen.queryByText(/Welcome to the test chat/)).toBeNull()
+    // The greeting must be gone, not merely still held: a later
+    // history_update reporting no restore must NOT bring it back.
+    act(() => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
       })
     })
     expect(screen.queryByText(/Welcome to the test chat/)).toBeNull()

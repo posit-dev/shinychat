@@ -265,7 +265,6 @@ export function ChatApp({
           conversations: action.conversations,
           activeId: action.active_id,
         })
-        // Release a greeting held for a pending restore (no-op otherwise).
         dispatch({
           type: "greeting_settle",
           restored: action.active_id != null,
