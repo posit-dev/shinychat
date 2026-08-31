@@ -72,6 +72,27 @@ describe("ShinyTransport", () => {
     )
   })
 
+  it("sends request IDs only for marked history transitions", () => {
+    const transport = new ShinyTransport()
+    const setInputValue = vi.mocked(window.Shiny!.setInputValue!)
+
+    transport.sendHistoryNew("chat", "request-new")
+    transport.sendHistoryDelete("chat", "active", "request-delete")
+
+    expect(setInputValue).toHaveBeenNthCalledWith(
+      1,
+      "chat_history_new",
+      expect.objectContaining({ requestId: "request-new" }),
+      { priority: "event" },
+    )
+    expect(setInputValue).toHaveBeenNthCalledWith(
+      2,
+      "chat_history_delete",
+      expect.objectContaining({ id: "active", requestId: "request-delete" }),
+      { priority: "event" },
+    )
+  })
+
   afterEach(() => {
     delete (window as unknown as Record<string, unknown>).__shinyChatTransport
   })

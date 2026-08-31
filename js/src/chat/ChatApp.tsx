@@ -6,6 +6,7 @@ import {
   useMemo,
   useState,
   useCallback,
+  useSyncExternalStore,
 } from "react"
 import {
   ShinyLifecycleContext,
@@ -167,6 +168,11 @@ export function ChatApp({
   }, [resolvedToolGrouping])
 
   const historyStore = useMemo(() => getHistoryStore(elementId), [elementId])
+  const historySnapshot = useSyncExternalStore(
+    historyStore.subscribe,
+    historyStore.getSnapshot,
+    historyStore.getSnapshot,
+  )
 
   useEffect(() => {
     return acquireHistoryStore(elementId, transport).release
@@ -174,6 +180,7 @@ export function ChatApp({
 
   const submitUserInput = useCallback(
     (content: string, attachments: AttachmentPayload[]) => {
+      if (historyStore.getSnapshot().historyTransitionPending !== null) return
       // Optimistic UI update (adds user message + loading placeholder).
       dispatch({
         type: "INPUT_SENT",
@@ -186,7 +193,7 @@ export function ChatApp({
         state.enableUpload ? { text: content, attachments } : content,
       )
     },
-    [dispatch, transport, inputId, state.enableUpload],
+    [dispatch, historyStore, transport, inputId, state.enableUpload],
   )
 
   const containerRef = useRef<ChatContainerHandle>(null)
@@ -242,6 +249,10 @@ export function ChatApp({
           setSiblingNavigationPending(false)
           containerRef.current?.endSiblingNavigation()
         }
+        return
+      }
+      if (action.type === "history_transition_complete") {
+        historyStore.completeHistoryTransition(action.requestId)
         return
       }
       dispatch(action)
@@ -384,6 +395,9 @@ export function ChatApp({
                   messages={state.messages}
                   streamingMessage={state.streamingMessage}
                   inputDisabled={state.inputDisabled}
+                  submissionBlocked={
+                    historySnapshot.historyTransitionPending !== null
+                  }
                   inputPlaceholder={state.inputPlaceholder}
                   iconAssistant={iconAssistant}
                   iconSend={iconSend}

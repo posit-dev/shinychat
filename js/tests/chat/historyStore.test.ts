@@ -125,6 +125,43 @@ describe("historyStore", () => {
     expect(transport.sendHistoryDelete).toHaveBeenCalledTimes(1)
   })
 
+  it("marks only active New/Delete transitions and clears a matching completion", () => {
+    const transport = createMockTransport()
+    const registration = acquireHistoryStore("chat", transport)
+    registration.store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+    })
+
+    registration.store.actions.create()
+    expect(transport.sendHistoryNew).toHaveBeenCalledWith("chat", "history-1")
+    expect(registration.store.getSnapshot().historyTransitionPending).toBe(
+      "history-1",
+    )
+
+    registration.store.completeHistoryTransition("stale")
+    expect(registration.store.getSnapshot().historyTransitionPending).toBe(
+      "history-1",
+    )
+    registration.store.completeHistoryTransition("history-1")
+    expect(registration.store.getSnapshot().historyTransitionPending).toBeNull()
+
+    registration.store.actions.delete("other")
+    expect(transport.sendHistoryDelete).toHaveBeenCalledWith("chat", "other")
+    expect(registration.store.getSnapshot().historyTransitionPending).toBeNull()
+
+    registration.store.actions.delete("first")
+    expect(transport.sendHistoryDelete).toHaveBeenLastCalledWith(
+      "chat",
+      "first",
+      "history-2",
+    )
+    expect(registration.store.getSnapshot().historyTransitionPending).toBe(
+      "history-2",
+    )
+  })
+
   it("replaces transport after release and rejects concurrent conflicts", () => {
     const firstTransport = createMockTransport()
     const secondTransport = createMockTransport()

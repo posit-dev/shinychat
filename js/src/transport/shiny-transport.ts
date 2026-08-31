@@ -128,11 +128,13 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     )
   }
 
-  sendHistoryNew(id: string): void {
+  sendHistoryNew(id: string, requestId?: string): void {
     if (!window.Shiny?.setInputValue) return
-    window.Shiny.setInputValue(`${id}_history_new`, Date.now(), {
-      priority: "event",
-    })
+    window.Shiny.setInputValue(
+      `${id}_history_new`,
+      requestId === undefined ? Date.now() : { requestId, ts: Date.now() },
+      { priority: "event" },
+    )
   }
 
   sendHistoryRename(id: string, convId: string, title: string): void {
@@ -144,11 +146,15 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     )
   }
 
-  sendHistoryDelete(id: string, convId: string): void {
+  sendHistoryDelete(id: string, convId: string, requestId?: string): void {
     if (!window.Shiny?.setInputValue) return
     window.Shiny.setInputValue(
       `${id}_history_delete`,
-      { id: convId, ts: Date.now() },
+      {
+        id: convId,
+        ...(requestId === undefined ? {} : { requestId }),
+        ts: Date.now(),
+      },
       { priority: "event" },
     )
   }

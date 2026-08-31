@@ -94,6 +94,7 @@ function renderChatInput(
     uploadAccept: string[]
     maxUploadSize: number
     disabled: boolean
+    submissionBlocked: boolean
     placeholder: string
     onSend: () => void
     userMessages: string[]
@@ -142,6 +143,7 @@ function renderChatInput(
           }
           maxUploadSize={props.maxUploadSize ?? 30_000_000}
           disabled={props.disabled ?? false}
+          submissionBlocked={props.submissionBlocked}
           placeholder={props.placeholder ?? "Type here..."}
           onSend={props.onSend}
           userMessages={props.userMessages ?? []}
@@ -222,6 +224,36 @@ describe("ChatInput", () => {
     })
 
     expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  it("preserves the draft and blocks enter-equivalent, attachment-only, slash, and imperative submissions", () => {
+    const { editorEl, dispatch, transport, ref } = renderChatInput({
+      submissionBlocked: true,
+      slashCommands: [{ name: "greet", description: "Greet", echo: true }],
+    })
+
+    act(() => {
+      ref.current?.setInputValue("draft")
+      ref.current?.setInputValue("/greet", { submit: true })
+      ref.current?.setInputValue(undefined, {
+        submit: true,
+        attachments: [
+          {
+            mime: "text/plain",
+            data_url: "data:text/plain;base64,ZA==",
+            name: "draft.txt",
+            size: 1,
+          },
+        ],
+      })
+      ref.current?.setInputValue("server request", { submit: true })
+    })
+
+    expect(editorEl.textContent).toBe("draft")
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled()
+    expect(dispatch).not.toHaveBeenCalled()
+    expect(transport.sendInput).not.toHaveBeenCalled()
+    expect(transport.sendSlashCommand).not.toHaveBeenCalled()
   })
 
   it("does not send empty input", () => {

@@ -137,6 +137,7 @@ export type ChatAction =
       type: "update_siblings"
       data: Record<number, { index: number; total: number }>
     }
+  | { type: "history_transition_complete"; requestId: string }
 
 export type ShinyChatEnvelope = {
   id: string
@@ -186,9 +187,9 @@ export interface ChatTransport {
   ): void
   onMessage(id: string, callback: (action: ChatAction) => void): () => void
   sendHistorySelect(id: string, convId: string): void
-  sendHistoryNew(id: string): void
+  sendHistoryNew(id: string, requestId?: string): void
   sendHistoryRename(id: string, convId: string, title: string): void
-  sendHistoryDelete(id: string, convId: string): void
+  sendHistoryDelete(id: string, convId: string, requestId?: string): void
   sendMessageEdit(
     id: string,
     index: number,

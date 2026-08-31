@@ -163,6 +163,11 @@ class HistoryNavigateAction(TypedDict):
     reload: NotRequired[bool]
 
 
+class HistoryTransitionCompleteAction(TypedDict):
+    type: Literal["history_transition_complete"]
+    requestId: str
+
+
 class UpdateSiblingsAction(TypedDict):
     type: Literal["update_siblings"]
     data: dict[int, dict[str, int]]
@@ -190,6 +195,7 @@ ChatAction = Union[
     DrawerUpdateAction,
     HistoryUpdateAction,
     HistoryNavigateAction,
+    HistoryTransitionCompleteAction,
     UpdateSiblingsAction,
 ]
 

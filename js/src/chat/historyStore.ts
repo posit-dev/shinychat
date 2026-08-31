@@ -7,6 +7,7 @@ export interface HistorySnapshot {
   activeId: string | null
   busy: boolean
   connected: boolean
+  historyTransitionPending: string | null
 }
 
 export interface HistoryActions {
@@ -23,6 +24,7 @@ const initialSnapshot: HistorySnapshot = Object.freeze({
   activeId: null,
   busy: false,
   connected: false,
+  historyTransitionPending: null,
 })
 
 type Listener = () => void
@@ -31,6 +33,7 @@ export class HistoryStore {
   private snapshot: HistorySnapshot = initialSnapshot
   private listeners = new Set<Listener>()
   private transport: ChatTransport | null = null
+  private requestSequence = 0
 
   constructor(readonly elementId: string) {}
 
@@ -43,8 +46,14 @@ export class HistoryStore {
     },
     create: () => {
       const transport = this.activeTransport()
-      if (transport && !this.snapshot.busy) {
+      if (!transport || this.snapshot.busy || this.hasPendingTransition())
+        return
+      const requestId =
+        this.snapshot.activeId === null ? undefined : this.beginTransition()
+      if (requestId === undefined) {
         transport.sendHistoryNew(this.elementId)
+      } else {
+        transport.sendHistoryNew(this.elementId, requestId)
       }
     },
     rename: (conversationId, title) => {
@@ -56,8 +65,16 @@ export class HistoryStore {
     },
     delete: (conversationId) => {
       const transport = this.activeTransport()
-      if (transport && !this.snapshot.busy) {
+      if (!transport || this.snapshot.busy || this.hasPendingTransition())
+        return
+      const requestId =
+        conversationId === this.snapshot.activeId
+          ? this.beginTransition()
+          : undefined
+      if (requestId === undefined) {
         transport.sendHistoryDelete(this.elementId, conversationId)
+      } else {
+        transport.sendHistoryDelete(this.elementId, conversationId, requestId)
       }
     },
   }
@@ -103,11 +120,17 @@ export class HistoryStore {
       activeId,
       busy: this.snapshot.busy,
       connected: this.snapshot.connected,
+      historyTransitionPending: this.snapshot.historyTransitionPending,
     })
   }
 
   setBusy(busy: boolean): void {
     this.publish({ ...this.snapshot, busy })
+  }
+
+  completeHistoryTransition(requestId: string): void {
+    if (this.snapshot.historyTransitionPending !== requestId) return
+    this.publish({ ...this.snapshot, historyTransitionPending: null })
   }
 
   get listenerCount(): number {
@@ -116,6 +139,16 @@ export class HistoryStore {
 
   private activeTransport(): ChatTransport | null {
     return this.snapshot.connected ? this.transport : null
+  }
+
+  private hasPendingTransition(): boolean {
+    return this.snapshot.historyTransitionPending !== null
+  }
+
+  private beginTransition(): string {
+    const requestId = `history-${++this.requestSequence}`
+    this.publish({ ...this.snapshot, historyTransitionPending: requestId })
+    return requestId
   }
 
   private publish(next: HistorySnapshot): void {
@@ -255,7 +288,8 @@ function snapshotsEqual(a: HistorySnapshot, b: HistorySnapshot): boolean {
     a.conversations === b.conversations &&
     a.activeId === b.activeId &&
     a.busy === b.busy &&
-    a.connected === b.connected
+    a.connected === b.connected &&
+    a.historyTransitionPending === b.historyTransitionPending
   )
 }
 

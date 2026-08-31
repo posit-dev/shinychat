@@ -122,6 +122,7 @@ export interface ChatContainerProps {
   messages: ChatMessageData[]
   streamingMessage: ChatMessageData | null
   inputDisabled: boolean
+  submissionBlocked?: boolean
   inputPlaceholder: string
   iconAssistant?: string
   iconSend?: string
@@ -177,6 +178,7 @@ export const ChatContainer = forwardRef<
     messages,
     streamingMessage,
     inputDisabled,
+    submissionBlocked = false,
     inputPlaceholder,
     iconAssistant,
     iconSend,
@@ -1050,6 +1052,7 @@ export const ChatContainer = forwardRef<
                 uploadAccept={uploadAccept}
                 maxUploadSize={maxUploadSize}
                 disabled={inputDisabled}
+                submissionBlocked={submissionBlocked}
                 hasTopShadow={!isAtBottom}
                 placeholder={inputPlaceholder}
                 onSend={onSend}

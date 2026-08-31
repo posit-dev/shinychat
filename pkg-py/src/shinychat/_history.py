@@ -236,6 +236,13 @@ def extend_record_linear(
         node.ui = [*(node.ui or []), message]
 
 
+def _history_transition_request_id(value: Any) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    request_id = value.get("requestId")
+    return request_id if isinstance(request_id, str) else None
+
+
 class _ExchangeRecorder:
     """Private v2 capture owner for one history controller session."""
 
@@ -1571,12 +1578,23 @@ class ChatHistory:
         @reactive.effect
         @reactive.event(chat._session.input[ids.new])
         async def _on_new():
-            if controller.partition is None:
-                return
+            request_id = _history_transition_request_id(
+                chat._session.input[ids.new]()
+            )
             try:
+                if controller.partition is None:
+                    return
                 await controller.new_chat()
             except Exception as e:
                 await notify_error("Could not start a new chat", e)
+            finally:
+                if request_id is not None:
+                    await chat._send_action(
+                        {
+                            "type": "history_transition_complete",
+                            "requestId": request_id,
+                        }
+                    )
 
         @reactive.effect
         @reactive.event(chat._session.input[ids.rename])
@@ -1594,13 +1612,22 @@ class ChatHistory:
         @reactive.effect
         @reactive.event(chat._session.input[ids.delete])
         async def _on_delete():
-            if controller.partition is None:
-                return
             payload = chat._session.input[ids.delete]()
+            request_id = _history_transition_request_id(payload)
             try:
+                if controller.partition is None:
+                    return
                 await controller.delete(str(payload["id"]))
             except Exception as e:
                 await notify_error("Could not delete conversation", e)
+            finally:
+                if request_id is not None:
+                    await chat._send_action(
+                        {
+                            "type": "history_transition_complete",
+                            "requestId": request_id,
+                        }
+                    )
 
         @reactive.effect
         @reactive.event(chat._session.input[ids.message_edit])

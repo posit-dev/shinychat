@@ -25,6 +25,7 @@ export interface ChatInputProps {
   uploadAccept: string[]
   maxUploadSize: number | null
   disabled: boolean
+  submissionBlocked?: boolean
   hasTopShadow?: boolean
   placeholder: string
   onSend?: () => void
@@ -77,6 +78,7 @@ export const ChatInput = memo(
       uploadAccept,
       maxUploadSize,
       disabled,
+      submissionBlocked = false,
       hasTopShadow = false,
       placeholder,
       onSend,
@@ -116,6 +118,7 @@ export const ChatInput = memo(
 
     const submitValue = useCallback(
       (content: string): boolean => {
+        if (submissionBlocked) return false
         const payloads = getPayloads()
         if (content.trim().length === 0 && payloads.length === 0) return false
         if (disabled) return false
@@ -171,6 +174,7 @@ export const ChatInput = memo(
       },
       [
         disabled,
+        submissionBlocked,
         dispatch,
         transport,
         inputId,
@@ -186,8 +190,8 @@ export const ChatInput = memo(
     // Lets Enter submit an attachments-only message even though the editor
     // doc is empty (TiptapInput blocks empty submits otherwise).
     const canSubmitEmpty = useCallback(
-      () => getPayloads().length > 0,
-      [getPayloads],
+      () => !submissionBlocked && getPayloads().length > 0,
+      [getPayloads, submissionBlocked],
     )
 
     useImperativeHandle(
@@ -222,6 +226,11 @@ export const ChatInput = memo(
             return
           }
 
+          if (submissionBlocked) {
+            if (focus) tiptap.focus()
+            return
+          }
+
           // Submit: stage the provided value (if any), send, then restore the
           // user's draft — the submitted value never clobbers what was typed.
           const oldValue = tiptap.serializeEditor()
@@ -235,13 +244,15 @@ export const ChatInput = memo(
               ? [...getPayloads(), ...newPayloads]
               : newPayloads
 
+          let submitted = false
           if (submitAttachments.length === 0) {
             // No attachments in play — reuse the interactive path so slash
             // commands submitted programmatically still execute.
-            submitValue(submitContent)
+            submitted = submitValue(submitContent)
           } else if (!disabled && submitAttachments.length > 0) {
             submitUserInput(submitContent, submitAttachments)
             onSend?.()
+            submitted = true
           }
 
           if (newValue !== undefined) {
@@ -249,7 +260,7 @@ export const ChatInput = memo(
           } else if (focus) {
             tiptap.focus()
           }
-          if (attachments !== undefined) {
+          if (submitted && attachments !== undefined) {
             clearAttachments()
           }
         },
@@ -259,6 +270,7 @@ export const ChatInput = memo(
       }),
       [
         disabled,
+        submissionBlocked,
         onSend,
         submitValue,
         submitUserInput,
@@ -306,7 +318,7 @@ export const ChatInput = memo(
     // color rule and keep their state-driven color instead of turning gray.
     // pointer-events doesn't cover keyboard/screen-reader users, so those
     // states also get aria-disabled and are removed from the tab order.
-    const sendButtonDisabled = sendButtonState === "empty"
+    const sendButtonDisabled = sendButtonState === "empty" || submissionBlocked
     const sendButtonInert =
       sendButtonState === "pending" || sendButtonState === "cancelling"
 
