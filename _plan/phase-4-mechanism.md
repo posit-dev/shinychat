@@ -324,3 +324,43 @@ tests with 1 skipped (15 warnings, no failures). Current state: roborev 1067
 review is accepted and this bounded fix is committed and verified; the
 post-commit review for this fix remains to be collected. `shinychat#5r50`
 remains blocked and not begun.
+
+### Stable-ID publication escalation decision (2026-08-31)
+
+**Decision:** before any implementation resumes, replace the ambient stable-ID
+publication submechanism. Do not replace stable-ID integration, and do not
+replace `_ExchangeRecorder` as the sole v2 record owner. This is the mandatory
+three-findings escalation for `shinychat#ykxh`.
+
+**Evidence and trace:** Roborev jobs 1067 and 1071 together raised four Medium
+lifecycle findings: active-ID/URL publication before durable v2 persistence,
+ambiguous retry after callback failure or cancellation, destructive callbacks
+observing stale recorder state, and delete cleanup that can leave active
+record/turn state behind. The replacement must satisfy R2's cross-session
+resume contract, including a durable URL/bookmark pointer that identifies a
+persisted record, and R7's requirement to extend existing primitives rather
+than introduce a new lifecycle subsystem.
+
+**Deletion pass:** remove the unqualified `_active_id_announced` boolean and
+the ambient callback reread. Retain `HistoryController` as stable-ID owner and
+`_ExchangeRecorder` as v2 record owner.
+
+**Required invariants:**
+
+1. `HistoryController` has one controller ID owner, and every v2
+   `record.id` equals that ID.
+2. No URL/bookmark or active-ID pointer is published before durable v2
+   persistence.
+3. Publication remains retryable after store failure, callback failure, or
+   cancellation.
+4. Every destructive path resets state before awaiting its callback.
+5. Deletion leaves no active record or turn state, while the next conversation
+   can publish normally.
+
+**Required tests:** persistence-barrier; callback-failure/cancellation retry;
+concurrent-reset/stale-write; destructive callback observes reset; and
+active-delete cleanup/failure tests.
+
+**Exclusions:** no queue, timer, CAS, second owner, restore mechanism, or
+init-window guard. Implementation is stopped until this decision-note commit
+is reviewed.
