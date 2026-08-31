@@ -299,10 +299,14 @@ HistoryController <- R6::R6Class(
           node <- record$nodes[[node_id]]
           stored <- node$ui
 
-          # Old-format stored UI (string-only, no version marker) is discarded
-          # and re-derived from the node's stored turns via contents_shinychat
-          # (P4). This ensures structured blocks (tool cards, web blocks,
-          # html_block) are present on replay, not lost as they were in the
+          # Stored UI that fails the current-version check is discarded and
+          # re-derived from the node's stored turns via contents_shinychat
+          # (P4) -- never re-parsed. That covers old-format UI (string-only,
+          # no version marker) and stale versions such as v1, whose
+          # serialized content may embed <shiny-chat-raw-html> island
+          # wrappers the client no longer resolves (kata#af81). Re-derivation
+          # ensures structured blocks (tool cards, web blocks, html_block)
+          # are present on replay, not lost as they were in the
           # client-snapshot era. A NULL ui (no stored UI at all) is also
           # re-derived from turns.
           if (is.null(stored) || !is_stored_ui_versioned(stored)) {

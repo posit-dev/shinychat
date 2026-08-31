@@ -85,10 +85,22 @@ record_meta <- function(record, size_bytes) {
 MIN_SCHEMA_VERSION <- 1L
 MAX_SCHEMA_VERSION <- 1L
 
-# Version marker on stored UI messages. Old persisted UI (string-only, no
-# version) is detected by the absence of this field and discarded at replay
-# time, re-derived from the node's stored turns via contents_shinychat().
-STORED_UI_VERSION <- 1L
+# Version marker on stored UI messages. Stored UI is only ever replayed when
+# it carries exactly this version; anything older (or unversioned) is
+# discarded at replay time and re-derived from the node's stored turns via
+# contents_shinychat().
+#
+# Version history:
+#   1: First structured format. Serialized segment content could embed
+#      <shiny-chat-raw-html> island wrapper tags (trusted tag content was
+#      rendered through pre_process_ui(), which emitted the wrappers). The
+#      client no longer resolves those wrappers (kata#af81), so replaying v1
+#      UI would render trusted HTML inert/unbound. v1 records are therefore
+#      treated like unversioned ones: discarded, never re-parsed, and
+#      re-derived from turns (the kata epic qrfz compat decision).
+#   2: Current. Serialized content carries no island wrappers; trusted HTML
+#      travels as html_block envelopes or bare html-typed string segments.
+STORED_UI_VERSION <- 2L
 
 # Build a stored UI message from the output of merge_ellmer_turn_group()
 # (list(role, content)), mirroring Python's StoredMessage.from_chat_message.
@@ -299,22 +311,32 @@ derive_stored_ui_messages <- function(live_groups, tools, session = NULL) {
   messages
 }
 
-# Check whether a stored UI list has the version marker (structured format).
-# Old persisted UI (string-only, no version) returns FALSE and is discarded
-# at replay time, re-derived from the node's stored turns.
+# Check whether a stored UI list carries the current structured-format
+# version. Old persisted UI -- string-only with no version field, or an
+# older version such as v1 (whose serialized content may embed
+# <shiny-chat-raw-html> island wrappers the client no longer resolves,
+# kata#af81) -- returns FALSE and is discarded at replay time, re-derived
+# from the node's stored turns.
 is_stored_ui_versioned <- function(stored) {
   if (!is.list(stored) || length(stored) == 0) {
     return(FALSE)
   }
-  # Check the first message for a version field
-  !is.null(stored[[1]]$version)
+  # Check the first message for an exact current-version match. The
+  # comparison is numeric-tolerant because JSON round-trips (file/ledger
+  # stores) deserialize the marker as double, not integer.
+  version <- stored[[1]]$version
+  is.numeric(version) &&
+    length(version) == 1L &&
+    !is.na(version) &&
+    version == STORED_UI_VERSION
 }
 
 # Derive stored UI messages from a node's stored turns via contents_shinychat.
-# Used at replay time when stored UI is NULL or predates the structured
-# format (no version marker). Replaces turn_fallback_markdown() with full
-# contents_shinychat() re-derivation (P4). Falls back to text-only only when
-# turns are also missing or unusable.
+# Used at replay time when stored UI is NULL or fails the current-version
+# check (unversioned, or an older version such as v1 whose content may embed
+# island wrappers -- see STORED_UI_VERSION). Replaces
+# turn_fallback_markdown() with full contents_shinychat() re-derivation (P4).
+# Falls back to text-only only when turns are also missing or unusable.
 derive_node_ui_from_turns <- function(node, tools, session = NULL) {
   turns <- node$turns
   if (is.null(turns) || length(turns) == 0) {
