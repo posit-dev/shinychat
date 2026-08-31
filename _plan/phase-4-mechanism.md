@@ -266,7 +266,7 @@ transcript, turns, or rendered content to bookmark values.
    review evidence.
 
 Each child is a coherent review unit and remains open for human review. The
-note is approved; P4.0 is complete and the restore keystone is now unblocked.
+note is approved; P4.0 is complete and the restore keystone remains blocked pending human review and closure of `shinychat#ykxh`.
 
 ## Verification
 
