@@ -979,3 +979,26 @@ Next: retain `shinychat#ykxh` open with `needs-review`,
 human review. `shinychat#5r50` remains blocked and unstarted.
 Boundary: no R server completion implementation, queue, timer, CAS, second
 owner, init-window guard, or Phase 5 behavior was added.
+
+### Production Playwright coverage follow-up (2026-08-31)
+
+Added focused production-path coverage under
+`pkg-py/tests/playwright/chat/history_transition/`:
+
+- The browser starts an active New transition, remounts the real
+  `shiny-chat-container`, starts a new active transition after the remounted
+  store receives `completion-v1`, and proves the earlier transition's stale
+  completion does not release the new marker. The attempted submission remains
+  client-side until the new transition completes, then explicit resubmission
+  succeeds.
+- Separate real-app cases send `history_update` with absent, unknown, and
+  withdrawn `transition_protocol` values. Each path keeps the legacy New
+  submission usable and confirms no transition marker blocks it.
+
+Verification: focused
+`uv run pytest pkg-py/tests/playwright/chat/history_transition -q` passed
+6 tests; targeted Ruff lint and format checks passed. No production code or
+generated assets changed. `shinychat#ykxh` remains open with
+`needs-review`, `work.attention="ok"`, and
+`work.branch="feat/history-exchange-tree"`; `shinychat#5r50` remains blocked
+and unstarted.
