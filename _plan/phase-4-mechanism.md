@@ -754,3 +754,42 @@ must be reworked only after authorization. Its tracked non-note diff hash is
 
 Implementation is stopped pending Garrick authorization. Job `1079` remains
 open and unclosed; `shinychat#5r50` remains blocked and unstarted.
+
+### Superseding authorization decision (2026-08-31)
+
+The earlier server strict-admission, `input_rejected`, immutable-envelope,
+and optimistic-rollback instructions are explicitly superseded and struck as
+implementation requirements. They cannot implement Option A against the real
+Shiny browser serialization boundary. Retain the recorder persistence and
+destructive-ordering fixes.
+
+The exact authorization question for Garrick is:
+
+> Does Garrick authorize replacing server strict admission, input_rejected,
+> and optimistic rollback with a per-chat client-only
+> historyTransitionPending=requestId marker, request-ID-bearing active
+> New/Delete events, and Python history_transition_complete emitted from
+> handler finally, with no queue, timer, CAS, second owner, or server ambient
+> flag, while retaining recorder persistence and destructive-ordering fixes?
+
+The proposed design is scoped to New only with an active conversation and
+Delete only when its target is active. Inactive delete, switch, restore, and
+clear are excluded; `sendMessageEdit` is explicitly excluded. `_on_new` and
+`_on_delete` own completion in `finally`, emitting the matching completion for
+success, handled error, or cancellation while preserving the original
+outcome. Python and TypeScript action types must carry the request ID; matching
+completion clears the client marker, while stale completion is a no-op.
+
+Required coverage includes JS/Python action and marker behavior, Playwright
+blocking/draft preservation and success/handled-error/cancellation release,
+and `make update-dist`. That command mechanically updates the packaged R
+JavaScript copies; R server/handler parity remains Phase 6. The obsolete
+`history_pending_admission` Playwright fixture is replaced by this
+client-transition coverage.
+
+No queue, timer, CAS, second owner, or server ambient flag is authorized by
+this note. Implementation is stopped pending Garrick authorization. The
+current tracked non-note diff remains preserved with hash
+`46df02b9d29c657405121fda66e12e7b51a28b696e593da8c0d99d6921a3b10a`; job
+`1079` remains open and unclosed, and `shinychat#5r50` remains blocked and
+unstarted.
