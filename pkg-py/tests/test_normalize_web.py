@@ -269,7 +269,7 @@ def test_two_bursts_second_has_citations_no_results_carries_cited_sources():
     # First burst has provider results → no cited_sources fallback.
     assert "cited_sources" not in search_blocks[0]
     # Second burst has no results → citations ride its web_search block.
-    assert search_blocks[1]["cited_sources"] == [
+    assert search_blocks[1].get("cited_sources") == [
         {"url": "https://a.com", "title": "Alpha"},
         {"url": "https://b.com", "title": "Beta"},
     ]
@@ -358,6 +358,6 @@ def test_overlapping_pending_searches_results_pair_fifo():
     # Burst A got the provider results → no cited_sources fallback.
     assert "cited_sources" not in search_blocks[0]
     # Burst B is still pending → its citations ride its web_search block.
-    assert search_blocks[1]["cited_sources"] == [
+    assert search_blocks[1].get("cited_sources") == [
         {"url": "https://b.com", "title": "Beta"},
     ]

@@ -260,6 +260,6 @@ def test_turn_round_trip_preserves_tool_result_value_with_display():
     result_blocks = [b for b in msg.blocks if b["type"] == "tool_result"]
     assert len(result_blocks) == 1
     block = result_blocks[0]
-    assert block["value"] == "the tool output"
-    assert block["title"] == "Looked up data"
-    assert block["expanded"] is True
+    assert block.get("value") == "the tool output"
+    assert block.get("title") == "Looked up data"
+    assert block.get("expanded") is True

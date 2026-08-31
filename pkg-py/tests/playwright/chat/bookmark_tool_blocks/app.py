@@ -42,7 +42,7 @@ class MockClient:
     """A mock client implementing ClientWithState + ClientWithTurns."""
 
     def __init__(self) -> None:
-        self.turns: list[dict[str, Any]] = []
+        self.turns: list[Any] = []
 
     async def get_state(self) -> Jsonifiable:
         state: Jsonifiable = {"version": 1, "turns": self.turns}

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from functools import singledispatch
-from typing import TYPE_CHECKING, Any, TypeGuard
+from typing import TYPE_CHECKING, Any, TypeAlias, TypeGuard
 
 from htmltools import HTML, HTMLDependency, Tag, Tagifiable, TagList
 
@@ -496,6 +496,9 @@ except ImportError:
     pass
 
 
+BurstCited: TypeAlias = tuple[list[WebSearchSource], dict[str, WebSearchSource]]
+
+
 def _attach_cited_sources(
     contents: list[Any], blocks: list[StructuredBlock]
 ) -> None:
@@ -530,7 +533,6 @@ def _attach_cited_sources(
     # closes its burst as provider-satisfied (no fallback needed). Citations
     # attach to the currently open burst; citations before any request have no
     # burst and are dropped from the structured fallback.
-    BurstCited = tuple[list[WebSearchSource], dict[str, WebSearchSource]]
     bursts: list[tuple[bool, BurstCited]] = []
     # (has_results, (cited_list, by_url)) — one entry per search request, in order.
     for x in contents:
