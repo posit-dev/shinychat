@@ -540,3 +540,23 @@ CAS, second record owner, new lock, restore/bookmark mechanism, or init-window
 guard. `shinychat#ykxh` is parked for Garrick escalation, remains open with
 `needs-review` and `work.attention="blocked"`, and
 `shinychat#5r50` remains blocked and unstarted.
+
+### Garrick decision: Option A (2026-08-31)
+
+Garrick chose **Option A**. During a pending active `new_chat()` or active
+deletion, user submission is blocked until the transition completes or errors.
+This resolves the admission policy conflict in favor of the destructive
+transcript-admission boundary.
+
+The initial implementation requires no saving spinner or other visual
+affordance. Saves are expected to be fast; observed slowness must be
+investigated rather than masked. A history-UI spinner is a possible later
+affordance, but is outside Phase 4 unless separately required.
+
+Implementation remains stopped pending orchestrator resolution of Garrick's
+async-save question. Before resuming, the selected policy requires regressions
+for blocked input during `new_chat()` and active deletion, successful and
+failed/cancelled transitions, and the existing persistence/publication barrier
+cases. The previously required batched range review remains after
+implementation. Job `1079` remains open and unclosed, and
+`shinychat#5r50` remains blocked.
