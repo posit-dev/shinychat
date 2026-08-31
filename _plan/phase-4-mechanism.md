@@ -1,6 +1,6 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
-**Status:** P4.0 complete; human review pending 2026-08-31
+**Status:** P4.0 complete; P4.1 baseline-blocked (2026-08-31)
 **Phase:** plan.md §4, Phase 4
 **Kata:** parent `shinychat#azvt` under epic `shinychat#6d0d`
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
@@ -29,10 +29,10 @@ historical conflict recipe and settled record creation, activation, new-chat,
 deletion, URL restore, bookmark restore, lifecycle, and OTel paths before the
 restore keystone.
 
-The task's 2026-08-28 conflict recipe is evidence, not an executable recipe:
-both heads have advanced and Phase 3 is complete. Re-run the merge/dry-run
-analysis against current `main` and `feat/history-exchange-tree`, then update
-`shinychat#ykxh` before resolving conflicts. Preserve its semantic decisions:
+The task's 2026-08-28 conflict recipe is historical evidence, not an
+executable recipe: both heads advanced and Phase 3 is complete. The current
+integration gate `shinychat#ykxh` is closed; do not reopen or re-run that gate
+for the restore keystone. Preserve its semantic decisions:
 
 - allocate the stable conversation id before the first v2 root/input capture;
 - use that id for `ConversationRecordV2.id`, with no second allocator;
@@ -241,13 +241,12 @@ transcript, turns, or rendered content to bookmark values.
 
 ## Stacked work
 
-0. **Conversation-ID integration gate (`shinychat#ykxh`).** Merge current
-   `main`, re-derive the stale conflict recipe, settle v2 identity ownership,
-   and pass the full Python gate.
-1. **Keystone restore + continuation (`shinychat#5r50`, blocked by
-   `shinychat#ykxh`).** Add v2 read/activation, display replay, restore hooks,
-   turns materialization, baseline reset, and a continued-turn integration
-   test.
+0. **Conversation-ID integration gate (`shinychat#ykxh`, complete).** Stable
+   identity ownership, lifecycle ordering, capability-gated transitions, and
+   the full Python gate are reviewed and closed.
+1. **Current keystone restore + continuation (`shinychat#5r50`, claimed).**
+   Add v2 read/activation, display replay, restore hooks, turns materialization,
+   baseline reset, and a continued-turn integration test.
 2. **Q3 + branching (`shinychat#6drf`, blocked by `shinychat#5r50`).**
    Run/port the predecessor suite; add v2 graph projection, sibling navigation,
    rewind hooks, and the one resubmit primitive. Upgrade the wire only after
@@ -265,8 +264,9 @@ transcript, turns, or rendered content to bookmark values.
    and bookmark-node restore; run the deletion pass and collect coherent
    review evidence.
 
-Each child is a coherent review unit and remains open for human review. The
-note is approved; P4.0 is complete and the restore keystone remains blocked pending human review and closure of `shinychat#ykxh`.
+Each remaining child is a coherent review unit. The note is approved and P4.0
+is closed; `shinychat#5r50` is the current claimed keystone, while later
+children remain sequenced behind it.
 
 ## Verification
 
@@ -1106,3 +1106,24 @@ remain. The real browser provenance limitation is dispositioned to backlog
 `shinychat#ykxh` is closed. `shinychat#5r50` is now the ready, unblocked next
 Phase 4 keystone; no `shinychat#5r50` implementation has started. The Phase 4
 parent `shinychat#azvt` remains open with `work.attention="ok"`.
+
+### P4.1 entry baseline disposition (2026-08-31)
+
+`shinychat#5r50` is claimed on `feat/history-exchange-tree`, but
+implementation is parked before code changes because the required type
+baseline is red. Evidence:
+
+- `make py-check-tests FILTER='history or transcript'`: 40 Playwright and
+  403 non-browser tests passed, with 8 known warnings.
+- `make py-check-format`: passed.
+- `uv run pytest pkg-py/tests/playwright/ -k 'history_edit'`: 9 passed,
+  188 deselected.
+- `make py-check-types`: failed with one Pyright error at
+  `pkg-py/tests/playwright/chat/history_transition/app.py:140`; the
+  fixture's `dict[str, Any]` argument is not assignable to `ChatAction`.
+
+No production or test code was edited to resolve this baseline failure.
+`shinychat#5r50` remains open with `work.attention="blocked"` pending
+disposition of the existing fixture type error. `shinychat#ykxh` remains
+closed; `shinychat#azvt` remains open with `work.attention="ok"`. No
+`shinychat#5r50` implementation has started.
