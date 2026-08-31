@@ -237,18 +237,22 @@ transcript, turns, or rendered content to bookmark values.
    `shinychat#ykxh`).** Add v2 read/activation, display replay, restore hooks,
    turns materialization, baseline reset, and a continued-turn integration
    test.
-2. **Q3 + branching.** Run/port the predecessor suite; add v2 graph projection,
-   sibling navigation, rewind hooks, and the one resubmit primitive. Upgrade
-   the wire only after recorded red evidence.
-3. **Retry affordance + regenerate path.** Project exchange status, add retry
-   transport/UI, route retry and the tested regenerate path through the sibling
-   primitive, rebuild all packaged assets, and cover pending/error/cancelled
-   reloads without exposing detailed stored errors.
-4. **Bookmark pointer.** Store and restore the atomic conversation/node
-   pointer, preserve bookmark lifecycle cleanup, and cover stale records/nodes.
-5. **Phase 4 acceptance.** Exercise edit, navigation, retry, regenerate,
-   cross-session continuation, and bookmark-node restore; run the deletion
-   pass and collect coherent review evidence.
+2. **Q3 + branching (`shinychat#6drf`, blocked by `shinychat#5r50`).**
+   Run/port the predecessor suite; add v2 graph projection, sibling navigation,
+   rewind hooks, and the one resubmit primitive. Upgrade the wire only after
+   recorded red evidence.
+3. **Retry affordance + regenerate path (`shinychat#72ee`, blocked by
+   `shinychat#6drf`).** Project exchange status, add retry transport/UI, route
+   retry and the tested regenerate path through the sibling primitive, rebuild
+   all packaged assets, and cover pending/error/cancelled reloads without
+   exposing detailed stored errors.
+4. **Bookmark pointer (`shinychat#g6tt`, blocked by `shinychat#72ee`).**
+   Store and restore the atomic conversation/node pointer, preserve bookmark
+   lifecycle cleanup, and cover stale records/nodes.
+5. **Phase 4 acceptance (`shinychat#pvjx`, blocked by `shinychat#g6tt`).**
+   Exercise edit, navigation, retry, regenerate, cross-session continuation,
+   and bookmark-node restore; run the deletion pass and collect coherent
+   review evidence.
 
 Each child is a coherent review unit and remains open for human review. The
 note is approved; Phase 4 feature work starts only after the integration gate
