@@ -1,7 +1,7 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
-**Status:** P4.0 complete; P4.1 keystone parked pending fixture-child
-review (2026-08-31)
+**Status:** P4.0 complete; P4.1 keystone active after baseline repair
+(2026-08-31)
 **Phase:** plan.md §4, Phase 4
 **Kata:** parent `shinychat#azvt` under epic `shinychat#6d0d`
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
@@ -1150,3 +1150,17 @@ non-browser tests, 1 skipped, and known nonfatal warnings.
 `work.attention="blocked"` and no implementation started. `shinychat#ykxh`
 remains closed and `shinychat#azvt` remains open with
 `work.attention="ok"`.
+
+### Phase-level child-closure authorization (2026-08-31)
+
+Garrick authorized closing reviewed child tasks as they pass their required
+reviews, reserving human review and final closure for `shinychat#azvt`.
+`shinychat#m0fn` is closed with its scoped fix, full Python gate evidence, and
+Roborev `1124` `PASS`/no findings. Its blocking relationship to
+`shinychat#5r50` is therefore cleared.
+
+`shinychat#5r50` is active again on `feat/history-exchange-tree` with
+`work.attention="ok"` and the green pre-keystone baselines recorded above.
+Keystone implementation has not started. Human review is not a gate for this
+child; it remains reserved for the end of `shinychat#azvt`. The phase parent
+`shinychat#azvt` remains open with `work.attention="ok"`.
