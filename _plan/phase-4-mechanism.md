@@ -647,7 +647,11 @@ Implementation remains stopped pending review of this note. Job `1079`
 remains open and unclosed, and `shinychat#5r50` remains blocked and
 unstarted.
 
-### Orchestrator compatibility decision (2026-08-31)
+### ~~Orchestrator compatibility decision (2026-08-31)~~ [SUPERSEDED]
+
+> **SUPERSEDED:** This section's strict-admission and `input_rejected`
+> requirements are stale. Do not implement them; the client-marker
+> authorization question and protocol below are authoritative.
 
 During the strict active `new_chat()`/`delete()` window, only a valid
 sequenced composite input is eligible for a correlated rejection:
