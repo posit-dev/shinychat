@@ -1126,3 +1126,263 @@ test_that("chat_server() exposes a failed response until the next succeeds", {
     expect_null(shiny::isolate(mod$last_error()))
   })
 })
+
+# ---------------------------------------------------------------------------
+# chat_ui() with block-carrying initial messages (kata#089g)
+#
+# When any initial message carries a shinychat_block, the whole list is
+# serialized to JSON in a `data-initial-messages` attribute on the container
+# (no static <shiny-chat-message> tags). Html deps are lifted onto the
+# container. Mirrors Python's chat_ui() initial_message_payload().
+# ---------------------------------------------------------------------------
+
+# Helper: a minimal tool_result block (as produced by contents_shinychat)
+tool_result_block <- function(
+  request_id = "r1",
+  tool_name = "get_weather",
+  status = "success",
+  value = "72F and sunny"
+) {
+  new_tool_card(
+    "tool_result",
+    request_id = request_id,
+    tool_name = tool_name,
+    status = status,
+    value = value
+  )
+}
+
+test_that("chat_ui() emits data-initial-messages when a message carries a block", {
+  block <- tool_result_block()
+  ui <- chat_ui(
+    "chat",
+    messages = list(
+      list(role = "assistant", content = block)
+    )
+  )
+
+  # The attribute is present on the container
+  expect_false(is.null(ui$attribs[["data-initial-messages"]]))
+
+  # No static <shiny-chat-message> tags (only the wrapper <shiny-chat-messages>)
+  html <- as.character(ui)
+  expect_false(grepl("<shiny-chat-message ", html, fixed = TRUE))
+  expect_true(grepl("<shiny-chat-messages", html, fixed = TRUE))
+})
+
+test_that("chat_ui() data-initial-messages JSON has expected structure", {
+  block <- tool_result_block()
+  ui <- chat_ui(
+    "chat",
+    messages = list(
+      list(role = "assistant", content = block)
+    )
+  )
+
+  parsed <- jsonlite::fromJSON(
+    as.character(ui$attribs[["data-initial-messages"]]),
+    simplifyDataFrame = FALSE,
+    simplifyVector = FALSE
+  )
+
+  expect_type(parsed, "list")
+  expect_length(parsed, 1)
+
+  entry <- parsed[[1]]
+  expect_equal(entry$role, "assistant")
+  expect_type(entry$segments, "list")
+  expect_length(entry$segments, 1)
+
+  seg <- entry$segments[[1]]
+  expect_equal(seg$type, "tool_result")
+  expect_equal(seg$version, 1)
+  expect_equal(seg$request_id, "r1")
+  expect_equal(seg$tool_name, "get_weather")
+  expect_equal(seg$status, "success")
+
+  # html_deps must NOT appear in the JSON
+  json_str <- as.character(ui$attribs[["data-initial-messages"]])
+  expect_false(grepl("html_deps", json_str, fixed = TRUE))
+})
+
+test_that("chat_ui() preserves mixed content order in data-initial-messages", {
+  block <- tool_result_block(request_id = "r2", tool_name = "calc")
+  ui <- chat_ui(
+    "chat",
+    messages = list(
+      list(role = "assistant", content = list("The answer is:", block))
+    )
+  )
+
+  parsed <- jsonlite::fromJSON(
+    as.character(ui$attribs[["data-initial-messages"]]),
+    simplifyDataFrame = FALSE,
+    simplifyVector = FALSE
+  )
+
+  expect_length(parsed, 1)
+  segments <- parsed[[1]]$segments
+  expect_length(segments, 2)
+
+  # Segment 1: string
+  expect_false("type" %in% names(segments[[1]]))
+  expect_equal(segments[[1]]$content, "The answer is:")
+  expect_equal(segments[[1]]$content_type, "markdown")
+
+  # Segment 2: block
+  expect_equal(segments[[2]]$type, "tool_result")
+  expect_equal(segments[[2]]$request_id, "r2")
+})
+
+test_that("chat_ui() opts the whole list into JSON when any message has a block", {
+  block <- tool_result_block()
+  ui <- chat_ui(
+    "chat",
+    messages = list(
+      list(role = "user", content = "Hi there"),
+      list(role = "assistant", content = block)
+    )
+  )
+
+  parsed <- jsonlite::fromJSON(
+    as.character(ui$attribs[["data-initial-messages"]]),
+    simplifyDataFrame = FALSE,
+    simplifyVector = FALSE
+  )
+
+  expect_length(parsed, 2)
+  expect_equal(parsed[[1]]$role, "user")
+  expect_equal(parsed[[2]]$role, "assistant")
+
+  # User message: string segment, no icon (assistant default must not leak)
+  expect_false("type" %in% names(parsed[[1]]$segments[[1]]))
+  expect_equal(parsed[[1]]$segments[[1]]$content, "Hi there")
+  expect_false("icon" %in% names(parsed[[1]]))
+
+  # Assistant message: block segment, icon present
+  expect_equal(parsed[[2]]$segments[[1]]$type, "tool_result")
+  expect_true("icon" %in% names(parsed[[2]]))
+})
+
+test_that("chat_ui() lifts block-level html deps onto the container", {
+  block <- tool_result_block()
+  dep <- htmltools::htmlDependency("testdep-block", "2.3.4", "")
+  attr(block, "shinychat_html_deps") <- list(dep)
+
+  ui <- chat_ui(
+    "chat",
+    messages = list(
+      list(role = "assistant", content = block)
+    )
+  )
+
+  rendered <- htmltools::renderTags(ui)
+  dep_names <- vapply(rendered$dependencies, function(d) d$name, character(1))
+  expect_true("testdep-block" %in% dep_names)
+
+  # html_deps must not be in the JSON
+  json_str <- as.character(ui$attribs[["data-initial-messages"]])
+  expect_false(grepl("html_deps", json_str, fixed = TRUE))
+})
+
+test_that("chat_ui() string-only messages use static tags, no data-initial-messages", {
+  ui <- chat_ui("chat", messages = list("Foo", "Bar"))
+
+  expect_null(ui$attribs[["data-initial-messages"]])
+
+  html <- as.character(ui)
+  expect_true(grepl("<shiny-chat-message ", html, fixed = TRUE))
+  expect_true(grepl("Foo", html, fixed = TRUE))
+  expect_true(grepl("Bar", html, fixed = TRUE))
+})
+
+test_that("chat_ui() string-only messages with role use static tags", {
+  ui <- chat_ui(
+    "chat",
+    messages = list(
+      list(content = "Assistant", role = "assistant"),
+      list(content = "User", role = "user")
+    )
+  )
+
+  expect_null(ui$attribs[["data-initial-messages"]])
+
+  html <- as.character(ui)
+  expect_true(grepl("<shiny-chat-message ", html, fixed = TRUE))
+  expect_true(grepl('data-role="assistant"', html, fixed = TRUE))
+  expect_true(grepl('data-role="user"', html, fixed = TRUE))
+})
+
+test_that("chat_ui() NULL messages produces no data-initial-messages", {
+  ui <- chat_ui("chat")
+  expect_null(ui$attribs[["data-initial-messages"]])
+  expect_true(grepl("<shiny-chat-messages", as.character(ui), fixed = TRUE))
+})
+
+test_that("chat_ui() single block (not in a list) carries data-initial-messages", {
+  block <- tool_result_block()
+  # Content can be a bare block (not wrapped in list(role=, content=))
+  ui <- chat_ui("chat", messages = list(block))
+
+  expect_false(is.null(ui$attribs[["data-initial-messages"]]))
+
+  parsed <- jsonlite::fromJSON(
+    as.character(ui$attribs[["data-initial-messages"]]),
+    simplifyDataFrame = FALSE,
+    simplifyVector = FALSE
+  )
+  expect_length(parsed, 1)
+  expect_equal(parsed[[1]]$role, "assistant")
+  expect_equal(parsed[[1]]$segments[[1]]$type, "tool_result")
+})
+
+test_that("chat_ui() web_search block carries data-initial-messages", {
+  block <- new_web_block("web_search", query = "test query")
+  ui <- chat_ui(
+    "chat",
+    messages = list(
+      list(role = "assistant", content = block)
+    )
+  )
+
+  expect_false(is.null(ui$attribs[["data-initial-messages"]]))
+
+  parsed <- jsonlite::fromJSON(
+    as.character(ui$attribs[["data-initial-messages"]]),
+    simplifyDataFrame = FALSE,
+    simplifyVector = FALSE
+  )
+  expect_equal(parsed[[1]]$segments[[1]]$type, "web_search")
+  expect_equal(parsed[[1]]$segments[[1]]$version, 1)
+  expect_equal(parsed[[1]]$segments[[1]]$query, "test query")
+})
+
+test_that("chat_ui() html_block from non-string HTML content", {
+  # Non-string HTML (tag/tag.list) goes through the island-splitting path,
+  # producing html_block structured blocks. Since blocks are present, the
+  # whole list goes to JSON.
+  react_tag <- tags$div("react", `data-shinychat-react` = NA)
+  ui <- chat_ui(
+    "chat",
+    messages = list(
+      tagList(tags$div("before"), react_tag, tags$div("after"))
+    )
+  )
+
+  expect_false(is.null(ui$attribs[["data-initial-messages"]]))
+
+  parsed <- jsonlite::fromJSON(
+    as.character(ui$attribs[["data-initial-messages"]]),
+    simplifyDataFrame = FALSE,
+    simplifyVector = FALSE
+  )
+  # The island-split path produces an html_block segment
+  seg_types <- vapply(
+    parsed[[1]]$segments,
+    function(s) {
+      if ("type" %in% names(s)) s$type else "string"
+    },
+    character(1)
+  )
+  expect_true("html_block" %in% seg_types)
+})
