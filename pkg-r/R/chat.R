@@ -508,11 +508,7 @@ chat_ui <- function(
   if (!is.null(messages) && length(messages) > 0) {
     for (msg in messages) {
       content <- msg
-      if (
-        is.list(msg) &&
-          !inherits(msg, "shinychat_block") &&
-          ("content" %in% names(msg))
-      ) {
+      if (is.list(msg) && ("content" %in% names(msg))) {
         content <- msg[["content"]]
       }
       if (message_has_blocks(content)) {
@@ -543,11 +539,7 @@ chat_ui <- function(
     lapply(messages, function(x) {
       role <- "assistant"
       content <- x
-      if (
-        is.list(x) &&
-          !inherits(x, "shinychat_block") &&
-          ("content" %in% names(x))
-      ) {
+      if (is.list(x) && ("content" %in% names(x))) {
         content <- x[["content"]]
         role <- x[["role"]] %||% role
       }
@@ -1126,59 +1118,52 @@ process_block_deps_static <- function(block) {
 # renderTags too. Returns list(segments, deps) where deps are raw
 # html_dependency objects (not session-processed dicts).
 build_html_island_segments_static <- function(content) {
-  # Wrap island splitting and tag rendering in with_current_theme() so
-  # theme-aware bslib content renders/compiles deps against the correct
-  # theme — matching the session-aware send path (process_ui wraps
-  # processDeps in with_current_theme()) and the static tag path in
-  # chat_ui() (roborev 1066, finding 3).
-  with_current_theme({
-    islands <- split_html_islands(content)
-    if (length(islands) == 0) {
-      return(list(segments = list(), deps = list()))
-    }
+  islands <- split_html_islands(content)
+  if (length(islands) == 0) {
+    return(list(segments = list(), deps = list()))
+  }
 
-    segments <- list()
-    all_deps <- list()
+  segments <- list()
+  all_deps <- list()
 
-    for (item in islands) {
+  for (item in islands) {
+    if (
+      inherits(item, "shiny.tag") &&
+        identical(item$name, "shiny-chat-raw-html")
+    ) {
+      children <- as.list(item$children)
+      rendered <- htmltools::renderTags(htmltools::tagList(!!!children))
+      island_html <- as.character(rendered$html)
+      island_deps <- rendered$dependencies
+
+      block <- new_html_block(island_html)
+      if (length(island_deps) > 0) {
+        attr(block, "shinychat_html_deps") <- island_deps
+      }
+      result <- process_block_deps_static(block)
+      all_deps <- c(all_deps, result$deps)
+      segments[[length(segments) + 1]] <- result$block
+    } else {
+      rendered <- htmltools::renderTags(item)
+      all_deps <- c(all_deps, rendered$dependencies)
+      run <- paste0("\n\n", as.character(rendered$html), "\n\n")
       if (
-        inherits(item, "shiny.tag") &&
-          identical(item$name, "shiny-chat-raw-html")
+        length(segments) > 0 &&
+          is.character(segments[[length(segments)]]$content) &&
+          !"type" %in% names(segments[[length(segments)]])
       ) {
-        children <- as.list(item$children)
-        rendered <- htmltools::renderTags(htmltools::tagList(!!!children))
-        island_html <- as.character(rendered$html)
-        island_deps <- rendered$dependencies
-
-        block <- new_html_block(island_html)
-        if (length(island_deps) > 0) {
-          attr(block, "shinychat_html_deps") <- island_deps
-        }
-        result <- process_block_deps_static(block)
-        all_deps <- c(all_deps, result$deps)
-        segments[[length(segments) + 1]] <- result$block
+        segments[[length(segments)]]$content <-
+          paste0(segments[[length(segments)]]$content, run)
       } else {
-        rendered <- htmltools::renderTags(item)
-        all_deps <- c(all_deps, rendered$dependencies)
-        run <- paste0("\n\n", as.character(rendered$html), "\n\n")
-        if (
-          length(segments) > 0 &&
-            is.character(segments[[length(segments)]]$content) &&
-            !"type" %in% names(segments[[length(segments)]])
-        ) {
-          segments[[length(segments)]]$content <-
-            paste0(segments[[length(segments)]]$content, run)
-        } else {
-          segments[[length(segments) + 1]] <- list(
-            content = run,
-            content_type = "html"
-          )
-        }
+        segments[[length(segments) + 1]] <- list(
+          content = run,
+          content_type = "html"
+        )
       }
     }
+  }
 
-    list(segments = segments, deps = all_deps)
-  })
+  list(segments = segments, deps = all_deps)
 }
 
 # Session-free variant of build_wire_segments for the static chat_ui() path.
@@ -1212,17 +1197,12 @@ build_wire_segments_static <- function(content) {
       } else if (
         inherits(item, c("html", "shiny.tag", "shiny.tag.list", "htmlwidget"))
       ) {
-        # Route tag/HTML items through the HTML-island builder so ordinary
-        # tags become html_block islands (not bare HTML string segments).
-        # This matches what the session-aware send path does for non-string
-        # HTML content via build_html_island_segments(), and what Python's
-        # normalize path does with split_html_islands for non-string content.
-        # Without this, a plain tag would be emitted as a bare HTML string,
-        # React would own the DOM, and no scoped bindAll() would occur —
-        # leaving inputs/outputs unbound (roborev 1066, finding 2).
-        island_result <- build_html_island_segments_static(item)
-        all_deps <- c(all_deps, island_result$deps)
-        segments <- c(segments, island_result$segments)
+        rendered <- htmltools::renderTags(item)
+        all_deps <- c(all_deps, rendered$dependencies)
+        segments[[length(segments) + 1]] <- list(
+          content = paste0("\n\n", as.character(rendered$html), "\n\n"),
+          content_type = "html"
+        )
       } else {
         segments[[length(segments) + 1]] <- list(
           content = as.character(item),
@@ -1280,11 +1260,7 @@ message_has_blocks <- function(content) {
 initial_message_payload <- function(msg, icon_attr) {
   role <- "assistant"
   content <- msg
-  if (
-    is.list(msg) &&
-      !inherits(msg, "shinychat_block") &&
-      ("content" %in% names(msg))
-  ) {
+  if (is.list(msg) && ("content" %in% names(msg))) {
     content <- msg[["content"]]
     role <- msg[["role"]] %||% role
   }
@@ -1313,11 +1289,8 @@ initial_message_payload <- function(msg, icon_attr) {
     ))
     all_deps <- list()
   } else {
-    # String-typed HTML (htmltools::HTML()) or other character content.
-    # Wrap in with_current_theme() so theme-aware bslib content renders/compiles
-    # deps against the correct theme — matching the session-aware send path
-    # (roborev 1066, finding 3).
-    rendered <- with_current_theme(htmltools::renderTags(content))
+    # String-typed HTML (htmltools::HTML()) or other character content
+    rendered <- htmltools::renderTags(content)
     wire_segments <- list(list(
       content = paste0("\n\n", as.character(rendered$html), "\n\n"),
       content_type = "html"

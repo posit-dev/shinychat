@@ -1512,3 +1512,52 @@ test_that("chat_ui() direct html_block with deps serializes as a block, deps lif
   dep_names <- vapply(rendered$dependencies, function(d) d$name, character(1))
   expect_true("testdep-htmlblock" %in% dep_names)
 })
+
+test_that("chat_ui() block-bearing initial messages compile bslib deps against the current theme", {
+  # build_html_island_segments_static() and initial_message_payload() are
+  # wrapped in with_current_theme() so theme-aware bslib content (e.g.
+  # bslib::card()) in block-bearing initial messages compiles its Sass/CSS
+  # deps against the current bslib theme — matching the session-aware send
+  # path (roborev 1068, kata shinychat#089g). Verified by rendering a
+  # bslib::card() in a block-bearing initial message under two themes and
+  # asserting the compiled bslib-component-css differs.
+  skip_if_not_installed("bslib")
+  skip_if_not_installed("withr")
+
+  render_card_css <- function() {
+    ui <- chat_ui(
+      "chat",
+      messages = list(
+        list(
+          role = "assistant",
+          content = list(
+            "Here is a card:",
+            tool_result_block(),
+            bslib::card("Theme-aware card")
+          )
+        )
+      )
+    )
+    rendered <- htmltools::renderTags(ui)
+    # Sanity: the block path was taken
+    expect_false(is.null(ui$attribs[["data-initial-messages"]]))
+    comp <- Filter(
+      function(d) d$name == "bslib-component-css",
+      rendered$dependencies
+    )
+    expect_true(length(comp) > 0)
+    readLines(
+      file.path(comp[[1]]$src$file, comp[[1]]$stylesheet),
+      warn = FALSE
+    )
+  }
+
+  old_theme <- bslib::bs_global_set(bslib::bs_theme(preset = "flatly"))
+  css_flatly <- render_card_css()
+  bslib::bs_global_set(bslib::bs_theme())
+  css_default <- render_card_css()
+  bslib::bs_global_set(old_theme)
+
+  # Theme-aware compilation must produce different CSS per theme.
+  expect_false(identical(css_flatly, css_default))
+})
