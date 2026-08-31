@@ -812,3 +812,27 @@ current tracked non-note diff remains preserved with hash
 `46df02b9d29c657405121fda66e12e7b51a28b696e593da8c0d99d6921a3b10a`; job
 `1079` remains open and unclosed, and `shinychat#5r50` remains blocked and
 unstarted.
+
+### Garrick authorization: YES (2026-08-31)
+
+Garrick explicitly answered **YES** to the exact authorization question
+above. The client-side blocking protocol is approved:
+
+- Set per-chat `historyTransitionPending=requestId` synchronously for active
+  New Chat and active Delete.
+- Propagate the block to every submit route, preserving draft and attachments
+  with no spinner.
+- Send request-ID-bearing transition events.
+- Have `_on_new` and `_on_delete` own
+  `history_transition_complete {requestId}` in `finally` for success, handled
+  failure, or cancellation while preserving the original outcome.
+- Clear only the matching request; stale completion is a no-op.
+
+The recorder persistence and destructive-ordering fixes remain approved. The
+superseded server strict-admission, `input_rejected`, immutable-envelope, and
+optimistic-rollback work is deleted/reworked and must not be implemented.
+Implementation may resume for `shinychat#ykxh` only after this note is
+reviewed; `shinychat#5r50` remains blocked. Attention remains blocked pending
+note review, and job `1079` remains open and unclosed. The current tracked
+non-note diff remains preserved with hash
+`46df02b9d29c657405121fda66e12e7b51a28b696e593da8c0d99d6921a3b10a`.
