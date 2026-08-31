@@ -1,11 +1,22 @@
+# One run of consecutive non-React children: trusted content that becomes a
+# single island payload (a structured `html_block` further downstream). This
+# typed item replaces the <shiny-chat-raw-html> wrapper tag that used to be
+# constructed here — the tag no longer appears even internally (kata#af81).
+new_island_item <- function(children) {
+  structure(
+    list(children = children),
+    class = "shinychat_island"
+  )
+}
+
 #' Split tag content around elements with data-shinychat-react
 #'
-#' Elements WITH the attribute are emitted bare.
-#' Consecutive elements WITHOUT the attribute are grouped into
-#' <shiny-chat-raw-html> wrappers.
+#' Elements WITH the attribute are emitted bare (as tags). Consecutive
+#' elements WITHOUT the attribute are grouped into typed `shinychat_island`
+#' items (see `new_island_item()`).
 #'
 #' @param content A tag, tagList, or other HTML content.
-#' @return A list of tag children ready to be serialized.
+#' @return A list of bare tags and `shinychat_island` items, in order.
 #' @noRd
 split_html_islands <- function(content) {
   # Convert to tags so custom classes resolve their data-shinychat-react
@@ -17,13 +28,13 @@ split_html_islands <- function(content) {
     if (has_react_attr(content)) {
       return(list(content))
     }
-    return(list(htmltools::tag("shiny-chat-raw-html", list(content))))
+    return(list(new_island_item(list(content))))
   }
 
   if (inherits(content, "shiny.tag.list")) {
     children <- as.list(content)
   } else {
-    return(list(htmltools::tag("shiny-chat-raw-html", list(content))))
+    return(list(new_island_item(list(content))))
   }
 
   if (length(children) == 0) {
@@ -39,7 +50,7 @@ split_html_islands <- function(content) {
     if (has_react_attr(group[[1]])) {
       result <- c(result, group)
     } else {
-      result <- c(result, list(htmltools::tag("shiny-chat-raw-html", group)))
+      result <- c(result, list(new_island_item(group)))
     }
   }
   result
@@ -64,10 +75,10 @@ new_island_residual_part <- function(html, deps) {
 
 #' Walk split_html_islands() output into rendered parts
 #'
-#' Island wrappers (`<shiny-chat-raw-html>`) become block parts (rendered
-#' children HTML + dependency objects); bare `data-shinychat-react` elements
-#' become residual string runs (rendered bare, surrounded by blank lines so
-#' the markdown parser treats block-level custom elements correctly, adjacent
+#' Island items (`shinychat_island`) become block parts (rendered children
+#' HTML + dependency objects); bare `data-shinychat-react` elements become
+#' residual string runs (rendered bare, surrounded by blank lines so the
+#' markdown parser treats block-level custom elements correctly, adjacent
 #' runs coalesced).
 #'
 #' This is the single derivation shared by Chat (message content) and the
@@ -88,14 +99,9 @@ derive_island_parts <- function(content) {
   with_current_theme({
     parts <- list()
     for (item in split_html_islands(content)) {
-      if (
-        inherits(item, "shiny.tag") &&
-          identical(item$name, "shiny-chat-raw-html")
-      ) {
-        # Island wrapper: render its children (not the wrapper itself) as
-        # the block's trusted HTML content.
-        children <- as.list(item$children)
-        rendered <- htmltools::renderTags(htmltools::tagList(!!!children))
+      if (inherits(item, "shinychat_island")) {
+        # Island: render its children as the block's trusted HTML content.
+        rendered <- htmltools::renderTags(htmltools::tagList(!!!item$children))
         parts[[length(parts) + 1]] <- new_island_block_part(
           html = as.character(rendered$html),
           deps = rendered$dependencies
@@ -120,6 +126,32 @@ derive_island_parts <- function(content) {
     }
     parts
   })
+}
+
+#' Render trusted content to a single HTML string via the island derivation
+#'
+#' For wire surfaces that cannot carry structured blocks (the greeting
+#' payload, drawer content, static <shiny-chat-message> tags): island parts
+#' contribute their rendered HTML directly (no <shiny-chat-raw-html> wrapper
+#' tags — the client no longer has that machinery, kata#af81) and bare React
+#' elements contribute their blank-line-wrapped residual runs. The whole
+#' string is server-authored and travels with content_type "html".
+#'
+#' @param content A tag, tagList, or other HTML content.
+#' @return A list with `html` (character string) and `deps` (raw
+#'   `html_dependency` objects; session-process or attach as appropriate).
+#' @noRd
+render_island_string <- function(content) {
+  parts <- derive_island_parts(content)
+  html <- paste0(
+    vapply(parts, function(part) part$html, character(1)),
+    collapse = ""
+  )
+  deps <- unlist(
+    lapply(parts, function(part) part$deps),
+    recursive = FALSE
+  )
+  list(html = html, deps = deps %||% list())
 }
 
 #' Split mixed content into ordered provenance runs
