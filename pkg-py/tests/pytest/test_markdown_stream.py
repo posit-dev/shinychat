@@ -184,6 +184,45 @@ def test_stream_mixed_content_interleaves_blocks_and_segments():
     assert "<shiny-chat-raw-html>" not in residual["content"]
 
 
+def test_stream_sends_already_structured_block_dicts():
+    """An already-structured block dict in the stream content (e.g. a
+    web_search block of the kind chatlas normalization produces for Chat)
+    passes through as one complete block message (kata#mhyd)."""
+    mock = _CaptureSession()
+    search_block = {
+        "type": "web_search",
+        "version": 1,
+        "query": "weather in Duluth",
+    }
+    results_block = {
+        "type": "web_search_results",
+        "version": 1,
+        "sources": [{"url": "https://example.com/weather"}],
+    }
+    with session_context(cast(Session, mock)):
+        ms = MarkdownStream(id="stream")
+        result = run_stream(
+            ms, ["model text ", search_block, results_block, " done"]
+        )
+
+    msgs = content_messages(mock.messages)[1:]  # drop the leading clear
+    kinds = ["block" if "block" in m else "content" for m in msgs]
+    assert kinds == ["content", "block", "block", "content"]
+
+    # The dicts pass through untouched (the client validates and groups).
+    assert msgs[1]["block"] == search_block
+    assert msgs[2]["block"] == results_block
+    assert "content" not in msgs[1]
+    assert msgs[1]["operation"] == "append"
+
+    # String content keeps its existing behavior around the blocks.
+    assert msgs[0]["content"] == "model text "
+    assert msgs[3]["content"] == " done"
+
+    # Blocks contribute nothing to the stream's text result.
+    assert result == "model text  done"
+
+
 def test_stream_block_message_carries_session_processed_deps():
     """Island dependencies are serialized through session._process_ui and
     ride the block (for its mount gate) AND the message envelope (the

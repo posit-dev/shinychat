@@ -37,7 +37,9 @@ class ContentMessage(TypedDict):
     trusted: bool
     segment_start: bool
     # A message carries `content` XOR `block` (kata#mhyd). Blocks arrive
-    # complete and append-only; only `html_block` is emitted today.
+    # complete and append-only; `html_block` envelopes are derived from
+    # trusted UI, and `stream()` also accepts already-structured block
+    # dicts (e.g. web_search) which pass through as-is.
     content: NotRequired[str]
     block: NotRequired[StructuredBlock]
 
@@ -112,7 +114,10 @@ class MarkdownStream:
 
     async def stream(
         self,
-        content: Union[Iterable[TagChild], AsyncIterable[TagChild]],
+        content: Union[
+            Iterable[Union[TagChild, StructuredBlock]],
+            AsyncIterable[Union[TagChild, StructuredBlock]],
+        ],
         clear: bool = True,
     ):
         """
@@ -126,6 +131,12 @@ class MarkdownStream:
             The content to stream. This can be a Iterable or an AsyncIterable of strings.
             Note that this includes synchronous and asynchronous generators, which is
             a useful way to stream content in as it arrives (e.g. from a LLM).
+
+            An item may also be an already-structured content block dict (e.g. a
+            `web_search`/`web_search_results`/`web_fetch` block of the kind
+            chatlas normalization produces for `Chat`). Each block dict is sent
+            as one complete, append-only structured block message (kata#mhyd);
+            the client validates, groups, and renders it.
         clear
             Whether to clear the existing content before streaming the new content.
 
@@ -159,6 +170,17 @@ class MarkdownStream:
             result = ""
             async with self._streaming_dot():
                 async for x in content:
+                    if isinstance(x, dict):
+                        # An already-structured block (e.g. web_search) ships
+                        # as one complete block message (content XOR block,
+                        # kata#mhyd). The client validates it (dropping
+                        # invalid/unsupported types with a warning) and
+                        # groups web_* blocks into the trailing web activity.
+                        # Blocks contribute nothing to the text result
+                        # (mirroring Chat's empty-content snapshot of a
+                        # web_activity block).
+                        await self._send_block_message(x, [])
+                        continue
                     segments = split_content_by_trust(x)
                     composite = not isinstance(x, str) or len(segments) > 1
                     for index, (trusted, segment) in enumerate(segments):
@@ -323,7 +345,7 @@ class MarkdownStream:
         await self._send_custom_message(msg)
 
     async def _send_block_message(
-        self, block: HtmlBlock, html_deps: list[dict[str, Any]]
+        self, block: StructuredBlock, html_deps: list[dict[str, Any]]
     ):
         """Send one complete structured block (content XOR block, kata#mhyd).
 
