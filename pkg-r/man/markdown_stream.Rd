@@ -16,7 +16,16 @@ markdown_stream(
 
 \item{content_stream}{A string generator (e.g., \code{\link[coro:generator]{coro::generator()}} or
 \code{\link[coro:async_generator]{coro::async_generator()}}), a string promise (e.g., \code{\link[promises:promise]{promises::promise()}}),
-or a string promise generator.}
+or a string promise generator.
+
+An item may also be an already-structured content block (a
+\code{shinychat_block} such as a \code{web_search}/\code{web_search_results}/\code{web_fetch}
+block of the kind ellmer content normalization produces for
+\code{\link[=chat_append]{chat_append()}}). Each block is sent as one complete, append-only
+structured block message; the client validates, groups, and renders it.
+Only the block types the stream client supports are accepted —
+\code{html_block} and the \verb{web_*} family; any other block type (e.g. a tool
+block, which the client would drop with a warning) raises an error.}
 
 \item{operation}{The operation to perform on the markdown stream. The default,
 \code{"replace"}, will replace the current content with the new content stream.
@@ -24,6 +33,10 @@ The other option, \code{"append"}, will append the new content stream to the
 existing content.}
 
 \item{session}{The Shiny session object.}
+}
+\value{
+A promise that resolves to the accumulated stream content as a
+single string (structured blocks contribute nothing to the string).
 }
 \description{
 Streams markdown content into a \code{\link[=output_markdown_stream]{output_markdown_stream()}} UI element.  A
