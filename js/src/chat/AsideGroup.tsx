@@ -11,7 +11,7 @@ import { citationEntriesFromAsides, type CitationEntry } from "./citations"
 import { domainFromUrl } from "./domain"
 import { portalTheme } from "./portalTheme"
 import { useDismissiblePopover } from "./useDismissiblePopover"
-import { trustGatedEscapes } from "./chatTagToComponentMap"
+import { trustGatedEscapes } from "./trustGatedEscapes"
 
 export interface CitationMetadata {
   title?: string
