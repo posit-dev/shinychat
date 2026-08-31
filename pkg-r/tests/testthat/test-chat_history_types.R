@@ -49,6 +49,46 @@ test_that("check_schema_version() rejects non-scalar integer values", {
   }
 })
 
+test_that("is_stored_ui_versioned() requires an exact current-version match", {
+  message_with_version <- function(version) {
+    list(list(
+      version = version,
+      role = "assistant",
+      segments = list(list(content = "hi", content_type = "markdown"))
+    ))
+  }
+
+  # Unversioned (old-format, string-only) stored UI is not versioned
+  expect_false(is_stored_ui_versioned(NULL))
+  expect_false(is_stored_ui_versioned(list()))
+  expect_false(is_stored_ui_versioned("not a list"))
+  expect_false(is_stored_ui_versioned(list(list(
+    role = "assistant",
+    segments = list(list(content = "hi", content_type = "markdown"))
+  ))))
+
+  # Older versions are rejected: v1 records may embed <shiny-chat-raw-html>
+  # island wrappers the client no longer resolves (kata#af81), so they fall
+  # back to turns re-derivation rather than replaying as-is.
+  expect_false(is_stored_ui_versioned(message_with_version(1L)))
+  expect_false(is_stored_ui_versioned(message_with_version(0L)))
+  expect_false(is_stored_ui_versioned(message_with_version(
+    STORED_UI_VERSION + 1L
+  )))
+
+  # The current version matches -- as integer (in-memory) and as double
+  # (after a JSON round-trip through the file/ledger stores).
+  expect_true(is_stored_ui_versioned(message_with_version(STORED_UI_VERSION)))
+  expect_true(is_stored_ui_versioned(message_with_version(as.numeric(
+    STORED_UI_VERSION
+  ))))
+
+  # Malformed version fields are rejected
+  expect_false(is_stored_ui_versioned(message_with_version(NA_integer_)))
+  expect_false(is_stored_ui_versioned(message_with_version("2")))
+  expect_false(is_stored_ui_versioned(message_with_version(c(2L, 2L))))
+})
+
 test_that("messages_input_value() parses a decoded JSON payload into message lists", {
   # Shape mirrors what shiny:::decodeMessage(simplifyVector = FALSE) produces
   # for the client's `${id}_messages:shinychat.messages` payload.

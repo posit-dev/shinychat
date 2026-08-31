@@ -2114,6 +2114,138 @@ test_that("old-format stored UI (no version marker) is discarded and re-derived 
   expect_true("tool_result" %in% block_types)
 })
 
+test_that("v1 stored UI with island wrappers is not replayed as-is; re-derived from turns", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  spy <- history_mock_session_with_spy()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  # v1 stored UI (pre-kata#af81): versioned, but its serialized segment
+  # content embeds a <shiny-chat-raw-html> island wrapper, which the client
+  # no longer resolves. Replaying it as-is would render the trusted HTML
+  # inert/unbound, so it must be discarded and re-derived from turns.
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list(),
+      turns = list(
+        list(
+          class = "ellmer::AssistantTurn",
+          version = 1,
+          props = list(
+            contents = list(
+              list(
+                class = "ellmer::ContentText",
+                version = 1,
+                props = list(text = "turn-derived answer")
+              )
+            )
+          )
+        )
+      ),
+      ui = list(list(
+        version = 1L, # stale: pre-af81 structured format
+        role = "assistant",
+        segments = list(list(
+          content = "\n\n<shiny-chat-raw-html><div>trusted widget</div></shiny-chat-raw-html>\n\n",
+          content_type = "html"
+        ))
+      ))
+    )
+  )
+  rec$current_leaf <- "n_0001"
+
+  ctrl$replay_ui(rec)
+
+  sent <- history_spy_messages(spy)
+  message_actions <- Filter(
+    function(m) identical(m$message$action$type, "message"),
+    sent
+  )
+  expect_length(message_actions, 1)
+
+  # The island-wrapped stored content is NOT replayed...
+  replayed_segments <- message_actions[[1]]$message$action$message$segments
+  replayed_content <- vapply(
+    replayed_segments,
+    function(s) if ("content" %in% names(s)) s$content else "",
+    character(1)
+  )
+  expect_false(any(grepl("shiny-chat-raw-html", replayed_content)))
+
+  # ...the turn-derived content is replayed instead
+  expect_true("turn-derived answer" %in% replayed_content)
+  expect_equal(ctrl$ui_offset, 1)
+})
+
+test_that("current-version stored UI replays verbatim (no turns re-derivation)", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  spy <- history_mock_session_with_spy()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list(),
+      turns = list(
+        list(
+          class = "ellmer::AssistantTurn",
+          version = 1,
+          props = list(
+            contents = list(
+              list(
+                class = "ellmer::ContentText",
+                version = 1,
+                props = list(text = "turn text that should NOT be replayed")
+              )
+            )
+          )
+        )
+      ),
+      ui = list(list(
+        version = STORED_UI_VERSION,
+        role = "assistant",
+        segments = list(list(
+          content = "stored UI replayed verbatim",
+          content_type = "markdown"
+        ))
+      ))
+    )
+  )
+  rec$current_leaf <- "n_0001"
+
+  ctrl$replay_ui(rec)
+
+  sent <- history_spy_messages(spy)
+  message_actions <- Filter(
+    function(m) identical(m$message$action$type, "message"),
+    sent
+  )
+  expect_length(message_actions, 1)
+  expect_equal(
+    message_actions[[1]]$message$action$message$segments[[1]]$content,
+    "stored UI replayed verbatim"
+  )
+  expect_equal(ctrl$ui_offset, 1)
+})
+
 test_that("node with neither usable UI nor turns falls back to text-only", {
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()
