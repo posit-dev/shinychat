@@ -871,3 +871,48 @@ Current state: `shinychat#ykxh` remains open with `needs-review`,
 `work.attention="blocked"`, and
 `work.branch="feat/history-exchange-tree"`. Roborev `1079` was closed after
 `ace09c52`; `shinychat#5r50` remains blocked and unstarted.
+
+### Mandatory 3/3 replacement proposal (2026-08-31)
+
+The three findings against the client-transition protocol are all valid:
+
+1. R can permanently block because its shipped New/Delete path sends a
+   request without emitting completion.
+2. Remount cleanup can reset the incrementing request ID and collide with an
+   old completion.
+3. Awaiting completion in Python `finally` can mask the original handled
+   error or cancellation.
+
+The escalation valve therefore fires. **Decision: DELETE/REPLACE** the
+unconditional marker and incrementing-ID protocol. Retain `HistoryStore` as
+the sole history owner, matching completion/input blocking, and the recorder
+persistence/destructive-ordering fixes.
+
+The smallest proposed replacement requires Garrick's authorization:
+
+- Add optional `transition_protocol: "completion-v1"` to the existing
+  `history_update` action.
+- Python advertises the exact capability. R omits it until Phase 6.
+- Absent or unknown exact capability means legacy behavior: no marker,
+  request, or completion expectation.
+- When advertised, active New/Delete uses the existing UUID helper for its
+  request ID.
+- Every `history_update` replaces the capability state; omission disables the
+  protocol and clears any marker.
+- A stale completion is a no-op.
+- Python completion is emitted only for request-bearing transitions and is
+  best-effort/non-masking, preserving the original operation outcome.
+
+This adds no handshake, queue, timer, CAS, server flag, second owner, or
+Phase 5 guard. Required coverage includes Python/TypeScript capability
+replacement and stale/omitted/unknown behavior, New/Delete completion and
+input blocking, non-masking failure/cancellation, Playwright remount and
+legacy-compatibility cases, and mechanical `make update-dist` R asset copies.
+R server parity remains Phase 6.
+
+The exact authorization question is: **Does Garrick authorize replacing
+unconditional protocol with this capability-gated completion-v1 protocol?**
+Implementation is stopped pending that authorization. The current tracked
+non-note diff is empty with hash
+`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`;
+job `1079` remains open and unclosed, and `shinychat#5r50` remains blocked.
