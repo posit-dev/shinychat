@@ -445,10 +445,10 @@ describe("structured tool_result block via block_insert mid-stream", () => {
     ])
   })
 
-  it("survives a chunk(replace) after block_insert — structured blocks preserved", () => {
-    // chunk operation:"replace" used to filter to thinking-only, wiping
-    // structured blocks mid-stream. It must filter out only content blocks,
-    // keeping tool_loop / web_activity / html_block.
+  it("chunk(replace) after block_insert replaces ALL blocks uniformly", () => {
+    // kata#0r4g decision (2026-08-31): chunk operation:"replace" supersedes
+    // the whole in-flight message — structured blocks (tool_loop,
+    // web_activity, html_block) are content, not preserved events.
     let state = startStream(makeState())
     state = chatReducer(state, {
       type: "chunk",
@@ -464,7 +464,7 @@ describe("structured tool_result block via block_insert mid-stream", () => {
       "tool_loop",
     ])
 
-    // A replace chunk must swap the content block but keep the tool_loop.
+    // The replace chunk wipes the tool_loop along with the content block.
     state = chatReducer(state, {
       type: "chunk",
       content: "Replaced content.",
@@ -472,13 +472,52 @@ describe("structured tool_result block via block_insert mid-stream", () => {
     })
 
     const blocks = state.streamingMessage!.blocks
-    expect(blocks.map((b) => b.type)).toEqual(["tool_loop", "content"])
-    const loop = blocks[0]!
-    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
-    expect(loop.groups.flatMap((g) => g.calls)).toHaveLength(1)
-    const content = blocks[1]!
+    expect(blocks.map((b) => b.type)).toEqual(["content"])
+    const content = blocks[0]!
     if (content.type !== "content") throw new Error("expected content")
     expect(content.content).toBe("Replaced content.")
+    expect(state.streamingMessage!.content).toBe("Replaced content.")
+  })
+
+  it("empty chunk(replace) wipes blocks without leaving an empty content block", () => {
+    // Servers replace a block-carrying stream by sending a leading empty
+    // replace chunk (the wipe) and then re-emitting the message's parts as
+    // appends, so order is preserved and no spurious empty content block
+    // opens ahead of a block.
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "ephemeral",
+      operation: "append",
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: htmlBlock({ content: "<div>progress</div>" }),
+    })
+
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "",
+      operation: "replace",
+      content_type: "markdown",
+    })
+    expect(state.streamingMessage!.blocks).toEqual([])
+    expect(state.streamingMessage!.content).toBe("")
+
+    // Parts re-emitted as appends land in order after the wipe.
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: htmlBlock({ content: "<div>final</div>" }),
+    })
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "done",
+      operation: "append",
+    })
+    expect(state.streamingMessage!.blocks.map((b) => b.type)).toEqual([
+      "html_block",
+      "content",
+    ])
   })
 
   it("is a no-op with a warning when no stream is in flight", () => {

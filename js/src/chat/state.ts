@@ -965,6 +965,34 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       }
 
       // Standard non-thinking content path
+      if (action.operation === "replace") {
+        // Uniform replace semantics (kata#0r4g): a replace chunk supersedes
+        // the whole in-flight message. Structured blocks (thinking,
+        // tool_loop, web_activity, html_block) are content, not preserved
+        // events, so they do not survive a replace. To replace a
+        // block-carrying stream, servers emit a leading empty replace chunk
+        // (the wipe) and then re-emit the message's parts as appends; an
+        // empty replace therefore leaves no content block behind.
+        const newBlocks: MessageBlock[] = action.content
+          ? [
+              {
+                type: "content",
+                content: action.content,
+                contentType: chunkType,
+              },
+            ]
+          : []
+        return {
+          ...state,
+          streamingMessage: {
+            ...last,
+            content: action.content,
+            blocks: newBlocks,
+            htmlDeps: mergeHtmlDeps(last.htmlDeps, action.html_deps),
+          },
+        }
+      }
+
       const blocks = [...last.blocks]
 
       // Finalize any trailing thinking block
@@ -980,42 +1008,18 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         }
       }
 
-      if (action.operation === "replace") {
-        // A content replace swaps out the running content block but must
-        // preserve structured blocks that arrived mid-stream (thinking,
-        // tool_loop, web_activity, html_block) — filtering out only content
-        // blocks rather than keeping only thinking.
-        const newBlocks: MessageBlock[] = blocks.filter(
-          (b) => b.type !== "content",
-        )
-        newBlocks.push({
+      const tail = blocks[blocks.length - 1]
+      if (tail?.type === "content" && tail.contentType === chunkType) {
+        blocks[blocks.length - 1] = {
+          ...tail,
+          content: tail.content + action.content,
+        }
+      } else {
+        blocks.push({
           type: "content",
           content: action.content,
           contentType: chunkType,
         })
-        return {
-          ...state,
-          streamingMessage: {
-            ...last,
-            content: action.content,
-            blocks: newBlocks,
-            htmlDeps: mergeHtmlDeps(last.htmlDeps, action.html_deps),
-          },
-        }
-      } else {
-        const tail = blocks[blocks.length - 1]
-        if (tail?.type === "content" && tail.contentType === chunkType) {
-          blocks[blocks.length - 1] = {
-            ...tail,
-            content: tail.content + action.content,
-          }
-        } else {
-          blocks.push({
-            type: "content",
-            content: action.content,
-            contentType: chunkType,
-          })
-        }
       }
 
       const content = blocks
