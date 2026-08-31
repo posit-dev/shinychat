@@ -971,36 +971,26 @@ process_block_deps <- function(block, session) {
 }
 
 # Build wire segments from non-string HTML content (tag/tag.list/htmlwidget)
-# by splitting it through split_html_islands. Island wrappers
-# (<shiny-chat-raw-html>) become html_block structured blocks (content =
-# rendered HTML, raw deps stashed on the block attr for send-time processing).
-# Bare data-shinychat-react elements stay string parts (wrapped in \n\n,
-# content_type "html"). Adjacent strings coalesce.
+# via the shared island derivation (derive_island_parts, kata#mhyd). Island
+# wrappers (<shiny-chat-raw-html>) become html_block structured blocks
+# (content = rendered HTML, raw deps stashed on the block attr for send-time
+# processing). Bare data-shinychat-react elements stay string parts (wrapped
+# in \n\n, content_type "html"). Adjacent strings coalesce.
 # Mirrors Python's ChatMessage.__init__ non-string content path.
 build_html_island_segments <- function(content, session) {
-  islands <- split_html_islands(content)
-  if (length(islands) == 0) {
+  parts <- derive_island_parts(content)
+  if (length(parts) == 0) {
     return(list(segments = list(), deps = list()))
   }
 
   segments <- list()
   all_deps <- list()
 
-  for (item in islands) {
-    if (
-      inherits(item, "shiny.tag") &&
-        identical(item$name, "shiny-chat-raw-html")
-    ) {
-      # Island wrapper: render its children (not the wrapper itself) as
-      # the block's trusted HTML content, collecting deps.
-      children <- as.list(item$children)
-      rendered <- htmltools::renderTags(htmltools::tagList(!!!children))
-      island_html <- as.character(rendered$html)
-      island_deps <- rendered$dependencies
-
-      block <- new_html_block(island_html)
-      if (length(island_deps) > 0) {
-        attr(block, "shinychat_html_deps") <- island_deps
+  for (part in parts) {
+    if (inherits(part, "shinychat_island_block_part")) {
+      block <- new_html_block(part$html)
+      if (length(part$deps) > 0) {
+        attr(block, "shinychat_html_deps") <- part$deps
       }
       # Process block deps (session-process + attach to block). Only the
       # processed deps enter all_deps — raw html_dependency objects cannot
@@ -1010,13 +1000,12 @@ build_html_island_segments <- function(content, session) {
       all_deps <- c(all_deps, result$deps)
       segments[[length(segments) + 1]] <- result$block
     } else {
-      # Bare React element: session-process deps (same path as message-level
-      # content) and keep the rendered element as a string part. Raw
-      # html_dependency objects must not enter all_deps directly — they
+      # Bare React element run: session-process deps (same path as
+      # message-level content) and keep the rendered HTML as a string part.
+      # Raw html_dependency objects must not enter all_deps directly — they
       # cannot be JSON-serialized and would bypass session registration.
-      ui <- process_ui(pre_process_ui(item), session)
-      all_deps <- c(all_deps, ui[["deps"]])
-      run <- paste0("\n\n", ui[["html"]], "\n\n")
+      processed_deps <- serialize_html_deps(part$deps, session)
+      all_deps <- c(all_deps, processed_deps)
       # Coalesce with previous string segment if adjacent
       if (
         length(segments) > 0 &&
@@ -1024,10 +1013,10 @@ build_html_island_segments <- function(content, session) {
           !"type" %in% names(segments[[length(segments)]])
       ) {
         segments[[length(segments)]]$content <-
-          paste0(segments[[length(segments)]]$content, run)
+          paste0(segments[[length(segments)]]$content, part$html)
       } else {
         segments[[length(segments) + 1]] <- list(
-          content = run,
+          content = part$html,
           content_type = "html"
         )
       }
@@ -1181,65 +1170,48 @@ send_wire_segment_actions <- function(
 }
 
 # Session-free variant of build_html_island_segments for the static chat_ui()
-# path. Renders island children via htmltools::renderTags (no session
-# processing) and stashes raw dep objects on the block attr for
-# process_block_deps_static to collect. Bare React elements are rendered via
-# renderTags too. Returns list(segments, deps) where deps are raw
-# html_dependency objects (not session-processed dicts).
+# path. Uses the shared island derivation (derive_island_parts renders via
+# htmltools::renderTags with no session processing, wrapped in
+# with_current_theme()) and stashes raw dep objects on the block attr for
+# process_block_deps_static to collect. Returns list(segments, deps) where
+# deps are raw html_dependency objects (not session-processed dicts).
 build_html_island_segments_static <- function(content) {
-  # Wrap island splitting and tag rendering in with_current_theme() so
-  # theme-aware bslib content renders/compiles deps against the correct
-  # theme — matching the session-aware send path (process_ui wraps
-  # processDeps in with_current_theme()) and the static tag path in
-  # chat_ui() (roborev 1066, finding 3).
-  with_current_theme({
-    islands <- split_html_islands(content)
-    if (length(islands) == 0) {
-      return(list(segments = list(), deps = list()))
-    }
+  parts <- derive_island_parts(content)
+  if (length(parts) == 0) {
+    return(list(segments = list(), deps = list()))
+  }
 
-    segments <- list()
-    all_deps <- list()
+  segments <- list()
+  all_deps <- list()
 
-    for (item in islands) {
+  for (part in parts) {
+    if (inherits(part, "shinychat_island_block_part")) {
+      block <- new_html_block(part$html)
+      if (length(part$deps) > 0) {
+        attr(block, "shinychat_html_deps") <- part$deps
+      }
+      result <- process_block_deps_static(block)
+      all_deps <- c(all_deps, result$deps)
+      segments[[length(segments) + 1]] <- result$block
+    } else {
+      all_deps <- c(all_deps, part$deps)
       if (
-        inherits(item, "shiny.tag") &&
-          identical(item$name, "shiny-chat-raw-html")
+        length(segments) > 0 &&
+          is.character(segments[[length(segments)]]$content) &&
+          !"type" %in% names(segments[[length(segments)]])
       ) {
-        children <- as.list(item$children)
-        rendered <- htmltools::renderTags(htmltools::tagList(!!!children))
-        island_html <- as.character(rendered$html)
-        island_deps <- rendered$dependencies
-
-        block <- new_html_block(island_html)
-        if (length(island_deps) > 0) {
-          attr(block, "shinychat_html_deps") <- island_deps
-        }
-        result <- process_block_deps_static(block)
-        all_deps <- c(all_deps, result$deps)
-        segments[[length(segments) + 1]] <- result$block
+        segments[[length(segments)]]$content <-
+          paste0(segments[[length(segments)]]$content, part$html)
       } else {
-        rendered <- htmltools::renderTags(item)
-        all_deps <- c(all_deps, rendered$dependencies)
-        run <- paste0("\n\n", as.character(rendered$html), "\n\n")
-        if (
-          length(segments) > 0 &&
-            is.character(segments[[length(segments)]]$content) &&
-            !"type" %in% names(segments[[length(segments)]])
-        ) {
-          segments[[length(segments)]]$content <-
-            paste0(segments[[length(segments)]]$content, run)
-        } else {
-          segments[[length(segments) + 1]] <- list(
-            content = run,
-            content_type = "html"
-          )
-        }
+        segments[[length(segments) + 1]] <- list(
+          content = part$html,
+          content_type = "html"
+        )
       }
     }
+  }
 
-    list(segments = segments, deps = all_deps)
-  })
+  list(segments = segments, deps = all_deps)
 }
 
 # Session-free variant of build_wire_segments for the static chat_ui() path.
