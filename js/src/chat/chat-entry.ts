@@ -25,14 +25,14 @@ function getBrowserToken(): string {
   try {
     let token = window.localStorage.getItem(BROWSER_TOKEN_KEY)
     if (!token) {
-      token = crypto.randomUUID()
+      token = uuid()
       window.localStorage.setItem(BROWSER_TOKEN_KEY, token)
     }
     return token
   } catch {
     // localStorage unavailable (private mode, sandboxed iframe, etc.)
     if (!fallbackBrowserToken) {
-      fallbackBrowserToken = crypto.randomUUID()
+      fallbackBrowserToken = uuid()
     }
     return fallbackBrowserToken
   }
