@@ -6,99 +6,111 @@ from typing import TYPE_CHECKING, cast
 from htmltools import HTML, Tag, TagList, div, span
 from shinychat import output_markdown_stream
 from shinychat._html_islands import (
+    IslandBlockPart,
+    IslandResidualPart,
+    derive_island_parts,
     split_content_by_trust,
-    split_html_islands,
 )
 
 
-def test_plain_html_wrapped_in_single_island():
-    """Non-react content gets a single <shiny-chat-raw-html> wrapper."""
+def test_plain_html_becomes_single_block_part():
+    """Non-react content renders as a single block part (no island tag)."""
     tl = TagList(div("hello"), span("world"))
-    result = split_html_islands(tl)
-    rendered = TagList(result).render()["html"]
-    assert "<shiny-chat-raw-html>" in rendered
-    assert "<div>hello</div>" in rendered
-    assert "<span>world</span>" in rendered
-    assert rendered.count("<shiny-chat-raw-html>") == 1
+    parts = derive_island_parts(tl)
+    assert len(parts) == 1
+    assert isinstance(parts[0], IslandBlockPart)
+    assert "<div>hello</div>" in parts[0].html
+    assert "<span>world</span>" in parts[0].html
+    assert "shiny-chat-raw-html" not in parts[0].html
 
 
-def test_react_element_emitted_bare():
-    """A single react element is emitted without any wrapper."""
+def test_react_element_becomes_residual_part():
+    """A single react element renders bare as a residual string run."""
     tl = TagList(
         Tag("shiny-tool-result", data_shinychat_react=True, request_id="abc")
     )
-    result = split_html_islands(tl)
-    rendered = TagList(result).render()["html"]
-    assert "<shiny-chat-raw-html>" not in rendered
-    assert "shiny-tool-result" in rendered
-    assert "data-shinychat-react" in rendered
+    parts = derive_island_parts(tl)
+    assert len(parts) == 1
+    assert isinstance(parts[0], IslandResidualPart)
+    assert "shiny-tool-result" in parts[0].html
+    assert "data-shinychat-react" in parts[0].html
+    assert "shiny-chat-raw-html" not in parts[0].html
+    # Blank-line wrapped so the markdown parser treats block-level custom
+    # elements correctly.
+    assert parts[0].html.startswith("\n\n")
+    assert parts[0].html.endswith("\n\n")
 
 
 def test_mixed_content_splits_around_react():
-    """React elements split surrounding HTML into separate islands."""
+    """React elements split surrounding HTML into separate block parts."""
     tl = TagList(
         div("before"),
         Tag("shiny-tool-result", data_shinychat_react=True, request_id="abc"),
         div("after"),
     )
-    result = split_html_islands(tl)
-    rendered = TagList(result).render()["html"]
-    assert rendered.count("<shiny-chat-raw-html>") == 2
-    assert "shiny-tool-result" in rendered
-    lines = rendered.split("\n")
-    for line in lines:
-        if "shiny-tool-result" in line:
-            assert "shiny-chat-raw-html" not in line
+    parts = derive_island_parts(tl)
+    assert len(parts) == 3
+    assert isinstance(parts[0], IslandBlockPart)
+    assert isinstance(parts[1], IslandResidualPart)
+    assert isinstance(parts[2], IslandBlockPart)
+    assert parts[0].html == "<div>before</div>"
+    assert parts[2].html == "<div>after</div>"
+    # The react element renders bare in the residual run, not in a block.
+    assert "shiny-tool-result" in parts[1].html
+    assert "shiny-tool-result" not in parts[0].html
+    assert "shiny-tool-result" not in parts[2].html
 
 
-def test_adjacent_react_elements_no_empty_islands():
-    """Two consecutive react elements produce no empty islands between them."""
+def test_adjacent_react_elements_coalesce_into_one_residual():
+    """Two consecutive react elements coalesce into a single residual run."""
     tl = TagList(
         Tag("shiny-tool-request", data_shinychat_react=True),
         Tag("shiny-tool-result", data_shinychat_react=True),
     )
-    result = split_html_islands(tl)
-    rendered = TagList(result).render()["html"]
-    assert "<shiny-chat-raw-html>" not in rendered
-    assert "shiny-tool-request" in rendered
-    assert "shiny-tool-result" in rendered
+    parts = derive_island_parts(tl)
+    assert len(parts) == 1
+    assert isinstance(parts[0], IslandResidualPart)
+    assert "shiny-tool-request" in parts[0].html
+    assert "shiny-tool-result" in parts[0].html
 
 
 def test_single_tag_with_react_attr():
-    """A single tag (not TagList) with react attr is emitted bare."""
+    """A single tag (not TagList) with react attr becomes a residual run."""
     tag = Tag("shiny-tool-request", data_shinychat_react=True)
-    result = split_html_islands(tag)
-    rendered = TagList(result).render()["html"]
-    assert "<shiny-chat-raw-html>" not in rendered
+    parts = derive_island_parts(tag)
+    assert len(parts) == 1
+    assert isinstance(parts[0], IslandResidualPart)
+    assert "shiny-tool-request" in parts[0].html
 
 
 def test_single_tag_without_react_attr():
-    """A single tag without react attr gets wrapped."""
+    """A single tag without react attr becomes a block part."""
     tag = div("hello")
-    result = split_html_islands(tag)
-    rendered = TagList(result).render()["html"]
-    assert "<shiny-chat-raw-html>" in rendered
+    parts = derive_island_parts(tag)
+    assert len(parts) == 1
+    assert isinstance(parts[0], IslandBlockPart)
+    assert parts[0].html == "<div>hello</div>"
 
 
-def test_string_content_in_taglist_wrapped():
-    """Raw string content inside a TagList gets wrapped in an island."""
+def test_string_content_in_taglist_becomes_block_part():
+    """Raw string content inside a TagList renders as a block part."""
     tl = TagList("hello world")
-    result = split_html_islands(tl)
-    rendered = TagList(result).render()["html"]
-    assert "<shiny-chat-raw-html>" in rendered
-    assert "hello world" in rendered
+    parts = derive_island_parts(tl)
+    assert len(parts) == 1
+    assert isinstance(parts[0], IslandBlockPart)
+    assert "hello world" in parts[0].html
 
 
-def test_bare_string_content_wrapped():
-    """A bare string passed directly is wrapped in an island."""
-    result = split_html_islands("hello world")
-    rendered = TagList(result).render()["html"]
-    assert "<shiny-chat-raw-html>" in rendered
-    assert "hello world" in rendered
+def test_bare_string_content_becomes_block_part():
+    """A bare string passed directly renders as a block part."""
+    parts = derive_island_parts("hello world")
+    assert len(parts) == 1
+    assert isinstance(parts[0], IslandBlockPart)
+    assert "hello world" in parts[0].html
 
 
-def test_tagifiable_with_react_attr_emitted_bare():
-    """A Tagifiable whose tagify() produces a react-attr Tag is emitted bare."""
+def test_tagifiable_with_react_attr_becomes_residual_part():
+    """A Tagifiable whose tagify() produces a react-attr Tag renders bare."""
     from htmltools import Tagifiable
 
     class FakeToolResult(Tagifiable):
@@ -108,27 +120,27 @@ def test_tagifiable_with_react_attr_emitted_bare():
                 data_shinychat_react=True,
                 request_id="test-123",
                 tool_name="test_tool",
-            )
+            ).tagify()
 
-    result = split_html_islands(FakeToolResult())
-    rendered = TagList(result).render()["html"]
-    assert "<shiny-chat-raw-html>" not in rendered
-    assert "shiny-tool-result" in rendered
-    assert "data-shinychat-react" in rendered
+    parts = derive_island_parts(FakeToolResult())
+    assert len(parts) == 1
+    assert isinstance(parts[0], IslandResidualPart)
+    assert "shiny-tool-result" in parts[0].html
+    assert "data-shinychat-react" in parts[0].html
 
 
-def test_tagifiable_without_react_attr_wrapped():
-    """A Tagifiable whose tagify() produces a non-react Tag gets wrapped."""
+def test_tagifiable_without_react_attr_becomes_block_part():
+    """A Tagifiable whose tagify() produces a non-react Tag becomes a block."""
     from htmltools import Tagifiable
 
     class FakeWidget(Tagifiable):
         def tagify(self):
             return div("widget content").tagify()
 
-    result = split_html_islands(FakeWidget())
-    rendered = TagList(result).render()["html"]
-    assert "<shiny-chat-raw-html>" in rendered
-    assert "widget content" in rendered
+    parts = derive_island_parts(FakeWidget())
+    assert len(parts) == 1
+    assert isinstance(parts[0], IslandBlockPart)
+    assert "widget content" in parts[0].html
 
 
 def test_tagifiable_in_taglist_splits_correctly():
@@ -144,13 +156,14 @@ def test_tagifiable_in_taglist_splits_correctly():
             ).tagify()
 
     tl = TagList(div("before"), FakeToolResult(), div("after"))
-    result = split_html_islands(tl)
-    rendered = TagList(result).render()["html"]
-    assert rendered.count("<shiny-chat-raw-html>") == 2
-    assert "shiny-tool-result" in rendered
-    for line in rendered.split("\n"):
-        if "shiny-tool-result" in line:
-            assert "shiny-chat-raw-html" not in line
+    parts = derive_island_parts(tl)
+    assert len(parts) == 3
+    assert isinstance(parts[0], IslandBlockPart)
+    assert isinstance(parts[1], IslandResidualPart)
+    assert isinstance(parts[2], IslandBlockPart)
+    assert "shiny-tool-result" in parts[1].html
+    assert "shiny-tool-result" not in parts[0].html
+    assert "shiny-tool-result" not in parts[2].html
 
 
 def test_mixed_taglist_keeps_plain_strings_untrusted():

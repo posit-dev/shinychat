@@ -217,8 +217,8 @@ class MarkdownStream:
                     for index, (trusted, segment) in enumerate(segments):
                         if trusted:
                             # Trusted (server-authored) content walks the
-                            # shared island derivation (kata#mhyd): island
-                            # wrappers ship as structured html_block
+                            # shared island derivation (kata#mhyd): non-React
+                            # runs ship as structured html_block
                             # block-messages; bare data-shinychat-react
                             # elements stay trusted residual string segments.
                             parts = list(derive_island_parts(segment))
@@ -519,7 +519,7 @@ def output_markdown_stream(
     for trusted, segment in split_content_by_trust(content):
         if trusted:
             # Trusted UI walks the shared island derivation (kata#mhyd):
-            # island wrappers become {block: html_block} entries; bare
+            # non-React runs become {block: html_block} entries; bare
             # data-shinychat-react elements stay trusted residual text
             # segments. There is no session at UI-construction time, so
             # block deps carry the raw as_dict() serialization (the same

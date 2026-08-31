@@ -60,47 +60,12 @@ def split_content_by_trust(
     return result
 
 
-def split_html_islands(content: TagChild | TagList) -> list[TagChild]:
-    """
-    Split tag content around elements with data-shinychat-react.
-
-    Elements WITH the attribute are emitted bare.
-    Consecutive elements WITHOUT the attribute are grouped into
-    <shiny-chat-raw-html> wrappers.
-
-    Returns a list of TagChild items ready to be serialized.
-    """
-    if isinstance(content, (TagList, TagifiedTagList)):
-        children = list(content)
-    elif isinstance(content, (Tag, TagifiedTag)):
-        if _has_react_attr(content):
-            return [content]
-        return [Tag("shiny-chat-raw-html", content)]
-    elif isinstance(content, Tagifiable):
-        resolved = content.tagify()
-        if isinstance(resolved, (Tag, TagifiedTag)) and _has_react_attr(
-            resolved
-        ):
-            return [resolved]
-        return [Tag("shiny-chat-raw-html", content)]
-    else:
-        return [Tag("shiny-chat-raw-html", content)]
-
-    result: list[TagChild] = []
-    for is_react, group in groupby(children, _has_react_attr):
-        if is_react:
-            result.extend(group)
-        else:
-            result.append(Tag("shiny-chat-raw-html", *group))
-    return result
-
-
 @dataclass
 class IslandBlockPart:
     """
-    A `<shiny-chat-raw-html>` island wrapper's rendered payload: the trusted
-    children HTML (an `html_block`'s `content`), plus the dependency objects
-    the island carries.
+    A run of trusted non-React content's rendered payload: the run's HTML
+    (an `html_block`'s `content`), plus the dependency objects the run
+    carries.
     """
 
     html: str
@@ -127,43 +92,52 @@ IslandPart = Union[IslandBlockPart, IslandResidualPart]
 
 def derive_island_parts(content: TagChild | TagList) -> list[IslandPart]:
     """
-    Walk `split_html_islands()` output: island wrappers
-    (`<shiny-chat-raw-html>`) become `IslandBlockPart` parts (rendered
-    children HTML + dependency objects); bare `data-shinychat-react`
-    elements become `IslandResidualPart` string runs (rendered bare,
-    surrounded by blank lines, adjacent runs coalesced).
+    Partition trusted tag content around `data-shinychat-react` elements.
+
+    Runs of content WITHOUT the attribute render as `IslandBlockPart` parts
+    (trusted HTML + dependency objects — they become structured `html_block`
+    envelopes). Elements WITH the attribute render bare as
+    `IslandResidualPart` string runs (surrounded by blank lines so the
+    markdown parser treats block-level custom elements correctly; adjacent
+    runs coalesce).
 
     This is the single derivation shared by `ChatMessage` (message content)
     and `MarkdownStream` (stream/output emission) so trusted non-string
     content becomes `html_block` envelopes identically everywhere. See
-    kata#mhyd.
+    kata#mhyd. The partition happens directly on the content — no
+    `<shiny-chat-raw-html>` wrapper tag is constructed at any point
+    (kata#af81).
     """
+    if isinstance(content, (TagList, TagifiedTagList)):
+        children: list[TagChild] = list(content)
+    else:
+        children = [content]
+
     parts: list[IslandPart] = []
-    for item in split_html_islands(content):
-        if isinstance(item, (Tag, TagifiedTag)) and (
-            item.name == "shiny-chat-raw-html"
-        ):
-            # Island wrapper: render its children (not the wrapper itself)
-            # as the block's trusted HTML content.
-            island = TagList(*item.children).render()
+    for is_react, group in groupby(children, _has_react_attr):
+        if is_react:
+            # Bare React elements: render each bare and keep them as a
+            # residual string run, surrounded by blank lines so the
+            # markdown parser treats block-level custom elements correctly.
+            for item in group:
+                rendered = TagList(item).render()
+                run = f"\n\n{rendered['html']}\n\n"
+                if parts and isinstance(parts[-1], IslandResidualPart):
+                    parts[-1].html += run
+                    parts[-1].deps.extend(rendered["dependencies"])
+                else:
+                    parts.append(
+                        IslandResidualPart(
+                            html=run, deps=list(rendered["dependencies"])
+                        )
+                    )
+        else:
+            # Trusted non-React run: render as the block's trusted HTML
+            # content.
+            island = TagList(*group).render()
             parts.append(
                 IslandBlockPart(
                     html=island["html"], deps=list(island["dependencies"])
                 )
             )
-        else:
-            # Bare React element: render it bare and keep it as a residual
-            # string run, surrounded by blank lines so the markdown parser
-            # treats block-level custom elements correctly.
-            rendered = TagList(item).render()
-            run = f"\n\n{rendered['html']}\n\n"
-            if parts and isinstance(parts[-1], IslandResidualPart):
-                parts[-1].html += run
-                parts[-1].deps.extend(rendered["dependencies"])
-            else:
-                parts.append(
-                    IslandResidualPart(
-                        html=run, deps=list(rendered["dependencies"])
-                    )
-                )
     return parts
