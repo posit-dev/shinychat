@@ -372,3 +372,37 @@ recorder, ID, turns, and messages cleared.
 init-window guard. Only `shinychat#ykxh` can resume after this decision-note
 commit is reviewed. `shinychat#5r50` remains blocked until `shinychat#ykxh` is
 green, reviewed, and closed.
+
+### Stable-ID publication replacement handoff (2026-08-31)
+
+The approved stable-ID publication replacement is landed in code commit
+`ec00ddc08045689f871b94d3f0fb926933e65d28` (`fix(history): bind v2 ID
+publication to record`, `Kata: shinychat#ykxh`). It deletes the notify policy,
+the ambient `_active_id_announced` boolean, and the ambient callback reread.
+`HistoryController` remains the stable-ID owner and `_ExchangeRecorder` remains
+the sole v2 record owner. `_persist_record()` captures the exact `record` and
+its ID before `store.put()`, stores first, and publishes only when that same
+record is still current; publication retry state is bound to that record.
+Active delete clears local recorder, active-ID, turns, and message state before
+awaiting the `None` callback.
+
+Exact regression coverage is present in
+`pkg-py/tests/test_history_controller.py`: the blocked first write
+A -> reset -> B case; the callback failure/cancellation parameterization proving
+same-record retry behavior; and active-delete callback failure/cancellation
+coverage for both v1 and v2 local-state cleanup. Review disposition: only the
+blocked first-write A -> reset -> B regression discriminates the old
+ambient-boolean issue; the failure/cancellation regression proves retry for the
+same record.
+
+Final evidence: targeted history tests passed (155 passed, 5 known warnings);
+format passed; types reported 0 errors; and final `make py-check` passed Ruff,
+Pyright with 0 errors, 191 Playwright tests, 761 standard tests, and 1 skipped
+test, with 15 known warnings. Final Terra review found no findings. Roborev
+1071 was closed immediately after the fix commit.
+
+No new design decision was made, and the existing scope exclusions remain:
+no queue, timer, CAS, second owner, restore mechanism, or init-window guard.
+`shinychat#5r50` remains blocked and unstarted. `shinychat#ykxh` remains open
+with `needs-review`, `work.attention="ok"`, and
+`work.branch="feat/history-exchange-tree"` for human review.
