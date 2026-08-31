@@ -330,3 +330,34 @@ def test_tool_display_none_suppresses(monkeypatch):
         ).content
         == ""
     )
+
+
+def test_overlapping_pending_searches_results_pair_fifo():
+    # roborev 1069: the client pairs a web_search_results block with the
+    # EARLIEST pending search (applyWebBlock), so server-side satisfaction
+    # must be FIFO too. [request A, request B, response A, citation B]:
+    # response A satisfies burst A; burst B keeps its citation fallback.
+    msg = message_content(
+        Turn(
+            [
+                ContentToolRequestSearch(query="query A"),
+                ContentToolRequestSearch(query="query B"),
+                ContentToolResponseSearch(
+                    sources=[WebSource(url="https://results-a.com")]
+                ),
+                ContentText(text="Answer "),
+                ContentCitation(
+                    source=WebSource(url="https://b.com", title="Beta")
+                ),
+            ],
+            role="assistant",
+        )
+    )
+    search_blocks = [b for b in msg.blocks if b["type"] == "web_search"]
+    assert len(search_blocks) == 2
+    # Burst A got the provider results → no cited_sources fallback.
+    assert "cited_sources" not in search_blocks[0]
+    # Burst B is still pending → its citations ride its web_search block.
+    assert search_blocks[1]["cited_sources"] == [
+        {"url": "https://b.com", "title": "Beta"},
+    ]

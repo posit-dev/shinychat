@@ -537,8 +537,13 @@ def _attach_cited_sources(
         if isinstance(x, ContentToolRequestSearch):
             bursts.append((False, ([], {})))
         elif isinstance(x, ContentToolResponseSearch):
-            if bursts:
-                bursts[-1] = (True, bursts[-1][1])
+            # The client pairs a results block with the EARLIEST pending
+            # search (applyWebBlock's findIndex over sources === null), so
+            # satisfaction is FIFO, not newest-burst.
+            for j, (satisfied, bucket) in enumerate(bursts):
+                if not satisfied:
+                    bursts[j] = (True, bucket)
+                    break
         elif isinstance(x, ContentCitation) and isinstance(x.source, WebSource):
             if not bursts:
                 continue  # Citation before any search request: no burst.
