@@ -2,6 +2,7 @@ import { memo, useMemo, useState, useRef, useCallback, useEffect } from "react"
 import {
   deriveToolGroupIdentity,
   type ChatMessageData,
+  type ContentBlock,
   type MessageBlock,
 } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
@@ -16,7 +17,8 @@ import {
 } from "./chatTagToComponentMap"
 import { useSlashCommands, useToolGrouping, useChatToolState } from "./context"
 import { CommandChip } from "./CommandChip"
-import type { SlashCommandDef, ContentType } from "../transport/types"
+import type { SlashCommandDef } from "../transport/types"
+import type { ComponentType } from "react"
 import {
   attachmentBadgeLabel,
   attachmentFamily,
@@ -31,6 +33,32 @@ import { useAttachmentStaging } from "./useAttachmentStaging"
 import { AttachmentTray } from "./AttachmentTray"
 import { CitationCollectorProvider } from "./citationCollector"
 import { SourcesSummary } from "./SourcesSummary"
+
+type TagComponentMap = Record<string, ComponentType<unknown>>
+
+interface TrustedContentBlock extends ContentBlock {
+  trusted: true
+  tagMap: TagComponentMap
+}
+
+interface UntrustedContentBlock extends ContentBlock {
+  trusted: false
+  tagMap: TagComponentMap | undefined
+}
+
+type ClassifiedContentBlock = TrustedContentBlock | UntrustedContentBlock
+
+function classifyContentBlock(
+  block: ContentBlock,
+  isUser: boolean,
+): ClassifiedContentBlock {
+  if (isUser) {
+    return { ...block, trusted: false, tagMap: undefined }
+  }
+  return block.contentType === "html"
+    ? { ...block, trusted: true, tagMap: chatTagToComponentMap }
+    : { ...block, trusted: false, tagMap: untrustedChatTagToComponentMap }
+}
 
 const TOUCH_HOLD_MS = 500
 const TOUCH_MOVE_CANCEL_PX = 10
@@ -113,20 +141,6 @@ export const ChatMessage = memo(function ChatMessage({
   // from structured wire blocks); while streaming, tool elements arrive as
   // structured block_insert actions, so message.blocks is always current.
   const blocks = message.blocks
-
-  // Tool UI is never legitimate in a user message, so don't hand the bridges
-  // to one. An html-typed user block skips the router entirely and goes
-  // through `htmlProcessor` — no remarkEscapeHtml, no rehypeSanitize — so
-  // without this the tags would still resolve to real tool cards.
-  // Markdown-typed blocks are model-authored (untrusted), so they get a map
-  // whose tool tags render as escaped, inert text. Only html-typed blocks
-  // (server-authored) get the real bridges.
-  const mapForContentType = (contentType: ContentType) =>
-    isUser
-      ? undefined
-      : contentType === "html"
-        ? chatTagToComponentMap
-        : untrustedChatTagToComponentMap
 
   // Drop running requests whose result has rendered elsewhere in the transcript
   // (the router can only pair the two within one content string), then any group
@@ -459,11 +473,14 @@ export const ChatMessage = memo(function ChatMessage({
       )
     }
 
+    if (block.type !== "content") return null
+    const cb = classifyContentBlock(block, isUser)
+
     if (leadingCommand && i === 0) {
       const chip = <CommandChip name={leadingCommand.commandName} />
       const content = leadingCommand.remainingText || ""
 
-      if (block.contentType === "text") {
+      if (cb.contentType === "text") {
         return (
           <div key={i} className="content-type-text">
             {chip}
@@ -478,10 +495,10 @@ export const ChatMessage = memo(function ChatMessage({
         <MarkdownContent
           key={i}
           content={content}
-          contentType={block.contentType}
+          contentType={cb.contentType}
           role={message.role}
           streaming={message.streaming && isLast}
-          tagToComponentMap={mapForContentType(block.contentType)}
+          tagToComponentMap={cb.tagMap}
           prefix={chip}
         />
       )
@@ -490,14 +507,14 @@ export const ChatMessage = memo(function ChatMessage({
     const el = (
       <MarkdownContent
         key={i}
-        content={block.content}
-        contentType={block.contentType}
+        content={cb.content}
+        contentType={cb.contentType}
         role={message.role}
         streaming={message.streaming && isLast}
-        tagToComponentMap={mapForContentType(block.contentType)}
+        tagToComponentMap={cb.tagMap}
       />
     )
-    if (block.contentType === "text") {
+    if (cb.contentType === "text") {
       return (
         <div key={i} className="content-type-text">
           {el}
