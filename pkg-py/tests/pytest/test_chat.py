@@ -1523,8 +1523,142 @@ def test_chat_ui_queued_turn_with_tool_result_appends_with_blocks():
 
 
 # ---------------------------------------------------------------------------
-# P4: turns-based bookmark restore (kata#c15v)
+# Session-scoping of queued init messages (kata#c15v)
 # ---------------------------------------------------------------------------
+
+
+class _SessionScopeMockSession:
+    """Mock session with ``is_stub_session()`` returning ``False`` and a
+    configurable ``id``, so ``chat_ui()`` routes block-carrying messages to
+    the session-scoped queue."""
+
+    ns: ResolvedId = ResolvedId("")
+    app: object = None
+    input: Any
+
+    def __init__(self, session_id: str) -> None:
+        from shiny import Inputs
+
+        self.id = session_id
+        self.input = Inputs({}, ns=ResolvedId)
+        self._on_ended_cbs: list[Any] = []
+
+    def is_stub_session(self) -> bool:
+        return False
+
+    def on_ended(self, callback: object) -> None:
+        self._on_ended_cbs.append(callback)
+
+    def on_destroy(self, callback: object) -> None:
+        pass
+
+    def _increment_busy_count(self) -> None:
+        pass
+
+    async def send_custom_message(self, type: str, message: Any) -> None:
+        pass
+
+
+def test_app_scope_queued_messages_delivered_to_every_session():
+    """App-scope render (no active session) still delivers the same queued
+    messages to every session's Chat with the same id."""
+    from shinychat import chat_ui
+    from shinychat._chat import _QUEUED_INIT_MESSAGES
+
+    block = _tool_result_block()
+    chat_ui(
+        "chat_appscope",
+        messages=[ChatMessage(content="", role="assistant", blocks=[block])],
+    )
+    # No session was active, so the entry lands in the app-scope dict.
+    assert "chat_appscope" in _QUEUED_INIT_MESSAGES
+
+    # Two different sessions with the same chat id should both see the
+    # same queued messages (read, never popped).
+    for sess_id in ("sess-a", "sess-b"):
+        session = cast(Session, _SessionScopeMockSession(sess_id))
+        with session_context(session):
+            chat = Chat(id="chat_appscope")
+            sent: list[dict[str, Any]] = []
+
+            async def _capture(action: Any, deps: Any = None) -> None:
+                sent.append(action)
+
+            chat._send_action = _capture  # type: ignore[method-assign]
+
+            async def _exercise() -> None:
+                await chat._append_init_messages()
+
+            run_async(_exercise)
+
+        message_actions = [a for a in sent if a["type"] == "message"]
+        assert len(message_actions) == 1
+        segments = message_actions[0]["message"]["segments"]
+        block_segments = [s for s in segments if s.get("type") == "tool_result"]
+        assert block_segments == [block]
+
+    # App-scope entry is still there (never popped).
+    assert "chat_appscope" in _QUEUED_INIT_MESSAGES
+
+
+def test_session_scoped_renders_dont_clobber_each_other():
+    """Two session-scoped renders with the same chat id but different
+    block-carrying messages each deliver their own messages — no clobber."""
+    from shinychat import chat_ui
+    from shinychat._chat import _QUEUED_INIT_MESSAGES_SESSION
+
+    block_a = _tool_result_block()
+    block_a["value"] = "from-session-a"
+    block_b = _tool_result_block()
+    block_b["value"] = "from-session-b"
+
+    results: dict[str, list[dict[str, Any]]] = {}
+
+    for sess_id, block in [("sess-a", block_a), ("sess-b", block_b)]:
+        session = cast(Session, _SessionScopeMockSession(sess_id))
+        with session_context(session):
+            chat_ui(
+                "chat_sessscope",
+                messages=[
+                    ChatMessage(content="", role="assistant", blocks=[block])
+                ],
+            )
+            # Entry should be in the session-scoped dict, not the app-scope dict.
+            assert (
+                "sess-a" if sess_id == "sess-a" else "sess-b",
+                "chat_sessscope",
+            ) in _QUEUED_INIT_MESSAGES_SESSION
+
+            chat = Chat(id="chat_sessscope")
+            sent: list[dict[str, Any]] = []
+
+            async def _capture(action: Any, deps: Any = None) -> None:
+                sent.append(action)
+
+            chat._send_action = _capture  # type: ignore[method-assign]
+
+            async def _exercise() -> None:
+                await chat._append_init_messages()
+
+            run_async(_exercise)
+
+        results[sess_id] = [a for a in sent if a["type"] == "message"]
+
+    # Each session got its own block.
+    for sess_id, expected_value in [
+        ("sess-a", "from-session-a"),
+        ("sess-b", "from-session-b"),
+    ]:
+        msgs = results[sess_id]
+        assert len(msgs) == 1
+        segments = msgs[0]["message"]["segments"]
+        block_segments = [s for s in segments if s.get("type") == "tool_result"]
+        assert len(block_segments) == 1
+        assert block_segments[0]["value"] == expected_value
+
+    # Session-scoped entries were popped (consumed once).
+    assert ("sess-a", "chat_sessscope") not in _QUEUED_INIT_MESSAGES_SESSION
+    assert ("sess-b", "chat_sessscope") not in _QUEUED_INIT_MESSAGES_SESSION
 
 
 class _BookmarkStubSession:

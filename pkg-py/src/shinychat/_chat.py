@@ -348,6 +348,16 @@ class Chat:
         # https://github.com/posit-dev/py-shiny/pull/793/files
         self._session = require_active_session(None)
 
+        # Clean up any session-scoped queued init messages when the session
+        # ends, so they don't leak past the session lifetime.
+        _session_id = self._session.id
+        _chat_id = self.id
+
+        def _cleanup_queued_init_messages() -> None:
+            _QUEUED_INIT_MESSAGES_SESSION.pop((_session_id, _chat_id), None)
+
+        self._session.on_ended(_cleanup_queued_init_messages)
+
         # Default to sanitizing until we know the app isn't sanitizing errors
         if on_error == "auto":
             on_error = "sanitize"
@@ -405,11 +415,20 @@ class Chat:
             # state through other means
             async def _append_init_messages():
                 # `chat_ui(messages=)` messages that carry structured blocks
-                # are queued app-side (they can't ride the static
+                # are queued (they can't ride the static
                 # <shiny-chat-message> tags) and appended here, where the
                 # send path preserves blocks (P5, kata#c15v). They lead, the
                 # same position the static tags render in.
-                for msg in _QUEUED_INIT_MESSAGES.get(self.id, []):
+                # Session-scoped entries are popped (consumed once) so
+                # concurrent dynamic renders don't clobber each other; the
+                # app-scope entry is read (never popped) so every session
+                # with the same id sees the same messages.
+                queued = _QUEUED_INIT_MESSAGES_SESSION.pop(
+                    (self._session.id, self.id), None
+                )
+                if queued is None:
+                    queued = _QUEUED_INIT_MESSAGES.get(self.id, [])
+                for msg in queued:
                     await self.append_message(msg)
                 for msg in messages:
                     await self.append_message(msg)
@@ -2883,7 +2902,19 @@ def chat_ui(
         # whole list — opting the entire list in keeps the message order
         # intact, since server-appended messages would otherwise land after
         # the static ones — for server-side append on session init (P5).
-        _QUEUED_INIT_MESSAGES[id] = normalized_messages
+        # When a real (non-stub) session is available, scope the entry to
+        # that session so concurrent dynamic renders with the same chat id
+        # don't clobber each other; otherwise fall back to the app-scope
+        # queue (matching the static tags' same-for-all-sessions semantics).
+        from shiny.session import get_current_session
+
+        session = get_current_session()
+        if session is not None and not session.is_stub_session():
+            _QUEUED_INIT_MESSAGES_SESSION[(session.id, id)] = (
+                normalized_messages
+            )
+        else:
+            _QUEUED_INIT_MESSAGES[id] = normalized_messages
     else:
         for msg in normalized_messages:
             message_tags.append(
@@ -3053,12 +3084,21 @@ class MessageStream:
 
 CHAT_INSTANCES: WeakValueDictionary[str, Chat] = WeakValueDictionary()
 
-# App-level queue of `chat_ui(messages=)` initial messages that normalize to
-# carry structured blocks, keyed by resolved chat id. A static
-# <shiny-chat-message> tag carries string content only, so block-carrying
-# initial messages would silently drop their blocks (roborev 1025); instead
-# they are appended server-side on session init via
-# `Chat._append_init_messages` (P5, kata#c15v). The UI renders once per app,
-# so every session's `Chat` with the same id reads (never pops) the same
-# queue — matching the static tags' same-for-all-sessions semantics.
+# Two-tier queue of `chat_ui(messages=)` initial messages that normalize to
+# carry structured blocks. A static <shiny-chat-message> tag carries string
+# content only, so block-carrying initial messages would silently drop their
+# blocks (roborev 1025); instead they are appended server-side on session init
+# via `Chat._append_init_messages` (P5, kata#c15v).
+#
+# 1. App-scope (`_QUEUED_INIT_MESSAGES`): keyed by resolved chat id. The UI
+#    renders once per app, so every session's `Chat` with the same id reads
+#    (never pops) the same entry — matching the static tags'
+#    same-for-all-sessions semantics. Used when no active (non-stub) session
+#    is available at `chat_ui()` render time.
+# 2. Session-scope (`_QUEUED_INIT_MESSAGES_SESSION`): keyed by
+#    `(session.id, chat id)`. When `chat_ui()` is rendered dynamically (e.g.
+#    inside a `@render.ui`), each session gets its own entry that is popped
+#    (consumed once) on init and cleaned up on session end, so concurrent
+#    sessions with the same chat id don't clobber each other.
 _QUEUED_INIT_MESSAGES: dict[str, list[ChatMessage]] = {}
+_QUEUED_INIT_MESSAGES_SESSION: dict[tuple[str, str], list[ChatMessage]] = {}
