@@ -501,48 +501,68 @@ def _attach_cited_sources(
 ) -> None:
     """
     Mirror the markup path's rehypeAttachCitedSources fallback for structured
-    web blocks: when a turn produced search requests and answer citations but
-    no provider search results, carry the cited sources on the last
-    `web_search` block so the client can show them while no results attach.
-    Mutates `blocks` in place (the same dicts are referenced by `parts`).
+    web blocks, gated per search burst: when a search request produced
+    citations but no provider search results, carry those cited sources on
+    that burst's `web_search` block so the client can show them while no
+    results attach. Mutates `blocks` in place (the same dicts are referenced
+    by `parts`).
+
+    Bursts map to ``web_search`` blocks by order: the n-th
+    ``ContentToolRequestSearch`` corresponds to the n-th ``web_search`` block
+    in ``blocks``. Citations attach to the search burst they follow, not
+    pooled turn-wide; citations before any search request are not attached.
     """
-    if not any(b["type"] == "web_search" for b in blocks):
-        return
-    # Provider results win; cited sources are only a fallback when the turn
-    # has no results at all (hasSearchResults in rehypeAttachCitedSources).
-    if any(b["type"] == "web_search_results" for b in blocks):
+    web_search_blocks = [b for b in blocks if b["type"] == "web_search"]
+    if not web_search_blocks:
         return
     try:
-        from chatlas.types import ContentCitation, WebSource
+        from chatlas.types import (
+            ContentCitation,
+            ContentToolRequestSearch,
+            ContentToolResponseSearch,
+            WebSource,
+        )
     except ImportError:
         return
-    # Merge by URL (first occurrence wins; a later title fills a missing
-    # one), mirroring mergeSources in rehypeAttachCitedSources.
-    cited: list[WebSearchSource] = []
-    by_url: dict[str, WebSearchSource] = {}
+
+    # Walk contents in order, grouping citations into per-burst buckets.
+    # Each ContentToolRequestSearch opens a new burst; a ContentToolResponseSearch
+    # closes its burst as provider-satisfied (no fallback needed). Citations
+    # attach to the currently open burst; citations before any request have no
+    # burst and are dropped from the structured fallback.
+    BurstCited = tuple[list[WebSearchSource], dict[str, WebSearchSource]]
+    bursts: list[tuple[bool, BurstCited]] = []
+    # (has_results, (cited_list, by_url)) — one entry per search request, in order.
     for x in contents:
-        if not isinstance(x, ContentCitation) or not isinstance(
-            x.source, WebSource
-        ):
+        if isinstance(x, ContentToolRequestSearch):
+            bursts.append((False, ([], {})))
+        elif isinstance(x, ContentToolResponseSearch):
+            if bursts:
+                bursts[-1] = (True, bursts[-1][1])
+        elif isinstance(x, ContentCitation) and isinstance(x.source, WebSource):
+            if not bursts:
+                continue  # Citation before any search request: no burst.
+            cited, by_url = bursts[-1][1]
+            existing = by_url.get(x.source.url)
+            if existing is not None:
+                # Merge by URL (first occurrence wins; a later title fills a
+                # missing one), mirroring mergeSources in rehypeAttachCitedSources.
+                if "title" not in existing and x.source.title:
+                    existing["title"] = x.source.title
+                continue
+            source: WebSearchSource = {"url": x.source.url}
+            if x.source.title:
+                source["title"] = x.source.title
+            by_url[x.source.url] = source
+            cited.append(source)
+
+    # Attach each results-less burst's citations onto its corresponding
+    # web_search block (n-th request → n-th web_search block).
+    for i, (has_results, (cited, _)) in enumerate(bursts):
+        if has_results or not cited:
             continue
-        existing = by_url.get(x.source.url)
-        if existing is not None:
-            if "title" not in existing and x.source.title:
-                existing["title"] = x.source.title
-            continue
-        source: WebSearchSource = {"url": x.source.url}
-        if x.source.title:
-            source["title"] = x.source.title
-        by_url[x.source.url] = source
-        cited.append(source)
-    if not cited:
-        return
-    # parseItems reads the wrapper's citedSources onto the last pending
-    # search; attach to the last web_search block here.
-    for b in reversed(blocks):
-        if b["type"] == "web_search":
-            b["cited_sources"] = cited
-            return
+        if i < len(web_search_blocks):
+            web_search_blocks[i]["cited_sources"] = cited
 
 
 def normalize_message(message: Any) -> ChatMessage:

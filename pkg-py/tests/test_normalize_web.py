@@ -233,6 +233,71 @@ def test_turn_search_with_results_does_not_carry_cited_sources():
     ]
 
 
+def test_two_bursts_second_has_citations_no_results_carries_cited_sources():
+    # A turn with [search+results] followed by [results-less search + citations]:
+    # the first burst's web_search block must NOT carry cited_sources (it has
+    # provider results), and the second burst's web_search block MUST carry the
+    # citations that follow it.
+    msg = message_content(
+        Turn(
+            [
+                # Burst 1: search request + provider results → satisfied.
+                ContentToolRequestSearch(query="first query"),
+                ContentToolResponseSearch(
+                    sources=[
+                        WebSource(url="https://results.com", title="Results")
+                    ]
+                ),
+                ContentText(text="First answer. "),
+                # Burst 2: search request, no results, but citations follow.
+                ContentToolRequestSearch(query="second query"),
+                ContentText(text="Second answer "),
+                ContentCitation(
+                    source=WebSource(url="https://a.com", title="Alpha")
+                ),
+                ContentCitation(source=WebSource(url="https://b.com")),
+                # Duplicate URL merges; a later title fills a missing one.
+                ContentCitation(
+                    source=WebSource(url="https://b.com", title="Beta")
+                ),
+            ],
+            role="assistant",
+        )
+    )
+    search_blocks = [b for b in msg.blocks if b["type"] == "web_search"]
+    assert len(search_blocks) == 2
+    # First burst has provider results → no cited_sources fallback.
+    assert "cited_sources" not in search_blocks[0]
+    # Second burst has no results → citations ride its web_search block.
+    assert search_blocks[1]["cited_sources"] == [
+        {"url": "https://a.com", "title": "Alpha"},
+        {"url": "https://b.com", "title": "Beta"},
+    ]
+    # The citation asides still render into the content string.
+    assert msg.content.count("data-citation") == 3
+
+
+def test_citations_before_any_search_request_not_attached():
+    # Citations that appear before any search request have no burst to
+    # attach to; they must not be pooled onto a later burst's web_search block.
+    msg = message_content(
+        Turn(
+            [
+                ContentText(text="Intro "),
+                ContentCitation(source=WebSource(url="https://orphan.com")),
+                ContentToolRequestSearch(query="query"),
+                ContentText(text="Answer"),
+            ],
+            role="assistant",
+        )
+    )
+    search_blocks = [b for b in msg.blocks if b["type"] == "web_search"]
+    assert len(search_blocks) == 1
+    assert "cited_sources" not in search_blocks[0]
+    # The orphan citation still renders as markup.
+    assert msg.content.count("data-citation") == 1
+
+
 def test_turn_citations_without_search_stay_markup_only():
     msg = message_content(
         Turn(
