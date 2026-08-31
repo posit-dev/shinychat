@@ -1002,3 +1002,23 @@ generated assets changed. `shinychat#ykxh` remains open with
 `needs-review`, `work.attention="ok"`, and
 `work.branch="feat/history-exchange-tree"`; `shinychat#5r50` remains blocked
 and unstarted.
+
+### Roborev 1111 test-review disposition (2026-08-31)
+
+Roborev job `1111` reviewed test commit
+`c3dfbb662f5d4806401127376e83ba6e35e61a32` and returned `FAIL` with one valid
+Medium finding at
+`pkg-py/tests/playwright/chat/history_transition/test_history_transition.py:120`:
+the test attempted submission before confirming delivery of the stale
+completion, so it could pass without proving that the stale completion left
+the new marker intact.
+
+Disposition: accepted and corrected in follow-up test commit `4f9d8bfb`.
+The fixture now sends an existing `update_input` action immediately after the
+stale completion; the browser waits for that acknowledgment, proves the real
+send button remains disabled, and only then attempts submission. The prior
+review job was closed after the correction commit. The focused
+history-transition suite passes 6 tests, targeted Ruff lint/format and
+`make py-check-format` pass, and no production code or generated assets
+changed. `shinychat#ykxh` remains open with `needs-review`,
+`work.attention="ok"`, and `shinychat#5r50` remains blocked.
