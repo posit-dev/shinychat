@@ -426,13 +426,14 @@ the one per-session serialization boundary. Do not add another lock or
 replace the controller/recorder ownership split.
 
 For v2, `new_chat()` and `delete()` acquire the recorder lock inside the
-existing destructive-mutation boundary. Active `delete()` acquires it before
-`store.delete()` and holds it through recorder reset, controller active-ID
-clear, adapter turns/transcript and message clear, and the awaited explicit
-`None` active-ID callback. New-chat publication is likewise serialized with
-the recorder persistence/publication path, so an older callback cannot finish
-after the clear transition. Persistence and lifecycle callbacks therefore
-have these ordering guarantees:
+existing destructive-mutation boundary. Active `delete()` acquires the
+existing recorder lock before `on_evict` and `store.delete()`, then holds it
+through recorder reset, controller active-ID clear, adapter
+turns/transcript and message clear, and the awaited explicit `None` active-ID
+callback. New-chat publication is likewise serialized with the recorder
+persistence/publication path, so an older callback cannot finish after the
+clear transition. Persistence and lifecycle callbacks therefore have these
+ordering guarantees:
 
 - A blocked write for conversation A cannot resume after active deletion and
   recreate A as the active conversation.
@@ -441,11 +442,24 @@ have these ordering guarantees:
 - Reset, active-ID clearing, local transcript/message clearing, and the
   explicit clear callback complete as one serialized v2 lifecycle sequence.
 
-The exact barrier regressions required before implementation resumes are:
-blocked `put(A)` versus active `delete()` (delete waits, removes the durable
-record, and leaves no active recorder/ID/turns/messages), and blocked callback
-`A` versus `new_chat()` (release produces callback order `[A, None]` and no
-stale publication afterward).
+**Barrier-test supersession:** the earlier blocked-write `new_chat()`
+regression in `pkg-py/tests/test_history_controller.py` around line 716 is
+superseded and must be replaced. It awaits `new_chat()` before releasing
+`put(A)`, which deadlocks once `new_chat()` acquires the recorder lock, and
+its expectation that A remains stored conflicts with the approved lock
+ordering. That test and expectation are no longer valid.
+
+The replacement barrier regressions required before implementation resumes
+are:
+
+1. Blocked `put(A)` versus active `delete()`: start A's blocked persistence,
+   start deletion, assert deletion waits, release A, then assert deletion
+   completes after `on_evict` and `store.delete()`, with no durable A and no
+   active recorder, ID, turns, or messages.
+2. Blocked callback A versus `new_chat()`: block the callback after it
+   receives A, start `new_chat()`, assert the new chat waits, release A, then
+   assert callback order `[A, None]`, completion of the new chat, and no stale
+   publication afterward.
 
 This decision traces to R2's durable-record-before-pointer and session
 continuity requirements, and R7's requirement to extend existing lifecycle
