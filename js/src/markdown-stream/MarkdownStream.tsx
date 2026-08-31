@@ -10,6 +10,8 @@ import {
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { EscapedIsland } from "../markdown/EscapedIsland"
 import { useAutoScroll, findScrollableParent } from "../markdown/useAutoScroll"
+import { HtmlBlockContent } from "../chat/HtmlBlockContent"
+import type { HtmlBlock } from "../chat/html-block-model"
 import type { ContentType } from "../transport/types"
 
 const CHAT_CONTAINER_TAG = "shiny-chat-container"
@@ -17,6 +19,19 @@ const CHAT_CONTAINER_TAG = "shiny-chat-container"
 export type ContentSegment = {
   text: string
   trusted: boolean
+}
+
+/**
+ * One item of stream state: a string segment (with trust provenance) or a
+ * structured `html_block` island. Blocks are hard structural boundaries —
+ * adjacent same-trust string segments merge, but a block never merges with
+ * anything.
+ */
+export type StreamSegment = ContentSegment | HtmlBlock
+
+/** Structural discrimination: string segments carry `text`; blocks a `type`. */
+function isBlockSegment(segment: StreamSegment): segment is HtmlBlock {
+  return "type" in segment
 }
 
 // This is the only island escape on untrusted `contentType="html"` segments;
@@ -28,7 +43,7 @@ const escapedIslandComponents: Record<string, ComponentType<unknown>> = {
 
 export interface MarkdownStreamProps {
   initialContent?: string
-  initialSegments?: ContentSegment[]
+  initialSegments?: StreamSegment[]
   initialContentType?: ContentType
   initialStreaming?: boolean
   initialTrusted?: boolean
@@ -42,7 +57,14 @@ export type MarkdownStreamApi = {
     trusted?: boolean,
     startSegment?: boolean,
   ) => void
+  /** Append one complete structured `html_block` island. */
+  appendBlock: (block: HtmlBlock) => void
   replaceContent: (content: string, trusted?: boolean) => void
+  /**
+   * Uniform replace for a block-carrying message (kata#0r4g): wipe ALL
+   * segments and blocks, then append the block.
+   */
+  replaceWithBlock: (block: HtmlBlock) => void
   setStreaming: (streaming: boolean) => void
   setContentType: (contentType: ContentType) => void
 }
@@ -57,7 +79,7 @@ export function MarkdownStream({
   autoScroll = false,
   onApiReady,
 }: MarkdownStreamProps) {
-  const [segments, setSegments] = useState<ContentSegment[]>(
+  const [segments, setSegments] = useState<StreamSegment[]>(
     initialSegments ?? [{ text: initialContent, trusted: initialTrusted }],
   )
   const [contentType, setContentType] =
@@ -116,7 +138,14 @@ export function MarkdownStream({
       repinIfAtBottom()
       setSegments((prev) => {
         const last = prev[prev.length - 1]
-        if (!startSegment && last && last.trusted === trusted) {
+        // Blocks are hard boundaries: text only merges into a trailing
+        // string segment of equal trust, never into (or across) a block.
+        if (
+          !startSegment &&
+          last &&
+          !isBlockSegment(last) &&
+          last.trusted === trusted
+        ) {
           return [...prev.slice(0, -1), { ...last, text: last.text + chunk }]
         }
         return [...prev, { text: chunk, trusted }]
@@ -125,18 +154,37 @@ export function MarkdownStream({
     [repinIfAtBottom],
   )
 
+  const appendBlock = useCallback(
+    (block: HtmlBlock) => {
+      // Same pinnedness settle as appendContent: a block grows the DOM too.
+      repinIfAtBottom()
+      setSegments((prev) => [...prev, block])
+    },
+    [repinIfAtBottom],
+  )
+
   const replaceContent = useCallback((newContent: string, trusted = false) => {
     setSegments([{ text: newContent, trusted }])
   }, [])
 
+  const replaceWithBlock = useCallback(
+    (block: HtmlBlock) => {
+      repinIfAtBottom()
+      setSegments([block])
+    },
+    [repinIfAtBottom],
+  )
+
   const api = useMemo(
     () => ({
       appendContent,
+      appendBlock,
       replaceContent,
+      replaceWithBlock,
       setStreaming,
       setContentType,
     }),
-    [appendContent, replaceContent],
+    [appendContent, appendBlock, replaceContent, replaceWithBlock],
   )
 
   useEffect(() => {
@@ -145,18 +193,30 @@ export function MarkdownStream({
 
   return (
     <div ref={innerRef}>
-      {segments.map((segment, index) => (
-        <MarkdownContent
-          key={index}
-          content={segment.text}
-          contentType={contentType}
-          streaming={streaming && index === segments.length - 1}
-          allowRawHtmlIslands={segment.trusted}
-          tagToComponentMap={
-            segment.trusted ? undefined : escapedIslandComponents
-          }
-        />
-      ))}
+      {segments.map((segment, index) =>
+        isBlockSegment(segment) ? (
+          // A structured raw-HTML island renders through the same sink Chat
+          // uses — no markdown-pipeline round-trip. The streaming dot lives
+          // in the markdown pipeline, so a trailing block shows no dot; it
+          // resumes with the next string segment.
+          <HtmlBlockContent
+            key={index}
+            content={segment.content}
+            htmlDeps={segment.htmlDeps}
+          />
+        ) : (
+          <MarkdownContent
+            key={index}
+            content={segment.text}
+            contentType={contentType}
+            streaming={streaming && index === segments.length - 1}
+            allowRawHtmlIslands={segment.trusted}
+            tagToComponentMap={
+              segment.trusted ? undefined : escapedIslandComponents
+            }
+          />
+        ),
+      )}
     </div>
   )
 }

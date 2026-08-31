@@ -24,6 +24,15 @@ import {
   MarkdownStream,
   type MarkdownStreamApi,
 } from "../../src/markdown-stream/MarkdownStream"
+import type { HtmlBlock } from "../../src/chat/html-block-model"
+import type { HtmlDep } from "../../src/transport/types"
+
+const htmlBlock = (content: string, htmlDeps: HtmlDep[] = []): HtmlBlock => ({
+  type: "html_block",
+  content,
+  contentType: "html",
+  htmlDeps,
+})
 
 describe("MarkdownStream", () => {
   beforeEach(() => {
@@ -221,5 +230,191 @@ describe("MarkdownStream", () => {
 
     expect(container.querySelector("[data-forged]")).toBeNull()
     expect(container.textContent).toContain("shiny-chat-raw-html")
+  })
+})
+
+describe("MarkdownStream — structured html_block segments", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("appends a structured html_block and renders its HTML", () => {
+    let api: MarkdownStreamApi | undefined
+    const { container } = render(
+      <MarkdownStream
+        onApiReady={(value) => {
+          api = value
+        }}
+      />,
+    )
+
+    act(() => {
+      api?.appendContent("## Heading\n\n")
+      api?.appendBlock(htmlBlock("<div data-island>island</div>"))
+    })
+
+    expect(container.querySelector("h2")?.textContent).toBe("Heading")
+    expect(container.querySelector("[data-island]")?.textContent).toBe("island")
+  })
+
+  it("keeps blocks as hard boundaries text never merges into", () => {
+    let api: MarkdownStreamApi | undefined
+    const { container } = render(
+      <MarkdownStream
+        onApiReady={(value) => {
+          api = value
+        }}
+      />,
+    )
+
+    act(() => {
+      api?.appendContent("before")
+      api?.appendBlock(htmlBlock('<div data-island="1">one</div>'))
+      api?.appendContent("after")
+      api?.appendContent(" more")
+    })
+
+    // "before" is its own segment; "after" + " more" merge into one segment
+    // (same trust, no segment_start) — proving the text landed in a string
+    // segment after the block, not inside it.
+    const paragraphs = [...container.querySelectorAll("p")].map(
+      (p) => p.textContent,
+    )
+    expect(paragraphs).toEqual(["before", "after more"])
+    expect(container.querySelector('[data-island="1"]')?.textContent).toBe(
+      "one",
+    )
+  })
+
+  it("replaceWithBlock wipes all prior segments and blocks", () => {
+    let api: MarkdownStreamApi | undefined
+    const { container } = render(
+      <MarkdownStream
+        onApiReady={(value) => {
+          api = value
+        }}
+      />,
+    )
+
+    act(() => {
+      api?.appendContent("before text")
+      api?.appendBlock(htmlBlock('<div data-island="old">old</div>'))
+    })
+    act(() => {
+      api?.replaceWithBlock(htmlBlock('<div data-island="new">new</div>'))
+    })
+
+    expect(container.textContent).not.toContain("before text")
+    expect(container.querySelector('[data-island="old"]')).toBeNull()
+    expect(container.querySelector('[data-island="new"]')?.textContent).toBe(
+      "new",
+    )
+  })
+
+  it("a string replace wipes prior blocks too", () => {
+    let api: MarkdownStreamApi | undefined
+    const { container } = render(
+      <MarkdownStream
+        onApiReady={(value) => {
+          api = value
+        }}
+      />,
+    )
+
+    act(() => {
+      api?.appendBlock(htmlBlock('<div data-island="old">old</div>'))
+    })
+    act(() => {
+      api?.replaceContent("fresh text")
+    })
+
+    expect(container.querySelector('[data-island="old"]')).toBeNull()
+    expect(container.textContent).toContain("fresh text")
+  })
+
+  it("renders initial segments carrying structured blocks", () => {
+    const { container } = render(
+      <MarkdownStream
+        initialSegments={[
+          { text: "## Markdown", trusted: false },
+          htmlBlock("<div data-island>HTML</div>"),
+        ]}
+      />,
+    )
+
+    expect(container.querySelector("h2")?.textContent).toBe("Markdown")
+    expect(container.querySelector("[data-island]")?.textContent).toBe("HTML")
+  })
+
+  it("settles pinnedness before an appended block reaches the DOM", () => {
+    // Same race as appended chunks (posit-dev/py-shiny#2378): a block grows
+    // the DOM just like a text chunk, so pinnedness must be settled first.
+    let api: MarkdownStreamApi | undefined
+    let domAtRepinTime: string | undefined
+
+    repinIfAtBottom.mockImplementation(() => {
+      domAtRepinTime = container.textContent ?? ""
+    })
+
+    const { container } = render(
+      <MarkdownStream
+        autoScroll={true}
+        onApiReady={(value) => {
+          api = value
+        }}
+      />,
+    )
+
+    act(() => {
+      api?.appendBlock(htmlBlock("<div data-island>block html</div>"))
+    })
+
+    expect(repinIfAtBottom).toHaveBeenCalledTimes(1)
+    expect(domAtRepinTime).not.toContain("block html")
+    expect(container.textContent).toContain("block html")
+  })
+
+  it("renders block dependencies before mounting the island HTML", async () => {
+    let resolveDeps: (() => void) | undefined
+    const renderDependencies = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDeps = resolve
+        }),
+    )
+    const dep = { name: "testlib", version: "1.0" } as unknown as HtmlDep
+
+    let api: MarkdownStreamApi | undefined
+    const { container } = render(
+      <ShinyLifecycleContext.Provider
+        value={{
+          bindAll: vi.fn(async () => {}),
+          unbindAll: vi.fn(),
+          renderDependencies,
+          showClientMessage: vi.fn(),
+        }}
+      >
+        <MarkdownStream
+          onApiReady={(value) => {
+            api = value
+          }}
+        />
+      </ShinyLifecycleContext.Provider>,
+    )
+
+    act(() => {
+      api?.appendBlock(htmlBlock("<div data-island>deferred</div>", [dep]))
+    })
+
+    expect(renderDependencies).toHaveBeenCalledWith([dep])
+    expect(container.querySelector("[data-island]")).toBeNull()
+
+    await act(async () => {
+      resolveDeps?.()
+    })
+
+    expect(container.querySelector("[data-island]")?.textContent).toBe(
+      "deferred",
+    )
   })
 })
