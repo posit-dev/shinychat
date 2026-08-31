@@ -711,3 +711,46 @@ and restoration that removes only the exact optimistic pair.
 The existing uncommitted Stage 1 anchor must be reworked to this decision.
 Implementation remains stopped pending review of this note. Job `1079`
 remains open and unclosed; `shinychat#5r50` remains blocked and unstarted.
+
+2026-08-31 handoff: Handler-time envelope core work is currently unstaged.
+Terra evidence: focused Python 294 passed/1 skipped; JS lint/tests/update-dist/types passed; Playwright production-path probe failed because Shiny queues follow-up browser input behind the awaited transition; Luna independently confirmed with Shiny client/session-lock code.
+Next action: Garrick must decide the admission boundary and whether a client transition marker or independently owned transition task is permitted; neither is within current constraints.
+
+### Stage 1 browser-serialization escalation (2026-08-31)
+
+The real Shiny browser serializes the next input until awaited active
+`new_chat()`/`delete()` completes. Therefore the server strict-envelope,
+`input_rejected`, and optimistic-rollback design cannot implement Option A as
+specified and must be deleted/reworked. The recorder and destructive-ordering
+fixes remain required and are retained.
+
+The smallest proposed replacement requires Garrick's authorization:
+
+- Maintain a per-chat, client-only
+  `historyTransitionPending=requestId`, set synchronously when active New Chat
+  or active Delete starts.
+- Propagate `submissionBlocked` to the input surface and block Enter, send,
+  attachment-only, slash-command, and imperative submission before dispatch.
+  Preserve the browser draft and attachments; add no spinner.
+- Send `requestId` with the transition event.
+- Have Python emit matching
+  `history_transition_complete {requestId}` in `finally` after success,
+  handled failure, or cancellation.
+- Treat a stale completion as a no-op.
+
+Existing busy indicators, history updates, and error notifications are
+insufficient because they do not synchronously protect all submission paths
+or identify the transition that releases the block. This proposal adds no
+queue, timer, CAS, second owner, or server ambient flag. Generic clear,
+switch, restore, and inactive delete remain out of scope; the R server remains
+Phase 6 scope.
+
+Required coverage includes the JS transition marker and all blocked input
+paths, Python completion emission on success/handled failure/cancellation,
+Playwright draft/attachment preservation and stale-completion behavior, and
+`make update-dist` for all packaged copies. The existing uncommitted anchor
+must be reworked only after authorization. Its tracked non-note diff hash is
+`46df02b9d29c657405121fda66e12e7b51a28b696e593da8c0d99d6921a3b10a`.
+
+Implementation is stopped pending Garrick authorization. Job `1079` remains
+open and unclosed; `shinychat#5r50` remains blocked and unstarted.
