@@ -1386,3 +1386,129 @@ test_that("chat_ui() html_block from non-string HTML content", {
   )
   expect_true("html_block" %in% seg_types)
 })
+
+# ---------------------------------------------------------------------------
+# Regression tests for roborev 1066 findings 2, 3, 4
+# ---------------------------------------------------------------------------
+
+test_that("chat_ui() mixed content with a plain tag produces an html_block island (not a bare html string)", {
+  # A mixed list containing a shinychat_block AND a plain tag: the plain tag
+  # must be routed through the HTML-island builder so it becomes an
+  # html_block island (not a bare html string segment). Without the fix,
+  # React would own the DOM and no scoped bindAll() would occur, leaving
+  # inputs/outputs unbound (roborev 1066, finding 2).
+  block <- tool_result_block()
+  plain_tag <- tags$div("trusted HTML")
+  ui <- chat_ui(
+    "chat",
+    messages = list(
+      list(
+        role = "assistant",
+        content = list("Here is a block:", block, plain_tag)
+      )
+    )
+  )
+
+  expect_false(is.null(ui$attribs[["data-initial-messages"]]))
+
+  parsed <- jsonlite::fromJSON(
+    as.character(ui$attribs[["data-initial-messages"]]),
+    simplifyDataFrame = FALSE,
+    simplifyVector = FALSE
+  )
+
+  segments <- parsed[[1]]$segments
+
+  # Collect segment types: string segments have no "type"; blocks do.
+  seg_types <- vapply(
+    segments,
+    function(s) if ("type" %in% names(s)) s$type else "string",
+    character(1)
+  )
+
+  # The plain tag should produce an html_block island, not a bare html string.
+  expect_true("html_block" %in% seg_types)
+
+  # The html_block segment should contain the tag's rendered HTML.
+  html_block_seg <- segments[[which(seg_types == "html_block")]]
+  expect_match(html_block_seg$content, "trusted HTML", fixed = TRUE)
+  expect_equal(html_block_seg$version, 1)
+
+  # There should be NO bare html string segment for the plain tag.
+  # (String segments are content_type "markdown" or "html"; the plain tag
+  # must not appear as a content_type "html" string segment.)
+  html_string_segs <- segments[
+    seg_types == "string" &
+      vapply(
+        segments,
+        function(s) {
+          "content_type" %in% names(s) && identical(s$content_type, "html")
+        },
+        logical(1)
+      )
+  ]
+  for (seg in html_string_segs) {
+    expect_false(grepl("trusted HTML", seg$content, fixed = TRUE))
+  }
+})
+
+test_that("chat_ui() direct html_block initial message serializes as a block with type/version intact", {
+  # A direct shinychat_block with a `content` field (e.g. an html_block from
+  # new_html_block()) passed as a chat_ui initial message must NOT be
+  # mistaken for a message envelope list and unwrapped. Its block metadata
+  # (type, version) must survive serialization (roborev 1066, finding 4).
+  html_block <- new_html_block("<p>trusted island HTML</p>")
+
+  ui <- chat_ui("chat", messages = list(html_block))
+
+  expect_false(is.null(ui$attribs[["data-initial-messages"]]))
+
+  parsed <- jsonlite::fromJSON(
+    as.character(ui$attribs[["data-initial-messages"]]),
+    simplifyDataFrame = FALSE,
+    simplifyVector = FALSE
+  )
+
+  expect_length(parsed, 1)
+  entry <- parsed[[1]]
+  expect_equal(entry$role, "assistant")
+  expect_length(entry$segments, 1)
+
+  seg <- entry$segments[[1]]
+  # The segment must be a block (type/html_block), not a string segment.
+  expect_equal(seg$type, "html_block")
+  expect_equal(seg$version, 1)
+  expect_match(seg$content, "trusted island HTML", fixed = TRUE)
+})
+
+test_that("chat_ui() direct html_block with deps serializes as a block, deps lifted to container", {
+  # A direct html_block carrying html deps: the block must serialize as a
+  # block (not unwrapped), and deps must be lifted to the container
+  # (roborev 1066, finding 4).
+  html_block <- new_html_block("<p>island with deps</p>")
+  dep <- htmltools::htmlDependency("testdep-htmlblock", "1.0.0", "")
+  attr(html_block, "shinychat_html_deps") <- list(dep)
+
+  ui <- chat_ui("chat", messages = list(html_block))
+
+  expect_false(is.null(ui$attribs[["data-initial-messages"]]))
+
+  parsed <- jsonlite::fromJSON(
+    as.character(ui$attribs[["data-initial-messages"]]),
+    simplifyDataFrame = FALSE,
+    simplifyVector = FALSE
+  )
+
+  seg <- parsed[[1]]$segments[[1]]
+  expect_equal(seg$type, "html_block")
+  expect_equal(seg$version, 1)
+
+  # html_deps must NOT appear in the JSON
+  json_str <- as.character(ui$attribs[["data-initial-messages"]])
+  expect_false(grepl("html_deps", json_str, fixed = TRUE))
+
+  # Deps should be lifted to the container
+  rendered <- htmltools::renderTags(ui)
+  dep_names <- vapply(rendered$dependencies, function(d) d$name, character(1))
+  expect_true("testdep-htmlblock" %in% dep_names)
+})
