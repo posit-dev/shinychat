@@ -449,8 +449,7 @@ superseded and must be replaced. It awaits `new_chat()` before releasing
 its expectation that A remains stored conflicts with the approved lock
 ordering. That test and expectation are no longer valid.
 
-The replacement barrier regressions required before implementation resumes
-are:
+The replacement barrier regressions specified by this decision were:
 
 1. Blocked `put(A)` versus active `delete()`: start A's blocked persistence,
    start deletion, assert deletion waits, release A, then assert deletion
@@ -465,6 +464,26 @@ This decision traces to R2's durable-record-before-pointer and session
 continuity requirements, and R7's requirement to extend existing lifecycle
 primitives rather than introduce a new subsystem. The patch adds no queue,
 timer, CAS, second record owner, init-window guard, or new lock. Implementation
-is stopped until this decision note is reviewed. `shinychat#ykxh` remains open
-with `needs-review` and `work.attention="blocked"`;
+was initially stopped pending review. **Superseded by the current resolution
+below:** the approved patch has landed, so implementation is no longer stopped
+and `shinychat#ykxh` is no longer blocked.
+
+### Roborev 1073 resolution handoff (2026-08-31)
+
+The approved existing-recorder-lock replacement landed in
+`2e1f9f0837ce8e499930d5aac5a9750083b88207`. `_ExchangeRecorder` remains the
+sole v2 owner, and `HistoryController` remains stable-ID owner/controller.
+Active v2 `new_chat()` and `delete()` serialize with the existing recorder
+lock. Active delete holds that lock before `on_evict`/`store.delete()` through
+recorder reset, active-ID clear, adapter turns/transcript and message cleanup,
+and the awaited explicit `None` callback. The barrier regressions verify blocked
+`put(A)`/delete removal and blocked callback A/`new_chat()` ordering
+`[A, None]`.
+
+No restore, bookmark, init guard, or new mechanism scope was added. Successful
+evidence: focused tests 10 passed/126 deselected; `make py-format` passed;
+`make py-check-types` reported 0 errors; and full `make py-check` passed with
+191 Playwright, 762 non-browser, 1 skipped, and 15 known warnings. Roborev
+1073 is closed. `shinychat#ykxh` remains open with `needs-review`,
+`work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`;
 `shinychat#5r50` remains blocked and unstarted.
