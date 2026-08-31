@@ -3,11 +3,15 @@ from __future__ import annotations
 import warnings
 from typing import Any, AsyncIterable, Callable, Literal, Union, cast
 
-from htmltools import HTML, HTMLDependency, Tag, TagChild, TagifiedTag, TagList
+from htmltools import HTML, HTMLDependency, Tag, TagChild, TagList
 from pydantic import BaseModel
 
 from ._attachments import Attachment
-from ._html_islands import split_html_islands
+from ._html_islands import (
+    IslandBlockPart,
+    derive_island_parts,
+    split_html_islands,
+)
 from ._typing_extensions import NotRequired, TypedDict
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
@@ -422,38 +426,28 @@ class ChatMessage:
         # markdown), so only process it if it's not a string.
         deps: list[HTMLDependency] = []
         if not isinstance(content, str):
-            # Walk the split_html_islands() output: island wrappers
+            # Walk the split_html_islands() output via the shared
+            # derive_island_parts() helper (kata#mhyd): island wrappers
             # (<shiny-chat-raw-html>) become HtmlBlock structured blocks
             # carrying the trusted server-authored HTML; bare React elements
             # are rendered and concatenated as the residual string content.
             # The string-segment path (isinstance(content, str)) is retained
             # for string-typed content — this branch only fires for non-string
             # (tag-like) content.
-            split = split_html_islands(content)
             content_parts: list[str | StructuredBlock] = []
             # Parallel to content_parts: dep objects for each block entry
             # (None for string entries). Used to populate _block_html_deps
             # after self.blocks is derived. See kata#rpx1.
             content_part_deps: list[list[HTMLDependency] | None] = []
-            for item in split:
-                if (
-                    isinstance(item, (Tag, TagifiedTag))
-                    and item.name == "shiny-chat-raw-html"
-                ):
-                    # Island wrapper: render its children (not the wrapper
-                    # itself) as the block's trusted HTML content.
-                    island = TagList(*item.children).render()
-                    island_html, island_deps = (
-                        island["html"],
-                        island["dependencies"],
-                    )
-                    deps.extend(island_deps)
+            for part in derive_island_parts(content):
+                deps.extend(part.deps)
+                if isinstance(part, IslandBlockPart):
                     block: HtmlBlock = {
                         "type": "html_block",
                         "version": 1,
-                        "content": island_html,
+                        "content": part.html,
                     }
-                    if island_deps:
+                    if part.deps:
                         # Stash the dep OBJECTS for this block so the
                         # session-aware send path (_as_stored_message) can
                         # serialize them through session._process_ui
@@ -463,27 +457,19 @@ class ChatMessage:
                         # _serialize_html_deps returning None without a
                         # session — and is overwritten at send time when a
                         # session is available. See kata#rpx1.
-                        block["html_deps"] = [d.as_dict() for d in island_deps]
-                        content_part_deps.append(island_deps)
+                        block["html_deps"] = [d.as_dict() for d in part.deps]
+                        content_part_deps.append(part.deps)
                     else:
                         content_part_deps.append(None)
                     content_parts.append(block)
                 else:
-                    # Bare React element: render it bare and keep it as a
-                    # string part inline, so `parts` preserves the original
-                    # interleaving with html_blocks.
-                    rendered = TagList(item).render()
-                    deps.extend(rendered["dependencies"])
-                    # Surround with blank lines so the markdown parser treats
-                    # block-level custom elements correctly.
-                    run = f"\n\n{rendered['html']}\n\n"
-                    if content_parts and isinstance(content_parts[-1], str):
-                        content_parts[-1] += run
-                        # content_part_deps already has None for the string
-                        # entry; coalescing doesn't change that.
-                    else:
-                        content_parts.append(run)
-                        content_part_deps.append(None)
+                    # Bare React element run: rendered bare (blank-line
+                    # wrapped by the helper) and kept as a string part
+                    # inline, so `parts` preserves the original interleaving
+                    # with html_blocks. The helper coalesces adjacent runs,
+                    # so a residual part never follows a string part here.
+                    content_parts.append(part.html)
+                    content_part_deps.append(None)
             residual_html = "".join(
                 p for p in content_parts if isinstance(p, str)
             )
