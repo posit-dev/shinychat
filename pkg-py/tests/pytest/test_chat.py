@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 import sys
 import threading
 from datetime import datetime
@@ -1394,7 +1395,7 @@ def test_messages_surfaces_attachments():
 
 
 # ---------------------------------------------------------------------------
-# P5: chat_ui(messages=) with structured blocks (kata#c15v)
+# chat_ui(messages=) with structured blocks: data-initial-messages (kata#089g)
 # ---------------------------------------------------------------------------
 
 
@@ -1410,21 +1411,29 @@ def _tool_result_block() -> Any:
     }
 
 
+def _initial_messages_attr(tag: Any) -> Any:
+    """Parse the container tag's `data-initial-messages` JSON attribute."""
+    from htmltools import Tag
+
+    assert isinstance(tag, Tag)
+    attr = tag.attrs.get("data-initial-messages")
+    assert isinstance(attr, str)
+    return json.loads(attr)
+
+
 def test_chat_ui_string_messages_keep_static_tags():
     from shinychat import chat_ui
-    from shinychat._chat import _QUEUED_INIT_MESSAGES
 
     tag = chat_ui("chat_p5_str", messages=["Hello there", "another"])
     html = tag.get_html_string()
     assert html.count("<shiny-chat-message ") == 2
     assert "Hello there" in html
-    # Nothing queued for server-side append.
-    assert "chat_p5_str" not in _QUEUED_INIT_MESSAGES
+    # String-only messages don't opt into the embedded JSON.
+    assert "data-initial-messages" not in tag.attrs
 
 
-def test_chat_ui_block_carrying_message_is_queued_not_static():
+def test_chat_ui_block_carrying_messages_embed_json_attr():
     from shinychat import chat_ui
-    from shinychat._chat import _QUEUED_INIT_MESSAGES
 
     block = _tool_result_block()
     tag = chat_ui(
@@ -1434,14 +1443,18 @@ def test_chat_ui_block_carrying_message_is_queued_not_static():
     html = tag.get_html_string()
     # No static tag: it carries string content only, so the block would drop.
     assert "<shiny-chat-message " not in html
-    queued = _QUEUED_INIT_MESSAGES["chat_p5_block"]
-    assert len(queued) == 1
-    assert queued[0].blocks == [block]
+    entries = _initial_messages_attr(tag)
+    assert len(entries) == 1
+    assert entries[0]["role"] == "assistant"
+    segments = entries[0]["segments"]
+    assert segments[0] == {"content": "", "content_type": "markdown"}
+    assert segments[1] == block
+    # Deps never ride the JSON (they attach to the container tag instead).
+    assert "html_deps" not in json.dumps(entries)
 
 
-def test_chat_ui_mixed_list_queues_whole_list_to_preserve_order():
+def test_chat_ui_mixed_list_embeds_whole_list_to_preserve_order():
     from shinychat import chat_ui
-    from shinychat._chat import _QUEUED_INIT_MESSAGES
 
     block = _tool_result_block()
     tag = chat_ui(
@@ -1451,45 +1464,18 @@ def test_chat_ui_mixed_list_queues_whole_list_to_preserve_order():
             ChatMessage(content="", role="assistant", blocks=[block]),
         ],
     )
-    # The string message must NOT become a static tag either: server-appended
-    # messages land after static ones, so splitting the list would reorder.
+    # The string message must NOT become a static tag either: the whole list
+    # rides the JSON so the message order stays intact.
     assert "<shiny-chat-message " not in tag.get_html_string()
-    queued = _QUEUED_INIT_MESSAGES["chat_p5_mixed"]
-    assert [m.content for m in queued] == ["welcome", ""]
-    assert queued[1].blocks == [block]
+    entries = _initial_messages_attr(tag)
+    assert [e["role"] for e in entries] == ["assistant", "assistant"]
+    assert entries[0]["segments"] == [
+        {"content": "welcome", "content_type": "markdown"}
+    ]
+    assert entries[1]["segments"][1] == block
 
 
-def test_chat_ui_queued_messages_append_on_init_with_blocks_intact():
-    from shinychat import chat_ui
-
-    block = _tool_result_block()
-    chat_ui(
-        "chat_p5_init",
-        messages=[ChatMessage(content="", role="assistant", blocks=[block])],
-    )
-
-    with session_context(test_session):
-        chat = Chat(id="chat_p5_init")
-        sent: list[dict[str, Any]] = []
-
-        async def _capture(action: Any, deps: Any = None) -> None:
-            sent.append(action)
-
-        chat._send_action = _capture  # type: ignore[method-assign]
-
-        async def _exercise() -> None:
-            await chat._append_init_messages()
-
-        run_async(_exercise)
-
-    message_actions = [a for a in sent if a["type"] == "message"]
-    assert len(message_actions) == 1
-    segments = message_actions[0]["message"]["segments"]
-    block_segments = [s for s in segments if s.get("type") == "tool_result"]
-    assert block_segments == [block]
-
-
-def test_chat_ui_queued_turn_with_tool_result_appends_with_blocks():
+def test_chat_ui_initial_messages_preserve_interleaved_part_order():
     from chatlas import Turn
     from chatlas.types import ContentToolRequest, ContentToolResult
     from shinychat import chat_ui
@@ -1497,168 +1483,71 @@ def test_chat_ui_queued_turn_with_tool_result_appends_with_blocks():
     req = ContentToolRequest(id="x", name="get_weather", arguments={})
     turn = Turn(
         role="assistant",
-        contents=[ContentToolResult(value="Sunny", request=req)],
+        contents=[
+            "Let me check.",
+            ContentToolResult(value="Sunny", request=req),
+            "Done.",
+        ],
     )
-    chat_ui("chat_p5_turn", messages=[turn])
-
-    with session_context(test_session):
-        chat = Chat(id="chat_p5_turn")
-        sent: list[dict[str, Any]] = []
-
-        async def _capture(action: Any, deps: Any = None) -> None:
-            sent.append(action)
-
-        chat._send_action = _capture  # type: ignore[method-assign]
-
-        async def _exercise() -> None:
-            await chat._append_init_messages()
-
-        run_async(_exercise)
-
-    message_actions = [a for a in sent if a["type"] == "message"]
-    assert len(message_actions) == 1
-    segments = message_actions[0]["message"]["segments"]
-    kinds = [s.get("type") for s in segments if "type" in s]
-    assert kinds == ["tool_result"]
+    tag = chat_ui("chat_p5_turn", messages=[turn])
+    entries = _initial_messages_attr(tag)
+    assert len(entries) == 1
+    segments = entries[0]["segments"]
+    kinds = [s.get("type") if "type" in s else "text" for s in segments]
+    assert kinds == ["text", "tool_result", "text"]
+    assert segments[0]["content"] == "Let me check."
+    assert segments[2]["content"] == "Done."
 
 
-# ---------------------------------------------------------------------------
-# Session-scoping of queued init messages (kata#c15v)
-# ---------------------------------------------------------------------------
-
-
-class _SessionScopeMockSession:
-    """Mock session with ``is_stub_session()`` returning ``False`` and a
-    configurable ``id``, so ``chat_ui()`` routes block-carrying messages to
-    the session-scoped queue."""
-
-    ns: ResolvedId = ResolvedId("")
-    app: object = None
-    input: Any
-
-    def __init__(self, session_id: str) -> None:
-        from shiny import Inputs
-
-        self.id = session_id
-        self.input = Inputs({}, ns=ResolvedId)
-        self._on_ended_cbs: list[Any] = []
-
-    def is_stub_session(self) -> bool:
-        return False
-
-    def on_ended(self, callback: object) -> None:
-        self._on_ended_cbs.append(callback)
-
-    def on_destroy(self, callback: object) -> None:
-        pass
-
-    def _increment_busy_count(self) -> None:
-        pass
-
-    async def send_custom_message(self, type: str, message: Any) -> None:
-        pass
-
-
-def test_app_scope_queued_messages_delivered_to_every_session():
-    """App-scope render (no active session) still delivers the same queued
-    messages to every session's Chat with the same id."""
+def test_chat_ui_initial_message_html_deps_attach_to_container():
+    from htmltools import HTML, Tag
     from shinychat import chat_ui
-    from shinychat._chat import _QUEUED_INIT_MESSAGES
+
+    dep = HTMLDependency(
+        "init-island-dep",
+        "1.0.0",
+        head=HTML("<meta name='init-island-dep'>"),
+    )
+    # Tag content normalizes to an html_block carrying the rendered HTML.
+    msg = ChatMessage(content=Tag("div", dep, "island"), role="assistant")
+    assert [b["type"] for b in msg.blocks] == ["html_block"]
+
+    tag = chat_ui("chat_p5_deps", messages=[msg])
+    # The dep object rides the container tag (Shiny's dependency system
+    # renders it, session or not)...
+    assert any(d.name == "init-island-dep" for d in tag.get_dependencies())
+    # ...and no html_deps leak into the embedded JSON.
+    entries = _initial_messages_attr(tag)
+    assert "html_deps" not in json.dumps(entries)
+    block = [s for s in entries[0]["segments"] if "type" in s][0]
+    assert block["type"] == "html_block"
+    assert "island" in block["content"]
+
+
+def test_chat_ui_initial_messages_icon_mirrors_static_path():
+    from htmltools import HTML
+    from shinychat import chat_ui
 
     block = _tool_result_block()
-    chat_ui(
-        "chat_appscope",
-        messages=[ChatMessage(content="", role="assistant", blocks=[block])],
+    tag = chat_ui(
+        "chat_p5_icon",
+        messages=[
+            ChatMessage(content="", role="user", blocks=[block]),
+            ChatMessage(content="", role="assistant", blocks=[block]),
+        ],
+        icon_assistant=HTML("<svg></svg>"),
     )
-    # No session was active, so the entry lands in the app-scope dict.
-    assert "chat_appscope" in _QUEUED_INIT_MESSAGES
-
-    # Two different sessions with the same chat id should both see the
-    # same queued messages (read, never popped).
-    for sess_id in ("sess-a", "sess-b"):
-        session = cast(Session, _SessionScopeMockSession(sess_id))
-        with session_context(session):
-            chat = Chat(id="chat_appscope")
-            sent: list[dict[str, Any]] = []
-
-            async def _capture(action: Any, deps: Any = None) -> None:
-                sent.append(action)
-
-            chat._send_action = _capture  # type: ignore[method-assign]
-
-            async def _exercise() -> None:
-                await chat._append_init_messages()
-
-            run_async(_exercise)
-
-        message_actions = [a for a in sent if a["type"] == "message"]
-        assert len(message_actions) == 1
-        segments = message_actions[0]["message"]["segments"]
-        block_segments = [s for s in segments if s.get("type") == "tool_result"]
-        assert block_segments == [block]
-
-    # App-scope entry is still there (never popped).
-    assert "chat_appscope" in _QUEUED_INIT_MESSAGES
+    entries = _initial_messages_attr(tag)
+    # The assistant-icon default must not leak onto user messages.
+    assert "icon" not in entries[0]
+    assert entries[1]["icon"] == "<svg></svg>"
 
 
-def test_session_scoped_renders_dont_clobber_each_other():
-    """Two session-scoped renders with the same chat id but different
-    block-carrying messages each deliver their own messages — no clobber."""
-    from shinychat import chat_ui
-    from shinychat._chat import _QUEUED_INIT_MESSAGES_SESSION
+def test_no_module_level_init_message_queue():
+    import shinychat._chat as chat_module
 
-    block_a = _tool_result_block()
-    block_a["value"] = "from-session-a"
-    block_b = _tool_result_block()
-    block_b["value"] = "from-session-b"
-
-    results: dict[str, list[dict[str, Any]]] = {}
-
-    for sess_id, block in [("sess-a", block_a), ("sess-b", block_b)]:
-        session = cast(Session, _SessionScopeMockSession(sess_id))
-        with session_context(session):
-            chat_ui(
-                "chat_sessscope",
-                messages=[
-                    ChatMessage(content="", role="assistant", blocks=[block])
-                ],
-            )
-            # Entry should be in the session-scoped dict, not the app-scope dict.
-            assert (
-                "sess-a" if sess_id == "sess-a" else "sess-b",
-                "chat_sessscope",
-            ) in _QUEUED_INIT_MESSAGES_SESSION
-
-            chat = Chat(id="chat_sessscope")
-            sent: list[dict[str, Any]] = []
-
-            async def _capture(action: Any, deps: Any = None) -> None:
-                sent.append(action)
-
-            chat._send_action = _capture  # type: ignore[method-assign]
-
-            async def _exercise() -> None:
-                await chat._append_init_messages()
-
-            run_async(_exercise)
-
-        results[sess_id] = [a for a in sent if a["type"] == "message"]
-
-    # Each session got its own block.
-    for sess_id, expected_value in [
-        ("sess-a", "from-session-a"),
-        ("sess-b", "from-session-b"),
-    ]:
-        msgs = results[sess_id]
-        assert len(msgs) == 1
-        segments = msgs[0]["message"]["segments"]
-        block_segments = [s for s in segments if s.get("type") == "tool_result"]
-        assert len(block_segments) == 1
-        assert block_segments[0]["value"] == expected_value
-
-    # Session-scoped entries were popped (consumed once).
-    assert ("sess-a", "chat_sessscope") not in _QUEUED_INIT_MESSAGES_SESSION
-    assert ("sess-b", "chat_sessscope") not in _QUEUED_INIT_MESSAGES_SESSION
+    assert not hasattr(chat_module, "_QUEUED_INIT_MESSAGES")
+    assert not hasattr(chat_module, "_QUEUED_INIT_MESSAGES_SESSION")
 
 
 class _BookmarkStubSession:
@@ -1890,12 +1779,14 @@ def test_bookmark_legacy_path_persists_ui_for_state_only_client():
 
 
 def test_bookmark_restore_without_chat_state_appends_init_messages():
+    from shiny._deprecated import ShinyDeprecationWarning
     from shinychat import chat_ui
-    from shinychat._chat import _QUEUED_INIT_MESSAGES
 
-    # Queue a block-carrying initial message (P5) so the test also covers
-    # the no-chat-state restore branch appending it.
-    chat_ui(
+    # A block-carrying `chat_ui(messages=)` initial message rides the DOM
+    # (the container's data-initial-messages attribute, kata#089g), so the
+    # no-chat-state restore branch must NOT append it server-side; only the
+    # deprecated `Chat(messages=)` constructor arg is appended there.
+    tag = chat_ui(
         "chat_bm_empty",
         messages=[
             ChatMessage(
@@ -1903,11 +1794,12 @@ def test_bookmark_restore_without_chat_state_appends_init_messages():
             )
         ],
     )
-    assert "chat_bm_empty" in _QUEUED_INIT_MESSAGES
+    assert "data-initial-messages" in tag.attrs
 
     session = cast(Session, _BookmarkStubSession())
     with session_context(session):
-        chat = Chat(id="chat_bm_empty")
+        with pytest.warns(ShinyDeprecationWarning):
+            chat = Chat(id="chat_bm_empty", messages=["constructor message"])
         chat.enable_bookmarking(_bare_chatlas_client([]), bookmark_on=None)
         sent: list[dict[str, Any]] = []
 
@@ -1932,6 +1824,6 @@ def test_bookmark_restore_without_chat_state_appends_init_messages():
     message_actions = [a for a in sent if a["type"] == "message"]
     assert len(message_actions) == 1
     segments = message_actions[0]["message"]["segments"]
-    assert [s for s in segments if s.get("type") == "tool_result"] == [
-        _tool_result_block()
+    assert segments == [
+        {"content": "constructor message", "content_type": "markdown"}
     ]

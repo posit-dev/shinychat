@@ -854,3 +854,60 @@ def as_stored_message(message: ChatMessage, session: Any) -> StoredMessage:
     return _assemble_stored_message(
         message, lambda deps: serialize_html_deps(deps, session)
     )
+
+
+def initial_message_payload(
+    message: ChatMessage,
+) -> "tuple[dict[str, Any], list[HTMLDependency]]":
+    """Build the ``data-initial-messages`` JSON entry for one message.
+
+    This is the session-free complement to :func:`as_stored_message` for
+    ``chat_ui(messages=)`` initial messages: it runs at UI render time,
+    where no session may exist (e.g. a dynamically rendered ``render_ui``
+    output), so it cannot session-process html deps. Instead the payload
+    omits every ``html_deps`` field and the raw
+    :class:`~htmltools.HTMLDependency` objects (message-level and
+    per-block) are returned separately so the caller can attach them to
+    the container tag — Shiny's dependency system renders them, session
+    or not. See kata#089g.
+
+    The entry shape mirrors the ``message`` wire action's payload:
+    ``{"role": ..., "segments": [...]}`` where ``segments`` is the same
+    ordered union (:meth:`StoredMessage.wire_segments`) — string parts as
+    ``{"content", "content_type"}`` and structured blocks as their block
+    dicts — plus ``attachments`` when present.
+    """
+    stored = StoredMessage.from_chat_message(message)
+    segments: list[MessagePayloadSegment] = []
+    for seg in stored.wire_segments():
+        # NB: an inline `in` check (not a TypeGuard) so pyright narrows
+        # both branches of the TypedDict union. Copy before stripping so
+        # the raw as_dict() html_deps fallback on the block dict stays
+        # intact for other consumers (e.g. the session-aware send path).
+        stripped = seg
+        if "type" in stripped and "html_deps" in stripped:
+            stripped = cast(
+                MessagePayloadSegment,
+                {k: v for k, v in stripped.items() if k != "html_deps"},
+            )
+        segments.append(stripped)
+    payload: dict[str, Any] = {"role": stored.role, "segments": segments}
+    if stored.attachments:
+        payload["attachments"] = [a.model_dump() for a in stored.attachments]
+
+    # Collect every dep object: message-level deps (which already include
+    # the content-derived island deps — see ChatMessage.__init__) plus the
+    # per-block stash, deduped by identity so island deps attached at both
+    # levels aren't doubled on the container tag.
+    deps: list[HTMLDependency] = []
+    seen: set[int] = set()
+    for dep in message.html_deps:
+        if id(dep) not in seen:
+            seen.add(id(dep))
+            deps.append(dep)
+    for dep_objs in message._block_html_deps.values():
+        for dep in dep_objs:
+            if id(dep) not in seen:
+                seen.add(id(dep))
+                deps.append(dep)
+    return payload, deps

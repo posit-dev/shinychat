@@ -13,6 +13,7 @@ Covers:
 from __future__ import annotations
 
 import gc
+import json
 from typing import Any, cast
 
 import pytest
@@ -27,7 +28,7 @@ from shinychat._chat_normalize_chatlas import (
     tool_request_contents,
     tool_result_contents,
 )
-from shinychat._chat_types import ToolRequestBlock, ToolResultBlock
+from shinychat._chat_types import ToolResultBlock
 from shinychat.types import ChatMessage
 
 
@@ -542,8 +543,6 @@ def test_custom_result_via_chat_ui_messages_is_wrapped(
     The result therefore needs the same post-normalization wrap as
     append_message().
     """
-    from shinychat._chat import _QUEUED_INIT_MESSAGES
-
     dep = HTMLDependency(
         "static-custom-widget",
         "1.0.0",
@@ -559,42 +558,43 @@ def test_custom_result_via_chat_ui_messages_is_wrapped(
     request = _request(tool=_tool())
     result = _CustomToolResult(value=2, request=request)
 
-    try:
-        ui = chat_ui("chat", messages=[request, result])
+    ui = chat_ui("chat", messages=[request, result])
 
-        # P5 (kata#c15v): block-carrying initial messages are no longer
-        # rendered into static <shiny-chat-message> tags (the tags carry
-        # string content only, so blocks would silently drop). The whole
-        # list is queued for server-side append on session init instead.
-        messages_container = ui.children[0]
-        assert isinstance(messages_container, Tag)
-        assert not [
-            child
-            for child in messages_container.children
-            if isinstance(child, Tag) and child.name == "shiny-chat-message"
-        ]
+    # kata#089g: block-carrying initial messages are not rendered into
+    # static <shiny-chat-message> tags (the tags carry string content only,
+    # so blocks would silently drop). The whole list is embedded as JSON in
+    # the container's data-initial-messages attribute instead.
+    messages_container = next(
+        child
+        for child in ui.children
+        if isinstance(child, Tag) and child.name == "shiny-chat-messages"
+    )
+    assert not [
+        child
+        for child in messages_container.children
+        if isinstance(child, Tag) and child.name == "shiny-chat-message"
+    ]
 
-        queued = _QUEUED_INIT_MESSAGES["chat"]
-        assert len(queued) == 2
-        request_msg, result_msg = queued
+    attr = ui.attrs.get("data-initial-messages")
+    assert isinstance(attr, str)
+    entries = json.loads(attr)
+    assert len(entries) == 2
+    request_entry, result_entry = entries
 
-        # The request normalized to a structured `tool_request` block...
-        assert [b["type"] for b in request_msg.blocks] == ["tool_request"]
-        assert (
-            cast(ToolRequestBlock, request_msg.blocks[0])["request_id"]
-            == "call-1"
-        )
+    # The request normalized to a structured `tool_request` block...
+    request_blocks = [s for s in request_entry["segments"] if "type" in s]
+    assert [b["type"] for b in request_blocks] == ["tool_request"]
+    assert request_blocks[0]["request_id"] == "call-1"
 
-        # ...and the custom result was wrapped into a custom-display
-        # `tool_result` block carrying the author's UI as its HTML value.
-        assert [b["type"] for b in result_msg.blocks] == ["tool_result"]
-        block = cast(ToolResultBlock, result_msg.blocks[0])
-        assert block["type"] == "tool_result"
-        assert block.get("custom_display") is True
-        assert block["request_id"] == "call-1"
-        assert "my-custom-ui" in block.get("value", "")
-    finally:
-        _QUEUED_INIT_MESSAGES.pop("chat", None)
+    # ...and the custom result was wrapped into a custom-display
+    # `tool_result` block carrying the author's UI as its HTML value.
+    result_blocks = [s for s in result_entry["segments"] if "type" in s]
+    assert [b["type"] for b in result_blocks] == ["tool_result"]
+    block = cast(ToolResultBlock, result_blocks[0])
+    assert block["type"] == "tool_result"
+    assert block.get("custom_display") is True
+    assert block["request_id"] == "call-1"
+    assert "my-custom-ui" in block.get("value", "")
 
 
 @pytest.mark.anyio

@@ -75,6 +75,7 @@ from ._chat_types import (
     StoredMessage,
     _assemble_stored_message,
     chat_greeting,
+    initial_message_payload,
     serialize_html_deps,
 )
 from ._drawer import ChatDrawerController
@@ -348,16 +349,6 @@ class Chat:
         # https://github.com/posit-dev/py-shiny/pull/793/files
         self._session = require_active_session(None)
 
-        # Clean up any session-scoped queued init messages when the session
-        # ends, so they don't leak past the session lifetime.
-        _session_id = self._session.id
-        _chat_id = self.id
-
-        def _cleanup_queued_init_messages() -> None:
-            _QUEUED_INIT_MESSAGES_SESSION.pop((_session_id, _chat_id), None)
-
-        self._session.on_ended(_cleanup_queued_init_messages)
-
         # Default to sanitizing until we know the app isn't sanitizing errors
         if on_error == "auto":
             on_error = "sanitize"
@@ -414,22 +405,11 @@ class Chat:
             # TODO: deprecate messages once we start promoting managing LLM message
             # state through other means
             async def _append_init_messages():
-                # `chat_ui(messages=)` messages that carry structured blocks
-                # are queued (they can't ride the static
-                # <shiny-chat-message> tags) and appended here, where the
-                # send path preserves blocks (P5, kata#c15v). They lead, the
-                # same position the static tags render in.
-                # Session-scoped entries are popped (consumed once) so
-                # concurrent dynamic renders don't clobber each other; the
-                # app-scope entry is read (never popped) so every session
-                # with the same id sees the same messages.
-                queued = _QUEUED_INIT_MESSAGES_SESSION.pop(
-                    (self._session.id, self.id), None
-                )
-                if queued is None:
-                    queued = _QUEUED_INIT_MESSAGES.get(self.id, [])
-                for msg in queued:
-                    await self.append_message(msg)
+                # `chat_ui(messages=)` initial messages ride the DOM (static
+                # <shiny-chat-message> tags, or the container's
+                # `data-initial-messages` attribute when they carry
+                # structured blocks — kata#089g), so only the deprecated
+                # `Chat(messages=)` constructor arg is appended here.
                 for msg in messages:
                     await self.append_message(msg)
 
@@ -2893,28 +2873,34 @@ def chat_ui(
         icon_send_deps = icon_send.get_dependencies()
 
     message_tags: list[Tag] = []
+    initial_messages_attr: Optional[str] = None
+    initial_message_deps: list[HTMLDependency] = []
     if messages is None:
         messages = []
     normalized_messages = [normalize_message(x) for x in messages]
     if any(msg.blocks for msg in normalized_messages):
         # A static <shiny-chat-message> tag carries string content only, so
-        # a block-carrying message would silently drop its blocks. Queue the
-        # whole list — opting the entire list in keeps the message order
-        # intact, since server-appended messages would otherwise land after
-        # the static ones — for server-side append on session init (P5).
-        # When a real (non-stub) session is available, scope the entry to
-        # that session so concurrent dynamic renders with the same chat id
-        # don't clobber each other; otherwise fall back to the app-scope
-        # queue (matching the static tags' same-for-all-sessions semantics).
-        from shiny.session import get_current_session
-
-        session = get_current_session()
-        if session is not None and not session.is_stub_session():
-            _QUEUED_INIT_MESSAGES_SESSION[(session.id, id)] = (
-                normalized_messages
-            )
-        else:
-            _QUEUED_INIT_MESSAGES[id] = normalized_messages
+        # a block-carrying message would silently drop its blocks. Instead,
+        # embed the whole list — opting the entire list in keeps the message
+        # order intact — as JSON in the container's `data-initial-messages`
+        # attribute (htmltools escapes the attribute value). The client's
+        # `parseInitialMessages()` replays it through the same
+        # `messagePayloadToData()` conversion server-sent messages use. The
+        # messages travel in the DOM itself, so a dynamically rendered
+        # chat_ui (e.g. render_ui) delivers them by construction — no
+        # session is needed at render time (kata#089g). Html deps never
+        # enter the JSON; they attach to the container tag below so Shiny's
+        # dependency system renders them.
+        initial_entries: list[dict[str, Any]] = []
+        for msg in normalized_messages:
+            entry, deps = initial_message_payload(msg)
+            # Mirror the static tag path: the assistant-icon default must
+            # not leak onto user messages.
+            if msg.role != "user" and icon_attr is not None:
+                entry["icon"] = icon_attr
+            initial_entries.append(entry)
+            initial_message_deps.extend(deps)
+        initial_messages_attr = json.dumps(initial_entries)
     else:
         for msg in normalized_messages:
             message_tags.append(
@@ -2991,6 +2977,7 @@ def chat_ui(
     res = Tag(
         "shiny-chat-container",
         *greeting_deps,
+        *initial_message_deps,
         Tag("shiny-chat-messages", *message_tags),
         Tag(
             "shiny-chat-input",
@@ -3008,6 +2995,7 @@ def chat_ui(
         placeholder=placeholder,
         fill=fill,
         greeting=greeting_attr,
+        data_initial_messages=initial_messages_attr,
         aside_favicon=aside_favicon_attr,
         enable_cancel=enable_cancel_attr,
         allow_attachments=allow_attachments_attr,
@@ -3083,22 +3071,3 @@ class MessageStream:
 
 
 CHAT_INSTANCES: WeakValueDictionary[str, Chat] = WeakValueDictionary()
-
-# Two-tier queue of `chat_ui(messages=)` initial messages that normalize to
-# carry structured blocks. A static <shiny-chat-message> tag carries string
-# content only, so block-carrying initial messages would silently drop their
-# blocks (roborev 1025); instead they are appended server-side on session init
-# via `Chat._append_init_messages` (P5, kata#c15v).
-#
-# 1. App-scope (`_QUEUED_INIT_MESSAGES`): keyed by resolved chat id. The UI
-#    renders once per app, so every session's `Chat` with the same id reads
-#    (never pops) the same entry — matching the static tags'
-#    same-for-all-sessions semantics. Used when no active (non-stub) session
-#    is available at `chat_ui()` render time.
-# 2. Session-scope (`_QUEUED_INIT_MESSAGES_SESSION`): keyed by
-#    `(session.id, chat id)`. When `chat_ui()` is rendered dynamically (e.g.
-#    inside a `@render.ui`), each session gets its own entry that is popped
-#    (consumed once) on init and cleaned up on session end, so concurrent
-#    sessions with the same chat id don't clobber each other.
-_QUEUED_INIT_MESSAGES: dict[str, list[ChatMessage]] = {}
-_QUEUED_INIT_MESSAGES_SESSION: dict[tuple[str, str], list[ChatMessage]] = {}
