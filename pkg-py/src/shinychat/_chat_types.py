@@ -174,6 +174,20 @@ StructuredBlock = Union[
     HtmlBlock,
 ]
 
+# The subset of structured blocks the markdown-stream wire supports
+# (mirrors `StreamBlock`/`asStreamBlock` in
+# `js/src/markdown-stream/markdown-stream-entry.ts`): `html_block` islands
+# and the web_* family. Tool blocks are out of scope for streams — the
+# client drops them with a warning — so `MarkdownStream.stream()` accepts
+# only this union and rejects any other block type with a clear error
+# rather than silently discarding type-valid input.
+StreamBlock = Union[
+    WebSearchBlock,
+    WebSearchResultsBlock,
+    WebFetchBlock,
+    HtmlBlock,
+]
+
 # One entry of `MessagePayload.segments`: a string segment
 # (`{content, content_type}`) or a structured block (discriminated by the
 # presence of `type`).

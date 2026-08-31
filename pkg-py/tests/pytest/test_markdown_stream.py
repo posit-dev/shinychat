@@ -13,6 +13,7 @@ import json
 import threading
 from typing import Any, cast
 
+import pytest
 from htmltools import HTMLDependency, Tag, TagList, div
 from shiny import Inputs, Session
 from shiny.module import ResolvedId
@@ -221,6 +222,51 @@ def test_stream_sends_already_structured_block_dicts():
 
     # Blocks contribute nothing to the stream's text result.
     assert result == "model text  done"
+
+
+def test_stream_rejects_tool_block_dicts():
+    """Tool blocks are type-valid StructuredBlocks, but the stream client
+    intentionally supports only html_block and web_* blocks — it drops tool
+    blocks with a warning. stream() must reject them server-side with a
+    clear error (fail openly) instead of silently discarding them."""
+    mock = _CaptureSession()
+    tool_request = {
+        "type": "tool_request",
+        "version": 1,
+        "request_id": "r1",
+        "tool_name": "some_tool",
+    }
+    tool_result = {
+        "type": "tool_result",
+        "version": 1,
+        "request_id": "r1",
+        "tool_name": "some_tool",
+        "status": "success",
+    }
+    with session_context(cast(Session, mock)):
+        ms = MarkdownStream(id="stream")
+        for block in (tool_request, tool_result):
+            with pytest.raises(
+                ValueError, match="Unsupported structured block"
+            ):
+                run_stream(ms, ["before ", block])
+
+    # The rejected blocks never reach the wire as block messages (only the
+    # clear and the untrusted text segment were sent).
+    assert all("block" not in m for m in content_messages(mock.messages))
+
+
+def test_stream_rejects_unknown_and_typeless_block_dicts():
+    """A dict whose `type` is unknown — or absent — fails openly too."""
+    mock = _CaptureSession()
+    with session_context(cast(Session, mock)):
+        ms = MarkdownStream(id="stream")
+        with pytest.raises(ValueError, match="Unsupported structured block"):
+            run_stream(ms, [{"type": "made_up", "version": 1}])
+        with pytest.raises(ValueError, match="Unsupported structured block"):
+            run_stream(ms, [{"version": 1}])
+
+    assert all("block" not in m for m in content_messages(mock.messages))
 
 
 def test_stream_block_message_carries_session_processed_deps():
