@@ -1,6 +1,6 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
-**Status:** proposed for driver review · 2026-08-31
+**Status:** agreed; driver sign-off 2026-08-31
 **Phase:** plan.md §4, Phase 4
 **Kata:** parent `shinychat#azvt` under epic `shinychat#6d0d`
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
@@ -19,6 +19,32 @@ degradation, or the clear/switch/abort hard-core audit (Phase 5); R parity
 (Phase 6); or v1 import, public-hook migration, and deprecations (Phase 7).
 It adds no queue, cursor, reconciliation pass, rendered-HTML storage, CAS, or
 second record owner.
+
+## Entry integration gate
+
+Complete `shinychat#ykxh` before the restore keystone. PR #343's stable
+conversation-ID implementation is now on `main` as `ac696476`; this feature
+branch does not yet contain it. The integration changes record creation,
+activation, new-chat, deletion, URL restore, bookmark restore, and the OTel
+handoff, which are precisely the paths Phase 4 will extend. Integrating after
+the keystone would make the first Phase 4 slice knowingly target obsolete
+identity ownership.
+
+The task's 2026-08-28 conflict recipe is evidence, not an executable recipe:
+both heads have advanced and Phase 3 is complete. Re-run the merge/dry-run
+analysis against current `main` and `feat/history-exchange-tree`, then update
+`shinychat#ykxh` before resolving conflicts. Preserve its semantic decisions:
+
+- allocate the stable conversation id before the first v2 root/input capture;
+- use that id for `ConversationRecordV2.id`, with no second allocator;
+- retain the stale-URL clearing behavior of `new_chat()`;
+- leave the overlapping-stream OTel scalar issue dispositioned to its existing
+  future owner rather than adding Phase 4 scheduling machinery;
+- leave the seeded-draft/init-restore race to the Phase 5 guard and Phase 6 R
+  port, as already recorded.
+
+The full Python gate must pass after integration. Only then may the restore
+keystone begin.
 
 ## Ownership and path operations
 
@@ -202,11 +228,15 @@ therefore restore its persisted `active_leaf`. Bookmark fidelity beyond the
 shinychat pointer is explicitly out of scope; shinychat contributes no
 transcript, turns, or rendered content to bookmark values.
 
-## Stacked work after sign-off
+## Stacked work
 
-1. **Keystone restore + continuation.** Add v2 read/activation, display replay,
-   restore hooks, turns materialization, baseline reset, and a continued-turn
-   integration test.
+0. **Conversation-ID integration gate (`shinychat#ykxh`).** Merge current
+   `main`, re-derive the stale conflict recipe, settle v2 identity ownership,
+   and pass the full Python gate.
+1. **Keystone restore + continuation (`shinychat#5r50`, blocked by
+   `shinychat#ykxh`).** Add v2 read/activation, display replay, restore hooks,
+   turns materialization, baseline reset, and a continued-turn integration
+   test.
 2. **Q3 + branching.** Run/port the predecessor suite; add v2 graph projection,
    sibling navigation, rewind hooks, and the one resubmit primitive. Upgrade
    the wire only after recorded red evidence.
@@ -220,8 +250,9 @@ transcript, turns, or rendered content to bookmark values.
    cross-session continuation, and bookmark-node restore; run the deletion
    pass and collect coherent review evidence.
 
-Each child is a coherent review unit and remains open for human review.
-Feature work starts only after this note is approved.
+Each child is a coherent review unit and remains open for human review. The
+note is approved; Phase 4 feature work starts only after the integration gate
+closes.
 
 ## Verification
 
@@ -241,6 +272,6 @@ Feature work starts only after this note is approved.
 
 ## Handoff
 
-Landed: Phase 4 parent `shinychat#azvt` is created and claimed; no feature code has started.
-Next: driver review and sign-off of this mechanism note, then create the keystone child.
+Landed: Phase 4 parent `shinychat#azvt` is created and claimed; the mechanism note has driver sign-off.
+Next: complete integration gate `shinychat#ykxh`, then begin the blocked restore-and-continuation keystone.
 Boundary: Phase 3 is completed context; Phase 5 guards/degradation/audit and Phase 7 legacy/public cleanup remain deferred.

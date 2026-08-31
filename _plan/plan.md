@@ -566,6 +566,9 @@ signed off by the driver before code (process.md §3.4).
   `shinychat#azvt`).** Replay,
   `set_turns`, rewind hook, the sibling primitive, retry affordance. Port
   the predecessor branch's edit/navigate Playwright suite to this base (Q3).
+  Begin with integration gate `shinychat#ykxh`: merge `main`'s stable
+  conversation-ID work from PR #343 and settle its v2 identity semantics
+  before the restore keystone touches record activation.
   See `phase-4-mechanism.md`; Phase 3's mechanism note is completed context,
   not a live source for Phase 4 decisions.
   *Done when:* the ported suite is green (or Q3's narrow upgrade is scoped);
