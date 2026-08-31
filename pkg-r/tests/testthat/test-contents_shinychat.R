@@ -138,7 +138,6 @@ test_that("tool card serialization matches the shared wire fixture", {
     open_style = "framed"
   )
 
-  # Structured block fields match the wire fixture's structured contract
   req_expected <- fixture$blocks$request
   expect_equal(request$type, req_expected$type)
   expect_equal(request$version, req_expected$version)
@@ -187,9 +186,6 @@ test_that("ContentToolRequest handles tool annotations", {
 })
 
 test_that("absent annotation title yields no title field, not character(0)", {
-  # as.character(NULL) is character(0), which serializes as `"title": []` —
-  # the client would read a present-but-empty title instead of falling back
-  # to the tool name (roborev 1061).
   local_shinychat_tool_display(opt = "rich")
 
   request <- new_tool_request(tool = new_tool(name = "weather"))
@@ -218,9 +214,7 @@ test_that("ContentToolRequest emits the tool definition icon and its dependencie
   )
   res <- contents_shinychat(new_tool_request(tool = tool))
 
-  # The icon is rendered to an HTML string on the structured block
   expect_equal(res$icon, '<i class="icon"></i>')
-  # Raw dep objects ride as an attribute until session-processing at send time
   block_deps <- attr(res, "shinychat_html_deps")
   expect_true("test" %in% vapply(block_deps, function(d) d$name, character(1)))
 })
@@ -304,11 +298,8 @@ test_that("ContentToolResult with custom text display", {
   expect_equal(res$status, "success")
   expect_equal(res$value, "Success!")
   expect_equal(res$value_type, "text")
-  # show_request defaults to TRUE (real boolean)
   expect_true(res$show_request)
-  # expanded defaults to FALSE (real boolean)
   expect_false(res$expanded)
-  # full_screen defaults to FALSE (real boolean)
   expect_false(res$full_screen)
 })
 
@@ -354,7 +345,6 @@ test_that("ContentToolResult serializes framed open style only when requested", 
 test_that("mutating a card's title overrides the annotation title", {
   # The documented pattern for a custom result class (see the
   # `contents_shinychat()` example): call the super method, then mutate the
-  # card. The field is `title` — the wire field the client reads.
   local_shinychat_tool_display(opt = "rich")
 
   result <- new_tool_result(
@@ -383,7 +373,6 @@ test_that("ContentToolResult with HTML() title preserves markup", {
     )
   )
   res <- contents_shinychat(result)
-  # title is rendered to an HTML string via as.character()
   expect_equal(res$title, "Map of <i>Paris</i>")
 })
 
@@ -409,9 +398,7 @@ test_that("ContentToolResult handles icon and dependencies from tool definition"
 
   res <- contents_shinychat(result)
   expect_s3_class(res, "shinychat_tool_result")
-  # The icon is rendered to an HTML string on the structured block
   expect_equal(res$icon, '<i class="icon"></i>')
-  # Raw dep objects ride as an attribute until session-processing at send time
   block_deps <- attr(res, "shinychat_html_deps")
   expect_true("test" %in% vapply(block_deps, function(d) d$name, character(1)))
 })
@@ -496,9 +483,6 @@ test_that("tool_result_display rich format", {
 test_that("web content emitters produce structured shinychat_block lists", {
   local_shinychat_tool_display(opt = "rich")
 
-  # Test the emitter functions directly using S7 mock classes that mimic
-  # the ellmer content property interface. The installed ellmer may not
-  # have the web content classes, so we test emitters in isolation.
 
   MockSearchRequest <- S7::new_class(
     "MockSearchRequest",
@@ -517,7 +501,6 @@ test_that("web content emitters produce structured shinychat_block lists", {
     properties = list(url = S7::class_character, status = S7::class_character)
   )
 
-  # web_search block
   search_content <- MockSearchRequest(query = "ggplot2 release date")
   search_block <- contents_shinychat_search_request(search_content)
   expect_s3_class(search_block, "shinychat_web_search")
@@ -526,7 +509,6 @@ test_that("web content emitters produce structured shinychat_block lists", {
   expect_equal(search_block$version, 1L)
   expect_equal(search_block$query, "ggplot2 release date")
 
-  # web_search_results block
   results_content <- MockSearchResponse(
     sources = list(
       MockWebSource(
@@ -542,7 +524,6 @@ test_that("web content emitters produce structured shinychat_block lists", {
   expect_s3_class(results_block, "shinychat_block")
   expect_equal(results_block$type, "web_search_results")
   expect_equal(results_block$version, 1L)
-  # Sources with NULL/NA url are filtered out; title is omitted when NA
   expect_length(results_block$sources, 2L)
   expect_equal(
     results_block$sources[[1]]$url,
@@ -552,10 +533,8 @@ test_that("web content emitters produce structured shinychat_block lists", {
   expect_equal(results_block$sources[[2]]$url, "https://example.com")
   expect_false("title" %in% names(results_block$sources[[2]]))
 
-  # web_fetch request stays NULL
   expect_null(contents_shinychat_fetch_request(list()))
 
-  # web_fetch response block
   fetch_content <- MockFetchResponse(
     url = "https://example.com",
     status = "success"
@@ -568,14 +547,12 @@ test_that("web content emitters produce structured shinychat_block lists", {
   expect_equal(fetch_block$url, "https://example.com")
   expect_equal(fetch_block$status, "success")
 
-  # web_fetch response with error status returns NULL
   fetch_error <- MockFetchResponse(
     url = "https://example.com",
     status = "error"
   )
   expect_null(contents_shinychat_fetch_response(fetch_error))
 
-  # web_fetch response with NA url returns NULL
   fetch_no_url <- MockFetchResponse(url = NA_character_, status = "success")
   expect_null(contents_shinychat_fetch_response(fetch_no_url))
 })
@@ -615,7 +592,6 @@ test_that("web_source_record omits title when NA and filters NA urls", {
     properties = list(url = S7::class_character, title = S7::class_character)
   )
 
-  # With title
   source_with_title <- MockWebSource(
     url = "https://example.com",
     title = "Example"
@@ -623,7 +599,6 @@ test_that("web_source_record omits title when NA and filters NA urls", {
   record <- web_source_record(source_with_title)
   expect_equal(record, list(url = "https://example.com", title = "Example"))
 
-  # Without title (NA title omitted)
   source_no_title <- MockWebSource(
     url = "https://example.com",
     title = NA_character_
@@ -632,7 +607,6 @@ test_that("web_source_record omits title when NA and filters NA urls", {
   expect_equal(record, list(url = "https://example.com"))
   expect_false("title" %in% names(record))
 
-  # NA url returns NULL (filtered)
   source_no_url <- MockWebSource(url = NA_character_, title = "No URL")
   expect_null(web_source_record(source_no_url))
 })
@@ -673,16 +647,12 @@ test_that("web content feature detection derives classes from registered methods
 })
 
 test_that("attach_cited_sources adds cited_sources to last web_search when no results", {
-  # Build a web_search block
   search_block <- new_web_block("web_search", query = "test query")
-  # No web_search_results blocks → fallback should fire
   content <- list("answer text", search_block)
 
-  # Without ContentCitation objects in raw_contents, nothing is attached
   result <- attach_cited_sources(list(), content)
   expect_null(result[[2]]$cited_sources)
 
-  # With a web_search_results block present, fallback should NOT fire
   results_block <- new_web_block(
     "web_search_results",
     sources = list(list(url = "https://provider.example", title = "Provider"))
@@ -691,7 +661,6 @@ test_that("attach_cited_sources adds cited_sources to last web_search when no re
   result <- attach_cited_sources(list(), content_with_results)
   expect_null(result[[2]]$cited_sources)
 
-  # Without any web_search block, fallback should NOT fire
   content_no_search <- list("just text")
   result <- attach_cited_sources(list(), content_no_search)
   expect_equal(result, content_no_search)
@@ -700,8 +669,6 @@ test_that("attach_cited_sources adds cited_sources to last web_search when no re
 test_that("attach_cited_sources backfills a missing title from a later citation for the same URL", {
   skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
 
-  # Two citations for the same URL: first has no title, second has one.
-  # The first cited_sources record should gain the second's title.
   cit_no_title <- ellmer::ContentCitation(
     source = ellmer::WebSource("https://shared.example", title = NULL),
     grounded_span = "claim one"

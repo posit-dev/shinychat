@@ -113,13 +113,8 @@ HistoryController <- R6::R6Class(
           length(recorded_turns) <= record_turn_count(self$record) &&
             length(messages) <= record_ui_count(self$record)
         ) {
-          # The guard established that every reported message is already
-          # stored, so advance ui_offset to match -- otherwise a stale
-          # offset causes the next genuine save to reprocess these
-          # already-saved client-snapshot messages as out-of-band extras
-          # in extend_record_linear(), duplicating them in the record.
-          # Monotonic: a shorter partial mid-restore report must not move
-          # the offset backward (roborev 1064).
+          # Advance ui_offset monotonically so a later save doesn't
+          # reprocess already-stored messages as out-of-band extras.
           self$ui_offset <- max(self$ui_offset, length(messages))
           return(invisible())
         }
@@ -299,16 +294,8 @@ HistoryController <- R6::R6Class(
           node <- record$nodes[[node_id]]
           stored <- node$ui
 
-          # Stored UI that fails the current-version check is discarded and
-          # re-derived from the node's stored turns via contents_shinychat
-          # (P4) -- never re-parsed. That covers old-format UI (string-only,
-          # no version marker) and stale versions such as v1, whose
-          # serialized content may embed <shiny-chat-raw-html> island
-          # wrappers the client no longer resolves (kata#af81). Re-derivation
-          # ensures structured blocks (tool cards, web blocks, html_block)
-          # are present on replay, not lost as they were in the
-          # client-snapshot era. A NULL ui (no stored UI at all) is also
-          # re-derived from turns.
+          # Stored UI failing the current-version check is discarded and
+          # re-derived from turns, never re-parsed.
           if (is.null(stored) || !is_stored_ui_versioned(stored)) {
             stored <- derive_node_ui_from_turns(
               node,

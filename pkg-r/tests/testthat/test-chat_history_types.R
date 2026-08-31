@@ -58,7 +58,6 @@ test_that("is_stored_ui_versioned() requires an exact current-version match", {
     ))
   }
 
-  # Unversioned (old-format, string-only) stored UI is not versioned
   expect_false(is_stored_ui_versioned(NULL))
   expect_false(is_stored_ui_versioned(list()))
   expect_false(is_stored_ui_versioned("not a list"))
@@ -67,23 +66,17 @@ test_that("is_stored_ui_versioned() requires an exact current-version match", {
     segments = list(list(content = "hi", content_type = "markdown"))
   ))))
 
-  # Older versions are rejected: v1 records may embed <shiny-chat-raw-html>
-  # island wrappers the client no longer resolves (kata#af81), so they fall
-  # back to turns re-derivation rather than replaying as-is.
   expect_false(is_stored_ui_versioned(message_with_version(1L)))
   expect_false(is_stored_ui_versioned(message_with_version(0L)))
   expect_false(is_stored_ui_versioned(message_with_version(
     STORED_UI_VERSION + 1L
   )))
 
-  # The current version matches -- as integer (in-memory) and as double
-  # (after a JSON round-trip through the file/ledger stores).
   expect_true(is_stored_ui_versioned(message_with_version(STORED_UI_VERSION)))
   expect_true(is_stored_ui_versioned(message_with_version(as.numeric(
     STORED_UI_VERSION
   ))))
 
-  # Malformed version fields are rejected
   expect_false(is_stored_ui_versioned(message_with_version(NA_integer_)))
   expect_false(is_stored_ui_versioned(message_with_version("2")))
   expect_false(is_stored_ui_versioned(message_with_version(c(2L, 2L))))
@@ -673,8 +666,6 @@ test_that("extend_record_linear() derives UI from turns and attaches to matching
     tools = list()
   )
 
-  # UI is now server-derived from turns (P4), not from the client snapshot.
-  # The derived message carries a version marker and the turn's text content.
   expect_equal(rec$nodes$n_0001$ui[[1]]$version, STORED_UI_VERSION)
   expect_equal(rec$nodes$n_0001$ui[[1]]$role, "user")
   expect_equal(rec$nodes$n_0001$ui[[1]]$segments[[1]]$content, "hi")
@@ -714,33 +705,21 @@ test_that("extend_record_linear() derives UI with structured blocks from tool-ca
     tools = list()
   )
 
-  # n_0001 is the user turn group: one derived message with text "weather?"
   expect_equal(rec$nodes$n_0001$ui[[1]]$version, STORED_UI_VERSION)
   expect_equal(rec$nodes$n_0001$ui[[1]]$role, "user")
   expect_equal(rec$nodes$n_0001$ui[[1]]$segments[[1]]$content, "weather?")
 
-  # n_0002 is the assistant+tool group: one derived message (all turns in
-  # the group are merged into one message). The tool request and result
-  # produce structured blocks, and the assistant text "sunny" is a string
-  # segment.
-  # 3 client messages - 2 derived = 1 out-of-band message attached to n_0002.
   expect_length(rec$nodes$n_0002$ui, 2)
-  # First: derived message with blocks
   derived <- rec$nodes$n_0002$ui[[1]]
   expect_equal(derived$version, STORED_UI_VERSION)
   expect_equal(derived$role, "assistant")
   expect_false(is.null(derived$blocks))
   expect_true(length(derived$blocks) > 0)
-  # The tool_request and tool_result blocks are present
   block_types <- vapply(derived$blocks, function(b) b$type, character(1))
   expect_true("tool_request" %in% block_types)
   expect_true("tool_result" %in% block_types)
-  # The assistant text "sunny" is in the segments
   seg_contents <- vapply(derived$segments, function(s) s$content, character(1))
   expect_true("sunny" %in% seg_contents)
-  # Out-of-band message (from client snapshot, no version marker)
-  # The extra client message is the last one ("sunny") since the first
-  # n_derived=2 client messages are "consumed" by derivation.
   expect_null(rec$nodes$n_0002$ui[[2]]$version)
   expect_equal(rec$nodes$n_0002$ui[[2]]$segments[[1]]$content, "sunny")
 })
@@ -759,7 +738,6 @@ test_that("extend_record_linear() attaches a late-arriving message to the curren
     tools = list()
   )
 
-  # First call: n_0001 has one derived UI message (version-marked, from turns)
   expect_length(rec$nodes$n_0001$ui, 1)
   expect_equal(rec$nodes$n_0001$ui[[1]]$version, STORED_UI_VERSION)
   expect_equal(rec$nodes$n_0001$ui[[1]]$segments[[1]]$content, "hi")
@@ -784,10 +762,7 @@ test_that("extend_record_linear() attaches a late-arriving message to the curren
     tools = list()
   )
 
-  # No new nodes created (same turns)
   expect_equal(length(rec$nodes), 1)
-  # n_0001 now has 2 UI items: the derived one (from first call) and the
-  # late-arriving out-of-band message (from client snapshot, no version)
   expect_length(rec$nodes$n_0001$ui, 2)
   expect_equal(rec$nodes$n_0001$ui[[1]]$version, STORED_UI_VERSION)
   expect_equal(rec$nodes$n_0001$ui[[1]]$segments[[1]]$content, "hi")

@@ -117,10 +117,8 @@ chat_drawer_action <- function(
   html_deps <- NULL
   if (!is.null(content)) {
     chat_validate_drawer_content(content)
-    # The drawer wire payload is a single string (it cannot carry structured
-    # blocks), so trusted content renders via the shared island derivation
-    # concatenated into one HTML string — no <shiny-chat-raw-html> wrapper
-    # tags (kata#af81).
+    # The drawer wire payload is a single string, so trusted content renders
+    # via the shared island derivation — no wrapper tags.
     rendered <- render_island_string(content)
     action$content <- rendered$html
     html_deps <- serialize_html_deps(rendered$deps, session)

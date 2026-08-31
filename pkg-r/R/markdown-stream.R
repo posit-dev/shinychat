@@ -39,13 +39,8 @@ output_markdown_stream <- function(
   dependencies <- list()
   for (segment in split_content_by_trust(content)) {
     if (segment$trusted) {
-      # Trusted UI walks the shared island derivation (kata#mhyd): island
-      # wrappers become {block: html_block} entries; bare
-      # data-shinychat-react elements stay trusted residual text segments.
-      # There is no session at UI-construction time, so block deps carry
-      # the raw serialize_html_deps_static() serialization (the same
-      # no-session fallback ChatMessage uses, kata#rpx1) and the dep
-      # objects also propagate as page-level dependencies below.
+      # No session at UI-construction time; block deps use the static
+      # serialization and also propagate as page-level dependencies.
       for (part in derive_island_parts(segment$content)) {
         if (inherits(part, "shinychat_island_block_part")) {
           block <- list(
@@ -75,10 +70,9 @@ output_markdown_stream <- function(
     }
   }
 
-  # The fallback `content` attribute carries every segment's HTML —
-  # including island payloads — so a client that fails closed on the
-  # provenance array (or predates block entries) still shows the content,
-  # escaped and untrusted.
+  # The fallback `content` attribute carries every segment's HTML so a
+  # client that fails closed on the provenance array still shows the
+  # content, escaped and untrusted.
   rendered_content <- paste0(
     vapply(
       rendered_segments,
@@ -93,9 +87,8 @@ output_markdown_stream <- function(
     ),
     collapse = ""
   )
-  # A block entry is never a trusted fallback: content-trusted only governs
-  # the no-provenance path, and the fail-closed path must not render
-  # fallback content as trusted.
+  # A block entry is never a trusted fallback: the fail-closed path must
+  # not render fallback content as trusted.
   fallback_trusted <- length(rendered_segments) == 1 &&
     isTRUE(rendered_segments[[1]]$trusted)
 
@@ -203,11 +196,8 @@ markdown_stream <- function(
 
   operation <- match.arg(operation)
 
-  # `markdown_stream_impl()` is a coroutine, so everything ahead of its
-  # first `await` runs eagerly. A stream that fails before it awaits
-  # (e.g. an unsupported structured block, kata#mhyd) therefore throws
-  # synchronously rather than rejecting, and would skip the handling below
-  # entirely. Mirrors the same guard in `chat_append_stream()`.
+  # A coroutine that fails before its first await throws synchronously,
+  # so wrap in tryCatch to convert it to a rejected promise.
   result <- tryCatch(
     markdown_stream_impl(id, stream, operation, session),
     error = function(cnd) promises::promise_reject(cnd)
@@ -235,11 +225,9 @@ markdown_stream <- function(
   result
 }
 
-# The structured block types the client's markdown-stream wire supports
-# (mirrors `asStreamBlock` in js/src/markdown-stream/markdown-stream-entry.ts):
-# `html_block` islands and the web_* family. Anything else — notably tool
-# blocks — is dropped by the client with a warning, so markdown_stream()
-# rejects it server-side instead of silently discarding type-valid input.
+# Structured block types the client's markdown-stream wire supports.
+# Mirrors `asStreamBlock` in js/src/markdown-stream/markdown-stream-entry.ts.
+# Anything else is dropped by the client with a warning, so reject here.
 STREAM_BLOCK_TYPES <- c(
   "html_block",
   "web_search",
@@ -250,10 +238,8 @@ STREAM_BLOCK_TYPES <- c(
 markdown_stream_impl <- NULL
 rlang::on_load(
   markdown_stream_impl <- coro::async(function(id, stream, operation, session) {
-    # A message carries `content` XOR `block` (kata#mhyd). Blocks arrive
-    # complete and append-only; `html_block` envelopes are derived from
-    # trusted UI, and already-structured blocks (e.g. web_search) pass
-    # through as-is.
+    # A message carries `content` XOR `block`. Blocks arrive complete and
+    # append-only.
     send_stream_message <- function(...) {
       session$sendCustomMessage(
         "shinyMarkdownStreamMessage",
@@ -311,15 +297,8 @@ rlang::on_load(
       }
 
       if (inherits(msg, "shinychat_block")) {
-        # An already-structured block (e.g. web_search) ships as one
-        # complete block message (content XOR block, kata#mhyd). The client
-        # validates field-level shape and groups web_* blocks into the
-        # trailing web activity, but only for the block types the stream
-        # wire supports — it drops anything else (e.g. tool blocks) with a
-        # warning. Reject those here instead: fail openly rather than
-        # silently discard type-valid input. Blocks contribute nothing to
-        # the text result (mirroring Chat's empty-content snapshot of a
-        # web_activity block).
+        # An already-structured block ships as one complete block message.
+        # Reject unsupported block types rather than silently discarding.
         block_type <- msg$type
         if (!isTRUE(block_type %in% STREAM_BLOCK_TYPES)) {
           rlang::abort(paste0(
@@ -341,18 +320,10 @@ rlang::on_load(
       for (index in seq_along(segments)) {
         segment <- segments[[index]]
         if (segment$trusted) {
-          # Trusted (server-authored) content walks the shared island
-          # derivation (kata#mhyd): island wrappers ship as structured
-          # html_block block-messages; bare data-shinychat-react elements
-          # stay trusted residual string segments.
+          # Trusted content walks the shared island derivation.
           parts <- derive_island_parts(segment$content)
-          # Aggregate the whole run's deps onto the FIRST outbound envelope
-          # (block or string): the client renders envelope deps before
-          # dispatching the message, so every dependency of the run loads
-          # before any of its parts mount — the invariant the pre-block
-          # whole-fragment emission had. Later parts send empty envelope
-          # deps; a block still carries its own deps for its mount gate
-          # (mirroring ChatMessage's message-level + block-level split).
+          # Aggregate the run's deps onto the first outbound envelope so
+          # every dep loads before any part mounts.
           run_deps <- serialize_html_deps(
             unlist(lapply(parts, function(part) part$deps), recursive = FALSE),
             session

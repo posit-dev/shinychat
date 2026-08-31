@@ -294,8 +294,8 @@ new_tool_card <- function(type, request_id, tool_name, ...) {
 
   classes <- c(
     paste0("shinychat_tool_", sub("^tool_", "", type)),
-    # Retained so the console/Rmd display methods (format/print/knit_print)
-    # keep dispatching; the chat wire path keys off `shinychat_block`.
+    # Retained for console/Rmd display method dispatch; the chat wire
+    # path keys off `shinychat_block`.
     "shinychat_tool_card",
     "shinychat_block"
   )
@@ -362,9 +362,6 @@ wrap_custom_tool_result <- function(content, msg) {
 
   annotations <- shinychat_tool_annotations(content@request@tool)
 
-  # Render the author's custom UI to an HTML string when it is html-typed,
-  # collecting dependencies so they ride on the block. When value_type is
-  # "markdown", the value stays a plain string (no RawHTML sink).
   if (is.character(msg) && !inherits(msg, "html")) {
     value_str <- as.character(msg)
     deps <- list()
@@ -428,9 +425,8 @@ contents_shinychat_wrapped <- function(content) {
   wrap_custom_tool_result(content, contents_shinychat(content))
 }
 
-# Render a tag-like or HTML() value to an HTML string, collecting html
-# dependencies. For plain character strings, returns the string as-is with
-# no deps. This is the R analogue of Python's `TagList(...).render()`.
+# Render a tag-like or HTML() value to an HTML string, collecting deps.
+# Mirrors Python's `TagList(...).render()`.
 render_html_field <- function(x) {
   if (is.null(x)) {
     return(list(html = NULL, deps = list()))
@@ -445,9 +441,8 @@ render_html_field <- function(x) {
   )
 }
 
-# Private: build the old `<shiny-tool-request>`/`<shiny-tool-result>` tags for
-# console/Rmd display only (format/print/knit_print). NOT used by the chat
-# wire path — the chat emits structured blocks via `chat_append_message()`.
+# Build the old `<shiny-tool-request>`/`<shiny-tool-result>` tags for
+# console/Rmd display only (format/print/knit_print).
 tool_card_as_tags <- function(x) {
   tag_name <- switch(
     x$type,
@@ -458,7 +453,6 @@ tool_card_as_tags <- function(x) {
     )
   )
 
-  # Render HTML fields (icon, value when html, footer) to tags for display
   if (identical(x$value_type, "html") && !is.character(x$value)) {
     x$value <- as.tags(x$value)
   }
@@ -523,7 +517,6 @@ method(contents_shinychat, ellmer::ContentToolRequest) <- function(
   tool <- content@tool
   annotations <- shinychat_tool_annotations(tool)
 
-  # Render icon to HTML string, collecting deps
   icon_rendered <- render_html_field(annotations$icon)
 
   block <- new_tool_card(
@@ -578,11 +571,9 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     ))
   }
 
-  # Render HTML fields to strings, collecting deps
   icon_rendered <- render_html_field(display$icon %||% annotations$icon)
   footer_rendered <- render_html_field(display$footer)
 
-  # Render value: html-typed values go through renderTags; others are strings
   value_parts <- tool_result_value(content, display)
   if (identical(value_parts$value_type, "html")) {
     value_rendered <- render_html_field(value_parts$value)
@@ -997,12 +988,8 @@ method(contents_shinychat, ellmer::Turn) <- function(content) {
   # with no `<shiny-tool-result>` to pair its request against.
   raw_contents <- content@contents
   content <- compact(map(raw_contents, contents_shinychat_wrapped))
-  # Carry cited sources explicitly on the structured web_search block:
-  # the markup path's rehypeAttachCitedSources fallback can't fire for
-  # structured blocks (they never appear as markup siblings of the
-  # citation asides). Mirrors Python's `_attach_cited_sources` call inside
-  # Turn normalization (_chat_normalize.py). Streaming-time citation
-  # attachment is out of scope (Python doesn't do it either).
+  # Attach cited sources to the web_search block. Mirrors Python's
+  # `_attach_cited_sources`.
   attach_cited_sources(raw_contents, content)
 }
 
@@ -1030,10 +1017,8 @@ group_ellmer_turns <- function(turns) {
   groups
 }
 
-# Coalesce adjacent character strings in a mixed content list (strings and
-# shinychat_block objects) by pasting with "\n\n", keeping blocks in
-# position. Matches Python's `parts` coalescing: string runs between blocks
-# are joined, blocks stay as discrete list elements.
+# Coalesce adjacent character strings in a mixed content list by pasting
+# with "\n\n", keeping blocks in position. Mirrors Python's `parts` coalescing.
 coalesce_content_strings <- function(content) {
   result <- list()
   str_buf <- character(0)
@@ -1054,12 +1039,9 @@ coalesce_content_strings <- function(content) {
   result
 }
 
-# Mirror the markup path's rehypeAttachCitedSources fallback for structured
-# web blocks: when a turn produced search requests and answer citations but
-# no provider search results, carry the cited sources on the last
-# `web_search` block so the client can show them while no results attach.
-# Mutates the content list in place (the same list elements are referenced
-# by the caller). Mirrors Python's `_attach_cited_sources`.
+# Attach cited sources to the last web_search block when a turn has search
+# requests and citations but no provider results. Mirrors Python's
+# `_attach_cited_sources`.
 attach_cited_sources <- function(raw_contents, content) {
   has_web_search <- some(content, function(x) {
     inherits(x, "shinychat_block") && identical(x$type, "web_search")
@@ -1067,17 +1049,16 @@ attach_cited_sources <- function(raw_contents, content) {
   if (!has_web_search) {
     return(content)
   }
-  # Provider results win; cited sources are only a fallback when the turn
-  # has no results at all (hasSearchResults in rehypeAttachCitedSources).
+  # Provider results win; cited sources are only a fallback when there
+  # are no results at all.
   has_web_results <- some(content, function(x) {
     inherits(x, "shinychat_block") && identical(x$type, "web_search_results")
   })
   if (has_web_results) {
     return(content)
   }
-  # Collect cited sources from ContentCitation objects in the raw turn
-  # contents. Merge by URL (first occurrence wins; a later title fills a
-  # missing one), mirroring mergeSources in rehypeAttachCitedSources.
+  # Collect cited sources from ContentCitation objects, merging by URL
+  # (first occurrence wins; a later title fills a missing one).
   WebSource_class <- tryCatch(
     getExportedValue("ellmer", "WebSource"),
     error = function(e) NULL
@@ -1094,10 +1075,7 @@ attach_cited_sources <- function(raw_contents, content) {
   }
   cited <- list()
   # Track the index into `cited` for each URL so a later citation can
-  # backfill a missing title on the actual stored record. R lists are
-  # copy-on-modify, so mutating a copy fetched from an env (as the
-  # previous code did) leaves the record in `cited` unchanged. Mirrors
-  # Python's by_url, which stores references to the same dicts in cited.
+  # backfill a missing title.
   url_index <- new.env(parent = emptyenv())
   for (x in raw_contents) {
     if (!S7_inherits(x, Citation_class)) {
@@ -1107,7 +1085,6 @@ attach_cited_sources <- function(raw_contents, content) {
     if (!S7_inherits(source, WebSource_class)) {
       next
     }
-    # web_source_record rejects NULL/NA urls and omits NULL/NA titles
     record <- web_source_record(source)
     if (is.null(record)) {
       next
@@ -1125,8 +1102,7 @@ attach_cited_sources <- function(raw_contents, content) {
   if (length(cited) == 0) {
     return(content)
   }
-  # Attach to the last web_search block (parseItems reads the wrapper's
-  # citedSources onto the last pending search).
+  # Attach to the last web_search block.
   for (i in rev(seq_along(content))) {
     if (
       inherits(content[[i]], "shinychat_block") &&
@@ -1167,26 +1143,17 @@ merge_ellmer_turn_group <- function(group, tools) {
     recursive = FALSE
   )
 
-  # Wrapped, not bare `contents_shinychat()`: this is the restore/preload path
-  # (`client_set_ui()` -> `contents_shinychat(Chat)`), which re-appends
-  # *already-converted* content. Without the wrap here, a custom
-  # `contents_shinychat()` method's output arrives with no structured
-  # `tool_result` block, leaving the client nothing to pair its request
-  # against -- the same permanently-spinning row the live stream used to have.
+  # Wrapped so custom tool results get a `tool_result` block to pair with.
   content <- compact(map(contents, contents_shinychat_wrapped))
   if (is.null(content) || identical(content, "")) {
     return(NULL)
   }
-  # Carry cited sources explicitly on the structured web_search block:
-  # the markup path's rehypeAttachCitedSources fallback can't fire for
-  # structured blocks (they never appear as markup siblings of the
-  # citation asides). Mirrors Python's `_attach_cited_sources`.
+  # Attach cited sources to the web_search block. Mirrors Python's
+  # `_attach_cited_sources`.
   content <- attach_cited_sources(contents, content)
   if (every(content, is.character)) {
     content <- paste(unlist(content), collapse = "\n\n")
   } else if (some(content, inherits, "shinychat_block")) {
-    # Mixed content (strings + blocks): coalesce adjacent character strings
-    # with "\n\n" so blocks stay in position but text runs are joined.
     content <- coalesce_content_strings(content)
   }
   list(role = role, content = content)

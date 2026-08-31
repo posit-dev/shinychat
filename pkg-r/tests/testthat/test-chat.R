@@ -450,7 +450,6 @@ test_that("chat_append_message() non-streaming message carries inline mixed segm
   )
   session <- shiny::MockShinySession$new()
 
-  # Build a tool_request block and a tool_result block
   req_block <- new_tool_card(
     "tool_request",
     request_id = "req-1",
@@ -471,8 +470,6 @@ test_that("chat_append_message() non-streaming message carries inline mixed segm
     class = c("shinychat_tool_result", "shinychat_block")
   )
 
-  # Non-streaming: chunk = FALSE emits a single "message" action with
-  # inline segments preserving order: string, block, string, block
   chat_append_message(
     "chat",
     list(
@@ -491,20 +488,16 @@ test_that("chat_append_message() non-streaming message carries inline mixed segm
   segments <- msg$message$segments
   expect_length(segments, 4)
 
-  # Segment 1: string -> markdown
   expect_equal(segments[[1]]$content, "Hello ")
   expect_equal(segments[[1]]$content_type, "markdown")
 
-  # Segment 2: tool_request block
   expect_equal(segments[[2]]$type, "tool_request")
   expect_equal(segments[[2]]$request_id, "req-1")
   expect_equal(segments[[2]]$tool_name, "get_weather")
 
-  # Segment 3: string -> markdown
   expect_equal(segments[[3]]$content, " world ")
   expect_equal(segments[[3]]$content_type, "markdown")
 
-  # Segment 4: tool_result block
   expect_equal(segments[[4]]$type, "tool_result")
   expect_equal(segments[[4]]$request_id, "req-1")
   expect_equal(segments[[4]]$status, "success")
@@ -544,7 +537,6 @@ test_that("chat_append_message() streaming emits chunk_start, interleaved chunk/
     class = c("shinychat_tool_result", "shinychat_block")
   )
 
-  # chunk = "start": carries the full message payload with inline segments
   chat_append_message(
     "chat",
     list(
@@ -555,7 +547,6 @@ test_that("chat_append_message() streaming emits chunk_start, interleaved chunk/
     session = session
   )
 
-  # chunk = TRUE (intermediate): emit each segment in order
   chat_append_message(
     "chat",
     list(
@@ -566,7 +557,6 @@ test_that("chat_append_message() streaming emits chunk_start, interleaved chunk/
     session = session
   )
 
-  # chunk = "end": emit remaining segments, then chunk_end
   chat_append_message(
     "chat",
     list(role = "assistant", content = list(" done")),
@@ -574,14 +564,12 @@ test_that("chat_append_message() streaming emits chunk_start, interleaved chunk/
     session = session
   )
 
-  # chunk_start
   expect_equal(captured[[1]]$action$type, "chunk_start")
   expect_equal(captured[[1]]$action$message$role, "assistant")
   expect_length(captured[[1]]$action$message$segments, 2)
   expect_equal(captured[[1]]$action$message$segments[[1]]$content, "Starting ")
   expect_equal(captured[[1]]$action$message$segments[[2]]$type, "tool_request")
 
-  # intermediate: chunk for string, block_insert for block
   expect_equal(captured[[2]]$action$type, "chunk")
   expect_equal(captured[[2]]$action$content, " processing ")
   expect_equal(captured[[2]]$action$content_type, "markdown")
@@ -590,7 +578,6 @@ test_that("chat_append_message() streaming emits chunk_start, interleaved chunk/
   expect_equal(captured[[3]]$action$block$type, "tool_result")
   expect_equal(captured[[3]]$action$block$request_id, "req-s1")
 
-  # end: chunk for string, then chunk_end
   expect_equal(captured[[4]]$action$type, "chunk")
   expect_equal(captured[[4]]$action$content, " done")
 
@@ -623,9 +610,6 @@ test_that("chat_append_message() replace with block content wipes before re-emit
     class = c("shinychat_tool_result", "shinychat_block")
   )
 
-  # Uniform replace semantics (kata#0r4g): a leading empty replace chunk
-  # wipes the in-flight message (structured blocks included), then every
-  # part is re-emitted as an append.
   chat_append_message(
     "chat",
     list(
@@ -673,8 +657,6 @@ test_that("chat_append_message() block-level html deps are session-processed and
     script = "test.js"
   )
 
-  # Build a tool_result block with a raw htmlDependency stashed on the
-  # shinychat_html_deps attribute (as new_tool_card / contents_shinychat do)
   res_block <- structure(
     list(
       type = "tool_result",
@@ -689,8 +671,6 @@ test_that("chat_append_message() block-level html deps are session-processed and
   )
   attr(res_block, "shinychat_html_deps") <- list(dep)
 
-  # Non-streaming: the dep is session-processed and attached to the block's
-  # html_deps field; it also appears in the envelope-level html_deps
   chat_append_message(
     "chat",
     list(role = "assistant", content = res_block),
@@ -702,14 +682,12 @@ test_that("chat_append_message() block-level html deps are session-processed and
   msg <- captured[[1]]$action
   expect_equal(msg$type, "message")
 
-  # The block in the segments has html_deps attached
   block_seg <- msg$message$segments[[1]]
   expect_equal(block_seg$type, "tool_result")
   expect_false(is.null(block_seg$html_deps))
   dep_names <- vapply(block_seg$html_deps, function(d) d$name, character(1))
   expect_true("block-test-dep" %in% dep_names)
 
-  # The dep also appears in the envelope-level html_deps
   expect_false(is.null(captured[[1]]$html_deps))
   env_dep_names <- vapply(
     captured[[1]]$html_deps,
@@ -718,7 +696,6 @@ test_that("chat_append_message() block-level html deps are session-processed and
   )
   expect_true("block-test-dep" %in% env_dep_names)
 
-  # The raw attribute is stripped from the block
   expect_null(attr(block_seg, "shinychat_html_deps"))
 })
 
@@ -742,10 +719,6 @@ test_that("chat_append_message() non-string HTML content deps are session-proces
     script = "island.js"
   )
 
-  # Non-string HTML content (a tag carrying a dependency) enters the
-  # build_html_island_segments path, which session-processes deps via
-  # process_block_deps()/serialize_html_deps(). The processed deps should be
-  # plain lists (unclassed by processDeps), never raw html_dependency objects.
   content <- htmltools::div("trusted HTML", dep)
   chat_append_message(
     "chat",
@@ -758,7 +731,6 @@ test_that("chat_append_message() non-string HTML content deps are session-proces
   msg <- captured[[1]]$action
   expect_equal(msg$type, "message")
 
-  # The html_block segment should carry processed deps on its html_deps field
   segments <- msg$message$segments
   block_seg <- segments[[which(vapply(
     segments,
@@ -768,14 +740,10 @@ test_that("chat_append_message() non-string HTML content deps are session-proces
   expect_equal(block_seg$type, "html_block")
   expect_false(is.null(block_seg$html_deps))
 
-  # Envelope-level deps should also carry the processed dep
   expect_false(is.null(captured[[1]]$html_deps))
 
-  # Collect all dep objects from both locations
   all_deps <- c(block_seg$html_deps, captured[[1]]$html_deps)
 
-  # No dep should still carry the "html_dependency" class — that marks a
-  # raw, unprocessed dep object that cannot be JSON-serialized.
   is_raw_dep <- vapply(
     all_deps,
     function(d) {
@@ -785,11 +753,9 @@ test_that("chat_append_message() non-string HTML content deps are session-proces
   )
   expect_false(any(is_raw_dep))
 
-  # Each dep should be a plain list with a name key
   dep_names <- vapply(all_deps, function(d) d$name, character(1))
   expect_true("island-test-dep" %in% dep_names)
 
-  # No duplicates: the dep should appear exactly once in each location
   expect_equal(sum(dep_names == "island-test-dep"), 2L)
   expect_equal(
     sum(
@@ -806,7 +772,6 @@ test_that("chat_append_message() non-string HTML content deps are session-proces
     1L
   )
 
-  # The raw shinychat_html_deps attribute must not survive on the block
   expect_null(attr(block_seg, "shinychat_html_deps"))
 })
 
@@ -829,7 +794,6 @@ test_that("chat_append_message() emits web_search and web_search_results blocks 
     sources = list(list(url = "https://example.com", title = "Example"))
   )
 
-  # Non-streaming: mixed content with web blocks
   chat_append_message(
     "chat",
     list(
@@ -846,16 +810,13 @@ test_that("chat_append_message() emits web_search and web_search_results blocks 
   segments <- msg$message$segments
   expect_length(segments, 3)
 
-  # Segment 1: string -> markdown
   expect_equal(segments[[1]]$content, "Searching... ")
   expect_equal(segments[[1]]$content_type, "markdown")
 
-  # Segment 2: web_search block
   expect_equal(segments[[2]]$type, "web_search")
   expect_equal(segments[[2]]$version, 1L)
   expect_equal(segments[[2]]$query, "shinychat docs")
 
-  # Segment 3: web_search_results block
   expect_equal(segments[[3]]$type, "web_search_results")
   expect_equal(segments[[3]]$version, 1L)
   expect_length(segments[[3]]$sources, 1L)
@@ -914,7 +875,6 @@ test_that("chat_append_message() streaming emits block_insert for web blocks", {
 
   search_block <- new_web_block("web_search", query = "test")
 
-  # chunk = "end": block emitted as block_insert
   chat_append_message(
     "chat",
     list(role = "assistant", content = list(search_block, " done")),
@@ -922,16 +882,13 @@ test_that("chat_append_message() streaming emits block_insert for web blocks", {
     session = session
   )
 
-  # First action: block_insert for the web_search block
   expect_equal(captured[[1]]$action$type, "block_insert")
   expect_equal(captured[[1]]$action$block$type, "web_search")
   expect_equal(captured[[1]]$action$block$query, "test")
 
-  # Second action: chunk for the string
   expect_equal(captured[[2]]$action$type, "chunk")
   expect_equal(captured[[2]]$action$content, " done")
 
-  # Third action: chunk_end
   expect_equal(captured[[3]]$action$type, "chunk_end")
 })
 
@@ -948,7 +905,6 @@ test_that("chat_append_message() non-string HTML tag produces html_block segment
   )
   session <- shiny::MockShinySession$new()
 
-  # A plain tag (no data-shinychat-react) → island wrapper → html_block
   content <- htmltools::div("Hello world")
   chat_append_message(
     "chat",
@@ -963,7 +919,6 @@ test_that("chat_append_message() non-string HTML tag produces html_block segment
   segments <- msg$message$segments
   expect_length(segments, 1)
 
-  # Should be an html_block
   expect_equal(segments[[1]]$type, "html_block")
   expect_equal(segments[[1]]$version, 1L)
   expect_match(segments[[1]]$content, "Hello world", fixed = TRUE)
@@ -983,7 +938,6 @@ test_that("chat_append_message() React element stays as string html segment", {
   )
   session <- shiny::MockShinySession$new()
 
-  # A tag with data-shinychat-react → bare element → string html segment
   content <- htmltools::tag(
     "shiny-custom",
     list(`data-shinychat-react` = NA, "content")
@@ -1001,7 +955,6 @@ test_that("chat_append_message() React element stays as string html segment", {
   segments <- msg$message$segments
   expect_length(segments, 1)
 
-  # Should be a string html segment (not an html_block)
   expect_null(segments[[1]]$type)
   expect_equal(segments[[1]]$content_type, "html")
   expect_match(segments[[1]]$content, "shiny-custom", fixed = TRUE)
@@ -1020,7 +973,6 @@ test_that("chat_append_message() mixed tag list produces html_block + string seg
   )
   session <- shiny::MockShinySession$new()
 
-  # A tagList with a React element and a plain tag
   content <- htmltools::tagList(
     htmltools::tag("shiny-react-thing", list(`data-shinychat-react` = NA)),
     htmltools::div("trusted HTML")
@@ -1038,12 +990,10 @@ test_that("chat_append_message() mixed tag list produces html_block + string seg
   segments <- msg$message$segments
   expect_length(segments, 2)
 
-  # Segment 1: React element → string html segment
   expect_null(segments[[1]]$type)
   expect_equal(segments[[1]]$content_type, "html")
   expect_match(segments[[1]]$content, "shiny-react-thing", fixed = TRUE)
 
-  # Segment 2: plain div → html_block
   expect_equal(segments[[2]]$type, "html_block")
   expect_equal(segments[[2]]$version, 1L)
   expect_match(segments[[2]]$content, "trusted HTML", fixed = TRUE)
@@ -1062,9 +1012,6 @@ test_that("chat_append_message() htmltools::HTML() string becomes an html_block"
   )
   session <- shiny::MockShinySession$new()
 
-  # htmltools::HTML() is character with class "html" → island path: a
-  # single html_block (mirrors Python, where HTML is not a str subclass and
-  # so takes the non-string island branch) (kata#af81).
   content <- htmltools::HTML("<p>raw html</p>")
   chat_append_message(
     "chat",
@@ -1079,7 +1026,6 @@ test_that("chat_append_message() htmltools::HTML() string becomes an html_block"
   segments <- msg$message$segments
   expect_length(segments, 1)
 
-  # Should be an html_block structured segment (not a string segment)
   expect_equal(segments[[1]]$type, "html_block")
   expect_equal(segments[[1]]$version, 1L)
   expect_match(segments[[1]]$content, "<p>raw html</p>", fixed = TRUE)
@@ -1106,7 +1052,6 @@ test_that("chat_append_message() streaming emits block_insert for html_block", {
     session = session
   )
 
-  # block_insert for the html_block
   expect_equal(captured[[1]]$action$type, "block_insert")
   expect_equal(captured[[1]]$action$block$type, "html_block")
   expect_match(
@@ -1115,7 +1060,6 @@ test_that("chat_append_message() streaming emits block_insert for html_block", {
     fixed = TRUE
   )
 
-  # chunk_end
   expect_equal(captured[[2]]$action$type, "chunk_end")
 })
 
@@ -1185,16 +1129,7 @@ test_that("chat_server() exposes a failed response until the next succeeds", {
   })
 })
 
-# ---------------------------------------------------------------------------
-# chat_ui() with block-carrying initial messages (kata#089g)
-#
-# When any initial message carries a shinychat_block, the whole list is
-# serialized to JSON in a `data-initial-messages` attribute on the container
-# (no static <shiny-chat-message> tags). Html deps are lifted onto the
-# container. Mirrors Python's chat_ui() initial_message_payload().
-# ---------------------------------------------------------------------------
 
-# Helper: a minimal tool_result block (as produced by contents_shinychat)
 tool_result_block <- function(
   request_id = "r1",
   tool_name = "get_weather",
@@ -1219,10 +1154,8 @@ test_that("chat_ui() emits data-initial-messages when a message carries a block"
     )
   )
 
-  # The attribute is present on the container
   expect_false(is.null(ui$attribs[["data-initial-messages"]]))
 
-  # No static <shiny-chat-message> tags (only the wrapper <shiny-chat-messages>)
   html <- as.character(ui)
   expect_false(grepl("<shiny-chat-message ", html, fixed = TRUE))
   expect_true(grepl("<shiny-chat-messages", html, fixed = TRUE))
@@ -1258,7 +1191,6 @@ test_that("chat_ui() data-initial-messages JSON has expected structure", {
   expect_equal(seg$tool_name, "get_weather")
   expect_equal(seg$status, "success")
 
-  # html_deps must NOT appear in the JSON
   json_str <- as.character(ui$attribs[["data-initial-messages"]])
   expect_false(grepl("html_deps", json_str, fixed = TRUE))
 })
@@ -1282,12 +1214,10 @@ test_that("chat_ui() preserves mixed content order in data-initial-messages", {
   segments <- parsed[[1]]$segments
   expect_length(segments, 2)
 
-  # Segment 1: string
   expect_false("type" %in% names(segments[[1]]))
   expect_equal(segments[[1]]$content, "The answer is:")
   expect_equal(segments[[1]]$content_type, "markdown")
 
-  # Segment 2: block
   expect_equal(segments[[2]]$type, "tool_result")
   expect_equal(segments[[2]]$request_id, "r2")
 })
@@ -1312,12 +1242,10 @@ test_that("chat_ui() opts the whole list into JSON when any message has a block"
   expect_equal(parsed[[1]]$role, "user")
   expect_equal(parsed[[2]]$role, "assistant")
 
-  # User message: string segment, no icon (assistant default must not leak)
   expect_false("type" %in% names(parsed[[1]]$segments[[1]]))
   expect_equal(parsed[[1]]$segments[[1]]$content, "Hi there")
   expect_false("icon" %in% names(parsed[[1]]))
 
-  # Assistant message: block segment, icon present
   expect_equal(parsed[[2]]$segments[[1]]$type, "tool_result")
   expect_true("icon" %in% names(parsed[[2]]))
 })
@@ -1338,7 +1266,6 @@ test_that("chat_ui() lifts block-level html deps onto the container", {
   dep_names <- vapply(rendered$dependencies, function(d) d$name, character(1))
   expect_true("testdep-block" %in% dep_names)
 
-  # html_deps must not be in the JSON
   json_str <- as.character(ui$attribs[["data-initial-messages"]])
   expect_false(grepl("html_deps", json_str, fixed = TRUE))
 })
@@ -1379,7 +1306,6 @@ test_that("chat_ui() NULL messages produces no data-initial-messages", {
 
 test_that("chat_ui() single block (not in a list) carries data-initial-messages", {
   block <- tool_result_block()
-  # Content can be a bare block (not wrapped in list(role=, content=))
   ui <- chat_ui("chat", messages = list(block))
 
   expect_false(is.null(ui$attribs[["data-initial-messages"]]))
@@ -1416,9 +1342,6 @@ test_that("chat_ui() web_search block carries data-initial-messages", {
 })
 
 test_that("chat_ui() html_block from non-string HTML content", {
-  # Non-string HTML (tag/tag.list) goes through the island-splitting path,
-  # producing html_block structured blocks. Since blocks are present, the
-  # whole list goes to JSON.
   react_tag <- tags$div("react", `data-shinychat-react` = NA)
   ui <- chat_ui(
     "chat",
@@ -1434,7 +1357,6 @@ test_that("chat_ui() html_block from non-string HTML content", {
     simplifyDataFrame = FALSE,
     simplifyVector = FALSE
   )
-  # The island-split path produces an html_block segment
   seg_types <- vapply(
     parsed[[1]]$segments,
     function(s) {
@@ -1445,16 +1367,8 @@ test_that("chat_ui() html_block from non-string HTML content", {
   expect_true("html_block" %in% seg_types)
 })
 
-# ---------------------------------------------------------------------------
-# Regression tests for roborev 1066 findings 2, 3, 4
-# ---------------------------------------------------------------------------
 
 test_that("chat_ui() mixed content with a plain tag produces an html_block island (not a bare html string)", {
-  # A mixed list containing a shinychat_block AND a plain tag: the plain tag
-  # must be routed through the HTML-island builder so it becomes an
-  # html_block island (not a bare html string segment). Without the fix,
-  # React would own the DOM and no scoped bindAll() would occur, leaving
-  # inputs/outputs unbound (roborev 1066, finding 2).
   block <- tool_result_block()
   plain_tag <- tags$div("trusted HTML")
   ui <- chat_ui(
@@ -1477,24 +1391,18 @@ test_that("chat_ui() mixed content with a plain tag produces an html_block islan
 
   segments <- parsed[[1]]$segments
 
-  # Collect segment types: string segments have no "type"; blocks do.
   seg_types <- vapply(
     segments,
     function(s) if ("type" %in% names(s)) s$type else "string",
     character(1)
   )
 
-  # The plain tag should produce an html_block island, not a bare html string.
   expect_true("html_block" %in% seg_types)
 
-  # The html_block segment should contain the tag's rendered HTML.
   html_block_seg <- segments[[which(seg_types == "html_block")]]
   expect_match(html_block_seg$content, "trusted HTML", fixed = TRUE)
   expect_equal(html_block_seg$version, 1)
 
-  # There should be NO bare html string segment for the plain tag.
-  # (String segments are content_type "markdown" or "html"; the plain tag
-  # must not appear as a content_type "html" string segment.)
   html_string_segs <- segments[
     seg_types == "string" &
       vapply(
@@ -1511,10 +1419,6 @@ test_that("chat_ui() mixed content with a plain tag produces an html_block islan
 })
 
 test_that("chat_ui() direct html_block initial message serializes as a block with type/version intact", {
-  # A direct shinychat_block with a `content` field (e.g. an html_block from
-  # new_html_block()) passed as a chat_ui initial message must NOT be
-  # mistaken for a message envelope list and unwrapped. Its block metadata
-  # (type, version) must survive serialization (roborev 1066, finding 4).
   html_block <- new_html_block("<p>trusted island HTML</p>")
 
   ui <- chat_ui("chat", messages = list(html_block))
@@ -1533,16 +1437,12 @@ test_that("chat_ui() direct html_block initial message serializes as a block wit
   expect_length(entry$segments, 1)
 
   seg <- entry$segments[[1]]
-  # The segment must be a block (type/html_block), not a string segment.
   expect_equal(seg$type, "html_block")
   expect_equal(seg$version, 1)
   expect_match(seg$content, "trusted island HTML", fixed = TRUE)
 })
 
 test_that("chat_ui() direct html_block with deps serializes as a block, deps lifted to container", {
-  # A direct html_block carrying html deps: the block must serialize as a
-  # block (not unwrapped), and deps must be lifted to the container
-  # (roborev 1066, finding 4).
   html_block <- new_html_block("<p>island with deps</p>")
   dep <- htmltools::htmlDependency("testdep-htmlblock", "1.0.0", "")
   attr(html_block, "shinychat_html_deps") <- list(dep)
@@ -1561,24 +1461,15 @@ test_that("chat_ui() direct html_block with deps serializes as a block, deps lif
   expect_equal(seg$type, "html_block")
   expect_equal(seg$version, 1)
 
-  # html_deps must NOT appear in the JSON
   json_str <- as.character(ui$attribs[["data-initial-messages"]])
   expect_false(grepl("html_deps", json_str, fixed = TRUE))
 
-  # Deps should be lifted to the container
   rendered <- htmltools::renderTags(ui)
   dep_names <- vapply(rendered$dependencies, function(d) d$name, character(1))
   expect_true("testdep-htmlblock" %in% dep_names)
 })
 
 test_that("chat_ui() block-bearing initial messages compile bslib deps against the current theme", {
-  # build_html_island_segments_static() and initial_message_payload() are
-  # wrapped in with_current_theme() so theme-aware bslib content (e.g.
-  # bslib::card()) in block-bearing initial messages compiles its Sass/CSS
-  # deps against the current bslib theme — matching the session-aware send
-  # path (roborev 1068, kata shinychat#089g). Verified by rendering a
-  # bslib::card() in a block-bearing initial message under two themes and
-  # asserting the compiled bslib-component-css differs.
   skip_if_not_installed("bslib")
   skip_if_not_installed("withr")
 
@@ -1597,7 +1488,6 @@ test_that("chat_ui() block-bearing initial messages compile bslib deps against t
       )
     )
     rendered <- htmltools::renderTags(ui)
-    # Sanity: the block path was taken
     expect_false(is.null(ui$attribs[["data-initial-messages"]]))
     comp <- Filter(
       function(d) d$name == "bslib-component-css",
@@ -1616,6 +1506,5 @@ test_that("chat_ui() block-bearing initial messages compile bslib deps against t
   css_default <- render_card_css()
   bslib::bs_global_set(old_theme)
 
-  # Theme-aware compilation must produce different CSS per theme.
   expect_false(identical(css_flatly, css_default))
 })

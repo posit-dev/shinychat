@@ -273,7 +273,6 @@ test_that("HTML dependencies on custom tool UI survive the wrap", {
   block <- captured[[1]]
   expect_s3_class(block, "shinychat_block")
   expect_true(block$custom_display)
-  # Raw dep objects ride as an attribute until session-processing at send time
   block_deps <- attr(block, "shinychat_html_deps")
   dep_names <- vapply(block_deps, function(d) d$name, character(1))
   expect_true("custom-tool-dep" %in% dep_names)
@@ -301,7 +300,6 @@ test_that("a custom result with no @request emits bare tags, no wrap", {
   captured <- run_stream_capture(result)
   expect_length(captured, 1)
 
-  # No wrap: the author's tags pass through as-is (not a shinychat_block)
   expect_false(inherits(captured[[1]], "shinychat_block"))
   html <- as.character(htmltools::as.tags(captured[[1]]))
   expect_match(html, "my-custom", fixed = TRUE)
@@ -340,7 +338,6 @@ test_that("merge_ellmer_turn_group() wraps custom tool output on restore", {
   content <- message$content
   expect_true(is.list(content))
 
-  # The custom result is wrapped in a tool_result block
   result_blocks <- Filter(
     function(x) {
       inherits(x, "shinychat_block") && identical(x$type, "tool_result")
@@ -378,7 +375,6 @@ test_that("contents_shinychat(Turn) wraps custom tool output", {
   content <- contents_shinychat(turn)
   expect_true(is.list(content))
 
-  # The custom result is wrapped in a tool_result block
   result_blocks <- Filter(
     function(x) {
       inherits(x, "shinychat_block") && identical(x$type, "tool_result")
@@ -405,7 +401,6 @@ test_that("the wrap is idempotent, so a normal tool card is not double-wrapped",
   twice <- wrap_custom_tool_result(result, once)
 
   expect_identical(once, twice)
-  # A normal tool result block is not custom
   expect_s3_class(once, "shinychat_block")
   expect_null(once$custom_display)
 })

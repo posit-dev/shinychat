@@ -85,64 +85,24 @@ record_meta <- function(record, size_bytes) {
 MIN_SCHEMA_VERSION <- 1L
 MAX_SCHEMA_VERSION <- 1L
 
-# Version marker on stored UI messages. Stored UI is only ever replayed when
-# it carries exactly this version; anything older (or unversioned) is
-# discarded at replay time and re-derived from the node's stored turns via
-# contents_shinychat().
-#
-# Version history:
-#   1: First structured format. Serialized segment content could embed
-#      <shiny-chat-raw-html> island wrapper tags (trusted tag content was
-#      rendered through pre_process_ui(), which emitted the wrappers). The
-#      client no longer resolves those wrappers (kata#af81), so replaying v1
-#      UI would render trusted HTML inert/unbound. v1 records are therefore
-#      treated like unversioned ones: discarded, never re-parsed, and
-#      re-derived from turns (the kata epic qrfz compat decision).
-#   2: Current. Serialized content carries no island wrappers; trusted HTML
-#      travels as html_block envelopes or bare html-typed string segments.
+# Current version marker for stored UI messages. Older or unversioned UI is
+# discarded at replay time and re-derived from the node's stored turns.
 STORED_UI_VERSION <- 2L
 
-# Build a stored UI message from the output of merge_ellmer_turn_group()
-# (list(role, content)), mirroring Python's StoredMessage.from_chat_message.
-#
-# content can be:
-#   - A plain character string (all-text turn) → single string segment
-#   - A shinychat_block object → single block, one empty string segment
-#   - A mixed list (strings + shinychat_block objects) → interleaved segments
-#     and blocks with block_positions recording the interleaving
-#
-# Block-level html deps are session-processed through the same process_ui
-# path used at send time (process_block_deps, the rpx1 pattern) and attached
-# to the block's html_deps field. Message-level deps (from html string
-# segments) are also session-processed and stored as htmlDeps on the message.
-#
-# Returns a stored UI message list with:
-#   version: STORED_UI_VERSION
-#   role: "user" | "assistant"
-#   segments: list of {content, content_type}
-#   blocks: list of structured block named lists (possibly empty)
-#   block_positions: integerish vector or NULL (NULL = flat layout)
-#   htmlDeps: session-processed deps (when present)
-#   attachments: carried through when applicable
+# Build a stored UI message from merge_ellmer_turn_group() output.
+# Mirrors Python's StoredMessage.from_chat_message.
 build_stored_message_from_content <- function(
   role,
   content,
   session = NULL,
   attachments = NULL
 ) {
-  # Normalize content to a list of parts (strings and shinychat_block objects)
   parts <- content_to_parts(content)
-
-  # Collected session-processed html deps (message-level)
   all_deps <- list()
-
-  # Check if any part is a block (structured content)
   has_blocks <- any(vapply(parts, inherits, logical(1), "shinychat_block"))
 
   if (!has_blocks) {
-    # All-string content: single segment, no blocks
     text <- paste(unlist(parts), collapse = "\n\n")
-    # Determine content_type: check for HTML class on any part
     is_html <- any(vapply(
       parts,
       function(p) {
@@ -158,7 +118,6 @@ build_stored_message_from_content <- function(
       segments = list(list(content = text, content_type = content_type))
     )
 
-    # Session-process html deps for html-typed string content
     if (is_html && !is.null(session)) {
       for (p in parts) {
         if (is.character(p) && inherits(p, "html")) {
@@ -168,16 +127,13 @@ build_stored_message_from_content <- function(
       }
     }
   } else {
-    # Mixed content (strings + blocks): build segments and blocks with positions
     segments <- list()
     blocks <- list()
     positions <- integer(0)
 
     for (part in parts) {
       if (inherits(part, "shinychat_block")) {
-        # Record the position (number of string segments so far)
         positions <- c(positions, length(segments))
-        # Process block deps and convert to plain list
         block <- as.list(part)
         result <- process_block_deps(block, session)
         all_deps <- c(all_deps, result$deps)
@@ -206,12 +162,6 @@ build_stored_message_from_content <- function(
       } else if (
         inherits(part, c("shiny.tag", "shiny.tag.list", "htmlwidget"))
       ) {
-        # Non-string HTML content: split into html_block islands + bare
-        # React string runs via the shared island derivation — matching the
-        # send path (build_html_island_segments) and Python's ChatMessage
-        # non-string branch, with no <shiny-chat-raw-html> wrapper tags
-        # (kata#af81). Block wire segments join `blocks` with their
-        # positions recorded; residual string runs join `segments`.
         island_result <- if (!is.null(session)) {
           build_html_island_segments(part, session)
         } else {
@@ -220,7 +170,6 @@ build_stored_message_from_content <- function(
         all_deps <- c(all_deps, island_result$deps)
         for (seg in island_result$segments) {
           if ("type" %in% names(seg)) {
-            # Record the position (number of string segments so far)
             positions <- c(positions, length(segments))
             blocks <- c(blocks, list(seg))
           } else {
@@ -228,7 +177,6 @@ build_stored_message_from_content <- function(
           }
         }
       } else {
-        # Fallback: treat as markdown string
         segments <- c(
           segments,
           list(list(
@@ -239,8 +187,7 @@ build_stored_message_from_content <- function(
       }
     }
 
-    # If no string segments were produced (blocks-only), add an empty one
-    # so htmlDeps can ride on it (mirrors Python's flat layout fallback)
+    # Blocks-only: add an empty segment so htmlDeps can ride on it.
     if (length(segments) == 0) {
       segments <- list(list(content = "", content_type = "markdown"))
     }
@@ -252,8 +199,6 @@ build_stored_message_from_content <- function(
     )
     if (length(blocks) > 0) {
       message$blocks <- blocks
-      # block_positions is NULL when there's exactly one string segment and
-      # blocks follow it (flat layout). Otherwise record positions.
       if (length(positions) > 0 && !identical(positions, integer(0))) {
         message$block_positions <- as.integer(positions)
       }
@@ -271,10 +216,7 @@ build_stored_message_from_content <- function(
   message
 }
 
-# Normalize content (as produced by merge_ellmer_turn_group) into a list of
-# parts (character strings and shinychat_block objects). A plain character
-# string becomes a one-element list; a shinychat_block becomes a one-element
-# list; a mixed list is returned as-is (already a list of parts).
+# Normalize content into a list of parts (strings and shinychat_block objects).
 content_to_parts <- function(content) {
   if (is.character(content) && !inherits(content, "shinychat_block")) {
     list(content)
@@ -287,12 +229,7 @@ content_to_parts <- function(content) {
   }
 }
 
-# Derive stored UI messages from the new turn groups in a save operation.
-# Mirrors the save-time derivation described in P4: run the group's turns
-# through contents_shinychat (via merge_ellmer_turn_group) and build stored
-# UI message dicts with role, segments, blocks, block_positions, htmlDeps.
-#
-# Returns a list of stored UI messages (one per turn group).
+# Derive stored UI messages from turn groups via contents_shinychat.
 derive_stored_ui_messages <- function(live_groups, tools, session = NULL) {
   messages <- list()
   for (i in seq_along(live_groups)) {
@@ -311,19 +248,13 @@ derive_stored_ui_messages <- function(live_groups, tools, session = NULL) {
   messages
 }
 
-# Check whether a stored UI list carries the current structured-format
-# version. Old persisted UI -- string-only with no version field, or an
-# older version such as v1 (whose serialized content may embed
-# <shiny-chat-raw-html> island wrappers the client no longer resolves,
-# kata#af81) -- returns FALSE and is discarded at replay time, re-derived
-# from the node's stored turns.
+# Check whether a stored UI list carries the current version. Older or
+# unversioned UI returns FALSE and is discarded at replay time.
 is_stored_ui_versioned <- function(stored) {
   if (!is.list(stored) || length(stored) == 0) {
     return(FALSE)
   }
-  # Check the first message for an exact current-version match. The
-  # comparison is numeric-tolerant because JSON round-trips (file/ledger
-  # stores) deserialize the marker as double, not integer.
+  # Numeric-tolerant: JSON round-trips deserialize the marker as double.
   version <- stored[[1]]$version
   is.numeric(version) &&
     length(version) == 1L &&
@@ -331,16 +262,12 @@ is_stored_ui_versioned <- function(stored) {
     version == STORED_UI_VERSION
 }
 
-# Derive stored UI messages from a node's stored turns via contents_shinychat.
-# Used at replay time when stored UI is NULL or fails the current-version
-# check (unversioned, or an older version such as v1 whose content may embed
-# island wrappers -- see STORED_UI_VERSION). Replaces
-# turn_fallback_markdown() with full contents_shinychat() re-derivation (P4).
-# Falls back to text-only only when turns are also missing or unusable.
+# Re-derive stored UI from a node's turns at replay time (when stored UI is
+# NULL or fails the version check). Falls back to text-only when turns are
+# also missing.
 derive_node_ui_from_turns <- function(node, tools, session = NULL) {
   turns <- node$turns
   if (is.null(turns) || length(turns) == 0) {
-    # No turns: text-only fallback (empty message)
     return(list(list(
       version = STORED_UI_VERSION,
       role = "assistant",
@@ -348,7 +275,6 @@ derive_node_ui_from_turns <- function(node, tools, session = NULL) {
     )))
   }
 
-  # Replay the recorded turns to live ellmer objects
   live_turns <- lapply(turns, ellmer::contents_replay, tools = tools)
   live_groups <- group_ellmer_turns(live_turns)
 
@@ -359,8 +285,6 @@ derive_node_ui_from_turns <- function(node, tools, session = NULL) {
   )
 
   if (length(messages) == 0) {
-    # Derivation produced nothing (e.g. all content was filtered out):
-    # text-only fallback from the last turn's text content
     last_turn <- turns[[length(turns)]]
     last_turn_live <- ellmer::contents_replay(last_turn, tools = tools)
     return(list(list(
@@ -612,20 +536,14 @@ extend_record_linear <- function(
     new_node_ids <- c(new_node_ids, node_id)
   }
 
-  # Derive stored UI messages server-side from the turn groups (P4).
-  # This replaces the client snapshot as the persisted UI source: structured
-  # blocks (tool_request/tool_result/web_*/html_block) are included, and
-  # html deps are session-processed through the same process_ui path used
-  # at send time.
+  # Derive stored UI messages server-side from the turn groups.
   derived_messages <- derive_stored_ui_messages(
     live_groups,
     tools = tools,
     session = session
   )
 
-  # Attach each derived message to its corresponding new node. The i-th
-  # derived message corresponds to the i-th new node (turn groups and nodes
-  # are created in the same order).
+  # Attach each derived message to its corresponding new node.
   for (i in seq_along(derived_messages)) {
     if (i <= length(new_node_ids)) {
       target <- new_node_ids[[i]]
@@ -636,12 +554,8 @@ extend_record_linear <- function(
     }
   }
 
-  # Out-of-band messages (reported by the client but not corresponding to
-  # any turn group — e.g. injected via chat_append_message() outside the
-  # on_user_submit flow) are still attached from the client snapshot. The
-  # count of derived messages tells us how many client-reported messages
-  # were "consumed" by turn-group derivation; any extras beyond that are
-  # out-of-band.
+  # Out-of-band messages (client-reported but not from a turn group) are
+  # attached from the client snapshot beyond the derived count.
   fallback <- if (length(new_node_ids) > 0) {
     new_node_ids[length(new_node_ids)]
   } else {
@@ -651,8 +565,6 @@ extend_record_linear <- function(
   if (!is.null(fallback) && length(ui_messages) > ui_offset) {
     new_client_messages <- ui_messages[seq_along(ui_messages) > ui_offset]
     n_derived <- length(derived_messages)
-    # Skip the first n_derived client messages (they correspond to the
-    # derived messages already attached). The rest are out-of-band.
     if (length(new_client_messages) > n_derived) {
       extra_messages <- new_client_messages[
         (n_derived + 1L):length(new_client_messages)

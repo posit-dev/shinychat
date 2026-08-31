@@ -79,8 +79,6 @@ test_that("chat_ui() tag greeting produces html content_type and attaches depend
   ui <- chat_ui("chat", greeting = tag_content)
   payload <- jsonlite::fromJSON(ui$attribs$greeting)
   expect_equal(payload$content_type, "html")
-  # Tag content flattens to a trusted HTML string with no island wrapper
-  # tags (kata#af81).
   expect_match(
     payload$content,
     "<div class=\"greeting\">Hello</div>",
@@ -182,7 +180,6 @@ test_that("chat_set_greeting() tag content flattens to a trusted html string", {
     "<div class=\"greeting\">Welcome</div>",
     fixed = TRUE
   )
-  # No island wrapper tags may appear in the wire string (kata#af81).
   expect_no_match(action$content, "shiny-chat-raw-html", fixed = TRUE)
 })
 

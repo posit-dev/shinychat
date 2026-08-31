@@ -1,7 +1,5 @@
 # One run of consecutive non-React children: trusted content that becomes a
-# single island payload (a structured `html_block` further downstream). This
-# typed item replaces the <shiny-chat-raw-html> wrapper tag that used to be
-# constructed here — the tag no longer appears even internally (kata#af81).
+# single island payload (a structured `html_block` further downstream).
 new_island_item <- function(children) {
   structure(
     list(children = children),
@@ -20,8 +18,7 @@ new_island_item <- function(children) {
 #' @noRd
 split_html_islands <- function(content) {
   # Convert to tags so custom classes resolve their data-shinychat-react
-  # attribute. (Tool blocks no longer go through this path — they are
-  # `shinychat_block` objects handled directly by `chat_append_message`.)
+  # attribute.
   content <- htmltools::as.tags(content)
 
   if (inherits(content, "shiny.tag")) {
@@ -57,8 +54,8 @@ split_html_islands <- function(content) {
 }
 
 # One derived piece of trusted content: an island payload (becomes a
-# structured `html_block`) or a residual string run (stays a trusted string
-# segment). Mirrors Python's IslandBlockPart/IslandResidualPart (kata#mhyd).
+# structured `html_block`) or a residual string run. Mirrors Python's
+# IslandBlockPart/IslandResidualPart.
 new_island_block_part <- function(html, deps) {
   structure(
     list(html = html, deps = deps),
@@ -82,9 +79,8 @@ new_island_residual_part <- function(html, deps) {
 #' runs coalesced).
 #'
 #' This is the single derivation shared by Chat (message content) and the
-#' markdown stream (stream/output emission) so trusted non-string content
-#' becomes `html_block` envelopes identically everywhere. Mirrors Python's
-#' `derive_island_parts()` (kata#mhyd).
+#' markdown stream so trusted non-string content becomes `html_block`
+#' envelopes identically everywhere. Mirrors Python's `derive_island_parts()`.
 #'
 #' @param content A tag, tagList, or other HTML content.
 #' @return A list of parts (`shinychat_island_block_part` or
@@ -92,23 +88,18 @@ new_island_residual_part <- function(html, deps) {
 #'   `html_dependency` objects in `deps`.
 #' @noRd
 derive_island_parts <- function(content) {
-  # Wrap island splitting and tag rendering in with_current_theme() so
-  # theme-aware bslib content renders/compiles deps against the correct
-  # theme — matching the session-aware send path (process_ui wraps
-  # processDeps in with_current_theme()) (roborev 1066, finding 3).
+  # Wrap in with_current_theme() so theme-aware bslib content compiles
+  # against the correct theme.
   with_current_theme({
     parts <- list()
     for (item in split_html_islands(content)) {
       if (inherits(item, "shinychat_island")) {
-        # Island: render its children as the block's trusted HTML content.
         rendered <- htmltools::renderTags(htmltools::tagList(!!!item$children))
         parts[[length(parts) + 1]] <- new_island_block_part(
           html = as.character(rendered$html),
           deps = rendered$dependencies
         )
       } else {
-        # Bare React element: render it bare and keep it as a residual
-        # string run, surrounded by blank lines.
         rendered <- htmltools::renderTags(item)
         run <- paste0("\n\n", as.character(rendered$html), "\n\n")
         last <- if (length(parts) > 0) parts[[length(parts)]] else NULL
@@ -132,10 +123,9 @@ derive_island_parts <- function(content) {
 #'
 #' For wire surfaces that cannot carry structured blocks (the greeting
 #' payload, drawer content, static <shiny-chat-message> tags): island parts
-#' contribute their rendered HTML directly (no <shiny-chat-raw-html> wrapper
-#' tags — the client no longer has that machinery, kata#af81) and bare React
-#' elements contribute their blank-line-wrapped residual runs. The whole
-#' string is server-authored and travels with content_type "html".
+#' contribute their rendered HTML directly and bare React elements
+#' contribute their blank-line-wrapped residual runs. The whole string is
+#' server-authored and travels with content_type "html".
 #'
 #' @param content A tag, tagList, or other HTML content.
 #' @return A list with `html` (character string) and `deps` (raw

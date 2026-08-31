@@ -40,10 +40,7 @@ process_ui <- function(ui, session) {
 }
 
 # Serialize HTMLDependency objects for the wire through the session's
-# processDeps (registering web-dependency routes and applying lib_prefix).
-# Returns an empty list when there are no deps, so callers can put the
-# result directly on a message envelope. Mirrors Python's
-# serialize_html_deps (kata#rpx1).
+# processDeps. Mirrors Python's serialize_html_deps.
 serialize_html_deps <- function(deps, session) {
   if (length(deps) == 0) {
     return(list())
@@ -51,18 +48,11 @@ serialize_html_deps <- function(deps, session) {
   process_ui(htmltools::tagList(!!!deps), session)[["deps"]] %||% list()
 }
 
-# Session-free serialization of HTMLDependency objects, producing the wire
-# shape the client's renderDependencies understands (mirrors shiny's
-# createWebDependency(), but without its addResourcePath() side effect —
-# there may be no running app at UI-construction time, and the dep objects
-# also propagate as page-level dependencies, which Shiny's page render
-# registers under the same "name-version" prefix). This is the no-session
-# fallback for initial content-segments block entries (mirroring the raw
-# as_dict() serialization Python's output_markdown_stream() uses,
-# kata#rpx1).
+# Session-free serialization of HTMLDependency objects for the wire shape
+# the client's renderDependencies understands. Used when there is no running
+# app at UI-construction time. Mirrors Python's serialize_html_deps_static.
 serialize_html_deps_static <- function(deps) {
   lapply(deps, function(dep) {
-    # Remove html_dependency class so jsonlite can handle it
     dep <- unclass(dep)
     if (is.null(dep$src) || is.null(dep$src$href)) {
       dep$src$href <- paste0(dep$name, "-", dep$version)

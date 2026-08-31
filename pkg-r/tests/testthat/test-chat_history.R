@@ -838,13 +838,6 @@ test_that("HistoryController$on_response() is idempotent when neither turns nor 
 })
 
 test_that("on_response() idempotent guard advances ui_offset so a later genuine save does not duplicate stored UI", {
-  # Regression test: the idempotency guard in on_response() must advance
-  # self$ui_offset to length(messages) before its early return. Without
-  # that, a restore-triggered client re-report (same turns/messages) leaves
-  # a stale ui_offset (0), and the next genuine save reprocesses the
-  # already-saved client-snapshot messages as out-of-band extras in
-  # extend_record_linear(), duplicating them in the stored UI (6 instead
-  # of 4).
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
@@ -856,8 +849,6 @@ test_that("on_response() idempotent guard advances ui_offset so a later genuine 
     )
   }
 
-  # Helper: set the mock session's reported chat_messages for a given set
-  # of (role, text) pairs.
   report_client_messages <- function(texts) {
     roles <- rep(c("user", "assistant"), length.out = length(texts))
     session$setInputs(
@@ -873,7 +864,6 @@ test_that("on_response() idempotent guard advances ui_offset so a later genuine 
   )
   ctrl$partition <- conversation_partition("chat", "test-user")
 
-  # --- Step 1: Save one user/assistant exchange (2 messages) ---
   report_client_messages(c("Hello", "Hi there"))
   ctrl$on_response(make_turns("Hello", "Hi there"))
 
@@ -881,28 +871,18 @@ test_that("on_response() idempotent guard advances ui_offset so a later genuine 
   expect_equal(ctrl$ui_offset, 2)
   expect_equal(record_ui_count(ctrl$record), 2)
 
-  # --- Step 2: Simulate a restore-triggered re-report of the same turns ---
-  # The idempotent guard fires (turns and messages did not grow). Force a
-  # genuinely stale offset first (the reset paths can leave it behind when
-  # the delayed client snapshot hasn't caught up) so the test discriminates:
-  # without the production fix the guard leaves it stale (roborev 1064).
   ctrl$ui_offset <- 0
   updated_at_before <- ctrl$record$updated_at
   ctrl$on_response(make_turns("Hello", "Hi there"))
 
-  # No new save happened: the record is untouched.
   expect_identical(ctrl$record$updated_at, updated_at_before)
   expect_equal(length(ctrl$record$nodes), 2)
-  # The guard must have advanced ui_offset to match the reported messages.
   expect_equal(ctrl$ui_offset, 2)
 
-  # A shorter partial mid-restore report also hits the guard but must not
-  # move the offset backward (monotonic advance).
   report_client_messages(c("Hello"))
   ctrl$on_response(make_turns("Hello", "Hi there"))
   expect_equal(ctrl$ui_offset, 2)
 
-  # --- Step 3: Genuine new save with a second exchange (4 messages) ---
   report_client_messages(c("Hello", "Hi there", "How are you?", "I'm good"))
   all_turns <- c(
     make_turns("Hello", "Hi there"),
@@ -910,15 +890,10 @@ test_that("on_response() idempotent guard advances ui_offset so a later genuine 
   )
   ctrl$on_response(all_turns)
 
-  # The record should have exactly 4 UI messages — 2 per exchange, no
-  # duplicates. The bug (stale ui_offset == 0) would reprocess the first
-  # 2 already-saved messages as out-of-band extras, producing 6.
   expect_equal(length(ctrl$record$nodes), 4)
   expect_equal(record_ui_count(ctrl$record), 4)
   expect_equal(ctrl$ui_offset, 4)
 
-  # Assert the exact per-node UI content to prove no duplication: each
-  # node carries exactly one message with the expected text.
   path_ids <- record_path_node_ids(ctrl$record)
   ui_texts <- unlist(lapply(path_ids, function(node_id) {
     vapply(
@@ -1150,16 +1125,12 @@ test_that("html_deps from server-derived content travel with a stored message an
   )
   ctrl$on_response(list(asst_turn))
 
-  # With P4, UI is server-derived from turns. A plain ContentText turn
-  # produces a markdown string segment with no html deps. The stored message
-  # carries the version marker and the turn's text.
   stored <- ctrl$record$nodes$n_0001$ui[[1]]
   expect_equal(stored$version, STORED_UI_VERSION)
   expect_equal(stored$role, "assistant")
   expect_equal(stored$segments[[1]]$content, "widget")
   expect_equal(stored$segments[[1]]$content_type, "markdown")
 
-  # Replay in a fresh session re-sends the stored message
   spy <- history_mock_session_with_spy()
   ctrl2 <- HistoryController$new(
     chat_id = "chat",
@@ -1822,10 +1793,7 @@ test_that("handle_edit() rejects unsupported attachment MIME types before resubm
   )
 })
 
-# --- P4: turns-based restore tests ---
 
-# Fixtures for tool-carrying turns, using recorded (serialized) turn
-# representations that contents_replay() can reconstruct.
 make_tool_turns <- function(
   user_text = "what's the weather?",
   asst_text = "Let me check.",
@@ -1944,7 +1912,6 @@ test_that("saving after a tool request+result stores UI with structured blocks a
   turns <- make_tool_turns()
   ctrl$on_response(turns)
 
-  # n_0001 is the user turn group: one derived message
   expect_equal(ctrl$record$nodes$n_0001$ui[[1]]$version, STORED_UI_VERSION)
   expect_equal(ctrl$record$nodes$n_0001$ui[[1]]$role, "user")
   expect_equal(
@@ -1952,29 +1919,24 @@ test_that("saving after a tool request+result stores UI with structured blocks a
     "what's the weather?"
   )
 
-  # n_0002 is the assistant+tool group: one derived message with blocks
   derived <- ctrl$record$nodes$n_0002$ui[[1]]
   expect_equal(derived$version, STORED_UI_VERSION)
   expect_equal(derived$role, "assistant")
   expect_false(is.null(derived$blocks))
   expect_true(length(derived$blocks) >= 2)
 
-  # The tool_request and tool_result blocks are present
   block_types <- vapply(derived$blocks, function(b) b$type, character(1))
   expect_true("tool_request" %in% block_types)
   expect_true("tool_result" %in% block_types)
 
-  # block_positions records how many string segments precede each block
   expect_false(is.null(derived$block_positions))
   expect_length(derived$block_positions, length(derived$blocks))
 
-  # The tool_request block has the correct request_id and tool_name
   req_block <- derived$blocks[[which(block_types == "tool_request")[1]]]
   expect_equal(req_block$request_id, "t1")
   expect_equal(req_block$tool_name, "get_weather")
   expect_equal(req_block$version, 1L)
 
-  # The tool_result block has the correct request_id and status
   res_block <- derived$blocks[[which(block_types == "tool_result")[1]]]
   expect_equal(res_block$request_id, "t1")
   expect_equal(res_block$tool_name, "get_weather")
@@ -2016,7 +1978,6 @@ test_that("replay emits message actions with structured blocks inline in segment
   turns <- make_tool_turns()
   ctrl$on_response(turns)
 
-  # Replay in a fresh session
   spy <- history_mock_session_with_spy()
   ctrl2 <- HistoryController$new(
     chat_id = "chat",
@@ -2032,19 +1993,15 @@ test_that("replay emits message actions with structured blocks inline in segment
     function(m) identical(m$message$action$type, "message"),
     sent
   )
-  # Two messages: user + assistant (with blocks)
   expect_length(message_actions, 2)
 
-  # The assistant message's segments include structured blocks inline
   asst_segments <- message_actions[[2]]$message$action$message$segments
-  # Find the blocks in the segments (they have a "type" field)
   block_segs <- Filter(function(s) "type" %in% names(s), asst_segments)
   expect_true(length(block_segs) >= 2)
   block_types <- vapply(block_segs, function(s) s$type, character(1))
   expect_true("tool_request" %in% block_types)
   expect_true("tool_result" %in% block_types)
 
-  # The assistant text is also present as a string segment
   string_segs <- Filter(function(s) !"type" %in% names(s), asst_segments)
   seg_contents <- vapply(string_segs, function(s) s$content, character(1))
   expect_true("It's sunny and 75F!" %in% seg_contents)
@@ -2063,7 +2020,6 @@ test_that("old-format stored UI (no version marker) is discarded and re-derived 
   )
   ctrl$partition <- conversation_partition("chat", "test-user")
 
-  # Build a record with old-format UI (string-only, no version marker)
   turns <- make_tool_turns()
   rec <- new_conversation_record("test")
   rec$nodes <- list(
@@ -2083,7 +2039,6 @@ test_that("old-format stored UI (no version marker) is discarded and re-derived 
       parent = "n_0001",
       children = list(),
       turns = turns[2:4],
-      # Old-format UI: string-only, no version marker, no blocks
       ui = list(list(
         role = "assistant",
         segments = list(list(
@@ -2104,8 +2059,6 @@ test_that("old-format stored UI (no version marker) is discarded and re-derived 
   )
   expect_length(message_actions, 2)
 
-  # The assistant message (second) should have structured blocks, not
-  # the old string-only markup
   asst_segments <- message_actions[[2]]$message$action$message$segments
   block_segs <- Filter(function(s) "type" %in% names(s), asst_segments)
   expect_true(length(block_segs) >= 2)
@@ -2127,10 +2080,6 @@ test_that("v1 stored UI with island wrappers is not replayed as-is; re-derived f
   )
   ctrl$partition <- conversation_partition("chat", "test-user")
 
-  # v1 stored UI (pre-kata#af81): versioned, but its serialized segment
-  # content embeds a <shiny-chat-raw-html> island wrapper, which the client
-  # no longer resolves. Replaying it as-is would render the trusted HTML
-  # inert/unbound, so it must be discarded and re-derived from turns.
   rec <- new_conversation_record("test")
   rec$nodes <- list(
     n_0001 = list(
@@ -2172,7 +2121,6 @@ test_that("v1 stored UI with island wrappers is not replayed as-is; re-derived f
   )
   expect_length(message_actions, 1)
 
-  # The island-wrapped stored content is NOT replayed...
   replayed_segments <- message_actions[[1]]$message$action$message$segments
   replayed_content <- vapply(
     replayed_segments,
@@ -2181,7 +2129,6 @@ test_that("v1 stored UI with island wrappers is not replayed as-is; re-derived f
   )
   expect_false(any(grepl("shiny-chat-raw-html", replayed_content)))
 
-  # ...the turn-derived content is replayed instead
   expect_true("turn-derived answer" %in% replayed_content)
   expect_equal(ctrl$ui_offset, 1)
 })
@@ -2278,7 +2225,6 @@ test_that("node with neither usable UI nor turns falls back to text-only", {
     sent
   )
   expect_length(message_actions, 1)
-  # Text-only fallback: empty content
   expect_equal(
     message_actions[[1]]$message$action$message$segments[[1]]$content,
     ""
@@ -2289,7 +2235,6 @@ test_that("offset/bookkeeping stays correct across a save-replay-continue-save c
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()
 
-  # --- First session: save a conversation with tool turns ---
   session1 <- shiny::MockShinySession$new()
   session1$setInputs(
     chat_messages = list(
@@ -2323,7 +2268,6 @@ test_that("offset/bookkeeping stays correct across a save-replay-continue-save c
   conv_id <- ctrl1$record$id
   expect_equal(ctrl1$ui_offset, 2)
 
-  # --- Second session: restore and continue ---
   spy <- history_mock_session_with_spy()
   ctrl2 <- HistoryController$new(
     chat_id = "chat",
@@ -2335,10 +2279,8 @@ test_that("offset/bookkeeping stays correct across a save-replay-continue-save c
   ctrl2$replay_ui(ctrl1$record)
   ctrl2$record <- ctrl1$record
 
-  # ui_offset should reflect the 2 messages replayed
   expect_equal(ctrl2$ui_offset, 2)
 
-  # Continue: add a new turn pair
   new_turns <- c(
     record_path_turns(ctrl1$record),
     list(
@@ -2367,14 +2309,12 @@ test_that("offset/bookkeeping stays correct across a save-replay-continue-save c
     )
   )
 
-  # Set up the client with the restored turns + new turns
   ctrl2$get_client()$set_turns(lapply(
     new_turns,
     ellmer::contents_replay,
     tools = ctrl2$get_client()$get_tools()
   ))
 
-  # Simulate the client reporting 4 messages (2 restored + 2 new)
   spy$session$setInputs(
     chat_messages = list(
       list(
@@ -2408,21 +2348,15 @@ test_that("offset/bookkeeping stays correct across a save-replay-continue-save c
     )
   )
 
-  # The first on_response after replay is the replay echo (suppressed).
-  # This mirrors the real flow: replay_ui sets suppress_next_save = TRUE,
-  # and the first post-replay on_response swallows the echo.
   ctrl2$on_response(get_turns_recorded(ctrl2$get_client()))
   expect_equal(length(ctrl2$record$nodes), 2) # unchanged
 
-  # The second on_response is the real new response
   ctrl2$on_response(get_turns_recorded(ctrl2$get_client()))
 
-  # The record should now have 4 nodes, 4 UI messages
   expect_equal(length(ctrl2$record$nodes), 4)
   expect_equal(record_ui_count(ctrl2$record), 4)
   expect_equal(ctrl2$ui_offset, 4)
 
-  # The new nodes have derived UI with version markers
   expect_equal(
     ctrl2$record$nodes$n_0003$ui[[1]]$version,
     STORED_UI_VERSION

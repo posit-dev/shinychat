@@ -84,8 +84,6 @@ test_that("react element derives a residual part rendered bare", {
   expect_match(parts[[1]]$html, "shiny-tool-result", fixed = TRUE)
   expect_match(parts[[1]]$html, "data-shinychat-react", fixed = TRUE)
   expect_no_match(parts[[1]]$html, "shiny-chat-raw-html", fixed = TRUE)
-  # Blank-line wrapped so the markdown parser treats block-level custom
-  # elements correctly.
   expect_match(parts[[1]]$html, "^\n\n")
   expect_match(parts[[1]]$html, "\n\n$")
 })
@@ -106,7 +104,6 @@ test_that("mixed content derives block parts around a residual run", {
   expect_s3_class(parts[[3]], "shinychat_island_block_part")
   expect_equal(parts[[1]]$html, "<div>before</div>")
   expect_equal(parts[[3]]$html, "<div>after</div>")
-  # The react element renders bare in the residual run, not in a block.
   expect_match(parts[[2]]$html, "shiny-tool-result", fixed = TRUE)
   expect_no_match(parts[[1]]$html, "shiny-tool-result", fixed = TRUE)
   expect_no_match(parts[[3]]$html, "shiny-tool-result", fixed = TRUE)
@@ -165,7 +162,6 @@ test_that("render_island_string() flattens parts to one trusted string", {
   expect_match(rendered$html, "<div>before</div>", fixed = TRUE)
   expect_match(rendered$html, "shiny-tool-result", fixed = TRUE)
   expect_match(rendered$html, "<div>after</div>", fixed = TRUE)
-  # No island wrapper tags may appear in the flattened string (kata#af81).
   expect_no_match(rendered$html, "shiny-chat-raw-html", fixed = TRUE)
   expect_equal(rendered$deps, list())
 })

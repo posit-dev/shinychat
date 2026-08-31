@@ -40,7 +40,6 @@ test_that("chat_drawer_show() serializes content, dependencies, and title", {
   message <- spy$messages()[[1]]$message
   expect_equal(message$action$type, "drawer_show")
   expect_match(message$action$content, "<div>Artifact</div>", fixed = TRUE)
-  # No island wrapper tags may appear in the wire string (kata#af81).
   expect_no_match(message$action$content, "shiny-chat-raw-html", fixed = TRUE)
   expect_equal(message$action$title, "Preview")
   expect_length(message$html_deps, 1)

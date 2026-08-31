@@ -489,18 +489,9 @@ chat_ui <- function(
 
   icon_attr <- resolve_icon_attr(icon_assistant)
 
-  # Detect whether any initial message carries shinychat_block content. A
-  # static <shiny-chat-message> tag carries string content only, so a
-  # block-carrying message would silently drop its blocks. Instead, embed the
-  # whole list — opting the entire list in keeps the message order intact —
-  # as JSON in the container's `data-initial-messages` attribute (htmltools
-  # escapes the attribute value). The client's `parseInitialMessages()`
-  # replays it through the same `messagePayloadToData()` conversion
-  # server-sent messages use. The messages travel in the DOM itself, so a
-  # dynamically rendered chat_ui (e.g. render_ui) delivers them by
-  # construction — no session is needed at render time (kata#089g). Html deps
-  # never enter the JSON; they attach to the container tag below so Shiny's
-  # dependency system renders them. Mirrors Python's chat_ui() (kata#089g).
+  # Block-carrying initial messages go into data-initial-messages JSON
+  # (static tags carry strings only); html deps attach to the container.
+  # Mirrors Python's chat_ui().
   initial_messages_attr <- NULL
   initial_message_deps <- list()
 
@@ -537,7 +528,6 @@ chat_ui <- function(
   }
 
   message_tags <- if (any_blocks) {
-    # No static <shiny-chat-message> tags: the JSON attribute is authoritative.
     list()
   } else {
     lapply(messages, function(x) {
@@ -557,11 +547,6 @@ chat_ui <- function(
       if (is.character(content)) {
         ui <- list(html = paste(content, collapse = "\n"), deps = list())
       } else {
-        # Non-string content reaches here only when it produced no html_block
-        # islands (otherwise the whole message list takes the
-        # data-initial-messages JSON path). Render it to a single trusted
-        # HTML string via the shared island derivation — no
-        # <shiny-chat-raw-html> wrapper tags (kata#af81).
         ui <- render_island_string(content)
       }
 
@@ -628,11 +613,7 @@ chat_ui <- function(
       greeting_content <- as.character(content)
       greeting_content_type <- "html"
     } else {
-      # htmltools tag or tagList - render to HTML and collect deps. The
-      # greeting wire payload is a single string (it cannot carry structured
-      # blocks), so trusted content renders via the shared island derivation
-      # concatenated into one HTML string — with no <shiny-chat-raw-html>
-      # wrapper tags (kata#af81).
+      # htmltools tag or tagList - render to HTML and collect deps
       rendered <- render_island_string(content)
       greeting_content <- rendered$html
       greeting_content_type <- "html"
@@ -952,13 +933,8 @@ chat_append <- function(
   chat_append_stream(id, stream, role = role, icon = icon, session = session)
 }
 
-# Session-process block-level html dependencies (raw dep objects stashed on
-# the block at construction via `attr(block, "shinychat_html_deps")`) and
-# attach them to the block's `html_deps` field. Returns a list with:
-#   block: the modified block (attribute removed, html_deps attached)
-#   deps: the processed deps (possibly empty) for the caller to merge into
-#         the envelope-level html_deps
-# Mirrors the rpx1 `_process_ui` pattern.
+# Session-process block-level html dependencies and attach them to the
+# block's `html_deps` field. Returns list(block, deps).
 process_block_deps <- function(block, session) {
   deps <- attr(block, "shinychat_html_deps")
   if (is.null(deps) || length(deps) == 0) {
@@ -966,7 +942,6 @@ process_block_deps <- function(block, session) {
   }
   # Remove the attribute so it doesn't serialize
   attr(block, "shinychat_html_deps") <- NULL
-  # Session-process the deps via the same path as message-level deps
   processed <- process_ui(htmltools::tagList(!!!deps), session)
   processed_deps <- processed[["deps"]] %||% list()
   if (length(processed_deps) > 0) {
@@ -975,13 +950,9 @@ process_block_deps <- function(block, session) {
   list(block = block, deps = processed_deps)
 }
 
-# Build wire segments from non-string HTML content (tag/tag.list/htmlwidget)
-# via the shared island derivation (derive_island_parts, kata#mhyd). Island
-# items become html_block structured blocks (content = rendered HTML, raw
-# deps stashed on the block attr for send-time processing). Bare
-# data-shinychat-react elements stay string parts (wrapped in \n\n,
-# content_type "html"). Adjacent strings coalesce.
-# Mirrors Python's ChatMessage.__init__ non-string content path.
+# Build wire segments from non-string HTML content via the shared island
+# derivation. Island items become html_block blocks; bare React elements stay
+# string parts. Mirrors Python's ChatMessage.__init__ non-string content path.
 build_html_island_segments <- function(content, session) {
   parts <- derive_island_parts(content)
   if (length(parts) == 0) {
@@ -997,21 +968,16 @@ build_html_island_segments <- function(content, session) {
       if (length(part$deps) > 0) {
         attr(block, "shinychat_html_deps") <- part$deps
       }
-      # Process block deps (session-process + attach to block). Only the
-      # processed deps enter all_deps — raw html_dependency objects cannot
-      # be JSON-serialized. Mirrors the message-level path
-      # (process_ui(content, session)).
+      # Only processed deps enter all_deps — raw html_dependency objects
+      # cannot be JSON-serialized.
       result <- process_block_deps(block, session)
       all_deps <- c(all_deps, result$deps)
       segments[[length(segments) + 1]] <- result$block
     } else {
-      # Bare React element run: session-process deps (same path as
-      # message-level content) and keep the rendered HTML as a string part.
       # Raw html_dependency objects must not enter all_deps directly — they
       # cannot be JSON-serialized and would bypass session registration.
       processed_deps <- serialize_html_deps(part$deps, session)
       all_deps <- c(all_deps, processed_deps)
-      # Coalesce with previous string segment if adjacent
       if (
         length(segments) > 0 &&
           is.character(segments[[length(segments)]]$content) &&
@@ -1043,21 +1009,16 @@ new_html_block <- function(content) {
 }
 
 # Build wire segments from a shinychat_block or a mixed content list
-# (strings + blocks). Returns a list with:
-#   segments: ordered list of string segments ({content, content_type}) and
-#             bare block named lists (structured blocks)
-#   deps: all block-level html deps collected for the envelope
+# (strings + blocks). Returns list(segments, deps).
 build_wire_segments <- function(content, session) {
   all_deps <- list()
 
   if (inherits(content, "shinychat_block")) {
-    # Single block: process its deps, return as one-element segments list
     block <- as.list(content)
     result <- process_block_deps(block, session)
     all_deps <- c(all_deps, result$deps)
     list(segments = list(result$block), deps = all_deps)
   } else {
-    # Mixed list: iterate elements, build segments in order
     segments <- list()
     for (item in content) {
       if (inherits(item, "shinychat_block")) {
@@ -1074,15 +1035,11 @@ build_wire_segments <- function(content, session) {
         inherits(item, c("html", "shiny.tag", "shiny.tag.list", "htmlwidget"))
       ) {
         # Route tag/HTML items through the HTML-island builder so ordinary
-        # tags become html_block islands (not bare HTML string segments).
-        # This matches what the static variant (build_wire_segments_static)
-        # and the message path (build_html_island_segments) do — and keeps
-        # <shiny-chat-raw-html> wrapper tags out of the wire (kata#af81).
+        # tags become html_block islands, not bare HTML string segments.
         island_result <- build_html_island_segments(item, session)
         all_deps <- c(all_deps, island_result$deps)
         segments <- c(segments, island_result$segments)
       } else {
-        # Fallback: treat as markdown string
         segments[[length(segments) + 1]] <- list(
           content = as.character(item),
           content_type = "markdown"
@@ -1094,19 +1051,12 @@ build_wire_segments <- function(content, session) {
 }
 
 # Session-free variant of process_block_deps for the static chat_ui() path.
-# At UI render time no session may exist (e.g. a dynamically rendered render_ui
-# output), so deps cannot be session-processed (registered / lib_prefix applied).
-# Instead the raw html_dependency objects are collected separately so the
-# caller can attach them to the container tag — Shiny's dependency system
-# renders them, session or not. Mirrors Python's initial_message_payload()
-# (kata#089g). The block's html_deps field is NOT set (it stays out of the
-# JSON); the raw dep objects ride on the container instead.
+# No session at render time, so raw html_dependency objects are collected
+# separately for the caller to attach to the container tag. Mirrors Python's
+# initial_message_payload().
 process_block_deps_static <- function(block) {
   deps <- attr(block, "shinychat_html_deps")
-  # Strip the S3 class so jsonlite::toJSON serializes the block as a plain
-  # list (the session-aware send path relies on sendCustomMessage's own
-  # toJSON which handles S3 objects; the static chat_ui path calls toJSON
-  # directly, so we unclass here). Mirrors Python's block dicts.
+  # Strip the S3 class so jsonlite::toJSON serializes the block as a plain list.
   block <- unclass(block)
   if (is.null(deps) || length(deps) == 0) {
     return(list(block = block, deps = list()))
@@ -1116,17 +1066,11 @@ process_block_deps_static <- function(block) {
 }
 
 # Emit a block-carrying message's wire segments mid-stream as an ordered
-# action sequence: string segments travel as `chunk` actions and structured
-# blocks as `block_insert` actions, so interleaved content keeps its order.
-# Empty string parts are skipped so they can't open a spurious empty content
-# block ahead of a block. Mirrors Python's Chat._send_message_parts().
+# action sequence: string segments as `chunk` actions, structured blocks as
+# `block_insert` actions. Mirrors Python's Chat._send_message_parts().
 #
-# Under uniform replace semantics (kata#0r4g) a replace chunk supersedes the
-# whole in-flight message, structured blocks included. A replace therefore
-# sends a leading empty replace chunk (the wipe) before any part, then emits
-# every part as an append — otherwise a block emitted before the first
-# string part would be wiped by it, and a message with no string parts would
-# never replace at all.
+# Under replace semantics a replace sends a leading empty replace chunk (the
+# wipe) before any part, then emits every part as an append.
 send_wire_segment_actions <- function(
   id,
   wire_segments,
@@ -1151,7 +1095,6 @@ send_wire_segment_actions <- function(
   }
   for (seg in wire_segments) {
     if ("type" %in% names(seg)) {
-      # Structured block
       block_action <- list(type = "block_insert", block = seg)
       send_chat_action(
         id,
@@ -1177,11 +1120,7 @@ send_wire_segment_actions <- function(
 }
 
 # Session-free variant of build_html_island_segments for the static chat_ui()
-# path. Uses the shared island derivation (derive_island_parts renders via
-# htmltools::renderTags with no session processing, wrapped in
-# with_current_theme()) and stashes raw dep objects on the block attr for
-# process_block_deps_static to collect. Returns list(segments, deps) where
-# deps are raw html_dependency objects (not session-processed dicts).
+# path. Returns list(segments, deps) where deps are raw html_dependency objects.
 build_html_island_segments_static <- function(content) {
   parts <- derive_island_parts(content)
   if (length(parts) == 0) {
@@ -1222,12 +1161,9 @@ build_html_island_segments_static <- function(content) {
 }
 
 # Session-free variant of build_wire_segments for the static chat_ui() path.
-# Builds wire segments from a shinychat_block or mixed content list without a
-# session: block deps are collected as raw html_dependency objects (via
-# process_block_deps_static), and non-string HTML elements are rendered via
-# htmltools::renderTags (no session processing). Returns list(segments, deps)
-# where deps are raw html_dependency objects for the caller to attach to the
-# container tag. Mirrors Python's initial_message_payload() (kata#089g).
+# Returns list(segments, deps) where deps are raw html_dependency objects for
+# the caller to attach to the container tag. Mirrors Python's
+# initial_message_payload().
 build_wire_segments_static <- function(content) {
   all_deps <- list()
 
@@ -1253,13 +1189,7 @@ build_wire_segments_static <- function(content) {
         inherits(item, c("html", "shiny.tag", "shiny.tag.list", "htmlwidget"))
       ) {
         # Route tag/HTML items through the HTML-island builder so ordinary
-        # tags become html_block islands (not bare HTML string segments).
-        # This matches what the session-aware send path does for non-string
-        # HTML content via build_html_island_segments(), and what Python's
-        # normalize path does with split_html_islands for non-string content.
-        # Without this, a plain tag would be emitted as a bare HTML string,
-        # React would own the DOM, and no scoped bindAll() would occur —
-        # leaving inputs/outputs unbound (roborev 1066, finding 2).
+        # tags become html_block islands, not bare HTML string segments.
         island_result <- build_html_island_segments_static(item)
         all_deps <- c(all_deps, island_result$deps)
         segments <- c(segments, island_result$segments)
@@ -1275,17 +1205,9 @@ build_wire_segments_static <- function(content) {
 }
 
 # Detect whether a message's content carries any shinychat_block content.
-# Mirrors Python's `any(msg.blocks for msg in normalized_messages)` opt-in
-# condition: any blocks at all → the whole list goes to JSON. Checks four
-# forms chat_ui() accepts for `content`:
-#   1. A direct shinychat_block object.
-#   2. A mixed list containing shinychat_block elements.
-#   3. String-typed HTML (htmltools::HTML()), which becomes a single
-#      html_block via the island derivation (kata#af81).
-#   4. Non-string HTML content (tag/tag.list/htmlwidget) that produces
-#      html_block structured blocks via island splitting (mirrors Python's
-#      ChatMessage.__init__ non-string content branch, where
-#      split_html_islands produces html_block blocks).
+# Any blocks at all → the whole list goes to JSON. Checks four forms
+# chat_ui() accepts: direct block, mixed list with blocks, string-typed
+# HTML, and non-string HTML that produces islands.
 message_has_blocks <- function(content) {
   if (inherits(content, "shinychat_block")) {
     return(TRUE)
@@ -1296,14 +1218,12 @@ message_has_blocks <- function(content) {
   ) {
     return(any(vapply(content, inherits, logical(1), "shinychat_block")))
   }
-  # String-typed HTML: becomes a single html_block via the island
-  # derivation (mirrors Python, where HTML is not a str subclass and takes
-  # the non-string branch).
+  # String-typed HTML: becomes a single html_block via the island derivation.
   if (is.character(content) && inherits(content, "html")) {
     return(TRUE)
   }
   # Non-string HTML content: check whether island splitting would produce
-  # any islands (which become html_block blocks).
+  # any islands.
   if (inherits(content, c("shiny.tag", "shiny.tag.list", "htmlwidget"))) {
     islands <- split_html_islands(content)
     return(any(vapply(islands, inherits, logical(1), "shinychat_island")))
@@ -1312,12 +1232,10 @@ message_has_blocks <- function(content) {
 }
 
 # Build one data-initial-messages JSON entry for a message, session-free.
-# Mirrors Python's initial_message_payload(): returns list(entry, deps) where
-# entry = {role, segments, icon?, attachments?} with html_deps stripped from
-# every block in segments, and deps = raw html_dependency objects (message-level
-# + per-block, deduped by identity) for the caller to attach to the container.
-# Segments are built via the session-free static builders so no session is
-# needed at UI render time (kata#089g).
+# Returns list(entry, deps) where entry = {role, segments, icon?, attachments?}
+# with html_deps stripped from every block, and deps = raw html_dependency
+# objects for the caller to attach to the container. Mirrors Python's
+# initial_message_payload().
 initial_message_payload <- function(msg, icon_attr) {
   role <- "assistant"
   content <- msg
@@ -1342,9 +1260,6 @@ initial_message_payload <- function(msg, icon_attr) {
 
   if (is_block || is_mixed_list || is_non_string_html || is_string_html) {
     if (is_non_string_html || is_string_html) {
-      # HTML content (tags and HTML()-marked strings alike) becomes
-      # html_block islands — matching the session-aware send path and
-      # Python's initial_message_payload() (kata#af81).
       segments_result <- build_html_island_segments_static(content)
     } else {
       segments_result <- build_wire_segments_static(content)
@@ -1504,12 +1419,10 @@ chat_append_message <- function(
     !is_block &&
     !inherits(content, c("shiny.tag", "shiny.tag.list", "html", "htmlwidget"))
 
-  # Non-string HTML content (tag/tag.list/htmlwidget) goes through the
-  # html_block island-splitting path. String-typed HTML (character with
-  # class "html", i.e. htmltools::HTML()) takes the same path — it becomes
-  # a single html_block, keeping <shiny-chat-raw-html> wrapper tags out of
-  # the wire (kata#af81). This mirrors Python's ChatMessage.__init__, where
-  # HTML is not a str subclass and so takes the non-string (island) branch.
+  # Non-string HTML content (tag/tag.list/htmlwidget) and string-typed HTML
+  # (htmltools::HTML()) both go through the html_block island-splitting path.
+  # Mirrors Python's ChatMessage.__init__, where HTML is not a str subclass
+  # and so takes the non-string (island) branch.
   is_non_string_html <- inherits(
     content,
     c("shiny.tag", "shiny.tag.list", "htmlwidget")
@@ -2072,8 +1985,7 @@ chat_set_greeting <- function(
   } else {
     # tag/tagList content: the greeting wire payload is a single string (it
     # cannot carry structured blocks), so trusted content renders via the
-    # shared island derivation concatenated into one HTML string — with no
-    # <shiny-chat-raw-html> wrapper tags (kata#af81).
+    # shared island derivation concatenated into one HTML string.
     rendered <- render_island_string(content)
     greeting_content <- rendered$html
     greeting_content_type <- "html"
@@ -2137,8 +2049,7 @@ rlang::on_load(
       } else {
         # Trusted content (HTML()/tags): render via the shared island
         # derivation into a single HTML string — the greeting_chunk wire
-        # payload is a string and cannot carry structured blocks, so no
-        # <shiny-chat-raw-html> wrapper tags may appear in it (kata#af81).
+        # payload is a string and cannot carry structured blocks.
         rendered <- render_island_string(msg)
         chunk_html <- rendered$html
         chunk_deps <- serialize_html_deps(rendered$deps, session)
