@@ -605,14 +605,25 @@ transcript mutation, latest-input update, recorder callback, and the built-in
 state. The strict-admission gate releases through the existing `finally` path
 on success, failure, or cancellation.
 
+Sequence identity is end-to-end: allocate `seq` before optimistic dispatch,
+carry it with the browser input through Python raw-input handling to `Chat`,
+store it on both optimistic user/loading entries, and echo it in
+`input_rejected`. Restore the draft and attachments and remove the optimistic
+pair only when that exact `seq` pair still exists; a stale or mismatched
+rejection is a complete no-op.
+
+The admission path is the sole raw-input consumer. Provider and existing
+`on_user_submit` handlers observe only the existing accepted-input signal,
+which is updated after successful admission; they never consume raw input
+independently. Rejection therefore occurs before the accepted signal, latest
+input, transcript, recorder, or provider side effects.
+
 The browser currently clears the editor and attachments and adds an
 optimistic user/loading pair before the server responds. Rejection therefore
-requires a correlated `input_rejected` action using the existing transport
-sequence identity. The reducer/UI must remove only the matching optimistic
-pair and restore its text and attachments; a stale rejection is a no-op.
-This protocol is required for draft retention. It is not a spinner, queue, or
-new state owner. Generic `clear()` and inactive `delete()` remain unchanged;
-generic clear remains Phase 5 scope.
+uses the existing transport sequence identity. This protocol is required for
+draft retention. It is not a spinner, queue, or new state owner. Generic
+`clear()` and inactive `delete()` remain unchanged; generic clear remains
+Phase 5 scope, and the R server remains Phase 6 scope.
 
 Before implementation resumes, add:
 
