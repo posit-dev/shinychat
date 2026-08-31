@@ -544,17 +544,23 @@ guard. `shinychat#ykxh` is parked for Garrick escalation, remains open with
 ### Garrick decision: Option A (2026-08-31)
 
 Garrick chose **Option A**. During a pending active `new_chat()` or active
-deletion, user submission is blocked until the transition completes or errors.
-This resolves the admission policy conflict in favor of the destructive
-transcript-admission boundary.
+deletion, submission is prevented and rejected at admission until the
+transition completes or errors. No local transcript entry, exchange node, or
+recorder callback is created. The user's browser draft remains available for
+explicit resubmission after the transition. Admission reopens on success,
+failure, or cancellation; there is no deferred or queued submission.
+
+This supersedes the conflicting pending-clear preservation expectation only
+for active `new_chat()` and active deletion lifecycle operations. Generic
+clear behavior remains Phase 5 scope.
 
 The initial implementation requires no saving spinner or other visual
 affordance. Saves are expected to be fast; observed slowness must be
 investigated rather than masked. A history-UI spinner is a possible later
 affordance, but is outside Phase 4 unless separately required.
 
-Implementation remains stopped pending orchestrator resolution of Garrick's
-async-save question. Before resuming, the selected policy requires regressions
+Implementation remains stopped pending review of this note. Before resuming,
+the selected policy requires regressions
 for blocked input during `new_chat()` and active deletion, successful and
 failed/cancelled transitions, and the existing persistence/publication barrier
 cases. The previously required batched range review remains after
@@ -563,10 +569,10 @@ implementation. Job `1079` remains open and unclosed, and
 
 ### Async-save clarification (2026-08-31)
 
-The async-save question is resolved as follows: Phase 4 keeps persistence
-awaited, serialized, and fail-open. Option A admission protection remains in
-force; this is the chosen correctness solution, not a performance
-optimization.
+The async-save question is resolved as follows: saves are awaited, failures
+propagate, and browser/transcript state is not rolled back. Option A admission
+protection remains in force; this is the chosen correctness solution, not a
+performance optimization.
 
 Python's store API is awaitable, but the built-in file store's serialization,
 write, and replace operations run synchronously. Custom yielding stores may
@@ -577,7 +583,7 @@ shape.
 Fire-and-forget or background saves are rejected for Phase 4. Correct
 ordering, error propagation, and teardown would require a queue/task owner or
 second owner, and would risk stale writes and process loss. The initial Phase
-4 implementation therefore retains awaited saves and provides no saving
+4 implementation therefore retains awaited saves. It provides no saving
 spinner or other visual affordance.
 
 Q2 evidence for a 3.86 MB, 206-node record shows ordinary writes at roughly
