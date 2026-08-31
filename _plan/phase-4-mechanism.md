@@ -953,3 +953,29 @@ capability-gated completion-v1 protocol:
 Implementation may resume for `shinychat#ykxh` only after this note is
 reviewed. `shinychat#5r50` remains blocked. Attention remains
 `work.attention="blocked"` pending note review.
+
+### Completion-v1 replacement handoff (2026-08-31)
+
+Landed: `0d287c1205cd3c22a9fa66baeae27168cb4e6f46` replaces the
+unconditional client protocol. Python advertises
+`history_update.transition_protocol = "completion-v1"`; `HistoryStore`
+replaces capability state on every update and clears its pending marker for
+absent, unknown, or withdrawn values. Only capability-enabled active New and
+active Delete use UUID request IDs. Completion remains request-bearing only,
+best effort, and non-masking. R intentionally omits the capability; its
+shared-JS legacy regression is in `test-chat-history-hooks.R`. Generated
+assets are committed in `5a0351d7a8dbc5778676b963a22f999b78f3895d`.
+
+Verification: `make update-dist`; `make js-lint`; `make js-test` (1243
+passed, 23 skipped); `make js-build`; focused
+`make py-check-tests FILTER='history_transition or history_update_advertises
+or completion_delivery'` (2 Playwright and 15 non-browser passed);
+`make r-check-tests FILTER='chat-history-hooks'` (22 passed);
+`make r-check-format`; and `make py-check` (193 Playwright, 777
+non-browser, 1 skipped; known warnings only).
+
+Next: retain `shinychat#ykxh` open with `needs-review`,
+`work.attention="ok"`, and `work.branch="feat/history-exchange-tree"` for
+human review. `shinychat#5r50` remains blocked and unstarted.
+Boundary: no R server completion implementation, queue, timer, CAS, second
+owner, init-window guard, or Phase 5 behavior was added.
