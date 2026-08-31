@@ -1,5 +1,4 @@
 from chatlas.types import ContentToolRequest, ContentToolResult
-from htmltools import HTML
 from shiny import reactive
 from shiny.express import input, ui
 from shinychat.express import Chat
@@ -27,7 +26,11 @@ async def _():
                 request=request,
                 extra={
                     "display": ToolResultDisplay(
-                        title=HTML("Map of <i>Paris</i>"), open=True
+                        # title is a server-attested HTML field on the wire
+                        # (rendered via RawHTML client-side), so markup in a
+                        # plain string renders as HTML.
+                        title="Map of <i>Paris</i>",
+                        open=True,
                     )
                 },
             ),
