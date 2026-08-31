@@ -564,7 +564,8 @@ the selected policy requires regressions
 for blocked input during `new_chat()` and active deletion, successful and
 failed/cancelled transitions, and the existing persistence/publication barrier
 cases. The previously required batched range review remains after
-implementation. Job `1079` remains open and unclosed, and
+implementation. At that historical handoff, job `1079` was open; its current
+status is recorded at the end of this note, and
 `shinychat#5r50` remains blocked.
 
 ### Async-save clarification (2026-08-31)
@@ -810,8 +811,9 @@ No queue, timer, CAS, second owner, or server ambient flag is authorized by
 this note. Implementation is stopped pending Garrick authorization. The
 current tracked non-note diff remains preserved with hash
 `46df02b9d29c657405121fda66e12e7b51a28b696e593da8c0d99d6921a3b10a`; job
-`1079` remains open and unclosed, and `shinychat#5r50` remains blocked and
-unstarted.
+`1079` had not yet reached its final state at that historical handoff; its
+current status is recorded at the end of this note, and `shinychat#5r50`
+remains blocked and unstarted.
 
 ### Garrick authorization: YES (2026-08-31)
 
@@ -833,8 +835,7 @@ superseded server strict-admission, `input_rejected`, immutable-envelope, and
 optimistic-rollback work is deleted/reworked and must not be implemented.
 Implementation may resume for `shinychat#ykxh` only after this note is
 reviewed; `shinychat#5r50` remains blocked. Attention remains blocked pending
-note review, and job `1079` remains open and unclosed. The current tracked
-non-note diff remains preserved with hash
+note review. The current tracked non-note diff remains preserved with hash
 `46df02b9d29c657405121fda66e12e7b51a28b696e593da8c0d99d6921a3b10a`.
 
 ### Client transition protocol handoff (2026-08-31)
@@ -927,5 +928,5 @@ operation was performed in this work. `shinychat#5r50` remains blocked.
 
 **Current state:** `shinychat#ykxh` remains open with `needs-review` and
 `work.attention="blocked"`; `shinychat#5r50` remains blocked. The historical
-entries above record the review as open at the time they were written; the
-current Roborev state is the singular `done`/`FAIL`/`closed=true` state above.
+entries above are historical snapshots; the current Roborev state is the
+singular `done`/`FAIL`/`closed=true` state above.
