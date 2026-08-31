@@ -79,6 +79,14 @@ test_that("chat_ui() tag greeting produces html content_type and attaches depend
   ui <- chat_ui("chat", greeting = tag_content)
   payload <- jsonlite::fromJSON(ui$attribs$greeting)
   expect_equal(payload$content_type, "html")
+  # Tag content flattens to a trusted HTML string with no island wrapper
+  # tags (kata#af81).
+  expect_match(
+    payload$content,
+    "<div class=\"greeting\">Hello</div>",
+    fixed = TRUE
+  )
+  expect_no_match(payload$content, "shiny-chat-raw-html", fixed = TRUE)
   deps <- htmltools::findDependencies(ui)
   dep_names <- vapply(deps, `[[`, character(1), "name")
   expect_true("shinychat" %in% dep_names)
@@ -154,6 +162,28 @@ test_that("chat_set_greeting() HTML() content sends html content_type", {
   expect_equal(action$type, "greeting")
   expect_equal(action$content_type, "html")
   expect_equal(action$content, "<b>hi</b>")
+})
+
+test_that("chat_set_greeting() tag content flattens to a trusted html string", {
+  spy <- mock_session_with_spy()
+  shiny::withReactiveDomain(spy$session, {
+    chat_set_greeting(
+      "chat",
+      tags$div("Welcome", class = "greeting"),
+      session = spy$session
+    )
+  })
+  msgs <- spy_messages(spy)
+  action <- msgs[[1]]$message$action
+  expect_equal(action$type, "greeting")
+  expect_equal(action$content_type, "html")
+  expect_match(
+    action$content,
+    "<div class=\"greeting\">Welcome</div>",
+    fixed = TRUE
+  )
+  # No island wrapper tags may appear in the wire string (kata#af81).
+  expect_no_match(action$content, "shiny-chat-raw-html", fixed = TRUE)
 })
 
 test_that("chat_set_greeting() generator sends greeting_start, greeting_chunk(s), greeting_end", {

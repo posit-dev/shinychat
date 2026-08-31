@@ -744,8 +744,8 @@ test_that("chat_append_message() non-string HTML content deps are session-proces
 
   # Non-string HTML content (a tag carrying a dependency) enters the
   # build_html_island_segments path, which session-processes deps via
-  # process_ui(pre_process_ui(...)). The processed deps should be plain
-  # lists (unclassed by processDeps), never raw html_dependency objects.
+  # process_block_deps()/serialize_html_deps(). The processed deps should be
+  # plain lists (unclassed by processDeps), never raw html_dependency objects.
   content <- htmltools::div("trusted HTML", dep)
   chat_append_message(
     "chat",
@@ -1049,7 +1049,7 @@ test_that("chat_append_message() mixed tag list produces html_block + string seg
   expect_match(segments[[2]]$content, "trusted HTML", fixed = TRUE)
 })
 
-test_that("chat_append_message() htmltools::HTML() string keeps legacy string path", {
+test_that("chat_append_message() htmltools::HTML() string becomes an html_block", {
   captured <- list()
   local_mocked_bindings(
     send_chat_action = function(id, action, html_deps = NULL, session) {
@@ -1062,7 +1062,9 @@ test_that("chat_append_message() htmltools::HTML() string keeps legacy string pa
   )
   session <- shiny::MockShinySession$new()
 
-  # htmltools::HTML() is character with class "html" → legacy string path
+  # htmltools::HTML() is character with class "html" → island path: a
+  # single html_block (mirrors Python, where HTML is not a str subclass and
+  # so takes the non-string island branch) (kata#af81).
   content <- htmltools::HTML("<p>raw html</p>")
   chat_append_message(
     "chat",
@@ -1077,9 +1079,9 @@ test_that("chat_append_message() htmltools::HTML() string keeps legacy string pa
   segments <- msg$message$segments
   expect_length(segments, 1)
 
-  # Should be a string html segment (not an html_block)
-  expect_null(segments[[1]]$type)
-  expect_equal(segments[[1]]$content_type, "html")
+  # Should be an html_block structured segment (not a string segment)
+  expect_equal(segments[[1]]$type, "html_block")
+  expect_equal(segments[[1]]$version, 1L)
   expect_match(segments[[1]]$content, "<p>raw html</p>", fixed = TRUE)
 })
 
