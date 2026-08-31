@@ -249,7 +249,7 @@ class _ExchangeRecorder:
         self._lock = asyncio.Lock()
         self._capture_hooks: dict[str, CaptureHook] = {}
         self._turn_baseline: list[str] = []
-        self._active_id_announced = False
+        self._active_id_published_for: ConversationRecordV2 | None = None
         self._register_capture_hook("shinychat:turns", self._capture_turns)
 
     def _register_capture_hook(self, name: str, hook: CaptureHook) -> None:
@@ -326,7 +326,7 @@ class _ExchangeRecorder:
     async def _new_record(self, *, title: str) -> ConversationRecordV2:
         return new_conversation_record_v2(
             title=title,
-            id=await self._controller.ensure_conversation_id(notify=False),
+            id=self._controller._allocate_conversation_id(),
             client_info={
                 str(key): str(value)
                 for key, value in self._controller.adapter.client_info().items()
@@ -347,20 +347,37 @@ class _ExchangeRecorder:
         self.record = None
         self._stream_exchanges.clear()
         self._turn_baseline.clear()
-        self._active_id_announced = False
+        self._active_id_published_for = None
 
     async def _persist_record(self) -> None:
-        assert self.record is not None
+        record = self.record
+        assert record is not None
+        record_id = record.id
         partition = self._controller.partition
         assert partition is not None
-        await self._controller.store.put(partition, self.record)
-        if not self._active_id_announced:
-            self._active_id_announced = True
-            try:
-                await self._controller._notify_active_id_change()
-            except BaseException:
-                self._active_id_announced = False
-                raise
+        await self._controller.store.put(partition, record)
+        if (
+            self.record is not record
+            or self._controller._active_id_now() != record_id
+            or self._active_id_published_for is record
+        ):
+            return
+
+        callback = self._controller.on_active_id_change
+        if callback is None:
+            self._active_id_published_for = record
+            return
+        try:
+            await callback(record_id)
+        except BaseException:
+            if self._active_id_published_for is record:
+                self._active_id_published_for = None
+            raise
+        if (
+            self.record is record
+            and self._controller._active_id_now() == record_id
+        ):
+            self._active_id_published_for = record
 
     def _close_root_if_inactive(self) -> None:
         assert self.record is not None
@@ -586,22 +603,27 @@ class HistoryController:
         with reactive.isolate():
             return self._active_id()
 
-    async def ensure_conversation_id(
-        self, *, notify: bool | None = None
-    ) -> str:
-        """
-        Return the active conversation ID, allocating one when the active
-        conversation is an empty draft. Repeated calls for the same active
-        conversation return the same ID. By default, v1 controllers notify
-        when allocating while v2 recorders defer notification until their
-        first successful store write.
-        """
+    def _allocate_conversation_id(self) -> str:
         id = self._active_id_now()
         if id is None:
             id = new_conversation_id()
-            if notify is None:
-                notify = self._exchange_recorder is None
-            await self._set_active_id(id, notify=notify)
+            self._active_id.set(id)
+        return id
+
+    async def ensure_conversation_id(self) -> str:
+        """
+        Return the active conversation ID, allocating one when the active
+        conversation is an empty draft. Repeated calls for the same active
+        conversation return the same ID.
+        """
+        id = self._active_id_now()
+        if id is None:
+            id = self._allocate_conversation_id()
+            if (
+                self._exchange_recorder is None
+                and self.on_active_id_change is not None
+            ):
+                await self.on_active_id_change(id)
         return id
 
     async def activate_record(self, record: ConversationRecord) -> None:
@@ -617,23 +639,18 @@ class HistoryController:
 
     async def clear_active(self) -> None:
         self.record = None
-        await self._set_active_id(None)
+        if self._active_id_now() is not None:
+            self._active_id.set(None)
 
-    async def _set_active_id(
-        self, id: str | None, *, notify: bool = True
-    ) -> None:
+    async def _set_active_id(self, id: str | None) -> None:
         # Single writer for the active ID; notifies on_active_id_change only
         # on an actual change (e.g. first save after ensure_conversation_id()
         # does not re-fire).
         if self._active_id_now() == id:
             return
         self._active_id.set(id)
-        if notify and self.on_active_id_change is not None:
-            await self.on_active_id_change(id)
-
-    async def _notify_active_id_change(self) -> None:
         if self.on_active_id_change is not None:
-            await self.on_active_id_change(self._active_id_now())
+            await self.on_active_id_change(id)
 
     async def _get_record(
         self, partition: ConversationPartition, conv_id: str
@@ -851,11 +868,10 @@ class HistoryController:
             # in URL/bookmark restore modes the browser may still carry a stale
             # conversation param (e.g. after a failed restore) that only
             # on_active_id_change(None) clears.
-            was_identified = self._active_id_now() is not None
             if self._exchange_recorder is not None:
                 self._exchange_recorder.reset()
             await self.clear_active()
-            if not was_identified and self.on_active_id_change is not None:
+            if self.on_active_id_change is not None:
                 await self.on_active_id_change(None)
             # A fresh chat is never a restore: resolve the greeting the same way
             # the initial settle does, so it doesn't just rely on a stale/absent
@@ -925,6 +941,8 @@ class HistoryController:
                 await self.clear_active()
                 self.adapter.set_turns_json([])
                 await self.chat.clear_messages()
+                if self.on_active_id_change is not None:
+                    await self.on_active_id_change(None)
             await self.send_history_update()
 
     # -- branch navigation --------------------------------------------------

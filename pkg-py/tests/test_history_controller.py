@@ -230,9 +230,12 @@ class _FakeChat:
         self.destructive_preflight_calls = 0
         self.restored_messages: list[dict[str, Any]] = []
         self.restored_icons: list[str | None] = []
+        self.messages: list[Any] = []
+        self.clear_messages_calls = 0
+        self._transcript = ChatTranscript()
 
     def _messages_for_bookmark(self) -> list[Any]:
-        return []
+        return self.messages
 
     def _messages_for_history(self) -> list[Any]:
         return self._messages_for_bookmark()
@@ -241,7 +244,9 @@ class _FakeChat:
         pass
 
     async def clear_messages(self) -> None:
-        pass
+        self.clear_messages_calls += 1
+        self.messages.clear()
+        self._transcript.replace([])
 
     @asynccontextmanager
     async def _destructive_history_mutation(self):
@@ -298,7 +303,7 @@ class _FakeAdapter:
         return [[t] for t in self.get_turns_json()]
 
     def set_turns_json(self, turns: list[Any]) -> None:
-        pass
+        self.turns = list(turns)
 
     def client_info(self) -> dict[str, Any]:
         return {}
@@ -705,6 +710,188 @@ async def test_v2_active_id_callback_retries_after_first_store_failure():
     assert recorder.record is not None
     assert persisted == [recorder.record]
     assert persisted[0] == await store.get(part(), active_id)
+
+
+@pytest.mark.anyio
+async def test_v2_blocked_old_write_cannot_publish_after_reset_before_successor():
+    class BlockFirstStore(InMemoryConversationStore):
+        started = asyncio.Event()
+        release = asyncio.Event()
+        first_put = True
+
+        async def put(
+            self, partition: ConversationPartition, record: Any
+        ) -> None:
+            if self.first_put:
+                self.first_put = False
+                self.started.set()
+                await self.release.wait()
+            await super().put(partition, record)
+
+    store = BlockFirstStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    fake_chat = cast(_FakeChat, controller.chat)
+    announced: list[str | None] = []
+
+    async def update_url(conv_id: str | None) -> None:
+        announced.append(conv_id)
+
+    controller.on_active_id_change = update_url
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    fake_chat._transcript = transcript
+
+    first_write = asyncio.create_task(
+        transcript.record_accepted_input_and_notify(
+            _stored_message("user", "first")
+        )
+    )
+    await store.started.wait()
+    first_id = controller._active_id_now()
+    assert first_id is not None
+
+    await controller.new_chat()
+    second_write = asyncio.create_task(
+        transcript.record_accepted_input_and_notify(
+            _stored_message("user", "second")
+        )
+    )
+    await asyncio.sleep(0)
+    store.release.set()
+    await first_write
+    await second_write
+
+    assert recorder.record is not None
+    second_id = recorder.record.id
+    assert second_id != first_id
+    assert announced == [None, second_id]
+    assert first_id not in announced
+    assert await store.get(part(), first_id) is not None
+    stored_second = await store.get(part(), second_id)
+    assert isinstance(stored_second, ConversationRecordV2)
+    second_leaf = stored_second.active_leaf
+    assert second_leaf is not None
+    second_node = stored_second.nodes[second_leaf]
+    assert second_node.input is not None
+    assert second_node.input.content == "second"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("callback_error", ["failure", "cancellation"])
+async def test_v2_callback_failure_or_cancellation_retries_for_same_record(
+    callback_error: str,
+):
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    fake_chat = cast(_FakeChat, controller.chat)
+    calls: list[str | None] = []
+    fail_first = True
+
+    async def update_url(conv_id: str | None) -> None:
+        nonlocal fail_first
+        calls.append(conv_id)
+        if fail_first:
+            fail_first = False
+            if callback_error == "cancellation":
+                raise asyncio.CancelledError()
+            raise RuntimeError("URL update failed")
+
+    controller.on_active_id_change = update_url
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+    )
+    fake_chat._transcript = transcript
+
+    with pytest.raises(
+        asyncio.CancelledError
+        if callback_error == "cancellation"
+        else RuntimeError,
+        match=None if callback_error == "cancellation" else "URL update failed",
+    ):
+        await transcript.record_accepted_input_and_notify(
+            _stored_message("user", "first")
+        )
+
+    assert recorder.record is not None
+    first_id = recorder.record.id
+    await recorder.message_committed(
+        None,
+        TranscriptEntry(message=_stored_message("assistant", "retry")),
+    )
+    assert calls == [first_id, first_id]
+
+    await controller.new_chat()
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "second")
+    )
+    assert recorder.record is not None
+    second_id = recorder.record.id
+    assert second_id != first_id
+    assert calls == [first_id, first_id, None, second_id]
+    assert await store.get(part(), second_id) is recorder.record
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("use_exchange_tree", [False, True])
+@pytest.mark.parametrize("callback_error", ["failure", "cancellation"])
+async def test_active_delete_clears_local_state_before_callback_failure(
+    use_exchange_tree: bool, callback_error: str
+):
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(
+        store=store, use_exchange_tree=use_exchange_tree
+    )
+    fake_chat = cast(_FakeChat, controller.chat)
+    fake_chat.messages = [_stored_message("assistant", "visible")]
+    fake_chat._transcript.record_accepted_input(_stored_message("user", "input"))
+    controller.adapter.set_turns_json(
+        [{"role": "user", "content": "input"}]
+    )
+
+    recorder = controller._exchange_recorder
+    if use_exchange_tree:
+        assert recorder is not None
+        transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+        fake_chat._transcript = transcript
+        await transcript.record_accepted_input_and_notify(
+            _stored_message("user", "input")
+        )
+        assert recorder.record is not None
+        active_id = recorder.record.id
+    else:
+        active_id = await controller.ensure_conversation_id()
+        record = new_conversation_record(title="active", id=active_id)
+        controller.record = record
+        await store.put(part(), record)
+
+    async def update_url(conv_id: str | None) -> None:
+        assert conv_id is None
+        if callback_error == "cancellation":
+            raise asyncio.CancelledError()
+        raise RuntimeError("URL clear failed")
+
+    controller.on_active_id_change = update_url
+    with pytest.raises(
+        asyncio.CancelledError
+        if callback_error == "cancellation"
+        else RuntimeError,
+        match=None if callback_error == "cancellation" else "URL clear failed",
+    ):
+        await controller.delete(active_id)
+
+    assert await store.get(part(), active_id) is None
+    assert controller.record is None
+    assert controller._active_id_now() is None
+    assert controller.adapter.get_turns_json() == []
+    assert fake_chat.messages == []
+    assert fake_chat._transcript.read() == ()
+    assert fake_chat.clear_messages_calls == 1
+    if recorder is not None:
+        assert recorder.record is None
 
 
 @pytest.mark.anyio
@@ -1859,7 +2046,6 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
         from shinychat._chat_types import StoredMessage, StoredSegment
         from shinychat._history import _ExchangeRecorder
         from shinychat._history_store import ConversationPartition, FileConversationStore
-        from shinychat._history_types import new_conversation_id
 
         def message(role, content):
             return StoredMessage(
@@ -1882,17 +2068,17 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
                 store=store,
             )
 
-            async def ensure_conversation_id(*, notify=True):
+            def allocate_conversation_id():
                 if controller.conversation_id is None:
+                    from shinychat._history_types import new_conversation_id
+
                     controller.conversation_id = new_conversation_id()
                 return controller.conversation_id
 
-            async def notify_active_id_change():
-                pass
-
             controller.conversation_id = None
-            controller.ensure_conversation_id = ensure_conversation_id
-            controller._notify_active_id_change = notify_active_id_change
+            controller._allocate_conversation_id = allocate_conversation_id
+            controller._active_id_now = lambda: controller.conversation_id
+            controller.on_active_id_change = None
             recorder = _ExchangeRecorder(controller)
             transcript = ChatTranscript(
                 on_accepted_input=recorder.accepted_input,
