@@ -182,18 +182,33 @@ def test_markdown_stream_serializes_mixed_initial_provenance():
         "text": "## This is markdown",
         "trusted": False,
     }
-    assert segments[1]["trusted"] is True
-    assert "<shiny-chat-raw-html>" in segments[1]["text"]
-    assert "<div>This is HTML</div>" in segments[1]["text"]
+    # Trusted UI ships as a structured html_block entry, not an island-tag
+    # string segment (kata#mhyd).
+    assert segments[1] == {
+        "block": {
+            "type": "html_block",
+            "version": 1,
+            "content": "<div>This is HTML</div>",
+        }
+    }
     assert el.attrs["content-trusted"] == "false"
 
 
-def test_markdown_stream_marks_single_tag_initial_content_trusted():
+def test_markdown_stream_single_tag_initial_content_becomes_block():
+    """A lone trusted tag becomes a single html_block entry. The
+    content-trusted fallback stays "false": it only governs the fail-closed
+    path, which must never render fallback content as trusted (kata#mhyd)."""
     el = output_markdown_stream("stream", content=div("Trusted"))
     segments = json.loads(str(el.attrs["content-segments"]))
 
-    assert segments[0]["trusted"] is True
-    assert el.attrs["content-trusted"] == "true"
+    assert segments[0] == {
+        "block": {
+            "type": "html_block",
+            "version": 1,
+            "content": "<div>Trusted</div>",
+        }
+    }
+    assert el.attrs["content-trusted"] == "false"
 
 
 # --- Structured html_block emission from ChatMessage (kata#h6g2) ---
@@ -515,7 +530,9 @@ def test_append_message_emits_processed_block_deps():
         else:
             # The "message" action carries segments including the block
             msg_envelopes = [
-                e for e in mock_session.envelopes if e["action"]["type"] == "message"
+                e
+                for e in mock_session.envelopes
+                if e["action"]["type"] == "message"
             ]
             assert msg_envelopes, (
                 f"Expected message action, got {[e['action']['type'] for e in mock_session.envelopes]}"
