@@ -236,6 +236,7 @@ export function ChatApp({
           enabled: action.enabled,
           conversations: action.conversations,
           activeId: action.active_id,
+          transitionProtocol: action.transition_protocol,
         })
         dispatch({
           type: "greeting_settle",

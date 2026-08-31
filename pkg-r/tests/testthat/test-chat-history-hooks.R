@@ -257,6 +257,29 @@ test_that("HistoryController$save persists app state before history updates", {
   )
 })
 
+test_that("R history updates retain the legacy transition protocol", {
+  store <- InMemoryConversationStore$new()
+  session <- shiny::MockShinySession$new()
+  ctrl <- HistoryController$new(
+    chat_id = "test",
+    client = .make_test_client(),
+    options = history_options(store = store, title = NULL),
+    session = session
+  )
+  ctrl$partition <- conversation_partition("test", "alice")
+
+  action <- NULL
+  session$sendCustomMessage <- function(type, message) {
+    if (identical(message$action$type, "history_update")) {
+      action <<- message$action
+    }
+  }
+
+  ctrl$send_history_update()
+
+  expect_null(action$transition_protocol)
+})
+
 test_that("HistoryController$save preserves response count after on_response", {
   store <- InMemoryConversationStore$new()
   ctrl <- .make_test_controller(

@@ -123,6 +123,7 @@ export type ChatAction =
       enabled: boolean
       conversations: ConversationMeta[]
       active_id: string | null
+      transition_protocol?: string
     }
   | {
       type: "history_navigate"

@@ -405,6 +405,151 @@ async def test_history_transition_completion_always_matches_request(
     ]
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize("operation", ["new", "delete"])
+async def test_history_transition_legacy_payload_does_not_send_completion(
+    operation: str,
+) -> None:
+    session = _LiveSession()
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    class CapturedEffect:
+        def __init__(self, handler: Callable[[], Awaitable[None]]) -> None:
+            handlers[handler.__name__] = handler
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    with (
+        patch.object(reactive, "effect", capture_effect),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "transition_legacy",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store="memory", scope="test", restore_mode="none"
+            ),
+        )
+    controller = chat.history._controller
+    assert controller is not None
+    controller.partition = cast(Any, object())
+
+    ids = HistoryInputIds.for_chat(ResolvedId("transition_legacy"))
+    if operation == "new":
+        controller.new_chat = AsyncMock()  # type: ignore[method-assign]
+        input_id = ids.new
+        payload: object = 1
+    else:
+        controller.delete = AsyncMock()  # type: ignore[method-assign]
+        input_id = ids.delete
+        payload = {"id": "active"}
+
+    with session_context(cast(Any, session)):
+        cast(Any, session.input[input_id])._set(payload)
+    with reactive.isolate():
+        await handlers[f"_on_{operation}"]()
+
+    assert _completion_actions(session) == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("operation", "outcome"),
+    [
+        ("new", "success"),
+        ("new", "failure"),
+        ("new", "cancelled"),
+        ("delete", "success"),
+        ("delete", "failure"),
+        ("delete", "cancelled"),
+    ],
+)
+async def test_completion_delivery_failure_does_not_mask_transition_outcome(
+    operation: str, outcome: str
+) -> None:
+    session = _LiveSession()
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    class CapturedEffect:
+        def __init__(self, handler: Callable[[], Awaitable[None]]) -> None:
+            handlers[handler.__name__] = handler
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    with (
+        patch.object(reactive, "effect", capture_effect),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "transition_delivery",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store="memory", scope="test", restore_mode="none"
+            ),
+        )
+    controller = chat.history._controller
+    assert controller is not None
+    controller.partition = cast(Any, object())
+
+    if outcome == "failure":
+        operation_fn = AsyncMock(side_effect=RuntimeError("expected failure"))
+    elif outcome == "cancelled":
+
+        async def operation_fn(*_args: Any) -> None:
+            raise asyncio.CancelledError()
+
+    else:
+        operation_fn = AsyncMock()
+
+    ids = HistoryInputIds.for_chat(ResolvedId("transition_delivery"))
+    if operation == "new":
+        controller.new_chat = operation_fn  # type: ignore[method-assign]
+        input_id = ids.new
+        payload: object = {"requestId": f"{operation}-{outcome}"}
+    else:
+        controller.delete = operation_fn  # type: ignore[method-assign]
+        input_id = ids.delete
+        payload = {"id": "active", "requestId": f"{operation}-{outcome}"}
+
+    async def fail_completion(action: dict[str, Any]) -> None:
+        if action["type"] == "history_transition_complete":
+            raise RuntimeError("completion delivery failed")
+
+    chat._send_action = fail_completion  # type: ignore[method-assign]
+    with session_context(cast(Any, session)):
+        cast(Any, session.input[input_id])._set(payload)
+
+    if outcome == "cancelled":
+        with pytest.raises(asyncio.CancelledError):
+            with reactive.isolate():
+                await handlers[f"_on_{operation}"]()
+    else:
+        with reactive.isolate():
+            await handlers[f"_on_{operation}"]()
+
+
 def _registered_history_cleanups(session: Any) -> list[Callable[[], None]]:
     return [
         cb

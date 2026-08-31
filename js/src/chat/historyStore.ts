@@ -1,4 +1,9 @@
 import type { ConversationMeta, ChatTransport } from "../transport/types"
+import { uuid } from "../utils/uuid"
+
+type TransitionProtocol = "completion-v1"
+
+const completionTransitionProtocol: TransitionProtocol = "completion-v1"
 
 export interface HistorySnapshot {
   initialized: boolean
@@ -7,6 +12,7 @@ export interface HistorySnapshot {
   activeId: string | null
   busy: boolean
   connected: boolean
+  transitionProtocol: TransitionProtocol | null
   historyTransitionPending: string | null
 }
 
@@ -24,6 +30,7 @@ const initialSnapshot: HistorySnapshot = Object.freeze({
   activeId: null,
   busy: false,
   connected: false,
+  transitionProtocol: null,
   historyTransitionPending: null,
 })
 
@@ -33,7 +40,6 @@ export class HistoryStore {
   private snapshot: HistorySnapshot = initialSnapshot
   private listeners = new Set<Listener>()
   private transport: ChatTransport | null = null
-  private requestSequence = 0
 
   constructor(readonly elementId: string) {}
 
@@ -49,7 +55,9 @@ export class HistoryStore {
       if (!transport || this.snapshot.busy || this.hasPendingTransition())
         return
       const requestId =
-        this.snapshot.activeId === null ? undefined : this.beginTransition()
+        this.snapshot.activeId === null || !this.supportsCompletionProtocol()
+          ? undefined
+          : this.beginTransition()
       if (requestId === undefined) {
         transport.sendHistoryNew(this.elementId)
       } else {
@@ -68,7 +76,8 @@ export class HistoryStore {
       if (!transport || this.snapshot.busy || this.hasPendingTransition())
         return
       const requestId =
-        conversationId === this.snapshot.activeId
+        conversationId === this.snapshot.activeId &&
+        this.supportsCompletionProtocol()
           ? this.beginTransition()
           : undefined
       if (requestId === undefined) {
@@ -99,10 +108,12 @@ export class HistoryStore {
     enabled,
     conversations,
     activeId,
+    transitionProtocol,
   }: {
     enabled: boolean
     conversations: ConversationMeta[]
     activeId: string | null
+    transitionProtocol?: string
   }): void {
     const nextConversations = conversationsEqual(
       this.snapshot.conversations,
@@ -120,7 +131,11 @@ export class HistoryStore {
       activeId,
       busy: this.snapshot.busy,
       connected: this.snapshot.connected,
-      historyTransitionPending: this.snapshot.historyTransitionPending,
+      transitionProtocol: normalizeTransitionProtocol(transitionProtocol),
+      historyTransitionPending:
+        transitionProtocol === completionTransitionProtocol
+          ? this.snapshot.historyTransitionPending
+          : null,
     })
   }
 
@@ -145,8 +160,12 @@ export class HistoryStore {
     return this.snapshot.historyTransitionPending !== null
   }
 
+  private supportsCompletionProtocol(): boolean {
+    return this.snapshot.transitionProtocol === completionTransitionProtocol
+  }
+
   private beginTransition(): string {
-    const requestId = `history-${++this.requestSequence}`
+    const requestId = uuid()
     this.publish({ ...this.snapshot, historyTransitionPending: requestId })
     return requestId
   }
@@ -289,8 +308,17 @@ function snapshotsEqual(a: HistorySnapshot, b: HistorySnapshot): boolean {
     a.activeId === b.activeId &&
     a.busy === b.busy &&
     a.connected === b.connected &&
+    a.transitionProtocol === b.transitionProtocol &&
     a.historyTransitionPending === b.historyTransitionPending
   )
+}
+
+function normalizeTransitionProtocol(
+  protocol: string | undefined,
+): TransitionProtocol | null {
+  return protocol === completionTransitionProtocol
+    ? completionTransitionProtocol
+    : null
 }
 
 export function resetHistoryStoreRegistryForTests(): void {

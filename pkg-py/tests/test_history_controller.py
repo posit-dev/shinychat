@@ -226,6 +226,7 @@ def test_extend_with_ui_messages_reconstructs_them():
 
 class _FakeChat:
     def __init__(self) -> None:
+        self.actions: list[dict[str, Any]] = []
         self.set_greeting_calls: list[Any] = []
         self.destructive_preflight_calls = 0
         self.restored_messages: list[dict[str, Any]] = []
@@ -241,7 +242,7 @@ class _FakeChat:
         return self._messages_for_bookmark()
 
     async def _send_action(self, action: Any) -> None:
-        pass
+        self.actions.append(action)
 
     async def clear_messages(self) -> None:
         self.clear_messages_calls += 1
@@ -375,6 +376,23 @@ def _make_controller(
     )
     controller.partition = part()
     return controller, resolved_store
+
+
+@pytest.mark.anyio
+async def test_history_update_advertises_completion_v1() -> None:
+    controller, _ = _make_controller()
+
+    await controller.send_history_update()
+
+    assert cast(_FakeChat, controller.chat).actions == [
+        {
+            "type": "history_update",
+            "enabled": True,
+            "conversations": [],
+            "active_id": None,
+            "transition_protocol": "completion-v1",
+        }
+    ]
 
 
 def _stored_message(role: str, content: str) -> StoredMessage:

@@ -243,6 +243,19 @@ def _history_transition_request_id(value: Any) -> str | None:
     return request_id if isinstance(request_id, str) else None
 
 
+async def _complete_history_transition(chat: "Chat", request_id: str) -> None:
+    try:
+        await chat._send_action(
+            {
+                "type": "history_transition_complete",
+                "requestId": request_id,
+            }
+        )
+    except (asyncio.CancelledError, Exception):
+        # Completion is advisory and must not alter the transition outcome.
+        pass
+
+
 class _ExchangeRecorder:
     """Private v2 capture owner for one history controller session."""
 
@@ -1100,6 +1113,7 @@ class HistoryController:
             "enabled": True,
             "conversations": [m.model_dump(mode="json") for m in metas],
             "active_id": self.record.id if self.record is not None else None,
+            "transition_protocol": "completion-v1",
         }
         await self.chat._send_action(action)
 
@@ -1589,12 +1603,7 @@ class ChatHistory:
                 await notify_error("Could not start a new chat", e)
             finally:
                 if request_id is not None:
-                    await chat._send_action(
-                        {
-                            "type": "history_transition_complete",
-                            "requestId": request_id,
-                        }
-                    )
+                    await _complete_history_transition(chat, request_id)
 
         @reactive.effect
         @reactive.event(chat._session.input[ids.rename])
@@ -1622,12 +1631,7 @@ class ChatHistory:
                 await notify_error("Could not delete conversation", e)
             finally:
                 if request_id is not None:
-                    await chat._send_action(
-                        {
-                            "type": "history_transition_complete",
-                            "requestId": request_id,
-                        }
-                    )
+                    await _complete_history_transition(chat, request_id)
 
         @reactive.effect
         @reactive.event(chat._session.input[ids.message_edit])

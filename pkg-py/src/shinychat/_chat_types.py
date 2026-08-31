@@ -154,6 +154,7 @@ class HistoryUpdateAction(TypedDict):
     enabled: bool
     conversations: list[dict[str, Any]]  # ConversationMeta dumps
     active_id: str | None
+    transition_protocol: NotRequired[Literal["completion-v1"]]
 
 
 class HistoryNavigateAction(TypedDict):

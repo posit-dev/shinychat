@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ConversationMeta } from "../../src/transport/types"
+import * as uuidUtils from "../../src/utils/uuid"
 import {
   acquireHistoryStore,
   getHistoryStore,
@@ -18,6 +19,7 @@ const conversations: ConversationMeta[] = [
 
 afterEach(() => {
   resetHistoryStoreRegistryForTests()
+  vi.restoreAllMocks()
 })
 
 describe("historyStore", () => {
@@ -125,7 +127,7 @@ describe("historyStore", () => {
     expect(transport.sendHistoryDelete).toHaveBeenCalledTimes(1)
   })
 
-  it("marks only active New/Delete transitions and clears a matching completion", () => {
+  it("uses completion-v1 only for active New/Delete transitions", () => {
     const transport = createMockTransport()
     const registration = acquireHistoryStore("chat", transport)
     registration.store.updateHistory({
@@ -135,16 +137,37 @@ describe("historyStore", () => {
     })
 
     registration.store.actions.create()
-    expect(transport.sendHistoryNew).toHaveBeenCalledWith("chat", "history-1")
+    expect(transport.sendHistoryNew).toHaveBeenCalledWith("chat")
+    expect(registration.store.getSnapshot().historyTransitionPending).toBeNull()
+
+    registration.store.actions.delete("first")
+    expect(transport.sendHistoryDelete).toHaveBeenCalledWith("chat", "first")
+    expect(registration.store.getSnapshot().historyTransitionPending).toBeNull()
+
+    vi.spyOn(uuidUtils, "uuid")
+      .mockReturnValueOnce("request-new")
+      .mockReturnValueOnce("request-delete")
+    registration.store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      transitionProtocol: "completion-v1",
+    })
+
+    registration.store.actions.create()
+    expect(transport.sendHistoryNew).toHaveBeenLastCalledWith(
+      "chat",
+      "request-new",
+    )
     expect(registration.store.getSnapshot().historyTransitionPending).toBe(
-      "history-1",
+      "request-new",
     )
 
     registration.store.completeHistoryTransition("stale")
     expect(registration.store.getSnapshot().historyTransitionPending).toBe(
-      "history-1",
+      "request-new",
     )
-    registration.store.completeHistoryTransition("history-1")
+    registration.store.completeHistoryTransition("request-new")
     expect(registration.store.getSnapshot().historyTransitionPending).toBeNull()
 
     registration.store.actions.delete("other")
@@ -155,10 +178,99 @@ describe("historyStore", () => {
     expect(transport.sendHistoryDelete).toHaveBeenLastCalledWith(
       "chat",
       "first",
-      "history-2",
+      "request-delete",
     )
     expect(registration.store.getSnapshot().historyTransitionPending).toBe(
-      "history-2",
+      "request-delete",
+    )
+  })
+
+  it("replaces capability state and clears transitions on omission or withdrawal", () => {
+    const transport = createMockTransport()
+    const registration = acquireHistoryStore("chat", transport)
+    const requestId = vi
+      .spyOn(uuidUtils, "uuid")
+      .mockReturnValue("request-pending")
+
+    registration.store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      transitionProtocol: "completion-v1",
+    })
+    registration.store.actions.create()
+    expect(requestId).toHaveBeenCalledOnce()
+    expect(registration.store.getSnapshot().historyTransitionPending).toBe(
+      "request-pending",
+    )
+
+    registration.store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+    })
+    expect(registration.store.getSnapshot()).toMatchObject({
+      transitionProtocol: null,
+      historyTransitionPending: null,
+    })
+
+    registration.store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      transitionProtocol: "completion-v1",
+    })
+    registration.store.actions.create()
+    expect(registration.store.getSnapshot().historyTransitionPending).toBe(
+      "request-pending",
+    )
+
+    registration.store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      transitionProtocol: "completion-v2",
+    })
+    expect(registration.store.getSnapshot()).toMatchObject({
+      transitionProtocol: null,
+      historyTransitionPending: null,
+    })
+  })
+
+  it("uses remount-safe UUIDs so stale completions cannot release a new transition", async () => {
+    const requestIds = vi
+      .spyOn(uuidUtils, "uuid")
+      .mockReturnValueOnce("request-before-remount")
+      .mockReturnValueOnce("request-after-remount")
+    const first = acquireHistoryStore("chat", createMockTransport())
+    first.store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      transitionProtocol: "completion-v1",
+    })
+    first.store.actions.create()
+    expect(first.store.getSnapshot().historyTransitionPending).toBe(
+      "request-before-remount",
+    )
+
+    first.release()
+    await Promise.resolve()
+
+    const second = acquireHistoryStore("chat", createMockTransport())
+    expect(second.store).not.toBe(first.store)
+    second.store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      transitionProtocol: "completion-v1",
+    })
+    second.store.actions.create()
+    expect(requestIds).toHaveBeenCalledTimes(2)
+
+    second.store.completeHistoryTransition("request-before-remount")
+    expect(second.store.getSnapshot().historyTransitionPending).toBe(
+      "request-after-remount",
     )
   })
 
