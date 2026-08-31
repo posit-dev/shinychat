@@ -667,3 +667,37 @@ and all packaged asset copies.
 
 Implementation remains stopped pending review of this note. Job `1079`
 remains open and unclosed; `shinychat#5r50` remains blocked and unstarted.
+
+### Stage 1 scheduling decision (2026-08-31)
+
+The raw handler creates an immutable parsed input-event envelope
+synchronously. Its disposition API is:
+
+```text
+accept(payload, seq?, generation?)
+reject_correlated(seq, generation)
+discard_silently(generation)
+```
+
+The raw handler snapshots the disposition once against the active destructive
+transaction capability and stores that disposition in the envelope. The
+later reactive effect switches only on the envelope; it never rereads strict
+state. `reject_correlated()` sends exactly one `input_rejected`
+asynchronously. `discard_silently()` returns without transport or state
+effects. `accept()` performs transcript/capture work and then updates the
+accepted-only provider/public signal.
+
+No unsupported synchronous transport bypass, second ambient flag,
+queue/timer/CAS, or second owner is allowed. Remove the accidental
+slash-command strict behavior from the Stage 1 anchor; slash-command handling
+is separate and outside P4.0.
+
+Required regressions cover delayed-effect timing, inverse timing, no-side-effect
+discard/rejection, gate release on success/failure/cancellation, two real
+transport-update cases, and the effect-coalescing caveat. Client coverage must
+also prove `seq` is allocated before optimistic dispatch and that restoration
+removes only the exact optimistic pair.
+
+The existing uncommitted Stage 1 anchor must be reworked to this decision.
+Implementation remains stopped pending review of this note. Job `1079`
+remains open and unclosed; `shinychat#5r50` remains blocked and unstarted.
