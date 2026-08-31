@@ -127,3 +127,35 @@ shiny-chat-page
     animation: none;
   }
 }
+
+// "Restoring conversation…" indicator, shown while a history restore is
+// pending (the greeting is held). Centered over the message area as a
+// subtle pill; fades in gently since it only appears after a short delay.
+.shiny-chat-restoring {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  // Never intercept clicks meant for the composer or history drawer.
+  pointer-events: none;
+  animation: shiny-chat-restoring-fade-in 300ms ease-out both;
+
+  > span {
+    padding: 0.4rem 1rem;
+    border-radius: 2rem;
+    font-size: 0.875rem;
+    color: var(--_greeting-color);
+    background: var(--bs-tertiary-bg, rgba(0, 0, 0, 0.04));
+    border: 1px solid var(--bs-border-color, rgba(0, 0, 0, 0.1));
+  }
+}
+
+@keyframes shiny-chat-restoring-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

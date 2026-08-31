@@ -130,6 +130,8 @@ export interface ChatContainerProps {
   maxUploadSize: number | null
   elementId: string
   greeting?: GreetingData | null
+  /** Show a "Restoring conversation…" indicator (a history restore is pending). */
+  restoring?: boolean
   cancelId?: string
   enableCancel?: boolean
   enableUpload?: boolean
@@ -183,6 +185,7 @@ export const ChatContainer = forwardRef<
     maxUploadSize,
     elementId,
     greeting,
+    restoring = false,
     cancelId,
     enableCancel,
     enableUpload,
@@ -976,6 +979,11 @@ export const ChatContainer = forwardRef<
       >
         <div className="shiny-chat-wrapper">
           <div className="shiny-chat-messages-wrapper">
+            {restoring && (
+              <div className="shiny-chat-restoring" role="status">
+                <span>Restoring conversation&hellip;</span>
+              </div>
+            )}
             <div
               className="shiny-chat-messages"
               ref={scrollRef}
@@ -989,7 +997,9 @@ export const ChatContainer = forwardRef<
                 streaming greeting fills in) does not trigger useStickToBottom
                 — only message growth does. Suggestion clicks inside the
                 greeting still reach the messages-level handlers via bubbling. */}
-                {greeting != null && <ChatGreeting greeting={greeting} />}
+                {greeting != null && greeting.status !== "held" && (
+                  <ChatGreeting greeting={greeting} />
+                )}
                 <div
                   className="shiny-chat-messages-content"
                   ref={handleContentRef}
