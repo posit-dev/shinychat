@@ -265,7 +265,7 @@ function htmlBlockToRenderBlock(block: HtmlBlockWire): HtmlBlock {
   }
 }
 
-function messagePayloadToData(
+export function messagePayloadToData(
   msg: MessagePayload,
   grouping: ToolGrouping = "tool",
 ): ChatMessageData {

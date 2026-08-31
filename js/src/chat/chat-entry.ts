@@ -4,7 +4,12 @@ import { ChatApp } from "./ChatApp"
 import type { ChatAppProps, InitialGreeting } from "./ChatApp"
 import { getShinyTransport } from "../transport/shiny-transport"
 import type { ChatDrawerState, ChatMessageData, ToolGrouping } from "./state"
-import type { ContentType, GreetingOptions } from "../transport/types"
+import { messagePayloadToData } from "./state"
+import type {
+  ContentType,
+  GreetingOptions,
+  MessagePayload,
+} from "../transport/types"
 import { uuid } from "../utils/uuid"
 import { DEFAULT_UPLOAD_ACCEPT } from "./attachments"
 import {
@@ -44,7 +49,67 @@ const CHAT_TOOLBAR_TAG = "shiny-chat-input-toolbar"
 const CHAT_FOOTER_TAG = "shiny-chat-footer"
 const CHAT_DRAWER_TAG = "shiny-chat-drawer"
 
-function parseInitialMessages(container: HTMLElement): ChatMessageData[] {
+/**
+ * Parse the `data-initial-messages` attribute: a JSON array of message
+ * payloads (`{role, segments, icon?, attachments?}` — the same segments
+ * union the `message` action carries) the server embeds on the container
+ * when any initial message carries structured blocks. Each entry replays
+ * through the same `messagePayloadToData()` conversion the reducer uses, so
+ * tool/web/html_block blocks arrive render-ready. Returns null when the
+ * payload is malformed (not valid JSON, or not an array) so the caller can
+ * fall back to the static <shiny-chat-message> tags.
+ */
+function parseInitialMessagesAttr(
+  raw: string,
+  toolGrouping?: ToolGrouping,
+): ChatMessageData[] | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    console.warn(
+      "Ignoring malformed data-initial-messages attribute: not valid JSON",
+    )
+    return null
+  }
+  if (!Array.isArray(parsed)) {
+    console.warn(
+      "Ignoring malformed data-initial-messages attribute: expected a JSON array",
+    )
+    return null
+  }
+
+  const messages: ChatMessageData[] = []
+  for (const entry of parsed) {
+    if (
+      typeof entry !== "object" ||
+      entry === null ||
+      !Array.isArray((entry as { segments?: unknown }).segments)
+    ) {
+      console.warn(
+        "Skipping malformed entry in data-initial-messages: expected an object with a segments array",
+      )
+      continue
+    }
+    messages.push(messagePayloadToData(entry as MessagePayload, toolGrouping))
+  }
+  return messages
+}
+
+function parseInitialMessages(
+  container: HTMLElement,
+  toolGrouping?: ToolGrouping,
+): ChatMessageData[] {
+  // When the server embeds initial messages as JSON (any message carries
+  // structured blocks), the attribute is authoritative and no static
+  // <shiny-chat-message> tags are emitted.
+  const attr = container.getAttribute("data-initial-messages")
+  if (attr !== null) {
+    const messages = parseInitialMessagesAttr(attr, toolGrouping)
+    if (messages) return messages
+    // Malformed payload: fall through to the static-tag path.
+  }
+
   const messageEls = container.querySelectorAll(CHAT_MESSAGE_TAG)
   const messages: ChatMessageData[] = []
 
@@ -189,7 +254,7 @@ class ChatContainerElement extends HTMLElement {
       ? parsedMax
       : null
 
-    const initialMessages = parseInitialMessages(this)
+    const initialMessages = parseInitialMessages(this, toolGrouping)
     const initialDrawer = parseInitialDrawer(this)
 
     if (!this.toolbarEl) {
