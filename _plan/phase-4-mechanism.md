@@ -1,6 +1,7 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
-**Status:** P4.0 complete; P4.1 baseline-blocked (2026-08-31)
+**Status:** P4.0 complete; P4.1 keystone parked pending fixture-child
+review (2026-08-31)
 **Phase:** plan.md §4, Phase 4
 **Kata:** parent `shinychat#azvt` under epic `shinychat#6d0d`
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
@@ -1127,3 +1128,25 @@ No production or test code was edited to resolve this baseline failure.
 disposition of the existing fixture type error. `shinychat#ykxh` remains
 closed; `shinychat#azvt` remains open with `work.attention="ok"`. No
 `shinychat#5r50` implementation has started.
+
+### P4.1 fixture typing repair handoff (2026-08-31)
+
+The pre-keystone fixture type gap is fixed in
+`shinychat#m0fn` by `da56ffcb16ce03e84744328897b2d3d15d351568`
+(`test(history): type transition fixture action`). The intentionally
+noncanonical `history_update` payload remains unchanged at runtime; the
+fixture now casts it to `ChatAction` at the existing send boundary. No
+production behavior, generated assets, or test behavior changed.
+
+Roborev job `1124` reviewed the code/test commit and returned `PASS` with no
+findings. Verification after the fix: the focused transition suite passed 6
+tests; `make py-check-format` passed; `make py-check-types` passed with 0
+errors; and full `make py-check` passed with 197 Playwright tests, 777
+non-browser tests, 1 skipped, and known nonfatal warnings.
+
+`shinychat#m0fn` remains open with `needs-review` and
+`work.attention="ok"` for human closure. Its completion is required before
+`shinychat#5r50` can resume, so `shinychat#5r50` remains open with
+`work.attention="blocked"` and no implementation started. `shinychat#ykxh`
+remains closed and `shinychat#azvt` remains open with
+`work.attention="ok"`.
