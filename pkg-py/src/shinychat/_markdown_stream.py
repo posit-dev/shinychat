@@ -168,7 +168,32 @@ class MarkdownStream:
                             # wrappers ship as structured html_block
                             # block-messages; bare data-shinychat-react
                             # elements stay trusted residual string segments.
-                            for part in derive_island_parts(segment):
+                            parts = list(derive_island_parts(segment))
+                            # Aggregate the whole run's deps onto the FIRST
+                            # outbound envelope (block or string): the client
+                            # renders envelope deps before dispatching the
+                            # message, so every dependency of the run loads
+                            # before any of its parts mount — the invariant
+                            # the pre-block whole-fragment emission had. Later
+                            # parts send empty envelope deps; a block still
+                            # carries its own deps for its mount gate
+                            # (mirroring ChatMessage's message-level +
+                            # block-level split).
+                            run_deps = (
+                                serialize_html_deps(
+                                    [
+                                        dep
+                                        for part in parts
+                                        for dep in part.deps
+                                    ],
+                                    self._session,
+                                )
+                                or []
+                            )
+                            for part_index, part in enumerate(parts):
+                                envelope_deps = (
+                                    run_deps if part_index == 0 else []
+                                )
                                 if isinstance(part, IslandBlockPart):
                                     block: HtmlBlock = {
                                         "type": "html_block",
@@ -181,19 +206,15 @@ class MarkdownStream:
                                     if block_deps:
                                         block["html_deps"] = block_deps
                                     result += part.html
-                                    await self._send_block_message(block)
-                                else:
-                                    residual_deps = (
-                                        serialize_html_deps(
-                                            part.deps, self._session
-                                        )
-                                        or []
+                                    await self._send_block_message(
+                                        block, envelope_deps
                                     )
+                                else:
                                     result += part.html
                                     await self._send_content_message(
                                         part.html,
                                         "append",
-                                        residual_deps,
+                                        envelope_deps,
                                         trusted=True,
                                         segment_start=True,
                                     )
@@ -301,17 +322,23 @@ class MarkdownStream:
         }
         await self._send_custom_message(msg)
 
-    async def _send_block_message(self, block: HtmlBlock):
+    async def _send_block_message(
+        self, block: HtmlBlock, html_deps: list[dict[str, Any]]
+    ):
         """Send one complete structured block (content XOR block, kata#mhyd).
 
         The block's own `html_deps` carry its dependencies (serialized
-        through `session._process_ui` by the caller), so the envelope's
-        `html_deps` is empty — mirroring Chat's `block_insert` actions.
+        through `session._process_ui` by the caller) for its mount gate —
+        mirroring Chat's `block_insert` actions. The envelope's `html_deps`
+        carry the aggregated deps of the block's whole trusted run (empty
+        for later parts of the run), which the client renders before
+        dispatching the message, so all deps of a run load before any of
+        its parts mount.
         """
         msg: ContentMessage = {
             "id": self.id,
             "operation": "append",
-            "html_deps": [],
+            "html_deps": html_deps,
             "trusted": True,
             "segment_start": True,
             "block": block,

@@ -186,7 +186,9 @@ def test_stream_mixed_content_interleaves_blocks_and_segments():
 
 def test_stream_block_message_carries_session_processed_deps():
     """Island dependencies are serialized through session._process_ui and
-    ride the block (not the message envelope)."""
+    ride the block (for its mount gate) AND the message envelope (the
+    run's first — here only — envelope, so the client loads them before
+    dispatching the block)."""
     mock = _CaptureSession()
     dep = HTMLDependency(
         "testlib", "1.0", source={"href": "/test"}, script={"src": "test.js"}
@@ -197,13 +199,89 @@ def test_stream_block_message_carries_session_processed_deps():
 
     msgs = content_messages(mock.messages)
     block_msg = msgs[1]
-    assert block_msg["html_deps"] == []
+    envelope_deps = block_msg["html_deps"]
+    assert [d["name"] for d in envelope_deps] == ["testlib"]
     block_deps = block_msg["block"].get("html_deps")
     assert block_deps is not None
     assert block_deps[0]["name"] == "testlib"
     # Session-processed (route-registered / lib_prefix applied by the real
     # session; the mock marks processing instead).
+    assert envelope_deps[0].get("from_session") == "capture-session"
     assert block_deps[0].get("from_session") == "capture-session"
+
+
+def test_stream_aggregates_run_deps_onto_first_envelope():
+    """Every dep of a trusted run rides the FIRST outbound envelope of the
+    run (block or string), so all of the run's dependencies load before any
+    of its parts mount — the invariant the pre-block whole-fragment
+    emission had. A dep declared after a React boundary must not load only
+    after earlier HTML of the same run has already mounted. Later parts of
+    the run send empty envelope html_deps; a block still carries its own
+    deps for its mount gate (mirroring ChatMessage's split)."""
+    mock = _CaptureSession()
+    dep = HTMLDependency(
+        "latelib", "1.0", source={"href": "/late"}, script={"src": "late.js"}
+    )
+    react_el = Tag(
+        "shiny-tool-result", data_shinychat_react=True, request_id="abc"
+    )
+    with session_context(cast(Session, mock)):
+        ms = MarkdownStream(id="stream")
+        # The dep is declared after the React boundary, inside the second
+        # island wrapper.
+        run_stream(ms, [TagList(div("before"), react_el, div("after"), dep)])
+
+    msgs = content_messages(mock.messages)[1:]  # drop the leading clear
+    kinds = ["block" if "block" in m else "content" for m in msgs]
+    assert kinds == ["block", "content", "block"]
+
+    first, residual, last = msgs
+    # The first envelope of the run carries the whole run's deps...
+    assert [d["name"] for d in first["html_deps"]] == ["latelib"]
+    assert residual["html_deps"] == []
+    assert last["html_deps"] == []
+    # ...while the block that actually owns the dep still carries it for
+    # its own mount gate.
+    assert "html_deps" not in first["block"]
+    assert [d["name"] for d in last["block"]["html_deps"]] == ["latelib"]
+
+
+def test_stream_aggregates_run_deps_onto_first_string_envelope():
+    """When a trusted run starts with a residual string part (bare React
+    elements), the aggregated run deps ride that content envelope."""
+    mock = _CaptureSession()
+    dep_first = HTMLDependency(
+        "firstlib",
+        "1.0",
+        source={"href": "/first"},
+        script={"src": "first.js"},
+    )
+    dep_second = HTMLDependency(
+        "secondlib",
+        "2.0",
+        source={"href": "/second"},
+        script={"src": "second.js"},
+    )
+    react_el = Tag(
+        "shiny-tool-result",
+        dep_first,
+        data_shinychat_react=True,
+        request_id="abc",
+    )
+    with session_context(cast(Session, mock)):
+        ms = MarkdownStream(id="stream")
+        run_stream(ms, [TagList(react_el, div("after", dep_second))])
+
+    msgs = content_messages(mock.messages)[1:]  # drop the leading clear
+    kinds = ["block" if "block" in m else "content" for m in msgs]
+    assert kinds == ["content", "block"]
+
+    assert [d["name"] for d in msgs[0]["html_deps"]] == [
+        "firstlib",
+        "secondlib",
+    ]
+    assert msgs[1]["html_deps"] == []
+    assert [d["name"] for d in msgs[1]["block"]["html_deps"]] == ["secondlib"]
 
 
 def test_stream_result_includes_island_html():
