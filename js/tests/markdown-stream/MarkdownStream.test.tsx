@@ -24,8 +24,16 @@ import {
   MarkdownStream,
   type MarkdownStreamApi,
 } from "../../src/markdown-stream/MarkdownStream"
+import { useAutoScroll } from "../../src/markdown/useAutoScroll"
 import type { HtmlBlock } from "../../src/chat/html-block-model"
 import type { HtmlDep } from "../../src/transport/types"
+
+const useAutoScrollMock = vi.mocked(useAutoScroll)
+
+function lastContentDependency(): unknown {
+  const calls = useAutoScrollMock.mock.calls
+  return calls[calls.length - 1]?.[0]?.contentDependency
+}
 
 const htmlBlock = (content: string, htmlDeps: HtmlDep[] = []): HtmlBlock => ({
   type: "html_block",
@@ -416,5 +424,62 @@ describe("MarkdownStream — structured html_block segments", () => {
     expect(container.querySelector("[data-island]")?.textContent).toBe(
       "deferred",
     )
+  })
+
+  it("re-runs scroll discovery and auto-scroll when a deps-gated block mounts", async () => {
+    // A deps-gated block renders nothing until its dependencies resolve;
+    // when it finally mounts, `segments` doesn't change, so the scroll
+    // logic keyed on segments alone would never re-run for the growth.
+    let resolveDeps: (() => void) | undefined
+    const renderDependencies = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDeps = resolve
+        }),
+    )
+    const dep = { name: "testlib", version: "1.0" } as unknown as HtmlDep
+
+    let api: MarkdownStreamApi | undefined
+    const { container } = render(
+      <ShinyLifecycleContext.Provider
+        value={{
+          bindAll: vi.fn(async () => {}),
+          unbindAll: vi.fn(),
+          renderDependencies,
+          showClientMessage: vi.fn(),
+        }}
+      >
+        <MarkdownStream
+          autoScroll={true}
+          onApiReady={(value) => {
+            api = value
+          }}
+        />
+      </ShinyLifecycleContext.Provider>,
+    )
+
+    act(() => {
+      api?.appendBlock(htmlBlock("<div data-island>deferred</div>", [dep]))
+    })
+
+    // Gated: the block's HTML has not mounted yet.
+    expect(container.querySelector("[data-island]")).toBeNull()
+
+    const discoveryCallsBeforeMount = findScrollableParent.mock.calls.length
+    const contentDepBeforeMount = lastContentDependency()
+
+    await act(async () => {
+      resolveDeps?.()
+    })
+
+    expect(container.querySelector("[data-island]")?.textContent).toBe(
+      "deferred",
+    )
+    // The deferred mount re-ran scroll-parent discovery and handed
+    // useAutoScroll a fresh content dependency.
+    expect(findScrollableParent.mock.calls.length).toBeGreaterThan(
+      discoveryCallsBeforeMount,
+    )
+    expect(lastContentDependency()).not.toBe(contentDepBeforeMount)
   })
 })

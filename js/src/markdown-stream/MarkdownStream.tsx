@@ -87,13 +87,24 @@ export function MarkdownStream({
   const [streaming, setStreaming] = useState(initialStreaming)
   const innerRef = useRef<HTMLDivElement>(null)
   const scrollParentRef = useRef<HTMLElement | null>(null)
+  // A deps-gated block renders nothing until its dependencies load; when it
+  // finally mounts, `segments` doesn't change. Count block mounts so the
+  // scroll-parent discovery and auto-scroll below re-run for that growth.
+  const [blockMounts, setBlockMounts] = useState(0)
+  const handleBlockMounted = useCallback(() => {
+    setBlockMounts((n) => n + 1)
+  }, [])
 
   // Auto-scroll: the hook gives us a callback ref for the scrollable container.
   // In standalone mode we don't own the scrollable ancestor, so we do a one-time
   // DOM walk on mount and wire the callback ref to the found element.
+  const scrollContentDependency = useMemo(
+    () => [segments, blockMounts],
+    [segments, blockMounts],
+  )
   const { containerRef, scrollToBottom, repinIfAtBottom } = useAutoScroll({
     streaming: autoScroll && streaming,
-    contentDependency: segments,
+    contentDependency: scrollContentDependency,
   })
 
   useLayoutEffect(() => {
@@ -113,7 +124,7 @@ export function MarkdownStream({
       containerRef(scrollable)
       scrollParentRef.current = scrollable
     }
-  }, [autoScroll, segments, containerRef])
+  }, [autoScroll, segments, blockMounts, containerRef])
 
   useEffect(() => {
     return () => {
@@ -203,6 +214,7 @@ export function MarkdownStream({
             key={index}
             content={segment.content}
             htmlDeps={segment.htmlDeps}
+            onMounted={handleBlockMounted}
           />
         ) : (
           <MarkdownContent

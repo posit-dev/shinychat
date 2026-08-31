@@ -15,9 +15,18 @@ import type { HtmlDep } from "../transport/types"
 export function HtmlBlockContent({
   content,
   htmlDeps,
+  onMounted,
 }: {
   content: string
   htmlDeps: HtmlDep[]
+  /**
+   * Called after the island's HTML actually mounts (i.e. once the deps
+   * gate resolves and RawHTML's innerHTML effect has run). A deps-gated
+   * island grows the DOM well after it first rendered (null), so parents
+   * whose layout logic keyed on the initial render — e.g. MarkdownStream's
+   * scroll-parent discovery — use this to re-run it.
+   */
+  onMounted?: () => void
 }) {
   const shiny = useContext(ShinyLifecycleContext)
   // Readiness is tracked against the CURRENT htmlDeps identity, not the
@@ -43,6 +52,12 @@ export function HtmlBlockContent({
   }, [htmlDeps, shiny])
 
   const depsReady = htmlDeps.length === 0 || readyDeps === htmlDeps
+
+  // Child effects run before this one, so when depsReady flips true the
+  // island's HTML is already in the DOM.
+  useEffect(() => {
+    if (depsReady) onMounted?.()
+  }, [depsReady, onMounted])
 
   if (!depsReady) return null
   return <RawHTML html={content} />
