@@ -29,6 +29,8 @@ import type {
   WebActivityBlock,
   WebActivityWireBlock,
 } from "./web-activity-model"
+import { asHtmlBlock, htmlBlockToRenderBlock } from "./html-block-model"
+import type { HtmlBlock } from "./html-block-model"
 
 export {
   deriveToolGroupIdentity,
@@ -44,6 +46,11 @@ export type {
   ToolLoopBlock,
 } from "./tool-model"
 export type { WebActivityBlock, WebActivityItem } from "./web-activity-model"
+// The html_block render model and its wire validators live in
+// html-block-model.ts (shared with MarkdownStream); re-exported here so
+// existing `./state` imports keep working.
+export { asHtmlBlock, htmlBlockToRenderBlock } from "./html-block-model"
+export type { HtmlBlock } from "./html-block-model"
 
 export interface ContentBlock {
   type: "content"
@@ -60,20 +67,6 @@ export interface ThinkingBlock {
   durationMs?: number
   streaming: boolean
 }
-/**
- * Render-model form of a structured `html_block`: a server-authored raw-HTML
- * island. Carries `content`/`contentType` so the snapshot fallthrough
- * (`blockToSegment`) persists it as an `html` string segment — the same
- * shape the markup island path snapshots to.
- */
-export interface HtmlBlock {
-  type: "html_block"
-  content: string
-  contentType: "html"
-  /** Block-level deps, rendered before the island's HTML mounts. */
-  htmlDeps: HtmlDep[]
-}
-
 export type MessageBlock =
   | ContentBlock
   | ThinkingBlock
@@ -229,40 +222,6 @@ export const initialState: ChatState = {
  */
 function isStructuredSegment(seg: SegmentPayload): seg is StructuredBlock {
   return "type" in seg
-}
-
-/**
- * Defensively narrow a structured block to a supported `html_block` wire
- * block. `version` is a forward-compatibility marker: a block whose version
- * this client predates is ignored with a warning rather than breaking the
- * message around it (mirrors asWebActivityWireBlock).
- */
-export function asHtmlBlock(block: StructuredBlock): HtmlBlockWire | null {
-  if ((block as { type?: unknown }).type !== "html_block") return null
-  const version = (block as { version?: unknown }).version
-  if (version !== 1) {
-    console.warn(
-      `Ignoring html_block block with unsupported version: ${String(version)}`,
-    )
-    return null
-  }
-  if (typeof (block as { content?: unknown }).content !== "string") {
-    console.warn(
-      "Ignoring malformed html_block block: content must be a string",
-    )
-    return null
-  }
-  return block as HtmlBlockWire
-}
-
-/** Convert a validated `html_block` wire block to its render-model form. */
-function htmlBlockToRenderBlock(block: HtmlBlockWire): HtmlBlock {
-  return {
-    type: "html_block",
-    content: block.content,
-    contentType: "html",
-    htmlDeps: block.html_deps ?? [],
-  }
 }
 
 export function messagePayloadToData(
