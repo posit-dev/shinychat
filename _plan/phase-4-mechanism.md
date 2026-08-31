@@ -406,3 +406,51 @@ no queue, timer, CAS, second owner, restore mechanism, or init-window guard.
 `shinychat#5r50` remains blocked and unstarted. `shinychat#ykxh` remains open
 with `needs-review`, `work.attention="ok"`, and
 `work.branch="feat/history-exchange-tree"` for human review.
+
+### Roborev 1073 replacement decision (2026-08-31)
+
+Roborev job `1073` reviewed code commit
+`ec00ddc08045689f871b94d3f0fb926933e65d28` and returned `FAIL` with two
+Medium findings:
+
+1. An in-flight recorder `put()` can complete after active deletion and
+   resurrect the deleted conversation (`pkg-py/src/shinychat/_history.py:930`).
+2. A publication callback can suspend after validation; `new_chat()` can
+   publish `None`, after which the stale callback can resume and publish the
+   old ID last (`pkg-py/src/shinychat/_history.py:371`).
+
+Both findings are valid. They are findings 1-2 against the replacement
+submechanism, so the three-findings valve is not re-triggered. **Decision:
+PATCH** the replacement by reusing the existing `_ExchangeRecorder` lock as
+the one per-session serialization boundary. Do not add another lock or
+replace the controller/recorder ownership split.
+
+For v2, `new_chat()` and `delete()` acquire the recorder lock inside the
+existing destructive-mutation boundary. Active `delete()` acquires it before
+`store.delete()` and holds it through recorder reset, controller active-ID
+clear, adapter turns/transcript and message clear, and the awaited explicit
+`None` active-ID callback. New-chat publication is likewise serialized with
+the recorder persistence/publication path, so an older callback cannot finish
+after the clear transition. Persistence and lifecycle callbacks therefore
+have these ordering guarantees:
+
+- A blocked write for conversation A cannot resume after active deletion and
+  recreate A as the active conversation.
+- A publication callback for A completes before `new_chat()` can publish
+  `None`; the observable callback order is `[A, None]`.
+- Reset, active-ID clearing, local transcript/message clearing, and the
+  explicit clear callback complete as one serialized v2 lifecycle sequence.
+
+The exact barrier regressions required before implementation resumes are:
+blocked `put(A)` versus active `delete()` (delete waits, removes the durable
+record, and leaves no active recorder/ID/turns/messages), and blocked callback
+`A` versus `new_chat()` (release produces callback order `[A, None]` and no
+stale publication afterward).
+
+This decision traces to R2's durable-record-before-pointer and session
+continuity requirements, and R7's requirement to extend existing lifecycle
+primitives rather than introduce a new subsystem. The patch adds no queue,
+timer, CAS, second record owner, init-window guard, or new lock. Implementation
+is stopped until this decision note is reviewed. `shinychat#ykxh` remains open
+with `needs-review` and `work.attention="blocked"`;
+`shinychat#5r50` remains blocked and unstarted.
