@@ -595,7 +595,13 @@ is a possible later affordance, not Phase 4 scope unless separately required.
 Implementation remains stopped until this note is reviewed. Job `1079`
 remains open and unclosed; `shinychat#5r50` remains blocked and unstarted.
 
-### Option A implementation mechanism (required before implementation)
+### ~~Option A implementation mechanism (required before implementation)~~ [SUPERSEDED]
+
+> **SUPERSEDED:** The server strict-admission, `input_rejected`, envelope,
+> and optimistic-rollback mechanism in this section is obsolete. The
+> client-marker protocol in the authorization decision below is the only
+> current proposal; recorder persistence and destructive-ordering fixes remain
+> current.
 
 Use the existing destructive transcript transaction with a narrow,
 strict-admission parameter, and enable that parameter only for active
@@ -668,7 +674,11 @@ and all packaged asset copies.
 Implementation remains stopped pending review of this note. Job `1079`
 remains open and unclosed; `shinychat#5r50` remains blocked and unstarted.
 
-### Stage 1 scheduling decision (2026-08-31)
+### ~~Stage 1 scheduling decision (2026-08-31)~~ [SUPERSEDED]
+
+> **SUPERSEDED:** The server-side envelope and strict-admission scheduling
+> instructions in this section are struck. Do not implement them. Use only the
+> client-marker authorization question and scope recorded below.
 
 The raw handler creates an immutable parsed input-event envelope
 synchronously. Its only immutable disposition variants are:
@@ -723,6 +733,11 @@ The real Shiny browser serializes the next input until awaited active
 `input_rejected`, and optimistic-rollback design cannot implement Option A as
 specified and must be deleted/reworked. The recorder and destructive-ordering
 fixes remain required and are retained.
+
+> **SUPERSEDED SERVER DESIGN:** The strict-envelope, `input_rejected`, and
+> optimistic-rollback portion of this escalation is superseded by the
+> client-marker protocol below. The client-marker proposal remains pending
+> Garrick authorization.
 
 The smallest proposed replacement requires Garrick's authorization:
 
