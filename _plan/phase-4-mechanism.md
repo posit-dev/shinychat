@@ -916,3 +916,9 @@ Implementation is stopped pending that authorization. The current tracked
 non-note diff is empty with hash
 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`;
 job `1079` remains open and unclosed, and `shinychat#5r50` remains blocked.
+
+**State correction:** job `1079` was open when this escalation was recorded,
+but is currently observed as `done`/`FAIL` and `closed=true`. No review-close
+operation was performed in this work. `shinychat#ykxh` remains open with
+`needs-review` and `work.attention="blocked"`, and `shinychat#5r50` remains
+blocked.
