@@ -68,22 +68,33 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     async def wait_then_new() -> None:
         nonlocal first_request_id
         payload = session.input["chat_history_new"]()
+        second_transition = first_request_id is not None
         request_id = (
             payload.get("requestId") if isinstance(payload, dict) else None
         )
         if isinstance(request_id, str):
             if first_request_id is None:
                 first_request_id = request_id
+                record_transition_event("new-started")
             else:
+                record_transition_event("new-started")
+                await asyncio.sleep(0.5)
                 await chat._send_action(
                     {
                         "type": "history_transition_complete",
                         "requestId": first_request_id,
                     }
                 )
+                await chat._send_action(
+                    {
+                        "type": "update_input",
+                        "value": "stale-completion-ack",
+                    }
+                )
                 record_transition_event("stale-completion-sent")
-        record_transition_event("new-started")
-        await asyncio.sleep(0.5)
+        else:
+            record_transition_event("new-started")
+        await asyncio.sleep(2.0 if second_transition else 0.5)
         await original_new()
         record_transition_event("new-finished")
 

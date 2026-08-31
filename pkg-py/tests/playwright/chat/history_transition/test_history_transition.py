@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
@@ -99,9 +98,6 @@ def test_remount_stale_completion_cannot_clear_new_marker(
     # Start a real active New transition, then unmount/re-mount the custom
     # element while its server handler is awaiting persistence.
     start_transition(page, "new")
-    controller.OutputText(page, "transition_events").expect_value(
-        re.compile(r"new-started"), timeout=10_000
-    )
     remount_chat(page)
 
     # The first transition publishes completion-v1 to the remounted store.
@@ -119,18 +115,15 @@ def test_remount_stale_completion_cannot_clear_new_marker(
 
     start_transition(page, "new")
     chat.set_user_input("blocked-by-new")
+    expect(chat.loc_input).to_have_text("stale-completion-ack", timeout=30_000)
+    expect(page.get_by_role("button", name="Send message")).to_be_disabled()
+    chat.loc_input.fill("blocked-by-new")
     chat.send_user_input(method="enter")
-    controller.OutputText(page, "transition_events").expect_value(
-        re.compile(
-            r"new-started,new-finished,stale-completion-sent,new-started"
-        ),
-        timeout=30_000,
-    )
 
     # The stale completion must not release the second marker. The attempted
     # input remains client-side and is not counted by the server.
     controller.OutputText(page, "transition_events").expect_value(
-        "new-started,new-finished,stale-completion-sent,new-started,new-finished",
+        "new-started,new-finished,new-started,stale-completion-sent,new-finished",
         timeout=30_000,
     )
     controller.OutputText(page, "submissions").expect_value("2")
