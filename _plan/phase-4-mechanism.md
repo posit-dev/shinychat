@@ -1042,3 +1042,21 @@ assets changed.
 Handoff: keep `shinychat#ykxh` open with `needs-review`,
 `work.attention="ok"`, and `work.branch="feat/history-exchange-tree"` for
 human review and closure. `shinychat#5r50` remains blocked and unstarted.
+
+### Remaining remount evidence gap (2026-08-31)
+
+The existing remount regression still uses fixture-side
+`history_transition_complete` injection and does not prove the production
+`_on_new` `finally` path. An attempted test-only replacement was stopped
+without a test commit: Shiny serializes the session's reactive handlers, so a
+blocked real `_on_new` prevents the fixture release/republish handlers from
+running; after the custom element is remounted, its production history drawer
+cannot render until a server `history_update` arrives. Starting the second New
+through the real drawer therefore requires either a production lifecycle
+change to republish state while the first handler is blocked or a direct test
+bypass, both outside this task's scope.
+
+No production or generated files were changed, and no replacement test landed.
+`shinychat#ykxh` remains open with `needs-review` and
+`work.attention="blocked"` pending design/production disposition;
+`shinychat#5r50` remains blocked and unstarted.
