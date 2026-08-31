@@ -1,6 +1,6 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
-**Status:** agreed; driver sign-off 2026-08-31
+**Status:** P4.0 complete; human review pending 2026-08-31
 **Phase:** plan.md §4, Phase 4
 **Kata:** parent `shinychat#azvt` under epic `shinychat#6d0d`
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
@@ -20,15 +20,14 @@ degradation, or the clear/switch/abort hard-core audit (Phase 5); R parity
 It adds no queue, cursor, reconciliation pass, rendered-HTML storage, CAS, or
 second record owner.
 
-## Entry integration gate
+## Entry integration gate (complete)
 
-Complete `shinychat#ykxh` before the restore keystone. PR #343's stable
-conversation-ID implementation is now on `main` as `ac696476`; this feature
-branch does not yet contain it. The integration changes record creation,
-activation, new-chat, deletion, URL restore, bookmark restore, and the OTel
-handoff, which are precisely the paths Phase 4 will extend. Integrating after
-the keystone would make the first Phase 4 slice knowingly target obsolete
-identity ownership.
+`shinychat#ykxh` completed in merge commit
+`e27e7278981e061864cc1fdf81d5c7c6fa5d3ca8`, which merged `origin/main`
+`2b249764` into this branch. The current-head integration re-derived the
+historical conflict recipe and settled record creation, activation, new-chat,
+deletion, URL restore, bookmark restore, lifecycle, and OTel paths before the
+restore keystone.
 
 The task's 2026-08-28 conflict recipe is evidence, not an executable recipe:
 both heads have advanced and Phase 3 is complete. Re-run the merge/dry-run
@@ -44,7 +43,19 @@ analysis against current `main` and `feat/history-exchange-tree`, then update
   port, as already recorded.
 
 The full Python gate must pass after integration. Only then may the restore
-keystone begin.
+keystone begin; that gate is now satisfied.
+
+Integration decisions and preserved behavior:
+
+- `HistoryController` allocates the stable conversation ID before v2 root,
+  input, or input-less record creation. `_ExchangeRecorder` remains the sole
+  v2 record owner.
+- The existing destructive-mutation wrappers, active-ID paths, stale-URL
+  clearing, and v1 first-save adoption remain intact.
+- Lifecycle integration keeps reactive effects homogeneous. Response-settlement
+  cancellation remains owned by `Chat`/the session.
+- OTel scalar overlap and the seeded-draft/init-restore race remain deferred to
+  their existing future owners.
 
 ## Ownership and path operations
 
@@ -255,8 +266,7 @@ transcript, turns, or rendered content to bookmark values.
    review evidence.
 
 Each child is a coherent review unit and remains open for human review. The
-note is approved; Phase 4 feature work starts only after the integration gate
-closes.
+note is approved; P4.0 is complete and the restore keystone is now unblocked.
 
 ## Verification
 
@@ -276,17 +286,18 @@ closes.
 
 ## Progress
 
-- P4.0 `shinychat#ykxh` baseline: `make py-check-tests
-  FILTER='history or transcript'` passed 34 Playwright and 368 non-browser
-  tests. The dedicated `history_edit` browser suite passed 9 tests. Running
-  that browser-only filter through `make py-check-tests` then invoked the
-  unrelated non-browser collection with zero matches and returned pytest exit
-  5; the driver disposition is that this is a caller invocation mismatch, not
-  a harness gap. Luna independently confirmed `uv run pytest
-  pkg-py/tests/playwright/ -k 'history_edit'` passed 9 tests, 182 deselected.
+- P4.0 `shinychat#ykxh` completion: the combined history/transcript gate passed
+  34 Playwright and 376 non-browser tests. The dedicated `history_edit`
+  browser baseline passed 9 tests with 182 deselected. The Make
+  zero-selection disposition is already recorded: its follow-on non-browser
+  invocation selected no tests and returned pytest exit 5, which is a caller
+  invocation mismatch rather than a harness gap.
+- Final `make py-check` passed Ruff, Pyright with 0 errors, 191 Playwright
+  tests, 750 non-browser tests, and 1 skipped test. Warnings were
+  pre-existing and nonfatal.
 
 ## Handoff
 
-Landed: Phase 4 parent `shinychat#azvt` is created and claimed; the mechanism note has driver sign-off; P4.0 baseline is dispositioned above.
-Next: complete integration gate `shinychat#ykxh`, then begin the blocked restore-and-continuation keystone.
-Boundary: Phase 3 is completed context; Phase 5 guards/degradation/audit and Phase 7 legacy/public cleanup remain deferred.
+Landed: P4.0 `shinychat#ykxh` merged as `e27e7278981e061864cc1fdf81d5c7c6fa5d3ca8`; identity ownership, lifecycle decisions, and the full verification evidence are recorded above.
+Next: human review of open `shinychat#ykxh`, then begin the unblocked restore-and-continuation keystone `shinychat#5r50`.
+Boundary: no production or test code changed in this handoff; OTel scalar overlap, the init/restore race, and Phase 5 guards/degradation/audit remain deferred.
