@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useContext, memo } from "react"
 import type { GreetingData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
-import { RawHTML } from "./RawHTML"
+import { ShinyBindScope } from "./ShinyBindScope"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 import { ChatDispatchContext } from "./context"
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion"
@@ -79,12 +79,25 @@ export const ChatGreeting = memo(function ChatGreeting({
         {greeting.blocks.map((block, i) =>
           block.contentType === "html" ? (
             // Tag greetings arrive as a single trusted HTML string with
-            // content_type "html" and no island wrappers (kata#af81). Mount
-            // the block through the shared RawHTML sink — as HtmlBlockContent
-            // and the drawer do — so Shiny inputs/outputs in the greeting
-            // bind. Envelope-level html_deps are rendered by the transport
-            // before the greeting action dispatches, so no deps gate here.
-            <RawHTML key={i} html={block.content} />
+            // content_type "html" and no island wrappers (kata#af81). Render
+            // the block through the HTML processor and the trusted component
+            // map — as ChatMessage does for html-typed content — so bare
+            // react carriers (<shiny-aside>, ...) resolve to their React
+            // components instead of staying inert custom elements, and bind
+            // the rendered subtree through ShinyBindScope so Shiny
+            // inputs/outputs in the greeting attach. Keyed by content so a
+            // replaced greeting remounts the scope (unbind-old → bind-new).
+            // Envelope-level html_deps are rendered by the transport before
+            // the greeting action dispatches, so no deps gate here.
+            <ShinyBindScope key={`${i}:${block.content}`}>
+              <MarkdownContent
+                content={block.content}
+                contentType="html"
+                role="assistant"
+                streaming={greeting.streaming && i === lastBlockIndex}
+                tagToComponentMap={chatTagToComponentMap}
+              />
+            </ShinyBindScope>
           ) : (
             <MarkdownContent
               key={i}

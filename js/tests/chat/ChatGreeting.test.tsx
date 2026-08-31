@@ -102,10 +102,11 @@ describe("ChatGreeting", () => {
     expect(content?.textContent).toContain("Welcome!")
   })
 
-  it("binds Shiny UI in html-typed greeting content through the RawHTML sink", () => {
+  it("binds Shiny UI in html-typed greeting content, scoped to the greeting", () => {
     // Tag greetings arrive as a single trusted HTML string with
     // content_type "html" and no island wrappers (kata#af81). The greeting
-    // must mount that block through RawHTML so Shiny inputs/outputs bind —
+    // renders that block through MarkdownContent (for react-element
+    // resolution) inside a ShinyBindScope so Shiny inputs/outputs bind —
     // the island-based binding path (RawHtmlIsland) no longer exists.
     const shiny: ShinyLifecycle = {
       bindAll: vi.fn(async () => {}),
@@ -135,9 +136,122 @@ describe("ChatGreeting", () => {
     expect(shiny.bindAll).toHaveBeenCalledOnce()
     const bindScope = vi.mocked(shiny.bindAll).mock.calls[0]![0] as HTMLElement
     expect(bindScope.contains(output)).toBe(true)
+    // The scope stays inside the greeting content container.
+    const content = container.querySelector(".shiny-chat-greeting-content")
+    expect(content?.contains(bindScope)).toBe(true)
 
     unmount()
     expect(shiny.unbindAll).toHaveBeenCalledOnce()
+    const unbindScope = vi.mocked(shiny.unbindAll).mock
+      .calls[0]![0] as HTMLElement
+    expect(unbindScope).toBe(bindScope)
+  })
+
+  it("resolves react carriers in html-typed greeting content (shiny-aside → AsideGroup)", () => {
+    // kata#af81 flattened tag greetings to one trusted HTML string; routing
+    // it wholesale through RawHTML left bare data-shinychat-react elements
+    // inert. The html processor + trusted component map must resolve them.
+    const html =
+      '<p>Welcome!</p><shiny-aside label="Docs" url="https://example.com">Extra info</shiny-aside>'
+
+    const { container } = renderWithDispatch(
+      <ChatGreeting
+        greeting={makeGreeting({
+          content: html,
+          contentType: "html",
+          blocks: [{ type: "content", content: html, contentType: "html" }],
+        })}
+      />,
+    )
+
+    // The aside resolved through chatTagToComponentMap to AsideGroup's pill…
+    const pill = container.querySelector(".shiny-aside-pill")
+    expect(pill).not.toBeNull()
+    expect(pill?.textContent).toContain("Docs")
+    // …and no inert custom elements remain in the rendered greeting.
+    expect(container.querySelector("shiny-aside")).toBeNull()
+    expect(container.querySelector("shiny-aside-group")).toBeNull()
+    // Regular markup still renders.
+    expect(container.textContent).toContain("Welcome!")
+  })
+
+  it("rebinds when html greeting content is replaced while visible", () => {
+    // The bind scope is keyed by content so a chat_set_greeting replacement
+    // remounts it: the old subtree unbinds while intact, the new one binds.
+    const shiny: ShinyLifecycle = {
+      bindAll: vi.fn(async () => {}),
+      unbindAll: vi.fn(),
+      renderDependencies: vi.fn(async () => {}),
+      showClientMessage: vi.fn(),
+    }
+    const firstHtml =
+      '<div class="shiny-plot-output" id="plot-a" style="width:100%;height:200px"></div>'
+    const secondHtml =
+      '<div class="shiny-plot-output" id="plot-b" style="width:100%;height:200px"></div>'
+
+    const { container, rerender } = render(
+      <ChatDispatchContext.Provider value={() => {}}>
+        <ShinyLifecycleContext.Provider value={shiny}>
+          <ChatGreeting
+            greeting={makeGreeting({
+              content: firstHtml,
+              contentType: "html",
+              blocks: [
+                { type: "content", content: firstHtml, contentType: "html" },
+              ],
+            })}
+          />
+        </ShinyLifecycleContext.Provider>
+      </ChatDispatchContext.Provider>,
+    )
+    expect(container.querySelector("#plot-a")).not.toBeNull()
+    expect(shiny.bindAll).toHaveBeenCalledOnce()
+
+    rerender(
+      <ChatDispatchContext.Provider value={() => {}}>
+        <ShinyLifecycleContext.Provider value={shiny}>
+          <ChatGreeting
+            greeting={makeGreeting({
+              content: secondHtml,
+              contentType: "html",
+              blocks: [
+                { type: "content", content: secondHtml, contentType: "html" },
+              ],
+            })}
+          />
+        </ShinyLifecycleContext.Provider>
+      </ChatDispatchContext.Provider>,
+    )
+
+    expect(container.querySelector("#plot-b")).not.toBeNull()
+    expect(shiny.unbindAll).toHaveBeenCalledOnce()
+    expect(shiny.bindAll).toHaveBeenCalledTimes(2)
+    const rebindingScope = vi.mocked(shiny.bindAll).mock
+      .calls[1]![0] as HTMLElement
+    expect(rebindingScope.contains(container.querySelector("#plot-b"))).toBe(
+      true,
+    )
+  })
+
+  it("does not bind markdown-typed greeting content", () => {
+    const shiny: ShinyLifecycle = {
+      bindAll: vi.fn(async () => {}),
+      unbindAll: vi.fn(),
+      renderDependencies: vi.fn(async () => {}),
+      showClientMessage: vi.fn(),
+    }
+
+    const { unmount } = render(
+      <ChatDispatchContext.Provider value={() => {}}>
+        <ShinyLifecycleContext.Provider value={shiny}>
+          <ChatGreeting greeting={makeGreeting()} />
+        </ShinyLifecycleContext.Provider>
+      </ChatDispatchContext.Provider>,
+    )
+
+    expect(shiny.bindAll).not.toHaveBeenCalled()
+    unmount()
+    expect(shiny.unbindAll).not.toHaveBeenCalled()
   })
 
   it("renders nothing when blocks are empty", () => {
