@@ -1022,3 +1022,23 @@ history-transition suite passes 6 tests, targeted Ruff lint/format and
 `make py-check-format` pass, and no production code or generated assets
 changed. `shinychat#ykxh` remains open with `needs-review`,
 `work.attention="ok"`, and `shinychat#5r50` remains blocked.
+
+### Roborev 1112 final test-review disposition (2026-08-31)
+
+Roborev job `1112` reviewed the corrected test commit
+`4f9d8bfb4ae47f67a0cc886714ecbec72c6d8d28` and returned `PASS` with no
+findings. The review confirmed that the stale-completion submission is
+attempted only after browser acknowledgement while the replacement transition
+remains pending.
+
+Final verification: `uv run pytest
+pkg-py/tests/playwright/chat/history_transition -q` passed 6 tests;
+`uv run ruff check pkg-py/tests/playwright/chat/history_transition` passed;
+`uv run ruff format --check
+pkg-py/tests/playwright/chat/history_transition` reported both files already
+formatted; and `make py-check-format` passed. No production code or generated
+assets changed.
+
+Handoff: keep `shinychat#ykxh` open with `needs-review`,
+`work.attention="ok"`, and `work.branch="feat/history-exchange-tree"` for
+human review and closure. `shinychat#5r50` remains blocked and unstarted.
