@@ -778,6 +778,38 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const last = state.streamingMessage
       if (!last || !last.streaming) return state
 
+      // Uniform replace semantics (kata#0r4g): a replace chunk supersedes
+      // the WHOLE in-flight message — every block (content, thinking,
+      // tool_loop, web_activity, html_block) is discarded, and the
+      // thinking-tag/fence state machine resets with it. Servers rely on
+      // this: they emit a leading empty replace chunk (the wipe) and then
+      // re-emit the message's parts as appends. So a replace is exactly a
+      // wipe followed by the normal append path, which must hold regardless
+      // of prior stream state or what the chunk's content contains.
+      if (action.operation === "replace") {
+        const wipedState: ChatState = {
+          ...state,
+          streamingMessage: {
+            ...last,
+            content: "",
+            blocks: [],
+            insideThinkingTag: false,
+            tagBuffer: "",
+            insideFence: false,
+            fenceMarker: "",
+            htmlDeps: mergeHtmlDeps(last.htmlDeps, action.html_deps),
+          },
+        }
+        // An empty replace is a pure wipe: no empty content block left.
+        if (!action.content) return wipedState
+        // The append path re-merges html_deps, so don't carry them twice.
+        return chatReducer(wipedState, {
+          ...action,
+          operation: "append",
+          html_deps: undefined,
+        })
+      }
+
       const explicitType = action.content_type
       const lastBlock = last.blocks[last.blocks.length - 1]
       const defaultContentType =
@@ -964,35 +996,8 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         }
       }
 
-      // Standard non-thinking content path
-      if (action.operation === "replace") {
-        // Uniform replace semantics (kata#0r4g): a replace chunk supersedes
-        // the whole in-flight message. Structured blocks (thinking,
-        // tool_loop, web_activity, html_block) are content, not preserved
-        // events, so they do not survive a replace. To replace a
-        // block-carrying stream, servers emit a leading empty replace chunk
-        // (the wipe) and then re-emit the message's parts as appends; an
-        // empty replace therefore leaves no content block behind.
-        const newBlocks: MessageBlock[] = action.content
-          ? [
-              {
-                type: "content",
-                content: action.content,
-                contentType: chunkType,
-              },
-            ]
-          : []
-        return {
-          ...state,
-          streamingMessage: {
-            ...last,
-            content: action.content,
-            blocks: newBlocks,
-            htmlDeps: mergeHtmlDeps(last.htmlDeps, action.html_deps),
-          },
-        }
-      }
-
+      // Standard non-thinking content path (append; replace was handled
+      // above as wipe-then-append)
       const blocks = [...last.blocks]
 
       // Finalize any trailing thinking block

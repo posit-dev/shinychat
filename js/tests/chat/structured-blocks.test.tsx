@@ -520,6 +520,86 @@ describe("structured tool_result block via block_insert mid-stream", () => {
     ])
   })
 
+  it("chunk(replace) while inside a code fence wipes the fenced content and starts fresh", () => {
+    // The wipe must work regardless of stream state: an open fence is part
+    // of the superseded message, so the replace resets the fence state
+    // machine along with the blocks.
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "```\nsome code",
+      operation: "append",
+    })
+    expect(state.streamingMessage!.insideFence).toBe(true)
+
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "fresh content",
+      operation: "replace",
+    })
+
+    expect(state.streamingMessage!.insideFence).toBe(false)
+    expect(state.streamingMessage!.content).toBe("fresh content")
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["content"])
+    const content = blocks[0]!
+    if (content.type !== "content") throw new Error("expected content")
+    expect(content.content).toBe("fresh content")
+  })
+
+  it("chunk(replace) whose content contains markup replaces rather than appends", () => {
+    // Content with "<" routes through the thinking-tag state machine; the
+    // replace semantics must not depend on the chunk's content.
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "old content",
+      operation: "append",
+    })
+
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "<div>new content</div>",
+      operation: "replace",
+    })
+
+    // The result is exactly the new content — nothing of the old survives.
+    expect(state.streamingMessage!.content).toBe("<div>new content</div>")
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["content"])
+    const content = blocks[0]!
+    if (content.type !== "content") throw new Error("expected content")
+    expect(content.content).toBe("<div>new content</div>")
+  })
+
+  it("chunk(replace) with content_type thinking wipes content and leaves a single fresh thinking block", () => {
+    // The explicit-thinking branch also honors replace: the markdown
+    // content block is wiped and the thinking content starts fresh.
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "markdown content",
+      operation: "append",
+    })
+    expect(state.streamingMessage!.blocks.map((b) => b.type)).toEqual([
+      "content",
+    ])
+
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "thinking afresh",
+      operation: "replace",
+      content_type: "thinking",
+    })
+
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["thinking"])
+    const thinking = blocks[0]!
+    if (thinking.type !== "thinking") throw new Error("expected thinking")
+    expect(thinking.content).toBe("thinking afresh")
+    expect(state.streamingMessage!.content).toBe("")
+  })
+
   it("is a no-op with a warning when no stream is in flight", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
     const before = makeState()

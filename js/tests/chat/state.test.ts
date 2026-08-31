@@ -511,7 +511,11 @@ describe("chatReducer", () => {
       expect(contentBlocks[0]).toEqual({
         type: "content",
         content: "new",
-        contentType: "html",
+        // Uniform replace semantics (kata#0r4g): the replace supersedes the
+        // whole in-flight message, so the wiped html block's contentType is
+        // not inherited — a replace without an explicit content_type starts
+        // fresh as markdown.
+        contentType: "markdown",
       })
       expect(next.streamingMessage!.content).toBe("new")
     })
