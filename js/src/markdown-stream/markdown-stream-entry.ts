@@ -200,7 +200,9 @@ function readInitialSegments(
       }
       return segments
     }
-  } catch {}
+  } catch {
+    // Malformed provenance: fall through to the untrusted fallback.
+  }
   return [{ text: fallbackContent, trusted: false }]
 }
 
