@@ -1,4 +1,4 @@
-import { render, act } from "@testing-library/react"
+import { render, act, fireEvent } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { ShinyLifecycleContext } from "../../src/chat/context"
 
@@ -26,7 +26,13 @@ import {
 } from "../../src/markdown-stream/MarkdownStream"
 import { useAutoScroll } from "../../src/markdown/useAutoScroll"
 import type { HtmlBlock } from "../../src/chat/html-block-model"
-import type { HtmlDep } from "../../src/transport/types"
+import type { WebActivityBlock } from "../../src/chat/web-activity-model"
+import type {
+  HtmlDep,
+  WebFetchBlock,
+  WebSearchBlock,
+  WebSearchResultsBlock,
+} from "../../src/transport/types"
 
 const useAutoScrollMock = vi.mocked(useAutoScroll)
 
@@ -41,6 +47,51 @@ const htmlBlock = (content: string, htmlDeps: HtmlDep[] = []): HtmlBlock => ({
   contentType: "html",
   htmlDeps,
 })
+
+const webSearchBlock = (
+  overrides: Partial<WebSearchBlock> = {},
+): WebSearchBlock => ({
+  type: "web_search",
+  version: 1,
+  query: "weather in Duluth",
+  ...overrides,
+})
+
+const webSearchResultsBlock = (
+  overrides: Partial<WebSearchResultsBlock> = {},
+): WebSearchResultsBlock => ({
+  type: "web_search_results",
+  version: 1,
+  sources: [
+    { url: "https://example.com/weather", title: "Duluth weather" },
+    { url: "https://example.org/forecast" },
+  ],
+  ...overrides,
+})
+
+const webFetchBlock = (
+  overrides: Partial<WebFetchBlock> = {},
+): WebFetchBlock => ({
+  type: "web_fetch",
+  version: 1,
+  url: "https://example.net/article",
+  status: "success",
+  ...overrides,
+})
+
+/** Render a MarkdownStream and capture its API. */
+function renderStream(autoScroll = false) {
+  let api: MarkdownStreamApi | undefined
+  const rendered = render(
+    <MarkdownStream
+      autoScroll={autoScroll}
+      onApiReady={(value) => {
+        api = value
+      }}
+    />,
+  )
+  return { ...rendered, getApi: () => api }
+}
 
 describe("MarkdownStream", () => {
   beforeEach(() => {
@@ -481,5 +532,180 @@ describe("MarkdownStream — structured html_block segments", () => {
       discoveryCallsBeforeMount,
     )
     expect(lastContentDependency()).not.toBe(contentDepBeforeMount)
+  })
+})
+
+describe("MarkdownStream — structured web_* blocks", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("groups a search/results/fetch burst into one rendered activity", () => {
+    const { container, getApi } = renderStream()
+
+    act(() => {
+      getApi()?.appendContent("Before the burst. ")
+      getApi()?.appendBlock(webSearchBlock())
+      getApi()?.appendBlock(webSearchResultsBlock())
+      getApi()?.appendBlock(webFetchBlock())
+      getApi()?.appendContent(" After the burst.")
+    })
+
+    // One grouped activity between the two prose segments.
+    expect(container.querySelectorAll(".shiny-web-activity")).toHaveLength(1)
+    const text = container.textContent ?? ""
+    expect(text.indexOf("Before the burst.")).toBeLessThan(
+      text.indexOf("Searched the web"),
+    )
+    expect(text.indexOf("Searched the web")).toBeLessThan(
+      text.indexOf("After the burst."),
+    )
+
+    // The results block paired with the pending search; the fetch appended
+    // a standalone item (the shared appendWebActivityBlock semantics).
+    fireEvent.click(container.querySelector(".shiny-web-activity__header")!)
+    expect(
+      container.querySelector(".shiny-web-activity__query")?.textContent,
+    ).toBe("weather in Duluth")
+    expect(
+      container.querySelector(".shiny-web-activity__count")?.textContent,
+    ).toBe("2 results")
+    expect(
+      container.querySelector(".shiny-web-activity__fetch")?.textContent,
+    ).toContain("https://example.net/article")
+  })
+
+  it("tolerates a whitespace-only text segment between carriers", () => {
+    const { container, getApi } = renderStream()
+
+    act(() => {
+      getApi()?.appendBlock(webSearchBlock())
+      getApi()?.appendContent(" \n")
+      getApi()?.appendBlock(webFetchBlock())
+    })
+
+    // The whitespace separator is dropped; the fetch joins the activity.
+    expect(container.querySelectorAll(".shiny-web-activity")).toHaveLength(1)
+    fireEvent.click(container.querySelector(".shiny-web-activity__header")!)
+    expect(
+      container.querySelector(".shiny-web-activity__query")?.textContent,
+    ).toBe("weather in Duluth")
+    expect(
+      container.querySelector(".shiny-web-activity__fetch")?.textContent,
+    ).toContain("https://example.net/article")
+  })
+
+  it("ends the activity run when prose intervenes", () => {
+    const { container, getApi } = renderStream()
+
+    act(() => {
+      getApi()?.appendBlock(webSearchBlock())
+      getApi()?.appendContent(" Some prose. ")
+      getApi()?.appendBlock(webFetchBlock())
+    })
+
+    const activities = container.querySelectorAll(".shiny-web-activity")
+    expect(activities).toHaveLength(2)
+    // The first run holds the (still-pending) search; the second the fetch.
+    expect(activities[0]!.textContent).toContain("Searched the web")
+    expect(activities[1]!.textContent).toContain("Read the web")
+  })
+
+  it("keeps web blocks as hard boundaries text never merges across", () => {
+    const { container, getApi } = renderStream()
+
+    act(() => {
+      getApi()?.appendContent("before")
+      getApi()?.appendBlock(webSearchBlock())
+      getApi()?.appendContent("after")
+      getApi()?.appendContent(" more")
+    })
+
+    // "before" is its own segment; "after" + " more" merge into one segment
+    // after the block — proving text landed around the block, not in it.
+    const paragraphs = [...container.querySelectorAll("p")].map(
+      (p) => p.textContent,
+    )
+    expect(paragraphs).toEqual(["before", "after more"])
+    expect(container.querySelectorAll(".shiny-web-activity")).toHaveLength(1)
+  })
+
+  it("replaceWithBlock with a web block wipes all prior segments and blocks", () => {
+    const { container, getApi } = renderStream()
+
+    act(() => {
+      getApi()?.appendContent("before text")
+      getApi()?.appendBlock(webSearchBlock())
+      getApi()?.appendBlock(htmlBlock('<div data-island="old">old</div>'))
+    })
+    act(() => {
+      getApi()?.replaceWithBlock(webFetchBlock())
+    })
+
+    expect(container.textContent).not.toContain("before text")
+    expect(container.querySelector('[data-island="old"]')).toBeNull()
+    // The replaced web block starts a fresh fetch-only activity.
+    const activities = container.querySelectorAll(".shiny-web-activity")
+    expect(activities).toHaveLength(1)
+    expect(activities[0]!.textContent).toContain("Read the web")
+    expect(activities[0]!.textContent).not.toContain("Searched the web")
+  })
+
+  it("a string replace wipes prior web activity blocks too", () => {
+    const { container, getApi } = renderStream()
+
+    act(() => {
+      getApi()?.appendBlock(webSearchBlock())
+    })
+    act(() => {
+      getApi()?.replaceContent("fresh text")
+    })
+
+    expect(container.querySelector(".shiny-web-activity")).toBeNull()
+    expect(container.textContent).toContain("fresh text")
+  })
+
+  it("renders initial segments carrying a web_activity block", () => {
+    const activity: WebActivityBlock = {
+      type: "web_activity",
+      items: [
+        {
+          kind: "search",
+          query: "weather in Duluth",
+          sources: null,
+          citedSources: [],
+        },
+      ],
+    }
+    const { container } = render(
+      <MarkdownStream
+        initialSegments={[{ text: "## Markdown", trusted: false }, activity]}
+      />,
+    )
+
+    expect(container.querySelector("h2")?.textContent).toBe("Markdown")
+    expect(
+      container.querySelector(".shiny-web-activity")?.textContent,
+    ).toContain("Searched the web")
+  })
+
+  it("settles pinnedness before an appended web block reaches the DOM", () => {
+    // Same race as appended chunks (posit-dev/py-shiny#2378): a web block
+    // grows the DOM just like a text chunk, so pinnedness must be settled
+    // first.
+    let domAtRepinTime: string | undefined
+    repinIfAtBottom.mockImplementation(() => {
+      domAtRepinTime = container.textContent ?? ""
+    })
+
+    const { container, getApi } = renderStream(true)
+
+    act(() => {
+      getApi()?.appendBlock(webSearchBlock())
+    })
+
+    expect(repinIfAtBottom).toHaveBeenCalledTimes(1)
+    expect(domAtRepinTime).not.toContain("Searched the web")
+    expect(container.textContent).toContain("Searched the web")
   })
 })

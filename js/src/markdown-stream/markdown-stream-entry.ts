@@ -2,13 +2,19 @@ import { createRoot, type Root } from "react-dom/client"
 import { createElement } from "react"
 import {
   MarkdownStream,
+  isWhitespaceTextSegment,
   type ContentSegment,
   type MarkdownStreamApi,
+  type StreamBlock,
   type StreamSegment,
 } from "./MarkdownStream"
 import { ShinyLifecycleContext } from "../chat/context"
 import { asHtmlBlock, htmlBlockToRenderBlock } from "../chat/html-block-model"
-import type { HtmlBlock } from "../chat/html-block-model"
+import {
+  appendWebActivityBlock,
+  asWebActivityWireBlock,
+  isWebActivityWireBlock,
+} from "../chat/web-activity-model"
 import { getShinyTransport } from "../transport/shiny-transport"
 import type { ContentType, StructuredBlock } from "../transport/types"
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
@@ -26,8 +32,9 @@ type ContentMessage = {
   segment_start: boolean
   /**
    * A structured block payload (a message carries `content` XOR `block`).
-   * Blocks arrive complete and append-only. Only `html_block` is supported
-   * here; other types fail closed (dropped with a warning).
+   * Blocks arrive complete and append-only. `html_block` and the web_*
+   * family are supported here; other types fail closed (dropped with a
+   * warning).
    */
   block?: StructuredBlock
 }
@@ -125,7 +132,7 @@ class MarkdownStreamElement extends HTMLElement {
     // applies uniformly: "append" appends the block; "replace" wipes ALL
     // segments+blocks, then appends the block if present (kata#0r4g).
     if (message.block !== undefined) {
-      const block = asStreamHtmlBlock(message.block)
+      const block = asStreamBlock(message.block)
       if (!block) return
       if (message.operation === "replace") {
         this.api!.replaceWithBlock(block)
@@ -149,29 +156,36 @@ class MarkdownStreamElement extends HTMLElement {
 }
 
 /**
- * Validate a structured block arriving on a markdown-stream message and
- * convert it to its render-model form. Only `html_block` is supported;
- * anything else fails closed (dropped with a warning), matching the
- * client's other malformed-payload patterns.
+ * Validate a structured block arriving on a markdown-stream message (or in
+ * initial content-segments) and convert it to the form the stream API
+ * accepts: an `html_block` becomes its render-model form; a web_* block is
+ * validated via the shared asWebActivityWireBlock and stays in wire form
+ * (the grouping machinery consumes wire blocks). Anything else — including
+ * tool blocks, which are out of scope for streams — fails closed (dropped
+ * with a warning), matching the client's other malformed-payload patterns.
  */
-function asStreamHtmlBlock(block: StructuredBlock): HtmlBlock | null {
-  if ((block as { type?: unknown }).type !== "html_block") {
-    console.warn(
-      `Ignoring unsupported structured block in a markdown stream: ${String(
-        (block as { type?: unknown }).type,
-      )}`,
-    )
-    return null
+function asStreamBlock(block: StructuredBlock): StreamBlock | null {
+  if (isWebActivityWireBlock(block)) {
+    return asWebActivityWireBlock(block)
   }
-  const wire = asHtmlBlock(block)
-  return wire ? htmlBlockToRenderBlock(wire) : null
+  if ((block as { type?: unknown }).type === "html_block") {
+    const wire = asHtmlBlock(block)
+    return wire ? htmlBlockToRenderBlock(wire) : null
+  }
+  console.warn(
+    `Ignoring unsupported structured block in a markdown stream: ${String(
+      (block as { type?: unknown }).type,
+    )}`,
+  )
+  return null
 }
 
 /**
  * The `content-segments` attribute is a JSON array of
  * `{text, trusted}` string segments and `{block: StructuredBlock}` entries
- * (only `html_block` blocks are supported). Any malformed entry fails the
- * whole array closed to a single untrusted text segment.
+ * (`html_block` and the web_* family are supported; adjacent web_* entries
+ * group into one web activity per appendWebActivityBlock). Any malformed
+ * entry fails the whole array closed to a single untrusted text segment.
  */
 function readInitialSegments(
   el: HTMLElement,
@@ -183,16 +197,23 @@ function readInitialSegments(
   try {
     const value: unknown = JSON.parse(encoded)
     if (Array.isArray(value)) {
-      const segments: StreamSegment[] = []
+      let segments: StreamSegment[] = []
       for (const entry of value as unknown[]) {
         if (isTextSegmentEntry(entry)) {
           segments.push(entry)
           continue
         }
         if (isBlockEntry(entry)) {
-          const wire = asHtmlBlock(entry.block)
-          if (wire) {
-            segments.push(htmlBlockToRenderBlock(wire))
+          const block = asStreamBlock(entry.block)
+          if (block) {
+            segments =
+              block.type === "html_block"
+                ? [...segments, block]
+                : appendWebActivityBlock(
+                    segments,
+                    block,
+                    isWhitespaceTextSegment,
+                  )
             continue
           }
         }

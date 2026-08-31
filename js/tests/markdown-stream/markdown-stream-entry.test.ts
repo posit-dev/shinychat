@@ -443,6 +443,184 @@ describe("MarkdownStreamElement — structured block messages", () => {
     }
   })
 
+  it("dispatches a web_search block message to appendBlock in wire form", () => {
+    const { el, simulateApiReady } = createElement_()
+    const api = createMockApi()
+    simulateApiReady(api)
+
+    const handle = el as unknown as {
+      handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+    }
+    handle.handleMessage({
+      id: "x",
+      operation: "append",
+      trusted: true,
+      segment_start: true,
+      block: { type: "web_search", version: 1, query: "weather in Duluth" },
+    })
+
+    expect(api.appendContent).not.toHaveBeenCalled()
+    // Web blocks stay in wire form across the API boundary — the grouping
+    // machinery (appendWebActivityBlock) consumes wire blocks.
+    expect(api.appendBlock).toHaveBeenCalledWith({
+      type: "web_search",
+      version: 1,
+      query: "weather in Duluth",
+    })
+  })
+
+  it("dispatches a block-carrying web block replace to replaceWithBlock", () => {
+    const { el, simulateApiReady } = createElement_()
+    const api = createMockApi()
+    simulateApiReady(api)
+
+    const handle = el as unknown as {
+      handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+    }
+    handle.handleMessage({
+      id: "x",
+      operation: "replace",
+      trusted: true,
+      segment_start: true,
+      block: {
+        type: "web_fetch",
+        version: 1,
+        url: "https://example.net/article",
+        status: "success",
+      },
+    })
+
+    expect(api.replaceContent).not.toHaveBeenCalled()
+    expect(api.replaceWithBlock).toHaveBeenCalledWith({
+      type: "web_fetch",
+      version: 1,
+      url: "https://example.net/article",
+      status: "success",
+    })
+  })
+
+  it("drops a malformed web block with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const { el, simulateApiReady } = createElement_()
+      const api = createMockApi()
+      simulateApiReady(api)
+
+      const handle = el as unknown as {
+        handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+      }
+      handle.handleMessage({
+        id: "x",
+        operation: "append",
+        trusted: true,
+        segment_start: true,
+        // Missing the required `query` string.
+        block: { type: "web_search", version: 1 } as unknown as StructuredBlock,
+      })
+
+      expect(api.appendBlock).not.toHaveBeenCalled()
+      expect(api.replaceWithBlock).not.toHaveBeenCalled()
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("malformed web_search"),
+      )
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it("drops a web block with an unsupported version with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const { el, simulateApiReady } = createElement_()
+      const api = createMockApi()
+      simulateApiReady(api)
+
+      const handle = el as unknown as {
+        handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+      }
+      handle.handleMessage({
+        id: "x",
+        operation: "append",
+        trusted: true,
+        segment_start: true,
+        block: {
+          type: "web_search",
+          version: 99,
+          query: "future",
+        } as unknown as StructuredBlock,
+      })
+
+      expect(api.appendBlock).not.toHaveBeenCalled()
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("unsupported version"),
+      )
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it("renders initial segments carrying web block entries, grouped", async () => {
+    const el = document.createElement("shiny-markdown-stream")
+    el.setAttribute(
+      "content-segments",
+      JSON.stringify([
+        { text: "## Markdown", trusted: false },
+        {
+          block: { type: "web_search", version: 1, query: "weather in Duluth" },
+        },
+        {
+          block: {
+            type: "web_search_results",
+            version: 1,
+            sources: [{ url: "https://example.com/weather" }],
+          },
+        },
+      ]),
+    )
+
+    await act(async () => {
+      document.body.appendChild(el)
+    })
+
+    await waitFor(() => {
+      expect(el.querySelector("h2")?.textContent).toBe("Markdown")
+      // The two adjacent web block entries grouped into ONE activity.
+      const activities = el.querySelectorAll(".shiny-web-activity")
+      expect(activities).toHaveLength(1)
+      expect(activities[0]!.textContent).toContain("Searched the web")
+    })
+  })
+
+  it("fails closed when an initial web block entry is malformed", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const el = document.createElement("shiny-markdown-stream")
+      el.setAttribute("content", "fallback content")
+      el.setAttribute(
+        "content-segments",
+        JSON.stringify([
+          { text: "fine", trusted: false },
+          // Missing the required `sources` array.
+          { block: { type: "web_search_results", version: 1 } },
+        ]),
+      )
+
+      await act(async () => {
+        document.body.appendChild(el)
+      })
+
+      // The whole provenance array fails closed to the untrusted fallback
+      // content (existing malformed-segments behavior).
+      await waitFor(() => {
+        expect(el.textContent).toContain("fallback content")
+      })
+      expect(el.querySelector(".shiny-web-activity")).toBeNull()
+      expect(warn).toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it("renders initial segments carrying block entries", async () => {
     const el = document.createElement("shiny-markdown-stream")
     el.setAttribute(
