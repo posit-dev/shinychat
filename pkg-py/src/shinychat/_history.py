@@ -393,6 +393,11 @@ class HistoryController:
             if len(turn_groups) <= len(record.path_node_ids()) and len(
                 messages
             ) <= len(stored_ui):
+                # Nothing new to save, but the guard established that every
+                # reported message is already stored. Advance ui_offset so a
+                # later genuine save doesn't reprocess these as out-of-band
+                # "extras" (which would duplicate them in stored UI).
+                self.ui_offset = len(messages)
                 return
 
         if first_save:

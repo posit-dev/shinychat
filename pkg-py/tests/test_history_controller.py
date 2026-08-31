@@ -524,6 +524,88 @@ async def test_replay_rereport_does_not_resave_or_truncate():
     )
 
 
+@pytest.mark.anyio
+async def test_replay_rereport_then_new_turn_does_not_duplicate_ui():
+    # Regression (roborev 1063, finding 4): after a restore re-report hits
+    # the idempotent guard, ui_offset must advance even though nothing is
+    # saved. A stale offset makes the next genuine save reprocess the
+    # already-stored snapshot messages as out-of-band "extras", duplicating
+    # them in stored UI.
+    store = _RecordingStore()
+    chat = _ReplayFakeChat()
+    adapter = _GrowingFakeAdapter()
+    controller = HistoryController(
+        chat=chat,  # type: ignore[arg-type]
+        adapter=adapter,  # type: ignore[arg-type]
+        store=store,  # type: ignore[arg-type]
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+    )
+    controller.partition = part()
+
+    # Save #1: one user/assistant exchange.
+    adapter.turns = [
+        {"role": "user", "content": "q1"},
+        {"role": "assistant", "content": "a1"},
+    ]
+    chat.messages = [msg("user"), msg("assistant")]
+    await controller.on_response()
+    assert len(store.put_calls) == 1
+    record = controller.record
+    assert record is not None
+    saved_ui = [
+        m
+        for nid in record.path_node_ids()
+        for m in (record.nodes[nid].ui or [])
+    ]
+    assert len(saved_ui) == 2
+    assert controller.ui_offset == 2
+
+    # Restore re-renders the stored UI; the client re-reports the same
+    # snapshot, hitting the idempotent guard (early return, no save).
+    await controller.replay_ui(record)
+    assert chat.messages == saved_ui, "replay must reconstruct the full UI"
+    await controller.on_response()
+    assert len(store.put_calls) == 1, "re-report must not trigger another save"
+    # The fix: ui_offset must advance even on the idempotent early return.
+    assert controller.ui_offset == 2, (
+        "ui_offset must advance past the re-reported snapshot"
+    )
+
+    # Save #2: a genuine new turn arrives. With the stale-offset bug, the
+    # two re-reported messages would be reprocessed as out-of-band extras
+    # and duplicated onto the last node.
+    adapter.turns += [
+        {"role": "user", "content": "q2"},
+        {"role": "assistant", "content": "a2"},
+    ]
+    chat.messages = [
+        msg("user"),
+        msg("assistant"),
+        msg("user"),
+        msg("assistant"),
+    ]
+    await controller.on_response()
+    assert len(store.put_calls) == 2
+
+    all_ui = [
+        m
+        for nid in record.path_node_ids()
+        for m in (record.nodes[nid].ui or [])
+    ]
+    # Four turn groups => four derived UI messages, no duplicates.
+    assert len(all_ui) == 4, (
+        f"expected 4 stored UI messages, got {len(all_ui)}: {all_ui}"
+    )
+    assert all_ui == [
+        derived("user", "q1"),
+        derived("assistant", "a1"),
+        derived("user", "q2"),
+        derived("assistant", "a2"),
+    ]
+
+
 # --- ui_offset atomicity (not advanced when store.put raises) ----------------
 
 
