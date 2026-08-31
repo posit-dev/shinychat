@@ -930,3 +930,26 @@ operation was performed in this work. `shinychat#5r50` remains blocked.
 `work.attention="blocked"`; `shinychat#5r50` remains blocked. The historical
 entries above are historical snapshots; the current Roborev state is the
 singular `done`/`FAIL`/`closed=true` state above.
+
+### Garrick authorization: completion-v1 approved (2026-08-31)
+
+Garrick authorized replacing the unconditional transition protocol with the
+capability-gated completion-v1 protocol:
+
+- `history_update` may advertise optional
+  `transition_protocol: "completion-v1"`.
+- Python advertises the capability in Phase 4; R remains on legacy behavior
+  until Phase 6, when it advertises the same capability and completion
+  protocol.
+- Absent, unknown, or withdrawn capability clears
+  `historyTransitionPending` and restores legacy behavior.
+- Advertised active New and active Delete transitions use UUID request IDs.
+- Completion is best-effort and cannot mask the original handler outcome.
+- The scope remains active New and active Delete only. Inactive delete,
+  select/switch, restore, clear, edit, and navigation remain excluded.
+- `HistoryStore` remains the sole client transition-marker owner, and
+  `_ExchangeRecorder` remains the sole server record owner.
+
+Implementation may resume for `shinychat#ykxh` only after this note is
+reviewed. `shinychat#5r50` remains blocked. Attention remains
+`work.attention="blocked"` pending note review.
