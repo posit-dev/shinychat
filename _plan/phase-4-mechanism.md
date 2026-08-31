@@ -327,40 +327,48 @@ remains blocked and not begun.
 
 ### Stable-ID publication escalation decision (2026-08-31)
 
-**Decision:** before any implementation resumes, replace the ambient stable-ID
-publication submechanism. Do not replace stable-ID integration, and do not
-replace `_ExchangeRecorder` as the sole v2 record owner. This is the mandatory
-three-findings escalation for `shinychat#ykxh`.
+**Decision: REPLACE.** Before any implementation resumes, replace the ambient
+stable-ID publication submechanism. Do not replace stable-ID integration, and
+do not replace `_ExchangeRecorder` as the sole v2 record owner. This is the
+mandatory three-findings escalation for `shinychat#ykxh`.
 
 **Evidence and trace:** Roborev jobs 1067 and 1071 together raised four Medium
 lifecycle findings: active-ID/URL publication before durable v2 persistence,
 ambiguous retry after callback failure or cancellation, destructive callbacks
-observing stale recorder state, and delete cleanup that can leave active
-record/turn state behind. The replacement must satisfy R2's cross-session
-resume contract, including a durable URL/bookmark pointer that identifies a
-persisted record, and R7's requirement to extend existing primitives rather
-than introduce a new lifecycle subsystem.
+observing stale recorder state, and active delete cleanup that can leave active
+record/turn state behind. R2 requires a durable v2 record plus URL active-ID
+publication. The `{conversation_id,node_id}` bookmark pointer remains owned by
+`shinychat#g6tt`. R7 remains the roadmap-primitives trace: extend existing
+primitives rather than introduce a new lifecycle subsystem. The lifecycle
+cleanup obligation here is limited to Phase 4.0 `new_chat()` and active
+`delete()`; the Phase 5 clear/switch/abort audit is outside this decision.
 
-**Deletion pass:** remove the unqualified `_active_id_announced` boolean and
-the ambient callback reread. Retain `HistoryController` as stable-ID owner and
-`_ExchangeRecorder` as v2 record owner.
+**Abstraction count and deletion pass:** the plan sketch has two ownership
+abstractions: `HistoryController` as stable-ID owner and `_ExchangeRecorder` as
+v2 record owner. The current mechanism adds notify policy, the unqualified
+`_active_id_announced` boolean, and the ambient callback reread, for five
+total. The replacement deletes those three additions and retains the two
+ownership abstractions.
 
 **Required invariants:**
 
 1. `HistoryController` has one controller ID owner, and every v2
    `record.id` equals that ID.
-2. No URL/bookmark or active-ID pointer is published before durable v2
-   persistence.
-3. Publication remains retryable after store failure, callback failure, or
+2. No URL active-ID pointer is published before durable v2 persistence.
+3. Capture the record and ID before `store.put()`, publish only if that exact
+   record is still current afterward, and record-bound callback retry state
+   cannot affect a successor record.
+4. Publication remains retryable after store failure, callback failure, or
    cancellation.
-4. Every destructive path resets state before awaiting its callback.
-5. Deletion leaves no active record or turn state, while the next conversation
-   can publish normally.
+5. Phase 4.0 `new_chat()` and active `delete()` reset state before awaiting
+   their callbacks; active deletion leaves no recorder, ID, turns, or messages
+   behind while the next conversation can publish normally.
 
-**Required tests:** persistence-barrier; callback-failure/cancellation retry;
-concurrent-reset/stale-write; destructive callback observes reset; and
-active-delete cleanup/failure tests.
+**Required tests:** blocked first write A -> reset -> B;
+failure/cancellation retry isolated to A; active-delete callback failure leaves
+recorder, ID, turns, and messages cleared.
 
 **Exclusions:** no queue, timer, CAS, second owner, restore mechanism, or
-init-window guard. Implementation is stopped until this decision-note commit
-is reviewed.
+init-window guard. Only `shinychat#ykxh` can resume after this decision-note
+commit is reviewed. `shinychat#5r50` remains blocked until `shinychat#ykxh` is
+green, reviewed, and closed.
