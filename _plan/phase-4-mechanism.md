@@ -274,8 +274,19 @@ closes.
 - Run `make py-check-format`, `make py-check-types`, focused tests, and the
   applicable full `make py-check`, recording unrelated failures by Kata id.
 
+## Progress
+
+- P4.0 `shinychat#ykxh` baseline: `make py-check-tests
+  FILTER='history or transcript'` passed 34 Playwright and 368 non-browser
+  tests. The dedicated `history_edit` browser suite passed 9 tests. Running
+  that browser-only filter through `make py-check-tests` then invoked the
+  unrelated non-browser collection with zero matches and returned pytest exit
+  5; the driver disposition is that this is a caller invocation mismatch, not
+  a harness gap. Luna independently confirmed `uv run pytest
+  pkg-py/tests/playwright/ -k 'history_edit'` passed 9 tests, 182 deselected.
+
 ## Handoff
 
-Landed: Phase 4 parent `shinychat#azvt` is created and claimed; the mechanism note has driver sign-off.
+Landed: Phase 4 parent `shinychat#azvt` is created and claimed; the mechanism note has driver sign-off; P4.0 baseline is dispositioned above.
 Next: complete integration gate `shinychat#ykxh`, then begin the blocked restore-and-continuation keystone.
 Boundary: Phase 3 is completed context; Phase 5 guards/degradation/audit and Phase 7 legacy/public cleanup remain deferred.
