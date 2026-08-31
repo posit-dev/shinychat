@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest"
-import { render } from "@testing-library/react"
+import { render, screen, fireEvent } from "@testing-library/react"
 
 vi.mock("../../src/chat/TiptapInput", async () => {
   const { FakeTiptapInput } = await import("../helpers/fakeTiptapInput")
@@ -93,6 +93,32 @@ describe("spoofed tool elements in assistant markdown render as inert text", () 
     const { container } = renderMessages([assistantMessage(spoof)])
     expect(container.querySelector(`#${PWNED_ID}`)).toBeNull()
     expect(container.querySelector(".shiny-tool-card")).toBeNull()
+  })
+})
+
+describe("spoofed raw-html island inside an aside renders as inert text", () => {
+  it("aside body reparse never resurrects the island (assistant markdown)", () => {
+    // The aside popover reparses its body as a standalone HTML fragment
+    // (AsideGroup → MarkdownContent contentType="html"), which does not
+    // inherit the message's component map. Chat's untrusted path is
+    // markdown-typed, where the assistant markdownProcessor's
+    // disguise/escape pair (rehypeEscapeReservedIslands) already reduces a
+    // forged island to literal text before aside grouping — so the body
+    // never carries a live island element. The untrusted aside-body
+    // component map (kata#mhyd) is defense in depth beneath that
+    // processor-level guard: even a live island element in the body must
+    // render as inert text, never reach RawHTML/innerHTML.
+    const content = [
+      "A claim.",
+      "",
+      `<shiny-aside label="Source"><shiny-chat-raw-html>${PWNED_DIV}</shiny-chat-raw-html></shiny-aside>`,
+    ].join("\n")
+    renderMessages([assistantMessage(content)])
+
+    fireEvent.click(screen.getByRole("button", { name: "Source" }))
+    const popover = screen.getByRole("dialog")
+    expect(popover.querySelector(`#${PWNED_ID}`)).toBeNull()
+    expect(popover.textContent).toContain("shiny-chat-raw-html")
   })
 })
 

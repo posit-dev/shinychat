@@ -20,6 +20,7 @@ import {
   type WebActivityWireBlock,
 } from "../chat/web-activity-model"
 import { chatTagToComponentMap } from "../chat/chatTagToComponentMap"
+import { UntrustedAsideGroup } from "../chat/AsideGroup"
 import type { ContentType } from "../transport/types"
 
 const CHAT_CONTAINER_TAG = "shiny-chat-container"
@@ -69,9 +70,13 @@ export function isWhitespaceTextSegment(segment: StreamSegment): boolean {
 // sinks (mirroring Chat's untrustedChatTagToComponentMap) — plus the
 // raw-html island escape, the only island escape on untrusted
 // `contentType="html"` segments (the processor-level disguise/escape pair
-// applies only to Markdown).
+// applies only to Markdown). The aside-group resolver is the untrusted
+// variant: the popover body reparse must keep these escapes, or a forged
+// island inside an aside would reach RawHTML/innerHTML when the popover
+// opens.
 const untrustedStreamComponents: Record<string, ComponentType<unknown>> = {
   ...chatTagToComponentMap,
+  "shiny-aside-group": UntrustedAsideGroup as ComponentType<unknown>,
   "shiny-chat-raw-html": EscapedIsland,
   "shinychat-raw-html": EscapedIsland,
 }

@@ -1,6 +1,6 @@
 import type { ComponentType } from "react"
 import { Aside } from "./Aside"
-import { AsideGroup } from "./AsideGroup"
+import { AsideGroup, UntrustedAsideGroup } from "./AsideGroup"
 import { EscapedIsland } from "../markdown/EscapedIsland"
 
 // Trusted (html-typed or server-authored) content resolves custom element
@@ -33,6 +33,13 @@ export const untrustedChatTagToComponentMap: Record<
   ComponentType<unknown>
 > = {
   ...chatTagToComponentMap,
+  // Asides stay resolvable (data carriers, not trust sinks), but the
+  // popover body is reparsed as a standalone HTML fragment that would
+  // otherwise get MarkdownContent's default — trusted — map. The untrusted
+  // variant keeps the trust-gated tags escaped through that reparse, so a
+  // forged raw-HTML island inside an aside can never reach innerHTML when
+  // the popover opens (kata#mhyd).
+  "shiny-aside-group": UntrustedAsideGroup as ComponentType<unknown>,
   "shiny-tool-request": EscapedIsland,
   "shiny-tool-result": EscapedIsland,
   "shiny-web-activity": EscapedIsland,

@@ -1,4 +1,4 @@
-import { render, act, fireEvent } from "@testing-library/react"
+import { render, screen, act, fireEvent } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { ShinyLifecycleContext } from "../../src/chat/context"
 
@@ -765,5 +765,75 @@ describe("MarkdownStream — inline asides", () => {
 
     expect(container.querySelector("[data-forged]")).toBeNull()
     expect(container.textContent).toContain("shiny-chat-raw-html")
+  })
+
+  it("renders a raw-html island inside an untrusted aside body as inert text", () => {
+    // Security: the aside popover reparses its body as a standalone HTML
+    // fragment, which does not inherit the segment's component map. The
+    // untrusted map must keep the raw-html island escape through that
+    // reparse — otherwise a forged island reaches RawHTML/innerHTML when
+    // the popover opens (stored XSS from model output).
+    render(
+      <MarkdownStream
+        initialContentType="html"
+        initialSegments={[
+          {
+            text: '<shiny-aside label="Source"><shiny-chat-raw-html><img data-forged src="x"></shiny-chat-raw-html></shiny-aside>',
+            trusted: false,
+          },
+        ]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "Source" }))
+    const popover = screen.getByRole("dialog")
+    expect(popover.querySelector("[data-forged]")).toBeNull()
+    expect(popover.textContent).toContain("shiny-chat-raw-html")
+  })
+
+  it("keeps a raw-html island inside an untrusted markdown aside inert", () => {
+    // The untrusted markdown processor escapes reserved islands to literal
+    // text before aside grouping (rehypeEscapeReservedIslands), so the
+    // aside body never carries a live island element. The component-map
+    // escape is defense in depth beneath that processor-level guard.
+    render(
+      <MarkdownStream
+        initialSegments={[
+          {
+            text: [
+              "A claim.",
+              "",
+              '<shiny-aside label="Source"><shiny-chat-raw-html><img data-forged src="x"></shiny-chat-raw-html></shiny-aside>',
+            ].join("\n"),
+            trusted: false,
+          },
+        ]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "Source" }))
+    const popover = screen.getByRole("dialog")
+    expect(popover.querySelector("[data-forged]")).toBeNull()
+    expect(popover.textContent).toContain("shiny-chat-raw-html")
+  })
+
+  it("still renders a raw-html island inside a trusted aside body as live HTML", () => {
+    // Trusted (server-authored) content keeps the island sink: the popover
+    // body reparse resolves the island to RawHTML as before.
+    render(
+      <MarkdownStream
+        initialContentType="html"
+        initialSegments={[
+          {
+            text: '<shiny-aside label="Source"><shiny-chat-raw-html><div data-trusted>safe</div></shiny-chat-raw-html></shiny-aside>',
+            trusted: true,
+          },
+        ]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "Source" }))
+    const popover = screen.getByRole("dialog")
+    expect(popover.querySelector("[data-trusted]")?.textContent).toBe("safe")
   })
 })

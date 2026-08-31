@@ -1,8 +1,9 @@
-import { memo, useEffect, useId, useState } from "react"
+import { memo, useEffect, useId, useState, type ComponentType } from "react"
 import { FloatingPortal, FloatingFocusManager } from "@floating-ui/react"
 import type { Element as HastElement } from "hast"
 import { toHtml } from "hast-util-to-html"
 import { MarkdownContent } from "../markdown/MarkdownContent"
+import { EscapedIsland } from "../markdown/EscapedIsland"
 import { ASIDE_PENDING_ATTR } from "../markdown/plugins/markTrailingAsides"
 import { externalLinkAttributes } from "../markdown/plugins/rehypeExternalLinks"
 import { useAsideFavicon } from "./context"
@@ -29,11 +30,44 @@ export interface AsideEntry {
 
 interface AsideGroupProps {
   node?: HastElement
+  /**
+   * Set when the aside arrived in untrusted (model-authored) content. The
+   * popover body is reparsed as a standalone HTML fragment that does not
+   * inherit the surrounding content's component map, so the untrusted
+   * escapes must be re-applied at that reparse (see
+   * untrustedAsideBodyTagToComponentMap).
+   */
+  untrusted?: boolean
 }
 
 interface AsideGroupViewProps {
   entries: AsideEntry[]
   pending?: boolean
+  untrusted?: boolean
+}
+
+// Security: the popover body reparse (MarkdownContent below) uses
+// MarkdownContent's default component map unless told otherwise, and that
+// default resolves raw-HTML islands to RawHTML — an innerHTML sink. An
+// aside arriving in untrusted content (e.g. a MarkdownStream segment with
+// contentType="html", whose processor has no island escape) can carry a
+// forged <shiny-chat-raw-html> element in its serialized body; without
+// these entries the island would instantiate when the popover opens
+// (stored XSS from model output). Mirror the top-level untrusted maps
+// (untrustedChatTagToComponentMap, MarkdownStream's untrusted components):
+// every trust-gated tag renders as the literal markup via EscapedIsland.
+const untrustedAsideBodyTagToComponentMap: Record<
+  string,
+  ComponentType<unknown>
+> = {
+  "shiny-chat-raw-html": EscapedIsland,
+  "shinychat-raw-html": EscapedIsland,
+  "shiny-tool-request": EscapedIsland,
+  "shiny-tool-result": EscapedIsland,
+  "shiny-web-activity": EscapedIsland,
+  "shiny-web-search": EscapedIsland,
+  "shiny-web-search-results": EscapedIsland,
+  "shiny-web-fetch": EscapedIsland,
 }
 
 function prop(el: HastElement, name: string): string | undefined {
@@ -137,15 +171,37 @@ function NavArrowIcon({ direction }: { direction: "prev" | "next" }) {
   )
 }
 
-export const AsideGroup = memo(function AsideGroup({ node }: AsideGroupProps) {
+export const AsideGroup = memo(function AsideGroup({
+  node,
+  untrusted = false,
+}: AsideGroupProps) {
   const entries = parseAsideEntries(node)
   const pending = node?.properties?.[ASIDE_PENDING_ATTR] != null
-  return <AsideGroupView entries={entries} pending={pending} />
+  return (
+    <AsideGroupView entries={entries} pending={pending} untrusted={untrusted} />
+  )
+})
+
+/**
+ * The aside-group resolver for untrusted component maps
+ * (untrustedChatTagToComponentMap, MarkdownStream's untrusted components).
+ * Asides stay resolvable in untrusted content — they are data carriers,
+ * not trust sinks — but the popover body reparse must keep the untrusted
+ * escapes so a forged raw-HTML island inside the aside can never reach
+ * RawHTML/innerHTML when the popover opens.
+ */
+export const UntrustedAsideGroup = memo(function UntrustedAsideGroup({
+  node,
+}: {
+  node?: HastElement
+}) {
+  return <AsideGroup node={node} untrusted />
 })
 
 export const AsideGroupView = memo(function AsideGroupView({
   entries,
   pending = false,
+  untrusted = false,
 }: AsideGroupViewProps) {
   const deriveFavicon = useAsideFavicon()
   const faceIndex = entries.findIndex((e) => e.label)
@@ -355,6 +411,11 @@ export const AsideGroupView = memo(function AsideGroupView({
                     content={current.body}
                     contentType="html"
                     streaming={false}
+                    tagToComponentMap={
+                      untrusted
+                        ? untrustedAsideBodyTagToComponentMap
+                        : undefined
+                    }
                   />
                 </div>
               )}
