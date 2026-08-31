@@ -40,6 +40,14 @@ TagChild = TypeAliasType(
 )
 
 
+def _serialize_htmltools(
+    value: TagChild,
+) -> Optional[SerializedHTML]:
+    if value is None:
+        return None
+    return serialize_htmltools(value)
+
+
 class ToolCardComponent(BaseModel):
     "A class that mirrors the ShinyToolCard component class in chat-tools.ts"
 
@@ -72,10 +80,7 @@ class ToolCardComponent(BaseModel):
 
     @field_serializer("icon")
     def _serialize_icon(self, value: TagChild) -> Optional[SerializedHTML]:
-        # None must round-trip as None; serialize_htmltools(None) would yield an empty-HTML dict.
-        if value is None:
-            return None
-        return serialize_htmltools(value)
+        return _serialize_htmltools(value)
 
     @field_validator("icon", mode="before")
     @classmethod
@@ -390,10 +395,7 @@ class ToolResultDisplay(BaseModel):
 
     @field_serializer("html", "icon", "footer")
     def _serialize_html_icon(self, value: TagChild) -> Optional[SerializedHTML]:
-        # None must round-trip as None; serialize_htmltools(None) would yield an empty-HTML dict.
-        if value is None:
-            return None
-        return serialize_htmltools(value)
+        return _serialize_htmltools(value)
 
     @field_validator("html", "icon", "footer", mode="before")
     @classmethod
