@@ -226,3 +226,40 @@ def test_grouped_multi_tool_call_chatlas():
 
     flat = [t for g in groups for t in g]
     assert flat == adapter.get_turns_json()
+
+
+def test_turn_round_trip_preserves_tool_result_value_with_display():
+    """A ContentToolResult with a ToolResultDisplay extra must keep its value
+    across a turn JSON round trip (bookmark/history restore path).
+
+    Regression: ToolResultDisplay's html/icon/footer field serializers turned
+    None into an empty-HTML dict ({"html": "", ...}), which restored as an
+    empty but non-None TagList. tool_result_display() treats
+    `display.html is not None` as a custom-HTML override, so restored results
+    rendered "[Empty result]" instead of their value.
+    """
+    chatlas = pytest.importorskip("chatlas")
+    from chatlas._content import ContentToolRequest, ContentToolResult
+    from chatlas._turn import AssistantTurn
+    from shinychat._history_client import normalize_turn_group
+    from shinychat.types import ToolResultDisplay
+
+    request = ContentToolRequest(id="t1", name="data_tool", arguments={})
+    result = ContentToolResult(
+        value="the tool output",
+        request=request,
+        extra={"display": ToolResultDisplay(title="Looked up data", open=True)},
+    )
+    turn_dicts = [
+        AssistantTurn(contents=[request]).model_dump(mode="json"),
+        chatlas.Turn(role="user", contents=[result]).model_dump(mode="json"),
+    ]
+
+    msg = normalize_turn_group(turn_dicts)
+    assert msg is not None
+    result_blocks = [b for b in msg.blocks if b["type"] == "tool_result"]
+    assert len(result_blocks) == 1
+    block = result_blocks[0]
+    assert block["value"] == "the tool output"
+    assert block["title"] == "Looked up data"
+    assert block["expanded"] is True

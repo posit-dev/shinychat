@@ -71,7 +71,13 @@ class ToolCardComponent(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     @field_serializer("icon")
-    def _serialize_icon(self, value: TagChild) -> SerializedHTML:
+    def _serialize_icon(self, value: TagChild) -> Optional[SerializedHTML]:
+        # None must round-trip as None: serialize_htmltools(None) yields an
+        # empty-HTML dict that restores as an empty (but non-None) TagList,
+        # which would shadow the annotation icon fallback after a
+        # bookmark/turn round trip.
+        if value is None:
+            return None
         return serialize_htmltools(value)
 
     @field_validator("icon", mode="before")
@@ -386,7 +392,14 @@ class ToolResultDisplay(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     @field_serializer("html", "icon", "footer")
-    def _serialize_html_icon(self, value: TagChild) -> SerializedHTML:
+    def _serialize_html_icon(self, value: TagChild) -> Optional[SerializedHTML]:
+        # None must round-trip as None: serialize_htmltools(None) yields an
+        # empty-HTML dict that restores as an empty (but non-None) TagList,
+        # and `tool_result_display()` treats `display.html is not None` as a
+        # custom-HTML override — so a restored result would render empty
+        # instead of its actual value.
+        if value is None:
+            return None
         return serialize_htmltools(value)
 
     @field_validator("html", "icon", "footer", mode="before")
