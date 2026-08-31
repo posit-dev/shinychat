@@ -14,9 +14,9 @@ import { remarkEscapeHtml } from "./plugins/remarkEscapeHtml"
 import { rehypeExternalLinks } from "./plugins/rehypeExternalLinks"
 import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
 import {
-  rehypeDisguiseReservedIslands,
-  rehypeEscapeReservedIslands,
-} from "./plugins/rehypeEscapeReservedIslands"
+  rehypeDisguiseIslands,
+  rehypeNeutralizeIslands,
+} from "./plugins/rehypeNeutralizeIslands"
 import { rehypeUnwrapBlockCEs } from "./plugins/rehypeUnwrapBlockCEs"
 import { rehypeAttachAsidesToPreviousParagraph } from "./plugins/rehypeAttachAsidesToPreviousParagraph"
 import { rehypeGroupAsides } from "./plugins/rehypeGroupAsides"
@@ -30,50 +30,46 @@ import {
 import { remarkNormalizeListItemAsides } from "./plugins/normalizeAsideMarkdown"
 
 /**
- * Frozen processor for markdown content.
- * Includes: GFM, raw HTML parsing, external links, syntax highlighting.
+ * Frozen processor for assistant markdown content, trusted and untrusted
+ * alike. Includes: GFM, raw HTML parsing, external links, syntax
+ * highlighting.
+ *
+ * Trusted HTML no longer travels inside markdown as raw-HTML island markup —
+ * it arrives as structured `html_block` envelopes — so there is a single
+ * markdown processor, and the island tags are dead markup in every markdown
+ * payload. The disguise/neutralize pair around rehypeRaw is a pure spoof
+ * guard: it reduces any forged island tag to inert text before parse5 can
+ * hoist its block children out of the tag (see rehypeNeutralizeIslands).
+ * Remaining trust is enforced downstream: untrusted content is rendered with
+ * a component map whose trust-gated tags resolve to inert text (see
+ * untrustedChatTagToComponentMap).
  *
  * No rehypeSanitize step: the output is converted to React elements via
  * toJsxRuntime (not innerHTML), so script tags and event-handler attributes
  * are inert.
  */
-function makeMarkdownProcessor(escapeReservedIslands: boolean) {
-  let processor = unified()
-    .use(remarkParse)
-    .use(remarkGfm, remarkGfmOptions)
-    .use(remarkNormalizeListItemAsides)
-    .use(remarkRehype, { allowDangerousHtml: true })
-    .use(rehypeRewriteAsideToTemplate)
-
-  if (escapeReservedIslands) {
-    processor = processor.use(rehypeDisguiseReservedIslands)
-  }
-  processor = processor.use(rehypeRaw)
-  if (escapeReservedIslands) {
-    processor = processor.use(rehypeEscapeReservedIslands)
-  }
-
-  return processor
-    .use(rehypeRewriteAsideFromTemplate)
-    .use(rehypeLazyContinuation)
-    .use(rehypeUnwrapBlockCEs)
-    .use(rehypeAttachAsidesToPreviousParagraph)
-    .use(rehypeGroundedAsides)
-    .use(rehypeGroupAsides)
-    .use(rehypeMarkTrailingAsides)
-    .use(rehypeUncontrolledInputs)
-    .use(rehypeAccessibleSuggestions)
-    .use(rehypeSuggestionCards)
-    .use(rehypeExternalLinks)
-    .use(rehypeHighlight, { detect: false, ignoreMissing: true })
-    .freeze()
-}
-
-/** Assistant markdown: reserved raw-HTML islands render as literal text. */
-export const markdownProcessor = makeMarkdownProcessor(true)
-
-/** Server-authored markdown may instantiate raw-HTML islands. */
-export const trustedMarkdownProcessor = makeMarkdownProcessor(false)
+export const markdownProcessor = unified()
+  .use(remarkParse)
+  .use(remarkGfm, remarkGfmOptions)
+  .use(remarkNormalizeListItemAsides)
+  .use(remarkRehype, { allowDangerousHtml: true })
+  .use(rehypeRewriteAsideToTemplate)
+  .use(rehypeDisguiseIslands)
+  .use(rehypeRaw)
+  .use(rehypeNeutralizeIslands)
+  .use(rehypeRewriteAsideFromTemplate)
+  .use(rehypeLazyContinuation)
+  .use(rehypeUnwrapBlockCEs)
+  .use(rehypeAttachAsidesToPreviousParagraph)
+  .use(rehypeGroundedAsides)
+  .use(rehypeGroupAsides)
+  .use(rehypeMarkTrailingAsides)
+  .use(rehypeUncontrolledInputs)
+  .use(rehypeAccessibleSuggestions)
+  .use(rehypeSuggestionCards)
+  .use(rehypeExternalLinks)
+  .use(rehypeHighlight, { detect: false, ignoreMissing: true })
+  .freeze()
 
 /**
  * Frozen processor for raw HTML content.

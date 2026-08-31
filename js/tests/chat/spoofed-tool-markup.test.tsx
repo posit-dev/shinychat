@@ -100,14 +100,11 @@ describe("spoofed raw-html island inside an aside renders as inert text", () => 
   it("aside body reparse never resurrects the island (assistant markdown)", () => {
     // The aside popover reparses its body as a standalone HTML fragment
     // (AsideGroup → MarkdownContent contentType="html"), which does not
-    // inherit the message's component map. Chat's untrusted path is
-    // markdown-typed, where the assistant markdownProcessor's
-    // disguise/escape pair (rehypeEscapeReservedIslands) already reduces a
-    // forged island to literal text before aside grouping — so the body
-    // never carries a live island element. The untrusted aside-body
-    // component map (kata#mhyd) is defense in depth beneath that
-    // processor-level guard: even a live island element in the body must
-    // render as inert text, never reach RawHTML/innerHTML.
+    // inherit the message's component map. The aside's template disguise
+    // keeps the forged island nested inside the aside through parse5, so
+    // the serialized body still carries the island element — and the
+    // untrusted aside-body component map (kata#mhyd) renders it as inert
+    // text on that reparse, never live markup.
     const content = [
       "A claim.",
       "",

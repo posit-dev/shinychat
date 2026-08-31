@@ -68,12 +68,11 @@ export function isWhitespaceTextSegment(segment: StreamSegment): boolean {
 // chatTagToComponentMap (the same mappings Chat's trusted content gets).
 // Untrusted segments get them too — asides are data carriers, not trust
 // sinks (mirroring Chat's untrustedChatTagToComponentMap) — plus the
-// raw-html island escape, the only island escape on untrusted
-// `contentType="html"` segments (the processor-level disguise/escape pair
-// applies only to Markdown). The aside-group resolver is the untrusted
-// variant: the popover body reparse must keep these escapes, or a forged
-// island inside an aside would reach RawHTML/innerHTML when the popover
-// opens.
+// raw-html island escapes, which render a forged island tag as inert text
+// (trusted HTML travels as structured html_block segments instead). The
+// aside-group resolver is the untrusted variant: the popover body reparse
+// must keep these escapes, or a forged island inside an aside would
+// render as live markup when the popover opens.
 const untrustedStreamComponents: Record<string, ComponentType<unknown>> = {
   ...chatTagToComponentMap,
   "shiny-aside-group": UntrustedAsideGroup as ComponentType<unknown>,
@@ -283,7 +282,6 @@ export function MarkdownStream({
             content={segment.text}
             contentType={contentType}
             streaming={streaming && index === segments.length - 1}
-            allowRawHtmlIslands={segment.trusted}
             tagToComponentMap={
               segment.trusted
                 ? chatTagToComponentMap

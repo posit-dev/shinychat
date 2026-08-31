@@ -215,12 +215,15 @@ describe("MarkdownStream", () => {
   })
 
   it("renders adjacent markdown and trusted HTML segments", () => {
+    // Trusted HTML in a string segment needs no island wrapper: the island
+    // tags are dead markup (neutralized as a spoof guard), and the markdown
+    // processor renders raw HTML directly.
     const { container } = render(
       <MarkdownStream
         initialSegments={[
           { text: "## This is markdown", trusted: false },
           {
-            text: "<shiny-chat-raw-html><div data-html>HTML</div></shiny-chat-raw-html>",
+            text: "<div data-html>HTML</div>",
             trusted: true,
           },
         ]}
@@ -242,10 +245,9 @@ describe("MarkdownStream", () => {
     )
 
     act(() => {
-      api?.appendContent(
-        "<shiny-chat-raw-html><div data-trusted>safe</div></shiny-chat-raw-html>",
-        true,
-      )
+      // Trusted HTML travels as raw markup (island wrappers are dead); the
+      // untrusted run's forged island must still neutralize to inert text.
+      api?.appendContent("<div data-trusted>safe</div>", true)
       api?.appendContent(
         "<shiny-chat-raw-html><div data-forged>unsafe</div></shiny-chat-raw-html>",
         false,
@@ -254,6 +256,7 @@ describe("MarkdownStream", () => {
 
     expect(container.querySelector("[data-trusted]")).not.toBeNull()
     expect(container.querySelector("[data-forged]")).toBeNull()
+    expect(container.textContent).toContain("<shiny-chat-raw-html>")
   })
 
   it("preserves an explicit markdown segment boundary at equal trust", () => {
@@ -792,10 +795,10 @@ describe("MarkdownStream — inline asides", () => {
   })
 
   it("keeps a raw-html island inside an untrusted markdown aside inert", () => {
-    // The untrusted markdown processor escapes reserved islands to literal
-    // text before aside grouping (rehypeEscapeReservedIslands), so the
-    // aside body never carries a live island element. The component-map
-    // escape is defense in depth beneath that processor-level guard.
+    // The aside's template disguise keeps the forged island's markup nested
+    // inside the aside through parse5, so the serialized body still carries
+    // the island element; the untrusted aside-body component map then
+    // renders it as inert text when the popover reparses the body.
     render(
       <MarkdownStream
         initialSegments={[
@@ -817,15 +820,15 @@ describe("MarkdownStream — inline asides", () => {
     expect(popover.textContent).toContain("shiny-chat-raw-html")
   })
 
-  it("still renders a raw-html island inside a trusted aside body as live HTML", () => {
-    // Trusted (server-authored) content keeps the island sink: the popover
-    // body reparse resolves the island to RawHTML as before.
+  it("still renders HTML inside a trusted aside body as live HTML", () => {
+    // Trusted (server-authored) aside bodies need no island wrapper: the
+    // popover body reparse renders their HTML directly.
     render(
       <MarkdownStream
         initialContentType="html"
         initialSegments={[
           {
-            text: '<shiny-aside label="Source"><shiny-chat-raw-html><div data-trusted>safe</div></shiny-chat-raw-html></shiny-aside>',
+            text: '<shiny-aside label="Source"><div data-trusted>safe</div></shiny-aside>',
             trusted: true,
           },
         ]}

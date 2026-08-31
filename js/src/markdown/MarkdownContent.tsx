@@ -4,30 +4,20 @@ import React, {
   type ReactNode,
   type ComponentType,
 } from "react"
-import { toHtml } from "hast-util-to-html"
-import type { Element } from "hast"
 import type { ContentType } from "../transport/types"
 import { parseMarkdown, parseHtml, hastToReact } from "./markdownToReact"
 import { hideTrailingPartialAsideTag } from "./hideTrailingPartialTag"
 import {
   markdownProcessor,
-  trustedMarkdownProcessor,
   htmlProcessor,
   userMarkdownProcessor,
 } from "./processors"
 import { CopyableCodeBlock } from "./components/CopyableCodeBlock"
 import { BootstrapTable } from "./components/BootstrapTable"
-import { RawHTML } from "../chat/RawHTML"
-
-const RawHtmlIsland = (({ node }: { node?: Element }) => (
-  <RawHTML html={node ? toHtml(node.children) : ""} displayContents />
-)) as ComponentType<unknown>
 
 const baseAssistantComponents: Record<string, ComponentType<unknown>> = {
   pre: CopyableCodeBlock as ComponentType<unknown>,
   table: BootstrapTable as ComponentType<unknown>,
-  "shiny-chat-raw-html": RawHtmlIsland,
-  "shinychat-raw-html": RawHtmlIsland,
 }
 
 const baseUserComponents: Record<string, ComponentType<unknown>> = {
@@ -39,18 +29,16 @@ export interface MarkdownContentProps {
   contentType: ContentType
   role?: "user" | "assistant"
   streaming?: boolean
-  allowRawHtmlIslands?: boolean
   tagToComponentMap?: Record<string, ComponentType<unknown>>
   prefix?: ReactNode
 }
 
-/** Renders content as React elements. Shiny binding is handled per-island by RawHTML. */
+/** Renders content as React elements. */
 export function MarkdownContent({
   content,
   contentType,
   role,
   streaming = false,
-  allowRawHtmlIslands = false,
   tagToComponentMap,
   prefix,
 }: MarkdownContentProps): ReactElement {
@@ -61,9 +49,7 @@ export function MarkdownContent({
     ? htmlProcessor
     : isUser
       ? userMarkdownProcessor
-      : allowRawHtmlIslands
-        ? trustedMarkdownProcessor
-        : markdownProcessor
+      : markdownProcessor
   const resolvedTagToComponentMap = useMemo(
     () =>
       isUser

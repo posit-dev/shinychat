@@ -24,6 +24,13 @@ export const chatTagToComponentMap: Record<string, ComponentType<unknown>> = {
 // the full map above; the structured web_search/web_search_results/web_fetch
 // blocks are the trusted channel.
 //
+// The raw-HTML island tags are dead markup everywhere now (trusted HTML
+// travels as structured html_block envelopes), so the markdown processor
+// neutralizes them to inert text before the component map runs (see
+// rehypeNeutralizeIslands). The island entries here are defense in depth
+// beneath that processor-level guard — and the primary guard on paths that
+// reparse serialized markup without it, like the aside popover body.
+//
 // The assistant markdownProcessor has NO rehypeSanitize step, so without
 // these EscapedIsland entries the spoofed tags would render as real (empty)
 // DOM elements and the literal-text checks would fail. They are load-bearing
@@ -40,6 +47,8 @@ export const untrustedChatTagToComponentMap: Record<
   // forged raw-HTML island inside an aside can never reach innerHTML when
   // the popover opens (kata#mhyd).
   "shiny-aside-group": UntrustedAsideGroup as ComponentType<unknown>,
+  "shiny-chat-raw-html": EscapedIsland,
+  "shinychat-raw-html": EscapedIsland,
   "shiny-tool-request": EscapedIsland,
   "shiny-tool-result": EscapedIsland,
   "shiny-web-activity": EscapedIsland,

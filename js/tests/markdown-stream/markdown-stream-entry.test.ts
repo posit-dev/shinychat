@@ -133,8 +133,10 @@ describe("MarkdownStreamElement — pending message queue", () => {
       "content-segments",
       JSON.stringify([
         { text: "## Markdown", trusted: false },
+        // Trusted HTML travels as raw markup — no island wrapper (the
+        // island tags are dead markup, neutralized as a spoof guard).
         {
-          text: "<shiny-chat-raw-html><div data-trusted>HTML</div></shiny-chat-raw-html>",
+          text: "<div data-trusted>HTML</div>",
           trusted: true,
         },
       ]),

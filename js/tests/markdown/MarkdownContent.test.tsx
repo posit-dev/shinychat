@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { fireEvent, render, screen, within } from "@testing-library/react"
 import * as markdownToReactModule from "../../src/markdown/markdownToReact"
 import { MarkdownContent } from "../../src/markdown/MarkdownContent"
+import { EscapedIsland } from "../../src/markdown/EscapedIsland"
 import { chatTagToComponentMap } from "../../src/chat/chatTagToComponentMap"
 
 // MarkdownContent is a pure component — it does NOT call useShinyLifecycle,
@@ -117,17 +118,6 @@ describe("MarkdownContent (pure)", () => {
       render(<MarkdownContent content="hello" contentType="markdown" />)
     }).not.toThrow()
   })
-
-  it.each(["shiny-chat-raw-html", "shinychat-raw-html"])(
-    "renders %s block without throwing",
-    (tagName) => {
-      const content = `<${tagName}><div class="custom">Hello</div></${tagName}>`
-
-      expect(() => {
-        render(<MarkdownContent content={content} contentType="markdown" />)
-      }).not.toThrow()
-    },
-  )
 
   it("renders tool tags without requiring chat contexts", () => {
     const content =
@@ -266,27 +256,21 @@ describe("MarkdownContent (pure)", () => {
   })
 
   it("renders a model-authored raw-HTML island as literal text", () => {
+    // Untrusted content is rendered with a component map whose island tags
+    // resolve to EscapedIsland (see MarkdownStream's untrusted components) —
+    // that map, not the markdown processor, is the spoof guard now that
+    // trusted HTML travels as structured html_block envelopes.
     const content =
       '<shiny-chat-raw-html><img data-forged="1" src="x"></shiny-chat-raw-html>'
-    const { container } = render(
-      <MarkdownContent content={content} contentType="markdown" />,
-    )
-
-    expect(container.querySelector("[data-forged]")).toBeNull()
-    expect(container.textContent).toContain("<shiny-chat-raw-html>")
-  })
-
-  it("allows an explicitly trusted markdown island", () => {
-    const content =
-      '<shiny-chat-raw-html><div data-trusted="1">safe</div></shiny-chat-raw-html>'
     const { container } = render(
       <MarkdownContent
         content={content}
         contentType="markdown"
-        allowRawHtmlIslands
+        tagToComponentMap={{ "shiny-chat-raw-html": EscapedIsland }}
       />,
     )
 
-    expect(container.querySelector("[data-trusted]")).not.toBeNull()
+    expect(container.querySelector("[data-forged]")).toBeNull()
+    expect(container.textContent).toContain("<shiny-chat-raw-html>")
   })
 })

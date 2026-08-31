@@ -47,13 +47,12 @@ interface AsideGroupViewProps {
 }
 
 // Security: the popover body reparse (MarkdownContent below) uses
-// MarkdownContent's default component map unless told otherwise, and that
-// default resolves raw-HTML islands to RawHTML — an innerHTML sink. An
+// MarkdownContent's default component map unless told otherwise. An
 // aside arriving in untrusted content (e.g. a MarkdownStream segment with
-// contentType="html", whose processor has no island escape) can carry a
-// forged <shiny-chat-raw-html> element in its serialized body; without
-// these entries the island would instantiate when the popover opens
-// (stored XSS from model output). Mirror the top-level untrusted maps
+// contentType="html") can carry a forged <shiny-chat-raw-html> element in
+// its serialized body; without these entries the forged tags would render
+// as live markup when the popover opens instead of the inert text the
+// untrusted path guarantees. Mirror the top-level untrusted maps
 // (untrustedChatTagToComponentMap, MarkdownStream's untrusted components):
 // every trust-gated tag renders as the literal markup via EscapedIsland.
 const untrustedAsideBodyTagToComponentMap: Record<
@@ -187,8 +186,8 @@ export const AsideGroup = memo(function AsideGroup({
  * (untrustedChatTagToComponentMap, MarkdownStream's untrusted components).
  * Asides stay resolvable in untrusted content — they are data carriers,
  * not trust sinks — but the popover body reparse must keep the untrusted
- * escapes so a forged raw-HTML island inside the aside can never reach
- * RawHTML/innerHTML when the popover opens.
+ * escapes so a forged raw-HTML island inside the aside renders as inert
+ * text, never live markup, when the popover opens.
  */
 export const UntrustedAsideGroup = memo(function UntrustedAsideGroup({
   node,

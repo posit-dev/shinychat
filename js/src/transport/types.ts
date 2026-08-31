@@ -137,12 +137,12 @@ export type WebFetchBlock = {
 }
 
 /**
- * A typed, server-authored raw-HTML island — the structured re-expression of
- * the `<shiny-chat-raw-html>` islands a string `html` segment carries. The
- * envelope itself is the trust signal: only the server can construct these
- * blocks, so `content` renders through the shared RawHTML sink. The block is
- * opaque to the thinking-tag/fence state machine, which operates only on
- * string content.
+ * A typed, server-authored raw-HTML island — the structured channel that
+ * replaced the retired `<shiny-chat-raw-html>` markup islands (kata#af81).
+ * The envelope itself is the trust signal: only the server can construct
+ * these blocks, so `content` renders through the shared RawHTML sink. The
+ * block is opaque to the thinking-tag/fence state machine, which operates
+ * only on string content.
  */
 export type HtmlBlock = {
   type: "html_block"
