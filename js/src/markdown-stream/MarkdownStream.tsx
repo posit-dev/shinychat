@@ -19,6 +19,7 @@ import {
   type WebActivityBlock,
   type WebActivityWireBlock,
 } from "../chat/web-activity-model"
+import { chatTagToComponentMap } from "../chat/chatTagToComponentMap"
 import type { ContentType } from "../transport/types"
 
 const CHAT_CONTAINER_TAG = "shiny-chat-container"
@@ -62,9 +63,15 @@ export function isWhitespaceTextSegment(segment: StreamSegment): boolean {
   return !isBlockSegment(segment) && segment.text.trim() === ""
 }
 
-// This is the only island escape on untrusted `contentType="html"` segments;
-// the processor-level disguise/escape pair applies only to Markdown.
-const escapedIslandComponents: Record<string, ComponentType<unknown>> = {
+// Trusted segments resolve the aside data carriers through
+// chatTagToComponentMap (the same mappings Chat's trusted content gets).
+// Untrusted segments get them too — asides are data carriers, not trust
+// sinks (mirroring Chat's untrustedChatTagToComponentMap) — plus the
+// raw-html island escape, the only island escape on untrusted
+// `contentType="html"` segments (the processor-level disguise/escape pair
+// applies only to Markdown).
+const untrustedStreamComponents: Record<string, ComponentType<unknown>> = {
+  ...chatTagToComponentMap,
   "shiny-chat-raw-html": EscapedIsland,
   "shinychat-raw-html": EscapedIsland,
 }
@@ -273,7 +280,9 @@ export function MarkdownStream({
             streaming={streaming && index === segments.length - 1}
             allowRawHtmlIslands={segment.trusted}
             tagToComponentMap={
-              segment.trusted ? undefined : escapedIslandComponents
+              segment.trusted
+                ? chatTagToComponentMap
+                : untrustedStreamComponents
             }
           />
         ),

@@ -709,3 +709,61 @@ describe("MarkdownStream — structured web_* blocks", () => {
     expect(container.textContent).toContain("Searched the web")
   })
 })
+
+describe("MarkdownStream — inline asides", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const asideMarkdown = [
+    "A claim.",
+    "",
+    "<shiny-aside>Details</shiny-aside>",
+  ].join("\n")
+
+  it("resolves asides in trusted segments through the shared pipeline", () => {
+    const { container } = render(
+      <MarkdownStream
+        initialSegments={[{ text: asideMarkdown, trusted: true }]}
+      />,
+    )
+
+    // The aside plugins group the aside into a shiny-aside-group, which the
+    // trusted component map resolves to Chat's AsideGroup component.
+    expect(container.querySelector(".shiny-aside-group")).not.toBeNull()
+    expect(container.querySelector(".shiny-aside-pill")).not.toBeNull()
+    // The raw custom elements are gone — the component replaced them.
+    expect(container.querySelector("shiny-aside-group")).toBeNull()
+    expect(container.querySelector("shiny-aside")).toBeNull()
+  })
+
+  it("resolves asides in untrusted segments too (data carriers, not trust sinks)", () => {
+    const { container } = render(
+      <MarkdownStream
+        initialSegments={[{ text: asideMarkdown, trusted: false }]}
+      />,
+    )
+
+    expect(container.querySelector(".shiny-aside-group")).not.toBeNull()
+    expect(container.querySelector(".shiny-aside-pill")).not.toBeNull()
+    expect(container.querySelector("shiny-aside-group")).toBeNull()
+  })
+
+  it("still escapes forged raw-html islands in untrusted segments", () => {
+    // The aside mappings join the untrusted map WITHOUT weakening the
+    // raw-html island escape.
+    const { container } = render(
+      <MarkdownStream
+        initialSegments={[
+          {
+            text: "<shiny-chat-raw-html><div data-forged>unsafe</div></shiny-chat-raw-html>",
+            trusted: false,
+          },
+        ]}
+      />,
+    )
+
+    expect(container.querySelector("[data-forged]")).toBeNull()
+    expect(container.textContent).toContain("shiny-chat-raw-html")
+  })
+})
