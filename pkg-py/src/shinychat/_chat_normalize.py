@@ -317,10 +317,6 @@ try:
         def _(message: ContentToolRequestSearch):
             if tool_display_override() == "none":
                 return ChatMessage(content="")
-            # The structured `web_search` envelope, not tagified
-            # `<shiny-web-search>` markup: the envelope (not markup scanned
-            # out of the text channel) is what the client turns into trusted
-            # web-activity UI.
             block: WebSearchBlock = {
                 "type": "web_search",
                 "version": 1,
@@ -336,9 +332,6 @@ try:
         def _(message: ContentToolResponseSearch):
             if tool_display_override() == "none":
                 return ChatMessage(content="")
-            # Sources ride as a real JSON array on the block, not a
-            # stringified attribute; `title` is omitted when chatlas didn't
-            # report one.
             sources: list[WebSearchSource] = []
             for s in message.sources:
                 source: WebSearchSource = {"url": s.url}
@@ -373,8 +366,6 @@ try:
                 "version": 1,
                 "url": message.url,
             }
-            # chatlas reports `status` as None when the provider didn't
-            # supply one; the key is then simply absent on the wire.
             if message.status is not None:
                 block["status"] = message.status
             return ChatMessage(content="", blocks=[block])
@@ -434,45 +425,22 @@ try:
         content = ""
         deps: list[HTMLDependency] = []
         blocks: list[StructuredBlock] = []
-        # Ordered interleaving of string runs and structured blocks, so the
-        # wire emission can reproduce the turn's original content order
-        # (text/tool-result/text must not arrive as text/text/tool-result).
         parts: list[str | StructuredBlock] = []
-        # Per-block dependency objects from item messages, reindexed to the
-        # combined block list, so _as_stored_message can session-process
-        # them (raw as_dict() on the block is only the no-session fallback).
         block_dep_objs: dict[int, list[HTMLDependency]] = {}
         for x in message.contents:
-            # Normalize and wrap per item, mirroring R's
-            # `contents_shinychat_wrapped()`.
-            # Converting a turn discards each `ContentToolResult` before any
-            # caller could wrap it, so a turn carrying a custom tool result
-            # would otherwise emit bare UI with no `<shiny-tool-result>` for
-            # the client to pair its request against.
             item = normalize_message(x)
             content += item.content
-            # Collected separately from the content: only the rendered *string*
-            # is concatenated, so per-item dependencies would otherwise be
-            # dropped and the item's UI would arrive unstyled and unscripted.
             deps += item.html_deps
-            # Structured blocks (e.g. `tool_result`) can't be concatenated
-            # into the content string; they travel alongside it.
             offset = len(blocks)
             blocks.extend(item.blocks)
             for idx, block_deps in item._block_html_deps.items():
                 block_dep_objs[offset + idx] = block_deps
             if item.content:
-                # Coalesce adjacent string items into one run: string runs
-                # and blocks strictly alternate in `parts`.
                 if parts and isinstance(parts[-1], str):
                     parts[-1] += item.content
                 else:
                     parts.append(item.content)
             parts.extend(item.blocks)
-        # Carry cited sources explicitly on the structured web_search block:
-        # the markup path's rehypeAttachCitedSources fallback can't fire for
-        # structured blocks (they never appear as markup siblings of the
-        # citation asides).
         _attach_cited_sources(message.contents, blocks)
         if all(isinstance(x, ContentToolResult) for x in message.contents):
             role = "assistant"
@@ -502,19 +470,8 @@ BurstCited: TypeAlias = tuple[list[WebSearchSource], dict[str, WebSearchSource]]
 def _attach_cited_sources(
     contents: list[Any], blocks: list[StructuredBlock]
 ) -> None:
-    """
-    Mirror the markup path's rehypeAttachCitedSources fallback for structured
-    web blocks, gated per search burst: when a search request produced
-    citations but no provider search results, carry those cited sources on
-    that burst's `web_search` block so the client can show them while no
-    results attach. Mutates `blocks` in place (the same dicts are referenced
-    by `parts`).
-
-    Bursts map to ``web_search`` blocks by order: the n-th
-    ``ContentToolRequestSearch`` corresponds to the n-th ``web_search`` block
-    in ``blocks``. Citations attach to the search burst they follow, not
-    pooled turn-wide; citations before any search request are not attached.
-    """
+    """Cited sources ride the web_search block as a fallback when no provider
+    results attach; FIFO pairing with the earliest pending search."""
     web_search_blocks = [b for b in blocks if b["type"] == "web_search"]
     if not web_search_blocks:
         return
@@ -529,19 +486,12 @@ def _attach_cited_sources(
         return
 
     # Walk contents in order, grouping citations into per-burst buckets.
-    # Each ContentToolRequestSearch opens a new burst; a ContentToolResponseSearch
-    # closes its burst as provider-satisfied (no fallback needed). Citations
-    # attach to the currently open burst; citations before any request have no
-    # burst and are dropped from the structured fallback.
     bursts: list[tuple[bool, BurstCited]] = []
-    # (has_results, (cited_list, by_url)) — one entry per search request, in order.
     for x in contents:
         if isinstance(x, ContentToolRequestSearch):
             bursts.append((False, ([], {})))
         elif isinstance(x, ContentToolResponseSearch):
-            # The client pairs a results block with the EARLIEST pending
-            # search (applyWebBlock's findIndex over sources === null), so
-            # satisfaction is FIFO, not newest-burst.
+            # Client pairs results with the earliest pending search (FIFO).
             for j, (satisfied, bucket) in enumerate(bursts):
                 if not satisfied:
                     bursts[j] = (True, bucket)
@@ -552,8 +502,7 @@ def _attach_cited_sources(
             cited, by_url = bursts[-1][1]
             existing = by_url.get(x.source.url)
             if existing is not None:
-                # Merge by URL (first occurrence wins; a later title fills a
-                # missing one), mirroring mergeSources in rehypeAttachCitedSources.
+                # Merge by URL (first occurrence wins).
                 if "title" not in existing and x.source.title:
                     existing["title"] = x.source.title
                 continue
@@ -563,8 +512,7 @@ def _attach_cited_sources(
             by_url[x.source.url] = source
             cited.append(source)
 
-    # Attach each results-less burst's citations onto its corresponding
-    # web_search block (n-th request → n-th web_search block).
+    # Attach each results-less burst's citations onto its web_search block.
     for i, (has_results, (cited, _)) in enumerate(bursts):
         if has_results or not cited:
             continue
@@ -596,8 +544,7 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
 
     The author's custom UI is carried as the block's ``value`` (with
     ``custom_display: True``) so the JS client pairs it with the pending
-    ``tool_request`` row — the markup routing path was removed, so only
-    the structured block reaches the client's tool-presentation layer.
+    ``tool_request`` row.
     """
     if not _is_tool_result(message):
         return msg
@@ -633,15 +580,6 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
         else "markdown"
     )
     annotations = resolve_tool_annotations(message.request.tool)
-    # ChatMessage.__init__ now emits html_block structured blocks for
-    # non-string (tag-like) content instead of inlining the rendered HTML
-    # into the content string. Fold the block content back so the wrapper
-    # receives the author's full UI (an empty value would produce an
-    # empty structured `tool_result` block).
-    # When `parts` is set, rebuild from the ordered interleaving so mixed
-    # content (e.g. a React element between two islands) keeps its original
-    # order. Without `parts`, fall back to concatenating the string content
-    # with the html_block contents (flat layout).
     if msg.parts is not None:
         content = "".join(
             p if isinstance(p, str) else p["content"]
@@ -663,13 +601,7 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
         grouping=annotations.grouping,
     )
 
-    # Emit a structured `tool_result` block (with `custom_display: True`)
-    # instead of `<shiny-tool-result>` markup. The markup routing was
-    # removed from the JS client, so the structured block is the only path
-    # that pairs the custom UI with the pending `tool_request` row.
-    # `tool_result_message` builds the block from the ToolResultComponent
-    # the same way the default rich path does (tool_result_block →
-    # ShinyToolCardMessage).
+    # Emit a structured `tool_result` block (with `custom_display: True`).
     result = tool_result_message(wrapped)
     result.role = msg.role
     result.attachments = msg.attachments

@@ -1,11 +1,4 @@
-"""Non-streaming tool flow: structured blocks via append_message.
-
-This app injects a ``ContentToolRequest`` and ``ContentToolResult`` pair
-through the non-streaming ``chat.append_message(...)`` action (NOT
-``append_message_stream``).  The structured blocks must flow through the
-``message`` action the same way they flow through streaming chunks, so the
-tool group row and card render with the title and result value visible.
-"""
+"""Non-streaming tool flow: structured blocks via append_message."""
 
 from chatlas.types import ContentToolRequest, ContentToolResult
 from shiny import reactive
@@ -29,9 +22,6 @@ async def _():
         name="lookup_tool",
         arguments={},
     )
-    # Non-streaming append_message: each call sends one complete message.
-    # The request creates a tool_request block; the result creates a
-    # tool_result block.  The client pairs them by request_id.
     await chat.append_message(request)
     await chat.append_message(
         ContentToolResult(

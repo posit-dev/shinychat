@@ -27,10 +27,6 @@ def test_validate_chat_transform_assistant(
     user_msg2 = "return HTML"
     chat.set_user_input(user_msg2)
     chat.send_user_input()
-    # The transform's HTML() result travels as a trusted html-typed payload
-    # (structured html_block on the wire) and must render as LIVE HTML: a
-    # real <b> element, not literal/escaped markup. If it were rendered as
-    # plain text, the visible text would contain the literal "<b>" tags.
     bold = chat.loc_latest_message.locator("b")
     expect(bold).to_have_text("Transformed response")
     expect(chat.loc_latest_message).to_have_text(
@@ -38,8 +34,6 @@ def test_validate_chat_transform_assistant(
     )
     expect(chat.loc_latest_message).not_to_contain_text("<b>")
 
-    # Trusted HTML no longer carries <shiny-chat-raw-html> island wrapper
-    # tags: the client reports the rendered html segment's raw content.
     message_state_expected = tuple(
         [
             {"content": "hello", "role": "user"},

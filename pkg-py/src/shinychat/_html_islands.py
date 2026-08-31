@@ -62,11 +62,7 @@ def split_content_by_trust(
 
 @dataclass
 class IslandBlockPart:
-    """
-    A run of trusted non-React content's rendered payload: the run's HTML
-    (an `html_block`'s `content`), plus the dependency objects the run
-    carries.
-    """
+    """A run of trusted non-React content's rendered HTML and dependencies."""
 
     html: str
     deps: list[HTMLDependency]
@@ -74,19 +70,12 @@ class IslandBlockPart:
 
 @dataclass
 class IslandResidualPart:
-    """
-    A run of bare `data-shinychat-react` elements: rendered HTML surrounded
-    by blank lines (so the markdown parser treats block-level custom
-    elements correctly), plus the dependency objects the run carries.
-    """
+    """A run of bare `data-shinychat-react` elements' rendered HTML and dependencies."""
 
     html: str
     deps: list[HTMLDependency]
 
 
-# One derived piece of trusted content: an island payload (becomes a
-# structured `html_block`) or a residual string run (stays a trusted string
-# segment).
 IslandPart = Union[IslandBlockPart, IslandResidualPart]
 
 
@@ -94,19 +83,10 @@ def derive_island_parts(content: TagChild | TagList) -> list[IslandPart]:
     """
     Partition trusted tag content around `data-shinychat-react` elements.
 
-    Runs of content WITHOUT the attribute render as `IslandBlockPart` parts
-    (trusted HTML + dependency objects — they become structured `html_block`
-    envelopes). Elements WITH the attribute render bare as
-    `IslandResidualPart` string runs (surrounded by blank lines so the
-    markdown parser treats block-level custom elements correctly; adjacent
-    runs coalesce).
-
-    This is the single derivation shared by `ChatMessage` (message content)
-    and `MarkdownStream` (stream/output emission) so trusted non-string
-    content becomes `html_block` envelopes identically everywhere. See
-    kata#mhyd. The partition happens directly on the content — no
-    `<shiny-chat-raw-html>` wrapper tag is constructed at any point
-    (kata#af81).
+    Runs without the attribute become `IslandBlockPart` parts (trusted HTML
+    + deps → `html_block` envelopes). Elements with the attribute become
+    `IslandResidualPart` string runs. This is the single derivation shared
+    by `ChatMessage` and `MarkdownStream`; no wrapper tag is constructed.
     """
     if isinstance(content, (TagList, TagifiedTagList)):
         children: list[TagChild] = list(content)
@@ -116,9 +96,6 @@ def derive_island_parts(content: TagChild | TagList) -> list[IslandPart]:
     parts: list[IslandPart] = []
     for is_react, group in groupby(children, _has_react_attr):
         if is_react:
-            # Bare React elements: render each bare and keep them as a
-            # residual string run, surrounded by blank lines so the
-            # markdown parser treats block-level custom elements correctly.
             for item in group:
                 rendered = TagList(item).render()
                 run = f"\n\n{rendered['html']}\n\n"
@@ -132,8 +109,6 @@ def derive_island_parts(content: TagChild | TagList) -> list[IslandPart]:
                         )
                     )
         else:
-            # Trusted non-React run: render as the block's trusted HTML
-            # content.
             island = TagList(*group).render()
             parts.append(
                 IslandBlockPart(

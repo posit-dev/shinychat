@@ -232,11 +232,8 @@ def test_turn_round_trip_preserves_tool_result_value_with_display():
     """A ContentToolResult with a ToolResultDisplay extra must keep its value
     across a turn JSON round trip (bookmark/history restore path).
 
-    Regression: ToolResultDisplay's html/icon/footer field serializers turned
-    None into an empty-HTML dict ({"html": "", ...}), which restored as an
-    empty but non-None TagList. tool_result_display() treats
-    `display.html is not None` as a custom-HTML override, so restored results
-    rendered "[Empty result]" instead of their value.
+    Regression: None display fields must round-trip as None, not empty-HTML
+    dicts.
     """
     chatlas = pytest.importorskip("chatlas")
     from chatlas._content import ContentToolRequest, ContentToolResult

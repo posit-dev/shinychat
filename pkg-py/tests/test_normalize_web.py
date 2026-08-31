@@ -15,8 +15,6 @@ def test_search_request_emits_web_search_block():
     msg = message_content(
         ContentToolRequestSearch(query="ggplot2 1.0.0 release date")
     )
-    # The structured envelope rides `blocks`; nothing is tagified into the
-    # content string.
     assert msg.content == ""
     assert msg.blocks == [
         {
@@ -43,7 +41,6 @@ def test_search_response_emits_results_block_with_sources():
             "version": 1,
             "sources": [
                 {"url": "https://a.com", "title": "Alpha"},
-                # `title` is omitted (not None) when chatlas didn't report one.
                 {"url": "https://b.com"},
             ],
         }
@@ -72,7 +69,6 @@ def test_fetch_response_emits_web_fetch_block_with_status():
 
 
 def test_fetch_response_omits_status_when_none():
-    # chatlas allows a missing status; the key is then absent on the wire.
     msg = message_content(ContentToolResponseFetch(url="https://example.com"))
     assert msg.content == ""
     assert msg.blocks == [
@@ -81,8 +77,6 @@ def test_fetch_response_omits_status_when_none():
 
 
 def test_citation_renders_aside_element_without_server_derived_label():
-    # Citations render as a markdown-typed string (not a Tag) so they merge
-    # into the surrounding text segment instead of forcing their own block.
     msg = message_content(
         ContentCitation(
             source=WebSource(
@@ -105,7 +99,6 @@ def test_citation_without_title_uses_url_as_link_text():
     )
     assert "shiny-aside" in msg.content
     assert "https://example.com/page" in msg.content
-    # Never emit the unsafe `<url>` autolink form as HTML children.
     assert "<https://" not in msg.content
 
 
@@ -171,10 +164,6 @@ def test_citation_without_source_renders_nothing():
 
 
 def test_turn_search_with_citations_but_no_results_carries_cited_sources():
-    # The structured re-expression of the markup path's
-    # rehypeAttachCitedSources fallback: the turn's citations ride the
-    # web_search block explicitly so the client can show them while no
-    # provider results attach.
     msg = message_content(
         Turn(
             [
@@ -184,7 +173,6 @@ def test_turn_search_with_citations_but_no_results_carries_cited_sources():
                     source=WebSource(url="https://a.com", title="Alpha")
                 ),
                 ContentCitation(source=WebSource(url="https://b.com")),
-                # Duplicate URL merges; a later title fills a missing one.
                 ContentCitation(
                     source=WebSource(url="https://b.com", title="Beta")
                 ),
@@ -204,13 +192,10 @@ def test_turn_search_with_citations_but_no_results_carries_cited_sources():
             ],
         }
     ]
-    # The citation asides still render into the content string as before.
     assert msg.content.count("data-citation") == 3
 
 
 def test_turn_search_with_results_does_not_carry_cited_sources():
-    # Provider results win: cited sources are only a fallback when the turn
-    # has no search results at all.
     msg = message_content(
         Turn(
             [
@@ -234,10 +219,6 @@ def test_turn_search_with_results_does_not_carry_cited_sources():
 
 
 def test_two_bursts_second_has_citations_no_results_carries_cited_sources():
-    # A turn with [search+results] followed by [results-less search + citations]:
-    # the first burst's web_search block must NOT carry cited_sources (it has
-    # provider results), and the second burst's web_search block MUST carry the
-    # citations that follow it.
     msg = message_content(
         Turn(
             [
@@ -256,7 +237,6 @@ def test_two_bursts_second_has_citations_no_results_carries_cited_sources():
                     source=WebSource(url="https://a.com", title="Alpha")
                 ),
                 ContentCitation(source=WebSource(url="https://b.com")),
-                # Duplicate URL merges; a later title fills a missing one.
                 ContentCitation(
                     source=WebSource(url="https://b.com", title="Beta")
                 ),
@@ -266,20 +246,15 @@ def test_two_bursts_second_has_citations_no_results_carries_cited_sources():
     )
     search_blocks = [b for b in msg.blocks if b["type"] == "web_search"]
     assert len(search_blocks) == 2
-    # First burst has provider results → no cited_sources fallback.
     assert "cited_sources" not in search_blocks[0]
-    # Second burst has no results → citations ride its web_search block.
     assert search_blocks[1].get("cited_sources") == [
         {"url": "https://a.com", "title": "Alpha"},
         {"url": "https://b.com", "title": "Beta"},
     ]
-    # The citation asides still render into the content string.
     assert msg.content.count("data-citation") == 3
 
 
 def test_citations_before_any_search_request_not_attached():
-    # Citations that appear before any search request have no burst to
-    # attach to; they must not be pooled onto a later burst's web_search block.
     msg = message_content(
         Turn(
             [
@@ -294,7 +269,6 @@ def test_citations_before_any_search_request_not_attached():
     search_blocks = [b for b in msg.blocks if b["type"] == "web_search"]
     assert len(search_blocks) == 1
     assert "cited_sources" not in search_blocks[0]
-    # The orphan citation still renders as markup.
     assert msg.content.count("data-citation") == 1
 
 
@@ -333,10 +307,6 @@ def test_tool_display_none_suppresses(monkeypatch):
 
 
 def test_overlapping_pending_searches_results_pair_fifo():
-    # roborev 1069: the client pairs a web_search_results block with the
-    # EARLIEST pending search (applyWebBlock), so server-side satisfaction
-    # must be FIFO too. [request A, request B, response A, citation B]:
-    # response A satisfies burst A; burst B keeps its citation fallback.
     msg = message_content(
         Turn(
             [
@@ -355,9 +325,7 @@ def test_overlapping_pending_searches_results_pair_fifo():
     )
     search_blocks = [b for b in msg.blocks if b["type"] == "web_search"]
     assert len(search_blocks) == 2
-    # Burst A got the provider results → no cited_sources fallback.
     assert "cited_sources" not in search_blocks[0]
-    # Burst B is still pending → its citations ride its web_search block.
     assert search_blocks[1].get("cited_sources") == [
         {"url": "https://b.com", "title": "Beta"},
     ]

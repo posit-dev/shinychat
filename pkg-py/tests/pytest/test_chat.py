@@ -218,8 +218,7 @@ def test_tagifiable_normalization():
     assert m.content == "Hello <span>world</span>!"
     assert m.role == "assistant"
 
-    # Interpreted as HTML (without escaping); raw HTML travels as a
-    # structured html_block, not island markup in the content string
+    # Interpreted as HTML (without escaping)
     m = message_content(HTML("Hello <span>world</span>!"))
     assert m.content == ""
     assert m.blocks == [
@@ -1395,7 +1394,7 @@ def test_messages_surfaces_attachments():
 
 
 # ---------------------------------------------------------------------------
-# chat_ui(messages=) with structured blocks: data-initial-messages (kata#089g)
+# chat_ui(messages=) with structured blocks: data-initial-messages
 # ---------------------------------------------------------------------------
 
 
@@ -1412,7 +1411,6 @@ def _tool_result_block() -> Any:
 
 
 def _initial_messages_attr(tag: Any) -> Any:
-    """Parse the container tag's `data-initial-messages` JSON attribute."""
     from htmltools import Tag
 
     assert isinstance(tag, Tag)
@@ -1428,7 +1426,6 @@ def test_chat_ui_string_messages_keep_static_tags():
     html = tag.get_html_string()
     assert html.count("<shiny-chat-message ") == 2
     assert "Hello there" in html
-    # String-only messages don't opt into the embedded JSON.
     assert "data-initial-messages" not in tag.attrs
 
 
@@ -1441,7 +1438,6 @@ def test_chat_ui_block_carrying_messages_embed_json_attr():
         messages=[ChatMessage(content="", role="assistant", blocks=[block])],
     )
     html = tag.get_html_string()
-    # No static tag: it carries string content only, so the block would drop.
     assert "<shiny-chat-message " not in html
     entries = _initial_messages_attr(tag)
     assert len(entries) == 1
@@ -1449,7 +1445,6 @@ def test_chat_ui_block_carrying_messages_embed_json_attr():
     segments = entries[0]["segments"]
     assert segments[0] == {"content": "", "content_type": "markdown"}
     assert segments[1] == block
-    # Deps never ride the JSON (they attach to the container tag instead).
     assert "html_deps" not in json.dumps(entries)
 
 
@@ -1464,8 +1459,6 @@ def test_chat_ui_mixed_list_embeds_whole_list_to_preserve_order():
             ChatMessage(content="", role="assistant", blocks=[block]),
         ],
     )
-    # The string message must NOT become a static tag either: the whole list
-    # rides the JSON so the message order stays intact.
     assert "<shiny-chat-message " not in tag.get_html_string()
     entries = _initial_messages_attr(tag)
     assert [e["role"] for e in entries] == ["assistant", "assistant"]
@@ -1508,15 +1501,11 @@ def test_chat_ui_initial_message_html_deps_attach_to_container():
         "1.0.0",
         head=HTML("<meta name='init-island-dep'>"),
     )
-    # Tag content normalizes to an html_block carrying the rendered HTML.
     msg = ChatMessage(content=Tag("div", dep, "island"), role="assistant")
     assert [b["type"] for b in msg.blocks] == ["html_block"]
 
     tag = chat_ui("chat_p5_deps", messages=[msg])
-    # The dep object rides the container tag (Shiny's dependency system
-    # renders it, session or not)...
     assert any(d.name == "init-island-dep" for d in tag.get_dependencies())
-    # ...and no html_deps leak into the embedded JSON.
     entries = _initial_messages_attr(tag)
     assert "html_deps" not in json.dumps(entries)
     block = [s for s in entries[0]["segments"] if "type" in s][0]
@@ -1538,7 +1527,6 @@ def test_chat_ui_initial_messages_icon_mirrors_static_path():
         icon_assistant=HTML("<svg></svg>"),
     )
     entries = _initial_messages_attr(tag)
-    # The assistant-icon default must not leak onto user messages.
     assert "icon" not in entries[0]
     assert entries[1]["icon"] == "<svg></svg>"
 
@@ -1605,8 +1593,6 @@ class _BookmarkStub:
 
 
 def _bare_chatlas_client(turns: list[Any]) -> Any:
-    """A real chatlas.Chat (so the chatlas bookmark/turns paths engage) with
-    no provider — only turn storage is exercised."""
     from chatlas import Chat as ChatlasChat
 
     client = ChatlasChat.__new__(ChatlasChat)
@@ -1644,7 +1630,6 @@ def test_bookmark_save_does_not_persist_ui_for_turns_capable_client():
         chat.enable_bookmarking(client, bookmark_on=None)
 
     bookmark = cast(Any, session).bookmark
-    # on_bookmark: client state, (skipped) UI, greeting
     assert len(bookmark.on_bookmark_cbs) == 3
 
     class _State:
@@ -1658,8 +1643,6 @@ def test_bookmark_save_does_not_persist_ui_for_turns_capable_client():
 
     run_async(_exercise)
 
-    # Client (turns) state is persisted; the UI message state is not (P4) —
-    # on restore the UI is re-derived from the client's turns.
     assert "chat_bm_turns" in _State.values
     assert "chat_bm_turns--msgs" not in _State.values
 
@@ -1682,8 +1665,6 @@ def test_bookmark_restore_rederives_ui_from_client_turns():
     bookmark = cast(Any, session).bookmark
     assert len(bookmark.on_restore_cbs) == 3
 
-    # The bookmark holds the client (turns) state — including an old-format
-    # persisted UI value, which must be ignored, never re-parsed (P4).
     old_ui_value = [
         {
             "role": "assistant",
@@ -1713,8 +1694,6 @@ def test_bookmark_restore_rederives_ui_from_client_turns():
     run_async(_exercise)
 
     message_actions = [a for a in sent if a["type"] == "message"]
-    # user turn + one merged tool-exchange message; the stale persisted UI is
-    # never emitted.
     assert len(message_actions) == 2
     all_segments = [
         s for a in message_actions for s in a["message"]["segments"]
@@ -1722,7 +1701,6 @@ def test_bookmark_restore_rederives_ui_from_client_turns():
     assert not any("STALE MARKUP" in s.get("content", "") for s in all_segments)
     block_kinds = [s["type"] for s in all_segments if "type" in s]
     assert block_kinds == ["tool_request", "tool_result"]
-    # The merged assistant message keeps the turn's text after the blocks.
     asst_segments = message_actions[1]["message"]["segments"]
     assert asst_segments[-1] == {
         "content": "It's sunny.",
@@ -1732,7 +1710,7 @@ def test_bookmark_restore_rederives_ui_from_client_turns():
 
 class _StateOnlyClient:
     """ClientWithState without turn-level access: the legacy
-    persist-and-re-emit UI bookmark path is kept for these (P4)."""
+    persist-and-re-emit UI bookmark path is kept for these."""
 
     def __init__(self) -> None:
         self.state: Any = None
@@ -1767,8 +1745,6 @@ def test_bookmark_legacy_path_persists_ui_for_state_only_client():
 
     run_async(_exercise)
 
-    # Without turn-level access the UI snapshot is still the only UI record,
-    # so it keeps being persisted.
     assert "chat_bm_legacy" in _State.values
     assert _State.values["chat_bm_legacy--msgs"] == [
         {
@@ -1782,10 +1758,6 @@ def test_bookmark_restore_without_chat_state_appends_init_messages():
     from shiny._deprecated import ShinyDeprecationWarning
     from shinychat import chat_ui
 
-    # A block-carrying `chat_ui(messages=)` initial message rides the DOM
-    # (the container's data-initial-messages attribute, kata#089g), so the
-    # no-chat-state restore branch must NOT append it server-side; only the
-    # deprecated `Chat(messages=)` constructor arg is appended there.
     tag = chat_ui(
         "chat_bm_empty",
         messages=[

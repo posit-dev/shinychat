@@ -1,19 +1,4 @@
-"""Bookmark restore with structured tool and web-search blocks.
-
-This app combines:
-  * Bookmarking enabled (MockClient + bookmark_store="server"), mirroring
-    chat/bookmark/app.py — but the MockClient also implements the
-    ClientWithTurns protocol (get_turns/set_turns), like a real chatlas
-    client, so restore exercises the turns-based path: the UI is re-derived
-    from the client's turns server-side, reconstructing structured blocks.
-  * A button that injects a tool request+result pair (framed_result pattern)
-    and a web search burst (web_citations pattern: ContentToolRequestSearch +
-    ContentToolResponseSearch with sources), recording the equivalent
-    chatlas-shaped turns in the client the way a real tool loop would.
-
-On bookmark restore, the tool group/card and the web activity must re-render
-in the restored transcript, re-derived from the turns.
-"""
+"""Bookmark restore with structured tool and web-search blocks."""
 
 from typing import Any
 
@@ -74,8 +59,6 @@ ui.input_action_button("add_blocks", "Add tool + web blocks")
 
 
 async def inject_tool_and_web() -> None:
-    """Inject a tool request+result pair and a web search burst."""
-    # Tool request + result (framed_result pattern)
     request = ContentToolRequest(
         id="bookmark-tool-1",
         name="data_tool",
@@ -91,7 +74,6 @@ async def inject_tool_and_web() -> None:
             )
         },
     )
-    # Web search burst (web_citations pattern)
     search_request = ContentToolRequestSearch(query="best e-bike motors")
     search_response = ContentToolResponseSearch(
         sources=[
@@ -102,15 +84,9 @@ async def inject_tool_and_web() -> None:
         ]
     )
     text = ContentText(text="Hub motors are ideal for flat terrain.")
-    # One stream for the whole injection: each completed assistant stream
-    # triggers an auto-bookmark (bookmark_on="response"), so two streams
-    # would race the test's bookmark-URL capture (roborev 1072).
     await chat.append_message_stream(
         [request, result, search_request, search_response, text]
     )
-    # Record the exchange as turns the way a real chatlas tool loop would
-    # (assistant request turn, then a user-role tool-result turn, then the
-    # assistant web/text turn).
     client.turns.append(_dump(AssistantTurn(contents=[request])))
     client.turns.append(_dump(Turn(role="user", contents=[result])))
     client.turns.append(
@@ -126,7 +102,6 @@ async def _():
 
 @chat.on_user_submit
 async def handle_user_input(user_input: str):
-    # Track turns in mock client (mimicking what a real LLM client does)
     client.turns.append({"role": "user", "content": user_input})
     reply = f"You said: {user_input}"
     client.turns.append({"role": "assistant", "content": reply})

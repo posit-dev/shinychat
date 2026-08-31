@@ -36,12 +36,7 @@ def msg(role: str) -> dict[str, object]:
 
 
 def derived(role: str, content: str) -> dict[str, object]:
-    """The stored UI message a plain-text turn group derives to (P4).
-
-    History save now derives node UI server-side from the turn group rather
-    than persisting the client-reported snapshot, so stored messages carry
-    the turn's content and the structured-format version marker.
-    """
+    """The stored UI message a plain-text turn group derives to."""
     return {
         "role": role,
         "segments": [{"content": content, "content_type": "markdown"}],
@@ -91,8 +86,6 @@ def test_extend_appends_only_new_groups_with_ui_by_role():
     assert len(rec.nodes) == 2
     path = rec.path_node_ids()
     assert rec.nodes[path[0]].turns == [{"role": "user", "content": "q1"}]
-    # Stored UI is derived server-side from the turn groups (P4), not from
-    # the client-reported snapshot.
     assert rec.nodes[path[0]].ui == [derived("user", "q1")]
     assert rec.nodes[path[1]].ui == [derived("assistant", "a1")]
 
@@ -132,9 +125,6 @@ def test_extend_groups_tool_exchange_into_single_node():
     assert len(asst_node.turns) == 3
     assert user_node.ui == [derived("user", "weather?")]
 
-    # The tool-call exchange derives to ONE stored UI message carrying the
-    # structured tool_request/tool_result blocks (P4) — the client snapshot
-    # used to drop these entirely.
     assert asst_node.ui is not None and len(asst_node.ui) == 1
     asst_ui = asst_node.ui[0]
     assert asst_ui["version"] == STORED_UI_VERSION
@@ -143,13 +133,11 @@ def test_extend_groups_tool_exchange_into_single_node():
     assert block_types == ["tool_request", "tool_result"]
     assert asst_ui["blocks"][0]["request_id"] == "x"
     assert asst_ui["blocks"][1]["value"] == "Sunny"
-    # Interleaved layout: the final text follows the two blocks.
     assert asst_ui["block_positions"] == [0, 0]
     assert asst_ui["segments"] == [
         {"content": "It's sunny.", "content_type": "markdown"}
     ]
 
-    # path_turns() must flatten back to all 4 original turns
     assert rec.path_turns() == [user_turn, asst_req, user_res, asst_final]
 
 
@@ -159,7 +147,7 @@ def test_extend_attaches_extra_assistant_msgs_to_last_node():
         [{"role": "user", "content": "q"}],
         [{"role": "assistant", "content": "a"}],
     ]
-    oob_ui = msg("assistant")  # out-of-band: no matching turn group
+    oob_ui = msg("assistant")
     msgs = [
         msg("user"),
         msg("assistant"),
@@ -167,17 +155,10 @@ def test_extend_attaches_extra_assistant_msgs_to_last_node():
     ]
     extend_record_linear(rec, groups, msgs, ui_offset=0)
     path = rec.path_node_ids()
-    # Derived messages consume the first two client-reported messages; the
-    # out-of-band extra is preserved from the snapshot on the last node.
     assert rec.nodes[path[1]].ui == [derived("assistant", "a"), oob_ui]
 
 
 def test_extend_attaches_late_ui_message_when_turn_groups_already_caught_up():
-    # Simulates: append_message() (non-streamed) followed by a streamed
-    # reply, both saved to history. Save #1 creates the user/assistant
-    # nodes from the turn groups. By save #2, chatlas turns have already
-    # caught up (streaming adds no *new* turn group), but a new UI message
-    # (the streamed reply) has arrived and must not be dropped.
     rec = new_conversation_record(title="t")
     groups = [
         [{"role": "user", "content": "q"}],
@@ -202,8 +183,6 @@ def test_extend_attaches_late_ui_message_when_turn_groups_already_caught_up():
         for node_id in rec.path_node_ids()
         for m in (rec.nodes[node_id].ui or [])
     ]
-    # The first two slots hold the server-derived UI (P4); the late-arriving
-    # message is preserved from the client snapshot.
     assert all_ui == [
         derived("user", "q"),
         derived("assistant", "a"),
@@ -221,9 +200,6 @@ def test_extend_noop_when_no_new_groups():
 
 
 def test_extend_derives_ui_even_without_client_messages():
-    # The client snapshot is no longer the persisted UI source (P4): new
-    # nodes get server-derived UI from their turn groups even when no
-    # client-reported messages arrive with the save.
     rec = new_conversation_record(title="t")
     groups = [
         [{"role": "user", "content": "q"}],
@@ -242,7 +218,6 @@ def test_extend_derives_ui_even_without_client_messages():
 class _FakeChat:
     def __init__(self) -> None:
         self.set_greeting_calls: list[Any] = []
-        # No session: derived UI messages keep raw (unprocessed) html deps.
         self._session = None
 
     def _messages_for_bookmark(self) -> list[Any]:
@@ -526,11 +501,6 @@ async def test_replay_rereport_does_not_resave_or_truncate():
 
 @pytest.mark.anyio
 async def test_replay_rereport_then_new_turn_does_not_duplicate_ui():
-    # Regression (roborev 1063, finding 4): after a restore re-report hits
-    # the idempotent guard, ui_offset must advance even though nothing is
-    # saved. A stale offset makes the next genuine save reprocess the
-    # already-stored snapshot messages as out-of-band "extras", duplicating
-    # them in stored UI.
     store = _RecordingStore()
     chat = _ReplayFakeChat()
     adapter = _GrowingFakeAdapter()
@@ -544,7 +514,6 @@ async def test_replay_rereport_then_new_turn_does_not_duplicate_ui():
     )
     controller.partition = part()
 
-    # Save #1: one user/assistant exchange.
     adapter.turns = [
         {"role": "user", "content": "q1"},
         {"role": "assistant", "content": "a1"},
@@ -562,33 +531,20 @@ async def test_replay_rereport_then_new_turn_does_not_duplicate_ui():
     assert len(saved_ui) == 2
     assert controller.ui_offset == 2
 
-    # Restore re-renders the stored UI; the client re-reports the same
-    # snapshot, hitting the idempotent guard (early return, no save).
     await controller.replay_ui(record)
     assert chat.messages == saved_ui, "replay must reconstruct the full UI"
-    # Force a genuinely stale offset (replay_ui seeds it from the restore
-    # count; the reset paths — e.g. session-start restore where the delayed
-    # client snapshot hasn't caught up — can leave it behind). Without the
-    # production fix the guard below leaves it stale; with the fix it
-    # advances. (roborev 1064: must not pass vacuously.)
     controller.ui_offset = 0
     await controller.on_response()
     assert len(store.put_calls) == 1, "re-report must not trigger another save"
-    # The fix: ui_offset must advance even on the idempotent early return.
     assert controller.ui_offset == 2, (
         "ui_offset must advance past the re-reported snapshot"
     )
 
-    # A shorter partial mid-restore report also hits the guard but must not
-    # move the offset backward (roborev 1064 — monotonic advance).
     chat.messages = [msg("user")]
     await controller.on_response()
     assert len(store.put_calls) == 1
     assert controller.ui_offset == 2, "partial report must not rewind ui_offset"
 
-    # Save #2: a genuine new turn arrives. With the stale-offset bug, the
-    # two re-reported messages would be reprocessed as out-of-band extras
-    # and duplicated onto the last node.
     adapter.turns += [
         {"role": "user", "content": "q2"},
         {"role": "assistant", "content": "a2"},
@@ -607,7 +563,6 @@ async def test_replay_rereport_then_new_turn_does_not_duplicate_ui():
         for nid in record.path_node_ids()
         for m in (record.nodes[nid].ui or [])
     ]
-    # Four turn groups => four derived UI messages, no duplicates.
     assert len(all_ui) == 4, (
         f"expected 4 stored UI messages, got {len(all_ui)}: {all_ui}"
     )
@@ -1811,8 +1766,6 @@ def _make_branched_controller() -> tuple[
 async def test_handle_navigate_switches_to_prev_sibling():
     controller, chat, adapter, store = _make_branched_controller()
 
-    # Message index 2 = n_0005 (the edited user message, sibling 2/2)
-    # Navigate "prev" -> switch to n_0003's branch
     await controller.handle_navigate(2, "prev")
 
     assert controller.record is not None
@@ -1831,7 +1784,6 @@ async def test_handle_navigate_switches_to_next_sibling():
     chat.cleared = False
     store.put_calls.clear()
 
-    # Now message index 2 = n_0003 (sibling 1/2); "next" -> back to n_0005's branch
     await controller.handle_navigate(2, "next")
 
     assert controller.record is not None
@@ -1848,7 +1800,6 @@ async def test_handle_navigate_switches_to_next_sibling():
 async def test_handle_navigate_noop_at_boundary():
     controller, chat, adapter, store = _make_branched_controller()
 
-    # n_0005 is already the last sibling; "next" should be a no-op
     await controller.handle_navigate(2, "next")
 
     assert not chat.cleared
@@ -1922,7 +1873,6 @@ def _make_triple_branched_controller() -> tuple[
 async def test_handle_navigate_cycles_through_three_siblings():
     controller, chat, adapter, store = _make_triple_branched_controller()
 
-    # Message index 2 = n_0007 (3rd/last sibling, "q2-e2"). "prev" -> n_0005 ("q2-e1").
     await controller.handle_navigate(2, "prev")
     assert controller.record is not None
     assert controller.record.current_leaf == "n_0006"
@@ -1933,19 +1883,15 @@ async def test_handle_navigate_cycles_through_three_siblings():
         "a2-e1",
     ]
 
-    # From n_0005 (1st sibling), "prev" -> n_0003 ("q2", the original).
     await controller.handle_navigate(2, "prev")
     assert controller.record.current_leaf == "n_0004"
     assert [t["content"] for t in adapter.turns] == ["q1", "a1", "q2", "a2"]
 
-    # n_0003 is the first sibling: "prev" here must be a no-op.
     store.put_calls.clear()
     await controller.handle_navigate(2, "prev")
     assert controller.record.current_leaf == "n_0004"
     assert store.put_calls == []
 
-    # "next" twice walks back through n_0005 to n_0007, without corrupting
-    # either earlier branch's content.
     await controller.handle_navigate(2, "next")
     assert controller.record.current_leaf == "n_0006"
     assert [t["content"] for t in adapter.turns] == [
@@ -1964,7 +1910,6 @@ async def test_handle_navigate_cycles_through_three_siblings():
         "a2-e2",
     ]
 
-    # n_0007 is the last (3rd) sibling: "next" here must be a no-op.
     store.put_calls.clear()
     await controller.handle_navigate(2, "next")
     assert controller.record.current_leaf == "n_0008"
@@ -1981,7 +1926,6 @@ async def test_handle_edit_truncates_and_signals_resubmit():
         msg("assistant"),
     ]
 
-    # Edit message at index 2 (n_0005) -> truncate to n_0002, signal resubmit
     await controller.handle_edit(2, "q2-re-edited")
 
     assert controller.record is not None
@@ -2069,13 +2013,9 @@ async def test_handle_edit_forks_from_a_multi_turn_tool_call_node():
         msg("assistant"),
     ]
 
-    # Message index 2 = n_0003 ("thanks"); its parent is n_0002, the
-    # 3-turn tool-call node.
     await controller.handle_edit(2, "thanks a lot")
 
     assert controller.record.current_leaf == "n_0002"
-    # All 4 turns from n_0001 + n_0002 must survive -- not just n_0002's
-    # last turn -- since path_turns() flattens per-node, not per-turn.
     assert [t["content"] for t in adapter.turns] == [
         "weather?",
         "tool_request",
@@ -2083,7 +2023,7 @@ async def test_handle_edit_forks_from_a_multi_turn_tool_call_node():
         "sunny",
     ]
     assert chat.cleared
-    assert len(chat.messages_) == 2  # n_0001's + n_0002's UI messages
+    assert len(chat.messages_) == 2
     update_actions = [
         a for a in chat.actions if a.get("type") == "update_input"
     ]
@@ -2229,7 +2169,7 @@ async def test_switch_to_resends_sibling_metadata_for_branched_conversation():
 
 
 # ---------------------------------------------------------------------------
-# P4: turns-based restore (kata#c15v)
+# Turns-based restore
 # ---------------------------------------------------------------------------
 
 
@@ -2263,9 +2203,6 @@ class _ToolTurnsAdapter:
 
 @pytest.mark.anyio
 async def test_on_response_stores_derived_ui_with_structured_blocks():
-    # P4: history save derives UI server-side from the turn group, so the
-    # stored message carries the structured blocks the client snapshot
-    # drops (`StoredMessage.blocks` is never populated from the client).
     controller, _store = _make_controller()
     controller.adapter = _ToolTurnsAdapter()  # type: ignore[assignment]
 
@@ -2295,8 +2232,6 @@ async def test_on_response_stores_derived_ui_with_structured_blocks():
 
 @pytest.mark.anyio
 async def test_replay_emits_derived_blocks_inline_in_segments():
-    # Replay of a versioned stored message re-interleaves the structured
-    # blocks into the emitted message action's segments (wire_segments()).
     from shiny.express._stub_session import ExpressStubSession
     from shiny.session import session_context
     from shinychat import Chat
@@ -2343,14 +2278,10 @@ async def test_replay_emits_derived_blocks_inline_in_segments():
 
 @pytest.mark.anyio
 async def test_replay_discards_old_format_ui_and_rederives_from_turns():
-    # Old persisted UI (string-only, no version marker) is never re-parsed:
-    # it is discarded and re-derived from the node's stored turns, so the
-    # tool card comes back as a structured block rather than vanishing.
     rec = new_conversation_record(title="t")
     rec.append_linear([_user_turn_dict("weather?")], ui=[msg("user")])
     rec.append_linear(
         chatlas_tool_group(),
-        # Old-format stored UI: no version marker, string-only segments.
         ui=[
             {
                 "role": "assistant",
@@ -2368,12 +2299,10 @@ async def test_replay_discards_old_format_ui_and_rederives_from_turns():
     await controller.replay_ui(rec)
 
     assert len(chat.messages_) == 2
-    # The old-format user message was discarded and re-derived from the turn.
     assert chat.messages_[0]["version"] == STORED_UI_VERSION
     assert chat.messages_[0]["segments"] == [
         {"content": "weather?", "content_type": "markdown"}
     ]
-    # The assistant message now carries the structured blocks.
     asst = chat.messages_[1]
     assert asst["version"] == STORED_UI_VERSION
     assert [b["type"] for b in asst["blocks"]] == [
@@ -2384,8 +2313,6 @@ async def test_replay_discards_old_format_ui_and_rederives_from_turns():
 
 @pytest.mark.anyio
 async def test_replay_falls_back_to_text_when_turns_missing():
-    # A node with neither usable UI nor turns degrades to a single empty
-    # text-only message (lossy but never broken).
     rec = new_conversation_record(title="t")
     node_id = rec.append_linear([], ui=None)
 
@@ -2402,13 +2329,11 @@ async def test_replay_falls_back_to_text_when_turns_missing():
             "segments": [{"content": "", "content_type": "markdown"}],
         }
     ]
-    assert rec.nodes[node_id].ui is None  # replay does not write back
+    assert rec.nodes[node_id].ui is None
 
 
 @pytest.mark.anyio
 async def test_replay_rederives_text_only_when_ui_missing():
-    # ui=None with plain-text turns: re-derive from the turns (this replaces
-    # the old turn_fallback_markdown-only path with full normalization).
     rec = new_conversation_record(title="t")
     rec.append_linear([_user_turn_dict("hi")], ui=None)
     rec.append_linear(
@@ -2435,10 +2360,6 @@ async def test_replay_rederives_text_only_when_ui_missing():
 
 @pytest.mark.anyio
 async def test_out_of_band_message_survives_save_and_replay():
-    # A message reported by the client that doesn't correspond to any turn
-    # group (e.g. appended via append_message() outside the submit flow) is
-    # preserved from the snapshot on the fallback node and replays after the
-    # derived messages.
     controller, _store = _make_controller()
     chat = _TrackingChat()
     controller.chat = chat  # type: ignore[assignment]
@@ -2463,8 +2384,8 @@ async def test_out_of_band_message_survives_save_and_replay():
     path = record.path_node_ids()
     leaf_ui = record.nodes[path[1]].ui
     assert leaf_ui is not None and len(leaf_ui) == 2
-    assert leaf_ui[0]["version"] == STORED_UI_VERSION  # derived
-    assert leaf_ui[1] == note  # out-of-band extra, preserved as-is
+    assert leaf_ui[0]["version"] == STORED_UI_VERSION
+    assert leaf_ui[1] == note
 
     chat.messages_ = []
     await controller.replay_ui(record)
@@ -2479,9 +2400,6 @@ async def test_out_of_band_message_survives_save_and_replay():
 
 @pytest.mark.anyio
 async def test_save_replay_continue_save_bookkeeping():
-    # Offset/bookkeeping across a save → replay → continue → save cycle:
-    # the re-reported snapshot after replay must not re-save, and a
-    # following genuine response appends exactly one new node.
     controller, store = _make_controller()
     chat = _ReplayFakeChat()
     controller.chat = chat  # type: ignore[assignment]
@@ -2500,11 +2418,9 @@ async def test_save_replay_continue_save_bookkeeping():
     await controller.replay_ui(record)
     assert controller.ui_offset == 2
 
-    # Client re-reports the restored snapshot: no new save.
     await controller.on_response()
     assert len(store.put_calls) == 1
 
-    # A genuine new exchange appends exactly one derived message per group.
     adapter.turns += [
         {"role": "user", "content": "more"},
         {"role": "assistant", "content": "sure"},

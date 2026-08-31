@@ -5,22 +5,8 @@ from playwright.sync_api import Page, expect
 from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
 
-# Same F3 "positional drop/dup" class as the strict-xfailed sister tests in
-# history_cross_session_deps/ and history_ui_offset_after_restore/ (this test
-# was missed when those were xfailed). Diagnosed 2026-08-31 during kata#af81:
-# the save effect fires mid-stream with snapshot [user, oob] while the mock
-# chatlas client has already recorded both turns, so extend_record_linear's
-# positional rule swallows the out-of-band message (never persisted); the
-# follow-up save then treats the turn-derived reply as an extra and
-# duplicates it. Restore faithfully replays the corrupted store. Resolved by
-# the exchange-tree history rewrite (kata epic 6d0d). strict=True so the
-# suite flags when a fix makes it pass again.
 pytestmark = pytest.mark.xfail(
-    reason=(
-        "F3-class positional snapshot/turns reconciliation bug; resolved by "
-        "exchange-tree history rewrite (kata epic 6d0d). See roborev 1063 "
-        "disposition on kata#c15v."
-    ),
+    reason="Positional snapshot/turns reconciliation bug; expected resolved by the exchange-tree history rewrite",
     strict=True,
 )
 

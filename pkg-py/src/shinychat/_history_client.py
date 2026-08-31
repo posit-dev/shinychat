@@ -144,8 +144,7 @@ def _turn_dict_effective_role(turn: dict[str, Any]) -> Role:
     """Effective UI role of a serialized turn dict.
 
     A user-role turn carrying only tool results displays as assistant
-    (mirrors the all-`ContentToolResult` rule in `Turn` normalization and
-    R's `ellmer_turn_effective_role()`).
+    (mirrors R's ``ellmer_turn_effective_role()``).
     """
     if _is_tool_result_turn(turn):
         return "assistant"
@@ -156,10 +155,8 @@ def _turn_dict_effective_role(turn: dict[str, Any]) -> Role:
 def _turn_group_text_fallback(group: list[dict[str, Any]]) -> ChatMessage:
     """Text-only message for a turn group that can't be normalized.
 
-    Used when the chatlas round trip is unavailable (chatlas not installed)
-    or fails (e.g. turns written by an incompatible version): the group's
-    last turn degrades to its plain text, so replay stays alive (lossy but
-    never broken) instead of dropping the exchange.
+    Degrades the group's last turn to plain text so replay stays alive
+    instead of dropping the exchange.
     """
     last = group[-1]
     return ChatMessage(
@@ -171,20 +168,13 @@ def _turn_group_text_fallback(group: list[dict[str, Any]]) -> ChatMessage:
 def normalize_turn_group(group: list[dict[str, Any]]) -> ChatMessage | None:
     """Merge one history turn group into a single :class:`ChatMessage`.
 
-    A turn group is one or more serialized turns forming a single exchange
-    unit — e.g. a tool-call round (assistant-request, user-result,
-    assistant-text) — matching the single combined UI message produced by
-    streaming. chatlas-shaped groups (turn dicts with a ``contents`` list)
-    are validated back into ``chatlas.Turn`` objects, merged into one
-    synthetic turn, and run through ``normalize_message`` so structured
-    blocks (tool_request/tool_result/web_*/html_block), ``parts``
-    interleaving, and per-block dep objects are all reconstructed. Generic
-    dict turns (``{"role", "content"}``) carry no structure, so they
-    normalize as plain markdown.
+    chatlas-shaped groups are validated back into ``chatlas.Turn`` objects,
+    merged, and run through ``normalize_message`` so structured blocks,
+    ``parts`` interleaving, and per-block deps are reconstructed. Generic
+    dict turns normalize as plain markdown.
 
-    Returns ``None`` when the group normalizes to nothing displayable (no
-    string content and no blocks), mirroring R's ``merge_ellmer_turn_group``
-    returning ``NULL``.
+    Returns ``None`` when the group normalizes to nothing displayable
+    (mirrors R's ``merge_ellmer_turn_group`` returning ``NULL``).
     """
     if not group:
         return None
@@ -192,16 +182,11 @@ def normalize_turn_group(group: list[dict[str, Any]]) -> ChatMessage | None:
         try:
             from chatlas import Turn
         except ImportError:
-            # chatlas-shaped turns but no chatlas to revalidate them:
-            # degrade to text rather than dropping the exchange.
             return _turn_group_text_fallback(group)
         try:
             turns = [Turn.model_validate(t) for t in group]
             contents = [c for turn in turns for c in turn.contents]
-            # The merged turn's role only matters when not every content item
-            # is a tool result (Turn normalization maps all-tool-result
-            # content to "assistant" itself); the group's first turn decides,
-            # mirroring R's `ellmer_turn_effective_role(group[[1]])`.
+            # The group's first turn decides the role (mirrors R's ellmer_turn_effective_role).
             merged = Turn(role=turns[0].role, contents=contents)
             msg = normalize_message(merged)
         except Exception as e:
@@ -215,9 +200,7 @@ def normalize_turn_group(group: list[dict[str, Any]]) -> ChatMessage | None:
         if not msg.content and not msg.blocks:
             return None
         return msg
-    # Generic dict turns ({"role", "content"}): always single-turn groups in
-    # practice (TurnsAdapter groups non-chatlas turns as singletons); join
-    # defensively if a hand-built group has more.
+    # Generic dict turns: join defensively if a hand-built group has more.
     content = "\n\n".join(
         text for t in group if (text := str(t.get("content", "")))
     )

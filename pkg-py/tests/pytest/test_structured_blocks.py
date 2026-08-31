@@ -1,4 +1,4 @@
-"""Wire-order tests for structured blocks (Phase 1 structured-content slice).
+"""Wire-order tests for structured blocks.
 
 Covers:
 - `transform_assistant_response` rewrites the string content only; structured
@@ -41,8 +41,6 @@ def _tool() -> Tool:
 
 def _request() -> ContentToolRequest:
     req = ContentToolRequest(id="call-1", name="my_tool", arguments={"x": 1})
-    # Mirrors what chatlas itself does internally: `x.tool =
-    # ToolInfo.from_tool(tool)`.
     req.tool = ToolInfo.from_tool(_tool())
     return req
 
@@ -64,7 +62,7 @@ def _block() -> ToolResultBlock:
 
 
 # ---------------------------------------------------------------------------
-# Fix 1: transform_assistant_response carries structured blocks through
+# transform_assistant_response carries structured blocks through
 # ---------------------------------------------------------------------------
 
 
@@ -112,7 +110,7 @@ async def test_transform_preserves_structured_blocks() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Fix 3: ordered interleaving of string runs and structured blocks
+# Ordered interleaving of string runs and structured blocks
 # ---------------------------------------------------------------------------
 
 
@@ -155,7 +153,6 @@ async def test_append_message_turn_interleaves_segments_in_order() -> None:
     assert segments[1]["tool_name"] == "my_tool"
     assert segments[2] == {"content": " After", "content_type": "markdown"}
 
-    # No segment carries tool markup; the block is the only representation.
     assert all(
         "<shiny-tool-result" not in s.get("content", "") for s in segments
     )
@@ -201,7 +198,7 @@ async def test_stream_turn_interleaves_actions_in_order() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Uniform replace semantics (kata#0r4g): a replace wipes the in-flight
+# Uniform replace semantics: a replace wipes the in-flight
 # message (structured blocks included), then parts re-emit as appends
 # ---------------------------------------------------------------------------
 
@@ -246,7 +243,6 @@ async def test_send_message_parts_replace_wipes_before_reemitting() -> None:
     assert wipe["operation"] == "replace"
     assert wipe["content"] == ""
 
-    # Every re-emitted part is an append, in wire-segment order.
     chunks = [a for a in sent[1:] if a["type"] == "chunk"]
     assert [c["operation"] for c in chunks] == ["append", "append"]
     assert [c["content"] for c in chunks] == ["Before ", " After"]

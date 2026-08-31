@@ -72,10 +72,7 @@ class ToolCardComponent(BaseModel):
 
     @field_serializer("icon")
     def _serialize_icon(self, value: TagChild) -> Optional[SerializedHTML]:
-        # None must round-trip as None: serialize_htmltools(None) yields an
-        # empty-HTML dict that restores as an empty (but non-None) TagList,
-        # which would shadow the annotation icon fallback after a
-        # bookmark/turn round trip.
+        # None must round-trip as None; serialize_htmltools(None) would yield an empty-HTML dict.
         if value is None:
             return None
         return serialize_htmltools(value)
@@ -393,11 +390,7 @@ class ToolResultDisplay(BaseModel):
 
     @field_serializer("html", "icon", "footer")
     def _serialize_html_icon(self, value: TagChild) -> Optional[SerializedHTML]:
-        # None must round-trip as None: serialize_htmltools(None) yields an
-        # empty-HTML dict that restores as an empty (but non-None) TagList,
-        # and `tool_result_display()` treats `display.html is not None` as a
-        # custom-HTML override — so a restored result would render empty
-        # instead of its actual value.
+        # None must round-trip as None; serialize_htmltools(None) would yield an empty-HTML dict.
         if value is None:
             return None
         return serialize_htmltools(value)
@@ -555,11 +548,8 @@ def tool_request_block(
 ) -> "tuple[ToolRequestBlock, list[HTMLDependency]]":
     """Build the structured `tool_request` wire block from a card component.
 
-    Mirrors `ToolRequestComponent.tagify()`'s rendering — the icon is
-    rendered to an HTML string and its dependencies collected — but produces
-    the typed envelope instead of `<shiny-tool-request>` markup. The envelope
-    (not markup scanned out of the text channel) is what the client turns
-    into trusted tool UI.
+    Mirrors ``ToolRequestComponent.tagify()``'s rendering but produces the
+    typed envelope instead of markup.
     """
     deps: list[HTMLDependency] = []
 
@@ -591,11 +581,9 @@ def tool_request_block(
 def tool_request_message(request: Tagifiable) -> ChatMessage:
     """Wrap shinychat's rich tool-request card in a block-carrying message."""
     if isinstance(request, ToolRequestComponent):
-        # The default rich path emits the structured `tool_request` envelope,
-        # not tagified `<shiny-tool-request>` markup. (The tagify code above
-        # is retained for now; the legacy/none overrides still return non-
-        # component Tagifiables and keep the markup path.) Unlike results,
-        # requests get a plain ChatMessage: the ShinyToolCardMessage marker
+        # The default rich path emits the structured `tool_request` envelope.
+        # The tagify code is retained for the legacy/none overrides.
+        # Unlike results, requests get a plain ChatMessage: the ShinyToolCardMessage marker
         # exists for the result custom-wrap postprocessing, which requests
         # skip.
         block, deps = tool_request_block(request)
@@ -610,11 +598,8 @@ def tool_result_block(
 ) -> "tuple[ToolResultBlock, list[HTMLDependency]]":
     """Build the structured `tool_result` wire block from a card component.
 
-    Mirrors `ToolResultComponent.tagify()`'s rendering — icon, html-typed
-    value, and footer are rendered to HTML strings and their dependencies
-    collected — but produces the typed envelope instead of
-    `<shiny-tool-result>` markup. The envelope (not markup scanned out of the
-    text channel) is what the client turns into trusted tool UI.
+    Mirrors ``ToolResultComponent.tagify()``'s rendering but produces the
+    typed envelope instead of markup.
     """
     deps: list[HTMLDependency] = []
 
@@ -625,8 +610,6 @@ def tool_result_block(
         "tool_name": component.tool_name,
         "status": component.status,
         "value_type": component.value_type,
-        # Booleans are real booleans on the wire (no bare-attribute semantics).
-        # `show_request` defaults True on the component, so emit it always.
         "show_request": component.show_request,
     }
 
@@ -676,10 +659,8 @@ def tool_result_block(
 def tool_result_message(result: Tagifiable) -> ChatMessage:
     """Wrap shinychat's rich tool card in a marker message."""
     if isinstance(result, ToolResultComponent):
-        # The default rich path emits the structured `tool_result` envelope,
-        # not tagified `<shiny-tool-result>` markup. (The tagify code above is
-        # retained for now; the legacy/none overrides still return non-
-        # component Tagifiables and keep the markup path.)
+        # The default rich path emits the structured `tool_result` envelope.
+        # The tagify code is retained for the legacy/none overrides.
         block, deps = tool_result_block(result)
         msg = ShinyToolCardMessage(content="", blocks=[block])
         msg.html_deps = deps + msg.html_deps

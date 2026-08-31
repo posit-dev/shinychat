@@ -76,8 +76,8 @@ def test_tool_wire_protocol_fixture_matches_python_serialization() -> None:
 
 
 def test_tool_wire_protocol_fixture_matches_structured_blocks() -> None:
-    """The structured-block wire contract (kata#c15v): both languages emit
-    these exact block payloads; the markup above is the legacy tagify path."""
+    """The structured-block wire contract: both languages emit these exact
+    block payloads; the markup above is the legacy tagify path."""
     from shinychat._chat_normalize_chatlas import (
         tool_request_block,
         tool_result_block,

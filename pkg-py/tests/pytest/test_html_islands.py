@@ -35,8 +35,6 @@ def test_react_element_becomes_residual_part():
     assert "shiny-tool-result" in parts[0].html
     assert "data-shinychat-react" in parts[0].html
     assert "shiny-chat-raw-html" not in parts[0].html
-    # Blank-line wrapped so the markdown parser treats block-level custom
-    # elements correctly.
     assert parts[0].html.startswith("\n\n")
     assert parts[0].html.endswith("\n\n")
 
@@ -55,7 +53,6 @@ def test_mixed_content_splits_around_react():
     assert isinstance(parts[2], IslandBlockPart)
     assert parts[0].html == "<div>before</div>"
     assert parts[2].html == "<div>after</div>"
-    # The react element renders bare in the residual run, not in a block.
     assert "shiny-tool-result" in parts[1].html
     assert "shiny-tool-result" not in parts[0].html
     assert "shiny-tool-result" not in parts[2].html
@@ -196,7 +193,7 @@ def test_markdown_stream_serializes_mixed_initial_provenance():
         "trusted": False,
     }
     # Trusted UI ships as a structured html_block entry, not an island-tag
-    # string segment (kata#mhyd).
+    # string segment.
     assert segments[1] == {
         "block": {
             "type": "html_block",
@@ -210,7 +207,7 @@ def test_markdown_stream_serializes_mixed_initial_provenance():
 def test_markdown_stream_single_tag_initial_content_becomes_block():
     """A lone trusted tag becomes a single html_block entry. The
     content-trusted fallback stays "false": it only governs the fail-closed
-    path, which must never render fallback content as trusted (kata#mhyd)."""
+    path, which must never render fallback content as trusted."""
     el = output_markdown_stream("stream", content=div("Trusted"))
     segments = json.loads(str(el.attrs["content-segments"]))
 
@@ -224,7 +221,7 @@ def test_markdown_stream_single_tag_initial_content_becomes_block():
     assert el.attrs["content-trusted"] == "false"
 
 
-# --- Structured html_block emission from ChatMessage (kata#h6g2) ---
+# --- Structured html_block emission from ChatMessage ---
 
 
 def test_chat_message_raw_html_becomes_html_block():
@@ -260,7 +257,6 @@ def test_chat_message_mixed_content_interleaves_parts():
     assert isinstance(m.parts[1], str)
     assert "shiny-tool-result" in m.parts[1]
     assert m.parts[2] == m.blocks[1]
-    # Flat content view holds the residual (React) markup
     assert "shiny-tool-result" in m.content
     assert m.content_type == "html"
 
@@ -286,10 +282,10 @@ def test_chat_message_html_block_deps_collected_on_block_and_message():
 
 
 def test_chat_message_block_html_deps_stashes_dep_objects():
-    """ChatMessage.__init__ stashes dep OBJECTS per block index in
+    """ChatMessage.__init__ stashes dep objects per block index in
     _block_html_deps so the session-aware send path can serialize them
     through _process_ui. The block's raw as_dict() is the no-session
-    fallback. See kata#rpx1."""
+    fallback."""
     from htmltools import HTMLDependency
     from shinychat._chat_types import ChatMessage
 
@@ -299,7 +295,6 @@ def test_chat_message_block_html_deps_stashes_dep_objects():
     m = ChatMessage(content=TagList(div("x"), dep))
 
     assert len(m.blocks) == 1
-    # _block_html_deps maps block index → dep objects
     assert 0 in m._block_html_deps
     stashed = m._block_html_deps[0]
     assert len(stashed) == 1
@@ -309,7 +304,7 @@ def test_chat_message_block_html_deps_stashes_dep_objects():
 
 def test_chat_message_block_html_deps_multiple_blocks_indexed():
     """When content produces multiple html_blocks, _block_html_deps maps
-    each block index to its dep objects. See kata#rpx1."""
+    each block index to its dep objects."""
     from htmltools import HTMLDependency
     from shinychat._chat_types import ChatMessage
 
@@ -322,8 +317,6 @@ def test_chat_message_block_html_deps_multiple_blocks_indexed():
     react_el = Tag(
         "shiny-tool-result", data_shinychat_react=True, request_id="abc"
     )
-    # The React element splits the content into two islands, each with its
-    # own dep, producing two html_blocks.
     m = ChatMessage(content=TagList(div("x"), dep1, react_el, div("y"), dep2))
 
     assert len(m.blocks) == 2
@@ -335,7 +328,7 @@ def test_chat_message_block_html_deps_multiple_blocks_indexed():
 def test_as_stored_message_processes_block_deps_with_session():
     """_as_stored_message overwrites block-level raw as_dict() html_deps
     with session-processed deps (route-registered hrefs, lib_prefix
-    applied). See kata#rpx1."""
+    applied)."""
     from typing import Any, cast
 
     from htmltools import HTMLDependency, TagList
@@ -393,14 +386,13 @@ def test_as_stored_message_processes_block_deps_with_session():
         block = cast("HtmlBlock", stored.blocks[0])
         block_deps = block.get("html_deps")
         assert block_deps is not None
-        # Processed deps carry the session marker
         assert block_deps[0].get("from_session") == "process-ui-session"
         assert block_deps[0]["name"] == "testlib"
 
 
 def test_as_stored_message_no_session_keeps_raw_deps():
     """Without a session, _as_stored_message cannot process block deps;
-    the raw as_dict() fallback on the block survives. See kata#rpx1."""
+    the raw as_dict() fallback on the block survives."""
     from typing import Any, cast
 
     from htmltools import HTMLDependency
@@ -435,7 +427,6 @@ def test_as_stored_message_no_session_keeps_raw_deps():
     session = cast(Session, _NoProcessSession())
     with session_context(session):
         chat = Chat(id="chat")
-        # Simulate the no-session path: _serialize_html_deps returns None
         cast(Any, chat)._session = None
         dep = HTMLDependency(
             "testlib",
@@ -449,7 +440,6 @@ def test_as_stored_message_no_session_keeps_raw_deps():
         assert len(stored.blocks) == 1
         block = cast("HtmlBlock", stored.blocks[0])
         block_deps = block.get("html_deps")
-        # No session → _serialize_html_deps returns None → raw as_dict() stays
         assert block_deps is not None
         assert "from_session" not in block_deps[0]
         assert block_deps[0]["name"] == "testlib"
@@ -458,7 +448,7 @@ def test_as_stored_message_no_session_keeps_raw_deps():
 def test_append_message_emits_processed_block_deps():
     """Wire-level: append_message with html_block content carrying a
     dependency → the block_insert action's block html_deps are
-    session-processed. See kata#rpx1."""
+    session-processed."""
     import asyncio
     import threading
     from typing import Any, cast
@@ -535,13 +525,9 @@ def test_append_message_emits_processed_block_deps():
             for e in mock_session.envelopes
             if e["action"]["type"] == "block_insert"
         ]
-        # Non-streaming message with blocks emits via _send_message_parts
-        # (block_insert actions) — but actually for chunk=False, it sends a
-        # "message" action with segments. Check both paths.
         if block_inserts:
             block = block_inserts[0]["action"]["block"]
         else:
-            # The "message" action carries segments including the block
             msg_envelopes = [
                 e
                 for e in mock_session.envelopes
@@ -607,24 +593,19 @@ def test_chat_message_html_content_with_supplied_blocks_merges_order():
     }
     m = ChatMessage(content=HTML("<b>raw</b>"), blocks=[tool_block])
 
-    # blocks: generated html_block first, then supplied tool_block
     assert len(m.blocks) == 2
     assert m.blocks[0]["type"] == "html_block"
     assert m.blocks[1]["type"] == "tool_result"
     assert m.blocks[0]["content"] == "<b>raw</b>"
 
-    # parts includes both the html_block and the supplied tool_block
     assert m.parts is not None
     assert len(m.parts) == 2
     assert m.parts[0] == m.blocks[0]
     assert m.parts[1] == m.blocks[1]
 
-    # content is empty (no residual string from the HTML island)
     assert m.content == ""
     assert m.content_type == "html"
 
-    # wire_segments round-trips: the flat layout leads with the (empty)
-    # string segment, then the blocks in order
     stored = StoredMessage.from_chat_message(m)
     wire = stored.wire_segments()
     assert len(wire) == 3
@@ -637,7 +618,7 @@ def test_chat_message_html_content_with_supplied_blocks_merges_order():
 def test_turn_normalization_reindexes_block_dep_objects():
     """Turn normalization combines item messages into a new ChatMessage; the
     per-block dep-object map must be reindexed onto the combined block list
-    or _as_stored_message can't session-process the deps. See kata#rpx1."""
+    or _as_stored_message can't session-process the deps."""
     from chatlas import Turn
     from chatlas._content import ContentText
     from htmltools import HTMLDependency
@@ -648,9 +629,6 @@ def test_turn_normalization_reindexes_block_dep_objects():
         "testlib", "1.0", source={"href": "/test"}, script={"src": "test.js"}
     )
 
-    # Turn contents are a closed union of chatlas types, none of which
-    # produce html_blocks today — simulate a future content type by
-    # patching the per-item normalizer.
     def fake_normalize(x: object) -> ChatMessage:
         return ChatMessage(content=TagList(div("x"), dep))
 

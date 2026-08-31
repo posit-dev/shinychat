@@ -34,11 +34,8 @@ StreamingContentType = Literal[
     "text",
 ]
 
-# The structured block types the client's markdown-stream wire supports
-# (mirrors `asStreamBlock` in js/src/markdown-stream/markdown-stream-entry.ts):
-# `html_block` islands and the web_* family. Anything else — notably tool
-# blocks — is dropped by the client with a warning, so stream() rejects it
-# server-side instead of silently discarding type-valid input.
+# Mirrors `asStreamBlock` in js/src/markdown-stream/markdown-stream-entry.ts.
+# The client drops other types with a warning, so reject server-side.
 _STREAM_BLOCK_TYPES = frozenset(
     {"html_block", "web_search", "web_search_results", "web_fetch"}
 )
@@ -50,10 +47,7 @@ class ContentMessage(TypedDict):
     html_deps: list[dict[str, Any]]
     trusted: bool
     segment_start: bool
-    # A message carries `content` XOR `block` (kata#mhyd). Blocks arrive
-    # complete and append-only; `html_block` envelopes are derived from
-    # trusted UI, and `stream()` also accepts already-structured block
-    # dicts (e.g. web_search) which pass through as-is.
+    # A message carries `content` XOR `block`.
     content: NotRequired[str]
     block: NotRequired[StructuredBlock]
 
@@ -149,11 +143,10 @@ class MarkdownStream:
             An item may also be an already-structured content block dict (e.g. a
             `web_search`/`web_search_results`/`web_fetch` block of the kind
             chatlas normalization produces for `Chat`). Each block dict is sent
-            as one complete, append-only structured block message (kata#mhyd);
-            the client validates, groups, and renders it. Only the block types
-            the stream client supports are accepted — `html_block` and the
-            `web_*` family; any other block type (e.g. a tool block, which the
-            client would drop with a warning) raises a `ValueError`.
+            as one complete, append-only structured block message; the client
+            validates, groups, and renders it. Only the block types the stream
+            client supports are accepted — `html_block` and the `web_*`
+            family; any other block type raises a `ValueError`.
         clear
             Whether to clear the existing content before streaming the new content.
 
@@ -188,17 +181,9 @@ class MarkdownStream:
             async with self._streaming_dot():
                 async for x in content:
                     if isinstance(x, dict):
-                        # An already-structured block (e.g. web_search) ships
-                        # as one complete block message (content XOR block,
-                        # kata#mhyd). The client validates field-level shape
-                        # and groups web_* blocks into the trailing web
-                        # activity, but only for the block types the stream
-                        # wire supports — it drops anything else (e.g. tool
-                        # blocks) with a warning. Reject those here instead:
-                        # fail openly rather than silently discard type-valid
-                        # input. Blocks contribute nothing to the text result
-                        # (mirroring Chat's empty-content snapshot of a
-                        # web_activity block).
+                        # An already-structured block ships as one complete
+                        # block message. Reject unsupported types here rather
+                        # than let the client silently discard them.
                         block_type = x.get("type")
                         if block_type not in _STREAM_BLOCK_TYPES:
                             raise ValueError(
@@ -216,22 +201,13 @@ class MarkdownStream:
                     composite = not isinstance(x, str) or len(segments) > 1
                     for index, (trusted, segment) in enumerate(segments):
                         if trusted:
-                            # Trusted (server-authored) content walks the
-                            # shared island derivation (kata#mhyd): non-React
-                            # runs ship as structured html_block
-                            # block-messages; bare data-shinychat-react
+                            # Trusted content walks the shared island
+                            # derivation: non-React runs ship as structured
+                            # html_block messages; bare data-shinychat-react
                             # elements stay trusted residual string segments.
                             parts = list(derive_island_parts(segment))
-                            # Aggregate the whole run's deps onto the FIRST
-                            # outbound envelope (block or string): the client
-                            # renders envelope deps before dispatching the
-                            # message, so every dependency of the run loads
-                            # before any of its parts mount — the invariant
-                            # the pre-block whole-fragment emission had. Later
-                            # parts send empty envelope deps; a block still
-                            # carries its own deps for its mount gate
-                            # (mirroring ChatMessage's message-level +
-                            # block-level split).
+                            # Aggregate the run's deps onto the first outbound
+                            # envelope so every dep loads before any part mounts.
                             run_deps = (
                                 serialize_html_deps(
                                     [
@@ -378,15 +354,11 @@ class MarkdownStream:
     async def _send_block_message(
         self, block: StreamBlock, html_deps: list[dict[str, Any]]
     ):
-        """Send one complete structured block (content XOR block, kata#mhyd).
+        """Send one complete structured block (content XOR block).
 
-        The block's own `html_deps` carry its dependencies (serialized
-        through `session._process_ui` by the caller) for its mount gate —
-        mirroring Chat's `block_insert` actions. The envelope's `html_deps`
-        carry the aggregated deps of the block's whole trusted run (empty
-        for later parts of the run), which the client renders before
-        dispatching the message, so all deps of a run load before any of
-        its parts mount.
+        The block's own `html_deps` carry its dependencies for its mount
+        gate; the envelope's `html_deps` carry the aggregated deps of the
+        block's whole trusted run (empty for later parts).
         """
         msg: ContentMessage = {
             "id": self.id,
@@ -518,13 +490,11 @@ def output_markdown_stream(
     dependencies = []
     for trusted, segment in split_content_by_trust(content):
         if trusted:
-            # Trusted UI walks the shared island derivation (kata#mhyd):
-            # non-React runs become {block: html_block} entries; bare
-            # data-shinychat-react elements stay trusted residual text
-            # segments. There is no session at UI-construction time, so
-            # block deps carry the raw as_dict() serialization (the same
-            # no-session fallback ChatMessage uses, kata#rpx1) and the dep
-            # objects also propagate as page-level dependencies below.
+            # Trusted UI walks the shared island derivation: non-React runs
+            # become {block: html_block} entries; bare data-shinychat-react
+            # elements stay trusted residual text segments. There is no
+            # session at UI-construction time, so block deps carry the raw
+            # as_dict() serialization and propagate as page-level deps below.
             for part in derive_island_parts(segment):
                 if isinstance(part, IslandBlockPart):
                     block: HtmlBlock = {
@@ -543,17 +513,15 @@ def output_markdown_stream(
         else:
             rendered_segments.append({"text": str(segment), "trusted": False})
 
-    # The fallback `content` attribute carries every segment's HTML —
-    # including island payloads — so a client that fails closed on the
-    # provenance array (or predates block entries) still shows the content,
-    # escaped and untrusted.
+    # The fallback `content` attribute carries every segment's HTML so a
+    # client that fails closed on the provenance array still shows the
+    # content, escaped and untrusted.
     rendered_content = "".join(
         str(seg["text"]) if "text" in seg else str(seg["block"]["content"])
         for seg in rendered_segments
     )
-    # A block entry is never a trusted fallback: content-trusted only
-    # governs the no-provenance path, and the fail-closed path must not
-    # render fallback content as trusted.
+    # A block entry is never a trusted fallback: the fail-closed path must
+    # not render fallback content as trusted.
     fallback_trusted = (
         len(rendered_segments) == 1
         and rendered_segments[0].get("trusted") is True

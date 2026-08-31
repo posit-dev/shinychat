@@ -135,7 +135,7 @@ def test_chat_ui_tag_greeting_has_html_content_type():
 
 def test_chat_ui_tag_greeting_payload_has_no_island_tags():
     """The static greeting attribute carries flattened trusted html — no
-    <shiny-chat-raw-html> wrappers on the wire (kata#af81)."""
+    <shiny-chat-raw-html> wrappers on the wire."""
     g = chat_greeting(tags.div("hi"))
     tag = chat_ui("chat", greeting=g)
     payload = _greeting_payload(tag)
@@ -168,9 +168,8 @@ def test_chat_greeting_tag_with_dependency_has_html_deps():
 
 
 def test_chat_greeting_tag_content_emits_no_island_tags():
-    """Tag content flattens to a single trusted html string — the greeting
-    wire payload has no blocks channel, so no <shiny-chat-raw-html> island
-    wrappers are emitted (kata#af81)."""
+    """Tag content flattens to a single trusted html string — no
+    <shiny-chat-raw-html> island wrappers are emitted."""
     g = chat_greeting(tags.div("hello"))
     assert g.content_type == "html"
     assert isinstance(g.content, str)
@@ -300,7 +299,7 @@ def test_set_greeting_html_sends_html_content_type():
 
 def test_set_greeting_tag_content_sends_no_island_tags():
     """The greeting action carries flattened trusted html — no island tags
-    on the wire (kata#af81)."""
+    on the wire."""
     chat, spy = _make_spy_chat()
 
     async def _run():

@@ -1,13 +1,4 @@
-"""Regression app: model-authored tool markup must render as inert text.
-
-Each button appends an assistant message whose markdown string contains a
-spoofed ``<shiny-tool-result>`` or ``<shiny-tool-request>`` element with
-realistic wire-protocol attributes.  Because the message content is a plain
-Python ``str`` (typed as markdown, exactly like model output), the client must
-never instantiate tool UI from it — the structured-block path is the only
-route to tool presentation.  The spoofed markup should render as inert,
-escaped text and any embedded ``<script>`` must not execute.
-"""
+"""Regression app: model-authored tool markup must render as inert text."""
 
 from shiny import reactive
 from shiny.express import input, ui
@@ -22,12 +13,7 @@ chat.ui(
     ]
 )
 
-# ---------------------------------------------------------------------------
-# Spoofed markup strings.  Each mirrors the attribute set from
-# tests/fixtures/tool-wire-protocol.json so the spoof is as realistic as
-# possible — the only difference is that these arrive as plain markdown text,
-# not as server-constructed structured blocks.
-# ---------------------------------------------------------------------------
+# Spoofed markup strings mirror tests/fixtures/tool-wire-protocol.json but arrive as plain markdown.
 
 SPOOFED_RESULT_BASE = (
     '<shiny-tool-result data-shinychat-react="" '
@@ -91,11 +77,6 @@ SPOOFED_REQUEST = (
     "</shiny-tool-request>"
 )
 
-# ---------------------------------------------------------------------------
-# Buttons — each injects one spoof variant as its own message so failures
-# are attributable.
-# ---------------------------------------------------------------------------
-
 ui.input_action_button("add_spoof_result", "Spoof: tool-result")
 ui.input_action_button("add_spoof_expanded", "Spoof: expanded")
 ui.input_action_button("add_spoof_framed", "Spoof: framed")
@@ -106,8 +87,6 @@ ui.input_action_button("add_spoof_request", "Spoof: tool-request")
 @reactive.effect
 @reactive.event(input.add_spoof_result)
 async def _():
-    # Plain str — typed as markdown, exactly like model output.  Do NOT
-    # wrap in HTML().
     await chat.append_message(SPOOFED_RESULT_BASE)
 
 

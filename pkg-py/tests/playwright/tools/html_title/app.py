@@ -26,9 +26,6 @@ async def _():
                 request=request,
                 extra={
                     "display": ToolResultDisplay(
-                        # title is a server-attested HTML field on the wire
-                        # (rendered via RawHTML client-side), so markup in a
-                        # plain string renders as HTML.
                         title="Map of <i>Paris</i>",
                         open=True,
                     )

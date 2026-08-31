@@ -405,11 +405,9 @@ class Chat:
             # TODO: deprecate messages once we start promoting managing LLM message
             # state through other means
             async def _append_init_messages():
-                # `chat_ui(messages=)` initial messages ride the DOM (static
-                # <shiny-chat-message> tags, or the container's
-                # `data-initial-messages` attribute when they carry
-                # structured blocks — kata#089g), so only the deprecated
-                # `Chat(messages=)` constructor arg is appended here.
+                # `chat_ui(messages=)` initial messages ride the DOM, so only
+                # the deprecated `Chat(messages=)` constructor arg is appended
+                # here.
                 for msg in messages:
                     await self.append_message(msg)
 
@@ -1195,9 +1193,6 @@ class Chat:
 
         if operation == "replace":
             msg.content = stream_content
-            # The replace payload is the whole accumulated stream content, so
-            # this chunk's per-part ordering no longer applies; its blocks (if
-            # any) emit after the replaced content.
             msg.parts = None
 
         try:
@@ -1520,10 +1515,6 @@ class Chat:
             await self._send_action({"type": "chunk_end"})
         elif chunk is True:
             if message.blocks:
-                # A chunk carrying structured blocks: string content travels
-                # as `chunk` actions and blocks as `block_insert` actions,
-                # emitted in wire-segment order so interleaved content (e.g.
-                # text/tool-result/text) keeps its order mid-stream.
                 await self._send_message_parts(message, operation)
             else:
                 chunk_action = {
@@ -1548,19 +1539,11 @@ class Chat:
         message: StoredMessage,
         operation: Literal["append", "replace"],
     ) -> None:
-        """Emit a block-carrying message's wire segments as an ordered action
-        sequence mid-stream: string segments travel as `chunk` actions and
-        structured blocks as `block_insert` actions, so content interleaved
-        in the source message (e.g. text/tool-result/text) keeps its order.
-        An empty string part is skipped so it can't open a spurious empty
-        content block ahead of a block.
-
-        Under uniform replace semantics (kata#0r4g) a replace chunk supersedes
-        the whole in-flight message, structured blocks included. A replace
-        therefore sends a leading empty replace chunk (the wipe) before any
-        part, then emits every part as an append — otherwise a block emitted
-        before the first string part would be wiped by it, and a message with
-        no string parts would never replace at all."""
+        """Emit a block-carrying message's wire segments as ordered actions:
+        string segments as `chunk` actions, structured blocks as
+        `block_insert` actions. Under replace semantics a replace chunk
+        supersedes the whole in-flight message, so a leading empty replace
+        chunk (the wipe) is sent before all parts are emitted as appends."""
         if operation == "replace":
             wipe_action: ChatAction = {
                 "type": "chunk",
@@ -1599,8 +1582,6 @@ class Chat:
             d = m.model_dump(exclude_none=True)
             if not d.get("attachments"):
                 d.pop("attachments", None)
-            # Keep the persisted shape unchanged for messages without
-            # structured blocks (bookmarks stay readable by older versions).
             if not d.get("blocks"):
                 d.pop("blocks", None)
             dumps.append(d)
@@ -1635,12 +1616,10 @@ class Chat:
     async def _restore_turns_ui(self, adapter: "TurnsAdapter") -> None:
         """Re-derive and append UI messages from the client's current turns.
 
-        The turns-based restore path (P4, kata#c15v): each turn group is
-        merged and run through `normalize_message`, so structured blocks
-        (tool_request/tool_result/web_*/html_block) are reconstructed from
-        the turns rather than re-parsed from persisted UI markup. Note the
-        displayed content is re-derived from the raw turns, so a deprecated
-        `transform_assistant_response` does not re-apply on restore.
+        Each turn group is merged and run through ``normalize_message``, so
+        structured blocks are reconstructed from the turns rather than
+        re-parsed from persisted UI markup. ``transform_assistant_response``
+        does not re-apply on restore.
         """
         for group in adapter.get_turns_grouped():
             msg = normalize_turn_group(group)
@@ -1743,11 +1722,9 @@ class Chat:
         if content is None:
             return None
 
-        # The transform rewrites the string content only; structured blocks
-        # carry through unchanged. Reuse the already-processed blocks from
-        # res (whose html_deps were session-processed in _as_stored_message)
-        # rather than message.blocks (which carry raw as_dict() deps). See
-        # kata#rpx1.
+        # Reuse the already-processed blocks from res (whose html_deps were
+        # session-processed in _as_stored_message) rather than message.blocks
+        # (which carry raw as_dict() deps).
         return StoredMessage.from_chat_message(
             ChatMessage(
                 content=content,
@@ -1777,11 +1754,7 @@ class Chat:
             return message
 
         # Overwrite each block's raw as_dict() html_deps with session-processed
-        # deps (route-registered hrefs, lib_prefix applied). ChatMessage stores
-        # dep OBJECTS per block in _block_html_deps; here we have the session
-        # so _serialize_html_deps can run them through _process_ui. Routed
-        # through the (overridable) method to preserve that seam. See
-        # kata#rpx1.
+        # deps (route-registered hrefs, lib_prefix applied).
         return _assemble_stored_message(message, self._serialize_html_deps)
 
     def user_input(self) -> "UserInput | None":
@@ -2208,14 +2181,8 @@ class Chat:
                 "`async def set_state(self, value: Jsonifiable)` (which should restore the `client=`'s state given the `state=`)."
             )
 
-        # Turns-based UI restore (P4, kata#c15v): when the client exposes
-        # turn-level access (chatlas, or any ClientWithTurns), the UI is
-        # re-derived from the client's turns on restore — which
-        # `_on_restore_client` has just applied via `set_state` — instead of
-        # re-emitting persisted UI message dicts. Persisted UI state in old
-        # bookmarks is ignored, never re-parsed. Clients without turn-level
-        # access keep the legacy persist-and-re-emit path (their state blob
-        # is opaque, so the UI snapshot is all we have).
+        # Turns-capable clients re-derive the UI from the client's turns on
+        # restore; persisted UI state in old bookmarks is ignored.
         turns_adapter: TurnsAdapter | None = None
         try:
             turns_adapter = as_turns_adapter(client)
@@ -2297,9 +2264,7 @@ class Chat:
         @root_session.bookmark.on_bookmark
         def _on_bookmark_ui(state: BookmarkState):
             if turns_adapter is not None:
-                # UI message state is not persisted for turns-capable
-                # clients: on restore the UI is re-derived from the client's
-                # turns (P4, kata#c15v).
+                # UI is re-derived from the client's turns on restore.
                 return
             if resolved_bookmark_id_msgs_str in state.values:
                 raise ValueError(
@@ -2337,15 +2302,8 @@ class Chat:
             # calling `self._init_chat.destroy()` above
 
             if turns_adapter is not None:
-                # Re-derive the UI from the client's turns (P4, kata#c15v).
-                # `_on_restore_client` is registered above, so `set_state`
-                # has already restored the turns by the time this runs
-                # (on_restore callbacks run in registration order). Any
-                # persisted `--msgs` UI state in old bookmarks is ignored,
-                # never re-parsed.
+                # Re-derive the UI from the client's turns.
                 if resolved_bookmark_id_str not in state.values:
-                    # Not a chat bookmark: display the
-                    # `__init__(messages=)`/`chat.ui(messages=)` messages.
                     await self._append_init_messages()
                     return
                 await self._restore_turns_ui(turns_adapter)
@@ -2895,23 +2853,14 @@ def chat_ui(
         messages = []
     normalized_messages = [normalize_message(x) for x in messages]
     if any(msg.blocks for msg in normalized_messages):
-        # A static <shiny-chat-message> tag carries string content only, so
-        # a block-carrying message would silently drop its blocks. Instead,
-        # embed the whole list — opting the entire list in keeps the message
-        # order intact — as JSON in the container's `data-initial-messages`
-        # attribute (htmltools escapes the attribute value). The client's
-        # `parseInitialMessages()` replays it through the same
-        # `messagePayloadToData()` conversion server-sent messages use. The
-        # messages travel in the DOM itself, so a dynamically rendered
-        # chat_ui (e.g. render_ui) delivers them by construction — no
-        # session is needed at render time (kata#089g). Html deps never
-        # enter the JSON; they attach to the container tag below so Shiny's
-        # dependency system renders them.
+        # Block-carrying messages can't use static <shiny-chat-message> tags;
+        # embed the whole list as JSON in `data-initial-messages` so the
+        # client replays it through the same path as server-sent messages.
+        # Html deps attach to the container tag below, not the JSON.
         initial_entries: list[dict[str, Any]] = []
         for msg in normalized_messages:
             entry, deps = initial_message_payload(msg)
-            # Mirror the static tag path: the assistant-icon default must
-            # not leak onto user messages.
+            # The assistant-icon default must not leak onto user messages.
             if msg.role != "user" and icon_attr is not None:
                 entry["icon"] = icon_attr
             initial_entries.append(entry)
