@@ -1553,7 +1553,23 @@ class Chat:
         structured blocks as `block_insert` actions, so content interleaved
         in the source message (e.g. text/tool-result/text) keeps its order.
         An empty string part is skipped so it can't open a spurious empty
-        content block ahead of a block."""
+        content block ahead of a block.
+
+        Under uniform replace semantics (kata#0r4g) a replace chunk supersedes
+        the whole in-flight message, structured blocks included. A replace
+        therefore sends a leading empty replace chunk (the wipe) before any
+        part, then emits every part as an append — otherwise a block emitted
+        before the first string part would be wiped by it, and a message with
+        no string parts would never replace at all."""
+        if operation == "replace":
+            wipe_action: ChatAction = {
+                "type": "chunk",
+                "content": "",
+                "operation": "replace",
+                "content_type": "markdown",
+            }
+            await self._send_action(wipe_action, message.html_deps)
+            operation = "append"
         for seg in message.wire_segments():
             # NB: an inline `in` check (not a TypeGuard) so pyright narrows
             # both branches of the TypedDict union.

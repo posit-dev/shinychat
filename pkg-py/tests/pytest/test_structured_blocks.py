@@ -200,6 +200,90 @@ async def test_stream_turn_interleaves_actions_in_order() -> None:
     assert block_action["block"]["request_id"] == "call-1"
 
 
+# ---------------------------------------------------------------------------
+# Uniform replace semantics (kata#0r4g): a replace wipes the in-flight
+# message (structured blocks included), then parts re-emit as appends
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_send_message_parts_replace_wipes_before_reemitting() -> None:
+    """A block-carrying message sent with operation="replace" must emit a
+    leading empty replace chunk (the wipe) before any part, then emit every
+    part as an append.
+
+    Without the leading wipe, a block emitted before the first string part
+    would be wiped by that part's own replace chunk, and each subsequent
+    string part would wipe the parts before it."""
+    from shiny.express._stub_session import ExpressStubSession
+    from shiny.session import session_context
+    from shinychat import Chat
+
+    sent: list[Any] = []
+
+    async def capture_action(action: Any, deps: Any = None) -> None:
+        sent.append(action)
+
+    stored = StoredMessage(
+        role="assistant",
+        segments=[
+            StoredSegment(content="Before ", content_type="markdown"),
+            StoredSegment(content=" After", content_type="markdown"),
+        ],
+        blocks=[_block()],
+        block_positions=[1],
+    )
+
+    with session_context(ExpressStubSession()):
+        chat = Chat(id="chat")
+        chat._send_action = capture_action  # type: ignore[method-assign]
+        await chat._send_message_parts(stored, "replace")
+
+    types = [a["type"] for a in sent]
+    assert types == ["chunk", "chunk", "block_insert", "chunk"]
+
+    wipe = sent[0]
+    assert wipe["operation"] == "replace"
+    assert wipe["content"] == ""
+
+    # Every re-emitted part is an append, in wire-segment order.
+    chunks = [a for a in sent[1:] if a["type"] == "chunk"]
+    assert [c["operation"] for c in chunks] == ["append", "append"]
+    assert [c["content"] for c in chunks] == ["Before ", " After"]
+    assert sent[2]["block"]["type"] == "tool_result"
+
+
+@pytest.mark.anyio
+async def test_send_message_parts_replace_blocks_only_still_wipes() -> None:
+    """A blocks-only replace has no string part to carry operation="replace";
+    the leading wipe is what actually replaces the in-flight message."""
+    from shiny.express._stub_session import ExpressStubSession
+    from shiny.session import session_context
+    from shinychat import Chat
+
+    sent: list[Any] = []
+
+    async def capture_action(action: Any, deps: Any = None) -> None:
+        sent.append(action)
+
+    stored = StoredMessage(
+        role="assistant",
+        segments=[],
+        blocks=[_block()],
+    )
+
+    with session_context(ExpressStubSession()):
+        chat = Chat(id="chat")
+        chat._send_action = capture_action  # type: ignore[method-assign]
+        await chat._send_message_parts(stored, "replace")
+
+    types = [a["type"] for a in sent]
+    assert types == ["chunk", "block_insert"]
+    assert sent[0]["operation"] == "replace"
+    assert sent[0]["content"] == ""
+    assert sent[1]["block"]["type"] == "tool_result"
+
+
 def test_wire_segments_reinterleaves_blocks_at_recorded_positions() -> None:
     """`block_positions` records how many string segments precede each block;
     `wire_segments()` must reproduce that interleaving."""
