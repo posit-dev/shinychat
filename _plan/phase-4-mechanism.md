@@ -299,12 +299,13 @@ note is approved; P4.0 is complete and the restore keystone remains blocked pend
 ## Handoff
 
 Landed: P4.0 `shinychat#ykxh` merged as `e27e7278981e061864cc1fdf81d5c7c6fa5d3ca8`; identity ownership, lifecycle decisions, and the full verification evidence are recorded above.
-Next: complete normal integration/review handling for the accepted roborev 1067 fix; `shinychat#5r50` remains blocked and not begun.
+Next: complete normal integration/review handling for the committed roborev 1067 fix; `shinychat#5r50` remains blocked and not begun.
 Boundary: no production or test code changed in this handoff; OTel scalar overlap, the init/restore race, and Phase 5 guards/degradation/audit remain deferred.
 
 ### Roborev 1067 handoff (2026-08-31)
 
-Accepted findings are covered by the existing uncommitted bounded fix. In v2,
+Accepted findings are covered by the existing committed bounded fix
+(`ad650e88325cfb17d6dded2ddd194f3b2355e06e`). In v2,
 `_ExchangeRecorder._new_record()` allocates without notifying; `_persist_record()`
 stores first and then performs the active-ID callback once, leaving the
 announcement eligible for retry after either a store or callback failure.
@@ -320,5 +321,6 @@ pkg-py/tests/pytest/test_conversation_id.py` passed 147 tests with 5 warnings;
 `make py-check-format` passed; `make py-check-types` reported 0 errors; and
 `make py-check` passed Ruff, Pyright, 191 Playwright tests, and 754 non-browser
 tests with 1 skipped (15 warnings, no failures). Current state: roborev 1067
-review is accepted and this bounded fix is verified, pending its normal
-integration/review handling. `shinychat#5r50` remains blocked and not begun.
+review is accepted and this bounded fix is committed and verified; the
+post-commit review for this fix remains to be collected. `shinychat#5r50`
+remains blocked and not begun.
