@@ -91,12 +91,6 @@ async def inject_tool_and_web() -> None:
             )
         },
     )
-    await chat.append_message_stream([request, result])
-    # Record the exchange as turns the way a real chatlas tool loop would
-    # (assistant request turn, then a user-role tool-result turn).
-    client.turns.append(_dump(AssistantTurn(contents=[request])))
-    client.turns.append(_dump(Turn(role="user", contents=[result])))
-
     # Web search burst (web_citations pattern)
     search_request = ContentToolRequestSearch(query="best e-bike motors")
     search_response = ContentToolResponseSearch(
@@ -108,7 +102,17 @@ async def inject_tool_and_web() -> None:
         ]
     )
     text = ContentText(text="Hub motors are ideal for flat terrain.")
-    await chat.append_message_stream([search_request, search_response, text])
+    # One stream for the whole injection: each completed assistant stream
+    # triggers an auto-bookmark (bookmark_on="response"), so two streams
+    # would race the test's bookmark-URL capture (roborev 1072).
+    await chat.append_message_stream(
+        [request, result, search_request, search_response, text]
+    )
+    # Record the exchange as turns the way a real chatlas tool loop would
+    # (assistant request turn, then a user-role tool-result turn, then the
+    # assistant web/text turn).
+    client.turns.append(_dump(AssistantTurn(contents=[request])))
+    client.turns.append(_dump(Turn(role="user", contents=[result])))
     client.turns.append(
         _dump(AssistantTurn(contents=[search_request, search_response, text]))
     )
