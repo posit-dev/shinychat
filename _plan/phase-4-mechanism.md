@@ -671,32 +671,42 @@ remains open and unclosed; `shinychat#5r50` remains blocked and unstarted.
 ### Stage 1 scheduling decision (2026-08-31)
 
 The raw handler creates an immutable parsed input-event envelope
-synchronously. Its disposition API is:
+synchronously. Its only immutable disposition variants are:
 
 ```text
-accept(payload, seq?, generation?)
-reject_correlated(seq, generation)
-discard_silently(generation)
+accepted(payload, seq?)
+reject_correlated(seq)
+discard_silently
 ```
 
-The raw handler snapshots the disposition once against the active destructive
-transaction capability and stores that disposition in the envelope. The
-later reactive effect switches only on the envelope; it never rereads strict
-state. `reject_correlated()` sends exactly one `input_rejected`
-asynchronously. `discard_silently()` returns without transport or state
-effects. `accept()` performs transcript/capture work and then updates the
-accepted-only provider/public signal.
+The handler reads the destructive transaction capability only at handler time
+and snapshots the disposition into the envelope. There is no generation
+counter, ambient flag, or later capability check. The later reactive effect
+switches only on the immutable envelope and never rereads strict state.
+`reject_correlated(seq)` sends exactly one `input_rejected` asynchronously for
+each processed rejected envelope. `discard_silently` returns without
+transport or state effects. `accepted(payload, seq?)` performs
+transcript/capture work and then updates the accepted-only provider/public
+signal.
+
+Each real priority:event client update gets its own reactive flush; only
+test-only direct reactive writes may coalesce. Delayed, inverse, and rapid
+event timing must therefore be tested against the immutable envelope, not
+treated as evidence for a second scheduling mechanism.
 
 No unsupported synchronous transport bypass, second ambient flag,
 queue/timer/CAS, or second owner is allowed. Remove the accidental
-slash-command strict behavior from the Stage 1 anchor; slash-command handling
-is separate and outside P4.0.
+`_strict_user_input_admission` implementation and its slash-command strict
+gate/tests from the Stage 1 anchor. Slash-command handling is separate and
+outside P4.0.
 
-Required regressions cover delayed-effect timing, inverse timing, no-side-effect
-discard/rejection, gate release on success/failure/cancellation, two real
-transport-update cases, and the effect-coalescing caveat. Client coverage must
-also prove `seq` is allocated before optimistic dispatch and that restoration
-removes only the exact optimistic pair.
+Required rework and regressions cover the immutable envelope, removal of
+`_strict_user_input_admission` and slash-command strict tests, delayed-effect,
+inverse-timing, and rapid-event behavior, no-side-effect discard/rejection,
+gate release on success/failure/cancellation, two real transport-update cases,
+and the effect-coalescing caveat. JavaScript and Playwright coverage must also
+prove reducer rejection behavior, `seq` allocation before optimistic dispatch,
+and restoration that removes only the exact optimistic pair.
 
 The existing uncommitted Stage 1 anchor must be reworked to this decision.
 Implementation remains stopped pending review of this note. Job `1079`
