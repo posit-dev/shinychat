@@ -27,7 +27,6 @@ import type {
 } from "../../src/transport/types"
 import type { ShinyLifecycle, HtmlDep } from "../../src/transport/types"
 
-
 const toolResultBlock = (
   overrides: Partial<ToolResultBlock> = {},
 ): ToolResultBlock => ({
@@ -616,7 +615,6 @@ describe("structured loops survive regrouping", () => {
     const { container } = renderMessages(state.messages)
     expectToolCard(container, "72F and sunny")
   })
-
 })
 
 describe("structured tool_request block via message.segments", () => {
