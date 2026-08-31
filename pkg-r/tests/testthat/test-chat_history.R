@@ -837,6 +837,90 @@ test_that("HistoryController$on_response() is idempotent when neither turns nor 
   expect_identical(ctrl$record$updated_at, updated_at_before)
 })
 
+test_that("on_response() idempotent guard advances ui_offset so a later genuine save does not duplicate stored UI", {
+  # Regression test: the idempotency guard in on_response() must advance
+  # self$ui_offset to length(messages) before its early return. Without
+  # that, a restore-triggered client re-report (same turns/messages) leaves
+  # a stale ui_offset (0), and the next genuine save reprocesses the
+  # already-saved client-snapshot messages as out-of-band extras in
+  # extend_record_linear(), duplicating them in the stored UI (6 instead
+  # of 4).
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+
+  make_ui_message <- function(role, text) {
+    list(
+      role = role,
+      segments = list(list(content = text, content_type = "markdown"))
+    )
+  }
+
+  # Helper: set the mock session's reported chat_messages for a given set
+  # of (role, text) pairs.
+  report_client_messages <- function(texts) {
+    roles <- rep(c("user", "assistant"), length.out = length(texts))
+    session$setInputs(
+      chat_messages = Map(make_ui_message, roles, texts)
+    )
+  }
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  # --- Step 1: Save one user/assistant exchange (2 messages) ---
+  report_client_messages(c("Hello", "Hi there"))
+  ctrl$on_response(make_turns("Hello", "Hi there"))
+
+  expect_equal(length(ctrl$record$nodes), 2)
+  expect_equal(ctrl$ui_offset, 2)
+  expect_equal(record_ui_count(ctrl$record), 2)
+
+  # --- Step 2: Simulate a restore-triggered re-report of the same turns ---
+  # The idempotent guard fires (turns and messages did not grow). Without
+  # the fix, ui_offset would stay stale at 0 (or whatever it was before).
+  updated_at_before <- ctrl$record$updated_at
+  ctrl$on_response(make_turns("Hello", "Hi there"))
+
+  # No new save happened: the record is untouched.
+  expect_identical(ctrl$record$updated_at, updated_at_before)
+  expect_equal(length(ctrl$record$nodes), 2)
+  # The guard must have advanced ui_offset to match the reported messages.
+  expect_equal(ctrl$ui_offset, 2)
+
+  # --- Step 3: Genuine new save with a second exchange (4 messages) ---
+  report_client_messages(c("Hello", "Hi there", "How are you?", "I'm good"))
+  all_turns <- c(
+    make_turns("Hello", "Hi there"),
+    make_turns("How are you?", "I'm good")
+  )
+  ctrl$on_response(all_turns)
+
+  # The record should have exactly 4 UI messages — 2 per exchange, no
+  # duplicates. The bug (stale ui_offset == 0) would reprocess the first
+  # 2 already-saved messages as out-of-band extras, producing 6.
+  expect_equal(length(ctrl$record$nodes), 4)
+  expect_equal(record_ui_count(ctrl$record), 4)
+  expect_equal(ctrl$ui_offset, 4)
+
+  # Assert the exact per-node UI content to prove no duplication: each
+  # node carries exactly one message with the expected text.
+  path_ids <- record_path_node_ids(ctrl$record)
+  ui_texts <- unlist(lapply(path_ids, function(node_id) {
+    vapply(
+      ctrl$record$nodes[[node_id]]$ui,
+      function(m) m$segments[[1]]$content,
+      character(1)
+    )
+  }))
+  expect_equal(ui_texts, c("Hello", "Hi there", "How are you?", "I'm good"))
+})
+
 test_that("HistoryController$replay_ui() replays stored ui verbatim and seeds ui_offset from the restore count", {
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()

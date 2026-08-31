@@ -113,6 +113,12 @@ HistoryController <- R6::R6Class(
           length(recorded_turns) <= record_turn_count(self$record) &&
             length(messages) <= record_ui_count(self$record)
         ) {
+          # The guard established that every reported message is already
+          # stored, so advance ui_offset to match -- otherwise a stale
+          # offset causes the next genuine save to reprocess these
+          # already-saved client-snapshot messages as out-of-band extras
+          # in extend_record_linear(), duplicating them in the record.
+          self$ui_offset <- length(messages)
           return(invisible())
         }
       }
