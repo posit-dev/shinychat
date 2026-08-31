@@ -885,40 +885,47 @@ The three findings against the client-transition protocol are all valid:
 
 The escalation valve therefore fires. **Decision: DELETE/REPLACE** the
 unconditional marker and incrementing-ID protocol. Retain `HistoryStore` as
-the sole history owner, matching completion/input blocking, and the recorder
-persistence/destructive-ordering fixes.
+the sole owner of the client transition marker, `_ExchangeRecorder` as the
+sole server record owner, matching completion/input blocking, and the
+recorder persistence/destructive-ordering fixes.
 
 The smallest proposed replacement requires Garrick's authorization:
 
 - Add optional `transition_protocol: "completion-v1"` to the existing
   `history_update` action.
-- Python advertises the exact capability. R omits it until Phase 6.
-- Absent or unknown exact capability means legacy behavior: no marker,
+- Python advertises the exact capability. R omits it in Phase 4 and advertises
+  the same capability and completion protocol in Phase 6.
+- Absent, unknown, or withdrawn exact capability means legacy behavior: clear
+  `historyTransitionPending` and restore legacy behavior with no marker,
   request, or completion expectation.
-- When advertised, active New/Delete uses the existing UUID helper for its
-  request ID.
-- Every `history_update` replaces the capability state; omission disables the
-  protocol and clears any marker.
+- When the capability is advertised, only active New and active Delete use the
+  existing UUID helper for their request IDs. Inactive delete, select/switch,
+  restore, clear, edit, and navigation are excluded.
+- Every `history_update` replaces the capability state; omission or withdrawal
+  disables the protocol and clears any marker.
 - A stale completion is a no-op.
 - Python completion is emitted only for request-bearing transitions and is
-  best-effort/non-masking, preserving the original operation outcome.
+  best-effort/non-masking, preserving the original operation outcome. Add an
+  explicit regression proving completion-delivery failure cannot mask the
+  original handler outcome.
 
 This adds no handshake, queue, timer, CAS, server flag, second owner, or
 Phase 5 guard. Required coverage includes Python/TypeScript capability
-replacement and stale/omitted/unknown behavior, New/Delete completion and
-input blocking, non-masking failure/cancellation, Playwright remount and
-legacy-compatibility cases, and mechanical `make update-dist` R asset copies.
-R server parity remains Phase 6.
+replacement and stale/omitted/unknown/withdrawn behavior, active New/Delete
+completion and input blocking, non-masking failure/cancellation and
+completion-delivery failure, Playwright remount and legacy-compatibility
+cases, and mechanical `make update-dist` R asset copies. R server parity
+remains Phase 6, where R advertises the same capability/completion protocol.
 
 The exact authorization question is: **Does Garrick authorize replacing
 unconditional protocol with this capability-gated completion-v1 protocol?**
 Implementation is stopped pending that authorization. The current tracked
 non-note diff is empty with hash
 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`;
-job `1079` remains open and unclosed, and `shinychat#5r50` remains blocked.
+job `1079` is currently `done`/`FAIL` with `closed=true`; no review-close
+operation was performed in this work. `shinychat#5r50` remains blocked.
 
-**State correction:** job `1079` was open when this escalation was recorded,
-but is currently observed as `done`/`FAIL` and `closed=true`. No review-close
-operation was performed in this work. `shinychat#ykxh` remains open with
-`needs-review` and `work.attention="blocked"`, and `shinychat#5r50` remains
-blocked.
+**Current state:** `shinychat#ykxh` remains open with `needs-review` and
+`work.attention="blocked"`; `shinychat#5r50` remains blocked. The historical
+entries above record the review as open at the time they were written; the
+current Roborev state is the singular `done`/`FAIL`/`closed=true` state above.
