@@ -249,6 +249,7 @@ class _ExchangeRecorder:
         self._lock = asyncio.Lock()
         self._capture_hooks: dict[str, CaptureHook] = {}
         self._turn_baseline: list[str] = []
+        self._active_id_announced = False
         self._register_capture_hook("shinychat:turns", self._capture_turns)
 
     def _register_capture_hook(self, name: str, hook: CaptureHook) -> None:
@@ -322,24 +323,44 @@ class _ExchangeRecorder:
             else:
                 node.state[name] = entry
 
-    def _new_record(self, *, title: str) -> ConversationRecordV2:
+    async def _new_record(self, *, title: str) -> ConversationRecordV2:
         return new_conversation_record_v2(
             title=title,
+            id=await self._controller.ensure_conversation_id(notify=False),
             client_info={
                 str(key): str(value)
                 for key, value in self._controller.adapter.client_info().items()
             },
         )
 
-    def _content_exchange(self, exchange_id: str | None) -> str | None:
+    async def _content_exchange(self, exchange_id: str | None) -> str | None:
         if self.record is None:
             if exchange_id is not None:
                 return None
-            self.record = self._new_record(title="New chat")
+            self.record = await self._new_record(title="New chat")
             return self.record.active_leaf
         if exchange_id is not None:
             return exchange_id if exchange_id in self.record.nodes else None
         return self.record.open_inputless_exchange()
+
+    def reset(self) -> None:
+        self.record = None
+        self._stream_exchanges.clear()
+        self._turn_baseline.clear()
+        self._active_id_announced = False
+
+    async def _persist_record(self) -> None:
+        assert self.record is not None
+        partition = self._controller.partition
+        assert partition is not None
+        await self._controller.store.put(partition, self.record)
+        if not self._active_id_announced:
+            self._active_id_announced = True
+            try:
+                await self._controller._notify_active_id_change()
+            except BaseException:
+                self._active_id_announced = False
+                raise
 
     def _close_root_if_inactive(self) -> None:
         assert self.record is not None
@@ -362,7 +383,7 @@ class _ExchangeRecorder:
         async with self._lock:
             if self.record is None:
                 title = " ".join(message.content.split())[:MAX_TITLE_LEN] or "New chat"
-                self.record = self._new_record(title=title)
+                self.record = await self._new_record(title=title)
             root_id = "n_0000"
             is_first_input = not any(
                 node.input is not None for node in self.record.nodes.values()
@@ -375,7 +396,7 @@ class _ExchangeRecorder:
                 assert active_leaf is not None
                 await self._capture_state(active_leaf, "node_close")
             self.record.open_exchange(exchange_id, message)
-            await controller.store.put(controller.partition, self.record)
+            await self._persist_record()
 
     async def message_committed(
         self, exchange_id: str | None, entry: TranscriptEntry
@@ -386,7 +407,7 @@ class _ExchangeRecorder:
             return
 
         async with self._lock:
-            target = self._content_exchange(exchange_id)
+            target = await self._content_exchange(exchange_id)
             if target is None:
                 return
             assert self.record is not None
@@ -394,9 +415,7 @@ class _ExchangeRecorder:
                 target,
                 CapturedMessage.from_stored_message(entry.message, icon=entry.icon),
             )
-            await self._controller.store.put(
-                self._controller.partition, self.record
-            )
+            await self._persist_record()
 
     async def stream_started(
         self,
@@ -408,7 +427,7 @@ class _ExchangeRecorder:
             return
 
         async with self._lock:
-            target = self._content_exchange(exchange_id)
+            target = await self._content_exchange(exchange_id)
             if target is None:
                 return
             assert self.record is not None
@@ -417,9 +436,7 @@ class _ExchangeRecorder:
                 target,
                 CapturedMessage.from_stored_message(entry.message, icon=entry.icon),
             )
-            await self._controller.store.put(
-                self._controller.partition, self.record
-            )
+            await self._persist_record()
 
     async def stream_updated(
         self, stream_id: str, entry: TranscriptEntry
@@ -435,9 +452,7 @@ class _ExchangeRecorder:
                 exchange_id,
                 CapturedMessage.from_stored_message(entry.message, icon=entry.icon),
             )
-            await self._controller.store.put(
-                self._controller.partition, self.record
-            )
+            await self._persist_record()
 
     async def stream_finished(
         self,
@@ -454,9 +469,7 @@ class _ExchangeRecorder:
                 return
             await self._capture_state(exchange_id, "stream_finish")
             self.record.finish_exchange(exchange_id, status, error)
-            await self._controller.store.put(
-                self._controller.partition, self.record
-            )
+            await self._persist_record()
             self._stream_exchanges.pop(stream_id, None)
 
     async def replay_active_path(
@@ -573,16 +586,22 @@ class HistoryController:
         with reactive.isolate():
             return self._active_id()
 
-    async def ensure_conversation_id(self) -> str:
+    async def ensure_conversation_id(
+        self, *, notify: bool | None = None
+    ) -> str:
         """
         Return the active conversation ID, allocating one when the active
         conversation is an empty draft. Repeated calls for the same active
-        conversation return the same ID.
+        conversation return the same ID. By default, v1 controllers notify
+        when allocating while v2 recorders defer notification until their
+        first successful store write.
         """
         id = self._active_id_now()
         if id is None:
             id = new_conversation_id()
-            await self._set_active_id(id)
+            if notify is None:
+                notify = self._exchange_recorder is None
+            await self._set_active_id(id, notify=notify)
         return id
 
     async def activate_record(self, record: ConversationRecord) -> None:
@@ -600,15 +619,21 @@ class HistoryController:
         self.record = None
         await self._set_active_id(None)
 
-    async def _set_active_id(self, id: str | None) -> None:
+    async def _set_active_id(
+        self, id: str | None, *, notify: bool = True
+    ) -> None:
         # Single writer for the active ID; notifies on_active_id_change only
         # on an actual change (e.g. first save after ensure_conversation_id()
         # does not re-fire).
         if self._active_id_now() == id:
             return
         self._active_id.set(id)
-        if self.on_active_id_change is not None:
+        if notify and self.on_active_id_change is not None:
             await self.on_active_id_change(id)
+
+    async def _notify_active_id_change(self) -> None:
+        if self.on_active_id_change is not None:
+            await self.on_active_id_change(self._active_id_now())
 
     async def _get_record(
         self, partition: ConversationPartition, conv_id: str
@@ -822,7 +847,13 @@ class HistoryController:
             await self.save_current()
             self.adapter.set_turns_json([])
             await self.chat.clear_messages()
+            # Announce the cleared state even when the active ID is already None:
+            # in URL/bookmark restore modes the browser may still carry a stale
+            # conversation param (e.g. after a failed restore) that only
+            # on_active_id_change(None) clears.
             was_identified = self._active_id_now() is not None
+            if self._exchange_recorder is not None:
+                self._exchange_recorder.reset()
             await self.clear_active()
             if not was_identified and self.on_active_id_change is not None:
                 await self.on_active_id_change(None)
@@ -881,7 +912,16 @@ class HistoryController:
             if self.on_evict is not None:
                 await self.on_evict(conv_id)
             await self.store.delete(self.partition, conv_id)
-            if self.record is not None and self.record.id == conv_id:
+            exchange_record = (
+                self._exchange_recorder.record
+                if self._exchange_recorder is not None
+                else None
+            )
+            if (self.record is not None and self.record.id == conv_id) or (
+                exchange_record is not None and exchange_record.id == conv_id
+            ):
+                if self._exchange_recorder is not None:
+                    self._exchange_recorder.reset()
                 await self.clear_active()
                 self.adapter.set_turns_json([])
                 await self.chat.clear_messages()
@@ -1092,9 +1132,9 @@ class ChatHistory:
         if cancel is not None:
             cancel()
         on_end = self._on_session_end
-        self._on_session_end = None
         if on_end is not None:
             on_end()
+        self._on_session_end = None
 
     def conversation_id(self) -> str | None:
         """
@@ -1556,6 +1596,8 @@ class ChatHistory:
                 await notify_error("Could not navigate messages", e)
 
         def _on_session_end() -> None:
+            if self._on_session_end is None:
+                return
             # The session consumed the registration by firing it; keep the
             # tracked state truthful so a later `_teardown()` won't re-run.
             self._session_end_cancel = None
@@ -1568,7 +1610,6 @@ class ChatHistory:
         self._effects.extend(
             [
                 _init_history,
-                _save_on_response,
                 _on_select,
                 _on_new,
                 _on_rename,

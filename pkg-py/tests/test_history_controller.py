@@ -594,6 +594,178 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
 
 
 @pytest.mark.anyio
+async def test_v2_recorder_allocates_controller_id_before_root_capture():
+    controller, _ = _make_controller(use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    observed_ids: list[str | None] = []
+
+    def capture_id(_context: Any) -> None:
+        observed_ids.append(controller._active_id_now())
+
+    recorder._register_capture_hook("test:active-id", capture_id)
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "hello")
+    )
+
+    assert recorder.record is not None
+    assert recorder.record.id == controller._active_id_now()
+    assert observed_ids == [recorder.record.id]
+
+
+@pytest.mark.anyio
+async def test_v2_inputless_capture_allocates_controller_id():
+    controller, _ = _make_controller(use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+
+    await recorder.message_committed(
+        None, TranscriptEntry(message=_stored_message("assistant", "notice"))
+    )
+
+    assert recorder.record is not None
+    assert recorder.record.id == controller._active_id_now()
+
+
+@pytest.mark.anyio
+async def test_v2_active_id_callback_runs_after_first_store_write():
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    persisted: list[ConversationRecordV2 | None] = []
+
+    async def update_url(conv_id: str | None) -> None:
+        assert conv_id is not None
+        persisted.append(await store.get(part(), conv_id))
+
+    controller.on_active_id_change = update_url
+    await controller.ensure_conversation_id()
+    assert persisted == []
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "hello")
+    )
+
+    assert recorder.record is not None
+    assert persisted == [recorder.record]
+
+
+@pytest.mark.anyio
+async def test_v2_active_id_callback_retries_after_first_store_failure():
+    class FailFirstStore(InMemoryConversationStore):
+        fail_first_put = True
+
+        async def put(
+            self, partition: ConversationPartition, record: Any
+        ) -> None:
+            if self.fail_first_put:
+                self.fail_first_put = False
+                raise RuntimeError("durability failure")
+            await super().put(partition, record)
+
+    store = FailFirstStore()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    persisted: list[ConversationRecordV2 | None] = []
+
+    async def update_url(conv_id: str | None) -> None:
+        assert conv_id is not None
+        persisted.append(await store.get(part(), conv_id))
+
+    controller.on_active_id_change = update_url
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+    )
+
+    with pytest.raises(RuntimeError, match="durability failure"):
+        await transcript.record_accepted_input_and_notify(
+            _stored_message("user", "hello")
+        )
+
+    active_id = controller._active_id_now()
+    assert active_id is not None
+    assert persisted == []
+    assert await store.get(part(), active_id) is None
+
+    await recorder.message_committed(
+        None,
+        TranscriptEntry(message=_stored_message("assistant", "hi")),
+    )
+
+    assert recorder.record is not None
+    assert persisted == [recorder.record]
+    assert persisted[0] == await store.get(part(), active_id)
+
+
+@pytest.mark.anyio
+async def test_v2_new_chat_resets_recorder_and_allocates_a_new_id():
+    controller, _ = _make_controller(use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "first")
+    )
+    assert recorder.record is not None
+    first_id = recorder.record.id
+
+    await controller.new_chat()
+    assert recorder.record is None
+    assert controller._active_id_now() is None
+
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "second")
+    )
+    assert recorder.record is not None
+    assert recorder.record.id != first_id
+    assert recorder.record.id == controller._active_id_now()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("operation", ["new_chat", "delete"])
+async def test_v2_destructive_active_id_callback_observes_reset(
+    operation: str,
+):
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "hello")
+    )
+    assert recorder.record is not None
+
+    observed: list[ConversationRecordV2 | None] = []
+
+    async def active_id_callback(_conv_id: str | None) -> None:
+        await asyncio.sleep(0)
+        observed.append(recorder.record)
+
+    controller.on_active_id_change = active_id_callback
+    if operation == "new_chat":
+        await controller.new_chat()
+    else:
+        await controller.delete(recorder.record.id)
+
+    assert observed == [None]
+
+
+@pytest.mark.anyio
 async def test_v2_recorder_captures_postpartition_root_ui_but_not_greeting():
     from shiny.module import ResolvedId
     from shiny.session import session_context
@@ -1687,6 +1859,7 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
         from shinychat._chat_types import StoredMessage, StoredSegment
         from shinychat._history import _ExchangeRecorder
         from shinychat._history_store import ConversationPartition, FileConversationStore
+        from shinychat._history_types import new_conversation_id
 
         def message(role, content):
             return StoredMessage(
@@ -1708,6 +1881,18 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
                 ),
                 store=store,
             )
+
+            async def ensure_conversation_id(*, notify=True):
+                if controller.conversation_id is None:
+                    controller.conversation_id = new_conversation_id()
+                return controller.conversation_id
+
+            async def notify_active_id_change():
+                pass
+
+            controller.conversation_id = None
+            controller.ensure_conversation_id = ensure_conversation_id
+            controller._notify_active_id_change = notify_active_id_change
             recorder = _ExchangeRecorder(controller)
             transcript = ChatTranscript(
                 on_accepted_input=recorder.accepted_input,
@@ -2900,8 +3085,8 @@ async def test_evict_if_needed_removes_oldest_preserves_active():
     rec1 = new_conversation_record(title="oldest")
     rec2 = new_conversation_record(title="middle")
     rec3 = new_conversation_record(title="newest")
-    rec2.created_at = rec2.created_at + timedelta(seconds=1)
-    rec3.created_at = rec3.created_at + timedelta(seconds=2)
+    rec2.updated_at = rec2.updated_at + timedelta(seconds=1)
+    rec3.updated_at = rec3.updated_at + timedelta(seconds=2)
     for rec in [rec1, rec2, rec3]:
         await store.put(part(scope="alice"), rec)
 
@@ -2934,8 +3119,8 @@ async def test_evict_if_needed_calls_list_once_and_never_total_size():
     rec1 = new_conversation_record(title="oldest")
     rec2 = new_conversation_record(title="middle")
     rec3 = new_conversation_record(title="newest")
-    rec2.created_at = rec2.created_at + timedelta(seconds=1)
-    rec3.created_at = rec3.created_at + timedelta(seconds=2)
+    rec2.updated_at = rec2.updated_at + timedelta(seconds=1)
+    rec3.updated_at = rec3.updated_at + timedelta(seconds=2)
     for rec in [rec1, rec2, rec3]:
         await store.put(part(scope="alice"), rec)
 

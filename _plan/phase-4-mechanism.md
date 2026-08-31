@@ -299,5 +299,26 @@ note is approved; P4.0 is complete and the restore keystone remains blocked pend
 ## Handoff
 
 Landed: P4.0 `shinychat#ykxh` merged as `e27e7278981e061864cc1fdf81d5c7c6fa5d3ca8`; identity ownership, lifecycle decisions, and the full verification evidence are recorded above.
-Next: human review of open `shinychat#ykxh`, then begin the unblocked restore-and-continuation keystone `shinychat#5r50`.
+Next: complete normal integration/review handling for the accepted roborev 1067 fix; `shinychat#5r50` remains blocked and not begun.
 Boundary: no production or test code changed in this handoff; OTel scalar overlap, the init/restore race, and Phase 5 guards/degradation/audit remain deferred.
+
+### Roborev 1067 handoff (2026-08-31)
+
+Accepted findings are covered by the existing uncommitted bounded fix. In v2,
+`_ExchangeRecorder._new_record()` allocates without notifying; `_persist_record()`
+stores first and then performs the active-ID callback once, leaving the
+announcement eligible for retry after either a store or callback failure.
+`new_chat()` and `delete()` reset the recorder before awaiting active-ID
+clearing callbacks, so those callbacks observe no stale v2 record. The focused
+retry regression explicitly fails the first store, confirms no callback or
+stored record, then succeeds on the next persistence and verifies callback and
+store identity.
+
+Verification evidence: `uv run pytest
+pkg-py/tests/test_history_controller.py
+pkg-py/tests/pytest/test_conversation_id.py` passed 147 tests with 5 warnings;
+`make py-check-format` passed; `make py-check-types` reported 0 errors; and
+`make py-check` passed Ruff, Pyright, 191 Playwright tests, and 754 non-browser
+tests with 1 skipped (15 warnings, no failures). Current state: roborev 1067
+review is accepted and this bounded fix is verified, pending its normal
+integration/review handling. `shinychat#5r50` remains blocked and not begun.
