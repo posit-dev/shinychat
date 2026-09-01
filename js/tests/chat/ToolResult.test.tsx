@@ -27,4 +27,44 @@ describe("ToolResult", () => {
     fireEvent(details, new Event("toggle", { bubbles: false }))
     expect(stopScroll).toHaveBeenCalled()
   })
+
+  it("renders the request call in the expanded card", () => {
+    const { container } = render(
+      <ToolResult
+        toolName="my_tool"
+        status="success"
+        value="done"
+        valueType="text"
+        requestCall={"my_tool(x = 1)"}
+        showRequest={true}
+        expanded={true}
+      />,
+    )
+    expect(container.textContent).toContain("my_tool(x = 1)")
+  })
+
+  // Regression: a server once sent request_call as an array of wrapped lines;
+  // requestCall.split() threw and the per-message boundary wiped the whole
+  // chat message. The card body boundary must contain it instead.
+  it("a malformed requestCall degrades the card body, not the card", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const { container, getByRole } = render(
+      <ToolResult
+        toolName="my_tool"
+        status="success"
+        value="done"
+        valueType="text"
+        requestCall={["my_tool(", "  x = 1)"] as unknown as string}
+        showRequest={true}
+        expanded={true}
+      />,
+    )
+
+    const header = container.querySelector(".card-header")
+    expect(header).toBeTruthy()
+    expect(header!.textContent).toContain("my_tool")
+    expect(getByRole("alert").textContent).toContain("couldn’t be displayed")
+  })
 })

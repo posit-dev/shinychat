@@ -1,4 +1,5 @@
 import { useState, useId, type ReactNode, type Ref } from "react"
+import { BlockErrorBoundary } from "./BlockErrorBoundary"
 import { bareDot, plus } from "../utils/icons"
 import { fullscreenEnter } from "./useFullscreen"
 import { RawHTML } from "./RawHTML"
@@ -26,6 +27,12 @@ export interface ToolCardProps {
   footer?: string
   onEnterFullscreen?: (trigger: HTMLElement) => void
   cardRef?: Ref<HTMLDivElement>
+  /**
+   * Reset key for the card body's error boundary: pass the value the body
+   * derives from (e.g. the result value) so a contained error retries when
+   * new content arrives.
+   */
+  resetKey?: unknown
   children?: ReactNode
 }
 
@@ -42,6 +49,7 @@ export function ToolCard({
   footer,
   onEnterFullscreen,
   cardRef,
+  resetKey,
   children,
 }: ToolCardProps) {
   const [expanded, setExpanded] = useState(initialExpanded)
@@ -127,7 +135,12 @@ export function ToolCard({
         aria-labelledby={headerId}
         inert={!expanded || undefined}
       >
-        {children}
+        {/* The body carries user-controlled content (request call, result
+            value, custom displays): contain a render error here so the
+            header row and the rest of the message survive. */}
+        <BlockErrorBoundary context={`${toolName} details`} resetKey={resetKey}>
+          {children}
+        </BlockErrorBoundary>
         {fullScreen && onEnterFullscreen && (
           <button
             className="tool-fullscreen-toggle badge rounded-pill"
@@ -140,12 +153,14 @@ export function ToolCard({
         )}
       </div>
       {footer && (
-        <RawHTML
-          html={footer}
-          className="card-footer"
-          displayContents={false}
-          fillable={false}
-        />
+        <BlockErrorBoundary context={`${toolName} footer`} fallback={null}>
+          <RawHTML
+            html={footer}
+            className="card-footer"
+            displayContents={false}
+            fillable={false}
+          />
+        </BlockErrorBoundary>
       )}
     </div>
   )

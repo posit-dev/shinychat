@@ -112,8 +112,15 @@ export const ToolResult = memo(function ToolResult({
         footer={footer}
         onEnterFullscreen={enterFullscreen}
         cardRef={cardRef}
+        resetKey={value}
       >
-        {renderRequest(requestCall, showRequest, stopScroll)}
+        {/* A component (not an inline call) so a malformed requestCall throws
+            below ToolCard's body boundary and the card header survives. */}
+        <ToolRequestDetails
+          requestCall={requestCall}
+          showRequest={showRequest}
+          stopScroll={stopScroll}
+        />
         <ToolResultValue
           value={value}
           valueType={valueType}
@@ -125,11 +132,15 @@ export const ToolResult = memo(function ToolResult({
   )
 })
 
-function renderRequest(
-  requestCall: string | undefined,
-  showRequest: boolean,
-  stopScroll: ReturnType<typeof useChatStopScroll>,
-): React.ReactNode {
+function ToolRequestDetails({
+  requestCall,
+  showRequest,
+  stopScroll,
+}: {
+  requestCall: string | undefined
+  showRequest: boolean
+  stopScroll: ReturnType<typeof useChatStopScroll>
+}): React.ReactNode {
   if (!showRequest || !requestCall) {
     return null
   }

@@ -1,4 +1,5 @@
 import { memo, useMemo, useState, useRef, useCallback, useEffect } from "react"
+import { BlockErrorBoundary } from "./BlockErrorBoundary"
 import {
   deriveToolGroupIdentity,
   type ChatMessageData,
@@ -433,7 +434,13 @@ export const ChatMessage = memo(function ChatMessage({
       </div>
     ) : null
 
-  const messageBlocks = visibleBlocks.map(({ block, index: i }) => {
+  // Each block renders inside its own error boundary so a block that throws
+  // (e.g. malformed server-provided tool metadata) degrades to an inline
+  // notice instead of taking the whole message down with it.
+  const renderMessageBlock = (
+    block: MessageBlock,
+    i: number,
+  ): React.ReactNode => {
     if (block.type === "thinking") {
       return (
         <ThinkingDisplay
@@ -522,7 +529,28 @@ export const ChatMessage = memo(function ChatMessage({
       )
     }
     return el
-  })
+  }
+
+  const messageBlocks = visibleBlocks.map(({ block, index: i }) => (
+    <BlockErrorBoundary
+      key={i}
+      context={`${block.type} block`}
+      // Block object identity: the reducer preserves references for blocks an
+      // update didn't touch, so a contained error retries exactly when the
+      // failing block's data changes.
+      resetKey={block}
+      fallback={
+        // Markdown rendering failing doesn't make the text itself useless.
+        block.type === "content" ? (
+          <div className="shiny-chat-block-error" role="alert">
+            <pre>{block.content}</pre>
+          </div>
+        ) : undefined
+      }
+    >
+      {renderMessageBlock(block, i)}
+    </BlockErrorBoundary>
+  ))
 
   const lightboxPortal = lightbox && (
     <AttachmentLightbox

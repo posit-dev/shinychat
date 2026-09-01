@@ -452,6 +452,21 @@ shiny-chat-container:not([fill]) {
   }
 }
 
+/* Error-boundary fallbacks: a whole message (MessageErrorBoundary) or a
+   single block/tool-card body (BlockErrorBoundary). */
+.shiny-chat-message-error,
+.shiny-chat-block-error {
+  color: var(--bs-danger, #dc3545);
+  font-size: 0.875em;
+  padding: 0.25rem 0;
+
+  pre {
+    color: inherit;
+    margin: 0;
+    white-space: pre-wrap;
+  }
+}
+
 /* Align the user message to the right */
 .shiny-chat-user-message {
   position: relative;

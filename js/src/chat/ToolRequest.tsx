@@ -26,6 +26,7 @@ export const ToolRequest = memo(function ToolRequest({
       toolTitle={toolTitle}
       intent={intent}
       icon={spinnerIcon}
+      resetKey={toolArguments}
     >
       <div className="shiny-tool-request__arguments">
         <strong>Tool arguments</strong>
