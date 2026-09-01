@@ -3,14 +3,17 @@
 **Status (current and authoritative):** P4.0 complete; the P4.1 Roborev 1135
 DELETE/REPLACE unit and its bounded blocked-input correction are landed.
 Roborev 1146 switch-timing and terminal-teardown findings are accepted and
-finalized. The bookmark-pointer disposition remains out of scope in
-`shinychat#g6tt`. `shinychat#5r50` remains open with `needs-review`,
-`work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`;
+finalized, and the old review is closed after its dispositions and fix, as
+required by process. This is not final or closable evidence: a new mandatory
+batched review is required over `04825f1f^..34831fd`. The bookmark-pointer
+disposition remains out of scope in `shinychat#g6tt`. `shinychat#5r50` remains
+open with `needs-review`, `work.attention="blocked"`, and
+`work.branch="feat/history-exchange-tree"`;
 `shinychat#6drf` remains open, blocked, and unstarted; and `shinychat#azvt`
 remains open with `work.attention="ok"` (2026-09-01).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is open with
-`needs-review`, `work.attention="ok"`, and
+`needs-review`, `work.attention="blocked"`, and
 `work.branch="feat/history-exchange-tree"`; successor `shinychat#6drf` is
 open, blocked, and unstarted; parent `shinychat#azvt` is open with
 `work.attention="ok"` under epic `shinychat#6d0d`
@@ -2148,9 +2151,11 @@ Pyright with 0 errors, 200 Playwright tests, 825 non-browser tests, 1 skipped
 test, and 19 established warnings.
 
 Roborev 1146 switch timing and terminal teardown findings are accepted and
-finalized after this evidence. No new Roborev review was requested. The
+finalized after this evidence, and job `1146` was closed. This is not final
+or closable evidence: a new mandatory batched review is required over the
+full range `04825f1f^..34831fd`; no new review has been requested yet. The
 bookmark pointer remains out of scope in `shinychat#g6tt`; it is not a
 `shinychat#5r50` blocker. `shinychat#5r50` remains open with `needs-review`,
-`work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`.
+`work.attention="blocked"`, and `work.branch="feat/history-exchange-tree"`.
 `shinychat#6drf` remains open, blocked, and unstarted. No task closure or
 sibling work is authorized here.
