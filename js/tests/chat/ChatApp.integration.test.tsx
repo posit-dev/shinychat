@@ -305,7 +305,10 @@ describe("ChatApp integration: full message flow", () => {
 })
 
 describe("ChatApp integration: editable messages gated by history state", () => {
-  function renderChatApp(transport: ReturnType<typeof createMockTransport>) {
+  function renderChatApp(
+    transport: ReturnType<typeof createMockTransport>,
+    enableUpload?: boolean,
+  ) {
     return render(
       <ChatApp
         transport={transport}
@@ -315,6 +318,7 @@ describe("ChatApp integration: editable messages gated by history state", () => 
         uploadAccept={["image/png"]}
         maxUploadSize={30000000}
         placeholder="Type..."
+        enableUpload={enableUpload}
       />,
     )
   }
@@ -618,6 +622,77 @@ describe("ChatApp integration: editable messages gated by history state", () => 
       "v1 replacement",
       [],
     )
+  })
+
+  it("sends projected attachments when composer uploads are disabled", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    const { container } = renderChatApp(transport, false)
+    const replacementAttachments = [
+      {
+        mime: "image/png" as const,
+        data_url: "data:image/png;base64,REPLACEMENT",
+        name: "replacement.png",
+        size: 3,
+      },
+    ]
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+        transition_protocol: "completion-v2",
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "replace me", content_type: "markdown" }],
+        },
+      })
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: /edit message/i }))
+    const editInput = container.querySelector(
+      ".shiny-chat-edit-box textarea",
+    ) as HTMLTextAreaElement
+    fireEvent.change(editInput, { target: { value: "replacement" } })
+    fireEvent.click(
+      container.querySelector(".shiny-chat-btn-send") as HTMLElement,
+    )
+
+    const requestId = vi.mocked(transport.sendMessageEdit).mock.calls[0]?.[4]
+    expect(requestId).toEqual(expect.any(String))
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_edit_projection",
+        requestId: "stale",
+        index: 0,
+        content: "stale replacement",
+        attachments: replacementAttachments,
+      })
+    })
+    expect(transport.sendInput).not.toHaveBeenCalled()
+    expect(screen.getByText("replace me")).toBeTruthy()
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_edit_projection",
+        requestId: requestId as string,
+        index: 0,
+        content: "replacement",
+        attachments: replacementAttachments,
+      })
+    })
+
+    expect(transport.sendInput).toHaveBeenCalledTimes(1)
+    expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+      text: "replacement",
+      attachments: replacementAttachments,
+    })
   })
 
   it.each([

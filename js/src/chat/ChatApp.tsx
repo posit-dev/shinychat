@@ -269,7 +269,7 @@ export function ChatApp({
         })
         transport.sendInput(
           inputId,
-          state.enableUpload
+          state.enableUpload || action.attachments.length > 0
             ? { text: action.content, attachments: action.attachments }
             : action.content,
         )
