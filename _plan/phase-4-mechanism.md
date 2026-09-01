@@ -7,7 +7,7 @@ remains open with `needs-review`, `work.attention="ok"`, and
 and unstarted (2026-08-31).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is open with
-`needs-review`, `work.attention="blocked"`, and
+`needs-review`, `work.attention="ok"`, and
 `work.branch="feat/history-exchange-tree"`; successor `shinychat#6drf` is
 open, blocked, and unstarted; parent `shinychat#azvt` is open with
 `work.attention="ok"` under epic `shinychat#6d0d`
@@ -1710,8 +1710,8 @@ Playwright tests, and 818 non-browser tests with 1 skipped and 19 established
 warnings. `git diff --check` passed.
 
 Roborev job 1135 was closed immediately after the code/test fix commit, as
-required; no new review was requested. The documentation handoff follows in a
-separate commit. `shinychat#5r50` remains open with `needs-review` and
+required; no new review was requested. The documentation handoff is
+`dbde0c1a`. `shinychat#5r50` remains open with `needs-review` and
 `work.attention="ok"`; do not close it here. `shinychat#6drf` remains blocked
 and unstarted. No branching/Q3, bookmark, Phase 5, JavaScript, R, queue,
 timer, CAS, second lock, or second owner work was added.
