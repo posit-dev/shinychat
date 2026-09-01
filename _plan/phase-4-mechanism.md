@@ -1,8 +1,10 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
-**Status (current and authoritative):** P4.0 complete; P4.1 implementation
-and evidence are stopped and blocked after mandatory Roborev 1135 `FAIL`,
-pending this corrective note review (2026-08-31)
+**Status (current and authoritative):** P4.0 complete; the P4.1 Roborev 1135
+DELETE/REPLACE unit is implemented and fully verified. `shinychat#5r50`
+remains open with `needs-review`, `work.attention="ok"`, and
+`work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains blocked
+and unstarted (2026-08-31).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is open with
 `needs-review`, `work.attention="blocked"`, and
@@ -1666,3 +1668,50 @@ Implementation is stopped pending note review. Roborev 1135 remains open with
 blocked, and unstarted. `shinychat#azvt` is open with
 `work.attention="ok"`. No implementation tests are authorized by this
 correction.
+
+### P4.1 Roborev 1135 DELETE/REPLACE implementation (2026-08-31)
+
+The approved replacement landed in `04825f1f`
+(`fix(history): replace v2 persistence ownership`, `Kata: shinychat#5r50`).
+It retains the existing recorder lock and the restore/failure contract:
+
+- `_ExchangeRecorder` is the sole active v2 content/state mutator. Under its
+  existing lock it captures `on_save` values, handles active rename, and is
+  the only active v2 `store.put` path. `HistoryController` no longer writes
+  the active v2 record.
+- Response settlement, explicit save, switch, and new-chat capture the active
+  record's values through recorder-owned persistence before any restore or
+  reset. Application restore callbacks still run only after target
+  installation.
+- Stream start/update/finish writes remain eager and durable. They send no
+  `history_update`; terminal response settlement publishes exactly one
+  metadata update. Initial creation, rename, restore, switch, new, and delete
+  retain their visible metadata paths.
+- Restore marks only the installed record as ID-published, and only after
+  `_set_active_id()` and its callback have completed. The next capture does
+  not re-publish that ID. Existing store/callback failure and cancellation
+  retry behavior remains intact.
+
+The new focused regressions use `FileConversationStore` to prove an active
+rename survives a later capture; cover values across response/save/switch/new
+plus restore callback installation; prove chunk durability with zero metadata
+and terminal-only metadata; prove exact restore-ID publication; and prove
+active rename serializes behind a blocked recorder capture. The prior v2
+response-settlement test now correctly asserts one recorder-owned persistence
+write rather than the superseded v2 no-op.
+
+Verification: required entry baseline passed 43 history/transcript Playwright
+tests plus 439 non-browser tests (8 established warnings), `history_edit`
+passed 9, format passed, and Pyright reported 0 errors. Post-change focused
+controller coverage passed 177 tests (2 established warnings); the final
+history/transcript gate passed 43 Playwright plus 444 non-browser tests (8
+established warnings); and final `make py-check` passed Ruff, Pyright, 200
+Playwright tests, and 818 non-browser tests with 1 skipped and 19 established
+warnings. `git diff --check` passed.
+
+Roborev job 1135 was closed immediately after the code/test fix commit, as
+required; no new review was requested. The documentation handoff follows in a
+separate commit. `shinychat#5r50` remains open with `needs-review` and
+`work.attention="ok"`; do not close it here. `shinychat#6drf` remains blocked
+and unstarted. No branching/Q3, bookmark, Phase 5, JavaScript, R, queue,
+timer, CAS, second lock, or second owner work was added.
