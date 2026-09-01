@@ -46,6 +46,7 @@ class EchoChatClient(chatlas.Chat):
 
 
 _store_dirs: dict[int, str] = {}
+_restore_mode = "browser"
 
 
 def _store_dir() -> str:
@@ -81,6 +82,7 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
             store=FileConversationStore(dir=_store_dir()),
             scope="test-user",
             title=None,
+            restore_mode=_restore_mode,
         ),
     )
     send_action = chat._send_action

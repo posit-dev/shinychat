@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+import pytest
 from playwright.sync_api import Page, expect
 from shiny.playwright import controller
 from shiny.run import ShinyAppProc
@@ -104,4 +105,28 @@ def test_v2_switch_replays_without_recapturing_the_active_tree(
     controller.InputActionButton(page, "inspect_turns").click()
     controller.OutputText(page, "recorder").expect_value(
         re.compile(r'"node_count": 2'), timeout=10_000
+    )
+
+
+@pytest.mark.parametrize("local_app", ["app_url.py"], indirect=True)
+def test_v2_url_restore_publishes_one_history_update(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    chat.set_user_input("url restore")
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message("echo: url restore", timeout=30_000)
+    page.wait_for_url(
+        lambda url: "shinychat_conversation_id=" in url, timeout=10_000
+    )
+    restore_url = page.url
+
+    page.goto(restore_url)
+    expect(chat.loc).to_be_visible(timeout=30_000)
+    chat.expect_latest_message("echo: url restore", timeout=30_000)
+    controller.OutputText(page, "history_updates").expect_value(
+        "1", timeout=10_000
     )
