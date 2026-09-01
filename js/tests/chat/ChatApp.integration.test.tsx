@@ -695,6 +695,44 @@ describe("ChatApp integration: editable messages gated by history state", () => 
     })
   })
 
+  it("sends an eligible restored retry through the v2 transition transport", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    renderChatApp(transport)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+        transition_protocol: "completion-v2",
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "retry me", content_type: "markdown" }],
+        },
+      })
+      transport.fire("test-chat", {
+        type: "update_exchange_metadata",
+        data: { 0: { status: "error", retryable: true } },
+      })
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }))
+    expect(transport.sendMessageResubmit).toHaveBeenCalledWith(
+      "test-chat",
+      0,
+      "retry",
+      expect.any(String),
+    )
+    expect(
+      screen.getByRole("button", { name: /send message/i }),
+    ).toHaveProperty("disabled", true)
+  })
+
   it.each([
     ["Python v1", "completion-v1"],
     ["R", undefined],

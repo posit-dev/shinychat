@@ -432,6 +432,16 @@ export function ChatApp({
     [transport, elementId, historyStore],
   )
 
+  const handleRetry = useCallback(
+    (index: number) => {
+      if (historyStore.isMutationBlocked()) return
+      const requestId = historyStore.beginEditTransition()
+      if (requestId === null) return
+      transport.sendMessageResubmit(elementId, index, "retry", requestId)
+    },
+    [transport, elementId, historyStore],
+  )
+
   const supersededRequests = useSupersededRequests(
     state.messages,
     state.streamingMessage,
@@ -478,6 +488,7 @@ export function ChatApp({
                   historyStore={historyStore}
                   onEdit={handleEdit}
                   onNavigate={handleNavigate}
+                  onRetry={handleRetry}
                   siblingNavigationPending={siblingNavigationPending}
                   showHistory={showHistory}
                   drawer={state.drawer}

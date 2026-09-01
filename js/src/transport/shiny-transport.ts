@@ -189,6 +189,20 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     })
   }
 
+  sendMessageResubmit(
+    id: string,
+    index: number,
+    kind: "retry" | "regenerate",
+    requestId: string,
+  ): void {
+    window.Shiny?.setInputValue?.(`${id}_message_resubmit`, {
+      index,
+      kind,
+      requestId,
+      ts: Date.now(),
+    })
+  }
+
   onMessage(id: string, callback: (action: ChatAction) => void): () => void {
     if (!this.listeners.has(id)) {
       this.listeners.set(id, new Set())

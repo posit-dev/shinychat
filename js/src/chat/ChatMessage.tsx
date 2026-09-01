@@ -67,6 +67,7 @@ interface ChatMessageProps {
     attachments: AttachmentPayload[],
   ) => void
   onNavigate?: (index: number, direction: "prev" | "next") => void
+  onRetry?: (index: number) => void
   siblingNavigationPending?: boolean
   disabled?: boolean
   inputId?: string
@@ -85,6 +86,7 @@ export const ChatMessage = memo(function ChatMessage({
   iconAssistant,
   onEdit,
   onNavigate,
+  onRetry,
   siblingNavigationPending = false,
   disabled,
   inputId,
@@ -619,7 +621,8 @@ export const ChatMessage = memo(function ChatMessage({
       {isUser &&
         !isEditing &&
         ((onEdit && !disabled) ||
-          (message.siblings && message.siblings.total > 1)) && (
+          (message.siblings && message.siblings.total > 1) ||
+          (message.exchange?.retryable && onRetry)) && (
           <div className="shiny-chat-message-footer">
             {message.siblings && message.siblings.total > 1 && (
               <div className="shiny-chat-sibling-nav">
@@ -664,6 +667,18 @@ export const ChatMessage = memo(function ChatMessage({
                 title="Edit message"
                 dangerouslySetInnerHTML={{ __html: pencil }}
               />
+            )}
+            {message.exchange?.retryable && onRetry && (
+              <button
+                type="button"
+                className="shiny-chat-retry-btn"
+                disabled={disabled}
+                onClick={() => onRetry(index)}
+                aria-label="Retry message"
+                title="Retry message"
+              >
+                Retry
+              </button>
             )}
           </div>
         )}

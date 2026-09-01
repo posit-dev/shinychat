@@ -151,6 +151,7 @@ export interface ChatContainerProps {
     attachments: AttachmentPayload[],
   ) => void
   onNavigate?: (index: number, direction: "prev" | "next") => void
+  onRetry?: (index: number) => void
   siblingNavigationPending?: boolean
   showHistory: boolean
 }
@@ -202,6 +203,7 @@ export const ChatContainer = forwardRef<
     drawerSource,
     onEdit,
     onNavigate,
+    onRetry,
     siblingNavigationPending,
     showHistory,
   },
@@ -1020,6 +1022,7 @@ export const ChatContainer = forwardRef<
                     // buttons would render but silently no-op on click.
                     onEdit={history.enabled ? onEdit : undefined}
                     onNavigate={history.enabled ? onNavigate : undefined}
+                    onRetry={history.enabled ? onRetry : undefined}
                     siblingNavigationPending={siblingNavigationPending}
                     disabled={
                       history.busy ||

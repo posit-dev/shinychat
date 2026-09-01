@@ -19,6 +19,7 @@ from ._chat_types import (
     StoredMessage,
     StoredSegment,
     UpdateInputAction,
+    UpdateExchangeMetadataAction,
     UpdateSiblingsAction,
 )
 from ._history_bookmark import delete_bookmark_state, extract_state_id
@@ -107,6 +108,7 @@ class HistoryInputIds:
     delete: ResolvedId
     message_edit: ResolvedId
     message_navigate: ResolvedId
+    message_resubmit: ResolvedId
 
     @classmethod
     def for_chat(cls, chat_id: ResolvedId) -> HistoryInputIds:
@@ -122,6 +124,7 @@ class HistoryInputIds:
             delete=RID(f"{chat_id}_history_delete"),
             message_edit=RID(f"{chat_id}_message_edit"),
             message_navigate=RID(f"{chat_id}_message_navigate"),
+            message_resubmit=RID(f"{chat_id}_message_resubmit"),
         )
 
     def all_ids(self) -> list[ResolvedId]:
@@ -1299,8 +1302,9 @@ class HistoryController:
             await self._set_active_id(target.id)
             recorder.mark_active_id_published(target)
             self._restore_app_state(target.values or {})
-            await self.send_history_update()
+            await self._send_exchange_metadata()
             await self._send_sibling_metadata()
+            await self.send_history_update()
         except BaseException:
             await self._clear_failed_restore()
             raise
@@ -1675,6 +1679,64 @@ class HistoryController:
             }
             await self.chat._send_action(action)
 
+    async def _send_exchange_metadata(self) -> None:
+        recorder = self._exchange_recorder
+        if recorder is None or recorder.record is None:
+            return
+
+        data: dict[
+            int, dict[str, bool | Literal["pending", "ok", "error", "cancelled"]]
+        ] = {}
+        message_index = 0
+        for node_id in recorder.record.path_node_ids():
+            node = recorder.record.nodes[node_id]
+            if node.input is not None:
+                data[message_index] = {
+                    "status": node.status,
+                    "retryable": node.status in ("pending", "error", "cancelled"),
+                }
+                message_index += 1
+            message_index += len(node.messages)
+        if data:
+            action: UpdateExchangeMetadataAction = {
+                "type": "update_exchange_metadata",
+                "data": data,
+            }
+            await self.chat._send_action(action)
+
+    async def handle_resubmit(
+        self,
+        message_index: int,
+        kind: str,
+        *,
+        request_id: str | None = None,
+    ) -> None:
+        recorder = self._exchange_recorder
+        if recorder is None:
+            return
+        if request_id is None or not request_id:
+            raise ValueError("Exchange-tree resubmits require a request ID.")
+        record = recorder.record
+        if record is None:
+            return
+        exchange_id = record.exchange_id_for_user_message_index(message_index)
+        target = record.nodes[exchange_id]
+        if kind == "retry":
+            if target.status not in ("pending", "error", "cancelled"):
+                raise ValueError("Only interrupted or failed exchanges can be retried.")
+            await self.retry(
+                exchange_id, request_id=request_id, message_index=message_index
+            )
+            return
+        if kind == "regenerate":
+            if target.status != "ok":
+                raise ValueError("Only completed exchanges can be regenerated.")
+            await self.regenerate(
+                exchange_id, request_id=request_id, message_index=message_index
+            )
+            return
+        raise ValueError(f"Unknown exchange resubmit kind {kind!r}.")
+
     async def handle_navigate(
         self,
         message_index: int,
@@ -1726,6 +1788,7 @@ class HistoryController:
                         await self._replay_exchange_display(record, node_ids)
                         await recorder._rewind_state(rewind_state)
                         await self._send_sibling_metadata()
+                        await self._send_exchange_metadata()
                         await self.send_history_update()
                     except BaseException:
                         await self._clear_failed_restore()
@@ -2445,6 +2508,31 @@ class ChatHistory:
                 ):
                     await _complete_history_transition(chat, request_id)
 
+        @reactive.effect
+        @reactive.event(chat._session.input[ids.message_resubmit])
+        async def _on_resubmit():
+            payload = chat._session.input[ids.message_resubmit]()
+            request_id = _history_transition_request_id(payload)
+            try:
+                if controller.partition is None:
+                    return
+                if not isinstance(payload, dict):
+                    raise TypeError("Resubmit payload must be an object.")
+                index = payload.get("index")
+                kind = payload.get("kind")
+                if not isinstance(index, int):
+                    raise TypeError("Resubmit message index must be an integer.")
+                if not isinstance(kind, str):
+                    raise TypeError("Resubmit kind must be a string.")
+                await controller.handle_resubmit(
+                    index, kind, request_id=request_id
+                )
+            except Exception as e:
+                await notify_error("Could not retry message", e)
+            finally:
+                if request_id is not None:
+                    await _complete_history_transition(chat, request_id)
+
         def _on_session_end() -> None:
             if self._on_session_end is None:
                 return
@@ -2466,6 +2554,7 @@ class ChatHistory:
                 _on_delete,
                 _on_edit,
                 _on_navigate,
+                _on_resubmit,
             ]
         )
         self._on_session_end = _on_session_end

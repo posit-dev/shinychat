@@ -3599,9 +3599,16 @@ async def test_v2_navigation_replays_selected_sibling_and_rewinds_turns():
     assert [
         message["segments"][0]["content"] for message in chat.restored_messages
     ] == ["first", "custom prefix", "original", "original reply"]
-    assert chat.actions[-2] == {
+    assert chat.actions[-3] == {
         "type": "update_siblings",
         "data": {2: {"index": 0, "total": 2}},
+    }
+    assert chat.actions[-2] == {
+        "type": "update_exchange_metadata",
+        "data": {
+            0: {"status": "ok", "retryable": False},
+            2: {"status": "ok", "retryable": False},
+        },
     }
     assert chat.actions[-1]["type"] == "history_update"
     assert len(store.put_calls) == 1
@@ -4388,6 +4395,115 @@ async def test_v2_edit_retry_and_regenerate_use_resubmit():
         call(target, request_id="retry", message_index=1),
         call(target, request_id="regenerate", message_index=1),
     ]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("status", ["pending", "error", "cancelled"])
+async def test_v2_projects_retry_metadata_for_restored_interrupted_exchanges(
+    status: str,
+) -> None:
+    controller, chat, _adapter, _store, first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.nodes[first].status = "ok"
+    record.nodes[target].status = cast(Any, status)
+
+    await controller._send_exchange_metadata()
+
+    assert chat.actions == [
+        {
+            "type": "update_exchange_metadata",
+            "data": {
+                0: {"status": "ok", "retryable": False},
+                1: {"status": status, "retryable": True},
+            },
+        }
+    ]
+
+
+@pytest.mark.anyio
+async def test_v2_retry_resubmits_an_error_exchange_without_mutating_it():
+    controller, chat, adapter, _store, first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.nodes[target].status = "error"
+    original = record.nodes[target].input.model_copy(deep=True)  # type: ignore[union-attr]
+
+    await controller.handle_resubmit(1, "retry", request_id="retry")
+
+    assert record.active_leaf == first
+    assert record.nodes[target].status == "error"
+    assert record.nodes[target].input == original
+    assert adapter.turns == [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+    ]
+    assert chat.actions[-1] == {
+        "type": "history_edit_projection",
+        "requestId": "retry",
+        "index": 1,
+        "content": "second",
+        "attachments": [],
+    }
+
+
+@pytest.mark.anyio
+async def test_v2_regenerate_uses_the_real_resubmit_primitive():
+    controller, chat, adapter, _store, first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.nodes[target].status = "ok"
+    original = record.nodes[target].input.model_copy(deep=True)  # type: ignore[union-attr]
+
+    await controller.handle_resubmit(1, "regenerate", request_id="regenerate")
+
+    assert record.active_leaf == first
+    assert record.nodes[target].status == "ok"
+    assert record.nodes[target].input == original
+    assert adapter.turns == [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+    ]
+    assert chat.actions[-1] == {
+        "type": "history_edit_projection",
+        "requestId": "regenerate",
+        "index": 1,
+        "content": "second",
+        "attachments": [],
+    }
+
+
+@pytest.mark.anyio
+async def test_v2_rejects_retry_for_a_completed_exchange_without_mutating():
+    controller, chat, adapter, store, _first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.nodes[target].status = "ok"
+    before = record.model_dump()
+
+    with pytest.raises(ValueError, match="Only interrupted or failed"):
+        await controller.handle_resubmit(1, "retry", request_id="retry")
+
+    assert record.model_dump() == before
+    assert adapter.turns[-1] == {"role": "user", "content": "second"}
+    assert store.put_calls == []
+    assert chat.actions == []
 
 
 @pytest.mark.anyio

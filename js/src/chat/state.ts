@@ -69,6 +69,11 @@ export interface ChatMessageData {
   cancelled?: boolean
   /** Sibling navigation metadata (index within a set of edited variants, total variants). */
   siblings?: { index: number; total: number }
+  /** Ephemeral v2 exchange state projected after restoring a stored path. */
+  exchange?: {
+    status: "pending" | "ok" | "error" | "cancelled"
+    retryable: boolean
+  }
 }
 
 export interface GreetingData {
@@ -1241,6 +1246,16 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         if (msg.siblings) {
           return { ...msg, siblings: undefined }
         }
+        return msg
+      })
+      return { ...state, messages: updated }
+    }
+
+    case "update_exchange_metadata": {
+      const updated = state.messages.map((msg, i) => {
+        const exchange = action.data[i]
+        if (exchange) return { ...msg, exchange }
+        if (msg.exchange) return { ...msg, exchange: undefined }
         return msg
       })
       return { ...state, messages: updated }

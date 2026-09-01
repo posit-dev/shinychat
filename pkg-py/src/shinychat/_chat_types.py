@@ -182,6 +182,11 @@ class UpdateSiblingsAction(TypedDict):
     data: dict[int, dict[str, int]]
 
 
+class UpdateExchangeMetadataAction(TypedDict):
+    type: Literal["update_exchange_metadata"]
+    data: dict[int, dict[str, bool | Literal["pending", "ok", "error", "cancelled"]]]
+
+
 ChatAction = Union[
     MessageAction,
     ChunkStartAction,
@@ -207,6 +212,7 @@ ChatAction = Union[
     HistoryTransitionCompleteAction,
     HistoryEditProjectionAction,
     UpdateSiblingsAction,
+    UpdateExchangeMetadataAction,
 ]
 
 

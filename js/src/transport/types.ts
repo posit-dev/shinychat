@@ -139,6 +139,16 @@ export type ChatAction =
       data: Record<number, { index: number; total: number }>
     }
   | {
+      type: "update_exchange_metadata"
+      data: Record<
+        number,
+        {
+          status: "pending" | "ok" | "error" | "cancelled"
+          retryable: boolean
+        }
+      >
+    }
+  | {
       type: "history_edit_projection"
       requestId: string
       index: number
@@ -210,6 +220,12 @@ export interface ChatTransport {
     index: number,
     direction: "prev" | "next",
     requestId?: string,
+  ): void
+  sendMessageResubmit(
+    id: string,
+    index: number,
+    kind: "retry" | "regenerate",
+    requestId: string,
   ): void
 }
 

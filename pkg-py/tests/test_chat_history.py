@@ -342,6 +342,9 @@ def _completion_actions(session: _LiveSession) -> list[dict[str, Any]]:
         ("edit", "success"),
         ("edit", "failure"),
         ("edit", "cancelled"),
+        ("resubmit", "success"),
+        ("resubmit", "failure"),
+        ("resubmit", "cancelled"),
         ("navigate", "success"),
         ("navigate", "failure"),
         ("navigate", "cancelled"),
@@ -419,6 +422,14 @@ async def test_history_transition_completion_always_matches_request(
             "attachments": [],
             "requestId": f"{operation}-{outcome}",
         }
+    elif operation == "resubmit":
+        controller.handle_resubmit = operation_fn  # type: ignore[method-assign]
+        input_id = ids.message_resubmit
+        payload = {
+            "index": 0,
+            "kind": "retry",
+            "requestId": f"{operation}-{outcome}",
+        }
     else:
         controller.handle_navigate = operation_fn  # type: ignore[method-assign]
         input_id = ids.message_navigate
@@ -445,7 +456,9 @@ async def test_history_transition_completion_always_matches_request(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("operation", ["new", "delete", "edit", "navigate"])
+@pytest.mark.parametrize(
+    "operation", ["new", "delete", "edit", "resubmit", "navigate"]
+)
 async def test_history_transition_legacy_payload_does_not_send_completion(
     operation: str,
 ) -> None:
@@ -503,6 +516,10 @@ async def test_history_transition_legacy_payload_does_not_send_completion(
         controller.handle_edit = AsyncMock()  # type: ignore[method-assign]
         input_id = ids.message_edit
         payload = {"index": 0, "content": "edited", "attachments": []}
+    elif operation == "resubmit":
+        controller.handle_resubmit = AsyncMock()  # type: ignore[method-assign]
+        input_id = ids.message_resubmit
+        payload = {"index": 0, "kind": "retry"}
     else:
         controller.handle_navigate = AsyncMock()  # type: ignore[method-assign]
         input_id = ids.message_navigate
@@ -529,6 +546,9 @@ async def test_history_transition_legacy_payload_does_not_send_completion(
         ("edit", "success"),
         ("edit", "failure"),
         ("edit", "cancelled"),
+        ("resubmit", "success"),
+        ("resubmit", "failure"),
+        ("resubmit", "cancelled"),
         ("navigate", "success"),
         ("navigate", "failure"),
         ("navigate", "cancelled"),
@@ -604,6 +624,14 @@ async def test_completion_delivery_failure_does_not_mask_transition_outcome(
             "index": 0,
             "content": "edited",
             "attachments": [],
+            "requestId": f"{operation}-{outcome}",
+        }
+    elif operation == "resubmit":
+        controller.handle_resubmit = operation_fn  # type: ignore[method-assign]
+        input_id = ids.message_resubmit
+        payload = {
+            "index": 0,
+            "kind": "retry",
             "requestId": f"{operation}-{outcome}",
         }
     else:

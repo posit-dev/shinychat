@@ -639,6 +639,39 @@ describe("ChatMessage attachments", () => {
   })
 })
 
+describe("ChatMessage retry", () => {
+  it("offers a keyboard-accessible retry only for eligible restored exchanges", () => {
+    const onRetry = vi.fn()
+    render(
+      <ChatMessage
+        index={3}
+        message={userMessage({
+          exchange: { status: "error", retryable: true },
+        })}
+        onRetry={onRetry}
+      />,
+    )
+
+    const retry = screen.getByRole("button", { name: "Retry message" })
+    expect(retry).toHaveAttribute("title", "Retry message")
+    fireEvent.click(retry)
+    expect(onRetry).toHaveBeenCalledWith(3)
+  })
+
+  it("does not expose a retry for completed exchanges", () => {
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          exchange: { status: "ok", retryable: false },
+        })}
+        onRetry={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
+  })
+})
+
 describe("ChatMessage streaming tool routing", () => {
   const typed =
     '<shiny-tool-result data-shinychat-react request-id="req-1" tool-name="get_weather" status="success" value="Sunny" value-type="text"></shiny-tool-result>'

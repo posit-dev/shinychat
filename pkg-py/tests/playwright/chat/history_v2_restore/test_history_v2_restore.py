@@ -185,6 +185,32 @@ def test_v2_edit_projects_once_through_the_real_provider_and_preserves_draft(
     )
 
 
+def test_v2_restored_failure_retries_through_the_real_provider(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    chat.set_user_input("retry me")
+    chat.send_user_input(method="enter")
+    expect(page.locator(".shiny-chat-user-message")).to_have_count(
+        1, timeout=30_000
+    )
+    expect(page.locator(".shiny-chat-message")).to_have_count(0, timeout=10_000)
+
+    page.reload()
+    expect(chat.loc).to_be_visible(timeout=30_000)
+    retry = page.get_by_role("button", name="Retry message")
+    expect(retry).to_be_visible(timeout=10_000)
+    retry.press("Enter")
+
+    chat.expect_latest_message("echo: retry me", timeout=30_000)
+    controller.OutputText(page, "provider_calls").expect_value("1")
+    controller.OutputText(page, "accepted_submissions").expect_value("1")
+    expect(page.locator(".shiny-chat-user-message")).to_have_count(1)
+
+
 def test_v2_navigation_replays_the_selected_sibling_and_continues_from_it(
     page: Page, local_app: ShinyAppProc
 ) -> None:

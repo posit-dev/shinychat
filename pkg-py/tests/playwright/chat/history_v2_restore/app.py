@@ -61,6 +61,9 @@ class EchoChatClient(chatlas.Chat):
         context = [str(turn.contents) for turn in self._turns] + [user_input]
         if self.provider_context is not None:
             self.provider_context.set(" | ".join(context))
+        if user_input == "retry me" and user_input not in _failed_inputs:
+            _failed_inputs.add(user_input)
+            raise RuntimeError("intentional retry fixture failure")
         self._turns.extend(
             [
                 Turn(role="user", contents=user_input),
@@ -76,6 +79,7 @@ class EchoChatClient(chatlas.Chat):
 
 _store_dirs: dict[int, str] = {}
 _restore_mode: Literal["browser", "url", "none", "bookmark"] = "browser"
+_failed_inputs: set[str] = set()
 
 
 def _store_dir() -> str:
