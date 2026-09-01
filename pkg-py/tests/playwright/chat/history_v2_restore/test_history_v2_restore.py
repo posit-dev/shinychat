@@ -125,22 +125,23 @@ def test_v2_edit_projects_once_through_the_real_provider_and_preserves_draft(
     controller.OutputText(page, "provider_calls").expect_value("1")
     controller.OutputText(page, "accepted_submissions").expect_value("1")
 
-    attachment = HERE.parent / "history_edit" / "one_px.png"
+    replacement_attachment = HERE / "replacement.txt"
+    draft_attachment = HERE / "draft.txt"
     page.set_input_files(
         ".shiny-chat-composer input[type=file]",
-        str(attachment),
+        str(draft_attachment),
     )
     chat.set_user_input("unrelated draft")
     expect(chat.loc_input).to_have_text("unrelated draft")
-    expect(page.locator(".shiny-chat-composer .shiny-chat-input-thumbnail")).to_have_count(
-        1
-    )
+    expect(
+        page.locator(".shiny-chat-composer .shiny-chat-input-attachments > *")
+    ).to_have_count(1)
 
     original = page.locator(".shiny-chat-user-message").first
     original.hover()
     original.locator(".shiny-chat-edit-btn").click()
     edit_box = original.locator(".shiny-chat-edit-box")
-    edit_box.locator("input[type=file]").set_input_files(str(attachment))
+    edit_box.locator("input[type=file]").set_input_files(str(replacement_attachment))
     editor = original.get_by_role("textbox", name="Chat message")
     editor.click()
     editor.press("ControlOrMeta+a")
@@ -152,14 +153,19 @@ def test_v2_edit_projects_once_through_the_real_provider_and_preserves_draft(
     controller.OutputText(page, "accepted_submissions").expect_value("2")
     controller.OutputText(page, "provider_attachment_counts").expect_value("0,1")
     controller.OutputText(page, "accepted_attachment_counts").expect_value("0,1")
+    controller.OutputText(page, "provider_attachment_names").expect_value(
+        "replacement.txt"
+    )
+    controller.OutputText(page, "accepted_attachment_names").expect_value(
+        "replacement.txt"
+    )
 
     replacement = page.locator(".shiny-chat-user-message").first
-    expect(replacement).to_have_text("replacement")
-    expect(replacement.locator(".shiny-chat-message-image")).to_have_count(1)
+    expect(replacement.locator("p")).to_have_text("replacement")
     expect(chat.loc_input).to_have_text("unrelated draft")
-    expect(page.locator(".shiny-chat-composer .shiny-chat-input-thumbnail")).to_have_count(
-        1
-    )
+    expect(
+        page.locator(".shiny-chat-composer .shiny-chat-input-attachments > *")
+    ).to_have_count(1)
 
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: unrelated draft", timeout=30_000)
@@ -170,6 +176,12 @@ def test_v2_edit_projects_once_through_the_real_provider_and_preserves_draft(
     )
     controller.OutputText(page, "accepted_attachment_counts").expect_value(
         "0,1,1"
+    )
+    controller.OutputText(page, "provider_attachment_names").expect_value(
+        "replacement.txt,draft.txt"
+    )
+    controller.OutputText(page, "accepted_attachment_names").expect_value(
+        "replacement.txt,draft.txt"
     )
 
 

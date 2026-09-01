@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from typing import Any, AsyncGenerator, Literal
 from unittest.mock import MagicMock
@@ -26,6 +27,7 @@ class EchoChatClient(chatlas.Chat):
         self.provider_context: reactive.Value[str] | None = None
         self.provider_calls: reactive.Value[int] | None = None
         self.provider_attachment_counts: reactive.Value[str] | None = None
+        self.provider_attachment_names: reactive.Value[str] | None = None
 
     async def stream_async(
         self, *args: Any, **kwargs: Any
@@ -39,6 +41,23 @@ class EchoChatClient(chatlas.Chat):
             self.provider_attachment_counts.set(
                 ",".join([existing, count]) if existing else count
             )
+        if self.provider_attachment_names is not None:
+            names = []
+            for content in args[1:]:
+                filename = getattr(content, "filename", None)
+                if filename:
+                    names.append(str(filename))
+                    continue
+                text = str(getattr(content, "text", ""))
+                match = re.search(r'<file-attachment name="([^"]+)"', text)
+                if match:
+                    names.append(match.group(1))
+            if names:
+                existing = self.provider_attachment_names.get()
+                value = ",".join(names)
+                self.provider_attachment_names.set(
+                    ",".join([existing, value]) if existing else value
+                )
         context = [str(turn.contents) for turn in self._turns] + [user_input]
         if self.provider_context is not None:
             self.provider_context.set(" | ".join(context))
@@ -73,8 +92,10 @@ app_ui = ui.page_fillable(
     ui.output_text_verbatim("provider_context"),
     ui.output_text_verbatim("provider_calls"),
     ui.output_text_verbatim("provider_attachment_counts"),
+    ui.output_text_verbatim("provider_attachment_names"),
     ui.output_text_verbatim("accepted_submissions"),
     ui.output_text_verbatim("accepted_attachment_counts"),
+    ui.output_text_verbatim("accepted_attachment_names"),
     ui.output_text_verbatim("history_updates"),
     chat_ui("chat"),
 )
@@ -85,8 +106,10 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     provider_context_value: reactive.Value[str] = reactive.Value("")
     provider_calls_value: reactive.Value[int] = reactive.Value(0)
     provider_attachment_counts_value: reactive.Value[str] = reactive.Value("")
+    provider_attachment_names_value: reactive.Value[str] = reactive.Value("")
     accepted_submissions_value: reactive.Value[int] = reactive.Value(0)
     accepted_attachment_counts_value: reactive.Value[str] = reactive.Value("")
+    accepted_attachment_names_value: reactive.Value[str] = reactive.Value("")
     turns_value: reactive.Value[str] = reactive.Value("")
     recorder_value: reactive.Value[str] = reactive.Value("")
     history_updates_value: reactive.Value[int] = reactive.Value(0)
@@ -94,6 +117,7 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     client.provider_context = provider_context_value
     client.provider_calls = provider_calls_value
     client.provider_attachment_counts = provider_attachment_counts_value
+    client.provider_attachment_names = provider_attachment_names_value
 
     chat = Chat(
         id="chat",
@@ -117,6 +141,13 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         accepted_attachment_counts_value.set(
             ",".join([existing, count]) if existing else count
         )
+        names = [attachment.name for attachment in attachments]
+        if names:
+            existing = accepted_attachment_names_value.get()
+            value = ",".join(names)
+            accepted_attachment_names_value.set(
+                ",".join([existing, value]) if existing else value
+            )
 
     async def track_history_updates(action: Any, *args: Any) -> None:
         nonlocal history_update_count
@@ -175,12 +206,20 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         return provider_attachment_counts_value()
 
     @render.text
+    def provider_attachment_names() -> str:
+        return provider_attachment_names_value()
+
+    @render.text
     def accepted_submissions() -> str:
         return str(accepted_submissions_value())
 
     @render.text
     def accepted_attachment_counts() -> str:
         return accepted_attachment_counts_value()
+
+    @render.text
+    def accepted_attachment_names() -> str:
+        return accepted_attachment_names_value()
 
     @render.text
     def turns() -> str:
