@@ -7,16 +7,17 @@ by process. The bookmark-pointer disposition remains out of scope in
 `shinychat#g6tt`. Garrick has authorized the revised P4.2 edit/resubmit
 projection; its first implementation unit is landed and parked for three
 bounded review corrections on `shinychat#6drf` only. Those corrections are
-landed; the two Roborev 1163 corrections are fixed and green.
+landed; the Roborev 1163 corrections are fixed, and Roborev 1164 has one
+bounded attachment-transport correction pending.
 `shinychat#5r50` is closed; `shinychat#6drf` is open with
-`work.attention="ok"`; and `shinychat#azvt` is open with
-`work.attention="ok"` (2026-09-01).
+`work.attention="blocked"`; and `shinychat#azvt` is open with
+`work.attention="blocked"` (2026-09-01).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is closed after verified review
 evidence; successor `shinychat#6drf` is open with
-`work.attention="ok"`; parent `shinychat#azvt` is open with
-`work.attention="ok"` under epic `shinychat#6d0d`; the P4.2 edit projection
-awaits fresh batched review before sibling navigation.
+`work.attention="blocked"`; parent `shinychat#azvt` is open with
+`work.attention="blocked"` under epic `shinychat#6d0d`; the P4.2 edit
+projection awaits the Roborev 1164 attachment correction before navigation.
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
 the Phase 4 gate and the only phase-local mechanism reference for new work.
 
@@ -2736,3 +2737,17 @@ non-browser, 1 skipped, and 22 established warnings. Format, Pyright, asset
 equality, and `git diff --check` passed. Roborev 1163 is closed; a fresh
 batched review of the amended edit-projection slice is required before
 sibling navigation begins.
+
+### P4.2 Roborev 1164 disposition (2026-09-01)
+
+Roborev `1164` reviewed `82ee43bf^..c7738cef` and returned one valid Medium
+finding. A matching edit projection may contain server-normalized replacement
+attachments even when the current composer has `enableUpload=false`; the
+client must send the composite raw-input payload whenever projected
+attachments are present rather than dropping them through the plain-text
+transport. Add a discriminating projection test for this exact case.
+
+This is a bounded PATCH in the existing edit attachment-transport mechanism;
+the three-findings escalation valve does not fire. Roborev 1164 remains open
+pending the fix. P4.2 and its parent remain attention-blocked, and sibling
+navigation remains unstarted.
