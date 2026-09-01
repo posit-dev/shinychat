@@ -174,7 +174,10 @@ MessagePayloadSegment = Union[StringSegment, StructuredBlock]
 def is_structured_segment(
     seg: MessagePayloadSegment,
 ) -> TypeGuard[StructuredBlock]:
-    return "type" in seg
+    # The isinstance guard matters at runtime: `in` on a bare string is
+    # substring matching, so a string segment containing "type" would
+    # otherwise be misclassified as a structured block.
+    return isinstance(seg, dict) and "type" in seg
 
 
 class MessagePayload(TypedDict):

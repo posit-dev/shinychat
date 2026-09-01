@@ -315,3 +315,17 @@ def test_wire_segments_falls_back_to_flat_layout() -> None:
     assert len(segments) == 2
     assert segments[0] == {"content": "text", "content_type": "markdown"}
     assert segments[1] == cast(Any, _block())
+
+
+def test_is_structured_segment_rejects_bare_strings() -> None:
+    """A bare-string segment containing the substring "type" must not be
+    misclassified as a structured block (`in` on a string is substring
+    matching)."""
+    from shinychat._chat_types import is_structured_segment
+
+    assert not is_structured_segment(cast(Any, "my type of content"))
+    assert not is_structured_segment(cast(Any, "type"))
+    assert not is_structured_segment(
+        cast(Any, {"content": "text", "content_type": "markdown"})
+    )
+    assert is_structured_segment(cast(Any, _block()))
