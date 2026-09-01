@@ -1,17 +1,15 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
-**Status (current and authoritative):** P4.0 through P4.4 are complete.
-Restore/continuation, branching/edit/navigation, retry/regenerate, and
-pointer-only bookmarks are implemented, verified, reviewed, and closed in
-Kata. P4.5 final acceptance and deletion review is active on
-`shinychat#pvjx`; one bounded partial-display retry evidence correction is
-pending. `shinychat#azvt` remains open and attention-blocked during that
-correction (2026-09-01).
+**Status (current and authoritative):** Phase 4 is complete.
+Restore/continuation, branching/edit/navigation, retry/regenerate,
+pointer-only bookmarks, final acceptance, and the deletion/scope audit are
+implemented, verified, reviewed, and ready for Kata closure. No Phase 5 work
+has started (2026-09-01).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** `shinychat#ykxh`, `shinychat#5r50`,
 `shinychat#6drf`, `shinychat#72ee`, and `shinychat#g6tt` are closed.
-`shinychat#pvjx` is claimed with `work.attention="blocked"` under open parent
-`shinychat#azvt` and epic `shinychat#6d0d`.
+`shinychat#pvjx` and parent `shinychat#azvt` are ready to close under epic
+`shinychat#6d0d`.
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
 the Phase 4 gate and the only phase-local mechanism reference for new work.
 
@@ -2959,3 +2957,36 @@ degradation/error UI, R server port, or legacy import entered Phase 4.
 All other acceptance criteria and full gates are green. `shinychat#pvjx` and
 `shinychat#azvt` remain attention-blocked until the bounded evidence
 correction passes targeted review.
+
+### P4.5 final acceptance resolution (2026-09-01)
+
+The final evidence correction landed in `81bb77aa` without production
+changes. Real production-controller coverage now exercises restored pending
+and cancelled exchanges with retained partial assistant display, retries
+through `handle_resubmit()` and the one sibling primitive, preserves the
+original node/status/messages exactly, creates a distinct sibling under the
+same parent with the defensive-copied original input, and restores the exact
+parent turn prefix. Targeted re-review returned PASS.
+
+Final verification:
+
+- focused Phase 4 browser matrix: 16 passed;
+- focused controller/history matrix: 152 passed before the final correction,
+  with the two new pending/cancelled cases passing;
+- history/transcript gate: 47 Playwright and 513 non-browser passed;
+- JS: 1256 passed, 23 skipped; lint and build passed;
+- R shared-client history hooks: 22 passed;
+- format and Pyright: passed with 0 type errors;
+- full `make py-check`: 204 Playwright, 890 non-browser, 1 skipped;
+- all distributed JS/CSS artifacts match `js/dist`; `git diff --check`
+  passed.
+
+Every Phase 4 acceptance criterion has production-path evidence. The final
+adversarial review found no production defect, the deletion/scope pass found
+no removable or unauthorized mechanism, and no review finding remains
+undispositioned. The driver-directed stopping rule applies: do not add another
+range review after the accepted correction, full gates, and targeted PASS.
+
+Landed: Python v2 restore/continuation, branching/edit/navigation, retry/regenerate, pointer-only bookmarks, and complete acceptance evidence.
+Next: create and authorize the Phase 5 mechanism note and Kata task graph for the init-window guard, clear/switch/abort audit, unreplayable-turn degradation, error-on-reload affordance, and its scheduled adversarial review.
+Boundary: Phase 5 implementation, the R port, legacy migration, queues/cursors/reconciliation, CAS, rendered-HTML storage, and any second record owner remain unstarted.
