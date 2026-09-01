@@ -1372,3 +1372,41 @@ Next: retain `shinychat#5r50` open with `needs-review` pending human review;
 do not start `shinychat#6drf`. Boundary: no Phase 5 guard/degradation,
 rollback subsystem, public hook, second owner, JS/R, graph/sibling, or
 bookmark work landed.
+
+### Luna accepted follow-up handoff (2026-08-31)
+
+Luna accepted two bounded findings against `6402dcc0` and `f672f7b4`. Both
+are fixed in `90c9eee4` (`fix(history): harden restore cleanup and live
+bootstrap`, `Kata: shinychat#5r50`).
+
+1. `_clear_failed_restore()` now records failures from every cleanup operation
+   before notifying. A fully cleaned failure still says a fresh chat is ready;
+   any cleanup failure instead says recovery was incomplete and asks the user
+   to reload before starting a new chat. The original restore error or
+   cancellation is still re-raised. Cleanup and notification failures remain
+   secondary.
+2. `restore_bootstrap="live"` now validates the stored record/path/state
+   before destructive mutation, then captures and materializes adapter turns
+   only after the destructive-admission boundary and recorder lock are held,
+   immediately before clear/replay. Lock or admission waiting alone remains
+   non-destructive, so it cannot install a stale live-turn snapshot.
+
+Focused injection coverage verifies each cleanup action (messages, turns,
+greeting, active-ID callback, and metadata) can fail after the original
+restore error without masking it, while selecting incomplete-recovery
+notification. Cancellation coverage retains the original cancellation through
+cleanup and notification failure. The live-bootstrap barrier test independently
+holds admission and the recorder lock, changes adapter turns while restore is
+waiting, and proves the installed turns are captured only after both release.
+
+Verification: focused v2 restore controller tests passed 29; `make
+py-check-format` passed; `make py-check-types` passed with 0 errors; `make
+py-check-tests FILTER='history or transcript'` passed 42 Playwright plus 434
+non-browser tests with 8 known warnings; `history_edit` passed 9; and `make
+py-check` passed Ruff, Pyright, 199 Playwright tests, 808 non-browser tests,
+1 skipped, and 19 known warnings.
+
+Task state: `shinychat#5r50` remains open with `needs-review` and
+`work.attention="ok"` for human review. No Roborev request was made, and
+`shinychat#6drf` remains blocked and unstarted. No new design decision was
+needed.
