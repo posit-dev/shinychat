@@ -60,6 +60,112 @@ def test_v2_record_tracks_an_exchange_path_with_captured_messages():
     assert node.messages[0].icon == "bot"
 
 
+def _v2_user_message(content: str) -> StoredMessage:
+    return StoredMessage(
+        role="user",
+        segments=[StoredSegment(content=content, content_type="markdown")],
+    )
+
+
+def test_v2_graph_primitives_track_children_siblings_and_selected_path():
+    rec = new_conversation_record_v2(
+        title="hello",
+        id="c_v2",
+        client_info={"kind": "test"},
+    )
+    first = "exchange-1"
+    second = "exchange-2"
+    rec.open_exchange(first, _v2_user_message("first"))
+    rec.set_active_leaf("n_0000")
+    rec.open_exchange(second, _v2_user_message("second"))
+
+    assert rec.children_of(None) == ["n_0000"]
+    assert rec.children_of("n_0000") == [first, second]
+    assert rec.siblings_of(first) == [first, second]
+    assert rec.siblings_of(second) == [first, second]
+
+    rec.set_active_leaf(first)
+    assert rec.active_leaf == first
+    assert rec.nodes["n_0000"].selected_child == first
+    assert rec.nodes[first].selected_child is None
+
+
+def test_v2_set_active_leaf_validates_before_mutating():
+    rec = new_conversation_record_v2(
+        title="hello",
+        id="c_v2",
+        client_info={"kind": "test"},
+    )
+    rec.open_exchange("exchange-1", _v2_user_message("first"))
+    before = rec.model_dump()
+
+    with pytest.raises(ValueError, match="Unknown exchange id"):
+        rec.set_active_leaf("missing")
+
+    assert rec.model_dump() == before
+
+
+def test_v2_subtree_leaf_remembers_child_then_falls_back_to_newest():
+    rec = new_conversation_record_v2(
+        title="hello",
+        id="c_v2",
+        client_info={"kind": "test"},
+    )
+    first = "exchange-1"
+    second = "exchange-2"
+    first_leaf = "exchange-1-leaf"
+    second_leaf = "exchange-2-leaf"
+    rec.open_exchange(first, _v2_user_message("first"))
+    rec.set_active_leaf("n_0000")
+    rec.open_exchange(second, _v2_user_message("second"))
+    rec.set_active_leaf(first)
+    rec.open_exchange(first_leaf, _v2_user_message("first leaf"))
+    rec.set_active_leaf(second)
+    rec.open_exchange(second_leaf, _v2_user_message("second leaf"))
+
+    rec.nodes["n_0000"].selected_child = first
+    assert rec.subtree_leaf("n_0000") == first_leaf
+
+    rec.nodes["n_0000"].selected_child = None
+    assert rec.subtree_leaf("n_0000") == second_leaf
+
+
+def test_v2_user_message_projection_skips_inputless_path_nodes():
+    rec = new_conversation_record_v2(
+        title="hello",
+        id="c_v2",
+        client_info={"kind": "test"},
+    )
+    first = "exchange-1"
+    second = "exchange-2"
+    rec.open_inputless_exchange()
+    rec.open_exchange(first, _v2_user_message("first"))
+    inputless = rec.open_inputless_exchange()
+    response = StoredMessage(
+        role="assistant",
+        segments=[StoredSegment(content="response", content_type="markdown")],
+    )
+    rec.append_message(
+        inputless, CapturedMessage.from_stored_message(response, icon=None)
+    )
+    rec.append_message(
+        first, CapturedMessage.from_stored_message(response, icon=None)
+    )
+    rec.append_message(
+        first, CapturedMessage.from_stored_message(response, icon=None)
+    )
+    rec.open_exchange(second, _v2_user_message("second"))
+
+    assert rec.exchange_id_for_user_message_index(0) == first
+    assert rec.exchange_id_for_user_message_index(4) == second
+    with pytest.raises(IndexError):
+        rec.exchange_id_for_user_message_index(1)
+    with pytest.raises(IndexError):
+        rec.exchange_id_for_user_message_index(5)
+    with pytest.raises(IndexError):
+        rec.exchange_id_for_user_message_index(-1)
+
+
 @pytest.mark.parametrize("version", [True, 1.0, "1", [], [1], float("nan")])
 def test_check_schema_version_rejects_non_integer_values(version: object):
     with pytest.raises(UnsupportedSchemaVersionError):

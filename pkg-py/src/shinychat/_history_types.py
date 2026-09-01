@@ -319,6 +319,91 @@ class ConversationRecordV2(BaseModel):
         ids.reverse()
         return ids
 
+    def children_of(self, node_id: str | None) -> list[str]:
+        if node_id is None:
+            return [
+                child_id
+                for child_id, node in self.nodes.items()
+                if node.parent_id is None
+            ]
+        node = self.nodes.get(node_id)
+        if node is None:
+            raise ValueError(f"Unknown exchange id {node_id!r}")
+        return list(node.children)
+
+    def siblings_of(self, node_id: str) -> list[str]:
+        node = self.nodes.get(node_id)
+        if node is None:
+            raise ValueError(f"Unknown exchange id {node_id!r}")
+        return self.children_of(node.parent_id)
+
+    def set_active_leaf(self, node_id: str) -> None:
+        if node_id not in self.nodes:
+            raise ValueError(f"Unknown exchange id {node_id!r}")
+
+        path: list[str] = []
+        visited: set[str] = set()
+        cursor: str | None = node_id
+        while cursor is not None:
+            if cursor in visited:
+                raise ValueError(
+                    f"Cycle detected in conversation nodes at {cursor!r}"
+                )
+            node = self.nodes.get(cursor)
+            if node is None:
+                raise ValueError(f"Dangling parent reference at {cursor!r}")
+            visited.add(cursor)
+            path.append(cursor)
+            cursor = node.parent_id
+        path.reverse()
+
+        self.active_leaf = node_id
+        for index, path_node_id in enumerate(path):
+            self.nodes[path_node_id].selected_child = (
+                path[index + 1] if index + 1 < len(path) else None
+            )
+        self.updated_at = utcnow()
+
+    def subtree_leaf(self, node_id: str) -> str:
+        if node_id not in self.nodes:
+            raise ValueError(f"Unknown exchange id {node_id!r}")
+
+        current = node_id
+        visited: set[str] = set()
+        while True:
+            if current in visited:
+                raise ValueError(
+                    f"Cycle detected in selected-child pointers at {current!r}"
+                )
+            visited.add(current)
+            children = self.children_of(current)
+            if not children:
+                return current
+
+            selected = self.nodes[current].selected_child
+            if selected in children:
+                current = selected
+                continue
+
+            current = max(
+                enumerate(children),
+                key=lambda item: (self.nodes[item[1]].created_at, item[0]),
+            )[1]
+
+    def exchange_id_for_user_message_index(self, index: int) -> str:
+        if index < 0:
+            raise IndexError(f"Message index {index} out of range")
+
+        displayed_index = 0
+        for node_id in self.path_node_ids():
+            node = self.nodes[node_id]
+            if node.input is not None:
+                if displayed_index == index:
+                    return node_id
+                displayed_index += 1
+            displayed_index += len(node.messages)
+        raise IndexError(f"Message index {index} out of range")
+
     def open_exchange(self, exchange_id: str, message: StoredMessage) -> None:
         if exchange_id in self.nodes:
             raise ValueError(f"Duplicate exchange id {exchange_id!r}")
