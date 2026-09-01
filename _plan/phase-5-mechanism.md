@@ -1,7 +1,6 @@
 # Phase 5 mechanism: hard core and adversarial review (Python)
 
-**Status:** authorized gate corrections incorporated; pending final self-review
-and driver sign-off · 2026-09-01
+**Status:** approved for implementation by driver · 2026-09-01
 **Phase:** plan.md §4, Phase 5
 **Kata:** parent `shinychat#fg70` under epic `shinychat#6d0d`
 **Context:** `phase-4-mechanism.md` is completed context only. This note is
@@ -308,12 +307,12 @@ requirement trace, or delete it.
 
 Landed: Phase 5 parent `shinychat#fg70` is created and claimed on
 `feat/history-exchange-tree`; authorized gate corrections are incorporated in
-this note. This note and the Phase 5 reference in `plan.md` remain planning
-artifacts pending final self-review and driver sign-off.
+this note. Final independent self-review scored 94/100, and the driver has
+signed off the Phase 5 gate.
 
-Next: complete final self-review and driver sign-off. After approval, create
-and claim only P5.0, run the required green baseline, and compare the two Q1
-probes.
+Next: create and claim only P5.0, run the required green baseline, and compare
+the two Q1 probes. Runtime implementation remains unstarted; no other Phase 5
+child may be created or claimed yet.
 
 Provisional decision: Q1 is intentionally unresolved pending the required
 prototype evidence. Implementation remains unstarted: no Phase 5 feature
