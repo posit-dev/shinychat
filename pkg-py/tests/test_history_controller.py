@@ -1214,25 +1214,44 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore() -> (
     recorder = controller._exchange_recorder
     assert recorder is not None
     session = _RealChatSession()
+    session.input["history_switch_input_user_input"] = reactive.Value()
     with session_context(cast(Any, session)):
         chat = Chat("history_switch_input", history=False)
     controller.chat = chat  # type: ignore[assignment]
+    recorder_inputs: list[str] = []
+    original_accepted_input = recorder.accepted_input
+
+    async def record_accepted_input(
+        exchange_id: str, message: StoredMessage
+    ) -> None:
+        recorder_inputs.append(message.content)
+        await original_accepted_input(exchange_id, message)
+
     chat._transcript.set_capture_callbacks(
-        on_accepted_input=recorder.accepted_input,
+        on_accepted_input=record_accepted_input,
         on_message_committed=recorder.message_committed,
         on_stream_started=recorder.stream_started,
         on_stream_updated=recorder.stream_updated,
         on_stream_finished=recorder.stream_finished,
     )
     provider_calls: list[str] = []
+    raw_input_errors: list[BaseException] = []
 
     @chat.on_user_submit
     async def _provider_input(text: str) -> None:
         provider_calls.append(text)
 
+    async def capture_raw_input_error(error: BaseException) -> None:
+        raw_input_errors.append(error)
+
+    chat._raise_exception = capture_raw_input_error  # type: ignore[method-assign]
+    await reactive.flush()
     await chat._record_accepted_user_input_with_capture(
         ChatMessage(content="source", role="user")
     )
+    await reactive.flush()
+    assert provider_calls == ["source"]
+    assert recorder_inputs == ["source"]
     assert recorder.record is not None
     source = recorder.record
     target = new_conversation_record_v2(
@@ -1255,6 +1274,7 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore() -> (
 
     async def assert_rejected(content: str) -> None:
         original_as_stored_message = chat._as_stored_message
+        input_value = cast(Any, session.input[chat.user_input_id])
 
         def unexpected_conversion(_message: ChatMessage) -> StoredMessage:
             raise AssertionError("blocked input must not be converted")
@@ -1275,6 +1295,16 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore() -> (
                 await chat._record_accepted_user_input_with_capture(
                     ChatMessage(content=content, role="user")
                 )
+            error_count = len(raw_input_errors)
+            input_value.set({"text": content, "attachments": []})
+            await reactive.flush()
+            errors = raw_input_errors[error_count:]
+            assert len(errors) == 1
+            assert isinstance(errors[0], RuntimeError)
+            assert (
+                str(errors[0])
+                == "Cannot accept user input while switching conversations."
+            )
         finally:
             chat._as_stored_message = original_as_stored_message  # type: ignore[method-assign]
 
@@ -1290,7 +1320,8 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore() -> (
     assert chat._transcript.read() == source_transcript
     with reactive.isolate():
         assert chat.user_input() == latest_before
-    assert provider_calls == []
+    assert provider_calls == ["source"]
+    assert recorder_inputs == ["source"]
     assert len(store.put_ids) == put_count
     assert recorder.record is source
 
@@ -1310,7 +1341,8 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore() -> (
     assert chat._transcript.read() == source_transcript
     with reactive.isolate():
         assert chat.user_input() == latest_before
-    assert provider_calls == []
+    assert provider_calls == ["source"]
+    assert recorder_inputs == ["source"]
     assert len(store.put_ids) == put_count
     assert recorder.record is source
 
@@ -1326,7 +1358,28 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore() -> (
         if node.input is not None
     ] == []
     assert chat._transcript.read() == ()
-    assert provider_calls == []
+    assert provider_calls == ["source"]
+    assert recorder_inputs == ["source"]
+
+    blocked_error_count = len(raw_input_errors)
+    cast(Any, session.input[chat.user_input_id]).set(
+        {"text": "accepted after switch", "attachments": []}
+    )
+    await reactive.flush()
+
+    assert len(raw_input_errors) == blocked_error_count
+    assert provider_calls == ["source", "accepted after switch"]
+    stored_target = await store.get(part(), target.id)
+    assert isinstance(stored_target, ConversationRecordV2)
+    assert [
+        node.input.content
+        for node in stored_target.nodes.values()
+        if node.input is not None
+    ] == ["accepted after switch"]
+    with reactive.isolate():
+        latest_input = chat.user_input()
+        assert latest_input is not None
+        assert latest_input.text == "accepted after switch"
 
 
 @pytest.mark.anyio
