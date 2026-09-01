@@ -70,18 +70,24 @@ the existing destructive-history transaction; greeting and bookkeeping remain
 excluded exactly as in Phase 3. The gate releases on every initialization
 success, handled error, and cancellation.
 
-Before input activation and before the first `history_update`, the Python
-server seeds the existing `HistoryStore` with static
-`completion-v2` capability/protocol configuration. This is configuration, not
-a lifecycle marker, completion signal, or release action. The client reuses
-that capability with the existing `HistoryStore.initialized` state and
-`submissionBlocked` input surface: a seeded v2 client remains blocked while
-`initialized` is false or the existing transition marker is pending. The
-initial runtime `history_update` remains the authoritative
-decision-completion publication; an update that withdraws capability replaces
-the seed and clears pending state under the existing Phase 4 protocol-change
-rule. History-disabled chats, Python v1, and R emit no Python-v2 seed and
-retain their current admission behavior.
+Current code has no `HistoryStore` seed API: the store starts with
+`initialized == false` and no protocol, and `updateHistory()` is currently the
+only protocol input. Therefore P5.0 must prove and name a private,
+initialization-only delivery path for static Python-v2
+`completion-v2` capability/protocol configuration before the first runtime
+`history_update`; it must not assume that the existing store can already be
+seeded. This configuration input may not be persisted or exposed as a public
+API, owner, provenance field, lifecycle marker, completion signal, release
+action, or second client marker. If the production path cannot deliver this
+configuration without one of those additions, stop for a plan amendment.
+Once delivered, the client reuses that capability with the existing
+`HistoryStore.initialized` state and `submissionBlocked` input surface: a
+seeded v2 client remains blocked while `initialized` is false or the existing
+transition marker is pending. The initial runtime `history_update` remains the
+authoritative decision-completion publication; an update that withdraws
+capability replaces the seed and clears pending state under the existing Phase
+4 protocol-change rule. History-disabled chats, Python v1, and R emit no
+Python-v2 seed and retain their current admission behavior.
 
 The existing ChatInput guards must cover Enter, send-button, attachment-only,
 slash-command, suggestion, and imperative submissions while preserving the
