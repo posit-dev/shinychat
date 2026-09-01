@@ -1936,3 +1936,41 @@ No Roborev request or task closure was made. `shinychat#5r50` remains open
 with `needs-review`, `work.attention="ok"`, and
 `work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains blocked
 and unstarted. No provisional decision was introduced.
+
+### P4.1 Luna raw-input coverage follow-up (2026-08-31)
+
+Accepted test-coverage follow-up only. No production behavior changed.
+`aa16983f` (`test(history): drive blocked input through raw effect`),
+`7665c528` (`test(history): isolate raw-input regression flush`), and
+`adebdf23` (`test(history): clean raw-input reactive effects`) strengthen the
+active v2 switch regression while retaining the existing direct helper guards,
+cancellation-release, and generic-admission coverage.
+
+The regression now pre-seeds the real session user-input value and drives
+`Chat._on_user_input` through `reactive.flush()` while source `put()` and the
+real restore `clear_messages()` are independently blocked. At each barrier it
+proves no conversion, accepted transcript/latest-input, provider,
+recorder, or store effect. The raw effect's intended `RuntimeError` is caught
+by its production error boundary, so the test records and asserts that error
+instead of expecting `reactive.flush()` to raise. After the switch, a real raw
+accepted submission adds no error, dispatches the provider through
+`_latest_user_input`, and persists on the target record; no stuck
+client/server condition was observed.
+
+Before creating the real chat, the test drains only pre-existing foreign
+mock-session effects from Shiny's process-global scheduler, with warnings
+suppressed inside that cleanup; it destroys its own chat after assertions.
+This keeps raw-effect flushes isolated and retains the established full-suite
+warning profile.
+
+Evidence: focused blocked-input/cancellation/generic-admission controller
+tests passed 3; `make py-format` passed; Pyright reported 0 errors.
+`make py-check-tests FILTER="history or transcript"` passed 43 Playwright plus
+449 non-browser tests with 8 established warnings; `history_edit` passed 9.
+Final `make py-check` passed Ruff and Pyright, 200 Playwright tests, and 824
+non-browser tests with 1 skipped and 19 established warnings.
+
+No Roborev request or task closure was made. `shinychat#5r50` remains open
+with `needs-review`, `work.attention="ok"`, and
+`work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains blocked
+and unstarted. No provisional decision was introduced.
