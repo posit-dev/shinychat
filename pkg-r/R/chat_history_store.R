@@ -48,7 +48,7 @@ ConversationStore <- R6::R6Class(
   "ConversationStore",
   public = list(
     #' @description Must be implemented by subclasses. All conversations in
-    #'   `partition`, newest-first by `updated_at`.
+    #'   `partition`, newest-first by `created_at`.
     #' @param partition A `conversation_partition()`.
     #' @returns A list of conversation meta lists.
     list = function(partition) {
@@ -134,7 +134,7 @@ InMemoryConversationStore <- R6::R6Class(
       metas <- lapply(partition_data, function(r) {
         record_meta(r, size_bytes = record_json_size(r))
       })
-      timestamps <- vapply(metas, function(m) m$updated_at, character(1))
+      timestamps <- vapply(metas, function(m) m$created_at, character(1))
       metas <- metas[order(timestamps, decreasing = TRUE)]
       private$meta_cache[[key]] <- metas
       metas
@@ -162,7 +162,7 @@ InMemoryConversationStore <- R6::R6Class(
           list(record_meta(record, size_bytes = record_json_size(record))),
           cache
         )
-        timestamps <- vapply(cache, function(m) m$updated_at, character(1))
+        timestamps <- vapply(cache, function(m) m$created_at, character(1))
         cache <- cache[order(timestamps, decreasing = TRUE)]
         private$meta_cache[[key]] <- cache
       }
@@ -390,7 +390,7 @@ FileConversationStore <- R6::R6Class(
     },
 
     #' @description All conversations in `partition`, newest-first by
-    #'   `updated_at`, read from one `record.json` per conversation directory
+    #'   `created_at`, read from one `record.json` per conversation directory
     #'   on disk.
     #' @param partition A `conversation_partition()`.
     #' @returns A list of conversation meta lists.
@@ -442,7 +442,7 @@ FileConversationStore <- R6::R6Class(
           )
         })
       )
-      timestamps <- vapply(metas, function(m) m$updated_at, character(1))
+      timestamps <- vapply(metas, function(m) m$created_at, character(1))
       metas <- metas[order(timestamps, decreasing = TRUE)]
       private$meta_cache[[key]] <- metas
       metas
@@ -714,7 +714,7 @@ FileConversationStore <- R6::R6Class(
         ))
         cache <- Filter(function(m) m$id != record$id, cache)
         cache <- c(list(record_meta(record, size_bytes = size_bytes)), cache)
-        timestamps <- vapply(cache, function(m) m$updated_at, character(1))
+        timestamps <- vapply(cache, function(m) m$created_at, character(1))
         cache <- cache[order(timestamps, decreasing = TRUE)]
         private$meta_cache[[key]] <- cache
       }

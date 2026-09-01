@@ -463,7 +463,7 @@ function ConversationItem({
       >
         <span className="shiny-chat-history-item-title">{meta.title}</span>
         <span className="shiny-chat-history-item-time">
-          {relativeTime(meta.updated_at)}
+          {relativeTime(meta.created_at)}
         </span>
       </button>
       {confirmingDelete ? (
@@ -575,10 +575,10 @@ function groupByRecency(
   const previous: ConversationMeta[] = []
 
   for (const c of items) {
-    const updated = new Date(c.updated_at)
-    if (updated >= startOfToday) {
+    const created = new Date(c.created_at)
+    if (created >= startOfToday) {
       today.push(c)
-    } else if (updated >= sevenDaysAgo) {
+    } else if (created >= sevenDaysAgo) {
       lastWeek.push(c)
     } else {
       previous.push(c)
