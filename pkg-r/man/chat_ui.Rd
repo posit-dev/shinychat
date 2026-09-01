@@ -41,9 +41,10 @@ client.
 }
 \item A UI element.
 \itemize{
-\item This includes \code{\link[htmltools:tagList]{htmltools::tagList()}}, which take UI elements (including
-strings) as children. In this case, strings are still interpreted as
-markdown as long as they're not inside HTML.
+\item This includes \code{\link[htmltools:tagList]{htmltools::tagList()}}, which takes UI elements
+(including strings) as children. tagList content is treated as HTML:
+strings inside it are literal text (HTML-escaped), not markdown. Use
+\code{\link[htmltools:HTML]{htmltools::HTML()}} for trusted raw HTML strings.
 }
 \item A named list of \code{content} and \code{role}. The \code{content} can contain content
 as described above, and the \code{role} can be "assistant" or "user".
