@@ -2499,10 +2499,73 @@ approved mechanism:
   ownership; preserve the original outcome. Input-less targets are rejected
   before mutation.
 
+The edit-projection wire and handoff are exact:
+
+- `history_update.transition_protocol` evolves from `"completion-v1"` to
+  `"completion-v2"` for capability-advertising Python v2 only. The browser
+  continues to accept `"completion-v1"` for active New/Delete, but begins an
+  edit transition only for `"completion-v2"`. Python v1 continues to emit
+  `"completion-v1"` and R continues to omit the field, so neither changes
+  edit behavior. An absent, unknown, or withdrawn value clears the one
+  existing pending marker exactly as completion-v1 does; no second marker,
+  owner, or edit-specific capability field is introduced.
+- Extend the existing positional `sendMessageEdit()` request only with an
+  optional `requestId`. A completion-v2 edit sends
+  `{index, content, attachments, requestId, ts}`; legacy edits omit
+  `requestId`. Python parses that field, and `_on_edit` owns the matching
+  best-effort, non-masking `history_transition_complete {requestId}` in
+  `finally`, including handled errors and cancellation. The request UUID
+  still identifies only this lifecycle, never an exchange.
+- After durable rewind/persist and recorded-prefix turn rewind succeed, the
+  v2 request-ID path sends
+  `history_edit_projection {requestId, index, content, attachments}` before
+  its `finally` completion. `index` is the original positional user-message
+  index; `content` and the always-present `attachments` array are the
+  server-normalized replacement. A browser ignores the action unless
+  `requestId` exactly equals its pending marker.
+- Handling a matching projection synchronously sets the existing history
+  store busy, truncates `state.messages` from `index`, dispatches the normal
+  `INPUT_SENT` reducer action with the supplied replacement, and calls the
+  normal raw-input transport once. It does not invoke the imperative
+  `ChatInput.setInputValue(..., submit=True)` path, does not stage the
+  replacement in the composer, and does not call `resetAll()` or
+  `clearAttachments()`. The replacement's attachments belong only to
+  `INPUT_SENT` and the raw-input payload; unrelated composer text and staged
+  attachments are untouched.
+- Projection dispatch and its raw transport send occur in the same
+  browser-message callback before the next server action is processed.
+  Python awaits the projection action before emitting the `finally`
+  completion. Thus completion can clear the marker only after the normal
+  loading state is installed; it cannot open a user-action gap. The standard
+  history mutation predicate is
+  `historyTransitionPending != null || state.inputDisabled ||
+  state.streamingMessage != null`. `HistoryStore.busy` follows
+  `state.inputDisabled || state.streamingMessage != null`, and every
+  mutating path (select, New, rename, delete, edit, and sibling navigation)
+  must consult that same predicate. The projection's synchronous busy set
+  closes the render/effect gap before this standard state is observed.
+- Completion releases only the transition marker. The ordinary accepted-input
+  and stream lifecycle owns loading, provider output, cancellation, and
+  response failure thereafter. A manual/no-provider submission that produces
+  no terminal response retains the pre-existing normal loading behavior; the
+  edit protocol must neither invent a second completion nor clear that state.
+- A failure or cancellation before projection sends no projection action and
+  only sends best-effort matching completion. A failure or cancellation after
+  pointer mutation, including projection-send failure, invokes the approved
+  `_clear_failed_restore()` fail-to-fresh-draft cleanup, preserves and
+  re-raises the original outcome, and treats cleanup/notification failures
+  as secondary. Its best-effort clear/metadata actions may be unavailable to
+  a disconnected browser; that is the existing incomplete-recovery outcome,
+  not permission to retain mixed ownership or add rollback.
+
 Navigation is not locally projectable because the client lacks the sibling
 path. Retain server replay/rewind for navigation and treat its lifecycle
 guard and projection as a separate implementation unit; do not fold it into
-edit.
+edit. In particular, this edit unit does not add `requestId` to
+`sendMessageNavigate()`, does not define a navigation projection action, and
+does not alter the existing positional navigation request. Its later design
+must separately specify how a selected sibling path is projected and when its
+own request-correlated guard completes.
 
 Commits `82ee43bf`, `e50ba734`, and `f6396a39` remain landed. The
 `e50ba734` display-replay/`update_input` tail is now approved for replacement.
@@ -2513,8 +2576,14 @@ or legacy-import work is included.
 The exact regression matrix is: leaf and non-leaf truncation; UI-only and
 custom-prefix fidelity; replacement attachments; held edit blocks all
 mutations while preserving draft; exactly one raw/provider dispatch;
-validation, rewind, projection, error, cancel, no-provider, and no-output
-behavior; stale UUID; capability absence; and input-less no mutation.
+projection-before-completion atomic handoff with no action gap; validation,
+rewind, projection-send, error, cancel, no-provider, and no-output behavior;
+stale UUID; completion-v1/absent/unknown/withdrawn capability behavior; and
+input-less no mutation. Unit coverage must prove the normalized projection
+payload never changes unrelated composer state. Browser coverage must hold the
+edit before projection, attempt each mutating command, then verify the
+replacement is the sole accepted input and the preserved draft/attachments
+remain available for a later explicit submission.
 
 This is a documentation/Kata authorization only. No Roborev review is needed
 for this docs-only change.
