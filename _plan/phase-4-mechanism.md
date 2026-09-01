@@ -2,15 +2,15 @@
 
 **Status (current and authoritative):** P4.0 complete; the P4.1 Roborev 1135
 DELETE/REPLACE unit and its bounded blocked-input correction are landed.
-Roborev 1146 dispositions remain provisional pending the required v2
-production-provider regression and teardown fix. `shinychat#5r50` remains open
-with `needs-review`, `work.attention="blocked"`, and
-`work.branch="feat/history-exchange-tree"`;
-`shinychat#6drf` remains open, blocked, and unstarted; and
-`shinychat#azvt` remains open with `work.attention="ok"` (2026-09-01).
+Roborev 1146 switch-timing and terminal-teardown findings are accepted and
+finalized. The bookmark-pointer disposition remains out of scope in
+`shinychat#g6tt`. `shinychat#5r50` remains open with `needs-review`,
+`work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`;
+`shinychat#6drf` remains open, blocked, and unstarted; and `shinychat#azvt`
+remains open with `work.attention="ok"` (2026-09-01).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is open with
-`needs-review`, `work.attention="blocked"`, and
+`needs-review`, `work.attention="ok"`, and
 `work.branch="feat/history-exchange-tree"`; successor `shinychat#6drf` is
 open, blocked, and unstarted; parent `shinychat#azvt` is open with
 `work.attention="ok"` under epic `shinychat#6d0d`
@@ -2125,8 +2125,32 @@ recorder lock and cover late callbacks, replacement cleanup, v2 URL behavior,
 and stale-pointer behavior. This is a distinct bookmark pointer protocol,
 not a `shinychat#5r50` persistence/restore blocker.
 
-Current state remains truthful: `shinychat#5r50` is open with `needs-review`,
-`work.attention="blocked"`, and
-`work.branch="feat/history-exchange-tree"`; `shinychat#6drf` is open,
-blocked, and unstarted; and `shinychat#azvt` is open. No implementation,
-review closure, or task closure is authorized by this docs-only disposition.
+### P4.1 Roborev 1146 final progress and handoff (2026-09-01)
+
+The required validation and teardown follow-up is landed in test commit
+`88cd612c` (`test(history): cover active provider switch preflight`, Kata:
+`shinychat#5r50`). The real attached-v2-provider slow-target-lookup
+regression holds the target `get()` before destructive admission, starts the
+source provider/turn stream, keeps that source stream active while target
+lookup is released, and proves the switch rejects before target installation.
+Snapshots at rejection prove no switch mutation to the source active ID,
+display, turns, recorder, or store. The bounded successful-provider
+settlement cleanup releases the provider and waits for the stream to settle;
+the terminal-settlement test destroys its real `Chat` in `try/finally`.
+
+Focused evidence:
+`uv run pytest pkg-py/tests/test_history_controller.py
+pkg-py/tests/pytest/test_chat.py -k
+"active_attached_provider_without_mutating_source or
+terminal_metadata_uses_registered_response_settlement_callback"` passed 2
+tests, with 319 deselected. Full evidence: `make py-check` passed Ruff,
+Pyright with 0 errors, 200 Playwright tests, 825 non-browser tests, 1 skipped
+test, and 19 established warnings.
+
+Roborev 1146 switch timing and terminal teardown findings are accepted and
+finalized after this evidence. No new Roborev review was requested. The
+bookmark pointer remains out of scope in `shinychat#g6tt`; it is not a
+`shinychat#5r50` blocker. `shinychat#5r50` remains open with `needs-review`,
+`work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`.
+`shinychat#6drf` remains open, blocked, and unstarted. No task closure or
+sibling work is authorized here.
