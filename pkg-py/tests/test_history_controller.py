@@ -35,6 +35,7 @@ from shinychat._history_store import (
 )
 from shinychat._history_types import (
     MAX_SCHEMA_VERSION,
+    CapturedMessage,
     ConversationRecord,
     ConversationRecordV2,
     StateEntry,
@@ -859,6 +860,382 @@ async def test_v2_restore_invalid_path_leaves_live_chat_unchanged():
     assert fake_chat.clear_messages_calls == 0
     assert fake_chat.set_greeting_calls == []
     assert adapter.set_calls == []
+
+
+def _restore_target(*, id: str = "c_target") -> ConversationRecordV2:
+    record = new_conversation_record_v2(title="target", id=id, client_info={})
+    record.nodes["n_0000"].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[{"role": "system", "content": "restored"}],
+    )
+    exchange_id = "n_0001"
+    record.open_exchange(exchange_id, _stored_message("user", "question"))
+    for content in ("first reply", "second reply"):
+        record.append_message(
+            exchange_id,
+            CapturedMessage.from_stored_message(
+                _stored_message("assistant", content), icon=None
+            ),
+        )
+    return record
+
+
+def _install_live_v2_record(
+    controller: HistoryController, *, id: str = "c_existing"
+) -> ConversationRecordV2:
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    existing = new_conversation_record_v2(
+        title="existing", id=id, client_info={}
+    )
+    recorder.record = existing
+    controller._active_id.set(existing.id)
+    return existing
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        ("unknown", StateEntry(kind="test", version=1, mode="delta", data={})),
+        (
+            "kind",
+            StateEntry(kind="unsupported", version=1, mode="snapshot", data=[]),
+        ),
+        (
+            "version",
+            StateEntry(kind="turns", version=2, mode="snapshot", data=[]),
+        ),
+        ("data", StateEntry(kind="turns", version=1, mode="snapshot", data=[])),
+    ],
+)
+async def test_v2_restore_preflight_failure_leaves_live_state_untouched(
+    invalid: tuple[str, StateEntry],
+) -> None:
+    adapter = _TrackingFakeAdapter()
+    controller, _ = _make_controller(
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    existing = _install_live_v2_record(controller)
+    target = _restore_target()
+    name, entry = invalid
+    if name == "data":
+        entry.data = ["not a turn"]  # type: ignore[assignment]
+    target.nodes["n_0000"].state[
+        "unexpected" if name == "unknown" else "shinychat:turns"
+    ] = entry
+    fake_chat = cast(_FakeChat, controller.chat)
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError):
+        await controller.replay_exchange_record(target)
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    assert recorder.record is existing
+    assert controller._active_id_now() == existing.id
+    assert fake_chat.clear_messages_calls == 0
+    assert fake_chat.set_greeting_calls == []
+    assert adapter.set_calls == []
+    notifier.assert_not_awaited()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "clear",
+        "greeting",
+        "replay-0",
+        "replay-1",
+        "replay-2",
+        "turns",
+        "hook",
+        "active-id",
+        "app-callback",
+        "metadata",
+    ],
+)
+async def test_v2_restore_failure_becomes_fresh_draft(
+    failure: str,
+) -> None:
+    store = InMemoryConversationStore()
+    adapter = _TrackingFakeAdapter()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    _install_live_v2_record(controller)
+    target = _restore_target()
+    await store.put(part(), target)
+    fake_chat = cast(_FakeChat, controller.chat)
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+    expected = RuntimeError(f"injected {failure} failure")
+
+    if failure == "clear":
+        fake_chat.clear_messages = AsyncMock(side_effect=expected)  # type: ignore[method-assign]
+    elif failure == "greeting":
+        fake_chat.set_greeting = AsyncMock(side_effect=expected)  # type: ignore[method-assign]
+    elif failure.startswith("replay-"):
+        fail_at = int(failure.removeprefix("replay-"))
+        replay_count = 0
+
+        async def fail_replay(
+            _message: Any, *, icon: str | None = None
+        ) -> None:
+            nonlocal replay_count
+            if replay_count == fail_at:
+                raise expected
+            replay_count += 1
+
+        fake_chat._restore_bookmark_message = fail_replay  # type: ignore[method-assign]
+    elif failure == "turns":
+        original_set_turns = adapter.set_turns_json
+
+        def fail_turns(turns: list[Any]) -> None:
+            if turns:
+                raise expected
+            original_set_turns(turns)
+
+        adapter.set_turns_json = fail_turns  # type: ignore[method-assign]
+    elif failure == "hook":
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+        target.nodes["n_0000"].state["test:failure"] = StateEntry(
+            kind="test", version=1, mode="snapshot", data={}
+        )
+
+        def fail_hook(_context: StatePathContext) -> None:
+            raise expected
+
+        recorder._register_restore_hook("test:failure", fail_hook)
+    elif failure == "active-id":
+
+        async def fail_active_id(_id: str | None) -> None:
+            if _id == target.id:
+                raise expected
+
+        controller.on_active_id_change = fail_active_id
+    elif failure == "app-callback":
+
+        def fail_app_callback(_values: dict[str, Any]) -> None:
+            raise expected
+
+        controller._restore_callbacks.append(fail_app_callback)
+    elif failure == "metadata":
+        controller.send_history_update = AsyncMock(side_effect=expected)  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match=expected.args[0]):
+        await controller.replay_exchange_record(target)
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    assert recorder.record is None
+    assert controller._active_id_now() is None
+    assert adapter.turns == []
+    assert await store.get(part(), target.id) is target
+    notifier.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_v2_restore_cancellation_preserves_outcome_after_cleanup_failure():
+    controller, _ = _make_controller(use_exchange_tree=True)
+    _install_live_v2_record(controller)
+    target = _restore_target()
+    fake_chat = cast(_FakeChat, controller.chat)
+    original_clear = fake_chat.clear_messages
+    clear_calls = 0
+
+    async def fail_cleanup_clear() -> None:
+        nonlocal clear_calls
+        clear_calls += 1
+        if clear_calls > 1:
+            raise RuntimeError("cleanup clear failed")
+        await original_clear()
+
+    fake_chat.clear_messages = fail_cleanup_clear  # type: ignore[method-assign]
+    fake_chat._restore_bookmark_message = AsyncMock(  # type: ignore[method-assign]
+        side_effect=asyncio.CancelledError()
+    )
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+
+    with pytest.raises(asyncio.CancelledError):
+        await controller.replay_exchange_record(target)
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    assert recorder.record is None
+    assert controller._active_id_now() is None
+    notifier.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_v2_restore_repeated_cancellation_can_skip_visible_notification():
+    controller, _ = _make_controller(use_exchange_tree=True)
+    _install_live_v2_record(controller)
+    target = _restore_target()
+    fake_chat = cast(_FakeChat, controller.chat)
+    fake_chat._restore_bookmark_message = AsyncMock(  # type: ignore[method-assign]
+        side_effect=asyncio.CancelledError()
+    )
+    notifier = AsyncMock(side_effect=asyncio.CancelledError())
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+
+    with pytest.raises(asyncio.CancelledError):
+        await controller.replay_exchange_record(target)
+
+    notifier.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_v2_restore_failure_allows_next_input_to_record_normally():
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+    )
+    _install_live_v2_record(controller)
+    target = _restore_target()
+    fake_chat = cast(_FakeChat, controller.chat)
+    fake_chat._restore_bookmark_message = AsyncMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("replay failed")
+    )
+    controller._notify_restore_failure = AsyncMock()  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="replay failed"):
+        await controller.replay_exchange_record(target)
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "fresh input")
+    )
+
+    assert recorder.record is not None
+    assert recorder.record.id != target.id
+    fresh_node = recorder.record.nodes[exchange_id]
+    assert fresh_node.input is not None
+    assert fresh_node.input.content == "fresh input"
+
+
+@pytest.mark.anyio
+async def test_v2_restore_suppresses_real_transcript_capture_then_restores_it():
+    controller, _ = _make_controller(use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    fake_chat = cast(_FakeChat, controller.chat)
+    fake_chat._transcript.set_capture_callbacks(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+        on_stream_started=None,
+        on_stream_updated=None,
+        on_stream_finished=None,
+    )
+    target = _restore_target()
+
+    async def replay_through_transcript(
+        message: Any, *, icon: str | None = None
+    ) -> None:
+        await fake_chat._transcript.append(
+            TranscriptEntry(
+                message=StoredMessage.model_validate(message), icon=icon
+            ),
+            exchange_id=None,
+            send=_sent,
+        )
+
+    fake_chat._restore_bookmark_message = replay_through_transcript  # type: ignore[method-assign]
+    await controller.replay_exchange_record(target)
+
+    assert recorder.record is target
+    assert len(target.nodes) == 2
+    await fake_chat._transcript.record_accepted_input_and_notify(
+        _stored_message("user", "after restore")
+    )
+    assert len(target.nodes) == 3
+
+
+@pytest.mark.anyio
+async def test_v2_restore_success_order_and_no_failure_notification():
+    adapter = _TrackingFakeAdapter()
+    controller, _ = _make_controller(
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    target = _restore_target()
+    events: list[str] = []
+    fake_chat = cast(_FakeChat, controller.chat)
+    original_clear = fake_chat.clear_messages
+    original_greeting = fake_chat.set_greeting
+    original_replay = fake_chat._restore_bookmark_message
+    original_set_turns = adapter.set_turns_json
+    original_install = recorder.install_restored_record
+
+    async def clear() -> None:
+        events.append("clear")
+        await original_clear()
+
+    async def greeting(value: Any) -> None:
+        events.append("greeting")
+        await original_greeting(value)
+
+    async def replay(message: Any, *, icon: str | None = None) -> None:
+        events.append("replay")
+        await original_replay(message, icon=icon)
+
+    def set_turns(turns: list[Any]) -> None:
+        events.append("turns")
+        original_set_turns(turns)
+
+    def install(record: ConversationRecordV2) -> None:
+        events.append("install")
+        original_install(record)
+
+    async def active_id(_id: str | None) -> None:
+        events.append("active-id")
+
+    def app_callback(_values: dict[str, Any]) -> None:
+        events.append("app-callback")
+
+    async def metadata() -> None:
+        events.append("metadata")
+
+    fake_chat.clear_messages = clear  # type: ignore[method-assign]
+    fake_chat.set_greeting = greeting  # type: ignore[method-assign]
+    fake_chat._restore_bookmark_message = replay  # type: ignore[method-assign]
+    adapter.set_turns_json = set_turns  # type: ignore[method-assign]
+    recorder.install_restored_record = install  # type: ignore[method-assign]
+    controller.on_active_id_change = active_id
+    controller._restore_callbacks.append(app_callback)
+    controller.send_history_update = metadata  # type: ignore[method-assign]
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+
+    await controller.replay_exchange_record(target)
+
+    assert events == [
+        "clear",
+        "greeting",
+        "replay",
+        "replay",
+        "replay",
+        "turns",
+        "install",
+        "active-id",
+        "app-callback",
+        "metadata",
+    ]
+    notifier.assert_not_awaited()
 
 
 @pytest.mark.anyio

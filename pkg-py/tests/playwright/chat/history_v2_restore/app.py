@@ -60,6 +60,7 @@ app_ui = ui.page_fillable(
     ui.output_text_verbatim("turns"),
     ui.output_text_verbatim("recorder"),
     ui.output_text_verbatim("provider_context"),
+    ui.output_text_verbatim("history_updates"),
     chat_ui("chat"),
 )
 
@@ -69,6 +70,8 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     provider_context_value: reactive.Value[str] = reactive.Value("")
     turns_value: reactive.Value[str] = reactive.Value("")
     recorder_value: reactive.Value[str] = reactive.Value("")
+    history_updates_value: reactive.Value[int] = reactive.Value(0)
+    history_update_count = 0
     client.provider_context = provider_context_value
 
     chat = Chat(
@@ -80,6 +83,16 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
             title=None,
         ),
     )
+    send_action = chat._send_action
+
+    async def track_history_updates(action: Any, *args: Any) -> None:
+        nonlocal history_update_count
+        if action.get("type") == "history_update":
+            history_update_count += 1
+            history_updates_value.set(history_update_count)
+        await send_action(action, *args)
+
+    chat._send_action = track_history_updates  # type: ignore[method-assign]
 
     @reactive.effect
     @reactive.event(input.inspect_turns)
@@ -127,6 +140,10 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     @render.text
     def recorder() -> str:
         return recorder_value()
+
+    @render.text
+    def history_updates() -> str:
+        return str(history_updates_value())
 
 
 app = App(app_ui, server)

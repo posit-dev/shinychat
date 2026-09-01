@@ -83,6 +83,7 @@ class StatePathContext:
     node_ids: tuple[str, ...]
     entries: tuple[tuple[str, StateEntry], ...]
     bootstrap: Literal["recorded", "live"]
+    prepared_turns: list[dict[str, Any]] | None = None
 
 
 RestoreHook = Callable[[StatePathContext], Awaitable[None] | None]
@@ -367,7 +368,9 @@ class _ExchangeRecorder:
             else:
                 node.state[name] = entry
 
-    async def _restore_turns(self, context: StatePathContext) -> None:
+    def _materialize_restore_turns(
+        self, context: StatePathContext
+    ) -> list[dict[str, Any]]:
         adapter = self._controller.adapter
         include_system_prompt = getattr(adapter, "is_chatlas", lambda: False)()
         turns = (
@@ -377,7 +380,6 @@ class _ExchangeRecorder:
         )
         root_id = context.node_ids[0]
         expected_kind = "chatlas" if include_system_prompt else "turns"
-
         for node_id, entry in context.entries:
             if entry.kind != expected_kind or entry.version != 1:
                 raise ValueError(
@@ -402,17 +404,50 @@ class _ExchangeRecorder:
             else:
                 turns.extend(entry_turns)
 
+        return self._canonical_turns(turns)[0]
+
+    async def _restore_turns(self, context: StatePathContext) -> None:
+        if context.prepared_turns is None:
+            raise RuntimeError("Turns must be materialized before restore.")
+        turns = context.prepared_turns
+        adapter = self._controller.adapter
         adapter.set_turns_json(turns)
         self._set_turn_baseline(turns)
 
-    async def _restore_state(
+    @staticmethod
+    def _validate_restore_state_entry(name: str, entry: StateEntry) -> None:
+        if not isinstance(entry.kind, str) or not entry.kind:
+            raise ValueError(f"State entry {name!r} has an invalid kind.")
+        if (
+            not isinstance(entry.version, int)
+            or isinstance(entry.version, bool)
+            or entry.version < 1
+        ):
+            raise ValueError(f"State entry {name!r} has an invalid version.")
+        try:
+            json.dumps(entry.data, allow_nan=False)
+        except (TypeError, ValueError) as e:
+            raise ValueError(
+                f"State entry {name!r} has invalid JSON data."
+            ) from e
+
+    def _preflight_restore_state(
         self,
         record: ConversationRecordV2,
         node_ids: tuple[str, ...],
         bootstrap: Literal["recorded", "live"],
-    ) -> None:
+    ) -> tuple[tuple[RestoreHook, StatePathContext], ...]:
         if record.active_leaf is None:
             raise ValueError("Exchange-tree record has no active leaf.")
+        for node_id in node_ids:
+            for name, entry in record.nodes[node_id].state.items():
+                if name not in self._restore_hooks:
+                    raise ValueError(
+                        f"Unsupported restore state entry {name!r}."
+                    )
+                self._validate_restore_state_entry(name, entry)
+
+        planned: list[tuple[RestoreHook, StatePathContext]] = []
         for name, hook in self._restore_hooks.items():
             entries = tuple(
                 (node_id, record.nodes[node_id].state[name])
@@ -426,6 +461,18 @@ class _ExchangeRecorder:
                 entries=entries,
                 bootstrap=bootstrap,
             )
+            if name == "shinychat:turns":
+                context = dataclasses.replace(
+                    context,
+                    prepared_turns=self._materialize_restore_turns(context),
+                )
+            planned.append((hook, context))
+        return tuple(planned)
+
+    async def _restore_state(
+        self, planned: tuple[tuple[RestoreHook, StatePathContext], ...]
+    ) -> None:
+        for hook, context in planned:
             result = hook(context)
             if inspect.isawaitable(result):
                 await result
@@ -970,6 +1017,43 @@ class HistoryController:
         for cb in self._restore_callbacks:
             cb(values)
 
+    async def _notify_restore_failure(self) -> None:
+        from shiny import ui as shiny_ui
+        from shiny.session import session_context
+
+        with session_context(self.chat._session):
+            shiny_ui.notification_show(
+                "Could not restore conversation. A fresh chat is ready.",
+                type="error",
+            )
+
+    async def _clear_failed_restore(self) -> None:
+        recorder = self._exchange_recorder
+        assert recorder is not None
+
+        # Local ownership is cleared synchronously before any cleanup can
+        # suspend, so a subsequent accepted input always creates a fresh draft.
+        recorder.reset()
+        self.record = None
+        self._active_id.set(None)
+
+        async def best_effort(operation: Callable[[], Any]) -> None:
+            try:
+                result = operation()
+                if inspect.isawaitable(result):
+                    await result
+            except BaseException:
+                pass
+
+        await best_effort(self.chat.clear_messages)
+        await best_effort(lambda: self.adapter.set_turns_json([]))
+        await best_effort(lambda: self.chat.set_greeting(None))
+        active_id_callback = self.on_active_id_change
+        if active_id_callback is not None:
+            await best_effort(lambda: active_id_callback(None))
+        await best_effort(self.send_history_update)
+        await best_effort(self._notify_restore_failure)
+
     async def replay_exchange_record(
         self, record: ConversationRecordV2 | None = None
     ) -> None:
@@ -997,37 +1081,42 @@ class HistoryController:
         selected_bootstrap = (
             self.restore_bootstrap if bootstrap is None else bootstrap
         )
+        planned_state = recorder._preflight_restore_state(
+            target, node_ids, selected_bootstrap
+        )
 
         async with self._destructive_mutation():
             async with self._exchange_mutation():
-                await self.chat.clear_messages()
-                await self.chat.set_greeting(None)
-                with recorder.suspend_capture():
-                    for node_id in node_ids:
-                        node = target.nodes[node_id]
-                        if node.input is not None:
-                            await self.chat._restore_bookmark_message(
-                                node.input.model_dump(mode="json")
-                            )
-                        for message in node.messages:
-                            await self.chat._restore_bookmark_message(
-                                message.as_stored_message().model_dump(
-                                    mode="json"
-                                ),
-                                icon=message.icon,
-                            )
-                await recorder._restore_state(
-                    target, node_ids, selected_bootstrap
-                )
+                try:
+                    await self.chat.clear_messages()
+                    await self.chat.set_greeting(None)
+                    with recorder.suspend_capture():
+                        for node_id in node_ids:
+                            node = target.nodes[node_id]
+                            if node.input is not None:
+                                await self.chat._restore_bookmark_message(
+                                    node.input.model_dump(mode="json")
+                                )
+                            for message in node.messages:
+                                await self.chat._restore_bookmark_message(
+                                    message.as_stored_message().model_dump(
+                                        mode="json"
+                                    ),
+                                    icon=message.icon,
+                                )
+                    await recorder._restore_state(planned_state)
 
-                # `_ExchangeRecorder` remains the sole v2 record owner. The
-                # controller only sequences its installation after consumers
-                # have accepted display and state.
-                self.record = None
-                recorder.install_restored_record(target)
-                await self._set_active_id(target.id)
-                self._restore_app_state(target.values or {})
-                await self.send_history_update()
+                    # `_ExchangeRecorder` remains the sole v2 record owner.
+                    # The controller only sequences its installation after
+                    # display and state consumers have accepted the target.
+                    self.record = None
+                    recorder.install_restored_record(target)
+                    await self._set_active_id(target.id)
+                    self._restore_app_state(target.values or {})
+                    await self.send_history_update()
+                except BaseException:
+                    await self._clear_failed_restore()
+                    raise
 
     # -- switch / new ----------------------------------------------------
 
@@ -1735,6 +1824,9 @@ class ChatHistory:
                 if pointed is not None:
                     if isinstance(pointed, ConversationRecordV2):
                         await controller._restore_exchange_record(pointed)
+                        initialized = True
+                        await controller.notify_settled(True)
+                        return
                     else:
                         async with controller._destructive_mutation():
                             adapter.set_turns_json(pointed.path_turns())
