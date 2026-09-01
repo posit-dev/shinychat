@@ -262,13 +262,14 @@ describe("historyStore", () => {
     )
   })
 
-  it("uses completion-v2 for edit transitions while retaining v1 New/Delete", () => {
+  it("uses completion-v2 for edit/navigation transitions while retaining v1 New/Delete", () => {
     const transport = createMockTransport()
     const registration = acquireHistoryStore("chat", transport)
     const requestIds = vi
       .spyOn(uuidUtils, "uuid")
       .mockReturnValueOnce("v1-new")
       .mockReturnValueOnce("v2-edit")
+      .mockReturnValueOnce("v2-navigation")
 
     registration.store.updateHistory({
       enabled: true,
@@ -291,6 +292,8 @@ describe("historyStore", () => {
     expect(registration.store.getSnapshot().historyTransitionPending).toBe(
       "v2-edit",
     )
+    registration.store.completeHistoryTransition("v2-edit")
+    expect(registration.store.beginNavigationTransition()).toBe("v2-navigation")
 
     registration.store.actions.select("first")
     registration.store.actions.rename("first", "Blocked")

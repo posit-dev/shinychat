@@ -130,6 +130,26 @@ def test_v2_subtree_leaf_remembers_child_then_falls_back_to_newest():
     assert rec.subtree_leaf("n_0000") == second_leaf
 
 
+def test_v2_path_sibling_metadata_tracks_the_selected_exchange():
+    rec = new_conversation_record_v2(
+        title="hello",
+        id="c_v2",
+        client_info={"kind": "test"},
+    )
+    first = "exchange-1"
+    original = "exchange-2-original"
+    replacement = "exchange-2-replacement"
+    rec.open_exchange(first, _v2_user_message("first"))
+    rec.open_exchange(original, _v2_user_message("original"))
+    rec.set_active_leaf(first)
+    rec.open_exchange(replacement, _v2_user_message("replacement"))
+
+    assert rec.path_sibling_metadata() == {replacement: (1, 2)}
+
+    rec.set_active_leaf(original)
+    assert rec.path_sibling_metadata() == {original: (0, 2)}
+
+
 def test_v2_user_message_projection_skips_inputless_path_nodes():
     rec = new_conversation_record_v2(
         title="hello",

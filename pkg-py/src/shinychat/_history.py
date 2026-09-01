@@ -1288,20 +1288,7 @@ class HistoryController:
                 planned_state
             )
         try:
-            await self.chat.clear_messages()
-            await self.chat.set_greeting(None)
-            with recorder.suspend_capture():
-                for node_id in node_ids:
-                    node = target.nodes[node_id]
-                    if node.input is not None:
-                        await self.chat._restore_bookmark_message(
-                            node.input.model_dump(mode="json")
-                        )
-                    for message in node.messages:
-                        await self.chat._restore_bookmark_message(
-                            message.as_stored_message().model_dump(mode="json"),
-                            icon=message.icon,
-                        )
+            await self._replay_exchange_display(target, node_ids)
             await recorder._restore_state(planned_state)
 
             # `_ExchangeRecorder` remains the sole v2 record owner.
@@ -1313,9 +1300,31 @@ class HistoryController:
             recorder.mark_active_id_published(target)
             self._restore_app_state(target.values or {})
             await self.send_history_update()
+            await self._send_sibling_metadata()
         except BaseException:
             await self._clear_failed_restore()
             raise
+
+    async def _replay_exchange_display(
+        self, record: ConversationRecordV2, node_ids: tuple[str, ...]
+    ) -> None:
+        recorder = self._exchange_recorder
+        assert recorder is not None
+
+        await self.chat.clear_messages()
+        await self.chat.set_greeting(None)
+        with recorder.suspend_capture():
+            for node_id in node_ids:
+                node = record.nodes[node_id]
+                if node.input is not None:
+                    await self.chat._restore_bookmark_message(
+                        node.input.model_dump(mode="json")
+                    )
+                for message in node.messages:
+                    await self.chat._restore_bookmark_message(
+                        message.as_stored_message().model_dump(mode="json"),
+                        icon=message.icon,
+                    )
 
     async def _restore_exchange_record(
         self,
@@ -1625,11 +1634,14 @@ class HistoryController:
     # -- branch navigation --------------------------------------------------
 
     async def _send_sibling_metadata(self) -> None:
-        if self._exchange_recorder is not None:
+        record = (
+            self._exchange_recorder.record
+            if self._exchange_recorder is not None
+            else self.record
+        )
+        if record is None:
             return
-        if self.record is None:
-            return
-        sibling_meta = self.record.path_sibling_metadata()
+        sibling_meta = record.path_sibling_metadata()
         if not sibling_meta:
             # No "clear all badges" payload is needed. A badge only exists at a
             # fork point (a node with >1 sibling), and forks are permanent:
@@ -1640,12 +1652,22 @@ class HistoryController:
             return
         data: dict[int, dict[str, int]] = {}
         msg_idx = 0
-        for nid in self.record.path_node_ids():
-            n_ui = self.record.nodes[nid].ui_message_count()
-            if nid in sibling_meta:
-                idx, total = sibling_meta[nid]
-                data[msg_idx] = {"index": idx, "total": total}
-            msg_idx += n_ui
+        if isinstance(record, ConversationRecordV2):
+            for node_id in record.path_node_ids():
+                node = record.nodes[node_id]
+                if node.input is not None:
+                    if node_id in sibling_meta:
+                        idx, total = sibling_meta[node_id]
+                        data[msg_idx] = {"index": idx, "total": total}
+                    msg_idx += 1
+                msg_idx += len(node.messages)
+        else:
+            for node_id in record.path_node_ids():
+                n_ui = record.nodes[node_id].ui_message_count()
+                if node_id in sibling_meta:
+                    idx, total = sibling_meta[node_id]
+                    data[msg_idx] = {"index": idx, "total": total}
+                msg_idx += n_ui
         if data:
             action: UpdateSiblingsAction = {
                 "type": "update_siblings",
@@ -1653,9 +1675,63 @@ class HistoryController:
             }
             await self.chat._send_action(action)
 
-    async def handle_navigate(self, message_index: int, direction: str) -> None:
+    async def handle_navigate(
+        self,
+        message_index: int,
+        direction: str,
+        *,
+        request_id: str | None = None,
+    ) -> None:
         if direction not in ("prev", "next"):
             return
+        recorder = self._exchange_recorder
+        if recorder is not None:
+            if request_id is None or not request_id:
+                raise ValueError("Exchange-tree navigation requires a request ID.")
+            record = recorder.record
+            if record is None:
+                return
+
+            node_id = record.exchange_id_for_user_message_index(message_index)
+            siblings = record.siblings_of(node_id)
+            current_pos = siblings.index(node_id)
+            if direction == "prev":
+                if current_pos == 0:
+                    return
+                target = siblings[current_pos - 1]
+            else:
+                if current_pos == len(siblings) - 1:
+                    return
+                target = siblings[current_pos + 1]
+
+            leaf = record.subtree_leaf(target)
+            projection = record.model_copy(deep=True)
+            projection.set_active_leaf(leaf)
+            node_ids = tuple(projection.path_node_ids())
+            rewind_state = recorder._preflight_rewind_state(
+                projection, node_ids
+            )
+
+            async with self._destructive_mutation(block_input=True):
+                async with self._exchange_mutation():
+                    current_leaf = record.active_leaf
+                    if current_leaf is None:
+                        raise ValueError(
+                            "Exchange-tree record has no active leaf."
+                        )
+                    await recorder._capture_state(current_leaf, "node_close")
+                    try:
+                        record.set_active_leaf(leaf)
+                        await recorder._persist_record()
+                        await self._replay_exchange_display(record, node_ids)
+                        await recorder._rewind_state(rewind_state)
+                        await self._send_sibling_metadata()
+                        await self.send_history_update()
+                    except BaseException:
+                        await self._clear_failed_restore()
+                        raise
+            return
+
         if self.record is None:
             return
         node_id, _ = self.record.node_id_for_message_index(message_index)
@@ -2342,15 +2418,32 @@ class ChatHistory:
         @reactive.effect
         @reactive.event(chat._session.input[ids.message_navigate])
         async def _on_navigate():
-            if controller.partition is None:
-                return
             payload = chat._session.input[ids.message_navigate]()
+            request_id = _history_transition_request_id(payload)
             try:
+                if controller.partition is None:
+                    return
+                if not isinstance(payload, dict):
+                    raise TypeError("Navigation payload must be an object.")
+                index = payload.get("index")
+                direction = payload.get("direction")
+                if not isinstance(index, int):
+                    raise TypeError("Navigation index must be an integer.")
+                if not isinstance(direction, str):
+                    raise TypeError("Navigation direction must be a string.")
                 await controller.handle_navigate(
-                    int(payload["index"]), str(payload["direction"])
+                    index,
+                    direction,
+                    request_id=request_id,
                 )
             except Exception as e:
                 await notify_error("Could not navigate messages", e)
+            finally:
+                if (
+                    request_id is not None
+                    and controller._exchange_recorder is not None
+                ):
+                    await _complete_history_transition(chat, request_id)
 
         def _on_session_end() -> None:
             if self._on_session_end is None:

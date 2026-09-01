@@ -480,6 +480,26 @@ describe("ShinyTransport", () => {
       )
     })
 
+    it("includes a navigation transition request ID when provided", () => {
+      const setInputValue = vi.fn()
+      ;(window as unknown as Record<string, unknown>).Shiny = {
+        setInputValue,
+        addCustomMessageHandler: vi.fn(),
+      }
+      const transport = new ShinyTransport()
+
+      transport.sendMessageNavigate("chat1", 3, "next", "request-id")
+
+      expect(setInputValue).toHaveBeenCalledWith(
+        "chat1_message_navigate",
+        expect.objectContaining({
+          index: 3,
+          direction: "next",
+          requestId: "request-id",
+        }),
+      )
+    })
+
     it("does not throw when Shiny is unavailable", () => {
       const origShiny = window.Shiny
       delete (window as unknown as Record<string, unknown>).Shiny

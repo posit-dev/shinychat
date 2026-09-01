@@ -150,6 +150,12 @@ export class HistoryStore {
     return this.beginTransition()
   }
 
+  beginNavigationTransition(): string | null {
+    if (!this.supportsEditProjectionProtocol() || this.isMutationBlocked())
+      return null
+    return this.beginTransition()
+  }
+
   acceptEditProjection(requestId: string): boolean {
     if (this.snapshot.historyTransitionPending !== requestId) return false
     // Projection installs the ordinary input/loading state immediately after
@@ -163,9 +169,10 @@ export class HistoryStore {
     return this.snapshot.busy || this.hasPendingTransition()
   }
 
-  completeHistoryTransition(requestId: string): void {
-    if (this.snapshot.historyTransitionPending !== requestId) return
+  completeHistoryTransition(requestId: string): boolean {
+    if (this.snapshot.historyTransitionPending !== requestId) return false
     this.publish({ ...this.snapshot, historyTransitionPending: null })
+    return true
   }
 
   get listenerCount(): number {

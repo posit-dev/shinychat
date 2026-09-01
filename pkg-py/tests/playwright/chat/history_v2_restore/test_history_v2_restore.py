@@ -185,6 +185,63 @@ def test_v2_edit_projects_once_through_the_real_provider_and_preserves_draft(
     )
 
 
+def test_v2_navigation_replays_the_selected_sibling_and_continues_from_it(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    chat.set_user_input("original")
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message("echo: original", timeout=30_000)
+
+    original = page.locator(".shiny-chat-user-message").first
+    original.hover()
+    original.locator(".shiny-chat-edit-btn").click()
+    editor = original.get_by_role("textbox", name="Chat message")
+    editor.click()
+    editor.press("ControlOrMeta+a")
+    editor.press_sequentially("replacement")
+    original.locator(".shiny-chat-btn-send").click()
+    chat.expect_latest_message("echo: replacement", timeout=30_000)
+    controller.OutputText(page, "provider_calls").expect_value("2")
+
+    replacement = page.locator(".shiny-chat-user-message").first
+    replacement.hover()
+    replacement.get_by_role("button", name="Previous version").click()
+    chat.expect_latest_message("echo: original", timeout=30_000)
+    expect(page.locator(".shiny-chat-user-message").first).to_have_text(
+        "original", timeout=10_000
+    )
+    controller.OutputText(page, "provider_calls").expect_value("2")
+
+    controller.InputActionButton(page, "inspect_turns").click()
+    controller.OutputText(page, "turns").expect_value(
+        re.compile(r'"turn_count": 2'), timeout=10_000
+    )
+    controller.OutputText(page, "turns").expect_value(
+        re.compile(r'"original"'), timeout=10_000
+    )
+    expect(page.locator(".shiny-chat-messages-content")).not_to_contain_text(
+        "replacement", timeout=10_000
+    )
+
+    # The persisted selected-child path survives reload and supplies the
+    # exact model prefix for the next ordinary provider submission.
+    page.reload()
+    expect(chat.loc).to_be_visible(timeout=30_000)
+    chat.expect_latest_message("echo: original", timeout=30_000)
+    chat.set_user_input("continued")
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message("echo: continued", timeout=30_000)
+    controller.OutputText(page, "provider_calls").expect_value("1")
+    controller.OutputText(page, "provider_context").expect_value(
+        "[original] | [echo: original] | continued",
+        timeout=10_000,
+    )
+
+
 @pytest.mark.parametrize("local_app", ["app_url.py"], indirect=True)
 def test_v2_url_restore_publishes_one_history_update(
     page: Page, local_app: ShinyAppProc

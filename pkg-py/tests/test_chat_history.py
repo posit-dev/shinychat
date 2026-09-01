@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import nullcontext
 from typing import Any, Awaitable, Callable, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import shinychat._history as history_module
 from shiny import reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
@@ -340,6 +342,9 @@ def _completion_actions(session: _LiveSession) -> list[dict[str, Any]]:
         ("edit", "success"),
         ("edit", "failure"),
         ("edit", "cancelled"),
+        ("navigate", "success"),
+        ("navigate", "failure"),
+        ("navigate", "cancelled"),
     ],
 )
 async def test_history_transition_completion_always_matches_request(
@@ -365,8 +370,14 @@ async def test_history_transition_completion_always_matches_request(
 
         return decorator if handler is None else decorator(handler)
 
+    v2_navigation = (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True)
+        if operation == "navigate"
+        else nullcontext()
+    )
     with (
         patch.object(reactive, "effect", capture_effect),
+        v2_navigation,
         session_context(cast(Any, session)),
     ):
         chat = Chat(
@@ -399,13 +410,21 @@ async def test_history_transition_completion_always_matches_request(
         controller.delete = operation_fn  # type: ignore[method-assign]
         input_id = ids.delete
         payload = {"id": "active", "requestId": f"{operation}-{outcome}"}
-    else:
+    elif operation == "edit":
         controller.handle_edit = operation_fn  # type: ignore[method-assign]
         input_id = ids.message_edit
         payload = {
             "index": 0,
             "content": "edited",
             "attachments": [],
+            "requestId": f"{operation}-{outcome}",
+        }
+    else:
+        controller.handle_navigate = operation_fn  # type: ignore[method-assign]
+        input_id = ids.message_navigate
+        payload = {
+            "index": 0,
+            "direction": "prev",
             "requestId": f"{operation}-{outcome}",
         }
 
@@ -426,7 +445,7 @@ async def test_history_transition_completion_always_matches_request(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("operation", ["new", "delete", "edit"])
+@pytest.mark.parametrize("operation", ["new", "delete", "edit", "navigate"])
 async def test_history_transition_legacy_payload_does_not_send_completion(
     operation: str,
 ) -> None:
@@ -450,8 +469,14 @@ async def test_history_transition_legacy_payload_does_not_send_completion(
 
         return decorator if handler is None else decorator(handler)
 
+    v2_navigation = (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True)
+        if operation == "navigate"
+        else nullcontext()
+    )
     with (
         patch.object(reactive, "effect", capture_effect),
+        v2_navigation,
         session_context(cast(Any, session)),
     ):
         chat = Chat(
@@ -474,10 +499,14 @@ async def test_history_transition_legacy_payload_does_not_send_completion(
         controller.delete = AsyncMock()  # type: ignore[method-assign]
         input_id = ids.delete
         payload = {"id": "active"}
-    else:
+    elif operation == "edit":
         controller.handle_edit = AsyncMock()  # type: ignore[method-assign]
         input_id = ids.message_edit
         payload = {"index": 0, "content": "edited", "attachments": []}
+    else:
+        controller.handle_navigate = AsyncMock()  # type: ignore[method-assign]
+        input_id = ids.message_navigate
+        payload = {"index": 0, "direction": "prev"}
 
     with session_context(cast(Any, session)):
         cast(Any, session.input[input_id])._set(payload)
@@ -500,6 +529,9 @@ async def test_history_transition_legacy_payload_does_not_send_completion(
         ("edit", "success"),
         ("edit", "failure"),
         ("edit", "cancelled"),
+        ("navigate", "success"),
+        ("navigate", "failure"),
+        ("navigate", "cancelled"),
     ],
 )
 async def test_completion_delivery_failure_does_not_mask_transition_outcome(
@@ -525,8 +557,14 @@ async def test_completion_delivery_failure_does_not_mask_transition_outcome(
 
         return decorator if handler is None else decorator(handler)
 
+    v2_navigation = (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True)
+        if operation == "navigate"
+        else nullcontext()
+    )
     with (
         patch.object(reactive, "effect", capture_effect),
+        v2_navigation,
         session_context(cast(Any, session)),
     ):
         chat = Chat(
@@ -559,13 +597,21 @@ async def test_completion_delivery_failure_does_not_mask_transition_outcome(
         controller.delete = operation_fn  # type: ignore[method-assign]
         input_id = ids.delete
         payload = {"id": "active", "requestId": f"{operation}-{outcome}"}
-    else:
+    elif operation == "edit":
         controller.handle_edit = operation_fn  # type: ignore[method-assign]
         input_id = ids.message_edit
         payload = {
             "index": 0,
             "content": "edited",
             "attachments": [],
+            "requestId": f"{operation}-{outcome}",
+        }
+    else:
+        controller.handle_navigate = operation_fn  # type: ignore[method-assign]
+        input_id = ids.message_navigate
+        payload = {
+            "index": 0,
+            "direction": "prev",
             "requestId": f"{operation}-{outcome}",
         }
 

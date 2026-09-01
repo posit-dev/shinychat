@@ -245,7 +245,10 @@ export function ChatApp({
         if (action.enabled) {
           setCurrentConversationId(elementId, action.active_id)
         }
-        if (siblingNavigationPendingRef.current) {
+        if (
+          siblingNavigationPendingRef.current &&
+          historyStore.getSnapshot().historyTransitionPending === null
+        ) {
           siblingNavigationPendingRef.current = false
           setSiblingNavigationPending(false)
           containerRef.current?.endSiblingNavigation()
@@ -253,7 +256,13 @@ export function ChatApp({
         return
       }
       if (action.type === "history_transition_complete") {
-        historyStore.completeHistoryTransition(action.requestId)
+        if (historyStore.completeHistoryTransition(action.requestId)) {
+          if (siblingNavigationPendingRef.current) {
+            siblingNavigationPendingRef.current = false
+            setSiblingNavigationPending(false)
+            containerRef.current?.endSiblingNavigation()
+          }
+        }
         return
       }
       if (action.type === "history_edit_projection") {
@@ -410,10 +419,15 @@ export function ChatApp({
       )
         return
 
+      const requestId = historyStore.beginNavigationTransition()
       siblingNavigationPendingRef.current = true
       setSiblingNavigationPending(true)
       containerRef.current?.beginSiblingNavigation()
-      transport.sendMessageNavigate(elementId, index, direction)
+      if (requestId === null) {
+        transport.sendMessageNavigate(elementId, index, direction)
+      } else {
+        transport.sendMessageNavigate(elementId, index, direction, requestId)
+      }
     },
     [transport, elementId, historyStore],
   )

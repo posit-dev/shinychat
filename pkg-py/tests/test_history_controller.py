@@ -3500,6 +3500,143 @@ def _make_v2_resubmit_controller() -> tuple[
     return controller, fake_chat, adapter, store, first, target
 
 
+def _make_v2_navigation_controller() -> tuple[
+    HistoryController, _FakeChat, _FakeAdapter, _RecordingStore, str, str
+]:
+    controller, store = _make_controller(use_exchange_tree=True)
+    fake_chat = cast(_FakeChat, controller.chat)
+    adapter = cast(_FakeAdapter, controller.adapter)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+
+    record = new_conversation_record_v2(
+        title="branching",
+        id="c_navigation",
+        client_info={},
+    )
+    record.nodes["n_0000"].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[{"role": "system", "content": "bootstrap"}],
+    )
+    first = "exchange-first"
+    original = "exchange-original"
+    replacement = "exchange-replacement"
+    record.open_exchange(first, _stored_message("user", "first"))
+    record.nodes[first].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="delta",
+        data=[{"role": "user", "content": "first"}],
+    )
+    record.append_message(
+        first,
+        CapturedMessage.from_stored_message(
+            _stored_message("assistant", "custom prefix"), icon=None
+        ),
+    )
+    record.open_exchange(original, _stored_message("user", "original"))
+    record.nodes[original].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="delta",
+        data=[{"role": "user", "content": "original"}],
+    )
+    record.append_message(
+        original,
+        CapturedMessage.from_stored_message(
+            _stored_message("assistant", "original reply"), icon=None
+        ),
+    )
+    record.set_active_leaf(first)
+    record.open_exchange(
+        replacement, _stored_message("user", "replacement")
+    )
+    record.nodes[replacement].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="delta",
+        data=[{"role": "user", "content": "replacement"}],
+    )
+    record.append_message(
+        replacement,
+        CapturedMessage.from_stored_message(
+            _stored_message("assistant", "replacement reply"), icon=None
+        ),
+    )
+    recorder.record = record
+    controller._active_id.set(record.id)
+    adapter.turns = [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+        {"role": "user", "content": "replacement"},
+    ]
+    recorder._set_turn_baseline(adapter.turns)
+    return controller, fake_chat, adapter, store, original, replacement
+
+
+@pytest.mark.anyio
+async def test_v2_navigation_replays_selected_sibling_and_rewinds_turns():
+    controller, chat, adapter, store, original, replacement = (
+        _make_v2_navigation_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+
+    await controller.handle_navigate(2, "prev", request_id="navigation")
+
+    assert record.active_leaf == original
+    assert record.nodes["exchange-first"].selected_child == original
+    assert record.nodes[original].selected_child is None
+    assert adapter.turns == [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+        {"role": "user", "content": "original"},
+    ]
+    assert [
+        message["segments"][0]["content"] for message in chat.restored_messages
+    ] == ["first", "custom prefix", "original", "original reply"]
+    assert chat.actions[-2] == {
+        "type": "update_siblings",
+        "data": {2: {"index": 0, "total": 2}},
+    }
+    assert chat.actions[-1]["type"] == "history_update"
+    assert len(store.put_calls) == 1
+    assert store.put_calls[0][1].active_leaf == original
+    assert record.nodes["exchange-first"].children == [original, replacement]
+
+
+@pytest.mark.anyio
+async def test_v2_navigation_preflights_selected_path_before_mutation():
+    controller, chat, adapter, store, original, replacement = (
+        _make_v2_navigation_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.nodes[original].state["unsupported"] = StateEntry(
+        kind="test",
+        version=1,
+        mode="snapshot",
+        data={},
+    )
+    before = record.model_dump()
+    turns_before = list(adapter.turns)
+
+    with pytest.raises(ValueError, match="Unsupported rewind state entry"):
+        await controller.handle_navigate(2, "prev", request_id="navigation")
+
+    assert record.model_dump() == before
+    assert adapter.turns == turns_before
+    assert chat.clear_messages_calls == 0
+    assert store.put_calls == []
+    assert record.active_leaf == replacement
+
+
 @pytest.mark.anyio
 async def test_v2_resubmit_rewinds_parent_prefix_and_new_input_creates_sibling():
     controller, chat, adapter, store, first, target = _make_v2_resubmit_controller()

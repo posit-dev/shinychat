@@ -209,6 +209,7 @@ export interface ChatTransport {
     id: string,
     index: number,
     direction: "prev" | "next",
+    requestId?: string,
   ): void
 }
 

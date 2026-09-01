@@ -179,10 +179,12 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     id: string,
     index: number,
     direction: "prev" | "next",
+    requestId?: string,
   ): void {
     window.Shiny?.setInputValue?.(`${id}_message_navigate`, {
       index,
       direction,
+      ...(requestId === undefined ? {} : { requestId }),
       ts: Date.now(),
     })
   }

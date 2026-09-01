@@ -404,6 +404,14 @@ class ConversationRecordV2(BaseModel):
             displayed_index += len(node.messages)
         raise IndexError(f"Message index {index} out of range")
 
+    def path_sibling_metadata(self) -> dict[str, tuple[int, int]]:
+        result: dict[str, tuple[int, int]] = {}
+        for node_id in self.path_node_ids():
+            siblings = self.siblings_of(node_id)
+            if len(siblings) > 1:
+                result[node_id] = (siblings.index(node_id), len(siblings))
+        return result
+
     def open_exchange(self, exchange_id: str, message: StoredMessage) -> None:
         if exchange_id in self.nodes:
             raise ValueError(f"Duplicate exchange id {exchange_id!r}")
