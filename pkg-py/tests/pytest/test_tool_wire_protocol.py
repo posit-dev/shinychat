@@ -13,9 +13,9 @@ from pydantic import ValidationError
 from shinychat._chat_normalize_chatlas import (
     ToolRequestComponent,
     ToolResultComponent,
-    _serialize_htmltools,
     tool_result_contents,
 )
+from shinychat._htmltools_serialization import serialize_htmltools
 from shinychat.types import ToolResultDisplay
 
 
@@ -113,11 +113,11 @@ def test_minimal_tool_result_open_style_is_not_serialized() -> None:
 
 
 def test_serialize_htmltools_none_returns_none() -> None:
-    assert _serialize_htmltools(None) is None
+    assert serialize_htmltools(None) is None
 
 
 def test_serialize_htmltools_value_returns_dict() -> None:
-    result = _serialize_htmltools(HTML("<b>hi</b>"))
+    result = serialize_htmltools(HTML("<b>hi</b>"))
     assert result is not None
     assert result["html"] == "<b>hi</b>"
 
