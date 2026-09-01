@@ -1,8 +1,9 @@
 # Plan: exchange-tree conversation history
 
 **Status:** committed · Phase 0 complete, Phase 1 in review, Phases 2–4
-complete; Phase 5 mechanism planning in progress; Q2 selects single-document
-atomic layout after split rejection · 2026-09-01
+complete; Phase 5 mechanism approved, with Q1 selecting
+disabled-until-restore-decision; Q2 selects single-document atomic layout
+after split rejection · 2026-09-01
 **Kata:** epic `shinychat#6d0d` · Phase 1 `shinychat#g49a` · Phase 2
 `shinychat#kjyt` · Phase 3 `shinychat#qf2r` · Phase 4 `shinychat#azvt`
 · Phase 5 `shinychat#fg70` (the `kata` CLI issue tracker).
@@ -336,16 +337,22 @@ with a warning rather than failing the restore.
    recent snapshot on the path plus every delta after it. Under the
    live-bootstrap option (§3.4) the root snapshot is skipped and the deltas
    layer on whatever prefix the app's own initialization produced.
-4. **Init/restore race:** the one hard-core window that survives every
-   design. The smallest guard, chosen by prototype (open question Q1):
-   (a) input disabled until the restore decision resolves, or (b) defer the
-   one racing submission. While `HistoryController.partition is None`, Phase 3
-   recorder callbacks are inert and must not fail the originating
-   capture-eligible send. Phase 5's selected guard covers capture-eligible
-   initial sends as well as user submission, preventing them before selection;
-   Phase 3 does not claim durability for preselection emissions or guard any
-   later unresolved restore window. No preselection buffer, provisional record
-   or merge, queue, timer, reconciliation, or second owner.
+4. **Init/restore race:** Q1 resolved 2026-09-01: use
+   disabled-until-restore-decision and reject defer-one-submission, which
+   requires prohibited retained payload/continuation state. While
+   `HistoryController.partition is None`, Phase 3 recorder callbacks are
+   inert and must not fail the originating capture-eligible send. Phase 5
+   blocks user dispatch and capture-eligible initial sends until the restore
+   decision and its authoritative metadata publication complete; it admits no
+   preselection capture. Every Python `chat_ui()` emits a private,
+   conservative static initialization seed before React/input activation, so
+   the client starts submission-blocked. V2 history's first authoritative
+   runtime `history_update` resolves that seed and releases admission; Python
+   v1 and history-disabled initialization immediately withdraw it, accepting
+   that brief initial delay. R emits no seed. There is no public API,
+   Chat-tag registry, post-mount action, second marker or owner, persistence,
+   deferred submission, preselection buffer, provisional record or merge,
+   queue, timer, or reconciliation.
 
 ### 3.6 Branching, editing, retries, actions (R1, R3, R7)
 
@@ -576,9 +583,11 @@ signed off by the driver before code (process.md §3.4).
   restored client continues the conversation correctly (turn count and
   content verified).
 - **Phase 5 — hard core + adversarial review (Python; `shinychat#fg70`).**
-  Init-window guard (Q1); clear/switch/abort audit; unreplayable-turn
-  degrade; error-on-reload affordance. Then one adversarial review pass in
-  the critical-review format on exactly this subsystem. See
+  Q1 is resolved: P5.0's selected disabled-until-restore-decision guard may
+  proceed under `shinychat#fbhe`; defer-one-submission is rejected. Later
+  children remain blocked. Then audit clear/switch/abort, unreplayable-turn
+  degradation, and the error-on-reload affordance, followed by one adversarial
+  review pass in the critical-review format on exactly this subsystem. See
   `phase-5-mechanism.md`; Phase 4's mechanism note is completed context only.
   *Done when:* the audit checklist has a test or a recorded decision per
   item, and the adversarial pass's P1s are fixed or dispositioned.
@@ -599,7 +608,7 @@ signed off by the driver before code (process.md §3.4).
 
 | # | Question | Cheapest check |
 |---|---|---|
-| Q1 | Which init-window guard: input-disabled-until-restore vs defer-one-submission? | Prototype both in a demo app; measure restore-decision latency (a day). |
+| Q1 | **Resolved 2026-09-01:** disabled-until-restore-decision; defer-one-submission rejected because it needs prohibited retained payload/continuation state. The prototype found the current path fail-open (a real browser accepted and cleared in 35 ms while its first update was held); disposable client checks preserved a draft plus attachment and blocked every submission route; server checks covered 12 recorded/live, no-target/success, raw/complete/stream cases plus live cancellation. Across 31 samples/path, no-delay medians were about 0.08-0.40 ms; with 25 ms per store operation, no-target medians were about 27.2 ms and target medians 54.2-54.4 ms, with p95 at most 54.9 ms. | Retained P5.0 implementation under `shinychat#fbhe`; see `phase-5-mechanism.md`. |
 | Q2 | Resolved 2026-08-28: single-document atomic layout; split rejected on coherent-recovery failure (§3.10). | 153,348-token deterministic workload; 25 repetitions after three warm-ups. Split met latency thresholds (minimum 6.90x median, 2.50x p95; cold reads 1.38x slower) but failed interrupted-append recovery. |
 | Q3 | Does the *client wire* need node ids, or does `main`'s positional edit/navigate addressing survive adversarial use? (Record nodes have ids regardless.) | Port the predecessor branch's edit/navigate Playwright tests; upgrade the wire narrowly only on red. |
 | Q4 | Provider version skew tolerance? | Save turns under current ellmer/chatlas, replay under the adjacent release (half a day). |

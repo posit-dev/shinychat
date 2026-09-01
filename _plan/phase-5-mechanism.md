@@ -1,6 +1,7 @@
 # Phase 5 mechanism: hard core and adversarial review (Python)
 
-**Status:** approved for implementation by driver · 2026-09-01
+**Status:** Q1 resolved and authorized for P5.0 retained implementation ·
+2026-09-01
 **Phase:** plan.md §4, Phase 5
 **Kata:** parent `shinychat#fg70` under epic `shinychat#6d0d`
 **Context:** `phase-4-mechanism.md` is completed context only. This note is
@@ -11,8 +12,7 @@ the Phase 5 gate and the only phase-local mechanism reference for new work.
 Bring the Python v2 exchange-tree path to shape-stability at the remaining
 hard boundaries:
 
-1. resolve Q1 with a small production-shaped prototype and install the
-   selected init/restore-window guard;
+1. install Q1's selected init/restore-window guard;
 2. audit clear, switch, and abort/cancellation against the existing
    transcript, recorder, and destructive-mutation contracts;
 3. degrade an explicitly unsupported stored turns payload without losing its
@@ -52,6 +52,12 @@ model state), or R7 (reuse existing primitives).
 
 ## P5.0: Q1 decision gate
 
+**Q1 resolved 2026-09-01:** select
+**disabled-until-restore-decision** for `shinychat#fbhe`. Reject
+**defer-one-submission**: preserving its first raw input and attachments for
+later re-entry requires prohibited retained payload/continuation state. There
+is no third mechanism.
+
 The Phase 3 no-op while `HistoryController.partition is None` is deliberate
 only until Phase 5. It avoids failing an originating send before history
 selection, but it does not make that send durable. `partition` is assigned
@@ -61,32 +67,33 @@ approved fresh-draft recovery, in both cases followed by required metadata
 completion. Capture-eligible work remains closed until that completion even
 when `partition` is non-null.
 
-The selected server gate sits before `ChatTranscript.record_accepted_input`,
-before complete-append reservation, and before root-stream reservation; a
-post-commit recorder callback is too late. It never gates the generic
-`_send_action` wire choke point. Restore replay bypasses the gate only within
-the existing destructive-history transaction; greeting and bookkeeping remain
-excluded exactly as in Phase 3. The gate releases on every initialization
-success, handled error, and cancellation.
+The server gate is before all three capture reservations:
 
-Current code has no `HistoryStore` seed API: the store starts with
-`initialized == false` and no protocol, and `updateHistory()` is currently the
-only protocol input. Therefore P5.0 must prove and name a private,
-initialization-only delivery path for static Python-v2
-`completion-v2` capability/protocol configuration before the first runtime
-`history_update`; it must not assume that the existing store can already be
-seeded. This configuration input may not be persisted or exposed as a public
-API, owner, provenance field, lifecycle marker, completion signal, release
-action, or second client marker. If the production path cannot deliver this
-configuration without one of those additions, stop for a plan amendment.
-Once delivered, the client reuses that capability with the existing
-`HistoryStore.initialized` state and `submissionBlocked` input surface: a
-seeded v2 client remains blocked while `initialized` is false or the existing
-transition marker is pending. The initial runtime `history_update` remains the
-authoritative decision-completion publication; an update that withdraws
-capability replaces the seed and clears pending state under the existing Phase
-4 protocol-change rule. History-disabled chats, Python v1, and R emit no
-Python-v2 seed and retain their current admission behavior.
+1. `Chat._record_accepted_user_input_with_capture()`, before accepted-input
+   capture;
+2. `Chat._append_complete_message()`, before complete-append reservation; and
+3. `Chat._append_message_chunk(..., chunk="start")`, before root-stream
+   reservation.
+
+A post-commit recorder callback is too late. The gate never wraps
+`_send_action`. Restore replay bypasses it only while the current task owns
+the existing `Chat._destructive_history_mutation()` transaction; greeting and
+bookkeeping remain excluded exactly as in Phase 3. The gate releases on every
+initialization success, handled error, and live-session cancellation.
+
+Every Python `chat_ui()` emits a private static, conservative initialization
+seed before React/input activation. The seed configures a Python-v2
+`completion-v2` capability/protocol conservatively and starts submission
+blocked. It is configuration, not a lifecycle marker, owner, completion
+signal, release action, or persistence. V2 history's first authoritative
+runtime `history_update` resolves the configuration and releases admission;
+capability withdrawal remains authoritative and clears pending state under the
+Phase 4 protocol-change rule. Python v1 and history-disabled Chat
+initialization immediately withdraw the seed, with the authorized brief
+initial delay. R emits no seed and retains its current behavior. This adds no
+public API, Chat-tag registry, post-mount action, second marker or owner,
+deferred submission, payload field, continuation, queue, buffer, provisional
+record, merge state, or persistence.
 
 The existing ChatInput guards must cover Enter, send-button, attachment-only,
 slash-command, suggestion, and imperative submissions while preserving the
@@ -98,29 +105,33 @@ new scheduling owner. A live-session cancellation must complete fresh-draft
 cleanup and publish the same release metadata before admitting input;
 teardown cancellation may end with no client to release.
 
-Before feature code, implement two disposable, production-shaped demo probes
-against the actual Python initialization/restore flow:
+### Completed Q1 evidence
 
-1. **Disabled-until-decision:** block user dispatch in the existing input
-   surface and hold capture-eligible server emission at the existing history
-   boundary until restore decision completion.
-2. **Defer-one-submission:** a production feasibility/rejection probe that
-   attempts to let only the first racing user submission reach the existing
-   accepted-input path after decision completion, while independently
-   preventing capture-eligible server emission.
+On 2026-09-01, the current path was shown fail-open: a real browser accepted
+and cleared while its first `history_update` was held, in 35 ms. Disposable
+client checks preserved a seeded draft and attachment while blocking Enter,
+send-button, attachment-only, slash-command, suggestion, and imperative
+submission routes. The production-shaped server probe passed all 12
+recorded/live bootstrap, no-target/successful-restore, and
+raw/complete/stream combinations; the streaming case covered root start,
+update, and finish. It also passed live cancellation cleanup/release.
 
-The probes must measure restore-decision latency and prove the same cases:
-recorded and live bootstrap, no saved target, successful restore, malformed
-target failure, cancellation, a seeded browser draft, a first raw input, and
-a complete and streaming initial append. They must use the production
-transcript/recorder paths and leave no retained prototype code.
+The server probe measured actual `_init_history` decision work from immediately
+before its call through store lookup, restore/materialization/replay,
+metadata, `history_update`, and settlement. It used 31 samples per
+bootstrap/path: no-delay medians were about 0.08-0.40 ms; with a realistic
+25 ms injected delay per store operation, no-target medians were about
+27.2 ms and successful-target medians about 54.2-54.4 ms, with p95 no greater
+than 54.9 ms. Target paths perform target `get()` plus the authoritative
+metadata `list()`. The prototypes were deleted.
 
-The probes must establish whether disabled-until-decision is viable in the
-actual production paths. Defer-one-submission is not an eligible retained
-mechanism if it requires any holder, payload field, release action, marker,
-continuation, or queue. It exists only to reject or demonstrate that boundary;
-it cannot authorize a third mechanism. Select disabled-until-decision only
-after the required evidence is recorded here and in Kata.
+`bdd5089b` (`fix(history): recover live restore materialization`) is the
+bounded prerequisite that moved live-bootstrap turn materialization into the
+existing restore failure contract. Its focused regressions independently PASS.
+For recorded bootstrap only, `_prepare_exchange_restore()` failure is caught
+at the `_init_history` restore call sites and routed through the existing
+fresh-draft cleanup and authoritative release path. Switch preflight remains
+unchanged: it retains the Phase 4 no-target-mutation behavior.
 
 The selected guard must:
 
@@ -131,9 +142,8 @@ The selected guard must:
 - compose with the existing `completion-v2` marker rather than introducing
   another marker.
 
-If disabled-until-decision cannot meet the constraints, stop for a plan
-amendment; do not retain a deferred submission or invent a third scheduling
-mechanism.
+The completed evidence selects this guard. Do not retain deferred submission
+or invent a third scheduling mechanism.
 
 ## P5.1: Clear, switch, and abort audit
 
@@ -254,7 +264,7 @@ immutability, and the absence of detailed text for pending/cancelled nodes.
 Do not create Phase 5 implementation children until this note is approved.
 After approval, create sequential children under `shinychat#fg70`:
 
-1. **P5.0 Q1 prototype and selected init guard.** It is the entry slice and
+1. **P5.0 selected init guard (`shinychat#fbhe`).** It is the entry slice and
    must land before the audit hardening.
 2. **P5.1 lifecycle audit.** Exercise clear/switch/abort against the selected
    guard and existing transaction boundaries.
@@ -278,8 +288,9 @@ must demonstrate discriminating behavior for both Q1 candidates and is
 deleted before implementation.
 
 For implementation, require focused controller and production browser tests
-for initial restore, the pre-`history_update` Python-v2 gate and unaffected
-history-disabled/v1/R admission, clear/switch/abort, effective-suffix
+for initial restore, the pre-`history_update` Python-v2 gate, immediate
+v1/history-disabled withdrawal, unchanged R admission, clear/switch/abort,
+effective-suffix
 degradation, and restored-error catalogue/legacy-fallback states; JS
 lint/test/build and `make update-dist` when client code changes; the R
 shared-client hook check for shared bundle compatibility; and the full
@@ -306,15 +317,11 @@ requirement trace, or delete it.
 ## Current handoff
 
 Landed: Phase 5 parent `shinychat#fg70` is created and claimed on
-`feat/history-exchange-tree`; authorized gate corrections are incorporated in
-this note. Final independent self-review scored 94/100, and the driver has
-signed off the Phase 5 gate.
+`feat/history-exchange-tree`; the authorized Q1 seed amendment and probe
+evidence are incorporated in this note. `bdd5089b` independently repaired
+live materialization failure recovery. No Phase 5 retained implementation has
+begun.
 
-Next: create and claim only P5.0, run the required green baseline, and compare
-the two Q1 probes. Runtime implementation remains unstarted; no other Phase 5
-child may be created or claimed yet.
-
-Provisional decision: Q1 is intentionally unresolved pending the required
-prototype evidence. Implementation remains unstarted: no Phase 5 feature
-code, child task, R port, legacy work, or new scheduling/ownership mechanism
-has started.
+Next: `shinychat#fbhe` may implement the selected P5.0 guard, including the
+bounded initial recorded-preflight recovery. P5.1-P5.4 remain blocked by P5.0.
+Do not begin R, legacy, or another scheduling/ownership mechanism.
