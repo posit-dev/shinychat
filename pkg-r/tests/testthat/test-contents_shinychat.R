@@ -1280,3 +1280,105 @@ test_that("group_ellmer_turns() merges adjacent same-role turns with no tool cal
 test_that("group_ellmer_turns() returns an empty list for no turns", {
   expect_equal(group_ellmer_turns(list()), list())
 })
+
+# ---- shinychat_thinking preservation through merge / coalesce ------------
+
+test_that("coalesce_content_strings keeps a shinychat_thinking string separate between markdown strings", {
+  thinking1 <- structure("let me think", class = "shinychat_thinking")
+  content <- list("before", thinking1, "after")
+
+  result <- coalesce_content_strings(content)
+  expect_length(result, 3)
+  expect_equal(result[[1]], "before")
+  expect_equal(result[[2]], thinking1)
+  expect_s3_class(result[[2]], "shinychat_thinking")
+  expect_equal(result[[3]], "after")
+})
+
+test_that("coalesce_content_strings merges consecutive thinking strings but not with markdown", {
+  thinking1 <- structure("thought 1", class = "shinychat_thinking")
+  thinking2 <- structure("thought 2", class = "shinychat_thinking")
+  content <- list("md", thinking1, thinking2, "md2")
+
+  result <- coalesce_content_strings(content)
+  expect_length(result, 3)
+  expect_equal(result[[1]], "md")
+  expect_s3_class(result[[2]], "shinychat_thinking")
+  expect_equal(as.character(result[[2]]), "thought 1\n\nthought 2")
+  expect_equal(result[[3]], "md2")
+})
+
+test_that("coalesce_content_strings flushes markdown buffer before a thinking part", {
+  thinking <- structure("hmm", class = "shinychat_thinking")
+  content <- list("a", "b", thinking, "c")
+
+  result <- coalesce_content_strings(content)
+  expect_length(result, 3)
+  expect_equal(result[[1]], "a\n\nb")
+  expect_s3_class(result[[2]], "shinychat_thinking")
+  expect_equal(result[[3]], "c")
+})
+
+test_that("coalesce_content_strings keeps thinking parts around blocks", {
+  thinking <- structure("hmm", class = "shinychat_thinking")
+  block <- new_web_block("web_search", query = "test")
+  content <- list("md", thinking, block, thinking, "md2")
+
+  result <- coalesce_content_strings(content)
+  expect_length(result, 5)
+  expect_equal(result[[1]], "md")
+  expect_s3_class(result[[2]], "shinychat_thinking")
+  expect_s3_class(result[[3]], "shinychat_block")
+  expect_s3_class(result[[4]], "shinychat_thinking")
+  expect_equal(result[[5]], "md2")
+})
+
+test_that("merge_ellmer_turn_group preserves ContentThinking class in the merged content", {
+  turn <- ellmer::AssistantTurn(
+    contents = list(
+      ellmer::ContentThinking("reasoning about the question"),
+      ellmer::ContentText("Here is my answer."),
+      ellmer::ContentText("And more detail.")
+    )
+  )
+
+  merged <- merge_ellmer_turn_group(list(turn), tools = list())
+  expect_equal(merged$role, "assistant")
+  # With thinking present, content stays a list (not pasted into a string).
+  expect_type(merged$content, "list")
+  # The first part should be the thinking string with its class intact.
+  expect_s3_class(merged$content[[1]], "shinychat_thinking")
+  expect_equal(
+    as.character(merged$content[[1]]),
+    "reasoning about the question"
+  )
+  # The remaining parts are plain markdown, coalesced into one string.
+  expect_equal(merged$content[[2]], "Here is my answer.\n\nAnd more detail.")
+})
+
+test_that("merge_ellmer_turn_group preserves ContentThinking alongside a tool block", {
+  request <- new_tool_request(id = "t1", name = "get_weather")
+  turn <- ellmer::AssistantTurn(
+    contents = list(
+      ellmer::ContentThinking("let me check the weather"),
+      ellmer::ContentText("Let me check."),
+      request
+    )
+  )
+
+  merged <- merge_ellmer_turn_group(list(turn), tools = list())
+  expect_type(merged$content, "list")
+  # Thinking part survives with class intact.
+  thinking_parts <- Filter(
+    function(x) is.character(x) && inherits(x, "shinychat_thinking"),
+    merged$content
+  )
+  expect_length(thinking_parts, 1)
+  expect_equal(as.character(thinking_parts[[1]]), "let me check the weather")
+  # The tool request block is also preserved.
+  block_parts <- Filter(
+    function(x) inherits(x, "shinychat_block"),
+    merged$content
+  )
+  expect_length(block_parts, 1)
+})

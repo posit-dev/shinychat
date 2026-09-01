@@ -100,31 +100,100 @@ build_stored_message_from_content <- function(
   parts <- content_to_parts(content)
   all_deps <- list()
   has_blocks <- any(vapply(parts, inherits, logical(1), "shinychat_block"))
+  has_thinking <- any(vapply(
+    parts,
+    function(p) {
+      is.character(p) && inherits(p, "shinychat_thinking")
+    },
+    logical(1)
+  ))
 
   if (!has_blocks) {
-    text <- paste(unlist(parts), collapse = "\n\n")
-    is_html <- any(vapply(
-      parts,
-      function(p) {
-        is.character(p) && inherits(p, "html")
-      },
-      logical(1)
-    ))
-    content_type <- if (is_html) "html" else "markdown"
+    if (!has_thinking) {
+      # Fast path: no thinking parts, so all character parts can be pasted
+      # into a single segment (existing behavior).
+      text <- paste(unlist(parts), collapse = "\n\n")
+      is_html <- any(vapply(
+        parts,
+        function(p) {
+          is.character(p) && inherits(p, "html")
+        },
+        logical(1)
+      ))
+      content_type <- if (is_html) "html" else "markdown"
 
-    message <- list(
-      version = STORED_UI_VERSION,
-      role = role,
-      segments = list(list(content = text, content_type = content_type))
-    )
+      message <- list(
+        version = STORED_UI_VERSION,
+        role = role,
+        segments = list(list(content = text, content_type = content_type))
+      )
 
-    if (is_html && !is.null(session)) {
-      for (p in parts) {
-        if (is.character(p) && inherits(p, "html")) {
-          ui <- process_ui(p, session)
-          all_deps <- c(all_deps, ui[["deps"]])
+      if (is_html && !is.null(session)) {
+        for (p in parts) {
+          if (is.character(p) && inherits(p, "html")) {
+            ui <- process_ui(p, session)
+            all_deps <- c(all_deps, ui[["deps"]])
+          }
         }
       }
+    } else {
+      # Thinking parts are present (no blocks): emit multiple segments
+      # preserving order. Plain character parts are coalesced with each
+      # other into markdown (or html) segments; thinking parts get their
+      # own "thinking" segment.
+      segments <- list()
+      str_buf <- character(0)
+      str_is_html <- FALSE
+
+      flush_str_buf <- function() {
+        if (length(str_buf) > 0) {
+          ct <- if (str_is_html) "html" else "markdown"
+          segments[[length(segments) + 1]] <<- list(
+            content = paste(str_buf, collapse = "\n\n"),
+            content_type = ct
+          )
+          str_buf <<- character(0)
+          str_is_html <<- FALSE
+        }
+      }
+
+      for (part in parts) {
+        if (is.character(part) && inherits(part, "shinychat_thinking")) {
+          flush_str_buf()
+          segments[[length(segments) + 1]] <- list(
+            content = as.character(part),
+            content_type = "thinking"
+          )
+        } else if (is.character(part)) {
+          is_html_part <- inherits(part, "html")
+          if (is_html_part && !is.null(session)) {
+            ui <- process_ui(part, session)
+            all_deps <- c(all_deps, ui[["deps"]])
+          }
+          # If the html-ness changes, flush the buffer first so html and
+          # plain markdown parts don't get coalesced into one segment.
+          if (length(str_buf) > 0 && str_is_html != is_html_part) {
+            flush_str_buf()
+          }
+          str_is_html <- str_is_html || is_html_part
+          str_buf <- c(str_buf, as.character(part))
+        } else {
+          # Non-character, non-block part (e.g. shiny.tag): coerce to
+          # character and treat as markdown.
+          flush_str_buf()
+          segments[[length(segments) + 1]] <- list(
+            content = as.character(part),
+            content_type = "markdown"
+          )
+        }
+      }
+      flush_str_buf()
+
+      message <- list(
+        version = STORED_UI_VERSION,
+        role = role,
+        segments = segments
+      )
     }
   } else {
     segments <- list()
@@ -138,6 +207,14 @@ build_stored_message_from_content <- function(
         result <- process_block_deps(block, session)
         all_deps <- c(all_deps, result$deps)
         blocks <- c(blocks, list(result$block))
+      } else if (is.character(part) && inherits(part, "shinychat_thinking")) {
+        segments <- c(
+          segments,
+          list(list(
+            content = as.character(part),
+            content_type = "thinking"
+          ))
+        )
       } else if (is.character(part)) {
         is_html_part <- inherits(part, "html")
         if (is_html_part && !is.null(session)) {

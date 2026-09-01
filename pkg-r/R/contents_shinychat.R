@@ -1024,23 +1024,51 @@ group_ellmer_turns <- function(turns) {
 
 # Coalesce adjacent character strings in a mixed content list by pasting
 # with "\n\n", keeping blocks in position. Mirrors Python's `parts` coalescing.
+#
+# A `shinychat_thinking` string is treated like a boundary item: it flushes
+# the pending markdown buffer and is emitted as its own part with the class
+# intact (consecutive thinking strings are merged with each other via
+# paste(..., collapse = "\n\n"), but never merged with plain markdown).
 coalesce_content_strings <- function(content) {
   result <- list()
   str_buf <- character(0)
+  think_buf <- character(0)
+
+  flush_str_buf <- function() {
+    if (length(str_buf) > 0) {
+      result[[length(result) + 1]] <<- paste(str_buf, collapse = "\n\n")
+      str_buf <<- character(0)
+    }
+  }
+  flush_think_buf <- function() {
+    if (length(think_buf) > 0) {
+      result[[length(result) + 1]] <<- structure(
+        paste(think_buf, collapse = "\n\n"),
+        class = "shinychat_thinking"
+      )
+      think_buf <<- character(0)
+    }
+  }
+
   for (item in content) {
-    if (is.character(item) && !inherits(item, "shinychat_block")) {
+    if (is.character(item) && inherits(item, "shinychat_thinking")) {
+      # A thinking string is a boundary: flush markdown, then accumulate
+      # it into the thinking buffer (consecutive thinking strings merge).
+      flush_str_buf()
+      think_buf <- c(think_buf, item)
+    } else if (is.character(item) && !inherits(item, "shinychat_block")) {
+      # A plain markdown string is a boundary for thinking strings.
+      flush_think_buf()
       str_buf <- c(str_buf, item)
     } else {
-      if (length(str_buf) > 0) {
-        result[[length(result) + 1]] <- paste(str_buf, collapse = "\n\n")
-        str_buf <- character(0)
-      }
+      # A block (or other non-character item) flushes both buffers.
+      flush_str_buf()
+      flush_think_buf()
       result[[length(result) + 1]] <- item
     }
   }
-  if (length(str_buf) > 0) {
-    result[[length(result) + 1]] <- paste(str_buf, collapse = "\n\n")
-  }
+  flush_str_buf()
+  flush_think_buf()
   result
 }
 
@@ -1156,9 +1184,12 @@ merge_ellmer_turn_group <- function(group, tools) {
   # Attach cited sources to the web_search block. Mirrors Python's
   # `_attach_cited_sources`.
   content <- attach_cited_sources(contents, content)
-  if (every(content, is.character)) {
+  has_thinking <- some(content, function(x) {
+    is.character(x) && inherits(x, "shinychat_thinking")
+  })
+  if (every(content, is.character) && !has_thinking) {
     content <- paste(unlist(content), collapse = "\n\n")
-  } else if (some(content, inherits, "shinychat_block")) {
+  } else if (some(content, inherits, "shinychat_block") || has_thinking) {
     content <- coalesce_content_strings(content)
   }
   list(role = role, content = content)
