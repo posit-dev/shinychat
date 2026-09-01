@@ -483,7 +483,6 @@ test_that("tool_result_display rich format", {
 test_that("web content emitters produce structured shinychat_block lists", {
   local_shinychat_tool_display(opt = "rich")
 
-
   MockSearchRequest <- S7::new_class(
     "MockSearchRequest",
     properties = list(query = S7::class_character)
