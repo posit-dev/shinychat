@@ -3609,6 +3609,363 @@ async def test_v2_navigation_replays_selected_sibling_and_rewinds_turns():
     assert record.nodes["exchange-first"].children == [original, replacement]
 
 
+def _make_v2_navigation_controller_with_remembered_descendants() -> tuple[
+    HistoryController,
+    _FakeChat,
+    _FakeAdapter,
+    _RecordingStore,
+    str,
+    str,
+    str,
+    str,
+]:
+    controller, store = _make_controller(use_exchange_tree=True)
+    chat = cast(_FakeChat, controller.chat)
+    adapter = cast(_FakeAdapter, controller.adapter)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+
+    record = new_conversation_record_v2(
+        title="remembered descendants",
+        id="c_remembered_descendants",
+        client_info={},
+    )
+    record.nodes["n_0000"].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[{"role": "system", "content": "bootstrap"}],
+    )
+    first = "exchange-first"
+    original = "exchange-original"
+    original_followup = "exchange-original-followup"
+    replacement = "exchange-replacement"
+    replacement_followup = "exchange-replacement-followup"
+
+    record.open_exchange(first, _stored_message("user", "first"))
+    record.nodes[first].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="delta",
+        data=[{"role": "user", "content": "first"}],
+    )
+    record.append_message(
+        first,
+        CapturedMessage.from_stored_message(
+            _stored_message("assistant", "custom prefix"), icon=None
+        ),
+    )
+
+    record.open_exchange(original, _stored_message("user", "original"))
+    record.nodes[original].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="delta",
+        data=[{"role": "user", "content": "original"}],
+    )
+    record.append_message(
+        original,
+        CapturedMessage.from_stored_message(
+            _stored_message("assistant", "original reply"), icon=None
+        ),
+    )
+    record.open_exchange(
+        original_followup, _stored_message("user", "original followup")
+    )
+    record.nodes[original_followup].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="delta",
+        data=[{"role": "user", "content": "original followup"}],
+    )
+    record.append_message(
+        original_followup,
+        CapturedMessage.from_stored_message(
+            _stored_message("assistant", "original followup reply"), icon=None
+        ),
+    )
+
+    record.set_active_leaf(first)
+    record.open_exchange(replacement, _stored_message("user", "replacement"))
+    record.nodes[replacement].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="delta",
+        data=[{"role": "user", "content": "replacement"}],
+    )
+    record.append_message(
+        replacement,
+        CapturedMessage.from_stored_message(
+            _stored_message("assistant", "replacement reply"), icon=None
+        ),
+    )
+    record.open_exchange(
+        replacement_followup, _stored_message("user", "replacement followup")
+    )
+    record.nodes[replacement_followup].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="delta",
+        data=[{"role": "user", "content": "replacement followup"}],
+    )
+    record.append_message(
+        replacement_followup,
+        CapturedMessage.from_stored_message(
+            _stored_message("assistant", "replacement followup reply"),
+            icon=None,
+        ),
+    )
+
+    recorder.record = record
+    controller._active_id.set(record.id)
+    adapter.turns = [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+        {"role": "user", "content": "replacement"},
+        {"role": "user", "content": "replacement followup"},
+    ]
+    recorder._set_turn_baseline(adapter.turns)
+    return (
+        controller,
+        chat,
+        adapter,
+        store,
+        original,
+        original_followup,
+        replacement,
+        replacement_followup,
+    )
+
+
+@pytest.mark.anyio
+async def test_v2_navigation_follows_remembered_descendants_and_persists_paths():
+    (
+        controller,
+        chat,
+        adapter,
+        store,
+        original,
+        original_followup,
+        replacement,
+        replacement_followup,
+    ) = _make_v2_navigation_controller_with_remembered_descendants()
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+
+    await controller.handle_navigate(2, "prev", request_id="previous")
+
+    assert record.active_leaf == original_followup
+    assert record.nodes["n_0000"].selected_child == "exchange-first"
+    assert record.nodes["exchange-first"].selected_child == original
+    assert record.nodes[original].selected_child == original_followup
+    assert record.nodes[replacement].selected_child == replacement_followup
+    assert adapter.turns == [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+        {"role": "user", "content": "original"},
+        {"role": "user", "content": "original followup"},
+    ]
+    assert [
+        message["segments"][0]["content"] for message in chat.restored_messages
+    ] == [
+        "first",
+        "custom prefix",
+        "original",
+        "original reply",
+        "original followup",
+        "original followup reply",
+    ]
+    persisted_previous = store.put_calls[-1][1].model_copy(deep=True)
+    assert persisted_previous.active_leaf == original_followup
+    assert (
+        persisted_previous.nodes["exchange-first"].selected_child == original
+    )
+    assert persisted_previous.nodes[original].selected_child == original_followup
+
+    puts_before_first_boundary = len(store.put_calls)
+    display_before_first_boundary = list(chat.restored_messages)
+    await controller.handle_navigate(2, "prev", request_id="first-boundary")
+    assert len(store.put_calls) == puts_before_first_boundary
+    assert record.active_leaf == original_followup
+    assert chat.restored_messages == display_before_first_boundary
+
+    chat.restored_messages.clear()
+    await controller.handle_navigate(2, "next", request_id="next")
+
+    assert record.active_leaf == replacement_followup
+    assert record.nodes["exchange-first"].selected_child == replacement
+    assert record.nodes[original].selected_child == original_followup
+    assert record.nodes[replacement].selected_child == replacement_followup
+    assert adapter.turns == [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+        {"role": "user", "content": "replacement"},
+        {"role": "user", "content": "replacement followup"},
+    ]
+    assert [
+        message["segments"][0]["content"] for message in chat.restored_messages
+    ] == [
+        "first",
+        "custom prefix",
+        "replacement",
+        "replacement reply",
+        "replacement followup",
+        "replacement followup reply",
+    ]
+    persisted_next = store.put_calls[-1][1].model_copy(deep=True)
+    assert persisted_next.active_leaf == replacement_followup
+    assert persisted_next.nodes["exchange-first"].selected_child == replacement
+    assert (
+        persisted_next.nodes[replacement].selected_child == replacement_followup
+    )
+
+    puts_before_last_boundary = len(store.put_calls)
+    display_before_last_boundary = list(chat.restored_messages)
+    await controller.handle_navigate(2, "next", request_id="last-boundary")
+    assert len(store.put_calls) == puts_before_last_boundary
+    assert record.active_leaf == replacement_followup
+    assert chat.restored_messages == display_before_last_boundary
+
+
+@pytest.mark.anyio
+async def test_v2_navigation_persistence_failure_clears_to_fresh_draft():
+    controller, chat, adapter, store, original, _replacement = (
+        _make_v2_navigation_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    chat.messages = [
+        _stored_message("user", "first"),
+        _stored_message("user", "replacement"),
+    ]
+    chat._transcript.replace(
+        [TranscriptEntry(message=_stored_message("user", "replacement"))]
+    )
+    expected = RuntimeError("navigation persistence failed")
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+    persisted_attempts: list[ConversationRecordV2] = []
+
+    async def fail_put(
+        _partition: ConversationPartition, failed_record: ConversationRecordV2
+    ) -> None:
+        persisted_attempts.append(failed_record.model_copy(deep=True))
+        raise expected
+
+    store.put = fail_put  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError) as raised:
+        await controller.handle_navigate(2, "prev", request_id="navigation")
+
+    assert raised.value is expected
+    assert persisted_attempts[0].active_leaf == original
+    assert (
+        persisted_attempts[0].nodes["exchange-first"].selected_child == original
+    )
+    assert recorder.record is None
+    assert controller.record is None
+    assert controller._active_id_now() is None
+    assert recorder._turn_baseline == []
+    assert adapter.turns == []
+    assert chat.messages == []
+    assert chat._transcript.read() == ()
+    assert chat.clear_messages_calls == 1
+    assert chat.set_greeting_calls == [None]
+    assert chat.actions == [
+        {
+            "type": "history_update",
+            "enabled": True,
+            "conversations": [],
+            "active_id": None,
+            "transition_protocol": "completion-v2",
+        }
+    ]
+    notifier.assert_awaited_once_with(recovery_incomplete=False)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("stage", ["replay", "rewind"])
+async def test_v2_navigation_cancellation_clears_to_fresh_draft(
+    stage: str,
+) -> None:
+    controller, chat, adapter, store, original, _replacement = (
+        _make_v2_navigation_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    chat.messages = [_stored_message("user", "replacement")]
+    chat._transcript.replace(
+        [TranscriptEntry(message=_stored_message("user", "replacement"))]
+    )
+    replayed_display: list[dict[str, Any]] = []
+    original_restore_message = chat._restore_bookmark_message
+
+    async def restore_message(
+        message_dict: dict[str, Any], *, icon: str | None = None
+    ) -> None:
+        chat.messages.append(message_dict)
+        await original_restore_message(message_dict, icon=icon)
+
+    chat._restore_bookmark_message = restore_message  # type: ignore[method-assign]
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+
+    if stage == "replay":
+        original_replay = controller._replay_exchange_display
+
+        async def cancel_replay(
+            target: ConversationRecordV2, node_ids: tuple[str, ...]
+        ) -> None:
+            await original_replay(target, node_ids)
+            replayed_display.extend(chat.messages)
+            raise asyncio.CancelledError()
+
+        controller._replay_exchange_display = cancel_replay  # type: ignore[method-assign]
+    else:
+        original_rewind = recorder._rewind_state
+
+        async def cancel_rewind(plan: Any) -> None:
+            await original_rewind(plan)
+            replayed_display.extend(chat.messages)
+            raise asyncio.CancelledError()
+
+        recorder._rewind_state = cancel_rewind  # type: ignore[method-assign]
+
+    with pytest.raises(asyncio.CancelledError):
+        await controller.handle_navigate(2, "prev", request_id="navigation")
+
+    assert store.put_calls[0][1].active_leaf == original
+    assert replayed_display == [
+        _stored_message("user", "first").model_dump(mode="json"),
+        _stored_message("assistant", "custom prefix").model_dump(mode="json"),
+        _stored_message("user", "original").model_dump(mode="json"),
+        _stored_message("assistant", "original reply").model_dump(mode="json"),
+    ]
+    assert recorder.record is None
+    assert controller.record is None
+    assert controller._active_id_now() is None
+    assert recorder._turn_baseline == []
+    assert adapter.turns == []
+    assert chat.messages == []
+    assert chat._transcript.read() == ()
+    assert chat.clear_messages_calls == 2
+    assert chat.set_greeting_calls == [None, None]
+    assert chat.actions == [
+        {
+            "type": "history_update",
+            "enabled": True,
+            "conversations": [],
+            "active_id": None,
+            "transition_protocol": "completion-v2",
+        }
+    ]
+    notifier.assert_awaited_once_with(recovery_incomplete=False)
+
+
 @pytest.mark.anyio
 async def test_v2_navigation_preflights_selected_path_before_mutation():
     controller, chat, adapter, store, original, replacement = (
