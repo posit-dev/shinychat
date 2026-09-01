@@ -7,16 +7,16 @@ by process. The bookmark-pointer disposition remains out of scope in
 `shinychat#g6tt`. Garrick has authorized the revised P4.2 edit/resubmit
 projection; its first implementation unit is landed and parked for three
 bounded review corrections on `shinychat#6drf` only. Those corrections are
-landed; Roborev 1163 found two bounded corrections now awaiting fixes.
+landed; the two Roborev 1163 corrections are fixed and green.
 `shinychat#5r50` is closed; `shinychat#6drf` is open with
-`work.attention="blocked"`; and `shinychat#azvt` is open with
-`work.attention="blocked"` (2026-09-01).
+`work.attention="ok"`; and `shinychat#azvt` is open with
+`work.attention="ok"` (2026-09-01).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is closed after verified review
 evidence; successor `shinychat#6drf` is open with
-`work.attention="blocked"`; parent `shinychat#azvt` is open with
-`work.attention="blocked"` under epic `shinychat#6d0d`; the P4.2 edit
-projection awaits the Roborev 1163 corrections before sibling navigation.
+`work.attention="ok"`; parent `shinychat#azvt` is open with
+`work.attention="ok"` under epic `shinychat#6d0d`; the P4.2 edit projection
+awaits fresh batched review before sibling navigation.
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
 the Phase 4 gate and the only phase-local mechanism reference for new work.
 
@@ -2714,3 +2714,25 @@ submechanisms. The three-findings escalation valve does not fire.
 Roborev `1163` remains open pending the fix commits. `shinychat#6drf` and
 `shinychat#azvt` remain attention-blocked; sibling navigation and later Phase
 4 work remain unstarted.
+
+### P4.2 Roborev 1163 resolution (2026-09-01)
+
+The accepted findings are fixed in `f553fe9b` and `3fc5a562`; generated assets
+are current in `c7738cef`.
+
+- Resubmit pointer mutation and persistence now run inside the existing
+  recovery `try`. The injected store-failure regression proves the original
+  error propagates while recorder ownership, active ID, turns, transcript,
+  greeting, metadata, and notification settle to the approved fresh-draft
+  outcome.
+- Page-owned history now treats a pending transition as busy. Its focused
+  test proves New, select, rename, and delete controls are disabled during an
+  edit transition.
+
+Verification passed 1250 JS tests with 23 skipped, JS lint/build/update-dist,
+22 R history-hook tests, 44 history/transcript Playwright plus 477 non-browser
+tests, `history_edit` 9, and full `make py-check` with 201 Playwright, 854
+non-browser, 1 skipped, and 22 established warnings. Format, Pyright, asset
+equality, and `git diff --check` passed. Roborev 1163 is closed; a fresh
+batched review of the amended edit-projection slice is required before
+sibling navigation begins.
