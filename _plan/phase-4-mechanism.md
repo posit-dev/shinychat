@@ -1406,7 +1406,32 @@ non-browser tests with 8 known warnings; `history_edit` passed 9; and `make
 py-check` passed Ruff, Pyright, 199 Playwright tests, 808 non-browser tests,
 1 skipped, and 19 known warnings.
 
-Task state: `shinychat#5r50` remains open with `needs-review` and
+At that handoff, task state was `shinychat#5r50` open with `needs-review` and
 `work.attention="ok"` for human review. No Roborev request was made, and
 `shinychat#6drf` remains blocked and unstarted. No new design decision was
-needed.
+needed at that point.
+
+### P4.1 follow-up review parking
+
+The follow-up review of `90c9eee4` + `b4af5e25` found four **Required**
+test-discrimination gaps in the same restore mechanism:
+
+1. The live-bootstrap barrier test mutates before admission release and does
+   not prove capture occurs after the recorder lock is held.
+2. The cancellation test cannot distinguish cancellation of the original
+   restore outcome from cancellation of the notification attempt.
+3. The cleanup matrix does not prove that later cleanup runs after an earlier
+   cleanup failure.
+4. Notification text is not tested.
+
+These are review-evidence gaps; the follow-up review confirmed no new
+production behavior defect. All prior production and test evidence remains
+valid as recorded above. Because this is now at least three review findings
+against the same restore mechanism, the process escalation valve parks the
+work pending Garrick's decision: patch the mechanism/tests or delete and
+replace the mechanism. No production or test code is to change until that
+decision.
+
+Current task state: `shinychat#5r50` remains open with `needs-review`,
+`work.attention="blocked"`, and
+`work.branch="feat/history-exchange-tree"`. Task closure is unchanged.
