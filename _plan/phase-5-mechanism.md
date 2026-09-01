@@ -1,6 +1,7 @@
 # Phase 5 mechanism: hard core and adversarial review (Python)
 
-**Status:** proposed for driver sign-off · 2026-09-01
+**Status:** gate corrections incorporated; pending final self-review and driver
+sign-off · 2026-09-01
 **Phase:** plan.md §4, Phase 5
 **Kata:** parent `shinychat#fg70` under epic `shinychat#6d0d`
 **Context:** `phase-4-mechanism.md` is completed context only. This note is
@@ -54,19 +55,29 @@ model state), or R7 (reuse existing primitives).
 
 The Phase 3 no-op while `HistoryController.partition is None` is deliberate
 only until Phase 5. It avoids failing an originating send before history
-selection, but it does not make that send durable. Phase 5 must prevent every
-capture-eligible initial action until selection has resolved: accepted user
-input, complete appends, stream start/update/finish, and input-less appends.
-Greeting and bookkeeping actions remain excluded exactly as in Phase 3.
+selection, but it does not make that send durable. `partition` is assigned
+before target lookup and restore, so it is not the restore-decision boundary.
+Decision completion means either a successful selected-target restore or an
+approved fresh-draft recovery, in both cases followed by required metadata
+completion. Capture-eligible work remains closed until that completion even
+when `partition` is non-null.
+
+The selected server gate sits before accepted-input capture, complete-append
+reservation, and root-stream reservation. It never gates the generic
+`_send_action` wire choke point. Restore replay bypasses the gate only within
+the existing destructive-history transaction; greeting and bookkeeping remain
+excluded exactly as in Phase 3. The gate releases on every initialization
+success, handled error, and cancellation.
 
 Before feature code, implement two disposable, production-shaped demo probes
 against the actual Python initialization/restore flow:
 
 1. **Disabled-until-decision:** block user dispatch in the existing input
    surface and hold capture-eligible server emission at the existing history
-   boundary until partition selection completes.
-2. **Defer-one-submission:** let only the first racing user submission reach
-   a single deferred continuation after selection, while independently
+   boundary until restore decision completion.
+2. **Defer-one-submission:** a production feasibility/rejection probe that
+   attempts to let only the first racing user submission reach the existing
+   accepted-input path after decision completion, while independently
    preventing capture-eligible server emission.
 
 The probes must measure restore-decision latency and prove the same cases:
@@ -75,22 +86,25 @@ target failure, cancellation, a seeded browser draft, a first raw input, and
 a complete and streaming initial append. They must use the production
 transcript/recorder paths and leave no retained prototype code.
 
-Choose the smallest candidate that:
+The probes must establish whether disabled-until-decision is viable in the
+actual production paths. Defer-one-submission is not an eligible retained
+mechanism if it requires any holder, payload field, release action, marker,
+continuation, or queue. It exists only to reject or demonstrate that boundary;
+it cannot authorize a third mechanism. Select disabled-until-decision only
+after the required evidence is recorded here and in Kata.
 
-- creates no durable preselection record, recorder buffer, or merge state;
-- admits no capture-eligible event into a `partition is None` window;
+The selected guard must:
+
+- create no durable preselection record, recorder buffer, or merge state;
+- admit no capture-eligible event before restore decision completion;
 - preserves the browser draft/attachments without synthetic rollback;
 - releases on success, handled failure, and cancellation; and
 - composes with the existing `completion-v2` marker rather than introducing
   another marker.
 
-The expected preference is disabled-until-decision because it avoids deferred
-submission state. The deferred candidate may retain only the browser-owned
-original raw input long enough to re-enter the existing accepted-input path
-after selection; it may not add a history-owned payload, record, or queue.
-It is not selected until the evidence is recorded here and in Kata. If neither
-candidate meets the constraints, stop for a plan amendment; do not invent a
-third scheduling mechanism.
+If disabled-until-decision cannot meet the constraints, stop for a plan
+amendment; do not retain a deferred submission or invent a third scheduling
+mechanism.
 
 ## P5.1: Clear, switch, and abort audit
 
@@ -102,10 +116,12 @@ disposition on `shinychat#fg70`:
 |---|---|
 | Generic clear with no active stream | Drain existing terminal settlement exactly once before mutation; no recorder consumer is invented. |
 | Generic clear with active stream | Reject before display, recorder, turns, active ID, or store mutation. |
-| Switch/new/active delete | Preserve the Phase 4 destructive boundary and fail-to-fresh-draft outcome; input blocking releases on success, error, and cancellation. |
+| Generic-clear concurrent tail | Retain input accepted after the clear send has begun, along with its subsequent transcript ownership, rather than deleting that concurrent tail. |
+| Switch | Preserve the Phase 4 destructive boundary and fail-to-fresh-draft outcome. The switch path uses its existing server-side input block, which releases on success, error, and cancellation. |
+| New and delete | Preserve their existing destructive transaction and fail-to-fresh-draft outcome. Their client coordination is the existing `historyTransitionPending` marker, not the switch server block and not a new marker. |
 | Inactive delete and failed target preflight | Retain existing no-target-mutation behavior; do not expand the active-transition protocol. |
 | Stream cancellation/error before and after sent chunks | Persist every sent message, record the terminal status and verbatim committed turns, and preserve the original cancellation/error through capture cleanup. |
-| Session teardown/abort while a stream is open | Preserve only the already committed display and turns; reload classifies the node as pending/interrupted or its recorded terminal state. No synthetic settlement sweep is added. |
+| Session teardown/abort while a stream is open | Preserve only committed display messages and state already persisted before teardown. Do not claim that unpersisted partial turns survive; the open stream remains pending on reload unless its terminal state was already recorded. No synthetic settlement sweep is added. |
 | Catch-up at the next user action | Capture only through the existing explicit exchange/node-close path; an older stream retains its opening exchange attribution. |
 
 The audit must not change abort to discard-on-reload. A failed or cancelled
@@ -116,17 +132,20 @@ sibling through `resubmit()`.
 
 Phase 4 remains strict for invalid graph structure, unknown state keys,
 malformed state envelopes, invalid modes, and restore transport/persistence
-errors. Phase 5 narrows degradation to a classified failure while materializing
-the registered `shinychat:turns` entry: an otherwise valid stored entry cannot
-be replayed because its known kind/version or serialized provider content is
-unsupported by the current provider integration.
+errors. Phase 5 narrows degradation to a private classified compatibility
+result, computed before any restore mutation, while materializing the
+effective `shinychat:turns` suffix. Materialize from the most recent effective
+snapshot and its following effective deltas. A structurally valid incompatible
+entry superseded by that snapshot is irrelevant. Any incompatible effective
+entry means the effective suffix cannot be restored.
 
-The turns restore hook must report that classified condition to the controller
-without mutating the stored record. The controller:
+The turns integration reports that private classified result to the controller
+without mutating the stored record or generalizing a public hook contract. The
+controller:
 
 1. completes normal graph validation and display replay;
 2. leaves the displayed exchange path and its retry eligibility intact;
-3. does not call `set_turns` with a partial, guessed, or reconstructed turn
+3. makes no `set_turns` call with a partial, guessed, or reconstructed turn
    sequence; and
 4. sends one bounded visible warning that model context could not be restored.
 
@@ -135,31 +154,39 @@ The warning must tell the user that continuing starts from the app's live
 client state, not from an inferred historical context. In recorded-bootstrap
 mode, that means the empty/app-initialized client state after restore entry;
 in live-bootstrap mode, it is the app's live initialized prefix. It may not
-expose raw provider payloads or stack traces. A later valid turns snapshot
-still follows the existing materialization contract; Phase 5 does not invent
+expose raw provider payloads or stack traces. Phase 5 does not invent
 selective state-entry skipping for arbitrary hooks.
 
 Tests distinguish classified unsupported turn content from corruption:
-unsupported version/content preserves display and warns; malformed entry,
-unknown state key, graph invalidity, and restore-send failure remain
-fail-closed through the approved fresh-draft recovery.
+an incompatible effective kind/version/content preserves display and warns
+once, while an incompatible superseded entry is ignored; malformed entry,
+unknown state key, invalid mode, graph invalidity, and restore-send failure
+remain fail-closed through the approved fresh-draft recovery.
 
 ## P5.3: Detailed error on reload
 
-The v2 schema already stores only `ErrorEntry.message`. On restored
-input-bearing `status == "error"` nodes, extend the existing ephemeral
-exchange-status projection with that exact bounded message and render it
-adjacent to the existing Retry affordance. Pending/interrupted and cancelled
-nodes retain their current status/retry behavior and do not receive error
-detail.
+The v2 schema already stores only `ErrorEntry.message`. Define
+`MAX_HISTORY_ERROR_MESSAGE = 256` Unicode code points. At the error write
+boundary, normalize the message to NFC; replace control characters and line
+separators with spaces; collapse whitespace; trim; use
+`The response could not be completed.` when it is empty; and truncate to 253
+code points plus `...` when it exceeds the limit. Store only that message,
+never a `repr`, traceback, or structured provider payload.
 
-No new persisted error fields, traceback, provider response, attachment
-metadata, or error-derived client state are added. The projection is
-ephemeral: it is regenerated from the selected record path, does not mutate
-the failed node, and does not affect sibling navigation or `resubmit()`.
-Tests cover an errored node with and without partial assistant content,
-message escaping/safe rendering, retry immutability, and the absence of
-detailed text for pending/cancelled nodes.
+On restored input-bearing `status == "error"` nodes, extend the existing
+ephemeral exchange-status projection with the bounded message and render it
+as plain text through React adjacent to the existing Retry affordance.
+Projection applies the same cap and normalization to existing values without
+mutating records. Pending/interrupted and cancelled nodes retain their current
+status/retry behavior and do not receive error detail.
+
+No new persisted error fields, sanitizer subsystem, provider response,
+attachment metadata, or error-derived client state are added. The projection
+is ephemeral: it is regenerated from the selected record path, does not
+mutate the failed node, and does not affect sibling navigation or
+`resubmit()`. Tests cover an errored node with and without partial assistant
+content, normalization/truncation and plain-text React rendering, retry
+immutability, and the absence of detailed text for pending/cancelled nodes.
 
 ## Sequencing and task graph
 
@@ -170,10 +197,12 @@ After approval, create sequential children under `shinychat#fg70`:
    must land before the audit hardening.
 2. **P5.1 lifecycle audit.** Exercise clear/switch/abort against the selected
    guard and existing transaction boundaries.
-3. **P5.2 degradation and detailed error reload affordance.** Keep strict
-   corruption behavior separate from compatibility degradation; run
+3. **P5.2 unsupported-turn degradation.** Keep strict corruption behavior
+   separate from effective-suffix compatibility degradation.
+4. **P5.3 detailed error reload affordance.** Add only the bounded
+   input-bearing error projection and its plain-text React rendering; run
    `make update-dist` if JS/SCSS changes.
-4. **P5.3 acceptance, deletion pass, and adversarial review.** Review the
+5. **P5.4 acceptance, deletion pass, and adversarial review.** Review the
    coherent Phase 5 subsystem in critical-review format. Every P1 is fixed
    with a regression or dispositioned in Kata before closure.
 
@@ -188,10 +217,10 @@ must demonstrate discriminating behavior for both Q1 candidates and is
 deleted before implementation.
 
 For implementation, require focused controller and production browser tests
-for initial restore, clear/switch/abort, degradation, and restored-error
-states; JS lint/test/build and `make update-dist` when client code changes;
-the R shared-client hook check for shared bundle compatibility; and the full
-`make py-check` gate. Record any unrelated failure by Kata ID.
+for initial restore, clear/switch/abort, effective-suffix degradation, and
+restored-error states; JS lint/test/build and `make update-dist` when client
+code changes; the R shared-client hook check for shared bundle compatibility;
+and the full `make py-check` gate. Record any unrelated failure by Kata ID.
 
 The final adversarial review must assess:
 
@@ -214,12 +243,15 @@ requirement trace, or delete it.
 ## Current handoff
 
 Landed: Phase 5 parent `shinychat#fg70` is created and claimed on
-`feat/history-exchange-tree`; this note and the Phase 5 reference in
-`plan.md` are proposed planning artifacts only.
+`feat/history-exchange-tree`; gate corrections are incorporated in this note.
+This note and the Phase 5 reference in `plan.md` remain planning artifacts
+pending final self-review and driver sign-off.
 
-Next: driver review of this mechanism note. After approval, create and claim
-only P5.0, run the required green baseline, and compare the two Q1 probes.
+Next: complete final self-review and driver sign-off. After approval, create
+and claim only P5.0, run the required green baseline, and compare the two Q1
+probes.
 
 Provisional decision: Q1 is intentionally unresolved pending the required
-prototype evidence. No Phase 5 feature code, child task, R port, legacy work,
-or new scheduling/ownership mechanism has started.
+prototype evidence. Implementation remains unstarted: no Phase 5 feature
+code, child task, R port, legacy work, or new scheduling/ownership mechanism
+has started.
