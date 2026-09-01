@@ -2263,9 +2263,9 @@ Test commit `93ed712c` (`test(history): prove ordinary provider dispatch`,
 slash suppression, ordinary raw input produces exactly one real client
 `stream_async` call and exactly one public `on_user_submit` callback. The
 mandatory future batched range is
-`04825f1f3da2286008a6e1c8e7a475b33be2426f^..93ed712c`, with canonical base
-`39a61813f51ff1d99bcd6182aa7b61c968af773d` through `93ed712c`, excluding
-later docs-only heads.
+`04825f1f3da2286008a6e1c8e7a475b33be2426f^..93ed712cdb5d20e5e79c15fc4a3e6b15a94af146`,
+with canonical base `39a61813f51ff1d99bcd6182aa7b61c968af773d` through
+`93ed712cdb5d20e5e79c15fc4a3e6b15a94af146`, excluding later docs-only heads.
 
 The focused provider test, format, Pyright, and full `make py-check` passed:
 200 Playwright tests, 827 non-browser tests, 1 skipped test, and 19
