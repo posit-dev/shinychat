@@ -2033,3 +2033,33 @@ this test-isolation disposition. `shinychat#5r50` remains open with
 `needs-review`, `work.attention="ok"`, and
 `work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains open,
 blocked, and unstarted.
+
+### P4.1 raw-input test-isolation DELETE/REPLACE handoff (2026-09-01)
+
+The approved bounded test-isolation replacement is complete in code commit
+`df3653c6` (`test(history): replace raw-input global drain with cleanup`,
+`Kata: shinychat#5r50`). No production behavior or mechanism changed. The
+global 500-flush reactive drain was deleted. The real raw `Chat` regression
+now has explicit teardown, including cancellation cleanup, and the valid
+busy-count/cancellation mock lifecycle was repaired in only the foreign
+fixtures that reproduced in full ordering: drawer `ArtifactSession`, greeting
+`SpySession`, and greeting `MockBookmarkSession`. Unrelated Ruff format churn
+in eight files was removed and was not committed.
+
+Evidence: the initial focused/reproducer set passed 3 controller regressions,
+the focused slash-behavior Playwright test, and the focused
+identical-resubmission Playwright test. The first full filtered browser run
+failed in `history_out_of_band`; that failure was non-reproducible twice in
+isolation and passed on retry. The final filtered
+`make py-check-tests FILTER="history or transcript"` passed 43 Playwright
+plus 449 non-browser tests with 8 established warnings; `history_edit` passed
+9. Final `make py-check` passed Ruff, Pyright, 200 Playwright tests, and 824
+non-browser tests, with 1 skipped and 19 established warnings. `git diff
+--check` passed.
+
+Review disposition: no design decision was made. Potential unrelated fixture
+leaks that did not reproduce were declined to preserve the approved bounded
+scope; the bookmark fixture was accepted only after reproduction in the full
+gate. `shinychat#5r50` remains open with `needs-review`,
+`work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`.
+`shinychat#6drf` remains blocked and unstarted. No Roborev was requested.
