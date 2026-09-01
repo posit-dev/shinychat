@@ -1011,6 +1011,71 @@ async def test_v2_active_rename_waits_for_recorder_capture_lock() -> None:
 
 
 @pytest.mark.anyio
+async def test_v2_switch_reloads_target_after_inactive_rename() -> None:
+    class SnapshotStore(InMemoryConversationStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.blocked_target: str | None = None
+            self.target_lookup_entered = asyncio.Event()
+            self.release_target_lookup = asyncio.Event()
+
+        async def get(
+            self, partition: ConversationPartition, conv_id: str
+        ) -> Any:
+            record = await super().get(partition, conv_id)
+            snapshot = (
+                record.model_copy(deep=True) if record is not None else None
+            )
+            if conv_id == self.blocked_target:
+                self.blocked_target = None
+                self.target_lookup_entered.set()
+                await self.release_target_lookup.wait()
+            return snapshot
+
+        async def put(
+            self, partition: ConversationPartition, record: Any
+        ) -> None:
+            await super().put(partition, record.model_copy(deep=True))
+
+    store = SnapshotStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    source = new_conversation_record_v2(
+        title="source",
+        id="c_source",
+        client_info={},
+    )
+    target = new_conversation_record_v2(
+        title="target",
+        id="c_target",
+        client_info={},
+    )
+    recorder.record = source
+    controller._active_id.set(source.id)
+    await store.put(part(), source)
+    await store.put(part(), target)
+
+    store.blocked_target = target.id
+    switch = asyncio.create_task(controller.switch_to(target.id))
+    await store.target_lookup_entered.wait()
+    await controller.rename(target.id, "Renamed target")
+    store.release_target_lookup.set()
+    await switch
+
+    await recorder.message_committed(
+        None,
+        TranscriptEntry(message=_stored_message("assistant", "captured")),
+    )
+
+    stored_target = await store.get(part(), target.id)
+    assert isinstance(stored_target, ConversationRecordV2)
+    assert recorder.record is not None
+    assert recorder.record.title == "Renamed target"
+    assert stored_target.title == "Renamed target"
+
+
+@pytest.mark.anyio
 async def test_v2_restore_materializes_turn_path_once_and_resets_baseline():
     adapter = _TrackingFakeAdapter()
     controller, _ = _make_controller(

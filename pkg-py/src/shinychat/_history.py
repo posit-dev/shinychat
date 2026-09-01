@@ -1297,6 +1297,12 @@ class HistoryController:
             async with self._destructive_mutation(block_input=True):
                 async with self._exchange_mutation():
                     await recorder.save_current_locked()
+                    target = await self._get_record(self.partition, conv_id)
+                    if target is None:
+                        raise RuntimeError(
+                            f"Conversation {conv_id!r} no longer exists."
+                        )
+                    assert isinstance(target, ConversationRecordV2)
                     node_ids, planned_state, bootstrap = (
                         self._prepare_exchange_restore(target)
                     )
