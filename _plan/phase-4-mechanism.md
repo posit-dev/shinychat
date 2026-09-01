@@ -2822,3 +2822,27 @@ mutation while preserving draft/attachments, success/error/cancellation
 completion, stale UUID behavior, and Python v1/R compatibility. A real v2
 browser path must prove the selected sibling transcript and subsequent model
 turn continue from that sibling exactly once.
+
+### P4.2 sibling-navigation review disposition (2026-09-01)
+
+The navigation slice landed in `786861a8`, with browser assertion correction
+`bc2c6d8e` and current generated assets `50ffc0cc`. Independent review found
+no production defect or v1/R compatibility regression, but identified two
+required evidence gaps in separate submechanisms; the three-findings valve
+does not fire.
+
+1. Add a real v2 sibling tree with remembered descendants and exercise both
+   directions plus both boundary no-ops. Assert persisted `active_leaf` and
+   changed `selected_child` pointers, replayed display, and exact rewind turn
+   prefix.
+2. Exercise the real v2 navigation recovery path after mutation rather than
+   only mocking the handler wrapper. Inject persistence failure and
+   replay/rewind cancellation; prove the original outcome survives and the
+   approved fresh-draft cleanup resets recorder ownership, active ID,
+   transcript, and turns. Retain matching completion evidence at the handler
+   boundary.
+
+This is a test-only correction unless a discriminating regression exposes a
+production defect. Stop and escalate before changing the authorized mechanism
+or production behavior. Sibling navigation is not complete until this
+evidence is green; `shinychat#72ee` remains blocked.
