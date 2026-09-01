@@ -81,6 +81,37 @@ test_that("chat_drawer_update() changes supplied fields without visibility", {
   expect_equal(message$html_deps, list())
 })
 
+test_that("chat_drawer_show() mixed tagList content keeps bare string unescaped", {
+  spy <- artifact_session_with_spy()
+  chat_drawer_show(
+    "chat",
+    content = htmltools::tagList("**markdown**", htmltools::tags$b("bold")),
+    session = spy$session
+  )
+
+  message <- spy$messages()[[1]]$message
+  expect_equal(message$action$type, "drawer_show")
+  # The bare string portion is raw (unescaped), not HTML-escaped by renderTags.
+  expect_match(message$action$content, "**markdown**", fixed = TRUE)
+  # The tag portion is rendered as HTML.
+  expect_match(message$action$content, "<b>bold</b>", fixed = TRUE)
+  expect_no_match(message$action$content, "shiny-chat-raw-html", fixed = TRUE)
+})
+
+test_that("chat_drawer_update() mixed tagList content keeps bare string unescaped", {
+  spy <- artifact_session_with_spy()
+  chat_drawer_update(
+    "chat",
+    content = htmltools::tagList("**md**", htmltools::tags$span("tag")),
+    session = spy$session
+  )
+
+  message <- spy$messages()[[1]]$message
+  expect_equal(message$action$type, "drawer_update")
+  expect_match(message$action$content, "**md**", fixed = TRUE)
+  expect_match(message$action$content, "<span>tag</span>", fixed = TRUE)
+})
+
 test_that("chat_drawer_update() sends a title-only update", {
   spy <- artifact_session_with_spy()
   chat_drawer_update("chat", title = "", session = spy$session)

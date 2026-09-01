@@ -183,6 +183,37 @@ test_that("chat_set_greeting() tag content flattens to a trusted html string", {
   expect_no_match(action$content, "shiny-chat-raw-html", fixed = TRUE)
 })
 
+test_that("chat_set_greeting() mixed tagList content keeps bare string raw (unescaped)", {
+  spy <- mock_session_with_spy()
+  shiny::withReactiveDomain(spy$session, {
+    chat_set_greeting(
+      "chat",
+      tagList("**markdown**", tags$b("bold")),
+      session = spy$session
+    )
+  })
+  msgs <- spy_messages(spy)
+  action <- msgs[[1]]$message$action
+  expect_equal(action$type, "greeting")
+  expect_equal(action$content_type, "html")
+  # The bare string portion is raw (unescaped), not HTML-escaped by renderTags.
+  # The markdown is NOT processed (accepted limitation: single-string payload),
+  # but the raw text survives so it is not doubly broken.
+  expect_match(action$content, "**markdown**", fixed = TRUE)
+  # The tag portion is rendered as HTML.
+  expect_match(action$content, "<b>bold</b>", fixed = TRUE)
+})
+
+test_that("chat_ui() mixed tagList greeting keeps bare string raw (unescaped)", {
+  ui <- chat_ui("chat", greeting = tagList("**md**", tags$b("x")))
+  payload <- jsonlite::fromJSON(ui$attribs$greeting)
+  expect_equal(payload$content_type, "html")
+  # Bare string raw, not escaped
+  expect_match(payload$content, "**md**", fixed = TRUE)
+  # Tag rendered
+  expect_match(payload$content, "<b>x</b>", fixed = TRUE)
+})
+
 test_that("chat_set_greeting() generator sends greeting_start, greeting_chunk(s), greeting_end", {
   spy <- mock_session_with_spy()
   chunks <- c("He", "ll", "o")

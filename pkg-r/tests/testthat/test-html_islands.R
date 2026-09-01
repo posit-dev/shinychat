@@ -205,3 +205,74 @@ test_that("HTML-marked strings are trusted independently of plain strings", {
     c(FALSE, TRUE)
   )
 })
+
+test_that("render_island_string() mixed content keeps bare string raw (unescaped)", {
+  # The bug: tagList("**markdown**", tags$b("x")) previously rendered the
+  # bare string through renderTags() which ESCAPED it, shipping it as a
+  # trusted html string with escaped markdown. Now the bare string is
+  # split out as untrusted and concatenated raw.
+  rendered <- render_island_string(
+    htmltools::tagList("**markdown**", htmltools::tags$b("bold"))
+  )
+  # Bare string is raw, not escaped (the literal asterisks survive)
+  expect_match(rendered$html, "**markdown**", fixed = TRUE)
+  # Tag is rendered as HTML
+  expect_match(rendered$html, "<b>bold</b>", fixed = TRUE)
+  expect_no_match(rendered$html, "shiny-chat-raw-html", fixed = TRUE)
+})
+
+test_that("render_island_string() pure tag content is unchanged", {
+  # Pure tag content (no bare strings) should behave exactly as before:
+  # all trusted, rendered through derive_island_parts().
+  rendered <- render_island_string(
+    htmltools::tagList(
+      htmltools::div("before"),
+      htmltools::tag(
+        "shiny-tool-result",
+        list(`data-shinychat-react` = NA, `request-id` = "abc")
+      ),
+      htmltools::div("after")
+    )
+  )
+  expect_match(rendered$html, "<div>before</div>", fixed = TRUE)
+  expect_match(rendered$html, "shiny-tool-result", fixed = TRUE)
+  expect_match(rendered$html, "<div>after</div>", fixed = TRUE)
+  expect_no_match(rendered$html, "shiny-chat-raw-html", fixed = TRUE)
+  expect_equal(rendered$deps, list())
+})
+
+test_that("render_island_string() pure string content is raw (unescaped)", {
+  # A bare string (not HTML()-marked) is untrusted and should pass through
+  # raw, not escaped.
+  rendered <- render_island_string("**plain markdown**")
+  expect_equal(rendered$html, "**plain markdown**")
+  expect_equal(rendered$deps, list())
+})
+
+test_that("render_island_string() HTML()-marked string is trusted and raw", {
+  # HTML()-marked strings are trusted and should pass through as-is (they
+  # are already HTML, not escaped by renderTags).
+  rendered <- render_island_string(htmltools::HTML("<b>raw</b>"))
+  expect_match(rendered$html, "<b>raw</b>", fixed = TRUE)
+  expect_equal(rendered$deps, list())
+})
+
+test_that("render_island_string() mixed content preserves ordering", {
+  rendered <- render_island_string(
+    htmltools::tagList(
+      htmltools::div("first"),
+      "**middle**",
+      htmltools::span("last")
+    )
+  )
+  # Order: first tag, bare string, last tag
+  expect_match(rendered$html, "<div>first</div>", fixed = TRUE)
+  expect_match(rendered$html, "**middle**", fixed = TRUE)
+  expect_match(rendered$html, "<span>last</span>", fixed = TRUE)
+  # Verify ordering: first before middle before last
+  first_pos <- regexpr("<div>first</div>", rendered$html, fixed = TRUE)
+  middle_pos <- regexpr("**middle**", rendered$html, fixed = TRUE)
+  last_pos <- regexpr("<span>last</span>", rendered$html, fixed = TRUE)
+  expect_true(first_pos < middle_pos)
+  expect_true(middle_pos < last_pos)
+})
