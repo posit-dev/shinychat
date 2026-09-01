@@ -1,19 +1,18 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
 **Status (current and authoritative):** P4.0 complete; the P4.1 Roborev 1135
-DELETE/REPLACE unit and its bounded blocked-input correction are landed.
-Roborev 1146 is closed after its dispositions and fix, as required by
-process. Fresh Roborev 1152 completed `FAIL` with two valid PATCH findings
-across two mechanisms; no three-findings valve fired. Implementation is
-stopped pending the note review and fixes. The bookmark-pointer disposition
-remains out of scope in `shinychat#g6tt`. `shinychat#5r50` remains open with
-`needs-review`, `work.attention="blocked"`, and
-`work.branch="feat/history-exchange-tree"`;
-`shinychat#6drf` remains open, blocked, and unstarted; and `shinychat#azvt`
-remains open with `work.attention="ok"` (2026-09-01).
+DELETE/REPLACE unit, its bounded blocked-input correction, and the accepted
+Roborev 1152 fixes are landed. Roborev 1146 is closed after its dispositions
+and fix, as required by process; Roborev 1152 is ready to close after this
+docs commit. The bookmark-pointer
+disposition remains out of scope in `shinychat#g6tt`. `shinychat#5r50` remains
+open with `needs-review`, `work.attention="ok"`, and
+`work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains open,
+blocked, and unstarted; and `shinychat#azvt` remains open with
+`work.attention="ok"` (2026-09-01).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is open with
-`needs-review`, `work.attention="blocked"`, and
+`needs-review`, `work.attention="ok"`, and
 `work.branch="feat/history-exchange-tree"`; successor `shinychat#6drf` is
 open, blocked, and unstarted; parent `shinychat#azvt` is open with
 `work.attention="ok"` under epic `shinychat#6d0d`
@@ -2207,3 +2206,29 @@ open with `needs-review`, `work.attention="blocked"`, and
 `work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains open,
 blocked, and unstarted. No implementation, review closure, or task closure is
 authorized by this docs-only disposition.
+
+### P4.1 Roborev 1152 resolution and current handoff (2026-09-01)
+
+Roborev 1152's two valid PATCH findings were accepted and fixed by
+`34ed7fbe` (`fix(history): resolve Roborev 1152 findings`). The existing
+recorder-lock rename recheck is preserved, and public latest accepted input
+is split from the private sequenced normal-dispatch event: echoed slash
+commands update the public latest value without provider or public callback
+dispatch, while ordinary accepted submissions dispatch from their own
+captured input. Failed or blocked captures update neither channel.
+
+Exact verification evidence is green: focused chat 6 passed; controller 3
+passed; history/transcript 43 Playwright plus 450 non-browser tests passed;
+`history_edit` 9 passed; format passed; types reported 0 errors; and full
+`make py-check` passed with 200 Playwright tests, 826 non-browser tests, 1
+skipped test, and 19 established warnings. The independent Luna read-only
+review found no findings and verified the existing recorder-lock rename
+recheck, the public/private input split, the required regressions, and the
+bounded scope.
+
+`shinychat#5r50` stays open with `needs-review`,
+`work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`;
+`shinychat#6drf` remains blocked and unstarted. No JavaScript, R, packaged
+asset, bookmark, Phase 5, sibling, or task-closure work is included. The
+phase note is committed before the Roborev 1152 close operation; the close
+outcome is recorded in the corresponding Kata handoff comment.
