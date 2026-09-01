@@ -153,7 +153,11 @@ export function ToolCard({
         )}
       </div>
       {footer && (
-        <BlockErrorBoundary context={`${toolName} footer`} fallback={null}>
+        <BlockErrorBoundary
+          context={`${toolName} footer`}
+          fallback={null}
+          resetKey={footer}
+        >
           <RawHTML
             html={footer}
             className="card-footer"

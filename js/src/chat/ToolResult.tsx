@@ -112,7 +112,9 @@ export const ToolResult = memo(function ToolResult({
         footer={footer}
         onEnterFullscreen={enterFullscreen}
         cardRef={cardRef}
-        resetKey={value}
+        // Body errors can derive from any of these inputs; the boundary must
+        // retry when any of them changes, not just the result value.
+        resetKey={`${valueType}${showRequest}${requestCall}${value}`}
       >
         {/* A component (not an inline call) so a malformed requestCall throws
             below ToolCard's body boundary and the card header survives. */}

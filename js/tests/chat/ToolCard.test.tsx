@@ -215,4 +215,32 @@ describe("ToolCard error containment", () => {
     expect(container.querySelector(".card-header")).toBeTruthy()
     expect(queryByRole("alert")).toBeNull()
   })
+
+  it("recovers when a throwing footer is corrected", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const badFooter = {
+      toString: () => {
+        throw new Error("bad footer")
+      },
+    } as unknown as string
+    const { rerender, container, queryByRole } = render(
+      <ToolCard toolName="my_tool" initialExpanded={true} footer={badFooter}>
+        <div>body content</div>
+      </ToolCard>,
+    )
+    expect(container.querySelector(".card-footer")).toBeNull()
+
+    rerender(
+      <ToolCard toolName="my_tool" initialExpanded={true} footer="<p>fixed</p>">
+        <div>body content</div>
+      </ToolCard>,
+    )
+    expect(queryByRole("alert")).toBeNull()
+    expect(container.querySelector(".card-footer")).toBeTruthy()
+    expect(container.querySelector(".card-footer")!.innerHTML).toContain(
+      "fixed",
+    )
+  })
 })
