@@ -1532,3 +1532,24 @@ and 19 established warnings. No Roborev request was made.
 `work.attention="ok"`; `shinychat#6drf` remains blocked and unstarted. The
 approved fail-to-fresh-draft contract and Phase 4 scope exclusions remain
 unchanged.
+
+### P4.1 same-transcript recovery evidence tightened (2026-09-01)
+
+The follow-up test-evidence tightening is committed in `f311053c`
+(`test(history): tighten transcript recovery regression`,
+`Kata: shinychat#5r50`). The failing transcript send stub now asserts all
+five recorder capture callbacks are `None` before raising, proving replay
+failure occurs while `suspend_capture` is active. After the next input uses
+that same transcript, the regression asserts the fresh record ID differs from
+both `target.id` and the prior `existing.id`, while the pre-restore existing
+record remains unchanged. No production defect was exposed.
+
+Verification after these assertions: the focused controller test passed;
+`make py-check-format` passed; `make py-check-types` passed with 0 errors; and
+full `make py-check` passed Ruff, Pyright, 200 Playwright tests, and 813
+non-browser tests with 1 skipped and 19 established warnings. No Roborev
+request was made.
+
+`shinychat#5r50` remains open with `needs-review` and
+`work.attention="ok"`; `shinychat#6drf` remains blocked and unstarted. The
+approved restore contract and Phase 4 scope exclusions remain unchanged.
