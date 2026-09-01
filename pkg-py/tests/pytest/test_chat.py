@@ -321,6 +321,15 @@ def test_echoed_slash_command_skips_builtin_provider_handler():
             assert slash_calls == ["world"]
             assert public_calls == []
             assert client.stream_calls == []
+
+            cast(Any, session.input[chat.user_input_id])._set(
+                {"text": "ordinary input", "attachments": [], "seq": 1}
+            )
+            run_async(reactive.flush)
+
+            assert len(client.stream_calls) == 1
+            assert client.stream_calls[0][0][0] == "ordinary input"
+            assert public_calls == ["ordinary input"]
         finally:
             chat.destroy()
 
