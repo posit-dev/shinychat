@@ -1974,3 +1974,27 @@ No Roborev request or task closure was made. `shinychat#5r50` remains open
 with `needs-review`, `work.attention="ok"`, and
 `work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains blocked
 and unstarted. No provisional decision was introduced.
+
+### P4.1 authoritative raw-input escalation handoff (2026-08-31)
+
+This section supersedes the preceding raw-input acceptance and attention
+snapshot. The raw-input follow-up commits `aa16983f`, `7665c528`, and
+`adebdf23`, plus docs commit `56ad3a0c`, are committed; their stated gates
+were green.
+
+Luna found no in-scope production behavior violation, but found two P2
+test-isolation findings: `test_cancelled_v2_switch_releases_real_chat_input_admission`
+and `test_generic_destructive_admission_does_not_block_real_chat_input` create
+real Chats without destroy, and
+`test_v2_switch_rejects_real_chat_input_during_save_and_restore` suppresses
+global scheduler failures via a 500-flush pre-drain. Together with the two
+earlier test-discrimination findings that led to the real raw-effect
+follow-up, this invokes the three-findings escalation valve for the raw-input
+regression mechanism.
+
+No code fix or disposition is authorized until an orchestrator chooses patch
+or delete/replace. Truthful Kata state: `shinychat#5r50` remains open with
+`needs-review`, `work.attention="blocked"`, and
+`work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains open,
+blocked, and unstarted. No implementation tests, code changes, review
+request/closure, or task closure are authorized by this handoff.
