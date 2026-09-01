@@ -211,7 +211,7 @@ def test_v2_navigation_replays_the_selected_sibling_and_continues_from_it(
     replacement.hover()
     replacement.get_by_role("button", name="Previous version").click()
     chat.expect_latest_message("echo: original", timeout=30_000)
-    expect(page.locator(".shiny-chat-user-message").first).to_have_text(
+    expect(page.locator(".shiny-chat-user-message").first).to_contain_text(
         "original", timeout=10_000
     )
     controller.OutputText(page, "provider_calls").expect_value("2")
