@@ -2846,3 +2846,29 @@ This is a test-only correction unless a discriminating regression exposes a
 production defect. Stop and escalate before changing the authorized mechanism
 or production behavior. Sibling navigation is not complete until this
 evidence is green; `shinychat#72ee` remains blocked.
+
+### P4.2 sibling-navigation resolution (2026-09-01)
+
+The accepted evidence correction landed in `8870b215` without a production
+change. It covers remembered descendant selection in both directions, both
+boundary no-ops, persisted `active_leaf`/`selected_child`, custom-prefix
+display replay, exact turn prefixes, persistence failure, and cancellation
+after real replay and real rewind.
+
+Verification passed the six focused navigation tests, 205 controller tests,
+45 history/transcript Playwright plus 491 non-browser tests, and full
+`make py-check` with 202 Playwright, 868 non-browser, and 1 skipped. Ruff,
+Pyright, and diff checks passed. Targeted independent re-review returned PASS.
+
+P4.2 is complete. The edit and navigation paths retain positional Q3
+addressing because no concrete ambiguity appeared. Python v2 uses the one
+`completion-v2` lifecycle marker; v1 and R compatibility remain unchanged.
+The driver-directed review policy applies: after accepted findings, full
+verification, and targeted PASS, do not add another range review for this
+unit. Any remaining actionable issue can surface in review of a later
+coherent unit.
+
+Next: unblock `shinychat#72ee` for the Phase 4 retry affordance and tested
+regenerate path through the existing sibling primitive. Bookmark, Phase 5,
+R-server, legacy-import, queue, cursor, reconciliation, and Q3 wire expansion
+remain out of scope.
