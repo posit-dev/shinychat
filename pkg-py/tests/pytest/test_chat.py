@@ -275,6 +275,56 @@ def test_echoed_slash_command_records_once_before_its_callback():
     assert provider_calls == ["normal input"]
 
 
+def test_echoed_slash_command_skips_builtin_provider_handler():
+    class _ControllableClient:
+        def __init__(self) -> None:
+            self.stream_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+        async def stream_async(self, *args: Any, **kwargs: Any) -> Any:
+            self.stream_calls.append((args, kwargs))
+
+            async def response():
+                yield "unexpected provider response"
+
+            return response()
+
+    session = cast(Session, _MockSession())
+    client = _ControllableClient()
+    slash_calls: list[str] = []
+    public_calls: list[str] = []
+
+    with session_context(session):
+        chat = Chat(
+            "echoed_slash_builtin_provider",
+            client=cast(Any, client),
+            history=False,
+        )
+        try:
+
+            @chat.on_user_submit
+            async def _public_handler(text: str) -> None:
+                public_calls.append(text)
+
+            @chat.slash_command("greet", "Greet the user")
+            async def _slash_handler(user_text: str) -> None:
+                slash_calls.append(user_text)
+
+            cast(Any, session.input[chat._slash_command_id])._set(
+                {"command": "greet", "userText": "world", "echo": True}
+            )
+            run_async(reactive.flush)
+
+            with reactive.isolate():
+                latest = chat.user_input()
+            assert latest is not None
+            assert latest.text == "/greet world"
+            assert slash_calls == ["world"]
+            assert public_calls == []
+            assert client.stream_calls == []
+        finally:
+            chat.destroy()
+
+
 def test_echoed_slash_command_capture_error_removes_loading_message():
     session = cast(Session, _MockSession())
     actions: list[dict[str, Any]] = []
