@@ -2587,3 +2587,56 @@ remain available for a later explicit submission.
 
 This is a documentation/Kata authorization only. No Roborev review is needed
 for this docs-only change.
+
+### P4.2 edit-projection implementation handoff (2026-09-01)
+
+Landed `e295befccac5ee7cee4e0a987aad79eceb07dca7`
+(`feat(history): project v2 edits through normal input`, Kata:
+`shinychat#6drf`) and generated-asset commit
+`0134466100ab46f1528aa389f4bcb51a7d3d5680`
+(`build(js): update history assets`, Kata: `shinychat#6drf`).
+
+- Python v2 now advertises `completion-v2`; Python v1 retains
+  `completion-v1`, and R still omits the capability. An edit carries an
+  optional lifecycle-only `requestId`; the v2 handler validates it and emits
+  exact, best-effort non-masking completion in `finally`. Rewind persists the
+  parent pointer and recorded turns, then sends the normalized
+  `history_edit_projection` instead of clearing/replaying display or using
+  imperative `update_input(submit=True)`. Projection delivery failure uses
+  the approved fail-to-fresh-draft recovery.
+- The shared client store accepts only exact matching projections, makes the
+  history state busy before reducer work, truncates at the positional target,
+  installs normal `INPUT_SENT` loading state, and sends one raw input.
+  Pending/loading blocks submit, edit, sibling navigation, select, New,
+  rename, and delete; the unrelated composer draft and staged attachments
+  stay untouched. Completion releases only the marker, leaving ordinary
+  no-output/loading behavior to the standard input lifecycle. Navigation
+  protocol and projection remain unimplemented.
+- Focused JS/Python coverage covers v1/v2 and legacy capability behavior,
+  exact/stale UUIDs, input-less and invalid targets, leaf/non-leaf rewinds,
+  attachment normalization, projection-send recovery, finally
+  error/cancellation non-masking, full client mutation blocking, one raw
+  dispatch, and retained composer state. The pre-existing legacy Playwright
+  fixture now uses `completion-v3` for its unknown-capability case because
+  `completion-v2` is now recognized.
+
+Verification: `make js-lint`; `make js-test` (1246 passed, 23 skipped);
+`make js-build`; `make update-dist`; `make r-check-tests
+FILTER='chat-history-hooks'` (22 passed); focused controller (11 passed) and
+transition-handler (21 passed) tests; `make py-check-tests FILTER='history or
+transcript'` (43 Playwright, 476 non-browser, 11 established warnings);
+`history_edit` (9 passed); and `make py-check` (200 Playwright, 853
+non-browser, 1 skipped, 22 established warnings). Format and Pyright were
+green.
+
+Production Playwright cannot deterministically hold then release this edit
+transaction: while `_on_edit` is deliberately held before projection, Shiny
+serializes the session and cannot run a fixture release input. No timer,
+transport bypass, or test-only ordering mechanism was added. The unit and
+integration coverage is the deterministic evidence for this slice; retain
+this limitation for any future browser-harness work.
+
+Next: `shinychat#6drf` remains open for the instructed review process; do not
+request Roborev, close the task, or begin sibling navigation or later Phase 4
+work. Boundary: no Q3 addressing change, R server change, retry UI, bookmark,
+legacy-import, or Phase 5 behavior landed.
