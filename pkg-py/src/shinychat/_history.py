@@ -18,8 +18,8 @@ from ._chat_types import (
     HistoryUpdateAction,
     StoredMessage,
     StoredSegment,
-    UpdateInputAction,
     UpdateExchangeMetadataAction,
+    UpdateInputAction,
     UpdateSiblingsAction,
 )
 from ._history_bookmark import delete_bookmark_state, extract_state_id
