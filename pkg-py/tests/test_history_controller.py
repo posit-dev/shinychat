@@ -24,10 +24,12 @@ from shiny import Inputs, reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat
+from shinychat._attachments import Attachment
 from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
 from shinychat._chat_types import ChatMessage, StoredMessage, StoredSegment
 from shinychat._history import (
     HistoryController,
+    HistoryInputIds,
     HistoryOptions,
     StatePathContext,
     do_bookmark_with_cleanup,
@@ -233,6 +235,11 @@ def test_extend_with_ui_messages_reconstructs_them():
 # --- response settlement persistence (unit-level, no Shiny session needed) ---
 
 
+class _InactiveMessageStream:
+    def status(self) -> str:
+        return "success"
+
+
 class _FakeChat:
     def __init__(self) -> None:
         self.actions: list[dict[str, Any]] = []
@@ -243,6 +250,7 @@ class _FakeChat:
         self.messages: list[Any] = []
         self.clear_messages_calls = 0
         self._transcript = ChatTranscript()
+        self.latest_message_stream = _InactiveMessageStream()
 
     def _messages_for_bookmark(self) -> list[Any]:
         return self.messages
@@ -285,6 +293,15 @@ class _RealChatSession:
     async def send_custom_message(self, _type: str, _message: Any) -> None:
         pass
 
+    def _process_ui(self, ui: Any) -> dict[str, Any]:
+        return {"html": str(ui), "deps": []}
+
+    def _send_message_sync(self, message: Any) -> None:
+        pass
+
+    async def _unhandled_error(self, error: Any) -> None:
+        pass
+
     def on_ended(self, _callback: object) -> Callable[[], None]:
         return lambda: None
 
@@ -296,6 +313,53 @@ class _RealChatSession:
 
     def _decrement_busy_count(self) -> None:
         pass
+
+
+class _RealHistorySession(_RealChatSession):
+    def __init__(self) -> None:
+        super().__init__()
+        self.bookmark = type(
+            "Bookmark",
+            (),
+            {
+                "exclude": [],
+                "store": "disable",
+                "_restore_context": None,
+            },
+        )()
+
+    def is_stub_session(self) -> bool:
+        return False
+
+    def root_scope(self) -> "_RealHistorySession":
+        return self
+
+
+class _SameFlushHistoryClient:
+    def __init__(self) -> None:
+        self.turns: list[dict[str, Any]] = []
+        self.stream_calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
+        self.stream_started = asyncio.Event()
+        self.release_stream = asyncio.Event()
+
+    def get_turns(self) -> list[dict[str, Any]]:
+        return list(self.turns)
+
+    def set_turns(self, turns: list[dict[str, Any]]) -> None:
+        self.turns = list(turns)
+
+    async def stream_async(
+        self, text: str, *contents: Any, **kwargs: Any
+    ) -> Any:
+        self.stream_calls.append((text, contents, kwargs))
+
+        async def response() -> Any:
+            self.stream_started.set()
+            await self.release_stream.wait()
+            if False:
+                yield None
+
+        return response()
 
 
 class _FakeAdapter:
@@ -1397,6 +1461,197 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore(
         latest_input = chat.user_input()
         assert latest_input is not None
         assert latest_input.text == "accepted after switch"
+
+
+@pytest.mark.anyio
+async def test_v2_same_flush_input_and_history_selection_preserves_source_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chat_id = ResolvedId("same_flush_source")
+    history_ids = HistoryInputIds.for_chat(chat_id)
+    session = _RealHistorySession()
+    session.input[ResolvedId(f"{chat_id}_user_input")] = reactive.Value()
+    session.input[history_ids.select] = reactive.Value()
+    client = _SameFlushHistoryClient()
+    store = InMemoryConversationStore()
+    attachment = Attachment.from_data(
+        b"notes", mime="text/plain", name="notes.txt"
+    )
+    public_calls: list[tuple[str, list[Attachment]]] = []
+    chat: Chat | None = None
+
+    monkeypatch.setattr("shinychat._history._EXCHANGE_TREE_HISTORY_V2", True)
+    try:
+        with session_context(cast(Any, session)):
+            chat = Chat(
+                str(chat_id),
+                client=cast(Any, client),
+                history=HistoryOptions(
+                    restore_mode="none",
+                    scope="same-flush-source",
+                    store=store,
+                    title=None,
+                ),
+            )
+        await reactive.flush()
+
+        controller = chat.history._controller
+        assert controller is not None
+        assert controller.partition is not None
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+        target = new_conversation_record_v2(
+            title="target",
+            id="c_target",
+            client_info={},
+        )
+        target.open_exchange("n_0001", _stored_message("user", "target input"))
+        await store.put(controller.partition, target)
+        target_before = target.model_dump(mode="json")
+
+        @chat.on_user_submit
+        async def _public_handler(
+            text: str, attachments: list[Attachment]
+        ) -> None:
+            public_calls.append((text, attachments))
+
+        cast(Any, session.input[chat.user_input_id]).set(
+            {"text": "source input", "attachments": [attachment], "seq": 1}
+        )
+        cast(Any, session.input[history_ids.select]).set({"id": target.id})
+        await reactive.flush()
+        await asyncio.wait_for(client.stream_started.wait(), timeout=1)
+
+        source = recorder.record
+        assert source is not None
+        assert controller._active_id_now() == source.id
+        assert [
+            (node.input.content, node.input.attachments)
+            for node in source.nodes.values()
+            if node.input is not None
+        ] == [("source input", [attachment])]
+        assert public_calls == [("source input", [attachment])]
+        assert len(client.stream_calls) == 1
+        provider_text, provider_contents, provider_kwargs = client.stream_calls[0]
+        assert provider_text == "source input"
+        assert provider_kwargs["content"] == "all"
+        assert len(provider_contents) == 1
+        assert provider_contents[0].text == (
+            '<file-attachment name="notes.txt" type="text/plain">\n'
+            "notes\n"
+            "</file-attachment>"
+        )
+        with reactive.isolate():
+            latest_input = chat.user_input()
+            assert latest_input is not None
+            assert latest_input.text == "source input"
+            assert latest_input.attachments == [attachment]
+            assert chat.latest_message_stream.status() == "running"
+        stored_target = await store.get(controller.partition, target.id)
+        assert isinstance(stored_target, ConversationRecordV2)
+        assert stored_target.model_dump(mode="json") == target_before
+        assert target.model_dump(mode="json") == target_before
+    finally:
+        client.release_stream.set()
+        if chat is not None:
+            with reactive.isolate():
+                chat.latest_message_stream.cancel()
+            await asyncio.sleep(0)
+            chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_same_flush_failed_capture_and_history_selection_restores_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chat_id = ResolvedId("same_flush_failed_capture")
+    history_ids = HistoryInputIds.for_chat(chat_id)
+    session = _RealHistorySession()
+    session.input[ResolvedId(f"{chat_id}_user_input")] = reactive.Value()
+    session.input[history_ids.select] = reactive.Value()
+    client = _SameFlushHistoryClient()
+    store = InMemoryConversationStore()
+    public_calls: list[str] = []
+    capture_errors: list[BaseException] = []
+    chat: Chat | None = None
+
+    monkeypatch.setattr("shinychat._history._EXCHANGE_TREE_HISTORY_V2", True)
+    try:
+        with session_context(cast(Any, session)):
+            chat = Chat(
+                str(chat_id),
+                client=cast(Any, client),
+                history=HistoryOptions(
+                    restore_mode="none",
+                    scope="same-flush-failed-capture",
+                    store=store,
+                    title=None,
+                ),
+            )
+        await reactive.flush()
+
+        controller = chat.history._controller
+        assert controller is not None
+        assert controller.partition is not None
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+        target = new_conversation_record_v2(
+            title="target",
+            id="c_target",
+            client_info={},
+        )
+        target.open_exchange("n_0001", _stored_message("user", "target input"))
+        await store.put(controller.partition, target)
+        target_before = target.model_dump(mode="json")
+
+        async def fail_capture(
+            exchange_id: str, message: StoredMessage
+        ) -> None:
+            del exchange_id
+            del message
+            raise RuntimeError("capture failed")
+
+        async def capture_error(error: BaseException) -> None:
+            capture_errors.append(error)
+
+        chat._transcript.set_capture_callbacks(
+            on_accepted_input=fail_capture,
+            on_message_committed=recorder.message_committed,
+            on_stream_started=recorder.stream_started,
+            on_stream_updated=recorder.stream_updated,
+            on_stream_finished=recorder.stream_finished,
+        )
+        chat._raise_exception = capture_error  # type: ignore[method-assign]
+
+        @chat.on_user_submit
+        async def _public_handler(text: str) -> None:
+            public_calls.append(text)
+
+        cast(Any, session.input[chat.user_input_id]).set(
+            {"text": "failed source input", "attachments": [], "seq": 1}
+        )
+        cast(Any, session.input[history_ids.select]).set({"id": target.id})
+        await reactive.flush()
+
+        assert [str(error) for error in capture_errors] == ["capture failed"]
+        assert public_calls == []
+        assert client.stream_calls == []
+        with reactive.isolate():
+            assert chat.user_input() is None
+            assert chat._normal_user_submission() is None
+        assert recorder.record is target
+        assert controller._active_id_now() == target.id
+        assert [
+            entry.message.content for entry in chat._transcript.read()
+        ] == ["target input"]
+        stored_target = await store.get(controller.partition, target.id)
+        assert isinstance(stored_target, ConversationRecordV2)
+        assert stored_target.model_dump(mode="json") == target_before
+        assert target.model_dump(mode="json") == target_before
+    finally:
+        client.release_stream.set()
+        if chat is not None:
+            chat.destroy()
 
 
 @pytest.mark.anyio

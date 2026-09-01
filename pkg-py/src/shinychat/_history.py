@@ -1282,6 +1282,16 @@ class HistoryController:
         if target is None:
             raise RuntimeError(f"Conversation {conv_id!r} no longer exists.")
         if isinstance(target, ConversationRecordV2):
+            from shiny import reactive
+
+            with reactive.isolate():
+                stream_is_running = (
+                    self.chat.latest_message_stream.status() == "running"
+                )
+            if stream_is_running:
+                raise RuntimeError(
+                    "Cannot switch conversations while a message stream is active."
+                )
             recorder = self._exchange_recorder
             assert recorder is not None
             async with self._destructive_mutation(block_input=True):

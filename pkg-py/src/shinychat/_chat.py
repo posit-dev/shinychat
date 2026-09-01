@@ -684,7 +684,7 @@ class Chat:
 
             fn_params = inspect.signature(fn).parameters
 
-            @reactive.effect
+            @reactive.effect(priority=9998)
             @reactive.event(self._normal_user_submission)
             async def handle_user_input():
                 try:
