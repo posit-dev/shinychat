@@ -1512,9 +1512,9 @@ class HistoryController:
                 if current_leaf is None:
                     raise ValueError("Exchange-tree record has no active leaf.")
                 await recorder._capture_state(current_leaf, "node_close")
-                record.set_active_leaf(target.parent_id)
-                await recorder._persist_record()
                 try:
+                    record.set_active_leaf(target.parent_id)
+                    await recorder._persist_record()
                     await recorder._rewind_state(rewind_state)
                     action: HistoryEditProjectionAction = {
                         "type": "history_edit_projection",

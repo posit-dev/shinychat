@@ -3771,6 +3771,88 @@ async def test_v2_edit_projection_delivery_failure_clears_to_fresh_draft() -> No
 
 
 @pytest.mark.anyio
+async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
+    controller, chat, adapter, store, _first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    live_turns = list(adapter.turns)
+    chat.messages = [
+        _stored_message("user", "first"),
+        _stored_message("user", "second"),
+    ]
+    expected = RuntimeError("resubmit persistence failed")
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+    cleanup_entry: list[tuple[Any, ...]] = []
+    original_clear_failed_restore = controller._clear_failed_restore
+
+    async def capture_cleanup_entry() -> None:
+        cleanup_entry.append(
+            (
+                recorder.record,
+                controller.record,
+                controller._active_id_now(),
+                record.active_leaf,
+                list(chat.messages),
+                list(adapter.turns),
+            )
+        )
+        await original_clear_failed_restore()
+
+    controller._clear_failed_restore = capture_cleanup_entry  # type: ignore[method-assign]
+    put_attempts: list[ConversationRecordV2] = []
+
+    async def fail_put(
+        _partition: ConversationPartition, failed_record: ConversationRecordV2
+    ) -> None:
+        put_attempts.append(failed_record)
+        raise expected
+
+    store.put = fail_put  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError) as raised:
+        await controller.resubmit(target, request_id="request", message_index=1)
+
+    assert raised.value is expected
+    assert put_attempts == [record]
+    assert cleanup_entry == [
+        (
+            record,
+            None,
+            record.id,
+            _first,
+            [
+                _stored_message("user", "first"),
+                _stored_message("user", "second"),
+            ],
+            live_turns,
+        )
+    ]
+    assert recorder.record is None
+    assert controller.record is None
+    assert controller._active_id_now() is None
+    assert recorder._turn_baseline == []
+    assert adapter.turns == []
+    assert chat.clear_messages_calls == 1
+    assert chat.messages == []
+    assert chat.set_greeting_calls == [None]
+    assert chat.actions == [
+        {
+            "type": "history_update",
+            "enabled": True,
+            "conversations": [],
+            "active_id": None,
+            "transition_protocol": "completion-v2",
+        }
+    ]
+    notifier.assert_awaited_once_with(recovery_incomplete=False)
+
+
+@pytest.mark.anyio
 async def test_v2_resubmit_rejects_inputless_node_without_mutation():
     controller, chat, adapter, store, _first, _target = (
         _make_v2_resubmit_controller()
