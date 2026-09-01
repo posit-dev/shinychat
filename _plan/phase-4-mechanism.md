@@ -1,14 +1,14 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
 **Status (current and authoritative):** P4.0 complete; the P4.1 Roborev 1135
-DELETE/REPLACE unit is implemented, but its corrected handoff is stopped
-pending note review. `shinychat#5r50` remains open with `needs-review`,
-`work.attention="blocked"`, and `work.branch="feat/history-exchange-tree"`;
+DELETE/REPLACE unit is implemented, but its bounded blocked-input correction is
+not yet landed. `shinychat#5r50` remains open with `needs-review`,
+`work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`;
 `shinychat#6drf` remains open, blocked, and unstarted; and
 `shinychat#azvt` remains open with `work.attention="ok"` (2026-08-31).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is open with
-`needs-review`, `work.attention="blocked"`, and
+`needs-review`, `work.attention="ok"`, and
 `work.branch="feat/history-exchange-tree"`; successor `shinychat#6drf` is
 open, blocked, and unstarted; parent `shinychat#azvt` is open with
 `work.attention="ok"` under epic `shinychat#6d0d`
@@ -1870,3 +1870,26 @@ No Roborev request was made by instruction. `shinychat#5r50` remains open with
 `needs-review`, `work.attention="ok"`, and
 `work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains blocked
 and unstarted. No provisional decision was introduced.
+
+### P4.1 blocked-input interleaving correction (2026-08-31)
+
+Luna found a real blocked-input interleaving defect after `fb1e2f0d` +
+`27ec1802`: during an active v2 switch, raw input can still enter after the
+switch admission boundary is held. Terra's architecture review confirms the
+correction is directly required by the durable Phase 2 fail-fast admission
+contract and the approved `e7448db4` one-boundary handoff; it is not a new
+Garrick decision.
+
+For an active v2 switch only, raw input must fail fast before conversion,
+transcript mutation, latest-input update, provider or `on_user_submit`
+handling, or recorder effects. Reuse the existing destructive admission state;
+add no lock, queue, timer, CAS, or owner. The accepted-input signal remains the
+sole provider/`on_user_submit` trigger for latest input. Generic `clear()`,
+`new_chat()`, inactive delete, and all Phase 5, JavaScript, and R work remain
+unchanged. This section supersedes only the prior switch-admission
+disposition/status entries; unrelated evidence remains valid.
+
+**Handoff**
+- Code for this correction is not yet landed; implementation remains pending.
+- Required regression scope: deterministically interleave raw input with an active v2 switch and prove fail-fast ordering plus accepted-only provider/`on_user_submit` latest-input effects, while preserving the unchanged paths above.
+- No Roborev request and no task closure; retain `shinychat#5r50` open with `needs-review`, `work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`.
