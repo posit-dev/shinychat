@@ -1,7 +1,7 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
-**Status:** P4.0 complete; P4.1 implementation parked pending restore
-failure-contract authorization (2026-08-31)
+**Status:** P4.0 complete; P4.1 fail-to-fresh-draft implementation complete,
+pending human review (2026-08-31)
 **Phase:** plan.md §4, Phase 4
 **Kata:** parent `shinychat#azvt` under epic `shinychat#6d0d`
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
@@ -1339,3 +1339,36 @@ Implementation may resume on `shinychat#5r50` only. `shinychat#6drf` remains
 blocked and unstarted. This is a docs-only authorization handoff;
 `shinychat#5r50` remains open with `needs-review` and
 `work.attention="blocked"` pending note review.
+
+### P4.1 fail-to-fresh-draft implementation handoff (2026-08-31)
+
+Landed: strict restore preflight validates the active path, every state key,
+turn kind/version/data, and final materialized turns before destructive
+mutation. The restore transaction now clears display/greeting, replays with
+capture suppression, applies turns and resets the baseline once, installs the
+recorder target, publishes active identity, invokes app callbacks, and sends
+one metadata update. Browser/URL initialization returns after that v2
+transaction to suppress the former duplicate update.
+
+Failure contract: after mutation starts, every `BaseException`, including
+`CancelledError`, clears recorder and local active ownership synchronously,
+then best-effort clears display, turns, greeting, URL/active navigation, and
+metadata before attempting the restore-failure notification. The original
+outcome is re-raised; cleanup, metadata, and notification failures stay
+secondary. Stored records are untouched and the next input creates a fresh
+record.
+
+Evidence: controller injections cover clear, greeting, each replay, turn
+setter, restore hook, active-ID callback, app callback, metadata, unknown and
+unsupported preflight entries, cancellation with cleanup/notification failure,
+successful no-notification ordering, and next-input recovery. The production
+v2 Playwright fixture covers restore/continuation, capture suppression during
+A-to-B switching, and exactly one initialization `history_update`. Focused
+history/transcript passed 42 Playwright plus 428 non-browser tests; `history_edit`
+passed 9; format and Pyright passed; final `make py-check` passed 199
+Playwright, 802 non-browser, 1 skipped, and 19 known warnings.
+
+Next: retain `shinychat#5r50` open with `needs-review` pending human review;
+do not start `shinychat#6drf`. Boundary: no Phase 5 guard/degradation,
+rollback subsystem, public hook, second owner, JS/R, graph/sibling, or
+bookmark work landed.
