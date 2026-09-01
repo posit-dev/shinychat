@@ -3,6 +3,7 @@
 # helpers that HistoryController delegates to.
 
 import asyncio
+import copy
 import os
 import signal
 import subprocess
@@ -10,7 +11,7 @@ import sys
 import textwrap
 import warnings
 from collections import deque
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable, cast
@@ -27,6 +28,7 @@ from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
 from shinychat._chat_types import ChatMessage, StoredMessage, StoredSegment
 from shinychat._history import (
     HistoryController,
+    HistoryOptions,
     StatePathContext,
     do_bookmark_with_cleanup,
     extend_record_linear,
@@ -1389,6 +1391,204 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore(
         latest_input = chat.user_input()
         assert latest_input is not None
         assert latest_input.text == "accepted after switch"
+
+
+@pytest.mark.anyio
+async def test_v2_switch_rejects_active_attached_provider_without_mutating_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chatlas = pytest.importorskip("chatlas")
+    from chatlas._content import ContentText
+    from chatlas._turn import AssistantTurn
+
+    class HistorySession(_RealChatSession):
+        def __init__(self) -> None:
+            super().__init__()
+            self.bookmark = type(
+                "Bookmark",
+                (),
+                {
+                    "exclude": [],
+                    "store": "disable",
+                    "_restore_context": None,
+                },
+            )()
+
+        def is_stub_session(self) -> bool:
+            return False
+
+        def root_scope(self) -> "HistorySession":
+            return self
+
+    class BlockingLookupStore(InMemoryConversationStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.blocked_target: str | None = None
+            self.target_lookup_entered = asyncio.Event()
+            self.release_target_lookup = asyncio.Event()
+
+        async def get(
+            self, partition: ConversationPartition, conv_id: str
+        ) -> Any:
+            if conv_id == self.blocked_target:
+                self.target_lookup_entered.set()
+                await self.release_target_lookup.wait()
+            return await super().get(partition, conv_id)
+
+    store = BlockingLookupStore()
+    provider = MagicMock()
+    provider.name = "blocking"
+    provider.model = "blocking"
+    provider_turn_started = asyncio.Event()
+    release_provider = asyncio.Event()
+    provider_stream_finished = asyncio.Event()
+    provider_calls: list[dict[str, Any]] = []
+    provider_chunk = object()
+    provider_text = "terminal response"
+
+    provider.stream_merge_chunks.side_effect = (
+        lambda _completion, chunk: chunk
+    )
+    provider.stream_content.return_value = [ContentText(text=provider_text)]
+    provider.stream_turn.return_value = AssistantTurn(
+        contents=[ContentText(text=provider_text)]
+    )
+
+    async def chat_perform_async(**kwargs: Any) -> Any:
+        provider_calls.append(kwargs)
+
+        async def response() -> Any:
+            provider_turn_started.set()
+            await release_provider.wait()
+            yield provider_chunk
+            provider_stream_finished.set()
+
+        return response()
+
+    provider.chat_perform_async = chat_perform_async
+    session = HistorySession()
+    session.input["v2_switch_provider_user_input"] = reactive.Value()
+    chat: Chat | None = None
+    switch: asyncio.Task[None] | None = None
+    source_stream: Any | None = None
+
+    monkeypatch.setattr(
+        "shinychat._history._EXCHANGE_TREE_HISTORY_V2",
+        True,
+    )
+    try:
+        with session_context(cast(Any, session)):
+            chat = Chat(
+                "v2_switch_provider",
+                client=chatlas.Chat(provider),
+                history=HistoryOptions(
+                    restore_mode="none",
+                    store=store,
+                    scope="v2-switch-provider",
+                    title=None,
+                ),
+            )
+        await reactive.flush()
+
+        controller = chat.history._controller
+        assert controller is not None
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+        assert controller.partition is not None
+        target = new_conversation_record_v2(
+            title="target",
+            id="c_target",
+            client_info={},
+        )
+        await store.put(controller.partition, target)
+
+        store.blocked_target = target.id
+        switch = asyncio.create_task(controller.switch_to(target.id))
+        await asyncio.wait_for(store.target_lookup_entered.wait(), timeout=1)
+
+        cast(Any, session.input[chat.user_input_id]).set(
+            {"text": "source", "attachments": [], "seq": 1}
+        )
+        await reactive.flush()
+        await asyncio.wait_for(provider_turn_started.wait(), timeout=1)
+        await asyncio.sleep(0)
+        with reactive.isolate():
+            source_stream = chat.latest_message_stream
+            assert source_stream.status() == "running"
+
+        source = recorder.record
+        assert source is not None
+        source_id = controller._active_id_now()
+        assert source_id == source.id
+        source_display = copy.deepcopy(chat.messages())
+        source_turns = copy.deepcopy(
+            controller.adapter.get_turns_json(include_system_prompt=True)
+        )
+        source_recorder = source.model_dump(mode="json")
+        stored_source = await store.get(controller.partition, source.id)
+        assert isinstance(stored_source, ConversationRecordV2)
+        source_store = stored_source.model_dump(mode="json")
+        target_store = target.model_dump(mode="json")
+
+        assert [
+            (message["role"], message["content"])
+            for message in source_display
+        ] == [("user", "source"), ("assistant", "")]
+        assert [turn["role"] for turn in source_turns] == [
+            "user",
+            "assistant",
+        ]
+        assert provider_calls
+
+        store.release_target_lookup.set()
+        with pytest.raises(RuntimeError, match="stream is active"):
+            await switch
+
+        assert controller._active_id_now() == source_id
+        assert chat.messages() == source_display
+        assert (
+            controller.adapter.get_turns_json(include_system_prompt=True)
+            == source_turns
+        )
+        assert recorder.record is source
+        assert source.model_dump(mode="json") == source_recorder
+        stored_source = await store.get(controller.partition, source.id)
+        stored_target = await store.get(controller.partition, target.id)
+        assert isinstance(stored_source, ConversationRecordV2)
+        assert isinstance(stored_target, ConversationRecordV2)
+        assert stored_source.model_dump(mode="json") == source_store
+        assert stored_target.model_dump(mode="json") == target_store
+    finally:
+        store.release_target_lookup.set()
+        if switch is not None and not switch.done():
+            switch.cancel()
+            with suppress(asyncio.CancelledError):
+                await switch
+        release_provider.set()
+        try:
+            if source_stream is not None:
+                await asyncio.wait_for(
+                    provider_stream_finished.wait(), timeout=1
+                )
+
+                async def settle_source_stream() -> str:
+                    while True:
+                        await reactive.flush()
+                        await asyncio.sleep(0)
+                        with reactive.isolate():
+                            source_status = source_stream.status()
+                        if source_status != "running":
+                            return source_status
+
+                source_status = await asyncio.wait_for(
+                    settle_source_stream(), timeout=1
+                )
+                with reactive.isolate():
+                    assert source_status == "success"
+                    assert source_stream.result() == provider_text
+        finally:
+            if chat is not None:
+                chat.destroy()
 
 
 @pytest.mark.anyio

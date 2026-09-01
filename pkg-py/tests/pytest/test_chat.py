@@ -569,42 +569,45 @@ def test_v2_terminal_metadata_uses_registered_response_settlement_callback(
                     title=None,
                 ),
             )
-            await reactive.flush()
-            session.sent.clear()
+            try:
+                await reactive.flush()
+                session.sent.clear()
 
-            await chat._record_accepted_user_input_with_capture(
-                ChatMessage(content="prompt", role="user"),
-                publish_latest=False,
-            )
-            session.sent.clear()
+                await chat._record_accepted_user_input_with_capture(
+                    ChatMessage(content="prompt", role="user"),
+                    publish_latest=False,
+                )
+                session.sent.clear()
 
-            async with chat.message_stream_context() as stream:
-                await stream.append("partial one")
+                async with chat.message_stream_context() as stream:
+                    await stream.append("partial one")
+                    assert not [
+                        action
+                        for action in session.sent
+                        if action["type"] == "history_update"
+                    ]
+                    await stream.append("partial two")
+                    assert not [
+                        action
+                        for action in session.sent
+                        if action["type"] == "history_update"
+                    ]
+
                 assert not [
                     action
                     for action in session.sent
                     if action["type"] == "history_update"
                 ]
-                await stream.append("partial two")
-                assert not [
-                    action
-                    for action in session.sent
-                    if action["type"] == "history_update"
-                ]
+                await reactive.flush()
 
-            assert not [
-                action
-                for action in session.sent
-                if action["type"] == "history_update"
-            ]
-            await reactive.flush()
-
-            controller = chat.history._controller
-            assert controller is not None
-            recorder = controller._exchange_recorder
-            assert recorder is not None
-            assert recorder.record is not None
-            assert recorder.record.response_count == 1
+                controller = chat.history._controller
+                assert controller is not None
+                recorder = controller._exchange_recorder
+                assert recorder is not None
+                assert recorder.record is not None
+                assert recorder.record.response_count == 1
+            finally:
+                chat.destroy()
 
     monkeypatch.setattr(history_module, "_EXCHANGE_TREE_HISTORY_V2", True)
     run_async(exercise)
