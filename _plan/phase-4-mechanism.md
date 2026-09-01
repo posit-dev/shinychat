@@ -1838,3 +1838,35 @@ No Roborev request was made by instruction. `shinychat#5r50` remains open with
 `work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains blocked
 and unstarted. Next: retain this bounded unit for the instructed review
 handling. Provisional decisions: none.
+
+### P4.1 save-before-preflight rework (2026-08-31)
+
+Landed `27ec1802` (`fix(history): save v2 source before target preflight`,
+`Kata: shinychat#5r50`). This corrects the prior follow-up's ordering: after
+the target record is loaded, `switch_to()` enters its one existing destructive
+admission boundary and recorder lock, saves the departing v2 record with
+`save_current_locked()`, then prepares/preflights the target, and finally
+calls the existing locked restore helper. Preflight still completes before
+any destructive display or state replay. No lock, queue, timer, CAS, owner,
+v1, Q3, bookmark, Phase 5, JavaScript, or R mechanism changed.
+
+The new regression uses a snapshotting store so source durability cannot be
+mistaken for in-memory aliasing. A source with unsaved input and current
+on-save values switches to a malformed v2 target: the failure persists the
+latest source content and values, while recorder ownership, active ID, live
+messages, greeting, and client turns remain source state. The same test fails
+against `fb1e2f0d` because target preflight previously ran before the source
+save. The three prior one-boundary regressions remain and pass.
+
+Evidence: pre-edit history/transcript baseline passed 43 Playwright + 446
+non-browser tests with 8 established warnings; `history_edit` passed 9.
+Focused prior-plus-new regressions passed 4. Post-change history/transcript
+passed 43 Playwright + 447 non-browser tests with the same 8 warnings;
+`history_edit` passed 9; Pyright reported 0 errors; and `git diff --check`
+passed. Final `make py-check` passed Ruff, Pyright, 200 Playwright tests, and
+822 non-browser tests with 1 skipped and 19 established warnings.
+
+No Roborev request was made by instruction. `shinychat#5r50` remains open with
+`needs-review`, `work.attention="ok"`, and
+`work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains blocked
+and unstarted. No provisional decision was introduced.
