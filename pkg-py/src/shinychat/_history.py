@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import warnings
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, cast
 
 from ._attachments import Attachment, validate_attachments
 from ._chat_types import (
@@ -16,6 +16,7 @@ from ._chat_types import (
 )
 from ._history_bookmark import delete_bookmark_state, extract_state_id
 from ._history_client import (
+    TurnDict,
     TurnsAdapter,
     as_turns_adapter,
     normalize_turn_group,
@@ -41,6 +42,7 @@ from ._history_title import (
 from ._history_types import (
     STORED_UI_VERSION,
     ConversationRecord,
+    StoredUiMessage,
     check_schema_version,
     is_stored_ui_versioned,
     new_conversation_id,
@@ -52,6 +54,7 @@ if TYPE_CHECKING:
     from shiny import reactive
     from shiny.module import ResolvedId
     from shiny.reactive._reactives import Effect_
+    from shiny.session import Session
 
     from ._chat import Chat
     from ._chat_types import ChatGreeting
@@ -165,7 +168,7 @@ class HistoryOptions:
         self.max_store_mb: float | None = max_store_mb
 
 
-def _stored_ui_dict(stored: StoredMessage) -> dict[str, Any]:
+def _stored_ui_dict(stored: StoredMessage) -> StoredUiMessage:
     """Serialize a StoredMessage for persistence in a node's `ui` list.
 
     Adds the structured-format version marker and drops empty
@@ -177,13 +180,13 @@ def _stored_ui_dict(stored: StoredMessage) -> dict[str, Any]:
     if not d.get("blocks"):
         d.pop("blocks", None)
     d["version"] = STORED_UI_VERSION
-    return d
+    return cast(StoredUiMessage, d)
 
 
 def derive_stored_ui_message(
-    group: list[dict[str, Any]],
-    session: Any = None,
-) -> dict[str, Any] | None:
+    group: list[TurnDict],
+    session: Session | None = None,
+) -> StoredUiMessage | None:
     """Derive one stored UI message dict from a turn group.
 
     The group is merged and normalized server-side via
@@ -198,9 +201,9 @@ def derive_stored_ui_message(
 
 
 def derive_node_ui(
-    turns: list[dict[str, Any]],
-    session: Any = None,
-) -> list[dict[str, Any]]:
+    turns: list[TurnDict],
+    session: Session | None = None,
+) -> list[StoredUiMessage]:
     """Re-derive a node's stored UI from its stored turns.
 
     Used at replay time when the node's stored UI is missing or predates the
@@ -227,21 +230,24 @@ def derive_node_ui(
     else:
         role, content = "assistant", ""
     return [
-        {
-            "version": STORED_UI_VERSION,
-            "role": role,
-            "segments": [{"content": content, "content_type": "markdown"}],
-        }
+        cast(
+            StoredUiMessage,
+            {
+                "version": STORED_UI_VERSION,
+                "role": role,
+                "segments": [{"content": content, "content_type": "markdown"}],
+            },
+        )
     ]
 
 
 def extend_record_linear(
     record: ConversationRecord,
-    turn_groups: list[list[dict[str, Any]]],
+    turn_groups: list[list[TurnDict]],
     ui_messages: list[dict[str, Any]],
     *,
     ui_offset: int,
-    session: Any = None,
+    session: Session | None = None,
 ) -> None:
     """
     Append turn groups beyond the record's current path as new linear nodes,
@@ -259,11 +265,15 @@ def extend_record_linear(
     new_node_ids: list[str] = []
     n_derived = 0
     for g in new_groups:
-        node_id = record.append_linear(g)
+        # The record model persists turns as plain dicts; TurnDicts are
+        # dicts at runtime.
+        node_id = record.append_linear(cast(list[dict[str, Any]], g))
         new_node_ids.append(node_id)
         derived = derive_stored_ui_message(g, session=session)
         if derived is not None:
-            record.nodes[node_id].ui = [derived]
+            # The node model's ui field also holds client-reported message
+            # dicts, so it stays typed as plain dicts.
+            record.nodes[node_id].ui = cast(list[dict[str, Any]], [derived])
             n_derived += 1
 
     fallback = new_node_ids[-1] if new_node_ids else record.current_leaf
@@ -505,7 +515,7 @@ class HistoryController:
             self._title_task = asyncio.create_task(self.retitle(turns_flat))
             self._title_task.add_done_callback(title_task_done)
 
-    async def retitle(self, turns: list[dict[str, Any]]) -> None:
+    async def retitle(self, turns: list[TurnDict]) -> None:
         target = self.record  # capture before the slow LLM call
         if target is None or target.title_source == "user":
             return
@@ -660,7 +670,11 @@ class HistoryController:
             # Old-format stored UI (no version marker) is discarded and
             # re-derived from the node's stored turns, never re-parsed.
             if stored is None or not is_stored_ui_versioned(stored):
-                stored = derive_node_ui(node.turns, session=self.chat._session)
+                # node.turns persists as plain dicts (pydantic record model);
+                # they are serialized turn dicts by construction.
+                stored = derive_node_ui(
+                    cast(list[TurnDict], node.turns), session=self.chat._session
+                )
             for message_dict in stored:
                 await self.chat._restore_bookmark_message(message_dict)
                 restored_count += 1

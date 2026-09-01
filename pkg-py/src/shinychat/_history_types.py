@@ -3,11 +3,48 @@ from __future__ import annotations
 import secrets
 import time
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
 
+from ._chat_types import ContentType, Role, SerializedDep, StructuredBlock
+from ._history_client import TurnDict
+from ._typing_extensions import NotRequired, TypedDict
+
 TitleSource = Literal["llm", "user"]
+
+
+class StoredSegmentDict(TypedDict):
+    """Serialized form of a ``StoredSegment`` (``model_dump(exclude_none=True)``)."""
+
+    content: str
+    content_type: ContentType
+    html_deps: NotRequired[list[SerializedDep]]
+
+
+class AttachmentDict(TypedDict):
+    """Serialized form of an :class:`~shinychat._attachments.Attachment`."""
+
+    mime: str
+    name: str
+    size: int
+    data_url: str
+
+
+class StoredUiMessage(TypedDict):
+    """Serialized :class:`StoredMessage` persisted in a node's ``ui`` list.
+
+    Mirrors ``StoredMessage.model_dump(exclude_none=True)`` plus the
+    structured-format ``version`` marker. ``_stored_ui_dict`` drops empty
+    ``attachments``/``blocks``, so those are ``NotRequired``.
+    """
+
+    role: Role
+    segments: list[StoredSegmentDict]
+    version: int
+    attachments: NotRequired[list[AttachmentDict]]
+    blocks: NotRequired[list[StructuredBlock]]
+    block_positions: NotRequired[list[int]]
 
 
 def new_conversation_record(
@@ -151,12 +188,17 @@ class ConversationRecord(BaseModel):
         ids.reverse()
         return ids
 
-    def path_turns(self) -> list[dict[str, Any]]:
-        return [
-            turn
-            for node_id in self.path_node_ids()
-            for turn in self.nodes[node_id].turns
-        ]
+    def path_turns(self) -> list[TurnDict]:
+        # Nodes persist turns as plain dicts (pydantic record model); they
+        # are serialized turn dicts by construction.
+        return cast(
+            list[TurnDict],
+            [
+                turn
+                for node_id in self.path_node_ids()
+                for turn in self.nodes[node_id].turns
+            ],
+        )
 
     def children_of(self, node_id: str | None) -> list[str]:
         if node_id is None:

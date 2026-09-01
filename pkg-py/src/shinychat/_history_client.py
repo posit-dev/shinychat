@@ -1,12 +1,31 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 from ._chat_bookmark import is_chatlas_chat_client, serialize_chatlas_turn
 from ._chat_client import ChatClient
 from ._chat_normalize import normalize_message
 from ._chat_types import ChatMessage, Role
+from ._typing_extensions import NotRequired, TypedDict
+
+
+class TurnDict(TypedDict):
+    """JSON-serialized chat turn dict.
+
+    Mirrors the shape of ``chatlas.Turn.model_dump(mode="json")`` and the
+    plain dicts non-chatlas clients return from ``get_turns()``. The keys
+    this codebase reads are ``role`` (a string), ``contents`` (chatlas
+    content-item dicts), and ``content`` (plain-text content on generic
+    dicts). Extra keys are permitted at runtime: chatlas turns carry
+    additional fields (e.g. ``turn_id``, ``chat_id``), and non-chatlas
+    clients return arbitrary dicts. TypedDicts do not seal the contract —
+    that's intentional and accepted here.
+    """
+
+    role: str
+    contents: NotRequired[list[Any]]
+    content: NotRequired[Any]
 
 
 @runtime_checkable
@@ -35,20 +54,24 @@ class TurnsAdapter:
             return self._client.value
         return self._client
 
-    def get_turns_json(self) -> list[dict[str, Any]]:
+    def get_turns_json(self) -> list[TurnDict]:
         raw = self._turns_client()
         turns = raw.get_turns()
         if is_chatlas_chat_client(raw):
-            return [serialize_chatlas_turn(t) for t in turns]
-        return list(turns)
+            return cast(
+                list[TurnDict], [serialize_chatlas_turn(t) for t in turns]
+            )
+        # Non-chatlas clients return arbitrary JSON dicts; they are turn
+        # dicts by construction (see TurnDict's docstring).
+        return cast(list[TurnDict], list(turns))
 
-    def get_turns_grouped(self) -> list[list[dict[str, Any]]]:
+    def get_turns_grouped(self) -> list[list[TurnDict]]:
         turns = self.get_turns_json()
         if not is_chatlas_chat_client(self._turns_client()):
             return [[t] for t in turns]
         return _group_chatlas_turns(turns)
 
-    def set_turns_json(self, turns: list[dict[str, Any]]) -> None:
+    def set_turns_json(self, turns: list[TurnDict]) -> None:
         raw = self._turns_client()
         if is_chatlas_chat_client(raw):
             from chatlas import Turn
@@ -65,7 +88,7 @@ class TurnsAdapter:
         return {"provider": provider.name, "model": provider.model}
 
 
-def _is_tool_result_turn(turn: dict[str, Any]) -> bool:
+def _is_tool_result_turn(turn: TurnDict) -> bool:
     contents = turn.get("contents")
     return (
         turn.get("role") == "user"
@@ -79,9 +102,9 @@ def _is_tool_result_turn(turn: dict[str, Any]) -> bool:
 
 
 def _group_chatlas_turns(
-    turns: list[dict[str, Any]],
-) -> list[list[dict[str, Any]]]:
-    groups: list[list[dict[str, Any]]] = []
+    turns: list[TurnDict],
+) -> list[list[TurnDict]]:
+    groups: list[list[TurnDict]] = []
     i = 0
     while i < len(turns):
         t = turns[i]
@@ -95,7 +118,7 @@ def _group_chatlas_turns(
             groups.append([t])
             i += 1
         else:
-            group: list[dict[str, Any]] = [t]
+            group: list[TurnDict] = [t]
             i += 1
             while i < len(turns):
                 nt = turns[i]
@@ -128,7 +151,7 @@ def as_turns_adapter(client: Any) -> TurnsAdapter:
     )
 
 
-def turn_fallback_markdown(turn: dict[str, Any]) -> str:
+def turn_fallback_markdown(turn: TurnDict) -> str:
     """Lossy turn -> markdown used when a node has no `ui` render cache."""
     contents = turn.get("contents")
     if isinstance(contents, list):
@@ -140,7 +163,7 @@ def turn_fallback_markdown(turn: dict[str, Any]) -> str:
     return str(turn.get("content", ""))
 
 
-def _turn_dict_effective_role(turn: dict[str, Any]) -> Role:
+def _turn_dict_effective_role(turn: TurnDict) -> Role:
     """Effective UI role of a serialized turn dict.
 
     A user-role turn carrying only tool results displays as assistant
@@ -152,7 +175,7 @@ def _turn_dict_effective_role(turn: dict[str, Any]) -> Role:
     return role if role in ("user", "assistant", "system") else "assistant"
 
 
-def _turn_group_text_fallback(group: list[dict[str, Any]]) -> ChatMessage:
+def _turn_group_text_fallback(group: list[TurnDict]) -> ChatMessage:
     """Text-only message for a turn group that can't be normalized.
 
     Degrades the group's last turn to plain text so replay stays alive
@@ -165,7 +188,7 @@ def _turn_group_text_fallback(group: list[dict[str, Any]]) -> ChatMessage:
     )
 
 
-def normalize_turn_group(group: list[dict[str, Any]]) -> ChatMessage | None:
+def normalize_turn_group(group: list[TurnDict]) -> ChatMessage | None:
     """Merge one history turn group into a single :class:`ChatMessage`.
 
     chatlas-shaped groups are validated back into ``chatlas.Turn`` objects,

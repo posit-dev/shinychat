@@ -53,7 +53,7 @@ def test_path_follows_current_leaf_not_all_nodes():
     sibling = ConversationNode(parent=n1, turns=turn("assistant", "v2"))
     rec.nodes["n_sib"] = sibling
     rec.current_leaf = "n_sib"
-    assert [t["content"] for t in rec.path_turns()] == ["hi", "v2"]
+    assert [t.get("content") for t in rec.path_turns()] == ["hi", "v2"]
 
 
 def test_json_round_trip():

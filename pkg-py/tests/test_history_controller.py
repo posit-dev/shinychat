@@ -14,6 +14,7 @@ from shinychat._history import (
     do_bookmark_with_cleanup,
     extend_record_linear,
 )
+from shinychat._history_client import TurnDict
 from shinychat._history_store import (
     ConversationPartition,
     ConversationStore,
@@ -76,7 +77,7 @@ def part(
 
 def test_extend_appends_only_new_groups_with_ui_by_role():
     rec = new_conversation_record(title="t")
-    groups = [
+    groups: list[list[TurnDict]] = [
         [{"role": "user", "content": "q1"}],
         [{"role": "assistant", "content": "a1"}],
     ]
@@ -89,10 +90,12 @@ def test_extend_appends_only_new_groups_with_ui_by_role():
     assert rec.nodes[path[0]].ui == [derived("user", "q1")]
     assert rec.nodes[path[1]].ui == [derived("assistant", "a1")]
 
-    groups += [
-        [{"role": "user", "content": "q2"}],
-        [{"role": "assistant", "content": "a2"}],
-    ]
+    groups.extend(
+        [
+            [{"role": "user", "content": "q2"}],
+            [{"role": "assistant", "content": "a2"}],
+        ]
+    )
     all_msgs = [msg("user"), msg("assistant"), msg("user"), msg("assistant")]
     extend_record_linear(rec, groups, all_msgs, ui_offset=2)
     assert len(rec.nodes) == 4
@@ -100,14 +103,14 @@ def test_extend_appends_only_new_groups_with_ui_by_role():
 
 
 def test_extend_groups_tool_exchange_into_single_node():
-    user_turn = {
+    user_turn: TurnDict = {
         "role": "user",
         "contents": [{"content_type": "text", "text": "weather?"}],
     }
     tool_group = chatlas_tool_group()
     asst_req, user_res, asst_final = tool_group
 
-    groups = [
+    groups: list[list[TurnDict]] = [
         [user_turn],
         tool_group,
     ]
@@ -143,7 +146,7 @@ def test_extend_groups_tool_exchange_into_single_node():
 
 def test_extend_attaches_extra_assistant_msgs_to_last_node():
     rec = new_conversation_record(title="t")
-    groups = [
+    groups: list[list[TurnDict]] = [
         [{"role": "user", "content": "q"}],
         [{"role": "assistant", "content": "a"}],
     ]
@@ -160,7 +163,7 @@ def test_extend_attaches_extra_assistant_msgs_to_last_node():
 
 def test_extend_attaches_late_ui_message_when_turn_groups_already_caught_up():
     rec = new_conversation_record(title="t")
-    groups = [
+    groups: list[list[TurnDict]] = [
         [{"role": "user", "content": "q"}],
         [{"role": "assistant", "content": "a"}],
     ]
@@ -192,7 +195,7 @@ def test_extend_attaches_late_ui_message_when_turn_groups_already_caught_up():
 
 def test_extend_noop_when_no_new_groups():
     rec = new_conversation_record(title="t")
-    groups = [[{"role": "user", "content": "q"}]]
+    groups: list[list[TurnDict]] = [[{"role": "user", "content": "q"}]]
     extend_record_linear(rec, groups, [msg("user")], ui_offset=0)
     before = rec.model_dump()
     extend_record_linear(rec, groups, [msg("user")], ui_offset=1)
@@ -201,7 +204,7 @@ def test_extend_noop_when_no_new_groups():
 
 def test_extend_derives_ui_even_without_client_messages():
     rec = new_conversation_record(title="t")
-    groups = [
+    groups: list[list[TurnDict]] = [
         [{"role": "user", "content": "q"}],
         [{"role": "assistant", "content": "a"}],
     ]
@@ -1707,15 +1710,15 @@ class _TrackingChat:
 
 class _TrackingAdapter:
     def __init__(self) -> None:
-        self.turns: list[dict[str, Any]] = []
+        self.turns: list[TurnDict] = []
 
-    def get_turns_json(self) -> list[dict[str, Any]]:
+    def get_turns_json(self) -> list[TurnDict]:
         return list(self.turns)
 
-    def get_turns_grouped(self) -> list[list[dict[str, Any]]]:
+    def get_turns_grouped(self) -> list[list[TurnDict]]:
         return [[t] for t in self.turns]
 
-    def set_turns_json(self, turns: list[dict[str, Any]]) -> None:
+    def set_turns_json(self, turns: list[TurnDict]) -> None:
         self.turns = list(turns)
 
     def client_info(self) -> dict[str, str]:
@@ -1777,7 +1780,7 @@ async def test_handle_navigate_switches_to_prev_sibling():
 
     assert controller.record is not None
     assert controller.record.current_leaf == "n_0004"
-    assert [t["content"] for t in adapter.turns] == ["q1", "a1", "q2", "a2"]
+    assert [t.get("content") for t in adapter.turns] == ["q1", "a1", "q2", "a2"]
     assert chat.cleared
     assert len(chat.messages_) == 4
     assert len(store.put_calls) == 1
@@ -1795,7 +1798,7 @@ async def test_handle_navigate_switches_to_next_sibling():
 
     assert controller.record is not None
     assert controller.record.current_leaf == "n_0006"
-    assert [t["content"] for t in adapter.turns] == [
+    assert [t.get("content") for t in adapter.turns] == [
         "q1",
         "a1",
         "q2-edited",
@@ -1883,7 +1886,7 @@ async def test_handle_navigate_cycles_through_three_siblings():
     await controller.handle_navigate(2, "prev")
     assert controller.record is not None
     assert controller.record.current_leaf == "n_0006"
-    assert [t["content"] for t in adapter.turns] == [
+    assert [t.get("content") for t in adapter.turns] == [
         "q1",
         "a1",
         "q2-e1",
@@ -1892,7 +1895,7 @@ async def test_handle_navigate_cycles_through_three_siblings():
 
     await controller.handle_navigate(2, "prev")
     assert controller.record.current_leaf == "n_0004"
-    assert [t["content"] for t in adapter.turns] == ["q1", "a1", "q2", "a2"]
+    assert [t.get("content") for t in adapter.turns] == ["q1", "a1", "q2", "a2"]
 
     store.put_calls.clear()
     await controller.handle_navigate(2, "prev")
@@ -1901,7 +1904,7 @@ async def test_handle_navigate_cycles_through_three_siblings():
 
     await controller.handle_navigate(2, "next")
     assert controller.record.current_leaf == "n_0006"
-    assert [t["content"] for t in adapter.turns] == [
+    assert [t.get("content") for t in adapter.turns] == [
         "q1",
         "a1",
         "q2-e1",
@@ -1910,7 +1913,7 @@ async def test_handle_navigate_cycles_through_three_siblings():
 
     await controller.handle_navigate(2, "next")
     assert controller.record.current_leaf == "n_0008"
-    assert [t["content"] for t in adapter.turns] == [
+    assert [t.get("content") for t in adapter.turns] == [
         "q1",
         "a1",
         "q2-e2",
@@ -1937,7 +1940,7 @@ async def test_handle_edit_truncates_and_signals_resubmit():
 
     assert controller.record is not None
     assert controller.record.current_leaf == "n_0002"
-    assert [t["content"] for t in adapter.turns] == ["q1", "a1"]
+    assert [t.get("content") for t in adapter.turns] == ["q1", "a1"]
     assert chat.cleared
     assert len(chat.messages_) == 2
     update_actions = [
@@ -2023,7 +2026,7 @@ async def test_handle_edit_forks_from_a_multi_turn_tool_call_node():
     await controller.handle_edit(2, "thanks a lot")
 
     assert controller.record.current_leaf == "n_0002"
-    assert [t["content"] for t in adapter.turns] == [
+    assert [t.get("content") for t in adapter.turns] == [
         "weather?",
         "tool_request",
         "tool_result",

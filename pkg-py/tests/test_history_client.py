@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 from htmltools import tags
 from shinychat._history_client import (
+    TurnDict,
     TurnsAdapter,
     as_turns_adapter,
     turn_fallback_markdown,
@@ -56,7 +59,7 @@ def test_chatlas_adapter_serializes_dict_tool_result_display():
 
     dumped = as_turns_adapter(client).get_turns_json()
 
-    display = dumped[0]["contents"][0]["extra"]["display"]
+    display = cast(dict[str, Any], dumped[0])["contents"][0]["extra"]["display"]
     assert display["html"]["html"] == "<div>Widget output</div>"
     assert isinstance(result.extra["display"], dict)
 
@@ -81,7 +84,7 @@ def test_rejects_clients_without_turns():
 
 def test_turn_fallback_markdown_chatlas_shape():
     # chatlas serializes text contents as {"content_type": "text", "text": "..."}
-    turn = {
+    turn: TurnDict = {
         "role": "assistant",
         "contents": [
             {"content_type": "text", "text": "Hello "},
@@ -94,6 +97,7 @@ def test_turn_fallback_markdown_chatlas_shape():
             {"content_type": "text", "text": "world"},
         ],
     }
+
     assert turn_fallback_markdown(turn) == "Hello world"
 
 
