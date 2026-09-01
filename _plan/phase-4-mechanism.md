@@ -10,7 +10,7 @@ with `needs-review`, `work.attention="blocked"`, and
 `shinychat#azvt` remains open with `work.attention="ok"` (2026-09-01).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is open with
-`needs-review`, `work.attention="ok"`, and
+`needs-review`, `work.attention="blocked"`, and
 `work.branch="feat/history-exchange-tree"`; successor `shinychat#6drf` is
 open, blocked, and unstarted; parent `shinychat#azvt` is open with
 `work.attention="ok"` under epic `shinychat#6d0d`
@@ -2106,13 +2106,12 @@ the three-findings valve is not fired provisionally.
 The switch timing disposition is provisional, not declined. The preflight
 rationale that `switch_to()` loads and validates the target schema before
 destructive admission is insufficient without a production v2 provider
-regression. The required contract test must prove that source input during a
-slow target lookup starts v2 provider/turn work, then the destructive switch
-rejects input before target installation and leaves source, display, turns,
-and recorder untouched. If actual behavior safely isolates the work, record
-that evidence instead; otherwise accept the finding and revisit admission
-ordering. The earlier source-usability/preflight rationale remains a
-candidate constraint, not a resolved disposition.
+regression. The required contract test is unconditional and must use the real
+v2 provider/turn path: hold target lookup before admission, start source
+provider/turn work, release lookup while that work is active, then prove the
+switch rejects before target installation and leaves source ID, display,
+turns, recorder, and store unchanged. The source-usability/preflight rationale
+does not waive this contract or resolve the admission ordering.
 
 The terminal-settlement teardown disposition is provisionally accepted. The
 real `Chat` created by the registered settlement test must be destroyed in
