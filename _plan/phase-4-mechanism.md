@@ -2273,3 +2273,35 @@ established warnings. No production defect or production change was required.
 No Roborev was requested for `7d3cd6ac` or `93ed712c`; `shinychat#5r50`
 remains open with `needs-review` and `work.attention="ok"` pending review of
 this new test range. `shinychat#6drf` remains blocked and unstarted.
+
+### P4.1 Roborev 1158 three-findings escalation decision (2026-09-01)
+
+Roborev `1158` returned three findings against the public-latest/private-normal-dispatch
+mechanism, so the three-findings escalation valve fired. Decision: **PATCH**. Retain
+the split because it is required: accepted echoed-slash inputs update public latest,
+while provider and public callbacks receive normal submissions only.
+
+The exact defect is that the private normal-dispatch event had no scheduling contract.
+Default-priority consumers can run after queued history-selection effects, allowing
+same-flush input plus history selection to restore the target before provider dispatch.
+Authorize every `on_user_submit` consumer at priority `9998`, after raw capture at
+priority `9999` and before default-priority history selection. Authorize v2
+`switch_to` rejection using the existing
+`latest_message_stream.status() == "running"` check after target lookup and before
+destructive work. Add no flag, queue, lock, or owner; reuse existing primitives.
+This decision traces to R2/R7 and the one-display-stream contract.
+
+The deletion/abstraction pass is complete. Deleting the split would reintroduce
+slash-triggered provider work or require a tagged envelope, dispatcher, and new
+owner; no safe deletion or abstraction replacement is justified.
+
+The exact same-flush regression matrix is required: normal input with one attachment
+plus history select must prove source capture, provider dispatch, and public callback,
+while the target remains untouched or rejected; failed capture plus history select must
+prove no latest value and no private dispatch, with clean target restoration. Preserve
+echoed-slash suppression, blocked-input, identical-normal-submission, and attachment
+paths.
+
+Implementation is stopped until this documentation decision is reviewed.
+Fully qualified Kata issue `shinychat#5r50` remains open with `needs-review` and
+`work.attention="blocked"`. `shinychat#6drf` remains open, blocked, and unstarted.
