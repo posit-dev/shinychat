@@ -4,16 +4,17 @@
 implementation, evidence, and the required batched review are complete;
 Roborev 1146, 1152, 1158, 1159, and 1161 are closed or resolved as required
 by process. The bookmark-pointer disposition remains out of scope in
-`shinychat#g6tt`. `shinychat#5r50` is closed; successor
-`shinychat#6drf` is claimed on `feat/history-exchange-tree` with
-`work.attention="ok"`; and
-`shinychat#azvt` remains open with `work.attention="ok"` (2026-09-01).
+`shinychat#g6tt`. P4.2 is parked pending Garrick authorization after the
+server-side resubmit defense landed green but independent review found a
+browser optimistic-submission gap. `shinychat#5r50` is closed;
+`shinychat#6drf` is open with `work.attention="blocked"`; and
+`shinychat#azvt` is open with `work.attention="blocked"` (2026-09-01).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is closed after verified review
-evidence; successor `shinychat#6drf` is claimed on
-`feat/history-exchange-tree` with `work.attention="ok"`; parent
-`shinychat#azvt` is open with `work.attention="ok"` under epic
-`shinychat#6d0d`
+evidence; successor `shinychat#6drf` is open and blocked with
+`work.attention="blocked"`; parent `shinychat#azvt` is open and blocked with
+`work.attention="blocked"` under epic `shinychat#6d0d`; P4.2 is parked pending
+Garrick authorization.
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
 the Phase 4 gate and the only phase-local mechanism reference for new work.
 
@@ -276,8 +277,37 @@ transcript, turns, or rendered content to bookmark values.
    review evidence.
 
 Each remaining child is a coherent review unit. The note is approved and P4.0
-is closed; `shinychat#5r50` is the current claimed keystone, while later
-children remain sequenced behind it.
+is closed; P4.2 is parked pending Garrick authorization, while later children
+remain sequenced behind it.
+
+### P4.2 parked escalation (2026-09-01)
+
+The graph commit `82ee43bf`, resubmit commit `e50ba734`, and server-block
+commit `f6396a39` landed green. Independent review found that browser
+optimistic submission can still create phantom UI and lose the draft during a
+held resubmit. Implementation, navigation, and the browser port are stopped.
+
+Correlated rejection/rollback is rejected due the prior Shiny serialization
+evidence; busy/sibling pending is insufficient. The recommendation is to
+narrowly extend the existing capability-gated completion-v1 marker for Python
+v2 edit/resubmit and sibling navigation while retaining the `f6396a39` server
+defense. Prior P4.0 authorization explicitly excluded edit/navigation, so
+Garrick authorization is required.
+
+Does Garrick authorize, for capability-advertising Python v2 only, extension of the existing historyTransitionPending=requestId protocol to edit/resubmit and sibling navigation: synchronously mark before the request; carry the UUID through the handler and best-effort non-masking finally completion; block every user submission path while pending; allow only the matching server-issued resubmit update_input(submit=True) to submit once while preserving the user's draft and attachments; and add no rollback/rejection protocol, queue, timer, second marker/owner, Q3 exchange-ID upgrade, or R server change?
+
+**Regression matrix:** v2 browser edit held resubmit blocks compose
+text+attachment and prevents phantom/server input, then release yields one
+replacement/provider dispatch while draft+attachment remain; edit
+failure/cancellation releases the marker and preserves draft/attachment;
+generic UUID stale completion/remount exact-match coverage; v2 navigation
+blocks compose while held and has no auto-submit bypass; capability absence
+leaves Python v1 and R unchanged.
+
+**Exclusions:** no rollback/rejection protocol, queue, timer, second
+marker/owner, Q3 exchange-ID upgrade, R server change, Phase 5
+guards/degradation, retry/status UI beyond this contract, bookmarks, legacy
+import, or later tasks.
 
 ## Verification
 
