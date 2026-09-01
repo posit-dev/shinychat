@@ -2872,3 +2872,34 @@ Next: unblock `shinychat#72ee` for the Phase 4 retry affordance and tested
 regenerate path through the existing sibling primitive. Bookmark, Phase 5,
 R-server, legacy-import, queue, cursor, reconciliation, and Q3 wire expansion
 remain out of scope.
+
+### P4.3 retry/regenerate resolution (2026-09-01)
+
+P4.3 landed in `9c68e3bb`, with generated assets in `6cf8b4da` and a
+formatter-only import-order correction in `202fdfc4`.
+
+- V2 restore projects ephemeral status/retry metadata only onto input-bearing
+  restored user messages and exposes no stored error detail.
+- Restored pending/interrupted, error, and cancelled exchanges render the
+  accessible Retry affordance, including the no-assistant-message case.
+  Retry reuses the exact `completion-v2` lifecycle, is revalidated by the
+  server, and enters the existing defensive-copy sibling primitive. The old
+  node and partial display remain unchanged.
+- The production controller regenerate path uses the same sibling primitive
+  without adding Phase 4 regenerate UI. Python v1 and R remain unchanged.
+
+Verification passed 1256 JS tests with 23 skipped, JS lint/build/update-dist,
+22 R history-hook tests, 269 focused controller/history tests, 6 v2 restore
+Playwright tests, and full `make py-check` with 203 Playwright, 881
+non-browser, and 1 skipped. Packaged assets match `js/dist`.
+
+Independent review returned PASS with no findings. Its residual composition
+gaps (partial-assistant browser retry and retry-specific attachment copying)
+are already exercised at the underlying capture/resubmit boundaries and do
+not justify duplicative hardening. Per the driver-directed stopping rule, do
+not request another range review for this green unit.
+
+P4.3 is complete. Next: unblock `shinychat#g6tt` for the pointer-only Python
+bookmark slice. Phase 5 degradation/error detail, R server work, client
+transcript ownership, queues, cursors, reconciliation, and Q3 expansion remain
+out of scope.
