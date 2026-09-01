@@ -1893,3 +1893,46 @@ disposition/status entries; unrelated evidence remains valid.
 - Code for this correction is not yet landed; implementation remains pending.
 - Required regression scope: deterministically interleave raw input with an active v2 switch and prove fail-fast ordering plus accepted-only provider/`on_user_submit` latest-input effects, while preserving the unchanged paths above.
 - No Roborev request and no task closure; retain `shinychat#5r50` open with `needs-review`, `work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`.
+
+### P4.1 blocked-input correction implementation (2026-08-31)
+
+Landed `e5e59983` (`fix(history): reject input during v2 switches`,
+`Kata: shinychat#5r50`). The existing destructive-history admission now has a
+switch-only input-block mode. Active v2 `switch_to()` enables it before the
+existing recorder-lock/source-save sequence and retains it through target
+preflight and restore; the outermost existing `finally` clears it on success,
+error, and cancellation. No lock, queue, timer, CAS, second owner, v1,
+generic-clear/new-chat/inactive-delete, Phase 5, Q3/bookmark, JavaScript, or
+R mechanism changed.
+
+Both raw accepted-input helpers reject before `StoredMessage` conversion while
+that switch mode is active. The priority raw-input effect remains the only raw
+consumer; `on_user_submit` and provider handling now react to the accepted
+latest-input signal only, published after capture succeeds. Echoed slash
+commands retain their existing capture-before-handler behavior without
+becoming normal provider submissions.
+
+The former detached-`ChatTranscript` interleaving test is replaced by real
+`Chat`/`HistoryController` regressions. They block source `put()` and real
+restore `clear_messages()` independently, then prove each attempted raw input
+rejects immediately with no conversion, transcript/latest/provider/recorder/
+store effect and no phantom target input. A cancellation test proves later
+raw input succeeds after release; generic destructive admission remains
+non-strict. The first full-gate attempt exposed a test-only global
+`reactive.flush()` interaction with an unrelated pending fixture; removing
+that flush preserved the assertions and made the regression suite-isolated.
+
+Evidence: pre-edit `make py-check-tests FILTER="history or transcript"`
+passed 43 Playwright plus 447 non-browser tests (8 established warnings).
+Targeted controller regressions passed 3; focused slash behavior and
+identical-resubmission Playwright each passed 1; Pyright reported 0 errors.
+Post-change history/transcript passed 43 Playwright plus 449 non-browser
+tests (8 established warnings), and `history_edit` passed 9. Final
+`make py-check` passed Ruff and Pyright, 200 Playwright tests, and 824
+non-browser tests with 1 skipped and 19 established warnings. `git diff
+--check` passed.
+
+No Roborev request or task closure was made. `shinychat#5r50` remains open
+with `needs-review`, `work.attention="ok"`, and
+`work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains blocked
+and unstarted. No provisional decision was introduced.
