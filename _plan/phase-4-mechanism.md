@@ -1998,3 +1998,38 @@ or delete/replace. Truthful Kata state: `shinychat#5r50` remains open with
 `work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains open,
 blocked, and unstarted. No implementation tests, code changes, review
 request/closure, or task closure are authorized by this handoff.
+
+### P4.1 authoritative raw-input escalation decision (2026-08-31)
+
+The escalation valve chooses DELETE/REPLACE of the raw-input regression
+test-isolation strategy only. It does not choose DELETE/REPLACE of the
+verified production switch-admission contract. The existing production
+contract remains authoritative: an active v2 switch blocks raw input
+fail-fast through the existing destructive admission state, before
+conversion, transcript/latest-input/provider/`on_user_submit`, recorder, or
+store effects, and the accepted-input signal remains the sole provider and
+`on_user_submit` trigger for latest input.
+
+Replacement scope is limited to the test fixtures and cleanup:
+
+- Remove the global 500-flush reactive pre-drain.
+- Give every real-`Chat` raw-input regression explicit local cleanup on both
+  success and failure.
+- Keep real production raw-effect coverage and the blocked-path assertions,
+  including no conversion, transcript/latest-input/provider/recorder/store
+  effect and no phantom target input.
+- Do not change production code or production semantics, locks, queues,
+  timers, CAS, or owners.
+
+The implementer must first retry the applicable suite without the global
+draining. Only if that retry produces a reproducible red test may the
+implementer identify and minimally fix the responsible foreign fixture; the
+fixture, failure, and evidence must be recorded. This decision authorizes no
+production change, no new test-only global scheduler mechanism, no Roborev
+request or closure, no task closure, and no `shinychat#6drf` work.
+
+The decision supersedes the preceding raw-input escalation handoff only for
+this test-isolation disposition. `shinychat#5r50` remains open with
+`needs-review`, `work.attention="ok"`, and
+`work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains open,
+blocked, and unstarted.
