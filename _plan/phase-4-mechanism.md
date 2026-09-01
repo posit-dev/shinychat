@@ -1670,7 +1670,7 @@ blocked, and unstarted. `shinychat#azvt` is open with
 `work.attention="ok"`. No implementation tests are authorized by this
 correction.
 
-### P4.1 Roborev 1135 DELETE/REPLACE implementation (2026-08-31)
+### HISTORICAL, SUPERSEDED: P4.1 Roborev 1135 DELETE/REPLACE implementation (2026-08-31)
 
 The approved replacement landed in `04825f1f`
 (`fix(history): replace v2 persistence ownership`, `Kata: shinychat#5r50`).
@@ -1717,7 +1717,7 @@ required; no new review was requested. The documentation handoff is
 and unstarted. No branching/Q3, bookmark, Phase 5, JavaScript, R, queue,
 timer, CAS, second lock, or second owner work was added.
 
-### P4.1 Luna independent read-only review disposition (2026-08-31)
+### HISTORICAL, SUPERSEDED: P4.1 Luna independent read-only review disposition (2026-08-31)
 
 Luna reviewed `04825f1f` + `dbde0c1a` + `5849f02e` against the Roborev 1135
 DELETE/REPLACE ownership boundary, found no in-scope production defect,
@@ -1776,3 +1776,30 @@ with `needs-review`, `work.attention="blocked"`, and
 blocked, and unstarted. `shinychat#azvt` remains open with
 `work.attention="ok"`. No code implementation, test implementation, review
 request, or closure is authorized in this update.
+
+### P4.1 authoritative one-boundary blocked handoff (2026-08-31)
+
+This handoff supersedes the earlier implementation-complete and Luna
+disposition sections above. They remain historical evidence only and do not
+authorize implementation.
+
+`switch_to` enters ONE `_destructive_mutation()` before departing v2 source save and retains that same boundary through the entire restore transaction, closing the admission window. The approved order is `destructive transcript admission -> recorder lock/source save -> restore`; no new mechanism.
+
+Implementation remains stopped pending note review. The required regressions
+remain:
+
+1. A deterministic interleaving proving accepted input cannot enter during
+   switch save/restore.
+2. Terminal metadata through the registered production settlement callback,
+   rather than a direct controller call.
+3. Inactive v2 rename with `use_exchange_tree=True`.
+
+A fresh batched Roborev review is required after these fixes because Roborev
+1135 was a pre-replacement review and is not sufficient current evidence.
+
+Truthful current task state: `shinychat#5r50` remains open with
+`needs-review`, `work.attention="blocked"`, and
+`work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains open,
+blocked, and unstarted; and `shinychat#azvt` remains open with
+`work.attention="ok"`. No production code, tests, assets, review request, or
+issue closure is authorized by this documentation-only handoff.
