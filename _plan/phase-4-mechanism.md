@@ -1505,3 +1505,30 @@ with `needs-review` and `work.attention="ok"` pending the instructed review
 step. `shinychat#6drf` remains blocked and unstarted. The existing
 fail-to-fresh-draft transaction and all Phase 4 scope exclusions remain
 unchanged.
+
+### P4.1 final transcript-recovery evidence (2026-09-01)
+
+The last test-evidence gap is closed in `a9bd8ce7`
+(`test: exercise transcript recovery after restore failure`,
+`Kata: shinychat#5r50`). The existing next-input recovery regression now:
+
+- installs the recorder's actual production callbacks on
+  `fake_chat._transcript`;
+- forces replay failure through that attached transcript's `append()` and
+  failing send path;
+- verifies every `suspend_capture` callback is restored after failure;
+- proves the prior active record and failed target record are unchanged and
+  recorder ownership is cleared; and
+- submits the next input through the same transcript, proving a fresh record
+  and node are created through the real recorder callbacks.
+
+No production defect was exposed and no production code or mechanism changed.
+The focused controller test passed; `make py-check-format` and
+`make py-check-types` passed with 0 errors; and full `make py-check` passed
+Ruff, Pyright, 200 Playwright tests, and 813 non-browser tests with 1 skipped
+and 19 established warnings. No Roborev request was made.
+
+`shinychat#5r50` remains open with `needs-review` and
+`work.attention="ok"`; `shinychat#6drf` remains blocked and unstarted. The
+approved fail-to-fresh-draft contract and Phase 4 scope exclusions remain
+unchanged.
