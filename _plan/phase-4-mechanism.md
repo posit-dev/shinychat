@@ -2903,3 +2903,30 @@ P4.3 is complete. Next: unblock `shinychat#g6tt` for the pointer-only Python
 bookmark slice. Phase 5 degradation/error detail, R server work, client
 transcript ownership, queues, cursors, reconciliation, and Q3 expansion remain
 out of scope.
+
+### P4.4 bookmark-pointer resolution (2026-09-01)
+
+P4.4 landed in `6b459a76`.
+
+- V2 server bookmarks contain exactly one atomic
+  `{conversation_id, node_id}` pointer captured under the recorder lock, with
+  no transcript, turns, rendered content, or other fidelity data.
+- Restore validates record and node before destructive mutation, then selects
+  and persists the target path through the existing v2 restore transaction.
+- Recorder-owned `bookmark_state_id` settlement is serialized under the same
+  lock, rejects late/stale pointers, persists before publishing, and returns
+  replaced state IDs for cleanup. Eager v2 history persistence remains
+  independent of bookmark settlement.
+- Browser/URL modes remain conversation-only pointers. Missing records or
+  nodes visibly fail to a fresh draft without a partial switch.
+
+Verification passed format and Pyright, focused bookmark/v2 tests, and full
+`make py-check` with 204 Playwright, 888 non-browser, and 1 skipped.
+Independent review returned PASS with no findings. Its residual browser/unit
+assertion split and non-concurrent callback scheduling match the existing
+layered coverage and serialized settlement pump; they do not warrant another
+hardening round or range review.
+
+P4.4 is complete. Next: unblock `shinychat#pvjx` for Phase 4 acceptance,
+production-path matrix verification, scope/deletion review, and final review
+disposition. Do not begin Phase 5 or any R-server/legacy work.
