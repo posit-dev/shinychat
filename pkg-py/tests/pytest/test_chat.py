@@ -17,6 +17,7 @@ from shiny import Session, reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat
+from shinychat import _history as history_module
 from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
     ChatMessage,
@@ -25,7 +26,6 @@ from shinychat._chat_types import (
     StoredMessage,
     StoredSegment,
 )
-from shinychat import _history as history_module
 from shinychat._history import HistoryController, HistoryOptions
 from shinychat._history_store import (
     ConversationPartition,
