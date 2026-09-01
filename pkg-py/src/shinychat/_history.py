@@ -425,6 +425,11 @@ class _ExchangeRecorder:
             or entry.version < 1
         ):
             raise ValueError(f"State entry {name!r} has an invalid version.")
+        if not isinstance(entry.mode, str) or entry.mode not in (
+            "snapshot",
+            "delta",
+        ):
+            raise ValueError(f"State entry {name!r} has an invalid mode.")
         try:
             json.dumps(entry.data, allow_nan=False)
         except (TypeError, ValueError) as e:

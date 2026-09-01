@@ -1002,6 +1002,7 @@ def _install_live_v2_record(
             "version",
             StateEntry(kind="turns", version=2, mode="snapshot", data=[]),
         ),
+        ("mode", StateEntry(kind="turns", version=1, mode="snapshot", data=[])),
         ("data", StateEntry(kind="turns", version=1, mode="snapshot", data=[])),
     ],
 )
@@ -1018,10 +1019,13 @@ async def test_v2_restore_preflight_failure_leaves_live_state_untouched(
     name, entry = invalid
     if name == "data":
         entry.data = ["not a turn"]  # type: ignore[assignment]
+    elif name == "mode":
+        entry.mode = cast(Any, "invalid")
     target.nodes["n_0000"].state[
         "unexpected" if name == "unknown" else "shinychat:turns"
     ] = entry
     fake_chat = cast(_FakeChat, controller.chat)
+    fake_chat.messages = [_stored_message("assistant", "live")]
     notifier = AsyncMock()
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
@@ -1034,6 +1038,7 @@ async def test_v2_restore_preflight_failure_leaves_live_state_untouched(
     assert controller._active_id_now() == existing.id
     assert fake_chat.clear_messages_calls == 0
     assert fake_chat.set_greeting_calls == []
+    assert fake_chat.messages == [_stored_message("assistant", "live")]
     assert adapter.set_calls == []
     notifier.assert_not_awaited()
 
@@ -1168,6 +1173,50 @@ async def test_v2_restore_cancellation_preserves_outcome_after_cleanup_failure()
     assert recorder.record is None
     assert controller._active_id_now() is None
     notifier.assert_awaited_once_with(recovery_incomplete=True)
+
+
+@pytest.mark.anyio
+async def test_v2_restore_active_id_cancellation_cleans_up_and_preserves_identity():
+    adapter = _TrackingFakeAdapter()
+    controller, _ = _make_controller(
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    _install_live_v2_record(controller)
+    target = _restore_target()
+    fake_chat = cast(_FakeChat, controller.chat)
+    fake_chat.messages = [_stored_message("assistant", "live")]
+    original = asyncio.CancelledError("target active-ID cancellation")
+    callback_ids: list[str | None] = []
+    target_callback_state: list[
+        tuple[ConversationRecordV2 | None, str | None]
+    ] = []
+
+    async def active_id_callback(id: str | None) -> None:
+        callback_ids.append(id)
+        if id == target.id:
+            recorder = controller._exchange_recorder
+            assert recorder is not None
+            target_callback_state.append(
+                (recorder.record, controller._active_id_now())
+            )
+            raise original
+
+    controller.on_active_id_change = active_id_callback
+
+    with pytest.raises(asyncio.CancelledError) as raised:
+        await controller.replay_exchange_record(target)
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    assert raised.value is original
+    assert target_callback_state == [(target, target.id)]
+    assert callback_ids == [target.id, None]
+    assert recorder.record is None
+    assert controller._active_id_now() is None
+    assert fake_chat.clear_messages_calls == 2
+    assert fake_chat.messages == []
+    assert adapter.turns == []
 
 
 @pytest.mark.anyio
