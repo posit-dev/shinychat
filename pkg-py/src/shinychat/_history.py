@@ -510,15 +510,20 @@ class _ExchangeRecorder:
             },
         )
 
-    async def _content_exchange(self, exchange_id: str | None) -> str | None:
+    async def _content_exchange(
+        self, exchange_id: str | None
+    ) -> tuple[str | None, bool]:
         if self.record is None:
             if exchange_id is not None:
-                return None
+                return None, False
             self.record = await self._new_record(title="New chat")
-            return self.record.active_leaf
+            return self.record.active_leaf, True
         if exchange_id is not None:
-            return exchange_id if exchange_id in self.record.nodes else None
-        return self.record.open_inputless_exchange()
+            return (
+                exchange_id if exchange_id in self.record.nodes else None,
+                False,
+            )
+        return self.record.open_inputless_exchange(), False
 
     def reset(self) -> None:
         self.record = None
@@ -676,7 +681,7 @@ class _ExchangeRecorder:
             return
 
         async with self._lock:
-            target = await self._content_exchange(exchange_id)
+            target, created = await self._content_exchange(exchange_id)
             if target is None:
                 return
             assert self.record is not None
@@ -687,6 +692,11 @@ class _ExchangeRecorder:
                 ),
             )
             await self._persist_record()
+            send_history_update = getattr(
+                self._controller, "send_history_update", None
+            )
+            if created and send_history_update is not None:
+                await send_history_update()
 
     async def stream_started(
         self,
@@ -698,7 +708,7 @@ class _ExchangeRecorder:
             return
 
         async with self._lock:
-            target = await self._content_exchange(exchange_id)
+            target, created = await self._content_exchange(exchange_id)
             if target is None:
                 return
             assert self.record is not None
@@ -710,6 +720,11 @@ class _ExchangeRecorder:
                 ),
             )
             await self._persist_record()
+            send_history_update = getattr(
+                self._controller, "send_history_update", None
+            )
+            if created and send_history_update is not None:
+                await send_history_update()
 
     async def stream_updated(
         self, stream_id: str, entry: TranscriptEntry

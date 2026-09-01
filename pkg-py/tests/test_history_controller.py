@@ -868,6 +868,87 @@ async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
 
 
 @pytest.mark.anyio
+async def test_v2_initial_programmatic_message_persists_and_publishes_metadata():
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_message_committed=recorder.message_committed,
+    )
+    controller.send_history_update = AsyncMock()  # type: ignore[method-assign]
+
+    assert await transcript.append(
+        TranscriptEntry(message=_stored_message("assistant", "notice")),
+        exchange_id=None,
+        send=_sent,
+    )
+
+    assert recorder.record is not None
+    stored = await store.get(part(), recorder.record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    assert [
+        message.as_stored_message().content
+        for node in stored.nodes.values()
+        for message in node.messages
+    ] == ["notice"]
+    controller.send_history_update.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_v2_initial_programmatic_stream_persists_without_chunk_metadata():
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+    controller.send_history_update = AsyncMock()  # type: ignore[method-assign]
+
+    assert await transcript.start_stream(
+        stream_id="stream",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=None,
+        send=_sent,
+    )
+
+    assert recorder.record is not None
+    stored = await store.get(part(), recorder.record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    controller.send_history_update.assert_awaited_once()
+
+    assert await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[],
+        message=_stored_message("assistant", "partial"),
+        operation="append",
+        send=_sent,
+    )
+    stored = await store.get(part(), recorder.record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    assert [
+        message.as_stored_message().content
+        for node in stored.nodes.values()
+        for message in node.messages
+    ] == ["partial"]
+    controller.send_history_update.assert_awaited_once()
+
+    assert await transcript.end_stream(
+        stream_id="stream",
+        status=None,
+        error=None,
+        send=_sent,
+    )
+    stored = await store.get(part(), recorder.record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    controller.send_history_update.assert_awaited_once()
+
+
+@pytest.mark.anyio
 async def test_v2_stream_chunks_are_durable_without_metadata_until_terminal(
     tmp_path: Path,
 ) -> None:
