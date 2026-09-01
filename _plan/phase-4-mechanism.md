@@ -1474,3 +1474,34 @@ sink is the approved controller boundary.
 No production code, decision, or scope changed. `shinychat#5r50` stays open
 with `needs-review` and `work.attention="ok"`; `shinychat#6drf` remains
 blocked and unstarted.
+
+### P4.1 bounded review-gap completion (2026-09-01)
+
+The three authorized evidence gaps are complete with no new mechanism or
+scope:
+
+- `10a20a16` validates every `StateEntry.mode` strictly as `snapshot` or
+  `delta` during complete preflight, before destructive mutation. The unit
+  regression proves an invalid mode fails closed without changing live
+  display, turns, recorder ownership, or active ID. It also adds the
+  restore-specific active-ID callback cancellation regression: the target is
+  installed and its callback is attempted, cleanup invokes the callback with
+  explicit `None`, recorder/active ownership and display/turns return to a
+  fresh draft, and the original `CancelledError` instance propagates.
+- `0ed9865d` adds production-path URL-mode Playwright coverage using a real
+  URL restore in a fresh session and asserts exactly one `history_update`,
+  parallel to the browser-mode coverage.
+- `a6fc207d` corrects the URL fixture's `restore_mode` literal typing; full
+  Pyright remains green.
+
+Verification: focused controller tests passed 172; the v2 restore Playwright
+module passed 3; `make py-check-format` passed; `make py-check-types` passed
+with 0 errors; and full `make py-check` passed Ruff, Pyright, 200 Playwright
+tests, and 813 non-browser tests with 1 skipped and 19 established warnings.
+No Roborev request was made in this handoff.
+
+Implementation is complete for this bounded fix and the task remains open
+with `needs-review` and `work.attention="ok"` pending the instructed review
+step. `shinychat#6drf` remains blocked and unstarted. The existing
+fail-to-fresh-draft transaction and all Phase 4 scope exclusions remain
+unchanged.
