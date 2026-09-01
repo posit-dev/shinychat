@@ -2305,3 +2305,30 @@ paths.
 Implementation is stopped until this documentation decision is reviewed.
 Fully qualified Kata issue `shinychat#5r50` remains open with `needs-review` and
 `work.attention="blocked"`. `shinychat#6drf` remains open, blocked, and unstarted.
+
+### P4.1 Roborev 1158 PATCH implementation handoff (2026-09-01)
+
+Code `b99074b028d43687a8fa44bf97a5701fefffa7c1`
+(`fix(history): sequence submissions before history selection`,
+`Kata: shinychat#5r50`) implements the approved bounded PATCH only. Every
+`on_user_submit` consumer, including the built-in `client=` handler, now runs
+at priority `9998`; v2 `switch_to()` rejects a running
+`latest_message_stream` after target lookup and before destructive work.
+Production-path same-flush coverage uses the real history selector, raw input,
+and a real `client=` Chat with explicit stream settlement and `Chat.destroy()`.
+It proves source capture plus exact provider/public attachment data and target
+preservation on rejection, and proves failed capture publishes neither input
+channel while the target restores cleanly.
+
+Gates: focused controller/chat regressions passed 5; `make py-check-format`
+passed; `make py-check-types` reported 0 errors; `make py-check-tests
+FILTER="history or transcript"` passed 43 Playwright and 452 non-browser tests;
+`uv run pytest pkg-py/tests/playwright/ -k "history_edit"` passed 9; and
+`make py-check` passed 200 Playwright tests plus 829 non-browser tests, with 1
+skipped test and 20 established warnings.
+
+Roborev outcome: `roborev close 1158` succeeded (`Job 1158 closed`) after the
+code commit. Kata `shinychat#5r50` remains open with `needs-review`,
+`work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`; the next
+action is orchestrator inspection and integration. `shinychat#6drf` remains
+blocked and unstarted.
