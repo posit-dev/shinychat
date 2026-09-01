@@ -2207,6 +2207,26 @@ open with `needs-review`, `work.attention="blocked"`, and
 blocked, and unstarted. No implementation, review closure, or task closure is
 authorized by this docs-only disposition.
 
+### P4.1 real-provider echoed-slash regression (2026-09-01)
+
+Test commit `7d3cd6ac` (`test(history): cover echoed slash provider bypass`,
+`Kata: shinychat#5r50`) adds the final bounded provider-path regression. It
+constructs `Chat(..., client=...)` with a controllable client whose
+`stream_async` records calls, drives the production slash input through
+`session.input[chat._slash_command_id]` and `reactive.flush()`, and destroys
+the Chat in `finally`. The test proves an echoed slash updates public latest
+accepted input, runs the slash handler, does not run public `on_user_submit`,
+and does not call the built-in provider's `stream_async`.
+
+Verification: the focused test
+`test_echoed_slash_command_skips_builtin_provider_handler` passed; format
+passed; Pyright reported zero errors; and full `make py-check` passed 200
+Playwright tests, 827 non-browser tests, 1 skipped test, and 19 established
+warnings. No production defect or production change was required. No Roborev
+review was requested yet. `shinychat#5r50` remains open with `needs-review`
+and `work.attention="blocked"` pending the Roborev 1152 fixes; `shinychat#6drf`
+remains blocked and unstarted.
+
 ### P4.1 Roborev 1152 resolution and current handoff (2026-09-01)
 
 Roborev 1152's two valid PATCH findings were accepted and fixed by
