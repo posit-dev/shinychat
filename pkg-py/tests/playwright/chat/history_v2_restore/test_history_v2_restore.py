@@ -268,6 +268,49 @@ def test_v2_navigation_replays_the_selected_sibling_and_continues_from_it(
     )
 
 
+@pytest.mark.parametrize("local_app", ["app_bookmark.py"], indirect=True)
+def test_v2_server_bookmarks_restore_distinct_sibling_leaves(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    chat.set_user_input("original bookmark")
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message("echo: original bookmark", timeout=30_000)
+    page.wait_for_url(lambda url: "_state_id_=" in url, timeout=10_000)
+    original_url = page.url
+
+    original = page.locator(".shiny-chat-user-message").first
+    original.hover()
+    original.locator(".shiny-chat-edit-btn").click()
+    editor = original.get_by_role("textbox", name="Chat message")
+    editor.click()
+    editor.press("ControlOrMeta+a")
+    editor.press_sequentially("replacement bookmark")
+    original.locator(".shiny-chat-btn-send").click()
+    chat.expect_latest_message("echo: replacement bookmark", timeout=30_000)
+    page.wait_for_url(
+        lambda url: "_state_id_=" in url and url != original_url, timeout=10_000
+    )
+    replacement_url = page.url
+
+    page.goto(original_url)
+    expect(chat.loc).to_be_visible(timeout=30_000)
+    chat.expect_latest_message("echo: original bookmark", timeout=30_000)
+    expect(page.locator(".shiny-chat-messages-content")).not_to_contain_text(
+        "replacement bookmark", timeout=10_000
+    )
+
+    page.goto(replacement_url)
+    expect(chat.loc).to_be_visible(timeout=30_000)
+    chat.expect_latest_message("echo: replacement bookmark", timeout=30_000)
+    expect(page.locator(".shiny-chat-messages-content")).not_to_contain_text(
+        "original bookmark", timeout=10_000
+    )
+
+
 @pytest.mark.parametrize("local_app", ["app_url.py"], indirect=True)
 def test_v2_url_restore_publishes_one_history_update(
     page: Page, local_app: ShinyAppProc

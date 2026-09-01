@@ -674,6 +674,46 @@ class _ExchangeRecorder:
         await self._persist_record()
         return True
 
+    async def bookmark_pointer(
+        self, record: ConversationRecordV2 | None = None
+    ) -> tuple[str, str] | None:
+        """Return one atomic pointer snapshot for a live v2 record."""
+        async with self._lock:
+            active = self.record
+            if (
+                active is None
+                or active.active_leaf is None
+                or (record is not None and active is not record)
+            ):
+                return None
+            return active.id, active.active_leaf
+
+    async def settle_bookmark_state_id(
+        self, conversation_id: str, node_id: str, state_id: str
+    ) -> tuple[bool, str | None]:
+        """Persist a bookmark URL only when its pointer is still active.
+
+        The returned state id is safe to delete: it is either the replaced URL
+        after a successful update or the newly minted stale URL.
+        """
+        async with self._lock:
+            record = self.record
+            if (
+                record is None
+                or record.id != conversation_id
+                or record.active_leaf != node_id
+            ):
+                return False, state_id
+
+            old_state_id = record.bookmark_state_id
+            record.bookmark_state_id = state_id
+            try:
+                await self._persist_record()
+            except BaseException:
+                record.bookmark_state_id = old_state_id
+                raise
+            return True, old_state_id if old_state_id != state_id else None
+
     def mark_active_id_published(self, record: ConversationRecordV2) -> None:
         if (
             self.record is record
@@ -1280,6 +1320,7 @@ class HistoryController:
         node_ids: tuple[str, ...],
         planned_state: RestorePlan,
         bootstrap: Literal["recorded", "live"],
+        persist_active_pointer: bool = False,
     ) -> None:
         recorder = self._exchange_recorder
         assert recorder is not None
@@ -1301,6 +1342,8 @@ class HistoryController:
             recorder.install_restored_record(target)
             await self._set_active_id(target.id)
             recorder.mark_active_id_published(target)
+            if persist_active_pointer:
+                await recorder._persist_record()
             self._restore_app_state(target.values or {})
             await self._send_exchange_metadata()
             await self._send_sibling_metadata()
@@ -1347,6 +1390,29 @@ class HistoryController:
                     node_ids=node_ids,
                     planned_state=planned_state,
                     bootstrap=selected_bootstrap,
+                )
+
+    async def restore_bookmark_pointer(
+        self, target: ConversationRecordV2, node_id: str
+    ) -> None:
+        """Restore a validated v2 bookmark node through the normal transaction."""
+        recorder = self._exchange_recorder
+        if recorder is None:
+            raise RuntimeError("Exchange-tree history is not enabled")
+
+        selected = target.model_copy(deep=True)
+        selected.set_active_leaf(node_id)
+        node_ids, planned_state, bootstrap = self._prepare_exchange_restore(selected)
+        persist_active_pointer = target.active_leaf != node_id
+
+        async with self._destructive_mutation():
+            async with self._exchange_mutation():
+                await self._restore_exchange_record_locked(
+                    selected,
+                    node_ids=node_ids,
+                    planned_state=planned_state,
+                    bootstrap=bootstrap,
+                    persist_active_pointer=persist_active_pointer,
                 )
 
     # -- switch / new ----------------------------------------------------
@@ -2175,6 +2241,40 @@ class ChatHistory:
                 )
 
             async def _on_response_saved(record: ConversationRecord) -> None:
+                recorder = controller._exchange_recorder
+                if recorder is not None:
+                    pointer = await recorder.bookmark_pointer(
+                        cast(ConversationRecordV2, record)
+                    )
+                    if pointer is None:
+                        return
+                    conversation_id, node_id = pointer
+
+                    async def _on_bookmarked(url: str) -> None:
+                        new_state_id = extract_state_id(url)
+                        if new_state_id is None:
+                            return
+                        try:
+                            current, cleanup_state_id = (
+                                await recorder.settle_bookmark_state_id(
+                                    conversation_id, node_id, new_state_id
+                                )
+                            )
+                        except BaseException:
+                            await delete_bookmark_state(new_state_id)
+                            raise
+                        if cleanup_state_id is not None:
+                            await delete_bookmark_state(cleanup_state_id)
+                        if current:
+                            await controller.send_navigate(
+                                f"?_state_id_={new_state_id}", conversation_id
+                            )
+
+                    await do_bookmark_with_cleanup(
+                        root_session.bookmark, _on_bookmarked
+                    )
+                    return
+
                 captured_id = record.id
 
                 async def _on_bookmarked(url: str) -> None:
@@ -2243,19 +2343,40 @@ class ChatHistory:
 
             controller.on_active_id_change = _update_url_bookmark
 
-        # Stamp the active conversation ID into any Shiny server bookmark so
-        # that reloading from a bookmark URL reopens the right conversation.
-        # This runs regardless of restore_mode whenever server bookmarks are
-        # configured — the history system participates automatically.
-        stamp_key = f"{chat.id}_history_conversation_id"
+        # Stamp the active history pointer into any Shiny server bookmark.
+        # V2 records need the selected leaf as well as the conversation ID;
+        # v1 keeps its existing conversation-only value.
+        stamp_key = (
+            f"{chat.id}_history_exchange_pointer"
+            if controller._exchange_recorder is not None
+            else f"{chat.id}_history_conversation_id"
+        )
         stamp_cancel: Callable[[], None] | None = None
         if root_session.bookmark.store == "server":
 
-            def stamp_conversation(state: Any) -> None:
-                if controller.record is not None:
-                    state.values[stamp_key] = controller.record.id
+            recorder = controller._exchange_recorder
+            if recorder is not None:
 
-            stamp_cancel = root_session.bookmark.on_bookmark(stamp_conversation)
+                async def stamp_exchange_pointer(state: Any) -> None:
+                    pointer = await recorder.bookmark_pointer()
+                    if pointer is None:
+                        return
+                    conversation_id, node_id = pointer
+                    state.values[stamp_key] = {
+                        "conversation_id": conversation_id,
+                        "node_id": node_id,
+                    }
+
+                stamp_callback = stamp_exchange_pointer
+            else:
+
+                def stamp_conversation_id(state: Any) -> None:
+                    if controller.record is not None:
+                        state.values[stamp_key] = controller.record.id
+
+                stamp_callback = stamp_conversation_id
+
+            stamp_cancel = root_session.bookmark.on_bookmark(stamp_callback)
 
         @reactive.calc
         def scope() -> str:
@@ -2313,9 +2434,60 @@ class ChatHistory:
             # Priority 1: restore from a Shiny bookmark context (any mode).
             restore_ctx = root_session.bookmark._restore_context
             restored_conv_id: str | None = None
+            bookmark_pointer: tuple[str, str] | None = None
+            bookmark_pointer_invalid = False
             if restore_ctx is not None and restore_ctx.active:
-                raw_id = restore_ctx.values.get(stamp_key)
-                restored_conv_id = str(raw_id) if raw_id else None
+                raw_pointer = restore_ctx.values.get(stamp_key)
+                if controller._exchange_recorder is not None:
+                    if raw_pointer is not None:
+                        if (
+                            isinstance(raw_pointer, dict)
+                            and set(raw_pointer) == {"conversation_id", "node_id"}
+                            and isinstance(raw_pointer["conversation_id"], str)
+                            and raw_pointer["conversation_id"]
+                            and isinstance(raw_pointer["node_id"], str)
+                            and raw_pointer["node_id"]
+                        ):
+                            bookmark_pointer = (
+                                raw_pointer["conversation_id"],
+                                raw_pointer["node_id"],
+                            )
+                        else:
+                            bookmark_pointer_invalid = True
+                else:
+                    restored_conv_id = str(raw_pointer) if raw_pointer else None
+
+            if bookmark_pointer_invalid:
+                await notify_error(
+                    "Could not load conversation",
+                    ValueError("Bookmark pointer is invalid."),
+                )
+                await controller.send_history_update()
+                initialized = True
+                await controller.notify_settled(False)
+                return
+
+            if bookmark_pointer is not None:
+                conversation_id, node_id = bookmark_pointer
+                try:
+                    target = await controller._get_record(
+                        controller.partition, conversation_id
+                    )
+                    if not isinstance(target, ConversationRecordV2):
+                        raise ValueError("Bookmark conversation is unavailable.")
+                    if node_id not in target.nodes:
+                        raise ValueError("Bookmark node is unavailable.")
+                except Exception as e:
+                    await notify_error("Could not load conversation", e)
+                    await controller.send_history_update()
+                    initialized = True
+                    await controller.notify_settled(False)
+                    return
+
+                await controller.restore_bookmark_pointer(target, node_id)
+                initialized = True
+                await controller.notify_settled(True)
+                return
 
             if restored_conv_id is not None:
                 try:

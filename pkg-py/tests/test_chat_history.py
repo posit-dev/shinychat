@@ -12,6 +12,11 @@ from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat
 from shinychat._history import ChatHistory, HistoryInputIds
+from shinychat._history_store import (
+    ConversationPartition,
+    InMemoryConversationStore,
+)
+from shinychat._history_types import new_conversation_record_v2
 from shinychat.types import HistoryOptions
 
 # ---------------------------------------------------------------------------
@@ -264,7 +269,40 @@ class _MockBookmark:
     def __init__(self) -> None:
         self.exclude: list[str] = []
         self.store = "disable"
-        self._restore_context = None
+        self._restore_context: Any = None
+        self.bookmark_callbacks: list[Callable[[Any], Any]] = []
+        self.bookmarked_callbacks: list[Callable[[str], Any]] = []
+        self.bookmark_urls: list[str] = []
+        self.bookmark_states: list[dict[str, Any]] = []
+
+    def on_bookmark(self, callback: Callable[[Any], Any]) -> Callable[[], None]:
+        self.bookmark_callbacks.append(callback)
+
+        def cancel() -> None:
+            self.bookmark_callbacks.remove(callback)
+
+        return cancel
+
+    def on_bookmarked(self, callback: Callable[[str], Any]) -> Callable[[], None]:
+        self.bookmarked_callbacks.append(callback)
+
+        def cancel() -> None:
+            self.bookmarked_callbacks.remove(callback)
+
+        return cancel
+
+    async def do_bookmark(self) -> None:
+        state = MagicMock(values={})
+        for callback in self.bookmark_callbacks:
+            result = callback(state)
+            if asyncio.iscoroutine(result):
+                await result
+        self.bookmark_states.append(state.values)
+        url = self.bookmark_urls.pop(0)
+        for callback in list(self.bookmarked_callbacks):
+            result = callback(url)
+            if asyncio.iscoroutine(result):
+                await result
 
 
 class _LiveSession(_MockSession):
@@ -327,6 +365,217 @@ def _completion_actions(session: _LiveSession) -> list[dict[str, Any]]:
         for message in session.messages
         if message["action"]["type"] == "history_transition_complete"
     ]
+
+
+@pytest.mark.anyio
+async def test_v2_server_bookmark_stamps_atomic_history_pointer_only() -> None:
+    session = _LiveSession()
+    session.bookmark.store = "server"
+
+    class CapturedEffect:
+        def __init__(self, _handler: Callable[[], Awaitable[None]]) -> None:
+            pass
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        patch.object(reactive, "effect", capture_effect),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "bookmark_pointer",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=InMemoryConversationStore(),
+                scope="test",
+                restore_mode="none",
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    recorder.record = new_conversation_record_v2(
+        title="pointer",
+        id="c_pointer",
+        client_info={},
+    )
+    state = MagicMock(values={})
+
+    for callback in session.bookmark.bookmark_callbacks:
+        result = callback(state)
+        if asyncio.iscoroutine(result):
+            await result
+
+    assert state.values == {
+        "bookmark_pointer_history_exchange_pointer": {
+            "conversation_id": "c_pointer",
+            "node_id": "n_0000",
+        }
+    }
+
+
+@pytest.mark.anyio
+async def test_v2_stale_server_bookmark_pointer_notifies_and_keeps_draft() -> None:
+    session = _LiveSession()
+    session.bookmark.store = "server"
+    session.bookmark._restore_context = MagicMock(
+        active=True,
+        values={
+            "stale_pointer_history_exchange_pointer": {
+                "conversation_id": "missing",
+                "node_id": "n_missing",
+            }
+        },
+    )
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    class CapturedEffect:
+        def __init__(self, handler: Callable[[], Awaitable[None]]) -> None:
+            handlers[handler.__name__] = handler
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    notification = MagicMock()
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        patch.object(reactive, "effect", capture_effect),
+        patch("shiny.ui.notification_show", notification),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "stale_pointer",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=InMemoryConversationStore(),
+                scope="test",
+                restore_mode="none",
+            ),
+        )
+
+    with (
+        patch("shiny.ui.notification_show", notification),
+        session_context(cast(Any, session)),
+        reactive.isolate(),
+    ):
+        await handlers["_init_history"]()
+
+    controller = chat.history._controller
+    assert controller is not None
+    assert controller._active_id_now() is None
+    assert controller.record is None
+    assert controller._exchange_recorder is not None
+    assert controller._exchange_recorder.record is None
+    assert chat.messages() == ()
+    notification.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_v2_bookmark_settlement_updates_url_and_deletes_replaced_state() -> (
+    None
+):
+    session = _LiveSession()
+    session.bookmark.store = "server"
+    session.bookmark.bookmark_urls = [
+        "?_state_id_=state-first",
+        "?_state_id_=state-second",
+    ]
+
+    class CapturedEffect:
+        def __init__(self, _handler: Callable[[], Awaitable[None]]) -> None:
+            pass
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        patch.object(reactive, "effect", capture_effect),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "bookmark_settlement",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=InMemoryConversationStore(),
+                scope="test",
+                restore_mode="bookmark",
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    controller.partition = ConversationPartition(chat_id="bookmark_settlement", scope="test")
+    record = new_conversation_record_v2(
+        title="pointer",
+        id="c_pointer",
+        client_info={},
+    )
+    recorder.record = record
+    controller._active_id.set(record.id)
+
+    deleted = AsyncMock()
+    with patch.object(history_module, "delete_bookmark_state", deleted):
+        assert controller.on_response_saved is not None
+        await controller.on_response_saved(cast(Any, record))
+        record.open_inputless_exchange()
+        await controller.on_response_saved(cast(Any, record))
+
+    assert record.bookmark_state_id == "state-second"
+    deleted.assert_awaited_once_with("state-first")
+    assert session.bookmark.bookmark_states == [
+        {
+            "bookmark_settlement_history_exchange_pointer": {
+                "conversation_id": "c_pointer",
+                "node_id": "n_0000",
+            }
+        },
+        {
+            "bookmark_settlement_history_exchange_pointer": {
+                "conversation_id": "c_pointer",
+                "node_id": "n_0001",
+            }
+        },
+    ]
+    assert [
+        message["action"]["url"] for message in session.messages
+    ] == ["?_state_id_=state-first", "?_state_id_=state-second"]
 
 
 @pytest.mark.anyio

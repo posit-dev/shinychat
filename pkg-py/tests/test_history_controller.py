@@ -4001,6 +4001,103 @@ async def test_v2_navigation_preflights_selected_path_before_mutation():
     assert record.active_leaf == replacement
 
 
+# --- v2 bookmark pointers ---------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_v2_bookmark_pointer_restores_selected_sibling_and_persists() -> None:
+    controller, chat, adapter, store, original, replacement = (
+        _make_v2_navigation_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    assert record.active_leaf == replacement
+
+    await controller.restore_bookmark_pointer(record, original)
+
+    restored = recorder.record
+    assert restored is not None
+    assert restored is not record
+    assert restored.active_leaf == original
+    assert restored.nodes["exchange-first"].selected_child == original
+    assert adapter.turns == [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+        {"role": "user", "content": "original"},
+    ]
+    assert [
+        message["segments"][0]["content"] for message in chat.restored_messages
+    ] == ["first", "custom prefix", "original", "original reply"]
+    assert store.put_calls[0][1].active_leaf == original
+
+
+@pytest.mark.anyio
+async def test_v2_bookmark_pointer_rejects_stale_node_before_mutation() -> None:
+    controller, chat, adapter, store, _original, _replacement = (
+        _make_v2_navigation_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    before = record.model_dump(mode="json")
+    turns_before = list(adapter.turns)
+
+    with pytest.raises(ValueError, match="Unknown exchange id"):
+        await controller.restore_bookmark_pointer(record, "missing-node")
+
+    assert recorder.record is record
+    assert record.model_dump(mode="json") == before
+    assert adapter.turns == turns_before
+    assert chat.destructive_preflight_calls == 0
+    assert chat.restored_messages == []
+    assert store.put_calls == []
+
+
+@pytest.mark.anyio
+async def test_v2_bookmark_settlement_discards_late_url_and_cleans_replacements() -> (
+    None
+):
+    controller, _chat, _adapter, store, original, replacement = (
+        _make_v2_navigation_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+
+    first_pointer = await recorder.bookmark_pointer(record)
+    assert first_pointer == (record.id, replacement)
+    assert first_pointer is not None
+    current, cleanup = await recorder.settle_bookmark_state_id(
+        first_pointer[0], first_pointer[1], "state-first"
+    )
+    assert current is True
+    assert cleanup is None
+    assert record.bookmark_state_id == "state-first"
+    assert store.put_calls[-1][1].bookmark_state_id == "state-first"
+
+    record.set_active_leaf(original)
+    late_current, late_cleanup = await recorder.settle_bookmark_state_id(
+        first_pointer[0], first_pointer[1], "state-late"
+    )
+    assert late_current is False
+    assert late_cleanup == "state-late"
+    assert record.bookmark_state_id == "state-first"
+
+    replacement_pointer = await recorder.bookmark_pointer(record)
+    assert replacement_pointer == (record.id, original)
+    assert replacement_pointer is not None
+    current, cleanup = await recorder.settle_bookmark_state_id(
+        replacement_pointer[0], replacement_pointer[1], "state-replacement"
+    )
+    assert current is True
+    assert cleanup == "state-first"
+    assert record.bookmark_state_id == "state-replacement"
+
+
 @pytest.mark.anyio
 async def test_v2_resubmit_rewinds_parent_prefix_and_new_input_creates_sibling():
     controller, chat, adapter, store, first, target = _make_v2_resubmit_controller()
@@ -5657,6 +5754,39 @@ async def test_v2_response_settlement_writes_through_recorder_once():
         isinstance(record, ConversationRecordV2)
         for _, record in store.put_calls
     )
+
+
+@pytest.mark.anyio
+async def test_v2_response_persistence_does_not_depend_on_bookmark_settlement() -> (
+    None
+):
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "durable before bookmark")
+    )
+    record = recorder.record
+    assert record is not None
+
+    async def fail_bookmark(_record: ConversationRecord) -> None:
+        raise RuntimeError("bookmark settlement failed")
+
+    controller.on_response_saved = fail_bookmark
+
+    with pytest.raises(RuntimeError, match="bookmark settlement failed"):
+        await controller.on_response()
+
+    persisted = await store.get(part(), record.id)
+    assert isinstance(persisted, ConversationRecordV2)
+    assert persisted.response_count == 1
+    assert persisted.active_leaf is not None
+    active_input = persisted.nodes[persisted.active_leaf].input
+    assert active_input is not None
+    assert active_input.content == "durable before bookmark"
 
 
 @pytest.mark.anyio
