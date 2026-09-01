@@ -1188,9 +1188,9 @@ async def test_v2_switch_uses_restore_transaction_and_controller_active_id():
 
 
 @pytest.mark.anyio
-async def test_v2_switch_rejects_real_chat_input_during_save_and_restore() -> (
-    None
-):
+async def test_v2_switch_rejects_real_chat_input_during_save_and_restore(
+    request: pytest.FixtureRequest,
+) -> None:
     class BlockingStore(InMemoryConversationStore):
         def __init__(self) -> None:
             super().__init__()
@@ -1214,24 +1214,18 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore() -> (
     recorder = controller._exchange_recorder
     assert recorder is not None
 
-    # Other test modules can leave errored mock-session effects pending in
-    # Shiny's process-global scheduler. Drain them before creating this test's
-    # effects so every raw-input flush below observes only this chat.
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        for _ in range(500):
-            try:
-                await reactive.flush()
-            except Exception:
-                continue
-            break
-        else:
-            raise AssertionError("Could not drain pre-existing reactive effects")
-
     session = _RealChatSession()
     session.input["history_switch_input_user_input"] = reactive.Value()
     with session_context(cast(Any, session)):
         chat = Chat("history_switch_input", history=False)
+    switch: asyncio.Task[None] | None = None
+
+    def cleanup_chat() -> None:
+        if switch is not None and not switch.done():
+            switch.cancel()
+        chat.destroy()
+
+    request.addfinalizer(cleanup_chat)
     controller.chat = chat  # type: ignore[assignment]
     recorder_inputs: list[str] = []
     original_accepted_input = recorder.accepted_input
@@ -1395,11 +1389,12 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore() -> (
         latest_input = chat.user_input()
         assert latest_input is not None
         assert latest_input.text == "accepted after switch"
-    chat.destroy()
 
 
 @pytest.mark.anyio
-async def test_cancelled_v2_switch_releases_real_chat_input_admission() -> None:
+async def test_cancelled_v2_switch_releases_real_chat_input_admission(
+    request: pytest.FixtureRequest,
+) -> None:
     class BlockingStore(InMemoryConversationStore):
         def __init__(self) -> None:
             super().__init__()
@@ -1422,6 +1417,14 @@ async def test_cancelled_v2_switch_releases_real_chat_input_admission() -> None:
     session = _RealChatSession()
     with session_context(cast(Any, session)):
         chat = Chat("history_switch_cancel_input", history=False)
+    switch: asyncio.Task[None] | None = None
+
+    def cleanup_chat() -> None:
+        if switch is not None and not switch.done():
+            switch.cancel()
+        chat.destroy()
+
+    request.addfinalizer(cleanup_chat)
     controller.chat = chat  # type: ignore[assignment]
     chat._transcript.set_capture_callbacks(
         on_accepted_input=recorder.accepted_input,
@@ -1463,15 +1466,17 @@ async def test_cancelled_v2_switch_releases_real_chat_input_admission() -> None:
 
 
 @pytest.mark.anyio
-async def test_generic_destructive_admission_does_not_block_real_chat_input() -> (
-    None
-):
+async def test_generic_destructive_admission_does_not_block_real_chat_input(
+    request: pytest.FixtureRequest,
+) -> None:
     controller, _ = _make_controller(use_exchange_tree=True)
     recorder = controller._exchange_recorder
     assert recorder is not None
     session = _RealChatSession()
     with session_context(cast(Any, session)):
         chat = Chat("history_generic_input", history=False)
+
+    request.addfinalizer(chat.destroy)
     controller.chat = chat  # type: ignore[assignment]
     chat._transcript.set_capture_callbacks(
         on_accepted_input=recorder.accepted_input,

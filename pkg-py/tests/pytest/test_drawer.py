@@ -33,6 +33,9 @@ class _ArtifactSession:
     def _increment_busy_count(self) -> None:
         pass
 
+    def _decrement_busy_count(self) -> None:
+        pass
+
     def _process_ui(self, ui: object) -> dict[str, object]:
         rendered = TagList(cast(Any, ui)).render()
         return {
@@ -49,10 +52,11 @@ class _ArtifactSession:
         self.messages.append((type, message))
 
 
-def _make_chat() -> tuple[Chat, _ArtifactSession]:
+def _make_chat(request: pytest.FixtureRequest) -> tuple[Chat, _ArtifactSession]:
     session = _ArtifactSession()
     with session_context(cast(Session, session)):
         chat = Chat("chat")
+    request.addfinalizer(chat.destroy)
     return chat, session
 
 
@@ -72,8 +76,10 @@ def _run_async(coro: Any) -> None:
         raise errors[0]
 
 
-def test_drawer_controller_is_stable_and_public() -> None:
-    chat, _ = _make_chat()
+def test_drawer_controller_is_stable_and_public(
+    request: pytest.FixtureRequest,
+) -> None:
+    chat, _ = _make_chat(request)
 
     assert isinstance(chat.drawer, ChatDrawerController)
     assert chat.drawer is chat.drawer
@@ -104,10 +110,10 @@ def test_drawer_controller_methods_are_async_with_expected_signatures() -> None:
         assert tuple(inspect.signature(method).parameters) == ("self",)
 
 
-def test_artifact_actions_omit_unsupplied_fields_and_preserve_visibility() -> (
-    None
-):
-    chat, session = _make_chat()
+def test_artifact_actions_omit_unsupplied_fields_and_preserve_visibility(
+    request: pytest.FixtureRequest,
+) -> None:
+    chat, session = _make_chat(request)
 
     _run_async(chat.drawer.show())
     _run_async(chat.drawer.update(title="Preview"))
@@ -138,8 +144,10 @@ def test_artifact_actions_omit_unsupplied_fields_and_preserve_visibility() -> (
 
 
 @pytest.mark.parametrize("content", ["", TagList()])
-def test_artifact_empty_content_clears_dependencies(content: object) -> None:
-    chat, session = _make_chat()
+def test_artifact_empty_content_clears_dependencies(
+    content: object, request: pytest.FixtureRequest
+) -> None:
+    chat, session = _make_chat(request)
 
     _run_async(chat.drawer.update(cast(Any, content), title=""))
 
@@ -159,8 +167,10 @@ def test_artifact_empty_content_clears_dependencies(content: object) -> None:
     ]
 
 
-def test_artifact_content_uses_chat_session_dependency_serialization() -> None:
-    chat, session = _make_chat()
+def test_artifact_content_uses_chat_session_dependency_serialization(
+    request: pytest.FixtureRequest,
+) -> None:
+    chat, session = _make_chat(request)
     dependency = HTMLDependency(
         "artifact-widget",
         "1.0.0",
@@ -195,7 +205,9 @@ def test_artifact_content_uses_chat_session_dependency_serialization() -> None:
     ]
 
 
-def test_artifact_tagifiable_content_includes_tagified_dependencies() -> None:
+def test_artifact_tagifiable_content_includes_tagified_dependencies(
+    request: pytest.FixtureRequest,
+) -> None:
     class ArtifactContent:
         def tagify(self):
             dependency = HTMLDependency(
@@ -208,7 +220,7 @@ def test_artifact_tagifiable_content_includes_tagified_dependencies() -> None:
                 tags.div("Tagified artifact content"),
             ).tagify()
 
-    chat, session = _make_chat()
+    chat, session = _make_chat(request)
 
     _run_async(chat.drawer.show(cast(Any, ArtifactContent())))
 
@@ -232,11 +244,14 @@ def test_artifact_tagifiable_content_includes_tagified_dependencies() -> None:
     ]
 
 
-def test_artifact_uses_resolved_chat_id_and_envelope() -> None:
+def test_artifact_uses_resolved_chat_id_and_envelope(
+    request: pytest.FixtureRequest,
+) -> None:
     session = _ArtifactSession()
     session.ns = ResolvedId("module")
     with session_context(cast(Session, session)):
         chat = Chat("chat")
+    request.addfinalizer(chat.destroy)
 
     _run_async(chat.drawer.show(tags.span("Artifact")))
 
@@ -255,8 +270,10 @@ def test_artifact_uses_resolved_chat_id_and_envelope() -> None:
     ]
 
 
-def test_artifact_validates_title_and_content() -> None:
-    chat, _ = _make_chat()
+def test_artifact_validates_title_and_content(
+    request: pytest.FixtureRequest,
+) -> None:
+    chat, _ = _make_chat(request)
 
     with pytest.raises(TypeError, match="`title` must be a string or None"):
         _run_async(chat.drawer.show(title=cast(Any, 1)))
