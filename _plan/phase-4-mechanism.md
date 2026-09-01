@@ -1,20 +1,17 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
-**Status (current and authoritative):** P4.0 complete; P4.1 implementation and
-evidence are complete through the Roborev 1159 dispositions. Roborev 1146,
-1152, and 1159 are closed after their dispositions and fixes, as required by
-process; no fresh Roborev review is requested. The bookmark-pointer
-disposition remains out of scope in `shinychat#g6tt`. `shinychat#5r50` remains
-open with `needs-review`, `work.attention="ok"`, and
-`work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains open,
-blocked, and unstarted; and `shinychat#azvt` remains open with
-`work.attention="ok"` (2026-09-01).
+**Status (current and authoritative):** P4.0 and P4.1 are complete. P4.1
+implementation, evidence, and the required batched review are complete;
+Roborev 1146, 1152, 1158, 1159, and 1161 are closed or resolved as required
+by process. The bookmark-pointer disposition remains out of scope in
+`shinychat#g6tt`. `shinychat#5r50` is closed; successor
+`shinychat#6drf` is unblocked, ready, and unclaimed; and
+`shinychat#azvt` remains open with `work.attention="ok"` (2026-09-01).
 **Phase:** plan.md §4, Phase 4
-**Kata (current):** child `shinychat#5r50` is open with
-`needs-review`, `work.attention="ok"`, and
-`work.branch="feat/history-exchange-tree"`; successor `shinychat#6drf` is
-open, blocked, and unstarted; parent `shinychat#azvt` is open with
-`work.attention="ok"` under epic `shinychat#6d0d`
+**Kata (current):** child `shinychat#5r50` is closed after verified review
+evidence; successor `shinychat#6drf` is unblocked, ready, and unclaimed; parent
+`shinychat#azvt` is open with `work.attention="ok"` under epic
+`shinychat#6d0d`
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
 the Phase 4 gate and the only phase-local mechanism reference for new work.
 
@@ -2402,3 +2399,22 @@ open with `needs-review`, `work.attention="ok"`, and
 `work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains open,
 blocked, and unstarted. History is preserved. No JavaScript, R, packaged
 asset, bookmark, Phase 5, sibling, or task-closure work is included.
+
+### P4.1 closure (2026-09-01)
+
+Roborev 1161 passed with no findings for
+`04825f1f3da2286008a6e1c8e7a475b33be2426f^..8067459f8af44f62f34a1abf09400e7e5b1d9d3f`;
+the canonical range is
+`39a61813f51ff1d99bcd6182aa7b61c968af773d..8067459f8af44f62f34a1abf09400e7e5b1d9d3f`.
+The full gates were green: 200 Playwright tests, 832 non-browser tests, 1
+skipped test, and 20 established warnings; format, types, and `history_edit`
+also passed.
+
+P4.1 acceptance is complete: the v2 active path restores display and
+recorded/live turn state, continues through a real provider path, preserves
+failed restore recovery and input-dispatch ordering, reloads switch targets
+under recorder authority, and publishes initial programmatic metadata without
+chunk/finish noise. Review findings were resolved within scope, with no
+production or test work outside the accepted slice and no provisional
+decision remaining. `shinychat#5r50` is closed. `shinychat#6drf` is the next
+ready, unclaimed task; `shinychat#azvt` remains open with attention `ok`.
