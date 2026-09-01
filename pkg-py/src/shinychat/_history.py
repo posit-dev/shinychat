@@ -87,6 +87,7 @@ class StatePathContext:
 
 
 RestoreHook = Callable[[StatePathContext], Awaitable[None] | None]
+RestorePlan = tuple[tuple[str, RestoreHook, StatePathContext], ...]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -436,7 +437,7 @@ class _ExchangeRecorder:
         record: ConversationRecordV2,
         node_ids: tuple[str, ...],
         bootstrap: Literal["recorded", "live"],
-    ) -> tuple[tuple[RestoreHook, StatePathContext], ...]:
+    ) -> RestorePlan:
         if record.active_leaf is None:
             raise ValueError("Exchange-tree record has no active leaf.")
         for node_id in node_ids:
@@ -447,7 +448,7 @@ class _ExchangeRecorder:
                     )
                 self._validate_restore_state_entry(name, entry)
 
-        planned: list[tuple[RestoreHook, StatePathContext]] = []
+        planned: list[tuple[str, RestoreHook, StatePathContext]] = []
         for name, hook in self._restore_hooks.items():
             entries = tuple(
                 (node_id, record.nodes[node_id].state[name])
@@ -461,18 +462,30 @@ class _ExchangeRecorder:
                 entries=entries,
                 bootstrap=bootstrap,
             )
-            if name == "shinychat:turns":
+            if name == "shinychat:turns" and bootstrap == "recorded":
                 context = dataclasses.replace(
                     context,
                     prepared_turns=self._materialize_restore_turns(context),
                 )
-            planned.append((hook, context))
+            planned.append((name, hook, context))
         return tuple(planned)
 
+    def _materialize_live_restore_turns(self, planned: RestorePlan) -> RestorePlan:
+        materialized: list[tuple[str, RestoreHook, StatePathContext]] = []
+        for name, hook, context in planned:
+            prepared_context = context
+            if name == "shinychat:turns":
+                prepared_context = dataclasses.replace(
+                    context,
+                    prepared_turns=self._materialize_restore_turns(context),
+                )
+            materialized.append((name, hook, prepared_context))
+        return tuple(materialized)
+
     async def _restore_state(
-        self, planned: tuple[tuple[RestoreHook, StatePathContext], ...]
+        self, planned: RestorePlan
     ) -> None:
-        for hook, context in planned:
+        for _, hook, context in planned:
             result = hook(context)
             if inspect.isawaitable(result):
                 await result
@@ -1017,13 +1030,19 @@ class HistoryController:
         for cb in self._restore_callbacks:
             cb(values)
 
-    async def _notify_restore_failure(self) -> None:
+    async def _notify_restore_failure(self, *, recovery_incomplete: bool) -> None:
         from shiny import ui as shiny_ui
         from shiny.session import session_context
 
+        message = (
+            "Could not restore conversation. Recovery was incomplete; reload "
+            "before starting a new chat."
+            if recovery_incomplete
+            else "Could not restore conversation. A fresh chat is ready."
+        )
         with session_context(self.chat._session):
             shiny_ui.notification_show(
-                "Could not restore conversation. A fresh chat is ready.",
+                message,
                 type="error",
             )
 
@@ -1037,13 +1056,15 @@ class HistoryController:
         self.record = None
         self._active_id.set(None)
 
+        cleanup_failures: list[BaseException] = []
+
         async def best_effort(operation: Callable[[], Any]) -> None:
             try:
                 result = operation()
                 if inspect.isawaitable(result):
                     await result
-            except BaseException:
-                pass
+            except BaseException as error:
+                cleanup_failures.append(error)
 
         await best_effort(self.chat.clear_messages)
         await best_effort(lambda: self.adapter.set_turns_json([]))
@@ -1052,7 +1073,13 @@ class HistoryController:
         if active_id_callback is not None:
             await best_effort(lambda: active_id_callback(None))
         await best_effort(self.send_history_update)
-        await best_effort(self._notify_restore_failure)
+        try:
+            await self._notify_restore_failure(
+                recovery_incomplete=bool(cleanup_failures)
+            )
+        except BaseException:
+            # The original restore error or cancellation remains the outcome.
+            pass
 
     async def replay_exchange_record(
         self, record: ConversationRecordV2 | None = None
@@ -1087,6 +1114,12 @@ class HistoryController:
 
         async with self._destructive_mutation():
             async with self._exchange_mutation():
+                # Live bootstrap is intentionally captured only after admission
+                # and recorder serialization, but before destructive effects.
+                if selected_bootstrap == "live":
+                    planned_state = recorder._materialize_live_restore_turns(
+                        planned_state
+                    )
                 try:
                     await self.chat.clear_messages()
                     await self.chat.set_greeting(None)

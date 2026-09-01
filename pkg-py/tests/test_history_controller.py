@@ -736,6 +736,63 @@ async def test_v2_restore_live_bootstrap_skips_only_root_snapshot():
 
 
 @pytest.mark.anyio
+async def test_v2_restore_live_bootstrap_waits_for_admission_and_recorder_lock():
+    adapter = _TrackingFakeAdapter()
+    adapter.turns = [{"role": "system", "content": "before admission"}]
+    controller, _ = _make_controller(
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    controller.restore_bootstrap = "live"
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = new_conversation_record_v2(
+        title="restore",
+        id="c_live",
+        client_info={},
+    )
+    record.nodes["n_0000"].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[{"role": "system", "content": "recorded root"}],
+    )
+    entered_admission = asyncio.Event()
+    release_admission = asyncio.Event()
+    fake_chat = cast(_FakeChat, controller.chat)
+
+    @asynccontextmanager
+    async def blocked_admission():
+        entered_admission.set()
+        await release_admission.wait()
+        yield
+
+    fake_chat._destructive_history_mutation = blocked_admission  # type: ignore[method-assign]
+    await recorder._lock.acquire()
+    try:
+        restore_task = asyncio.create_task(
+            controller.replay_exchange_record(record)
+        )
+        await entered_admission.wait()
+        assert adapter.set_calls == []
+
+        adapter.turns = [{"role": "system", "content": "after admission"}]
+        release_admission.set()
+        await asyncio.sleep(0)
+        assert adapter.set_calls == []
+
+        recorder._lock.release()
+        await restore_task
+    finally:
+        if recorder._lock.locked():
+            recorder._lock.release()
+
+    assert adapter.set_calls == [
+        [{"role": "system", "content": "after admission"}]
+    ]
+
+
+@pytest.mark.anyio
 async def test_v2_switch_uses_restore_transaction_and_controller_active_id():
     adapter = _TrackingFakeAdapter()
     store = InMemoryConversationStore()
@@ -1073,7 +1130,7 @@ async def test_v2_restore_cancellation_preserves_outcome_after_cleanup_failure()
     assert recorder is not None
     assert recorder.record is None
     assert controller._active_id_now() is None
-    notifier.assert_awaited_once()
+    notifier.assert_awaited_once_with(recovery_incomplete=True)
 
 
 @pytest.mark.anyio
@@ -1091,7 +1148,78 @@ async def test_v2_restore_repeated_cancellation_can_skip_visible_notification():
     with pytest.raises(asyncio.CancelledError):
         await controller.replay_exchange_record(target)
 
-    notifier.assert_awaited_once()
+    notifier.assert_awaited_once_with(recovery_incomplete=False)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "cleanup",
+    ["messages", "turns", "greeting", "active-id", "metadata"],
+)
+async def test_v2_restore_cleanup_failures_are_secondary_and_reported(
+    cleanup: str,
+) -> None:
+    adapter = _TrackingFakeAdapter()
+    controller, _ = _make_controller(
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    _install_live_v2_record(controller)
+    target = _restore_target()
+    fake_chat = cast(_FakeChat, controller.chat)
+    original = RuntimeError("original restore failure")
+    cleanup_error = RuntimeError(f"{cleanup} cleanup failure")
+    fake_chat._restore_bookmark_message = AsyncMock(  # type: ignore[method-assign]
+        side_effect=original
+    )
+
+    if cleanup == "messages":
+        original_clear = fake_chat.clear_messages
+        clear_calls = 0
+
+        async def fail_cleanup_clear() -> None:
+            nonlocal clear_calls
+            clear_calls += 1
+            if clear_calls == 1:
+                await original_clear()
+                return
+            raise cleanup_error
+
+        fake_chat.clear_messages = fail_cleanup_clear  # type: ignore[method-assign]
+    elif cleanup == "turns":
+        def fail_cleanup_turns(_turns: list[Any]) -> None:
+            raise cleanup_error
+
+        adapter.set_turns_json = fail_cleanup_turns  # type: ignore[method-assign]
+    elif cleanup == "greeting":
+        original_greeting = fake_chat.set_greeting
+        greeting_calls = 0
+
+        async def fail_cleanup_greeting(value: Any) -> None:
+            nonlocal greeting_calls
+            greeting_calls += 1
+            if greeting_calls == 1:
+                await original_greeting(value)
+                return
+            raise cleanup_error
+
+        fake_chat.set_greeting = fail_cleanup_greeting  # type: ignore[method-assign]
+    elif cleanup == "active-id":
+        controller.on_active_id_change = AsyncMock(side_effect=cleanup_error)
+    else:
+        controller.send_history_update = AsyncMock(side_effect=cleanup_error)  # type: ignore[method-assign]
+
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="original restore failure"):
+        await controller.replay_exchange_record(target)
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    assert recorder.record is None
+    assert controller._active_id_now() is None
+    notifier.assert_awaited_once_with(recovery_incomplete=True)
 
 
 @pytest.mark.anyio
