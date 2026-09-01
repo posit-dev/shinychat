@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Literal
 from unittest.mock import MagicMock
 
 import chatlas
@@ -46,7 +46,7 @@ class EchoChatClient(chatlas.Chat):
 
 
 _store_dirs: dict[int, str] = {}
-_restore_mode = "browser"
+_restore_mode: Literal["browser", "url", "none", "bookmark"] = "browser"
 
 
 def _store_dir() -> str:
