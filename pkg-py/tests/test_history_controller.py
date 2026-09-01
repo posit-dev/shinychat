@@ -23,6 +23,7 @@ from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
 from shinychat._chat_types import StoredMessage, StoredSegment
 from shinychat._history import (
     HistoryController,
+    StatePathContext,
     do_bookmark_with_cleanup,
     extend_record_linear,
 )
@@ -39,6 +40,7 @@ from shinychat._history_types import (
     StateEntry,
     UnsupportedSchemaVersionError,
     new_conversation_record,
+    new_conversation_record_v2,
 )
 
 
@@ -308,6 +310,16 @@ class _FakeAdapter:
 
     def client_info(self) -> dict[str, Any]:
         return {}
+
+
+class _TrackingFakeAdapter(_FakeAdapter):
+    def __init__(self, *, chatlas: bool = False) -> None:
+        super().__init__(chatlas=chatlas)
+        self.set_calls: list[list[dict[str, Any]]] = []
+
+    def set_turns_json(self, turns: list[Any]) -> None:
+        self.set_calls.append(list(turns))
+        super().set_turns_json(turns)
 
 
 class _RecordingStore(ConversationStore):
@@ -614,6 +626,239 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
         for message in fake_chat.restored_messages
     ] == ["hello", "hi"]
     assert fake_chat.restored_icons == [None, "<i>bot</i>"]
+
+
+@pytest.mark.anyio
+async def test_v2_restore_materializes_turn_path_once_and_resets_baseline():
+    adapter = _TrackingFakeAdapter()
+    controller, _ = _make_controller(
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = new_conversation_record_v2(
+        title="restore",
+        id="c_restore",
+        client_info={},
+    )
+    root = record.nodes["n_0000"]
+    root.state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[{"role": "system", "content": "root"}],
+    )
+    record.open_exchange("n_0001", _stored_message("user", "first"))
+    record.nodes["n_0001"].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="delta",
+        data=[{"role": "user", "content": "first"}],
+    )
+    snapshot_node = record.open_inputless_exchange()
+    record.nodes[snapshot_node].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[{"role": "assistant", "content": "replacement"}],
+    )
+    leaf = record.open_inputless_exchange()
+    record.nodes[leaf].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="delta",
+        data=[{"role": "user", "content": "after snapshot"}],
+    )
+
+    await controller.replay_exchange_record(record)
+
+    expected = [
+        {"role": "assistant", "content": "replacement"},
+        {"role": "user", "content": "after snapshot"},
+    ]
+    assert adapter.set_calls == [expected]
+    assert adapter.turns == expected
+    assert recorder.record is record
+    assert controller.record is None
+
+    adapter.turns.append({"role": "assistant", "content": "next delta"})
+    await recorder.accepted_input("n_0004", _stored_message("user", "next"))
+    captured = record.nodes[leaf].state["shinychat:turns"]
+    assert captured.mode == "delta"
+    assert captured.data == [
+        {"role": "user", "content": "after snapshot"},
+        {"role": "assistant", "content": "next delta"},
+    ]
+
+
+@pytest.mark.anyio
+async def test_v2_restore_live_bootstrap_skips_only_root_snapshot():
+    adapter = _TrackingFakeAdapter()
+    adapter.turns = [{"role": "system", "content": "live"}]
+    controller, _ = _make_controller(
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    controller.restore_bootstrap = "live"
+    record = new_conversation_record_v2(
+        title="restore",
+        id="c_live",
+        client_info={},
+    )
+    record.nodes["n_0000"].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[{"role": "system", "content": "recorded root"}],
+    )
+    record.open_exchange("n_0001", _stored_message("user", "first"))
+    record.nodes["n_0001"].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="delta",
+        data=[{"role": "user", "content": "first"}],
+    )
+    snapshot_node = record.open_inputless_exchange()
+    record.nodes[snapshot_node].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[{"role": "assistant", "content": "later snapshot"}],
+    )
+
+    await controller.replay_exchange_record(record)
+
+    assert adapter.set_calls == [
+        [{"role": "assistant", "content": "later snapshot"}]
+    ]
+
+
+@pytest.mark.anyio
+async def test_v2_switch_uses_restore_transaction_and_controller_active_id():
+    adapter = _TrackingFakeAdapter()
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    existing = new_conversation_record_v2(
+        title="existing",
+        id="c_existing",
+        client_info={},
+    )
+    target = new_conversation_record_v2(
+        title="target",
+        id="c_target",
+        client_info={},
+    )
+    target.nodes["n_0000"].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[{"role": "system", "content": "restored"}],
+    )
+    target.open_exchange("n_0001", _stored_message("user", "restore me"))
+    await store.put(part(), target)
+    recorder.record = existing
+    controller._active_id.set(existing.id)
+
+    await controller.switch_to(target.id)
+
+    fake_chat = cast(_FakeChat, controller.chat)
+    assert recorder.record is target
+    assert [
+        message["segments"][0]["content"]
+        for message in fake_chat.restored_messages
+    ] == ["restore me"]
+    assert adapter.set_calls == [[{"role": "system", "content": "restored"}]]
+    assert fake_chat.actions[-1]["active_id"] == "c_target"
+
+
+@pytest.mark.anyio
+async def test_v2_restore_hooks_are_ordered_and_receive_keyed_path_context():
+    controller, _ = _make_controller(use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = new_conversation_record_v2(
+        title="restore",
+        id="c_hooks",
+        client_info={},
+    )
+    record.nodes["n_0000"].state["first"] = StateEntry(
+        kind="test",
+        version=1,
+        mode="snapshot",
+        data={"root": True},
+    )
+    record.open_exchange("n_0001", _stored_message("user", "first"))
+    record.nodes["n_0001"].state["second"] = StateEntry(
+        kind="test",
+        version=1,
+        mode="delta",
+        data={"child": True},
+    )
+    observed: list[tuple[str, StatePathContext]] = []
+
+    def first(context: StatePathContext) -> None:
+        observed.append(("first", context))
+
+    async def second(context: StatePathContext) -> None:
+        observed.append(("second", context))
+
+    recorder._register_restore_hook("first", first)
+    recorder._register_restore_hook("second", second)
+
+    await controller.replay_exchange_record(record)
+
+    assert [name for name, _ in observed] == ["first", "second"]
+    first_context = observed[0][1]
+    second_context = observed[1][1]
+    assert first_context.conversation_id == "c_hooks"
+    assert first_context.active_leaf == "n_0001"
+    assert first_context.node_ids == ("n_0000", "n_0001")
+    assert first_context.bootstrap == "recorded"
+    assert first_context.entries == (
+        ("n_0000", record.nodes["n_0000"].state["first"]),
+    )
+    assert second_context.entries == (
+        ("n_0001", record.nodes["n_0001"].state["second"]),
+    )
+
+
+@pytest.mark.anyio
+async def test_v2_restore_invalid_path_leaves_live_chat_unchanged():
+    adapter = _TrackingFakeAdapter()
+    controller, _ = _make_controller(
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    existing = new_conversation_record_v2(
+        title="existing",
+        id="c_existing",
+        client_info={},
+    )
+    recorder.record = existing
+    invalid = new_conversation_record_v2(
+        title="invalid",
+        id="c_invalid",
+        client_info={},
+    )
+    invalid.active_leaf = "missing"
+    fake_chat = cast(_FakeChat, controller.chat)
+
+    with pytest.raises(ValueError, match="Dangling parent reference"):
+        await controller.replay_exchange_record(invalid)
+
+    assert recorder.record is existing
+    assert fake_chat.clear_messages_calls == 0
+    assert fake_chat.set_greeting_calls == []
+    assert adapter.set_calls == []
 
 
 @pytest.mark.anyio

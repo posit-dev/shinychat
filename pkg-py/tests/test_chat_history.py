@@ -82,6 +82,14 @@ def test_history_config_defaults_preserved():
     chat = _make_chat(history=HistoryOptions(store="memory"))
     assert chat.history._store == "memory"
     assert chat.history._restore_mode == "browser"  # default preserved
+    assert chat.history._restore_bootstrap == "recorded"
+
+
+def test_history_config_accepts_live_restore_bootstrap():
+    chat = _make_chat(
+        history=HistoryOptions(store="memory", restore_bootstrap="live")
+    )
+    assert chat.history._restore_bootstrap == "live"
 
 
 def test_on_save_registers_callback():
