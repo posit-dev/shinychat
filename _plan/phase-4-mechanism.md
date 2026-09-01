@@ -1,9 +1,14 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
-**Status:** P4.0 complete; P4.1 implementation and evidence are parked and
-blocked after mandatory Roborev 1135 `FAIL`, pending note review (2026-08-31)
+**Status (current and authoritative):** P4.0 complete; P4.1 implementation
+and evidence are stopped and blocked after mandatory Roborev 1135 `FAIL`,
+pending this corrective note review (2026-08-31)
 **Phase:** plan.md §4, Phase 4
-**Kata:** parent `shinychat#azvt` under epic `shinychat#6d0d`
+**Kata (current):** child `shinychat#5r50` is open with
+`needs-review`, `work.attention="blocked"`, and
+`work.branch="feat/history-exchange-tree"`; successor `shinychat#6drf` is
+open, blocked, and unstarted; parent `shinychat#azvt` is open with
+`work.attention="ok"` under epic `shinychat#6d0d`
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
 the Phase 4 gate and the only phase-local mechanism reference for new work.
 
@@ -1613,3 +1618,51 @@ with `needs-review`, `work.attention="blocked"`, and
 blocked, and unstarted. `shinychat#azvt` remains open with
 `work.attention="ok"`. No implementation tests are authorized by this
 handoff.
+
+### P4.1 Roborev 1135 corrective current-state record (2026-08-31)
+
+This append-only correction supersedes every earlier implementation-complete
+or `work.attention="ok"` snapshot in this note and in the
+`shinychat#5r50` history. Those entries remain historical records; they do
+not authorize implementation, change the valve decision, or describe the
+current task state. The current and authoritative state is the blocked
+decision below.
+
+Roborev 1135 has four findings against the same mixed v2
+persistence/projection layer, so the three-findings escalation valve fired.
+All four findings are valid and in scope. The decision remains
+**DELETE/REPLACE the mixed layer**, retaining `_ExchangeRecorder`, restore,
+and the stable ID.
+
+Ownership is exact: `_ExchangeRecorder` is the sole active v2 owner of
+content/state mutation and `store.put` under its existing lock, including
+active rename and `on_save` capture. `HistoryController` owns lifecycle
+orchestration, display/state projection, deletion, and active-ID plus
+metadata publication; it never separately writes active v2 records.
+Inactive rename may load.
+
+`ConversationRecordV2.values` has these exact capture points:
+
+- terminal response captures values;
+- explicit save captures current values;
+- switch/new saves the departing record before restore/reset; and
+- application restore callbacks run only after target installation.
+
+The discriminating tests must prove that streamed chunks are eagerly durable
+with zero `history_update` metadata, terminal response emits exactly one
+metadata update, restore marks only the exact record ID-published and only
+after active-ID callback success, and the next capture does not repeat that
+callback. Retain active rename/title, `on_save` round-trip, and
+ownership/serialization regressions.
+
+Preserve these exclusions: no second active writer/projection owner, new
+lock, queue, timer, CAS, second owner, Phase 5 guard/degradation, Q3,
+bookmark, or R work.
+
+Implementation is stopped pending note review. Roborev 1135 remains open with
+`FAIL`/`closed=false`. `shinychat#5r50` is open with `needs-review`,
+`work.attention="blocked"`, and
+`work.branch="feat/history-exchange-tree"`. `shinychat#6drf` is open,
+blocked, and unstarted. `shinychat#azvt` is open with
+`work.attention="ok"`. No implementation tests are authorized by this
+correction.
