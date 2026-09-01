@@ -339,7 +339,7 @@ def test_page_chat_signature_makes_icon_keyword_only() -> None:
     assert parameters["toolbar"].default is None
     assert parameters["toolbar_global"].default is MISSING
     assert parameters["placeholder"].default == "Enter a message..."
-    assert parameters["width"].default == "min(680px, 100%)"
+    assert parameters["width"].default == "min(clamp(680px, 50vw, 760px), 100%)"
 
 
 def test_page_chat_builds_default_fillable_page_markup() -> None:

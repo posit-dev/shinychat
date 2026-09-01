@@ -12,25 +12,32 @@ mock_provider <- function() {
 
 mock_chat_client <- function(turns = list()) {
   stored_turns <- turns
-  obj <- list(
-    get_turns = function() stored_turns,
-    set_turns = function(value) {
-      stored_turns <<- value
-      invisible(obj)
-    },
-    get_tools = function() list(),
-    get_provider = function() mock_provider(),
-    get_model = function() "mock-model",
-    clone = function() mock_chat_client(stored_turns),
-    set_system_prompt = function(prompt) invisible(NULL),
-    set_tools = function(tools) invisible(NULL),
-    last_turn = function() {
-      if (length(stored_turns) > 0) {
-        stored_turns[[length(stored_turns)]]
-      } else {
-        NULL
+  # An environment, like real R6 clients, so in-place assignments such as
+  # `client$conversation_id <- id` are visible to the caller (a list would be
+  # copy-on-modify and silently drop them).
+  obj <- list2env(
+    list(
+      conversation_id = NULL,
+      get_turns = function() stored_turns,
+      set_turns = function(value) {
+        stored_turns <<- value
+        invisible(obj)
+      },
+      get_tools = function() list(),
+      get_provider = function() mock_provider(),
+      get_model = function() "mock-model",
+      clone = function() mock_chat_client(stored_turns),
+      set_system_prompt = function(prompt) invisible(NULL),
+      set_tools = function(tools) invisible(NULL),
+      last_turn = function() {
+        if (length(stored_turns) > 0) {
+          stored_turns[[length(stored_turns)]]
+        } else {
+          NULL
+        }
       }
-    }
+    ),
+    parent = emptyenv()
   )
   class(obj) <- c("Chat", "R6")
   obj

@@ -17,3 +17,6 @@ shiny_bookmarks
 docs/plans
 js/coverage/
 pkg-r/coverage-report.html
+
+# Local scratch files
+sandbox/

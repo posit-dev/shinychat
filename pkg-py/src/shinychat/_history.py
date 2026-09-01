@@ -29,15 +29,21 @@ from ._history_title import (
     fallback_title,
     generate_title,
 )
+
+# NB: shiny is imported lazily inside methods throughout this module; a
+# top-level import would be circular (shiny.ui._chat imports shinychat).
 from ._history_types import (
     ConversationRecord,
     check_schema_version,
+    new_conversation_id,
     new_conversation_record,
 )
 
 if TYPE_CHECKING:
     from htmltools import HTML, Tag, TagList
+    from shiny import reactive
     from shiny.module import ResolvedId
+    from shiny.reactive._reactives import Effect_
 
     from ._chat import Chat
     from ._chat_types import ChatGreeting
@@ -228,6 +234,14 @@ class HistoryController:
 
         self.partition: ConversationPartition | None = None
         self.record: ConversationRecord | None = None  # None => unsaved draft
+        # Active conversation identity, separate from `record`: an
+        # identified draft (submitted but not yet saved) has an ID and no
+        # record. All record/identity mutations go through
+        # activate_record()/clear_active() so that when a record exists, its
+        # `id` equals the active ID.
+        from shiny import reactive
+
+        self._active_id: "reactive.Value[str | None]" = reactive.Value(None)
         self.ui_offset = 0  # messages already attached to nodes
         # Set by enable() when restore_mode="url"; called with the new
         # conversation id (or None) after any switch that changes the active
@@ -255,6 +269,65 @@ class HistoryController:
         self.max_store_bytes: int | None = max_store_bytes
         self._title_task: asyncio.Task[None] | None = None
         self._over_budget_warned: bool = False
+
+    # -- active conversation identity --------------------------------------
+
+    def conversation_id(self) -> str | None:
+        """
+        Reactive read of the active conversation ID: ``None`` for an empty
+        draft, otherwise the ID the eventual ``ConversationRecord`` will (or
+        already does) carry. Allocated at first user submission for
+        ``chat_app()`` apps, or at first save for standalone history use.
+
+        Like any reactive read, this requires a reactive context;
+        non-reactive callers must wrap it in ``shiny.reactive.isolate()``.
+        """
+        return self._active_id()
+
+    def _active_id_now(self) -> str | None:
+        # Non-reactive read: controller methods run both inside and outside
+        # reactive contexts.
+        from shiny import reactive
+
+        with reactive.isolate():
+            return self._active_id()
+
+    async def ensure_conversation_id(self) -> str:
+        """
+        Return the active conversation ID, allocating one when the active
+        conversation is an empty draft. Repeated calls for the same active
+        conversation return the same ID.
+        """
+        id = self._active_id_now()
+        if id is None:
+            id = new_conversation_id()
+            await self._set_active_id(id)
+        return id
+
+    async def activate_record(self, record: ConversationRecord) -> None:
+        """
+        Activate a stored record. This (with ``clear_active()``) is the
+        shared operation every restore/switch/init/delete/new-chat path must
+        use, so that ``record`` and the active ID never move independently:
+        when ``record`` is not ``None``, the active ID must equal
+        ``record.id``.
+        """
+        self.record = record
+        await self._set_active_id(record.id)
+
+    async def clear_active(self) -> None:
+        self.record = None
+        await self._set_active_id(None)
+
+    async def _set_active_id(self, id: str | None) -> None:
+        # Single writer for the active ID; notifies on_active_id_change only
+        # on an actual change (e.g. first save after ensure_conversation_id()
+        # does not re-fire).
+        if self._active_id_now() == id:
+            return
+        self._active_id.set(id)
+        if self.on_active_id_change is not None:
+            await self.on_active_id_change(id)
 
     async def _get_record(
         self, partition: ConversationPartition, conv_id: str
@@ -309,10 +382,15 @@ class HistoryController:
 
         if first_save:
             turns_flat = self.adapter.get_turns_json()
-            self.record = new_conversation_record(
-                title=fallback_title(turns_flat)
+            # Adopt the active ID allocated at submission time (or allocate
+            # one now for standalone history users), so the saved record
+            # carries the identity model work was already tagged with.
+            new_record = new_conversation_record(
+                title=fallback_title(turns_flat),
+                id=await self.ensure_conversation_id(),
             )
-            self.record.client_info = self.adapter.client_info()
+            new_record.client_info = self.adapter.client_info()
+            await self.activate_record(new_record)
 
         record = self.record
         if record is None:
@@ -329,9 +407,6 @@ class HistoryController:
         self.ui_offset = len(messages)
         await self.send_history_update()
         await self._send_sibling_metadata()
-
-        if first_save and self.on_active_id_change is not None:
-            await self.on_active_id_change(record.id)
 
         # Wait for the second response before titling: gives the LLM/custom
         # title_fn more context than a single exchange, and avoids spending
@@ -462,11 +537,9 @@ class HistoryController:
                 return
         self.adapter.set_turns_json(target.path_turns())
         await self.replay_ui(target)
-        self.record = target
+        await self.activate_record(target)
         self._restore_app_state(target.values or {})
         await self._send_sibling_metadata()
-        if self.on_active_id_change is not None:
-            await self.on_active_id_change(target.id)
         await self.send_history_update()
 
     async def new_chat(self) -> None:
@@ -474,8 +547,13 @@ class HistoryController:
         self.adapter.set_turns_json([])
         await self.chat.clear_messages()
         self.ui_offset = 0
-        self.record = None
-        if self.on_active_id_change is not None:
+        # Announce the cleared state even when the active ID is already None:
+        # in URL/bookmark restore modes the browser may still carry a stale
+        # conversation param (e.g. after a failed restore) that only
+        # on_active_id_change(None) clears.
+        was_identified = self._active_id_now() is not None
+        await self.clear_active()
+        if not was_identified and self.on_active_id_change is not None:
             await self.on_active_id_change(None)
         # A fresh chat is never a restore: resolve the greeting the same way
         # the initial settle does, so it doesn't just rely on a stale/absent
@@ -538,12 +616,10 @@ class HistoryController:
             await self.on_evict(conv_id)
         await self.store.delete(self.partition, conv_id)
         if self.record is not None and self.record.id == conv_id:
-            self.record = None
+            await self.clear_active()
             self.adapter.set_turns_json([])
             await self.chat.clear_messages()
             self.ui_offset = 0
-            if self.on_active_id_change is not None:
-                await self.on_active_id_change(None)
         await self.send_history_update()
 
     # -- branch navigation --------------------------------------------------
@@ -708,6 +784,12 @@ class ChatHistory:
         self._controller: HistoryController | None = None
         self._save_callbacks: "list[Callable[[dict[str, Any]], None]]" = []
         self._restore_callbacks: "list[Callable[[dict[str, Any]], None]]" = []
+        # Session-level registrations made by `_start()`, tracked so they can
+        # be released when the owning Chat is destroyed (e.g. same-id
+        # reconstruction) instead of leaking until session end.
+        self._effects: "list[Effect_]" = []
+        self._session_end_cancel: "Callable[[], None] | None" = None
+        self._on_session_end: "Callable[[], None] | None" = None
         cfg = config if config is not None else HistoryOptions()
         self._store: "ConversationStore | Literal['auto', 'memory', 'file']" = (
             cfg.store
@@ -723,6 +805,49 @@ class ChatHistory:
         """Enable chat history for the current session. No-op if already started."""
         if not self._started:
             self._start()
+
+    def _teardown(self) -> None:
+        """
+        Release session-level registrations when the owning `Chat` is destroyed
+        or replaced by a same-id reconstruction.
+
+        Destroys the history input effects — which otherwise keep answering the
+        shared input ids and retain the old controller for the rest of the
+        session — unregisters the session-end callback, and runs the cleanup
+        that session end would have run. No-op if history never started; safe
+        to call more than once.
+        """
+        for effect in self._effects:
+            effect.destroy()
+        self._effects.clear()
+        cancel = self._session_end_cancel
+        self._session_end_cancel = None
+        if cancel is not None:
+            cancel()
+        on_end = self._on_session_end
+        self._on_session_end = None
+        if on_end is not None:
+            on_end()
+
+    def conversation_id(self) -> str | None:
+        """
+        Reactive read of the active conversation ID.
+
+        Returns ``None`` when history is disabled (or hasn't started for this
+        session) or the active conversation is an empty draft; otherwise the
+        ID allocated at the first user submission, which the saved
+        conversation record carries. The ID is stable across client swaps
+        (``chat.client.set()``) and is retained when a response fails or is
+        cancelled, so a retry keeps the same identity.
+
+        Like any reactive read, this must be called inside a reactive context
+        (e.g. a ``@reactive.effect`` or ``@render.*`` function); non-reactive
+        callers must wrap it in ``shiny.reactive.isolate()``.
+        """
+        controller = self._controller
+        if controller is None:
+            return None
+        return controller.conversation_id()
 
     async def save(self) -> bool:
         """
@@ -1025,7 +1150,7 @@ class ChatHistory:
                 if target is not None:
                     adapter.set_turns_json(target.path_turns())
                     await controller.replay_ui(target)
-                    controller.record = target
+                    await controller.activate_record(target)
                     controller._restore_app_state(target.values or {})
                     await controller._send_sibling_metadata()
                     await controller.send_history_update()
@@ -1060,7 +1185,7 @@ class ChatHistory:
                 if pointed is not None:
                     adapter.set_turns_json(pointed.path_turns())
                     await controller.replay_ui(pointed)
-                    controller.record = pointed
+                    await controller.activate_record(pointed)
                     controller._restore_app_state(pointed.values or {})
                     await controller._send_sibling_metadata()
             await controller.send_history_update()
@@ -1153,9 +1278,26 @@ class ChatHistory:
                 await notify_error("Could not navigate messages", e)
 
         def _on_session_end() -> None:
+            # The session consumed the registration by firing it; keep the
+            # tracked state truthful so a later `_teardown()` won't re-run.
+            self._session_end_cancel = None
+            self._on_session_end = None
             if stamp_cancel is not None:
                 stamp_cancel()
             controller.cancel_pending()
 
-        session.on_ended(_on_session_end)
+        self._effects.extend(
+            [
+                _init_history,
+                _save_on_response,
+                _on_select,
+                _on_new,
+                _on_rename,
+                _on_delete,
+                _on_edit,
+                _on_navigate,
+            ]
+        )
+        self._on_session_end = _on_session_end
+        self._session_end_cancel = session.on_ended(_on_session_end)
         self._started = True

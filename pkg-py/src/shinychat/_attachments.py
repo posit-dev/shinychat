@@ -49,6 +49,24 @@ SUPPORTED_ATTACHMENT_TYPES: tuple[str, ...] = (
 )
 
 
+def _guess_mime(name: str) -> str:
+    """Guess a MIME type from a filename or URL, deterministically.
+
+    The package's own extension→MIME mapping (``attachment-types.json``) is
+    consulted first so that supported text-attachment extensions resolve
+    consistently across platforms — the platform ``mimetypes`` database is
+    unreliable for extensions like ``.md``, ``.qmd``, and ``.yaml``.  Unknown
+    extensions fall through to ``mimetypes.guess_type``, then to
+    ``application/octet-stream``.
+    """
+    ext = Path(name).suffix.lower().lstrip(".")
+    return (
+        _TYPES["text_extensions"].get(ext)
+        or mimetypes.guess_type(name)[0]
+        or "application/octet-stream"
+    )
+
+
 class Attachment(BaseModel):
     """An image, PDF, or text file to attach to a chat message.
 
@@ -75,11 +93,7 @@ class Attachment(BaseModel):
         """Create an attachment from a filesystem path."""
         p = Path(path)
         raw = p.read_bytes()
-        resolved_mime = (
-            mime
-            or mimetypes.guess_type(p.name)[0]
-            or "application/octet-stream"
-        )
+        resolved_mime = mime or _guess_mime(p.name)
         return cls(
             mime=resolved_mime,
             name=name or p.name,
@@ -130,9 +144,7 @@ class Attachment(BaseModel):
                 size=len(raw),
                 data_url=url,
             )
-        resolved_mime = (
-            mime or mimetypes.guess_type(url)[0] or "application/octet-stream"
-        )
+        resolved_mime = mime or _guess_mime(url)
         return cls(
             mime=resolved_mime,
             name=name or "",

@@ -776,7 +776,7 @@ get_tool_result_display <- function(content) {
   )
 
   if (
-    inherits(display, c("html", "shiny.tag", "shiny.tag.list", "htmlwidgets"))
+    inherits(display, c("html", "shiny.tag", "shiny.tag.list", "htmlwidget"))
   ) {
     cli::cli_warn(
       c(
