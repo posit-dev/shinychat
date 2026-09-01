@@ -2255,3 +2255,21 @@ bounded scope.
 asset, bookmark, Phase 5, sibling, or task-closure work is included. The
 phase note is committed before the Roborev 1152 close operation; the close
 outcome is recorded in the corresponding Kata handoff comment.
+
+### P4.1 provider-test tightening handoff (2026-09-01)
+
+Test commit `93ed712c` (`test(history): prove ordinary provider dispatch`,
+`Kata: shinychat#5r50`) tightens `7d3cd6ac` on the same `Chat`: after echoed
+slash suppression, ordinary raw input produces exactly one real client
+`stream_async` call and exactly one public `on_user_submit` callback. The
+mandatory future batched range is
+`04825f1f3da2286008a6e1c8e7a475b33be2426f^..93ed712c`, with canonical base
+`39a61813f51ff1d99bcd6182aa7b61c968af773d` through `93ed712c`, excluding
+later docs-only heads.
+
+The focused provider test, format, Pyright, and full `make py-check` passed:
+200 Playwright tests, 827 non-browser tests, 1 skipped test, and 19
+established warnings. No production defect or production change was required.
+No Roborev was requested for `7d3cd6ac` or `93ed712c`; `shinychat#5r50`
+remains open with `needs-review` and `work.attention="ok"` pending review of
+this new test range. `shinychat#6drf` remains blocked and unstarted.
