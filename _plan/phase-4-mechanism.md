@@ -1,7 +1,7 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
-**Status:** P4.0 complete; P4.1 keystone active after baseline repair
-(2026-08-31)
+**Status:** P4.0 complete; P4.1 implementation parked pending restore
+failure-contract authorization (2026-08-31)
 **Phase:** plan.md §4, Phase 4
 **Kata:** parent `shinychat#azvt` under epic `shinychat#6d0d`
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
@@ -1238,3 +1238,51 @@ Current state: `d7866b44` and `64e988c3` remain committed and their full
 Python gate evidence remains valid. `shinychat#5r50` is open with
 `needs-review` and `work.attention="blocked"` pending the decision; do not
 start `shinychat#6drf` or request Roborev.
+
+### P4.1 restore failure-contract escalation (2026-09-01)
+
+Independent findings against the committed happy-path restore are:
+
+1. Partial target display can coexist with old recorder and turn ownership
+   after replay mutates display before all state validation succeeds.
+2. Active-ID callback failure or cancellation can leave partial activation
+   that an ordinary retry cannot recover.
+3. Unknown state keys are silently ignored even though the restore contract
+   does not define whether state keys are closed or extensible.
+4. Browser and URL initialization can publish duplicate `history_update`
+   metadata.
+
+The durable documents do not define an abort contract. Atomic
+preserve-previous rollback is infeasible: replay commits messages
+individually, `set_turns` provides no rollback guarantee, and application
+callbacks are external effects. The proposed contract is therefore
+fail-to-fresh-draft, not failure-atomic rollback:
+
+- Preflight the complete active path, every state key, state kind/version/data,
+  and final turns before mutation.
+- Enter the destructive boundary and recorder lock; clear and replay with
+  capture suppressed; apply turns and reset the recorder baseline; install
+  the target, set the local ID, run callbacks, publish, and send one metadata
+  update.
+- On any later exception or cancellation, clear recorder and active ID first;
+  best-effort clear display, turns, greeting, URL, and metadata; preserve the
+  original failure or cancellation; and emit a visible restore-failure
+  notification. Cleanup failure reports partial cleanup. Make no atomic
+  rollback claim.
+
+Required injected-failure regressions from Terra are: invalid state
+kind/version/data during preflight; replay transport failure after partial
+replay; restore-hook failure after target installation; active-ID callback
+failure and cancellation; cleanup failure after the original error; and
+browser/URL initialization asserting exactly one `history_update`. These tests
+must prove fresh-draft cleanup, recorder/ID clearing order, original-outcome
+preservation, visible failure reporting, and no duplicate publication.
+
+This proposal adds no Phase 5 guard or degradation behavior, second owner,
+or rollback subsystem. Exact authorization question: **Does Garrick authorize
+the fail-to-fresh-draft contract described above?**
+
+Implementation remains stopped pending that decision. `shinychat#5r50`
+remains open with `needs-review` and `work.attention="blocked"`;
+`shinychat#6drf` remains blocked and unstarted. `shinychat#azvt` remains open
+with `work.attention="ok"`.
