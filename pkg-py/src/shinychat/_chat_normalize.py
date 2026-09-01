@@ -8,13 +8,11 @@ from htmltools import HTML, HTMLDependency, Tag, Tagifiable, TagList
 
 from ._chat_types import (
     ChatMessage,
-    PartEntry,
     StructuredBlock,
     WebFetchBlock,
     WebSearchBlock,
     WebSearchResultsBlock,
     WebSearchSource,
-    _is_string_part,
     is_structured_segment,
 )
 
@@ -542,15 +540,15 @@ def _is_tool_result(value: object) -> TypeGuard["ContentToolResult"]:
         return False
 
 
-def _part_text(p: PartEntry) -> str:
+def _part_text(p: "str | StructuredBlock") -> str:
     """Extract renderable text from a single ``parts`` entry.
 
-    String segments contribute their ``content``; ``html_block`` blocks
-    contribute their ``content``; all other structured blocks contribute
-    nothing (they are opaque to the text channel).
+    String runs contribute themselves; ``html_block`` blocks contribute
+    their ``content``; all other structured blocks contribute nothing
+    (they are opaque to the text channel).
     """
-    if _is_string_part(p):
-        return p["content"]
+    if isinstance(p, str):
+        return p
     if is_structured_segment(p) and p["type"] == "html_block":
         return p["content"]
     return ""

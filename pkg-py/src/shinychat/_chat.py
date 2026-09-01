@@ -935,9 +935,11 @@ class Chat:
                 * To prevent interpreting as markdown, mark the string as
                   :class:`~shiny.ui.HTML`.
             * A UI element (specifically, a :class:`~shiny.ui.TagChild`).
-                * This includes :class:`~shiny.ui.TagList`, which take UI elements
-                  (including strings) as children. In this case, strings are still
-                  interpreted as markdown as long as they're not inside HTML.
+                * This includes :class:`~shiny.ui.TagList`, which takes UI elements
+                  (including strings) as children. TagList content is treated as
+                  HTML: strings inside it are literal text (HTML-escaped), not
+                  markdown. Use :class:`~shiny.ui.HTML` for trusted raw HTML
+                  strings.
             * A dictionary with `content` and `role` keys. The `content` key can contain
               content as described above, and the `role` key can be "assistant" or
               "user".
@@ -1270,9 +1272,11 @@ class Chat:
                 * To prevent interpreting as markdown, mark the string as
                   :class:`~shiny.ui.HTML`.
             * A UI element (specifically, a :class:`~shiny.ui.TagChild`).
-                * This includes :class:`~shiny.ui.TagList`, which take UI elements
-                  (including strings) as children. In this case, strings are still
-                  interpreted as markdown as long as they're not inside HTML.
+                * This includes :class:`~shiny.ui.TagList`, which takes UI elements
+                  (including strings) as children. TagList content is treated as
+                  HTML: strings inside it are literal text (HTML-escaped), not
+                  markdown. Use :class:`~shiny.ui.HTML` for trusted raw HTML
+                  strings.
             * A dictionary with `content` and `role` keys. The `content` key can contain
               content as described above, and the `role` key can be "assistant" or
               "user".
@@ -2710,9 +2714,10 @@ def chat_ui(
             * To prevent interpreting as markdown, mark the string as
               :class:`~shiny.ui.HTML`.
         * A UI element (specifically, a :class:`~shiny.ui.TagChild`).
-            * This includes :class:`~shiny.ui.TagList`, which take UI elements
-              (including strings) as children. In this case, strings are still
-              interpreted as markdown as long as they're not inside HTML.
+            * This includes :class:`~shiny.ui.TagList`, which takes UI elements
+              (including strings) as children. TagList content is treated as
+              HTML: strings inside it are literal text (HTML-escaped), not
+              markdown. Use :class:`~shiny.ui.HTML` for trusted raw HTML strings.
         * A dictionary with `content` and `role` keys. The `content` key can contain a
           content as described above, and the `role` key can be "assistant" or "user".
         * More generally, any type registered with :func:`shinychat.message_content`.
