@@ -3,8 +3,8 @@
 **Status (current and authoritative):** P4.0 complete; the P4.1 Roborev 1135
 DELETE/REPLACE unit, its bounded blocked-input correction, and the accepted
 Roborev 1152 fixes are landed. Roborev 1146 is closed after its dispositions
-and fix, as required by process; Roborev 1152 is ready to close after this
-docs commit. The bookmark-pointer
+and fix, as required by process; Roborev 1152 is closed after its accepted
+fixes/dispositions. The bookmark-pointer
 disposition remains out of scope in `shinychat#g6tt`. `shinychat#5r50` remains
 open with `needs-review`, `work.attention="ok"`, and
 `work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains open,
