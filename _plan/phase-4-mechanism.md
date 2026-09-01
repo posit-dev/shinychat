@@ -1,9 +1,11 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
 **Status (current and authoritative):** P4.0 complete; the P4.1 Roborev 1135
-DELETE/REPLACE unit and its bounded blocked-input correction are landed, and a
-fresh batched Roborev review is pending. `shinychat#5r50` remains open with
-`work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`;
+DELETE/REPLACE unit and its bounded blocked-input correction are landed.
+Roborev 1146 dispositions remain provisional pending the required v2
+production-provider regression and teardown fix. `shinychat#5r50` remains open
+with `needs-review`, `work.attention="blocked"`, and
+`work.branch="feat/history-exchange-tree"`;
 `shinychat#6drf` remains open, blocked, and unstarted; and
 `shinychat#azvt` remains open with `work.attention="ok"` (2026-09-01).
 **Phase:** plan.md §4, Phase 4
@@ -2097,30 +2099,32 @@ authorized here.
 
 Mandatory batched Roborev job `1146` reviewed the exact code/test range
 `04825f1f^..0cca3b49` (canonical `39a61813..0cca3b49`), excluding the later
-docs-only heads `a4d107e7` and `eae64b48`. It reported three findings. After
-orchestrator disposition, one remains in scope for `shinychat#5r50`; the
-three-findings valve is not fired.
+docs-only heads `a4d107e7` and `eae64b48`. It reported three findings. The
+following dispositions are provisional pending the required evidence and fix;
+the three-findings valve is not fired provisionally.
 
-The switch timing finding is declined. `switch_to()` must load and validate
-the target schema before destructive admission so a missing, slow, or invalid
-target leaves the current source usable and preserves the preflight contract.
-Blocking input during target lookup would violate that source-usability
-guarantee. The required regression coverage for any implementation follow-up
-is: a slow successful lookup permits source input before admission and rejects
-input once source save/restore begins; a missing or invalid lookup preserves
-the source and admission; and an active source stream rejects the switch.
+The switch timing disposition is provisional, not declined. The preflight
+rationale that `switch_to()` loads and validates the target schema before
+destructive admission is insufficient without a production v2 provider
+regression. The required contract test must prove that source input during a
+slow target lookup starts v2 provider/turn work, then the destructive switch
+rejects input before target installation and leaves source, display, turns,
+and recorder untouched. If actual behavior safely isolates the work, record
+that evidence instead; otherwise accept the finding and revisit admission
+ordering. The earlier source-usability/preflight rationale remains a
+candidate constraint, not a resolved disposition.
 
-The terminal-settlement test teardown finding is accepted. The real `Chat`
-created by the registered settlement test must be destroyed in `try/finally`
-so reactive effects and callbacks cannot leak into later tests. Roborev `1146`
-remains open pending the fix commit; no code fix is made by this disposition.
+The terminal-settlement teardown disposition is provisionally accepted. The
+real `Chat` created by the registered settlement test must be destroyed in
+`try/finally` so reactive effects and callbacks cannot leak into later tests.
+Roborev `1146` remains open pending the fix commit.
 
-The v2 bookmark settlement finding is moved to existing task
-`shinychat#g6tt`, outside the `shinychat#5r50` blocker. That task must define
-the recorder-owned active-v2 `bookmark_state_id` under the recorder lock and
-cover late callbacks, replacement cleanup, v2 URL behavior, and stale-pointer
-behavior. This is a distinct bookmark pointer protocol, not a `shinychat#5r50`
-persistence/restore blocker.
+The v2 bookmark settlement transfer is also provisional. It is assigned to
+existing task `shinychat#g6tt`, outside the `shinychat#5r50` blocker. That task
+must define the recorder-owned active-v2 `bookmark_state_id` under the
+recorder lock and cover late callbacks, replacement cleanup, v2 URL behavior,
+and stale-pointer behavior. This is a distinct bookmark pointer protocol,
+not a `shinychat#5r50` persistence/restore blocker.
 
 Current state remains truthful: `shinychat#5r50` is open with `needs-review`,
 `work.attention="blocked"`, and
