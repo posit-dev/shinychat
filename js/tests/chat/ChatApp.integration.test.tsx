@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest"
 import { render, screen, act, fireEvent, waitFor } from "@testing-library/react"
 import { StrictMode } from "react"
 import { ChatApp } from "../../src/chat/ChatApp"
+import { getHistoryStore } from "../../src/chat/historyStore"
 import {
   createMockTransport,
   createMockShinyLifecycle,
@@ -322,6 +323,34 @@ describe("ChatApp integration: editable messages gated by history state", () => 
       />,
     )
   }
+
+  it("rechecks history admission before an imperative input dispatches", async () => {
+    const transport = createMockTransport()
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={createMockShinyLifecycle()}
+        elementId="direct-submit-recheck"
+        inputId="direct-submit-input"
+        uploadAccept={["image/png"]}
+        maxUploadSize={30000000}
+        placeholder="Type..."
+      />,
+    )
+
+    const historyStore = getHistoryStore("direct-submit-recheck")
+    await act(async () => {
+      historyStore.seedCompletionV2TransitionProtocol()
+      transport.fire("direct-submit-recheck", {
+        type: "update_input",
+        value: "blocked server submission",
+        submit: true,
+      })
+    })
+
+    expect(transport.sendInput).not.toHaveBeenCalled()
+    expect(screen.queryByText("blocked server submission")).toBeNull()
+  })
 
   it("does not render the edit button on a user message when history was never enabled", async () => {
     const transport = createMockTransport()

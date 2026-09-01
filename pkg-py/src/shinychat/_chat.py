@@ -446,6 +446,15 @@ class Chat:
             @reactive.effect
             async def _init_chat():
                 await _append_init_messages()
+                if not self._history_enabled:
+                    await self._send_action(
+                        {
+                            "type": "history_update",
+                            "enabled": False,
+                            "conversations": [],
+                            "active_id": None,
+                        }
+                    )
 
             self._append_init_messages = _append_init_messages
             self._init_chat = _init_chat
@@ -3376,6 +3385,7 @@ def chat_ui(
         allow_attachments=allow_attachments_attr,
         attachment_accept=attachment_accept_attr,
         max_attachment_size=max_attachment_size_attr,
+        data_shinychat_history_transition_protocol="completion-v2",
         # Also include icon on the parent so that when messages are dynamically added,
         # we know the default icon has changed
         icon_assistant=icon_attr,

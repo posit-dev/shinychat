@@ -11,6 +11,7 @@ import {
   getCurrentConversationId,
   getConversationIdFromUrl,
 } from "./currentConversation"
+import { getHistoryStore } from "./historyStore"
 
 // Single shared transport instance for all chat instances on the page
 const transport = getShinyTransport()
@@ -150,6 +151,12 @@ class ChatContainerElement extends HTMLElement {
     if (this.reactRoot) return
 
     const elementId = this.getAttribute("id") ?? ""
+    if (
+      this.getAttribute("data-shinychat-history-transition-protocol") ===
+      "completion-v2"
+    ) {
+      getHistoryStore(elementId).seedCompletionV2TransitionProtocol()
+    }
     const iconAssistant = this.getAttribute("icon-assistant") ?? undefined
     const iconSend = this.getAttribute("icon-send") ?? undefined
     const asideFavicon = this.getAttribute("aside-favicon") !== "false"

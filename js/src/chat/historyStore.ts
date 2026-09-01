@@ -103,6 +103,15 @@ export class HistoryStore {
     this.publish({ ...this.snapshot, connected: transport !== null })
   }
 
+  seedCompletionV2TransitionProtocol(): void {
+    if (this.snapshot.initialized || this.snapshot.transitionProtocol !== null)
+      return
+    this.publish({
+      ...this.snapshot,
+      transitionProtocol: "completion-v2",
+    })
+  }
+
   updateHistory({
     enabled,
     conversations,
@@ -354,4 +363,11 @@ function normalizeTransitionProtocol(
 
 export function resetHistoryStoreRegistryForTests(): void {
   registry.clear()
+}
+
+export function isHistorySubmissionBlocked(snapshot: HistorySnapshot): boolean {
+  return (
+    snapshot.historyTransitionPending !== null ||
+    (snapshot.transitionProtocol === "completion-v2" && !snapshot.initialized)
+  )
 }

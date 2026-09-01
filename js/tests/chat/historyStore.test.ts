@@ -4,6 +4,7 @@ import * as uuidUtils from "../../src/utils/uuid"
 import {
   acquireHistoryStore,
   getHistoryStore,
+  isHistorySubmissionBlocked,
   resetHistoryStoreRegistryForTests,
 } from "../../src/chat/historyStore"
 import { createMockTransport } from "../helpers/mocks"
@@ -97,6 +98,64 @@ describe("historyStore", () => {
       busy: false,
       connected: false,
     })
+  })
+
+  it("seeds completion-v2 until the first authoritative history update", () => {
+    const store = getHistoryStore("chat")
+
+    store.seedCompletionV2TransitionProtocol()
+    const seededSnapshot = store.getSnapshot()
+    expect(seededSnapshot).toMatchObject({
+      initialized: false,
+      enabled: false,
+      conversations: [],
+      activeId: null,
+      transitionProtocol: "completion-v2",
+      historyTransitionPending: null,
+    })
+    expect(isHistorySubmissionBlocked(seededSnapshot)).toBe(true)
+
+    store.seedCompletionV2TransitionProtocol()
+    expect(store.getSnapshot()).toBe(seededSnapshot)
+
+    store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      transitionProtocol: "completion-v2",
+    })
+    expect(store.getSnapshot()).toMatchObject({
+      initialized: true,
+      enabled: true,
+      transitionProtocol: "completion-v2",
+      historyTransitionPending: null,
+    })
+    expect(isHistorySubmissionBlocked(store.getSnapshot())).toBe(false)
+  })
+
+  it("withdraws a seed and clears a pending transition on a runtime update", () => {
+    const store = getHistoryStore("chat")
+    vi.spyOn(uuidUtils, "uuid").mockReturnValue("seed-pending")
+
+    store.seedCompletionV2TransitionProtocol()
+    expect(store.beginEditTransition()).toBe("seed-pending")
+    expect(isHistorySubmissionBlocked(store.getSnapshot())).toBe(true)
+
+    store.updateHistory({
+      enabled: false,
+      conversations: [],
+      activeId: null,
+    })
+
+    expect(store.getSnapshot()).toMatchObject({
+      initialized: true,
+      enabled: false,
+      conversations: [],
+      activeId: null,
+      transitionProtocol: null,
+      historyTransitionPending: null,
+    })
+    expect(isHistorySubmissionBlocked(store.getSnapshot())).toBe(false)
   })
 
   it("keeps busy state consistent and blocks unsafe actions", () => {

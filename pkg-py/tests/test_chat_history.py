@@ -367,6 +367,90 @@ def _completion_actions(session: _LiveSession) -> list[dict[str, Any]]:
     ]
 
 
+def _history_updates(session: _LiveSession) -> list[dict[str, Any]]:
+    return [
+        message["action"]
+        for message in session.messages
+        if message["action"]["type"] == "history_update"
+    ]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("with_client", [False, True])
+async def test_history_disabled_publishes_one_initial_withdrawal(
+    with_client: bool,
+) -> None:
+    session = _LiveSession()
+    with session_context(cast(Any, session)):
+        chat = Chat(
+            f"history_disabled_{with_client}",
+            client=cast(Any, _MockClient()) if with_client else None,
+            history=False,
+        )
+        try:
+            await reactive.flush()
+            await reactive.flush()
+        finally:
+            chat.destroy()
+
+    assert _history_updates(session) == [
+        {
+            "type": "history_update",
+            "enabled": False,
+            "conversations": [],
+            "active_id": None,
+        }
+    ]
+    assert chat.history._started is False
+    assert chat.history._controller is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("use_exchange_tree", "transition_protocol"),
+    [(False, "completion-v1"), (True, "completion-v2")],
+)
+async def test_history_enabled_startup_preserves_source_protocol(
+    use_exchange_tree: bool,
+    transition_protocol: str,
+) -> None:
+    session = _LiveSession()
+    with (
+        patch.object(
+            history_module,
+            "_EXCHANGE_TREE_HISTORY_V2",
+            use_exchange_tree,
+        ),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            f"history_enabled_{use_exchange_tree}",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store="memory",
+                scope="test",
+                restore_mode="none",
+            ),
+        )
+        try:
+            await reactive.flush()
+            await reactive.flush()
+        finally:
+            chat.destroy()
+
+    assert _history_updates(session) == [
+        {
+            "type": "history_update",
+            "enabled": True,
+            "conversations": [],
+            "active_id": None,
+            "transition_protocol": transition_protocol,
+        }
+    ]
+    assert chat.history._started is True
+    assert chat.history._controller is not None
+
+
 @pytest.mark.anyio
 async def test_v2_server_bookmark_stamps_atomic_history_pointer_only() -> None:
     session = _LiveSession()

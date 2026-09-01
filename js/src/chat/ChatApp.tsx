@@ -32,7 +32,11 @@ import {
 } from "./state"
 import { useSupersededRequests } from "./useSupersededRequests"
 import { ChatContainer, type ChatContainerHandle } from "./ChatContainer"
-import { acquireHistoryStore, getHistoryStore } from "./historyStore"
+import {
+  acquireHistoryStore,
+  getHistoryStore,
+  isHistorySubmissionBlocked,
+} from "./historyStore"
 import type {
   ChatTransport,
   ShinyLifecycle,
@@ -173,6 +177,7 @@ export function ChatApp({
     historyStore.getSnapshot,
     historyStore.getSnapshot,
   )
+  const submissionBlocked = isHistorySubmissionBlocked(historySnapshot)
 
   useEffect(() => {
     return acquireHistoryStore(elementId, transport).release
@@ -180,7 +185,7 @@ export function ChatApp({
 
   const submitUserInput = useCallback(
     (content: string, attachments: AttachmentPayload[]) => {
-      if (historyStore.getSnapshot().historyTransitionPending !== null) return
+      if (isHistorySubmissionBlocked(historyStore.getSnapshot())) return
       // Optimistic UI update (adds user message + loading placeholder).
       dispatch({
         type: "INPUT_SENT",
@@ -464,9 +469,7 @@ export function ChatApp({
                   messages={state.messages}
                   streamingMessage={state.streamingMessage}
                   inputDisabled={state.inputDisabled}
-                  submissionBlocked={
-                    historySnapshot.historyTransitionPending !== null
-                  }
+                  submissionBlocked={submissionBlocked}
                   inputPlaceholder={state.inputPlaceholder}
                   iconAssistant={iconAssistant}
                   iconSend={iconSend}

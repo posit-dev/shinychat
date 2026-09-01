@@ -9,6 +9,10 @@ import {
 } from "vitest"
 import { act, waitFor } from "@testing-library/react"
 import { installShinyWindowStub } from "../helpers/mocks"
+import {
+  getHistoryStore,
+  type HistorySnapshot,
+} from "../../src/chat/historyStore"
 
 beforeAll(async () => {
   installShinyWindowStub()
@@ -30,6 +34,50 @@ afterEach(async () => {
 })
 
 describe("chat-entry custom element boot", () => {
+  it("parses the exact static protocol before React mounts and leaves R markup unseeded", async () => {
+    const seeded = document.createElement("shiny-chat-container")
+    seeded.setAttribute("id", "seeded-entry")
+    seeded.setAttribute(
+      "data-shinychat-history-transition-protocol",
+      "completion-v2",
+    )
+    seeded.innerHTML =
+      "<shiny-chat-messages></shiny-chat-messages><shiny-chat-input></shiny-chat-input>"
+
+    const unseeded = document.createElement("shiny-chat-container")
+    unseeded.setAttribute("id", "unseeded-entry")
+    unseeded.innerHTML =
+      "<shiny-chat-messages></shiny-chat-messages><shiny-chat-input></shiny-chat-input>"
+
+    const snapshotsAtUnbind = new Map<string, HistorySnapshot>()
+    const unbindAll = window.Shiny!.unbindAll as ReturnType<typeof vi.fn>
+    unbindAll.mockImplementation((element: HTMLElement) => {
+      if (element === seeded || element === unseeded) {
+        snapshotsAtUnbind.set(
+          element.id,
+          getHistoryStore(element.id).getSnapshot(),
+        )
+      }
+    })
+
+    await act(async () => {
+      document.body.append(seeded, unseeded)
+    })
+
+    expect(snapshotsAtUnbind.get("seeded-entry")).toMatchObject({
+      initialized: false,
+      enabled: false,
+      conversations: [],
+      activeId: null,
+      transitionProtocol: "completion-v2",
+      historyTransitionPending: null,
+    })
+    expect(snapshotsAtUnbind.get("unseeded-entry")).toMatchObject({
+      initialized: false,
+      transitionProtocol: null,
+    })
+  })
+
   it("honors a live show-history preference from server markup", async () => {
     const host = document.createElement("shiny-chat-container")
     host.setAttribute("id", "history-entry")
