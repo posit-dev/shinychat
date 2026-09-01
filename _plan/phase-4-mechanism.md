@@ -1,10 +1,9 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
-**Status (current and authoritative):** P4.0 complete; the P4.1 Roborev 1135
-DELETE/REPLACE unit, its bounded blocked-input correction, and the accepted
-Roborev 1152 fixes are landed. Roborev 1146 is closed after its dispositions
-and fix, as required by process; Roborev 1152 is closed after its accepted
-fixes/dispositions. The bookmark-pointer
+**Status (current and authoritative):** P4.0 complete; P4.1 implementation and
+evidence are complete through the Roborev 1159 dispositions. Roborev 1146,
+1152, and 1159 are closed after their dispositions and fixes, as required by
+process; no fresh Roborev review is requested. The bookmark-pointer
 disposition remains out of scope in `shinychat#g6tt`. `shinychat#5r50` remains
 open with `needs-review`, `work.attention="ok"`, and
 `work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains open,
@@ -2377,3 +2376,29 @@ remains open with `needs-review`, `work.attention="blocked"`, and
 `shinychat#6drf` remains open, blocked, and unstarted. No implementation,
 test, review closure, issue closure, or sibling work is authorized by this
 handoff.
+
+### P4.1 authoritative implementation and evidence handoff (2026-09-01)
+
+The Roborev 1159 dispositions are implemented and verified. Commit
+`29c93d1603957160cae44f7be9ca045ed5f4339a` DELETE/REPLACEs only the pre-lock
+switch target snapshot: under the existing destructive-admission and recorder
+lock it saves the source, reloads the target authoritatively, preflights it,
+and restores that fresh record. Its snapshot-store rename interleaving
+regression proves the renamed target title is retained after the stale lookup,
+switch, and capture.
+
+Commit `8067459f8af44f62f34a1abf09400e7e5b1d9d3f` adds the initial programmatic
+metadata patch. After first persistence, the initial message/stream paths each
+publish exactly one metadata update; chunks and finish publish none. The
+initial baseline has 3 controller tests. Focused units passed; format and
+Pyright are clean; history/transcript passed 43 Playwright and 455 non-browser
+tests with 9 warnings; `history_edit` passed 9 tests. Final `make py-check`
+was Ruff/Pyright clean and passed 200 Playwright tests, 832 non-browser tests,
+1 skipped test, and 20 warnings. `git diff --check` passed.
+
+Independent Luna final read-only review found no findings. Roborev 1159 is
+closed, and no fresh Roborev review was requested. `shinychat#5r50` remains
+open with `needs-review`, `work.attention="ok"`, and
+`work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains open,
+blocked, and unstarted. History is preserved. No JavaScript, R, packaged
+asset, bookmark, Phase 5, sibling, or task-closure work is included.
