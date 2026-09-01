@@ -420,6 +420,10 @@ class Chat:
             self._latest_user_input: reactive.Value[StoredMessage | None] = (
                 reactive.Value(None)
             )
+            self._normal_user_submission: reactive.Value[
+                tuple[int, StoredMessage] | None
+            ] = reactive.Value(None)
+            self._normal_user_submission_sequence = 0
 
             @reactive.extended_task
             async def _mock_task() -> str:
@@ -487,7 +491,7 @@ class Chat:
                         full_text = f"/{command} {user_text}".rstrip()
                         msg = ChatMessage(content=full_text, role="user")
                         await self._record_accepted_user_input_with_capture(
-                            msg, publish_latest=False
+                            msg, dispatch_user_submit=False
                         )
                     cmds = self._slash_commands()
                     reg = cmds.get(command) if cmds else None
@@ -681,21 +685,25 @@ class Chat:
             fn_params = inspect.signature(fn).parameters
 
             @reactive.effect
-            @reactive.event(self._latest_user_input)
+            @reactive.event(self._normal_user_submission)
             async def handle_user_input():
                 try:
+                    submission = self._normal_user_submission()
+                    if submission is None:
+                        return
+                    _, stored = submission
+                    user_input = UserInput(
+                        text=str(stored.content),
+                        attachments=stored.attachments,
+                    )
                     if len(fn_params) > 2:
                         raise ValueError(
                             "An on_user_submit function should not take more than 2 arguments"
                         )
                     elif len(fn_params) == 2:
                         afunc = _utils.wrap_async(cast(UserSubmitFunction2, fn))
-                        user_input = self.user_input()
-                        assert user_input is not None
                         await afunc(*user_input)
                     elif len(fn_params) == 1:
-                        user_input = self.user_input()
-                        assert user_input is not None
                         text, _ = user_input
                         afunc = _utils.wrap_async(cast(UserSubmitFunction1, fn))
                         await afunc(text)
@@ -2151,13 +2159,13 @@ class Chat:
             )
         stored = self._as_stored_message(message)
         self._transcript.record_accepted_input(stored)
-        self._latest_user_input.set(stored)
+        self._publish_accepted_user_input(stored)
 
     async def _record_accepted_user_input_with_capture(
         self,
         message: ChatMessage,
         *,
-        publish_latest: bool = True,
+        dispatch_user_submit: bool = True,
     ) -> None:
         if self._destructive_history_blocks_input:
             raise RuntimeError(
@@ -2165,8 +2173,22 @@ class Chat:
             )
         stored = self._as_stored_message(message)
         await self._transcript.record_accepted_input_and_notify(stored)
-        if publish_latest:
-            self._latest_user_input.set(stored)
+        self._publish_accepted_user_input(
+            stored, dispatch_user_submit=dispatch_user_submit
+        )
+
+    def _publish_accepted_user_input(
+        self,
+        stored: StoredMessage,
+        *,
+        dispatch_user_submit: bool = True,
+    ) -> None:
+        self._latest_user_input.set(stored)
+        if dispatch_user_submit:
+            self._normal_user_submission_sequence += 1
+            self._normal_user_submission.set(
+                (self._normal_user_submission_sequence, stored)
+            )
 
     def user_input(self) -> "UserInput | None":
         """

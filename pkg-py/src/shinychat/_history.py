@@ -602,14 +602,17 @@ class _ExchangeRecorder:
             await self._persist_record()
             return True
 
-    async def rename_active(self, title: str) -> bool:
-        async with self._lock:
-            if self.record is None or self._controller.partition is None:
-                return False
-            self.record.title = title
-            self.record.title_source = "user"
-            await self._persist_record()
-            return True
+    async def rename_active_locked(self, conv_id: str, title: str) -> bool:
+        if (
+            self.record is None
+            or self.record.id != conv_id
+            or self._controller.partition is None
+        ):
+            return False
+        self.record.title = title
+        self.record.title_source = "user"
+        await self._persist_record()
+        return True
 
     def mark_active_id_published(self, record: ConversationRecordV2) -> None:
         if (
@@ -1365,12 +1368,22 @@ class HistoryController:
         if not title:
             return
         recorder = self._exchange_recorder
-        if (
-            recorder is not None
-            and recorder.record is not None
-            and recorder.record.id == conv_id
-        ):
-            if await recorder.rename_active(title):
+        if recorder is not None:
+            renamed = False
+            async with self._exchange_mutation():
+                if await recorder.rename_active_locked(conv_id, title):
+                    renamed = True
+                else:
+                    record = await self._get_record(self.partition, conv_id)
+                    if record is not None:
+                        record.title = title
+                        record.title_source = "user"
+                        if isinstance(record, ConversationRecordV2):
+                            await self.store.put(self.partition, record)
+                        else:
+                            await self._put_record(self.partition, record)
+                        renamed = True
+            if renamed:
                 await self.send_history_update()
             return
         record = (

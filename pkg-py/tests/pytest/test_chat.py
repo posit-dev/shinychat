@@ -18,6 +18,7 @@ from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat
 from shinychat import _history as history_module
+from shinychat._attachments import Attachment
 from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
     ChatMessage,
@@ -202,9 +203,19 @@ def test_transcript_contains_accepted_input_before_submit_callback():
 def test_echoed_slash_command_records_once_before_its_callback():
     session = cast(Session, _MockSession())
     callback_state: list[tuple[str, list[str], str | None]] = []
+    public_calls: list[str] = []
+    provider_calls: list[str] = []
 
     with session_context(session):
         chat = Chat("echoed_slash", history=False)
+
+        @chat.on_user_submit
+        async def _public_handler(text: str) -> None:
+            public_calls.append(text)
+
+        @chat.on_user_submit
+        async def _provider_handler(text: str) -> None:
+            provider_calls.append(text)
 
         @chat.slash_command("greet", "Greet the user")
         async def _(user_text: str) -> None:
@@ -224,13 +235,44 @@ def test_echoed_slash_command_records_once_before_its_callback():
         )
         run_async(reactive.flush)
 
-    assert len(callback_state) == 1
-    assert callback_state[0][0] == "world"
+        with reactive.isolate():
+            user_input = chat.user_input()
+        assert user_input is not None
+        assert user_input.text == "/greet world"
+        assert public_calls == []
+        assert provider_calls == []
+
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "normal input", "attachments": [], "seq": 1}
+        )
+        run_async(reactive.flush)
+
+        cast(Any, session.input[chat._slash_command_id])._set(
+            {"command": "greet", "userText": "again", "echo": True}
+        )
+        run_async(reactive.flush)
+
+        with reactive.isolate():
+            user_input = chat.user_input()
+        assert user_input is not None
+        assert user_input.text == "/greet again"
+
+    assert [state[0] for state in callback_state] == ["world", "again"]
     assert callback_state[0][1] == ["/greet world"]
     assert callback_state[0][2] is not None
-    assert [entry.message.content for entry in chat._transcript.read()] == [
-        "/greet world"
+    assert callback_state[1][1] == [
+        "/greet world",
+        "normal input",
+        "/greet again",
     ]
+    assert callback_state[1][2] is not None
+    assert [entry.message.content for entry in chat._transcript.read()] == [
+        "/greet world",
+        "normal input",
+        "/greet again",
+    ]
+    assert public_calls == ["normal input"]
+    assert provider_calls == ["normal input"]
 
 
 def test_echoed_slash_command_capture_error_removes_loading_message():
@@ -242,10 +284,10 @@ def test_echoed_slash_command_capture_error_removes_loading_message():
         chat = Chat("echoed_slash_capture_error", history=False)
 
         async def _capture_error(
-            message: ChatMessage, *, publish_latest: bool = True
+            message: ChatMessage, *, dispatch_user_submit: bool = True
         ) -> None:
             del message
-            del publish_latest
+            del dispatch_user_submit
             raise RuntimeError("capture failed")
 
         async def _capture_action(
@@ -269,6 +311,53 @@ def test_echoed_slash_command_capture_error_removes_loading_message():
     assert isinstance(errors[0], RuntimeError)
     assert str(errors[0]) == "capture failed"
     assert any(action["type"] == "remove_loading" for action in actions)
+    with reactive.isolate():
+        assert chat.user_input() is None
+        assert chat._normal_user_submission() is None
+
+
+def test_failed_normal_capture_does_not_publish_input():
+    session = cast(Session, _MockSession())
+    errors: list[BaseException] = []
+    public_calls: list[str] = []
+
+    with session_context(session):
+        chat = Chat("failed_normal_capture", history=False)
+
+        async def _fail_capture(
+            exchange_id: str, message: StoredMessage
+        ) -> None:
+            del exchange_id
+            del message
+            raise RuntimeError("capture failed")
+
+        async def _capture_exception(error: BaseException) -> None:
+            errors.append(error)
+
+        chat._transcript.set_capture_callbacks(
+            on_accepted_input=_fail_capture,
+            on_message_committed=None,
+            on_stream_started=None,
+            on_stream_updated=None,
+            on_stream_finished=None,
+        )
+        chat._raise_exception = _capture_exception  # type: ignore[method-assign]
+
+        @chat.on_user_submit
+        async def _public_handler(text: str) -> None:
+            public_calls.append(text)
+
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "failed input", "attachments": [], "seq": 1}
+        )
+        run_async(reactive.flush)
+
+    assert len(errors) == 1
+    assert str(errors[0]) == "capture failed"
+    assert public_calls == []
+    with reactive.isolate():
+        assert chat.user_input() is None
+        assert chat._normal_user_submission() is None
 
 
 def test_side_effect_only_slash_command_preserves_callback_without_echo():
@@ -297,27 +386,43 @@ def test_side_effect_only_slash_command_preserves_callback_without_echo():
     assert chat._transcript.read() == ()
 
 
-def test_identical_accepted_inputs_open_distinct_exchanges_once_each():
+def test_normal_submissions_dispatch_their_own_input_and_repeat():
     session = cast(Session, _MockSession())
-    callback_exchanges: list[str | None] = []
+    callback_inputs: list[tuple[str, list[Attachment], str | None]] = []
+    attachment = Attachment.from_data(
+        b"notes", mime="text/plain", name="notes.txt"
+    )
 
     with session_context(session):
         chat = Chat("repeated_input", history=False)
 
         @chat.on_user_submit
-        async def _() -> None:
-            callback_exchanges.append(chat._transcript.open_exchange_id)
+        async def _(text: str, attachments: list[Attachment]) -> None:
+            callback_inputs.append(
+                (text, attachments, chat._transcript.open_exchange_id)
+            )
 
-        for seq in (1, 2):
+        for seq in (1, 2, 3):
             cast(Any, session.input[chat.user_input_id])._set(
-                {"text": "same message", "attachments": [], "seq": seq}
+                {
+                    "text": "with attachment" if seq == 1 else "same message",
+                    "attachments": [attachment] if seq == 1 else [],
+                    "seq": seq,
+                }
             )
             run_async(reactive.flush)
 
-    assert len(callback_exchanges) == 2
-    assert callback_exchanges[0] is not None
-    assert callback_exchanges[0] != callback_exchanges[1]
+    assert callback_inputs[0][:2] == ("with attachment", [attachment])
+    assert callback_inputs[0][2] is not None
+    assert [input[0] for input in callback_inputs[1:]] == [
+        "same message",
+        "same message",
+    ]
+    assert callback_inputs[1][2] is not None
+    assert callback_inputs[2][2] is not None
+    assert callback_inputs[1][2] != callback_inputs[2][2]
     assert [entry.message.content for entry in chat._transcript.read()] == [
+        "with attachment",
         "same message",
         "same message",
     ]
@@ -575,7 +680,7 @@ def test_v2_terminal_metadata_uses_registered_response_settlement_callback(
 
                 await chat._record_accepted_user_input_with_capture(
                     ChatMessage(content="prompt", role="user"),
-                    publish_latest=False,
+                    dispatch_user_submit=False,
                 )
                 session.sent.clear()
 

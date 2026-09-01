@@ -740,6 +740,9 @@ async def test_v2_inactive_rename_does_not_affect_active_recorder_capture() -> (
         for message in stored_active.nodes[exchange_id].messages
     ] == ["active answer"]
 
+    await controller.rename("c_missing", "Missing")
+    assert await store.get(part(), "c_missing") is None
+
 
 @pytest.mark.anyio
 async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
@@ -889,15 +892,15 @@ async def test_v2_active_rename_waits_for_recorder_capture_lock() -> None:
     class BlockingStore(InMemoryConversationStore):
         def __init__(self) -> None:
             super().__init__()
-            self.block = False
+            self.block_id: str | None = None
             self.entered = asyncio.Event()
             self.release = asyncio.Event()
 
         async def put(
             self, partition: ConversationPartition, record: Any
         ) -> None:
-            if self.block:
-                self.block = False
+            if record.id == self.block_id:
+                self.block_id = None
                 self.entered.set()
                 await self.release.wait()
             await super().put(partition, record)
@@ -910,37 +913,37 @@ async def test_v2_active_rename_waits_for_recorder_capture_lock() -> None:
         on_accepted_input=recorder.accepted_input,
         on_message_committed=recorder.message_committed,
     )
-    exchange_id = await transcript.record_accepted_input_and_notify(
+    await transcript.record_accepted_input_and_notify(
         _stored_message("user", "question")
     )
     assert recorder.record is not None
+    source = recorder.record
+    target = new_conversation_record_v2(
+        title="target",
+        id="c_target",
+        client_info={},
+    )
+    await store.put(part(), target)
 
-    store.block = True
-    capture = asyncio.create_task(
-        transcript.append(
-            TranscriptEntry(message=_stored_message("assistant", "answer")),
-            exchange_id=exchange_id,
-            send=_sent,
-        )
-    )
+    store.block_id = source.id
+    switch = asyncio.create_task(controller.switch_to(target.id))
     await store.entered.wait()
-    rename = asyncio.create_task(
-        controller.rename(recorder.record.id, "Renamed")
-    )
+    rename = asyncio.create_task(controller.rename(source.id, "Renamed source"))
     await asyncio.sleep(0)
     assert not rename.done()
 
     store.release.set()
-    await capture
+    await switch
     await rename
 
-    stored = await store.get(part(), recorder.record.id)
-    assert isinstance(stored, ConversationRecordV2)
-    assert stored.title == "Renamed"
-    assert [
-        message.as_stored_message().content
-        for message in stored.nodes[exchange_id].messages
-    ] == ["answer"]
+    stored_source = await store.get(part(), source.id)
+    stored_target = await store.get(part(), target.id)
+    assert isinstance(stored_source, ConversationRecordV2)
+    assert isinstance(stored_target, ConversationRecordV2)
+    assert stored_source.title == "Renamed source"
+    assert stored_target.title == "target"
+    assert recorder.record is target
+    assert controller._active_id_now() == target.id
 
 
 @pytest.mark.anyio
@@ -1326,11 +1329,13 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore(
     source_transcript = chat._transcript.read()
     with reactive.isolate():
         latest_before = chat.user_input()
+        normal_submission_before = chat._normal_user_submission()
     put_count = len(store.put_ids)
     await assert_rejected("blocked during source save")
     assert chat._transcript.read() == source_transcript
     with reactive.isolate():
         assert chat.user_input() == latest_before
+        assert chat._normal_user_submission() == normal_submission_before
     assert provider_calls == ["source"]
     assert recorder_inputs == ["source"]
     assert len(store.put_ids) == put_count
@@ -1352,6 +1357,7 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore(
     assert chat._transcript.read() == source_transcript
     with reactive.isolate():
         assert chat.user_input() == latest_before
+        assert chat._normal_user_submission() == normal_submission_before
     assert provider_calls == ["source"]
     assert recorder_inputs == ["source"]
     assert len(store.put_ids) == put_count
