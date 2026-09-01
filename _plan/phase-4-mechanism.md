@@ -1803,3 +1803,38 @@ Truthful current task state: `shinychat#5r50` remains open with
 blocked, and unstarted; and `shinychat#azvt` remains open with
 `work.attention="ok"`. No production code, tests, assets, review request, or
 issue closure is authorized by this documentation-only handoff.
+
+### P4.1 one-boundary follow-up (2026-08-31)
+
+Landed `fb1e2f0d` (`fix(history): hold switch admission through v2 restore`,
+`Kata: shinychat#5r50`). `switch_to()` now preflights the v2 target, enters
+one `_destructive_mutation()`, acquires the existing recorder lock, saves the
+departure with `save_current_locked()`, and retains that same admission/lock
+pair through the shared restore transaction. The restore helper remains the
+single owner of live replay, app-state restoration, active-ID publication,
+terminal metadata, and fail-to-fresh-draft cleanup; no nested destructive
+boundary, lock, queue, timer, CAS, or second owner was added.
+
+The regressions deterministically hold the departing save and restore clear
+while an actual recorder capture callback attempts user input, proving it
+cannot persist into the source during the switch and instead persists against
+the installed target. Terminal metadata is asserted through a callback
+registered with `Chat._on_response_settled`, not a direct
+`controller.on_response()` invocation. Inactive v2 rename runs with
+`use_exchange_tree=True`, then captures the distinct active recorder record
+to prove it remains unchanged.
+
+Evidence: pre-edit history/transcript baseline passed 43 Playwright + 444
+non-browser tests with 8 established warnings; pre-edit `history_edit` passed
+9. Focused regressions passed 4 controller + 1 settlement test. Post-change
+history/transcript passed 43 Playwright + 446 non-browser tests with the same
+8 warnings; `history_edit` passed 9; `make py-format`, Pyright (0 errors),
+and `git diff --check` passed. Final `make py-check` passed Ruff, Pyright, 200
+Playwright tests, 821 non-browser tests, 1 skipped, and 19 established
+warnings.
+
+No Roborev request was made by instruction. `shinychat#5r50` remains open with
+`needs-review`, `work.attention="ok"`, and
+`work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains blocked
+and unstarted. Next: retain this bounded unit for the instructed review
+handling. Provisional decisions: none.
