@@ -2,12 +2,12 @@
 
 **Status (current and authoritative):** P4.0 complete; the P4.1 Roborev 1135
 DELETE/REPLACE unit and its bounded blocked-input correction are landed.
-Roborev 1146 switch-timing and terminal-teardown findings are accepted and
-finalized, and the old review is closed after its dispositions and fix, as
-required by process. This is not final or closable evidence: a new mandatory
-batched review is required over `04825f1f^..34831fd`. The bookmark-pointer
-disposition remains out of scope in `shinychat#g6tt`. `shinychat#5r50` remains
-open with `needs-review`, `work.attention="blocked"`, and
+Roborev 1146 is closed after its dispositions and fix, as required by
+process. Fresh Roborev 1152 completed `FAIL` with two valid PATCH findings
+across two mechanisms; no three-findings valve fired. Implementation is
+stopped pending the note review and fixes. The bookmark-pointer disposition
+remains out of scope in `shinychat#g6tt`. `shinychat#5r50` remains open with
+`needs-review`, `work.attention="blocked"`, and
 `work.branch="feat/history-exchange-tree"`;
 `shinychat#6drf` remains open, blocked, and unstarted; and `shinychat#azvt`
 remains open with `work.attention="ok"` (2026-09-01).
@@ -2159,3 +2159,42 @@ bookmark pointer remains out of scope in `shinychat#g6tt`; it is not a
 `work.attention="blocked"`, and `work.branch="feat/history-exchange-tree"`.
 `shinychat#6drf` remains open, blocked, and unstarted. No task closure or
 sibling work is authorized here.
+
+### P4.1 Roborev 1152 disposition (2026-09-01)
+
+Mandatory batched Roborev job `1152` reviewed
+`04825f1f^..34831fd1` (canonical `39a61813..34831fd1`), excluding later
+docs-only commits. It completed `FAIL` with two valid PATCH findings across
+two mechanisms. The three-findings valve did not fire. Job `1152` remains
+open pending these fixes; prior individual or unrequested stale reviews are
+not current evidence.
+
+For v2 rename, acquire the existing recorder lock before checking the active
+ID. Under that same lock, recheck the ID: if it matches, mutate and persist
+the active recorder record; otherwise load and rename the requested
+`conv_id` as an inactive record under the same lock. A missing record is a
+no-op. The required exact regression is
+`test_v2_active_rename_waits_for_recorder_capture_lock`, extended to change
+the active ID while the lock is held and prove the requested original ID is
+not renamed as the newly active record; it must also cover inactive rename
+persistence and missing-ID no-op behavior.
+
+For slash/input semantics, `_latest_user_input` remains the public latest
+accepted input, including a captured echoed slash. Add a private normal
+submission event carrying `(sequence, StoredMessage)` for invalidation.
+Every successful capture updates the latest value. Ordinary submissions
+publish the event and provider/`on_user_submit` effects consume its snapshot.
+Echoed slash dispatch uses `dispatch_user_submit=False`: the slash handler
+runs and latest input updates, but no provider or public callback runs.
+Failed or blocked captures update neither latest input nor the normal event.
+The required exact regressions are
+`test_echoed_slash_command_records_once_before_its_callback` for latest-value
+and no-normal-dispatch behavior, plus the ordinary accepted-input/provider
+regression proving event snapshot invalidation and unchanged failed/blocked
+behavior.
+
+Implementation remains stopped pending note review. `shinychat#5r50` remains
+open with `needs-review`, `work.attention="blocked"`, and
+`work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains open,
+blocked, and unstarted. No implementation, review closure, or task closure is
+authorized by this docs-only disposition.
