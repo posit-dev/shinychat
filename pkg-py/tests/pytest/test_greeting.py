@@ -195,6 +195,41 @@ def test_chat_greeting_react_element_stays_inline():
     assert "<div>after</div>" in g.content
 
 
+def test_chat_greeting_mixed_content_bare_string_unescaped():
+    """Regression for PR #373: mixed TagList("**markdown**", tag) greeting
+    content — the bare-string portion must appear RAW (unescaped) in the
+    greeting payload. Before the fix, TagList(...).render() HTML-escaped the
+    bare string (e.g. ``**markdown**`` stayed but ``<b>html</b>`` became
+    ``&lt;b&gt;html&lt;/b&gt;``) and shipped it as a single trusted html
+    string, so markdown was never processed and literal HTML was escaped."""
+    content = TagList("**markdown** and <b>html</b>", tags.div("trusted"))
+    g = chat_greeting(content)
+    assert g.content_type == "html"
+    assert isinstance(g.content, str)
+    # The bare string is kept raw — markdown syntax and literal HTML both
+    # survive unescaped.
+    assert "**markdown** and <b>html</b>" in g.content
+    assert "&lt;b&gt;" not in g.content
+    # The trusted tag is rendered to HTML.
+    assert "<div>trusted</div>" in g.content
+    # No island wrappers.
+    assert "shiny-chat-raw-html" not in g.content
+
+
+def test_chat_ui_mixed_greeting_bare_string_unescaped_on_wire():
+    """Regression for PR #373: the chat_ui greeting attribute carries the
+    bare-string portion raw (unescaped) in the wire payload."""
+    g = chat_greeting(
+        TagList("**markdown** and <b>html</b>", tags.div("trusted"))
+    )
+    tag = chat_ui("chat", greeting=g)
+    payload = _greeting_payload(tag)
+    assert payload["content_type"] == "html"
+    assert "**markdown** and <b>html</b>" in payload["content"]
+    assert "&lt;b&gt;" not in payload["content"]
+    assert "<div>trusted</div>" in payload["content"]
+
+
 # ---------------------------------------------------------------------------
 # Chat.set_greeting() unit tests
 # ---------------------------------------------------------------------------

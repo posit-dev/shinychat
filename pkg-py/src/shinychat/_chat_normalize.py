@@ -8,11 +8,14 @@ from htmltools import HTML, HTMLDependency, Tag, Tagifiable, TagList
 
 from ._chat_types import (
     ChatMessage,
+    PartEntry,
     StructuredBlock,
     WebFetchBlock,
     WebSearchBlock,
     WebSearchResultsBlock,
     WebSearchSource,
+    _is_string_part,
+    is_structured_segment,
 )
 
 if TYPE_CHECKING:
@@ -539,6 +542,20 @@ def _is_tool_result(value: object) -> TypeGuard["ContentToolResult"]:
         return False
 
 
+def _part_text(p: PartEntry) -> str:
+    """Extract renderable text from a single ``parts`` entry.
+
+    String segments contribute their ``content``; ``html_block`` blocks
+    contribute their ``content``; all other structured blocks contribute
+    nothing (they are opaque to the text channel).
+    """
+    if _is_string_part(p):
+        return p["content"]
+    if is_structured_segment(p) and p["type"] == "html_block":
+        return p["content"]
+    return ""
+
+
 def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
     """Emit a custom tool-result as a structured ``tool_result`` block.
 
@@ -581,11 +598,7 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
     )
     annotations = resolve_tool_annotations(message.request.tool)
     if msg.parts is not None:
-        content = "".join(
-            p if isinstance(p, str) else p["content"]
-            for p in msg.parts
-            if isinstance(p, str) or p["type"] == "html_block"
-        )
+        content = "".join(_part_text(p) for p in msg.parts)
     else:
         content = msg.content + "".join(
             b["content"] for b in msg.blocks if b["type"] == "html_block"

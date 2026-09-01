@@ -262,3 +262,49 @@ def test_artifact_validates_title_and_content() -> None:
         _run_async(chat.drawer.show(title=cast(Any, 1)))
     with pytest.raises(PydanticSerializationError, match="Unable to serialize"):
         _run_async(chat.drawer.show(cast(Any, object())))
+
+
+def test_drawer_mixed_content_bare_string_unescaped() -> None:
+    """Regression for PR #373: mixed TagList("**markdown**", tag) drawer
+    content — the bare-string portion must appear RAW (unescaped) in the
+    drawer action payload. Before the fix, TagList(...).render() HTML-escaped
+    the bare string (e.g. ``<b>html</b>`` → ``&lt;b&gt;html&lt;/b&gt;``) and
+    shipped it as a single trusted html string."""
+    chat, session = _make_chat()
+
+    _run_async(
+        chat.drawer.show(
+            TagList("**markdown** and <b>html</b>", tags.div("trusted"))
+        )
+    )
+
+    assert len(session.messages) == 1
+    _, envelope = session.messages[0]
+    action = envelope["action"]
+    assert action["type"] == "drawer_show"
+    content = action["content"]
+    # Bare string kept raw — markdown syntax and literal HTML survive.
+    assert "**markdown** and <b>html</b>" in content
+    assert "&lt;b&gt;" not in content
+    # Trusted tag rendered to HTML.
+    assert "<div>trusted</div>" in content
+
+
+def test_drawer_mixed_content_update_bare_string_unescaped() -> None:
+    """Regression for PR #373: same fix applies to drawer.update()."""
+    chat, session = _make_chat()
+
+    _run_async(
+        chat.drawer.update(
+            TagList("**markdown** and <b>html</b>", tags.span("trusted"))
+        )
+    )
+
+    assert len(session.messages) == 1
+    _, envelope = session.messages[0]
+    action = envelope["action"]
+    assert action["type"] == "drawer_update"
+    content = action["content"]
+    assert "**markdown** and <b>html</b>" in content
+    assert "&lt;b&gt;" not in content
+    assert "<span>trusted</span>" in content

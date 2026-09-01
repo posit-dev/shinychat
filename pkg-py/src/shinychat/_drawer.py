@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
-from htmltools import TagChild
+from htmltools import TagChild, TagList
 
 from ._chat_types import DrawerShowAction, DrawerUpdateAction
+from ._html_islands import split_content_by_trust
 from ._htmltools_serialization import render_htmltools
 
 if TYPE_CHECKING:
@@ -62,8 +63,9 @@ class ChatDrawerController:
             action = {"type": "drawer_update"}
         html_deps = None
         if content is not None:
+            # Validate and collect deps via the standard render path (also
+            # raises PydanticSerializationError for unsupported types).
             rendered = render_htmltools(content)
-            action["content"] = rendered["html"]
             # Process dependencies through the chat session so Shiny can register
             # local assets before the browser renders the replacement content.
             html_deps = self._chat._serialize_html_deps(
@@ -71,6 +73,20 @@ class ChatDrawerController:
             )
             if html_deps is None:
                 html_deps = []
+            # For mixed content (bare strings + tags), split by trust to keep
+            # bare strings raw (unescaped) instead of HTML-escaped by
+            # TagList.render(). Pure-tag content is unaffected (all trusted).
+            if isinstance(content, str):
+                action["content"] = content
+            else:
+                pieces: list[str] = []
+                for trusted, run in split_content_by_trust(content):
+                    if trusted:
+                        pieces.append(TagList(run).render()["html"])
+                    else:
+                        # Untrusted bare-string run: keep raw, do not escape.
+                        pieces.append(str(run))
+                action["content"] = "".join(pieces)
         if title is not None:
             action["title"] = title
 

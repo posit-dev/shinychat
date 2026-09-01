@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, cast
 
 from htmltools import HTML, Tag, TagList, div, span
 from shinychat import output_markdown_stream
+from shinychat._chat_types import _is_string_part
 from shinychat._html_islands import (
     IslandBlockPart,
     IslandResidualPart,
@@ -254,8 +255,11 @@ def test_chat_message_mixed_content_interleaves_parts():
     ]
     assert m.parts is not None
     assert m.parts[0] == m.blocks[0]
-    assert isinstance(m.parts[1], str)
-    assert "shiny-tool-result" in m.parts[1]
+    # IslandResidualPart → StringSegment dict (not a bare str) carrying its
+    # own content_type so it survives through from_chat_message() into wire.
+    assert _is_string_part(m.parts[1])
+    assert "shiny-tool-result" in m.parts[1]["content"]
+    assert m.parts[1]["content_type"] == "html"
     assert m.parts[2] == m.blocks[1]
     assert "shiny-tool-result" in m.content
     assert m.content_type == "html"
@@ -646,3 +650,160 @@ def test_turn_normalization_reindexes_block_dep_objects():
     assert set(m._block_html_deps.keys()) == {0, 1}
     assert m._block_html_deps[0][0].name == "testlib"
     assert m._block_html_deps[1][0].name == "testlib"
+
+
+# --- Regression: mixed bare-string + tag content in ChatMessage (PR #373) ---
+
+
+def test_chat_message_mixed_markdown_and_html_bare_string_unescaped():
+    """Regression for PR #373: a bare string mixed with a tag in a TagList
+    must NOT be HTML-escaped by TagList.render(). The bare string becomes a
+    markdown string segment (content_type "markdown") so the client processes
+    its markdown; the tag becomes an html_block. Order is preserved on the
+    wire via StoredMessage.from_chat_message / wire_segments.
+
+    Before the fix, the bare string was rendered through TagList(...).render(),
+    which HTML-escaped it (e.g. ``**markdown**`` → ``**markdown**`` but
+    ``<b>html</b>`` → ``&lt;b&gt;html&lt;/b&gt;``) and shipped it as a trusted
+    html_block — so markdown was never processed AND raw HTML was escaped.
+    """
+    from shinychat._chat_types import ChatMessage, StoredMessage
+
+    m = ChatMessage(
+        content=TagList("**markdown** and <b>html</b>", div("trusted"))
+    )
+
+    # The bare string is a markdown string segment — unescaped.
+    assert m.parts is not None
+    assert len(m.parts) == 2
+    assert _is_string_part(m.parts[0])
+    assert m.parts[0]["content"] == "**markdown** and <b>html</b>"
+    assert m.parts[0]["content_type"] == "markdown"
+
+    # The tag becomes an html_block.
+    assert not _is_string_part(m.parts[1])
+    block = cast("HtmlBlock", m.parts[1])
+    assert block["type"] == "html_block"
+    assert block["content"] == "<div>trusted</div>"
+
+    # The message content carries the bare string (unescaped) as residual html.
+    assert "**markdown** and <b>html</b>" in m.content
+    assert m.content_type == "html"
+
+    # Wire round-trip preserves order: markdown string segment, then html_block.
+    stored = StoredMessage.from_chat_message(m)
+    wire = stored.wire_segments()
+    assert len(wire) == 2
+    first = cast("dict[str, str]", wire[0])
+    assert first["content"] == "**markdown** and <b>html</b>"
+    assert first["content_type"] == "markdown"
+    second = cast("HtmlBlock", wire[1])
+    assert second["type"] == "html_block"
+    assert second["content"] == "<div>trusted</div>"
+
+
+def test_chat_message_mixed_string_then_tag_then_string_preserves_order():
+    """Regression for PR #373: multiple bare-string runs interleaved with tags
+    preserve their original order and each string run keeps content_type
+    "markdown" on the wire."""
+    from shinychat._chat_types import ChatMessage, StoredMessage
+
+    m = ChatMessage(
+        content=TagList("first **md**", div("middle"), "second <i>raw</i>")
+    )
+
+    assert m.parts is not None
+    assert len(m.parts) == 3
+    assert _is_string_part(m.parts[0])
+    assert m.parts[0]["content"] == "first **md**"
+    assert m.parts[0]["content_type"] == "markdown"
+    assert not _is_string_part(m.parts[1])
+    assert cast("HtmlBlock", m.parts[1])["content"] == "<div>middle</div>"
+    assert _is_string_part(m.parts[2])
+    assert m.parts[2]["content"] == "second <i>raw</i>"
+    assert m.parts[2]["content_type"] == "markdown"
+
+    stored = StoredMessage.from_chat_message(m)
+    wire = stored.wire_segments()
+    assert len(wire) == 3
+    assert cast("dict[str, str]", wire[0])["content"] == "first **md**"
+    assert cast("dict[str, str]", wire[0])["content_type"] == "markdown"
+    assert cast("HtmlBlock", wire[1])["content"] == "<div>middle</div>"
+    assert cast("dict[str, str]", wire[2])["content"] == "second <i>raw</i>"
+    assert cast("dict[str, str]", wire[2])["content_type"] == "markdown"
+
+
+# --- Pure-case regression: unchanged behavior after the trust-split fix ---
+
+
+def test_chat_message_pure_string_content_stays_markdown():
+    """Regression for PR #373: a pure-string ChatMessage keeps content_type
+    "markdown" and parts is None (flat layout path). The trust-split fix
+    must not change this."""
+    from shinychat._chat_types import ChatMessage, StoredMessage
+
+    m = ChatMessage(content="**plain markdown**")
+
+    assert m.content == "**plain markdown**"
+    assert m.content_type == "markdown"
+    assert m.blocks == []
+    assert m.parts is None
+
+    stored = StoredMessage.from_chat_message(m)
+    wire = stored.wire_segments()
+    assert len(wire) == 1
+    assert cast("dict[str, str]", wire[0])["content"] == "**plain markdown**"
+    assert cast("dict[str, str]", wire[0])["content_type"] == "markdown"
+
+
+def test_chat_message_pure_tag_content_becomes_html_block():
+    """Regression for PR #373: a pure-tag ChatMessage (no bare strings)
+    becomes a single html_block; parts stays None (flat layout). The
+    trust-split fix must not change this."""
+    from shinychat._chat_types import ChatMessage, StoredMessage
+
+    m = ChatMessage(content=div("trusted"))
+
+    assert m.content == ""
+    assert m.content_type == "html"
+    assert len(m.blocks) == 1
+    assert m.blocks[0] == {
+        "type": "html_block",
+        "version": 1,
+        "content": "<div>trusted</div>",
+    }
+    assert m.parts is None
+
+    stored = StoredMessage.from_chat_message(m)
+    wire = stored.wire_segments()
+    assert len(wire) == 2
+    assert cast("dict[str, str]", wire[0]) == {
+        "content": "",
+        "content_type": "html",
+    }
+    assert cast("HtmlBlock", wire[1])["content"] == "<div>trusted</div>"
+
+
+def test_chat_message_html_marked_string_stays_trusted_html_block():
+    """Regression for PR #373: an HTML()-marked string is trusted and becomes
+    a single html_block — not a markdown string segment. The trust-split fix
+    must not change this."""
+    from shinychat._chat_types import ChatMessage, StoredMessage
+
+    m = ChatMessage(content=HTML("<b>raw</b>"))
+
+    assert m.content == ""
+    assert m.content_type == "html"
+    assert m.blocks == [
+        {"type": "html_block", "version": 1, "content": "<b>raw</b>"}
+    ]
+    assert m.parts is None
+
+    stored = StoredMessage.from_chat_message(m)
+    wire = stored.wire_segments()
+    assert len(wire) == 2
+    assert cast("dict[str, str]", wire[0]) == {
+        "content": "",
+        "content_type": "html",
+    }
+    assert cast("HtmlBlock", wire[1])["content"] == "<b>raw</b>"
