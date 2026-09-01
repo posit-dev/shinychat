@@ -539,6 +539,207 @@ describe("ChatApp integration: editable messages gated by history state", () => 
     ).toHaveLength(1)
   })
 
+  it("clears a downgraded v2 edit transition and ignores its stale projection", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    const { container } = renderChatApp(transport)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+        transition_protocol: "completion-v2",
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "replace me", content_type: "markdown" }],
+        },
+      })
+    })
+
+    const targetUser = screen
+      .getByText("replace me")
+      .closest(".shiny-chat-user-message") as HTMLElement
+    fireEvent.click(
+      targetUser.querySelector(".shiny-chat-edit-btn") as HTMLElement,
+    )
+    const editInput = targetUser.querySelector(
+      ".shiny-chat-edit-box textarea",
+    ) as HTMLTextAreaElement
+    fireEvent.change(editInput, { target: { value: "v2 replacement" } })
+    fireEvent.click(
+      targetUser.querySelector(".shiny-chat-btn-send") as HTMLElement,
+    )
+
+    const requestId = vi.mocked(transport.sendMessageEdit).mock.calls[0]?.[4]
+    expect(requestId).toEqual(expect.any(String))
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+        transition_protocol: "completion-v1",
+      })
+      transport.fire("test-chat", {
+        type: "history_edit_projection",
+        requestId: requestId as string,
+        index: 0,
+        content: "stale replacement",
+        attachments: [],
+      })
+    })
+
+    expect(transport.sendInput).not.toHaveBeenCalled()
+    expect(screen.getByText("replace me")).toBeTruthy()
+
+    // The marker was cleared with the capability change, so the v1 edit path
+    // is immediately usable and must not carry the obsolete request ID.
+    fireEvent.click(
+      targetUser.querySelector(".shiny-chat-edit-btn") as HTMLElement,
+    )
+    const legacyEditInput = targetUser.querySelector(
+      ".shiny-chat-edit-box textarea",
+    ) as HTMLTextAreaElement
+    fireEvent.change(legacyEditInput, {
+      target: { value: "v1 replacement" },
+    })
+    fireEvent.click(
+      targetUser.querySelector(".shiny-chat-btn-send") as HTMLElement,
+    )
+    expect(transport.sendMessageEdit).toHaveBeenLastCalledWith(
+      "test-chat",
+      0,
+      "v1 replacement",
+      [],
+    )
+  })
+
+  it.each([
+    ["Python v1", "completion-v1"],
+    ["R", undefined],
+  ])(
+    "keeps %s history mutations available while ordinary input is pending",
+    async (_runtime, transitionProtocol) => {
+      mockMatchMedia(false)
+      const transport = createMockTransport()
+      const { container } = renderChatApp(transport)
+      const conversations = [
+        {
+          id: "legacy",
+          title: "Legacy conversation",
+          created_at: "2026-09-01T00:00:00.000Z",
+          updated_at: "2026-09-01T00:00:00.000Z",
+        },
+      ]
+
+      await act(async () => {
+        transport.fire("test-chat", {
+          type: "history_update",
+          enabled: true,
+          conversations,
+          active_id: null,
+          ...(transitionProtocol === undefined
+            ? {}
+            : { transition_protocol: transitionProtocol }),
+        })
+        transport.fire("test-chat", {
+          type: "message",
+          message: {
+            role: "user",
+            segments: [
+              { content: "legacy target", content_type: "markdown" },
+            ],
+          },
+        })
+        transport.fire("test-chat", {
+          type: "update_siblings",
+          data: { 0: { index: 0, total: 2 } },
+        })
+      })
+
+      const composer = container.querySelector(
+        ".shiny-chat-composer textarea",
+      ) as HTMLTextAreaElement
+      fireEvent.change(composer, { target: { value: "ordinary input" } })
+      fireEvent.click(
+        container.querySelector(
+          ".shiny-chat-composer .shiny-chat-btn-send",
+        ) as HTMLElement,
+      )
+      expect(transport.sendInput).toHaveBeenCalledWith(
+        "test-input",
+        "ordinary input",
+      )
+
+      const targetUser = screen
+        .getByText("legacy target")
+        .closest(".shiny-chat-user-message") as HTMLElement
+      fireEvent.click(
+        targetUser.querySelector(".shiny-chat-edit-btn") as HTMLElement,
+      )
+      const editInput = targetUser.querySelector(
+        ".shiny-chat-edit-box textarea",
+      ) as HTMLTextAreaElement
+      fireEvent.change(editInput, { target: { value: "legacy edit" } })
+      fireEvent.click(
+        targetUser.querySelector(".shiny-chat-btn-send") as HTMLElement,
+      )
+      expect(transport.sendMessageEdit).toHaveBeenCalledWith(
+        "test-chat",
+        0,
+        "legacy edit",
+        [],
+      )
+
+      const nextVersion = screen.getByRole("button", {
+        name: "Next version",
+      })
+      expect(nextVersion).toBeEnabled()
+      fireEvent.click(nextVersion)
+      expect(transport.sendMessageNavigate).toHaveBeenCalledWith(
+        "test-chat",
+        0,
+        "next",
+      )
+
+      fireEvent.click(
+        screen.getByRole("button", { name: /conversation history/i }),
+      )
+      const newConversation = screen.getByRole("button", {
+        name: /new conversation/i,
+      })
+      expect(newConversation).toBeEnabled()
+      fireEvent.click(newConversation)
+      expect(transport.sendHistoryNew).toHaveBeenCalledWith("test-chat")
+
+      fireEvent.click(
+        screen.getByRole("button", { name: /conversation history/i }),
+      )
+      fireEvent.click(
+        container.querySelector(
+          ".shiny-chat-history-itemmenu button",
+        ) as HTMLElement,
+      )
+      fireEvent.click(screen.getByText("Rename"))
+      const rename = screen.getByDisplayValue(
+        "Legacy conversation",
+      ) as HTMLInputElement
+      fireEvent.change(rename, { target: { value: "Renamed legacy" } })
+      fireEvent.keyDown(rename, { key: "Enter" })
+      expect(transport.sendHistoryRename).toHaveBeenCalledWith(
+        "test-chat",
+        "legacy",
+        "Renamed legacy",
+      )
+    },
+  )
+
   it("routes drawer actions through the history store and disables them while streaming", async () => {
     mockMatchMedia(false)
     const transport = createMockTransport()

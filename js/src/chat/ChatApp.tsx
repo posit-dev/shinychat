@@ -371,8 +371,17 @@ export function ChatApp({
   }, [greetingIsDismissed, elementId])
 
   useLayoutEffect(() => {
-    historyStore.setBusy(state.inputDisabled || state.streamingMessage !== null)
-  }, [historyStore, state.inputDisabled, state.streamingMessage])
+    historyStore.setBusy(
+      state.streamingMessage !== null ||
+        (historySnapshot.transitionProtocol === "completion-v2" &&
+          state.inputDisabled),
+    )
+  }, [
+    historyStore,
+    historySnapshot.transitionProtocol,
+    state.inputDisabled,
+    state.streamingMessage,
+  ])
 
   const handleEdit = useCallback(
     (index: number, content: string, attachments: AttachmentPayload[]) => {

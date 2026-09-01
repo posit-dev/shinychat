@@ -185,7 +185,7 @@ describe("historyStore", () => {
     )
   })
 
-  it("replaces capability state and clears transitions on omission or withdrawal", () => {
+  it("replaces capability state and clears transitions on every protocol change", () => {
     const transport = createMockTransport()
     const registration = acquireHistoryStore("chat", transport)
     const requestId = vi
@@ -235,6 +235,31 @@ describe("historyStore", () => {
       transitionProtocol: null,
       historyTransitionPending: null,
     })
+
+    registration.store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      transitionProtocol: "completion-v2",
+    })
+    expect(registration.store.beginEditTransition()).toBe("request-pending")
+    expect(registration.store.getSnapshot().historyTransitionPending).toBe(
+      "request-pending",
+    )
+
+    registration.store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      transitionProtocol: "completion-v1",
+    })
+    expect(registration.store.getSnapshot()).toMatchObject({
+      transitionProtocol: "completion-v1",
+      historyTransitionPending: null,
+    })
+    expect(registration.store.acceptEditProjection("request-pending")).toBe(
+      false,
+    )
   })
 
   it("uses completion-v2 for edit transitions while retaining v1 New/Delete", () => {

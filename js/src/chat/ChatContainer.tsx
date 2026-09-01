@@ -1024,7 +1024,8 @@ export const ChatContainer = forwardRef<
                     disabled={
                       history.busy ||
                       history.historyTransitionPending !== null ||
-                      inputDisabled ||
+                      (history.transitionProtocol === "completion-v2" &&
+                        inputDisabled) ||
                       isStreaming
                     }
                     inputId={inputId}
