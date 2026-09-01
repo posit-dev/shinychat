@@ -999,7 +999,10 @@ test_that("chat_append_message() mixed tag list produces html_block + string seg
   expect_match(segments[[2]]$content, "trusted HTML", fixed = TRUE)
 })
 
-test_that("chat_append_message() mixed tagList with bare string + tag splits by trust", {
+test_that("chat_append_message() mixed tagList homogenizes to one escaped html_block", {
+  # tagList() content is an HTML container: the bare string is an escaped
+  # text node, NOT a markdown segment — matching every shipped release's
+  # behavior. To mix markdown and UI in one message, use list() content.
   captured <- list()
   local_mocked_bindings(
     send_chat_action = function(id, action, html_deps = NULL, session) {
@@ -1012,7 +1015,7 @@ test_that("chat_append_message() mixed tagList with bare string + tag splits by 
   )
   session <- shiny::MockShinySession$new()
 
-  content <- htmltools::tagList("**markdown**", tags$b("html"))
+  content <- htmltools::tagList("**markdown** and <i>raw</i>", tags$b("html"))
   chat_append_message(
     "chat",
     list(role = "assistant", content = content),
@@ -1024,23 +1027,24 @@ test_that("chat_append_message() mixed tagList with bare string + tag splits by 
   msg <- captured[[1]]$action
   expect_equal(msg$type, "message")
   segments <- msg$message$segments
-  expect_length(segments, 2)
+  expect_length(segments, 1)
 
-  # The bare string becomes a markdown string segment (unescaped, not
-  # rendered through renderTags which would escape it).
-  expect_null(segments[[1]]$type)
-  expect_equal(segments[[1]]$content, "**markdown**")
-  expect_equal(segments[[1]]$content_type, "markdown")
-
-  # The tag becomes an html_block.
-  expect_equal(segments[[2]]$type, "html_block")
-  expect_equal(segments[[2]]$version, 1L)
-  expect_match(segments[[2]]$content, "<b>html</b>", fixed = TRUE)
+  # A single trusted html_block; the bare string is HTML-escaped inside it
+  # (executable HTML is neutralized, markdown is not processed).
+  expect_equal(segments[[1]]$type, "html_block")
+  expect_equal(segments[[1]]$version, 1L)
+  expect_match(
+    segments[[1]]$content,
+    "**markdown** and &lt;i&gt;raw&lt;/i&gt;",
+    fixed = TRUE
+  )
+  expect_match(segments[[1]]$content, "<b>html</b>", fixed = TRUE)
 })
 
-test_that("chat_append_message() tagList vs list produce equivalent bare-string treatment", {
-  # tagList("**md**", tag) and list("**md**", tag) must produce the same wire
-  # treatment of the bare string: a markdown string segment, unescaped.
+test_that("chat_append_message() tagList (HTML container) vs list (segment list) differ by contract", {
+  # tagList("**md**", tag): bare string is an escaped text node inside a
+  # single html_block. list("**md**", tag): bare string is a markdown
+  # segment. The container declares the semantics.
   capture_segments <- function(content) {
     captured <- list()
     local_mocked_bindings(
@@ -1069,21 +1073,20 @@ test_that("chat_append_message() tagList vs list produce equivalent bare-string 
     list("**md**", tags$b("x"))
   )
 
-  # Both produce 2 segments: markdown string + html_block
-  expect_length(taglist_segments, 2)
+  # tagList: one html_block with the string escaped inside
+  expect_length(taglist_segments, 1)
+  expect_equal(taglist_segments[[1]]$type, "html_block")
+  expect_match(taglist_segments[[1]]$content, "**md**", fixed = TRUE)
+
+  # list: markdown string segment + html_block
   expect_length(list_segments, 2)
-
-  # The bare string is a markdown segment in both, with the same content
-  expect_equal(taglist_segments[[1]]$content_type, "markdown")
+  expect_null(list_segments[[1]]$type)
+  expect_equal(list_segments[[1]]$content, "**md**")
   expect_equal(list_segments[[1]]$content_type, "markdown")
-  expect_equal(taglist_segments[[1]]$content, list_segments[[1]]$content)
-
-  # The tag is an html_block in both
-  expect_equal(taglist_segments[[2]]$type, "html_block")
   expect_equal(list_segments[[2]]$type, "html_block")
 })
 
-test_that("chat_append_message() mixed tagList preserves source ordering", {
+test_that("chat_append_message() mixed tagList renders all children in one html_block", {
   captured <- list()
   local_mocked_bindings(
     send_chat_action = function(id, action, html_deps = NULL, session) {
@@ -1096,7 +1099,8 @@ test_that("chat_append_message() mixed tagList preserves source ordering", {
   )
   session <- shiny::MockShinySession$new()
 
-  # tag, then bare string, then tag — order must be preserved
+  # tag, then bare string, then tag — all render into a single html_block
+  # in source order
   content <- htmltools::tagList(
     tags$div("first"),
     "**middle**",
@@ -1110,20 +1114,19 @@ test_that("chat_append_message() mixed tagList preserves source ordering", {
   )
 
   segments <- captured[[1]]$action$message$segments
-  expect_length(segments, 3)
-
-  # html_block (first tag)
+  expect_length(segments, 1)
   expect_equal(segments[[1]]$type, "html_block")
-  expect_match(segments[[1]]$content, "first", fixed = TRUE)
 
-  # markdown string (bare string)
-  expect_null(segments[[2]]$type)
-  expect_equal(segments[[2]]$content, "**middle**")
-  expect_equal(segments[[2]]$content_type, "markdown")
-
-  # html_block (last tag)
-  expect_equal(segments[[3]]$type, "html_block")
-  expect_match(segments[[3]]$content, "last", fixed = TRUE)
+  block <- segments[[1]]$content
+  expect_match(block, "<div>first</div>", fixed = TRUE)
+  expect_match(block, "**middle**", fixed = TRUE)
+  expect_match(block, "<span>last</span>", fixed = TRUE)
+  expect_true(
+    regexpr("<div>first</div>", block, fixed = TRUE) <
+      regexpr("**middle**", block, fixed = TRUE) &&
+      regexpr("**middle**", block, fixed = TRUE) <
+        regexpr("<span>last</span>", block, fixed = TRUE)
+  )
 })
 
 test_that("chat_append_message() htmltools::HTML() string becomes an html_block", {

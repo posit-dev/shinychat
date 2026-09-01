@@ -352,9 +352,10 @@ chat_greeting <- function(
 #'     * To prevent interpreting as markdown, mark the string as
 #'       [htmltools::HTML()].
 #'   * A UI element.
-#'     * This includes [htmltools::tagList()], which take UI elements (including
-#'       strings) as children. In this case, strings are still interpreted as
-#'       markdown as long as they're not inside HTML.
+#'     * This includes [htmltools::tagList()], which takes UI elements
+#'       (including strings) as children. tagList content is treated as HTML:
+#'       strings inside it are literal text (HTML-escaped), not markdown. Use
+#'       [htmltools::HTML()] for trusted raw HTML strings.
 #'   * A named list of `content` and `role`. The `content` can contain content
 #'     as described above, and the `role` can be "assistant" or "user".
 #'
@@ -862,9 +863,10 @@ resolve_aside_favicon <- function() {
 #'     * To prevent interpreting as markdown, mark the string as
 #'       [htmltools::HTML()].
 #'   * A UI element.
-#'     * This includes [htmltools::tagList()], which take UI elements
-#'       (including strings) as children. In this case, strings are still
-#'       interpreted as markdown as long as they're not inside HTML.
+#'     * This includes [htmltools::tagList()], which takes UI elements
+#'       (including strings) as children. tagList content is treated as HTML:
+#'       strings inside it are literal text (HTML-escaped), not markdown. Use
+#'       [htmltools::HTML()] for trusted raw HTML strings.
 #'
 #' @param role The role of the message (either "assistant" or "user"). Defaults
 #'   to "assistant".
@@ -954,59 +956,47 @@ process_block_deps <- function(block, session) {
 # derivation. Island items become html_block blocks; bare React elements stay
 # string parts. Mirrors Python's ChatMessage.__init__ non-string content path.
 #
-# Content is first split by trust (split_content_by_trust): untrusted bare
-# strings become markdown string segments (same shape as build_wire_segments
-# produces for bare strings), and trusted runs (tags, HTML()-marked strings)
-# go through derive_island_parts() as before. This ensures mixed content like
-# tagList("**markdown**", tags$b("x")) treats the bare string as markdown
-# (unescaped, rendered via the markdown parser) rather than escaping it into
-# a trusted html_block.
+# tagList() content is an HTML container: bare strings inside it are escaped
+# text nodes (via htmltools::renderTags()), NOT markdown. To mix markdown and
+# UI in one message, use list() content (see build_wire_segments), where bare
+# strings become markdown segments.
 build_html_island_segments <- function(content, session) {
+  parts <- derive_island_parts(content)
+  if (length(parts) == 0) {
+    return(list(segments = list(), deps = list()))
+  }
+
   segments <- list()
   all_deps <- list()
 
-  for (run in split_content_by_trust(content)) {
-    if (!run$trusted) {
-      # Untrusted bare string: produce a markdown string segment, mirroring
-      # build_wire_segments' shape for bare strings.
-      segments[[length(segments) + 1]] <- list(
-        content = as.character(run$content),
-        content_type = "markdown"
-      )
-      next
-    }
-
-    parts <- derive_island_parts(run$content)
-    for (part in parts) {
-      if (inherits(part, "shinychat_island_block_part")) {
-        block <- new_html_block(part$html)
-        if (length(part$deps) > 0) {
-          attr(block, "shinychat_html_deps") <- part$deps
-        }
-        # Only processed deps enter all_deps — raw html_dependency objects
-        # cannot be JSON-serialized.
-        result <- process_block_deps(block, session)
-        all_deps <- c(all_deps, result$deps)
-        segments[[length(segments) + 1]] <- result$block
+  for (part in parts) {
+    if (inherits(part, "shinychat_island_block_part")) {
+      block <- new_html_block(part$html)
+      if (length(part$deps) > 0) {
+        attr(block, "shinychat_html_deps") <- part$deps
+      }
+      # Only processed deps enter all_deps — raw html_dependency objects
+      # cannot be JSON-serialized.
+      result <- process_block_deps(block, session)
+      all_deps <- c(all_deps, result$deps)
+      segments[[length(segments) + 1]] <- result$block
+    } else {
+      # Raw html_dependency objects must not enter all_deps directly — they
+      # cannot be JSON-serialized and would bypass session registration.
+      processed_deps <- serialize_html_deps(part$deps, session)
+      all_deps <- c(all_deps, processed_deps)
+      if (
+        length(segments) > 0 &&
+          is.character(segments[[length(segments)]]$content) &&
+          !"type" %in% names(segments[[length(segments)]])
+      ) {
+        segments[[length(segments)]]$content <-
+          paste0(segments[[length(segments)]]$content, part$html)
       } else {
-        # Raw html_dependency objects must not enter all_deps directly — they
-        # cannot be JSON-serialized and would bypass session registration.
-        processed_deps <- serialize_html_deps(part$deps, session)
-        all_deps <- c(all_deps, processed_deps)
-        if (
-          length(segments) > 0 &&
-            is.character(segments[[length(segments)]]$content) &&
-            !"type" %in% names(segments[[length(segments)]]) &&
-            identical(segments[[length(segments)]]$content_type, "html")
-        ) {
-          segments[[length(segments)]]$content <-
-            paste0(segments[[length(segments)]]$content, part$html)
-        } else {
-          segments[[length(segments) + 1]] <- list(
-            content = part$html,
-            content_type = "html"
-          )
-        }
+        segments[[length(segments) + 1]] <- list(
+          content = part$html,
+          content_type = "html"
+        )
       }
     }
   }
@@ -1138,50 +1128,38 @@ send_wire_segment_actions <- function(
 
 # Session-free variant of build_html_island_segments for the static chat_ui()
 # path. Returns list(segments, deps) where deps are raw html_dependency objects.
-# Like build_html_island_segments, content is first split by trust: untrusted
-# bare strings become markdown string segments; trusted runs go through
-# derive_island_parts() as before.
 build_html_island_segments_static <- function(content) {
+  parts <- derive_island_parts(content)
+  if (length(parts) == 0) {
+    return(list(segments = list(), deps = list()))
+  }
+
   segments <- list()
   all_deps <- list()
 
-  for (run in split_content_by_trust(content)) {
-    if (!run$trusted) {
-      # Untrusted bare string: produce a markdown string segment, mirroring
-      # build_wire_segments_static's shape for bare strings.
-      segments[[length(segments) + 1]] <- list(
-        content = as.character(run$content),
-        content_type = "markdown"
-      )
-      next
-    }
-
-    parts <- derive_island_parts(run$content)
-    for (part in parts) {
-      if (inherits(part, "shinychat_island_block_part")) {
-        block <- new_html_block(part$html)
-        if (length(part$deps) > 0) {
-          attr(block, "shinychat_html_deps") <- part$deps
-        }
-        result <- process_block_deps_static(block)
-        all_deps <- c(all_deps, result$deps)
-        segments[[length(segments) + 1]] <- result$block
+  for (part in parts) {
+    if (inherits(part, "shinychat_island_block_part")) {
+      block <- new_html_block(part$html)
+      if (length(part$deps) > 0) {
+        attr(block, "shinychat_html_deps") <- part$deps
+      }
+      result <- process_block_deps_static(block)
+      all_deps <- c(all_deps, result$deps)
+      segments[[length(segments) + 1]] <- result$block
+    } else {
+      all_deps <- c(all_deps, part$deps)
+      if (
+        length(segments) > 0 &&
+          is.character(segments[[length(segments)]]$content) &&
+          !"type" %in% names(segments[[length(segments)]])
+      ) {
+        segments[[length(segments)]]$content <-
+          paste0(segments[[length(segments)]]$content, part$html)
       } else {
-        all_deps <- c(all_deps, part$deps)
-        if (
-          length(segments) > 0 &&
-            is.character(segments[[length(segments)]]$content) &&
-            !"type" %in% names(segments[[length(segments)]]) &&
-            identical(segments[[length(segments)]]$content_type, "html")
-        ) {
-          segments[[length(segments)]]$content <-
-            paste0(segments[[length(segments)]]$content, part$html)
-        } else {
-          segments[[length(segments) + 1]] <- list(
-            content = part$html,
-            content_type = "html"
-          )
-        }
+        segments[[length(segments) + 1]] <- list(
+          content = part$html,
+          content_type = "html"
+        )
       }
     }
   }
