@@ -121,7 +121,7 @@ export class HistoryStore {
       ? this.snapshot.conversations
       : Object.freeze(
           conversations.map((conversation) => ({ ...conversation })),
-    )
+        )
 
     const normalizedProtocol = normalizeTransitionProtocol(transitionProtocol)
     const protocolChanged =
@@ -134,10 +134,9 @@ export class HistoryStore {
       busy: this.snapshot.busy,
       connected: this.snapshot.connected,
       transitionProtocol: normalizedProtocol,
-      historyTransitionPending:
-        !protocolChanged
-          ? this.snapshot.historyTransitionPending
-          : null,
+      historyTransitionPending: !protocolChanged
+        ? this.snapshot.historyTransitionPending
+        : null,
     })
   }
 

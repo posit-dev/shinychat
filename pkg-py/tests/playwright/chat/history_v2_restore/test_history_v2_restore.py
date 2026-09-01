@@ -9,7 +9,6 @@ from shiny.playwright import controller
 from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
 
-
 HERE = Path(__file__).parent
 
 

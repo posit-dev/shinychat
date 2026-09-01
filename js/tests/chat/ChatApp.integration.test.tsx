@@ -652,9 +652,7 @@ describe("ChatApp integration: editable messages gated by history state", () => 
           type: "message",
           message: {
             role: "user",
-            segments: [
-              { content: "legacy target", content_type: "markdown" },
-            ],
+            segments: [{ content: "legacy target", content_type: "markdown" }],
           },
         })
         transport.fire("test-chat", {
