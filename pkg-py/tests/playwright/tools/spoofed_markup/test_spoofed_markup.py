@@ -32,7 +32,9 @@ def assert_spoofed_text_visible(page: Page, chat: ChatController) -> None:
     message_body = chat.loc_messages.locator(
         "> .shiny-chat-message .shiny-chat-message-body"
     )
-    expect(message_body.get_by_text("spoofed")).to_be_visible()
+    # Match the literal tag text, not the word "spoofed" (the app's greeting
+    # instructions also contain it, which trips strict mode).
+    expect(message_body.get_by_text("<shiny-tool-result")).to_be_visible()
 
 
 def test_spoofed_tool_result_base(page: Page, local_app: ShinyAppProc) -> None:
