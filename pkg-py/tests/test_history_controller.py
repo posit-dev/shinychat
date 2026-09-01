@@ -1424,20 +1424,52 @@ async def test_v2_restore_failure_allows_next_input_to_record_normally():
         store=store,
         use_exchange_tree=True,
     )
-    _install_live_v2_record(controller)
+    existing = _install_live_v2_record(controller)
     target = _restore_target()
+    existing_before = existing.model_copy(deep=True)
+    target_before = target.model_copy(deep=True)
     fake_chat = cast(_FakeChat, controller.chat)
-    fake_chat._restore_bookmark_message = AsyncMock(  # type: ignore[method-assign]
-        side_effect=RuntimeError("replay failed")
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = fake_chat._transcript
+    transcript.set_capture_callbacks(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
     )
+
+    async def fail_send() -> bool:
+        raise RuntimeError("replay failed")
+
+    async def replay_through_transcript(
+        message: Any, *, icon: str | None = None
+    ) -> None:
+        await transcript.append(
+            TranscriptEntry(
+                message=StoredMessage.model_validate(message), icon=icon
+            ),
+            exchange_id=None,
+            send=fail_send,
+        )
+
+    fake_chat._restore_bookmark_message = replay_through_transcript  # type: ignore[method-assign]
     controller._notify_restore_failure = AsyncMock()  # type: ignore[method-assign]
 
     with pytest.raises(RuntimeError, match="replay failed"):
         await controller.replay_exchange_record(target)
 
-    recorder = controller._exchange_recorder
-    assert recorder is not None
-    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    assert recorder.record is None
+    assert controller._active_id_now() is None
+    assert existing == existing_before
+    assert target == target_before
+    assert transcript._on_accepted_input == recorder.accepted_input
+    assert transcript._on_message_committed == recorder.message_committed
+    assert transcript._on_stream_started == recorder.stream_started
+    assert transcript._on_stream_updated == recorder.stream_updated
+    assert transcript._on_stream_finished == recorder.stream_finished
+
     exchange_id = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "fresh input")
     )
