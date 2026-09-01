@@ -1275,12 +1275,12 @@ class HistoryController:
         if isinstance(target, ConversationRecordV2):
             recorder = self._exchange_recorder
             assert recorder is not None
-            node_ids, planned_state, bootstrap = self._prepare_exchange_restore(
-                target
-            )
             async with self._destructive_mutation():
                 async with self._exchange_mutation():
                     await recorder.save_current_locked()
+                    node_ids, planned_state, bootstrap = (
+                        self._prepare_exchange_restore(target)
+                    )
                     await self._restore_exchange_record_locked(
                         target,
                         node_ids=node_ids,

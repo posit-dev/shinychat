@@ -1249,6 +1249,81 @@ async def test_v2_switch_holds_admission_and_recorder_lock_through_restore() -> 
 
 
 @pytest.mark.anyio
+async def test_v2_switch_saves_source_before_target_preflight_failure() -> None:
+    class SnapshotStore(InMemoryConversationStore):
+        async def get(
+            self, partition: ConversationPartition, conv_id: str
+        ) -> Any:
+            record = await super().get(partition, conv_id)
+            return record.model_copy(deep=True) if record is not None else None
+
+        async def put(
+            self, partition: ConversationPartition, record: Any
+        ) -> None:
+            await super().put(partition, record.model_copy(deep=True))
+
+    saved_value = "initial"
+
+    def save(values: dict[str, Any]) -> None:
+        values["current"] = saved_value
+
+    adapter = _TrackingFakeAdapter()
+    store = SnapshotStore()
+    controller, _ = _make_controller(
+        store=store,
+        save_callbacks=[save],
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    source = new_conversation_record_v2(
+        title="source",
+        id="c_source",
+        client_info={},
+    )
+    recorder.record = source
+    controller._active_id.set(source.id)
+    await store.put(part(), source)
+
+    source.open_exchange("n_0001", _stored_message("user", "latest source"))
+    saved_value = "latest value"
+    target = new_conversation_record_v2(
+        title="invalid target",
+        id="c_target",
+        client_info={},
+    )
+    target.nodes["n_0000"].state["unsupported"] = StateEntry(
+        kind="test",
+        version=1,
+        mode="snapshot",
+        data={},
+    )
+    await store.put(part(), target)
+
+    fake_chat = cast(_FakeChat, controller.chat)
+    fake_chat.messages = [_stored_message("assistant", "live source")]
+
+    with pytest.raises(ValueError, match="Unsupported restore state entry"):
+        await controller.switch_to(target.id)
+
+    stored_source = await store.get(part(), source.id)
+    assert isinstance(stored_source, ConversationRecordV2)
+    assert stored_source.values == {"current": "latest value"}
+    assert [
+        node.input.content
+        for node in stored_source.nodes.values()
+        if node.input is not None
+    ] == ["latest source"]
+    assert recorder.record is source
+    assert controller._active_id_now() == source.id
+    assert fake_chat.clear_messages_calls == 0
+    assert fake_chat.messages == [_stored_message("assistant", "live source")]
+    assert fake_chat.set_greeting_calls == []
+    assert adapter.set_calls == []
+
+
+@pytest.mark.anyio
 async def test_v2_restore_hooks_are_ordered_and_receive_keyed_path_context():
     controller, _ = _make_controller(use_exchange_tree=True)
     recorder = controller._exchange_recorder
