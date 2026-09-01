@@ -5,11 +5,13 @@ implementation, evidence, and the required batched review are complete;
 Roborev 1146, 1152, 1158, 1159, and 1161 are closed or resolved as required
 by process. The bookmark-pointer disposition remains out of scope in
 `shinychat#g6tt`. `shinychat#5r50` is closed; successor
-`shinychat#6drf` is unblocked, ready, and unclaimed; and
+`shinychat#6drf` is claimed on `feat/history-exchange-tree` with
+`work.attention="ok"`; and
 `shinychat#azvt` remains open with `work.attention="ok"` (2026-09-01).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is closed after verified review
-evidence; successor `shinychat#6drf` is unblocked, ready, and unclaimed; parent
+evidence; successor `shinychat#6drf` is claimed on
+`feat/history-exchange-tree` with `work.attention="ok"`; parent
 `shinychat#azvt` is open with `work.attention="ok"` under epic
 `shinychat#6d0d`
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
@@ -2418,3 +2420,13 @@ chunk/finish noise. Review findings were resolved within scope, with no
 production or test work outside the accepted slice and no provisional
 decision remaining. `shinychat#5r50` is closed. `shinychat#6drf` is the next
 ready, unclaimed task; `shinychat#azvt` remains open with attention `ok`.
+
+### P4.2 entry handoff (2026-09-01)
+
+P4.2 is claimed. All required entry baselines are green: 43 Playwright plus
+455 non-browser history/transcript tests, 9 `history_edit` tests, and
+format/types. Investigation shows `history_edit` is v1-only and v2 has restore
+but no edit/navigation coverage. Decision: retain positional client addressing
+with no wire upgrade because there is no concrete red ambiguity. Next is the
+v2 graph/rewind/sibling-resubmit vertical slice. No production/test/client
+changes landed.
