@@ -62,12 +62,29 @@ approved fresh-draft recovery, in both cases followed by required metadata
 completion. Capture-eligible work remains closed until that completion even
 when `partition` is non-null.
 
-The selected server gate sits before accepted-input capture, complete-append
-reservation, and root-stream reservation. It never gates the generic
+The selected server gate sits before `ChatTranscript.record_accepted_input`,
+before complete-append reservation, and before root-stream reservation; a
+post-commit recorder callback is too late. It never gates the generic
 `_send_action` wire choke point. Restore replay bypasses the gate only within
 the existing destructive-history transaction; greeting and bookkeeping remain
 excluded exactly as in Phase 3. The gate releases on every initialization
 success, handled error, and cancellation.
+
+The client half reuses the existing `HistoryStore.initialized` state and
+`submissionBlocked` input surface for enabled `completion-v2` history only:
+the initial `history_update` is the decision-completion publication, and the
+client remains blocked while `initialized` is false or the existing
+transition marker is pending. History-disabled chats and the legacy
+completion protocol retain their current admission behavior. The existing
+ChatInput guards must cover Enter, send-button, attachment-only,
+slash-command, suggestion, and imperative submissions while preserving the
+uncontrolled draft and staged attachments; the ChatApp `submitUserInput`
+handler must recheck the same condition before optimistic `INPUT_SENT` or
+transport dispatch. The server admission predicate remains owned by the
+existing transcript/history boundary; it is not a second client marker or a
+new scheduling owner. A live-session cancellation must complete fresh-draft
+cleanup and publish the same release metadata before admitting input;
+teardown cancellation may end with no client to release.
 
 Before feature code, implement two disposable, production-shaped demo probes
 against the actual Python initialization/restore flow:
@@ -97,8 +114,8 @@ The selected guard must:
 
 - create no durable preselection record, recorder buffer, or merge state;
 - admit no capture-eligible event before restore decision completion;
-- preserves the browser draft/attachments without synthetic rollback;
-- releases on success, handled failure, and cancellation; and
+- preserve the browser draft/attachments without synthetic rollback;
+- release on success, handled failure, and cancellation; and
 - composes with the existing `completion-v2` marker rather than introducing
   another marker.
 
@@ -163,15 +180,32 @@ once, while an incompatible superseded entry is ignored; malformed entry,
 unknown state key, invalid mode, graph invalidity, and restore-send failure
 remain fail-closed through the approved fresh-draft recovery.
 
+When degradation is selected, the controller completes the ordinary target
+activation and metadata publication without entering fresh-draft recovery. It
+must establish the advertised live baseline before input is released: recorded
+bootstrap clears the attached client turns through the existing empty-turn
+reset, while live bootstrap leaves the app's live initialized prefix
+untouched. Neither path applies a stored partial or reconstructed sequence.
+The one fixed warning is bounded and provider-neutral:
+`Conversation display was restored, but model context was unavailable.` It is
+emitted once as part of the successful degraded restore, before the initial
+`history_update` releases the client gate.
+
 ## P5.3: Detailed error on reload
 
 The v2 schema already stores only `ErrorEntry.message`. Define
 `MAX_HISTORY_ERROR_MESSAGE = 256` Unicode code points. At the error write
-boundary, normalize the message to NFC; replace control characters and line
-separators with spaces; collapse whitespace; trim; use
-`The response could not be completed.` when it is empty; and truncate to 253
-code points plus `...` when it exceeds the limit. Store only that message,
-never a `repr`, traceback, or structured provider payload.
+boundary, accept only a safe user-facing summary; arbitrary exception text is
+not a safe source. Existing paths that have only `str(exception)` must use the
+fixed fallback `The response could not be completed.` rather than persist the
+exception text. For an already-approved safe summary, normalize it to NFC;
+replace control characters and line separators with spaces; collapse
+whitespace; trim; use the same fallback when it is empty; and truncate to 253
+code points plus `...` when it exceeds the limit. This normalization is a
+bound and presentation cleanup, not a secret or provider-body scrubber: no
+regex redaction or traceback filtering is treated as sufficient. Store only
+the resulting plain-text message, never a `repr`, traceback, or structured
+provider payload.
 
 On restored input-bearing `status == "error"` nodes, extend the existing
 ephemeral exchange-status projection with the bounded message and render it
