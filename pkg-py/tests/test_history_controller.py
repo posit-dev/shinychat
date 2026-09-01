@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from _history_test_helpers import branch_from
@@ -737,6 +737,30 @@ async def test_v2_restore_live_bootstrap_skips_only_root_snapshot():
 
 @pytest.mark.anyio
 async def test_v2_restore_live_bootstrap_waits_for_admission_and_recorder_lock():
+    class _ObservedRestoreLock:
+        def __init__(self) -> None:
+            self._lock = asyncio.Lock()
+            self.restore_attempted = asyncio.Event()
+            self.restore_acquired = asyncio.Event()
+
+        async def acquire(self) -> bool:
+            return await self._lock.acquire()
+
+        def release(self) -> None:
+            self._lock.release()
+
+        def locked(self) -> bool:
+            return self._lock.locked()
+
+        async def __aenter__(self) -> "_ObservedRestoreLock":
+            self.restore_attempted.set()
+            await self._lock.acquire()
+            self.restore_acquired.set()
+            return self
+
+        async def __aexit__(self, *args: Any) -> None:
+            self._lock.release()
+
     adapter = _TrackingFakeAdapter()
     adapter.turns = [{"role": "system", "content": "before admission"}]
     controller, _ = _make_controller(
@@ -746,6 +770,18 @@ async def test_v2_restore_live_bootstrap_waits_for_admission_and_recorder_lock()
     controller.restore_bootstrap = "live"
     recorder = controller._exchange_recorder
     assert recorder is not None
+    observed_lock = _ObservedRestoreLock()
+    recorder._lock = observed_lock  # type: ignore[assignment]
+    original_get_turns = adapter.get_turns_json
+    capture_after_restore_lock: list[bool] = []
+
+    def get_turns_json(
+        *, include_system_prompt: bool = False
+    ) -> list[dict[str, Any]]:
+        capture_after_restore_lock.append(observed_lock.restore_acquired.is_set())
+        return original_get_turns(include_system_prompt=include_system_prompt)
+
+    adapter.get_turns_json = get_turns_json  # type: ignore[method-assign]
     record = new_conversation_record_v2(
         title="restore",
         id="c_live",
@@ -776,17 +812,18 @@ async def test_v2_restore_live_bootstrap_waits_for_admission_and_recorder_lock()
         await entered_admission.wait()
         assert adapter.set_calls == []
 
-        adapter.turns = [{"role": "system", "content": "after admission"}]
         release_admission.set()
-        await asyncio.sleep(0)
+        await observed_lock.restore_attempted.wait()
+        adapter.turns = [{"role": "system", "content": "after admission"}]
         assert adapter.set_calls == []
 
-        recorder._lock.release()
+        observed_lock.release()
         await restore_task
     finally:
-        if recorder._lock.locked():
-            recorder._lock.release()
+        if observed_lock.locked():
+            observed_lock.release()
 
+    assert capture_after_restore_lock == [True]
     assert adapter.set_calls == [
         [{"role": "system", "content": "after admission"}]
     ]
@@ -1134,20 +1171,23 @@ async def test_v2_restore_cancellation_preserves_outcome_after_cleanup_failure()
 
 
 @pytest.mark.anyio
-async def test_v2_restore_repeated_cancellation_can_skip_visible_notification():
+async def test_v2_restore_notification_cancellation_preserves_original_instance():
     controller, _ = _make_controller(use_exchange_tree=True)
     _install_live_v2_record(controller)
     target = _restore_target()
     fake_chat = cast(_FakeChat, controller.chat)
+    original = asyncio.CancelledError("original restore cancellation")
+    notification = asyncio.CancelledError("notification cancellation")
     fake_chat._restore_bookmark_message = AsyncMock(  # type: ignore[method-assign]
-        side_effect=asyncio.CancelledError()
+        side_effect=original
     )
-    notifier = AsyncMock(side_effect=asyncio.CancelledError())
+    notifier = AsyncMock(side_effect=notification)
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
-    with pytest.raises(asyncio.CancelledError):
+    with pytest.raises(asyncio.CancelledError) as raised:
         await controller.replay_exchange_record(target)
 
+    assert raised.value is original
     notifier.assert_awaited_once_with(recovery_incomplete=False)
 
 
@@ -1220,6 +1260,112 @@ async def test_v2_restore_cleanup_failures_are_secondary_and_reported(
     assert recorder.record is None
     assert controller._active_id_now() is None
     notifier.assert_awaited_once_with(recovery_incomplete=True)
+
+
+@pytest.mark.anyio
+async def test_v2_restore_cleanup_continues_after_earlier_failure():
+    adapter = _TrackingFakeAdapter()
+    controller, _ = _make_controller(
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    _install_live_v2_record(controller)
+    target = _restore_target()
+    fake_chat = cast(_FakeChat, controller.chat)
+    original_clear = fake_chat.clear_messages
+    original_greeting = fake_chat.set_greeting
+    original_set_turns = adapter.set_turns_json
+    events: list[str] = []
+    clear_calls = 0
+    greeting_calls = 0
+
+    async def clear() -> None:
+        nonlocal clear_calls
+        clear_calls += 1
+        if clear_calls == 2:
+            events.append("messages")
+            raise RuntimeError("cleanup messages failure")
+        events.append("initial-clear")
+        await original_clear()
+
+    def set_turns(turns: list[Any]) -> None:
+        events.append("turns")
+        original_set_turns(turns)
+
+    async def greeting(value: Any) -> None:
+        nonlocal greeting_calls
+        greeting_calls += 1
+        events.append("initial-greeting" if greeting_calls == 1 else "greeting")
+        await original_greeting(value)
+
+    async def active_id(_id: str | None) -> None:
+        events.append("active-id")
+
+    async def metadata() -> None:
+        events.append("metadata")
+
+    async def notify(*, recovery_incomplete: bool) -> None:
+        assert recovery_incomplete
+        events.append("notification")
+
+    fake_chat.clear_messages = clear  # type: ignore[method-assign]
+    fake_chat.set_greeting = greeting  # type: ignore[method-assign]
+    fake_chat._restore_bookmark_message = AsyncMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("original restore failure")
+    )
+    adapter.set_turns_json = set_turns  # type: ignore[method-assign]
+    controller.on_active_id_change = active_id
+    controller.send_history_update = metadata  # type: ignore[method-assign]
+    controller._notify_restore_failure = notify  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="original restore failure"):
+        await controller.replay_exchange_record(target)
+
+    assert events == [
+        "initial-clear",
+        "initial-greeting",
+        "messages",
+        "turns",
+        "greeting",
+        "active-id",
+        "metadata",
+        "notification",
+    ]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("recovery_incomplete", "expected_message"),
+    [
+        (
+            False,
+            "Could not restore conversation. A fresh chat is ready.",
+        ),
+        (
+            True,
+            "Could not restore conversation. Recovery was incomplete; reload "
+            "before starting a new chat.",
+        ),
+    ],
+)
+async def test_notify_restore_failure_emits_recovery_message(
+    recovery_incomplete: bool, expected_message: str
+) -> None:
+    from shiny.module import ResolvedId
+
+    class _NotificationSession:
+        ns = ResolvedId("")
+
+    controller, _ = _make_controller(use_exchange_tree=True)
+    fake_chat = cast(_FakeChat, controller.chat)
+    cast(Any, fake_chat)._session = _NotificationSession()
+
+    with patch("shiny.ui.notification_show") as notification_show:
+        await controller._notify_restore_failure(
+            recovery_incomplete=recovery_incomplete
+        )
+
+    notification_show.assert_called_once_with(expected_message, type="error")
 
 
 @pytest.mark.anyio
