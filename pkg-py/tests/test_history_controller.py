@@ -666,6 +666,51 @@ async def test_v2_active_rename_survives_later_capture_in_file_store(
 
 
 @pytest.mark.anyio
+async def test_v2_inactive_rename_does_not_affect_active_recorder_capture() -> (
+    None
+):
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    inactive = new_conversation_record_v2(
+        title="inactive",
+        id="c_inactive",
+        client_info={},
+    )
+    await store.put(part(), inactive)
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+    )
+
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "active question")
+    )
+    assert recorder.record is not None
+    active_id = recorder.record.id
+
+    await controller.rename(inactive.id, "Renamed inactive")
+    await transcript.append(
+        TranscriptEntry(message=_stored_message("assistant", "active answer")),
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+
+    stored_inactive = await store.get(part(), inactive.id)
+    stored_active = await store.get(part(), active_id)
+    assert isinstance(stored_inactive, ConversationRecordV2)
+    assert isinstance(stored_active, ConversationRecordV2)
+    assert stored_inactive.title == "Renamed inactive"
+    assert stored_inactive.title_source == "user"
+    assert stored_active.title == "active question"
+    assert [
+        message.as_stored_message().content
+        for message in stored_active.nodes[exchange_id].messages
+    ] == ["active answer"]
+
+
+@pytest.mark.anyio
 async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
     store = InMemoryConversationStore()
     current_value = "response"
@@ -848,7 +893,9 @@ async def test_v2_active_rename_waits_for_recorder_capture_lock() -> None:
         )
     )
     await store.entered.wait()
-    rename = asyncio.create_task(controller.rename(recorder.record.id, "Renamed"))
+    rename = asyncio.create_task(
+        controller.rename(recorder.record.id, "Renamed")
+    )
     await asyncio.sleep(0)
     assert not rename.done()
 
@@ -1014,7 +1061,9 @@ async def test_v2_restore_live_bootstrap_waits_for_admission_and_recorder_lock()
     def get_turns_json(
         *, include_system_prompt: bool = False
     ) -> list[dict[str, Any]]:
-        capture_after_restore_lock.append(observed_lock.restore_acquired.is_set())
+        capture_after_restore_lock.append(
+            observed_lock.restore_acquired.is_set()
+        )
         return original_get_turns(include_system_prompt=include_system_prompt)
 
     adapter.get_turns_json = get_turns_json  # type: ignore[method-assign]
@@ -1107,6 +1156,96 @@ async def test_v2_switch_uses_restore_transaction_and_controller_active_id():
     ] == ["restore me"]
     assert adapter.set_calls == [[{"role": "system", "content": "restored"}]]
     assert fake_chat.actions[-1]["active_id"] == "c_target"
+
+
+@pytest.mark.anyio
+async def test_v2_switch_holds_admission_and_recorder_lock_through_restore() -> (
+    None
+):
+    class BlockingStore(InMemoryConversationStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.block_id: str | None = None
+            self.source_save_entered = asyncio.Event()
+            self.release_source_save = asyncio.Event()
+
+        async def put(
+            self, partition: ConversationPartition, record: Any
+        ) -> None:
+            if record.id == self.block_id:
+                self.block_id = None
+                self.source_save_entered.set()
+                await self.release_source_save.wait()
+            await super().put(partition, record)
+
+    store = BlockingStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+    )
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "source")
+    )
+    assert recorder.record is not None
+    source = recorder.record
+    target = new_conversation_record_v2(
+        title="target",
+        id="c_target",
+        client_info={},
+    )
+    await store.put(part(), target)
+
+    clear_started = asyncio.Event()
+    release_clear = asyncio.Event()
+    fake_chat = cast(_FakeChat, controller.chat)
+    original_clear_messages = fake_chat.clear_messages
+
+    async def blocked_clear_messages() -> None:
+        clear_started.set()
+        await release_clear.wait()
+        await original_clear_messages()
+
+    fake_chat.clear_messages = blocked_clear_messages  # type: ignore[method-assign]
+    store.block_id = source.id
+    switch = asyncio.create_task(controller.switch_to(target.id))
+    await store.source_save_entered.wait()
+
+    accepted_input = asyncio.create_task(
+        transcript.record_accepted_input_and_notify(
+            _stored_message("user", "late input")
+        )
+    )
+    await asyncio.sleep(0)
+    assert not accepted_input.done()
+
+    store.release_source_save.set()
+    await clear_started.wait()
+
+    stored_source = await store.get(part(), source.id)
+    assert isinstance(stored_source, ConversationRecordV2)
+    assert not accepted_input.done()
+    assert [
+        node.input.content
+        for node in stored_source.nodes.values()
+        if node.input is not None
+    ] == ["source"]
+
+    release_clear.set()
+    await switch
+    await accepted_input
+
+    stored_target = await store.get(part(), target.id)
+    assert isinstance(stored_target, ConversationRecordV2)
+    assert recorder.record is target
+    assert fake_chat.destructive_preflight_calls == 1
+    assert [
+        node.input.content
+        for node in stored_target.nodes.values()
+        if node.input is not None
+    ] == ["late input"]
 
 
 @pytest.mark.anyio
@@ -1512,6 +1651,7 @@ async def test_v2_restore_cleanup_failures_are_secondary_and_reported(
 
         fake_chat.clear_messages = fail_cleanup_clear  # type: ignore[method-assign]
     elif cleanup == "turns":
+
         def fail_cleanup_turns(_turns: list[Any]) -> None:
             raise cleanup_error
 

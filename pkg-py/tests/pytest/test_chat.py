@@ -244,7 +244,9 @@ def test_echoed_slash_command_capture_error_removes_loading_message():
             del message
             raise RuntimeError("capture failed")
 
-        async def _capture_action(action: dict[str, Any], _deps: Any = None) -> None:
+        async def _capture_action(
+            action: dict[str, Any], _deps: Any = None
+        ) -> None:
             actions.append(action)
 
         async def _capture_exception(error: BaseException) -> None:
@@ -501,6 +503,67 @@ def test_response_settlement_runs_after_complete_assistant_append():
     assert settled == [
         (ChatMessageDict(content="out-of-band response", role="assistant"),)
     ]
+
+
+def test_v2_terminal_metadata_uses_registered_response_settlement_callback():
+    class _HistoryAdapter:
+        def __init__(self) -> None:
+            self.turns: list[dict[str, str]] = []
+
+        def get_turns_json(
+            self, *, include_system_prompt: bool = False
+        ) -> list[dict[str, str]]:
+            return list(self.turns)
+
+        def set_turns_json(self, turns: list[dict[str, str]]) -> None:
+            self.turns = list(turns)
+
+        def client_info(self) -> dict[str, str]:
+            return {}
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_v2_metadata", history=False)
+        controller = HistoryController(
+            chat=chat,
+            adapter=_HistoryAdapter(),  # type: ignore[arg-type]
+            store=InMemoryConversationStore(),
+            title_fn=None,
+            title_enabled=False,
+            client=None,
+            use_exchange_tree=True,
+        )
+        controller.partition = ConversationPartition(
+            chat_id=chat.id, scope="response-settlement"
+        )
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+        chat._transcript.set_capture_callbacks(
+            on_accepted_input=recorder.accepted_input,
+            on_message_committed=recorder.message_committed,
+            on_stream_started=recorder.stream_started,
+            on_stream_updated=recorder.stream_updated,
+            on_stream_finished=recorder.stream_finished,
+        )
+        chat._on_response_settled(controller.on_response)
+
+        run_async(
+            lambda: chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="prompt", role="user")
+            )
+        )
+
+        metadata_updates: list[str] = []
+
+        async def send_history_update() -> None:
+            metadata_updates.append("terminal")
+
+        controller.send_history_update = send_history_update  # type: ignore[method-assign]
+        run_async(lambda: chat.append_message("answer"))
+        run_async(reactive.flush)
+
+    assert recorder.record is not None
+    assert recorder.record.response_count == 1
+    assert metadata_updates == ["terminal"]
 
 
 def test_response_settlement_persists_source_response_before_new_chat():
@@ -844,7 +907,9 @@ def test_settlement_consumer_cannot_clear_before_later_consumers():
         chat = Chat("settlement_reentrant_clear", history=False)
 
         async def clear_during_settlement() -> None:
-            with pytest.raises(RuntimeError, match="settlement is being delivered"):
+            with pytest.raises(
+                RuntimeError, match="settlement is being delivered"
+            ):
                 await chat.clear_messages()
             rejected.append("clear")
 
@@ -876,7 +941,9 @@ def test_settlement_consumer_cannot_clear_a_different_chat_before_later_consumer
         other = Chat("settlement_other", history=False)
 
         async def clear_other() -> None:
-            with pytest.raises(RuntimeError, match="settlement is being delivered"):
+            with pytest.raises(
+                RuntimeError, match="settlement is being delivered"
+            ):
                 await other.clear_messages()
             rejected.append("clear")
 
@@ -909,12 +976,16 @@ def test_reciprocal_settlement_mutations_fail_fast_without_deadlocking():
         chat_b = Chat("reciprocal_settlement_b", history=False)
 
         async def clear_b() -> None:
-            with pytest.raises(RuntimeError, match="settlement is being delivered"):
+            with pytest.raises(
+                RuntimeError, match="settlement is being delivered"
+            ):
                 await chat_b.clear_messages()
             rejected.append("A->B")
 
         async def clear_a() -> None:
-            with pytest.raises(RuntimeError, match="settlement is being delivered"):
+            with pytest.raises(
+                RuntimeError, match="settlement is being delivered"
+            ):
                 await chat_a.clear_messages()
             rejected.append("B->A")
 
@@ -948,7 +1019,9 @@ def test_settlement_consumer_child_task_can_clear_after_delivery_completes():
         release_child = asyncio.Event()
 
         async def clear_in_child() -> None:
-            with pytest.raises(RuntimeError, match="settlement is being delivered"):
+            with pytest.raises(
+                RuntimeError, match="settlement is being delivered"
+            ):
                 await chat.clear_messages()
             rejected.append("clear")
             child_rejected.set()
@@ -1000,7 +1073,9 @@ def test_nested_settlement_child_stays_blocked_until_outer_delivery_dequeues():
 
         async def clear_in_child() -> None:
             await b_dequeued.wait()
-            with pytest.raises(RuntimeError, match="settlement is being delivered"):
+            with pytest.raises(
+                RuntimeError, match="settlement is being delivered"
+            ):
                 await chat_b.clear_messages()
             rejected.append("while A is pending")
             child_rejected.set()
@@ -1598,7 +1673,9 @@ def test_old_stream_terminal_settles_after_newer_input():
         )
 
         async def on_settled() -> None:
-            settled.append(tuple(message["content"] for message in chat.messages()))
+            settled.append(
+                tuple(message["content"] for message in chat.messages())
+            )
 
         chat._on_response_settled(on_settled)
 

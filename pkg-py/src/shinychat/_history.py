@@ -475,7 +475,9 @@ class _ExchangeRecorder:
             planned.append((name, hook, context))
         return tuple(planned)
 
-    def _materialize_live_restore_turns(self, planned: RestorePlan) -> RestorePlan:
+    def _materialize_live_restore_turns(
+        self, planned: RestorePlan
+    ) -> RestorePlan:
         materialized: list[tuple[str, RestoreHook, StatePathContext]] = []
         for name, hook, context in planned:
             prepared_context = context
@@ -487,9 +489,7 @@ class _ExchangeRecorder:
             materialized.append((name, hook, prepared_context))
         return tuple(materialized)
 
-    async def _restore_state(
-        self, planned: RestorePlan
-    ) -> None:
+    async def _restore_state(self, planned: RestorePlan) -> None:
         for _, hook, context in planned:
             result = hook(context)
             if inspect.isawaitable(result):
@@ -561,9 +561,7 @@ class _ExchangeRecorder:
             return
 
         if self._active_id_published_for is not record:
-            publisher = getattr(
-                self._controller, "_publish_active_v2_id", None
-            )
+            publisher = getattr(self._controller, "_publish_active_v2_id", None)
             if publisher is not None:
                 published = await publisher(record)
             else:
@@ -1111,7 +1109,9 @@ class HistoryController:
         for cb in self._restore_callbacks:
             cb(values)
 
-    async def _notify_restore_failure(self, *, recovery_incomplete: bool) -> None:
+    async def _notify_restore_failure(
+        self, *, recovery_incomplete: bool
+    ) -> None:
         from shiny import ui as shiny_ui
         from shiny.session import session_context
 
@@ -1171,12 +1171,12 @@ class HistoryController:
         if target is not None:
             await self._restore_exchange_record(target)
 
-    async def _restore_exchange_record(
+    def _prepare_exchange_restore(
         self,
         target: ConversationRecordV2,
         *,
         bootstrap: Literal["recorded", "live"] | None = None,
-    ) -> None:
+    ) -> tuple[tuple[str, ...], RestorePlan, Literal["recorded", "live"]]:
         recorder = self._exchange_recorder
         if recorder is None:
             raise RuntimeError("Exchange-tree history is not enabled")
@@ -1192,46 +1192,73 @@ class HistoryController:
         planned_state = recorder._preflight_restore_state(
             target, node_ids, selected_bootstrap
         )
+        return node_ids, planned_state, selected_bootstrap
+
+    async def _restore_exchange_record_locked(
+        self,
+        target: ConversationRecordV2,
+        *,
+        node_ids: tuple[str, ...],
+        planned_state: RestorePlan,
+        bootstrap: Literal["recorded", "live"],
+    ) -> None:
+        recorder = self._exchange_recorder
+        assert recorder is not None
+
+        # Live bootstrap is intentionally captured only after admission
+        # and recorder serialization, but before destructive effects.
+        if bootstrap == "live":
+            planned_state = recorder._materialize_live_restore_turns(
+                planned_state
+            )
+        try:
+            await self.chat.clear_messages()
+            await self.chat.set_greeting(None)
+            with recorder.suspend_capture():
+                for node_id in node_ids:
+                    node = target.nodes[node_id]
+                    if node.input is not None:
+                        await self.chat._restore_bookmark_message(
+                            node.input.model_dump(mode="json")
+                        )
+                    for message in node.messages:
+                        await self.chat._restore_bookmark_message(
+                            message.as_stored_message().model_dump(mode="json"),
+                            icon=message.icon,
+                        )
+            await recorder._restore_state(planned_state)
+
+            # `_ExchangeRecorder` remains the sole v2 record owner.
+            # The controller only sequences its installation after
+            # display and state consumers have accepted the target.
+            self.record = None
+            recorder.install_restored_record(target)
+            await self._set_active_id(target.id)
+            recorder.mark_active_id_published(target)
+            self._restore_app_state(target.values or {})
+            await self.send_history_update()
+        except BaseException:
+            await self._clear_failed_restore()
+            raise
+
+    async def _restore_exchange_record(
+        self,
+        target: ConversationRecordV2,
+        *,
+        bootstrap: Literal["recorded", "live"] | None = None,
+    ) -> None:
+        node_ids, planned_state, selected_bootstrap = (
+            self._prepare_exchange_restore(target, bootstrap=bootstrap)
+        )
 
         async with self._destructive_mutation():
             async with self._exchange_mutation():
-                # Live bootstrap is intentionally captured only after admission
-                # and recorder serialization, but before destructive effects.
-                if selected_bootstrap == "live":
-                    planned_state = recorder._materialize_live_restore_turns(
-                        planned_state
-                    )
-                try:
-                    await self.chat.clear_messages()
-                    await self.chat.set_greeting(None)
-                    with recorder.suspend_capture():
-                        for node_id in node_ids:
-                            node = target.nodes[node_id]
-                            if node.input is not None:
-                                await self.chat._restore_bookmark_message(
-                                    node.input.model_dump(mode="json")
-                                )
-                            for message in node.messages:
-                                await self.chat._restore_bookmark_message(
-                                    message.as_stored_message().model_dump(
-                                        mode="json"
-                                    ),
-                                    icon=message.icon,
-                                )
-                    await recorder._restore_state(planned_state)
-
-                    # `_ExchangeRecorder` remains the sole v2 record owner.
-                    # The controller only sequences its installation after
-                    # display and state consumers have accepted the target.
-                    self.record = None
-                    recorder.install_restored_record(target)
-                    await self._set_active_id(target.id)
-                    recorder.mark_active_id_published(target)
-                    self._restore_app_state(target.values or {})
-                    await self.send_history_update()
-                except BaseException:
-                    await self._clear_failed_restore()
-                    raise
+                await self._restore_exchange_record_locked(
+                    target,
+                    node_ids=node_ids,
+                    planned_state=planned_state,
+                    bootstrap=selected_bootstrap,
+                )
 
     # -- switch / new ----------------------------------------------------
 
@@ -1248,8 +1275,18 @@ class HistoryController:
         if isinstance(target, ConversationRecordV2):
             recorder = self._exchange_recorder
             assert recorder is not None
-            await recorder.save_current()
-            await self._restore_exchange_record(target)
+            node_ids, planned_state, bootstrap = self._prepare_exchange_restore(
+                target
+            )
+            async with self._destructive_mutation():
+                async with self._exchange_mutation():
+                    await recorder.save_current_locked()
+                    await self._restore_exchange_record_locked(
+                        target,
+                        node_ids=node_ids,
+                        planned_state=planned_state,
+                        bootstrap=bootstrap,
+                    )
             return
 
         async with self._destructive_mutation():
