@@ -42,7 +42,7 @@ write, so a custom store doesn't need to check it itself.
 \if{latex}{\out{\hypertarget{method-ConversationStore-list}{}}}
 \subsection{\code{ConversationStore$list()}}{
   Must be implemented by subclasses. All conversations in
-\code{partition}, newest-first by \code{updated_at}.
+\code{partition}, newest-first by \code{created_at}.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{ConversationStore$list(partition)}

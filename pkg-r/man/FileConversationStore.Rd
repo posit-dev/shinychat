@@ -55,7 +55,7 @@ and writes for each conversation.
 \if{latex}{\out{\hypertarget{method-FileConversationStore-list}{}}}
 \subsection{\code{FileConversationStore$list()}}{
   All conversations in \code{partition}, newest-first by
-\code{updated_at}, read from one \code{record.json} per conversation directory
+\code{created_at}, read from one \code{record.json} per conversation directory
 on disk.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}

@@ -48,7 +48,7 @@ class ConversationStore(ABC):
     async def list(
         self, partition: ConversationPartition
     ) -> list[ConversationMeta]:
-        """All conversations in `partition`, newest-first (by updated_at)."""
+        """All conversations in `partition`, newest-first (by created_at)."""
 
     @abstractmethod
     async def get(
@@ -250,7 +250,7 @@ class FileConversationStore(ConversationStore):
                 except Exception as e:
                     logger.warning("Unreadable conversation %s: %s", d.name, e)
                     continue
-            metas.sort(key=lambda m: m.updated_at, reverse=True)
+            metas.sort(key=lambda m: m.created_at, reverse=True)
         self._meta_cache[partition] = metas
         return list(metas)
 
@@ -471,7 +471,7 @@ class FileConversationStore(ConversationStore):
                 m for m in self._meta_cache[partition] if m.id != record.id
             ]
             updated.append(record.meta(size_bytes=size_bytes))
-            updated.sort(key=lambda m: m.updated_at, reverse=True)
+            updated.sort(key=lambda m: m.created_at, reverse=True)
             self._meta_cache[partition] = updated
 
     async def delete(
@@ -522,7 +522,7 @@ class InMemoryConversationStore(ConversationStore):
             r.meta(size_bytes=len(r.model_dump_json().encode("utf-8")))
             for r in self._data.get(partition, {}).values()
         ]
-        metas.sort(key=lambda m: m.updated_at, reverse=True)
+        metas.sort(key=lambda m: m.created_at, reverse=True)
         self._meta_cache[partition] = metas
         return list(metas)
 
@@ -549,7 +549,7 @@ class InMemoryConversationStore(ConversationStore):
                 m for m in self._meta_cache[partition] if m.id != record.id
             ]
             updated.append(record.meta(size_bytes=size_bytes))
-            updated.sort(key=lambda m: m.updated_at, reverse=True)
+            updated.sort(key=lambda m: m.created_at, reverse=True)
             self._meta_cache[partition] = updated
 
     async def delete(
