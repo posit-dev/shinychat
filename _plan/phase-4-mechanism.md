@@ -2777,3 +2777,48 @@ authorization. It must replay the selected sibling path, persist
 and define its lifecycle guard/projection without changing positional Q3
 addressing absent concrete red evidence. Do not begin `shinychat#72ee` or any
 later Phase 4 task.
+
+### P4.2 sibling-navigation authorization (2026-09-01)
+
+Sibling navigation reuses the one `completion-v2` transition marker but not
+the edit projection. This is the reserved navigation-specific decision from
+the edit authorization:
+
+- For `completion-v2` only, the browser synchronously allocates the existing
+  request UUID before sending navigation, preserving the composer draft and
+  staged attachments while the shared mutation predicate blocks submit,
+  edit, navigation, switch, New, rename, and delete.
+- Extend the existing positional navigation payload only with optional
+  `requestId`. The UUID is lifecycle correlation, not exchange identity.
+  Python v1 and R continue to send and handle request-less navigation exactly
+  as before.
+- The Python v2 handler validates the target and request UUID, enters the
+  existing recorder/destructive-mutation boundary with live input blocked,
+  selects the sibling path, persists `active_leaf` and `selected_child`,
+  clears and replays that server-owned path, and applies the exact recorded
+  prefix through the rewind hooks. Existing replayed message actions plus
+  `history_update` are the navigation projection because the browser does not
+  own the selected sibling transcript.
+- Validate the adjacent sibling, remembered subtree leaf, complete selected
+  path, and rewind state before destructive mutation. A failure after pointer
+  mutation or display clearing uses the approved
+  `_clear_failed_restore()` fail-to-fresh-draft/incomplete-recovery contract,
+  preserving the original error or cancellation; it does not attempt
+  rollback to the prior sibling.
+- Do not add `history_navigation_projection` or another marker/owner.
+  `_on_navigate` owns matching, best-effort, non-masking
+  `history_transition_complete {requestId}` in `finally` after success,
+  handled error, or cancellation. Stale or mismatched completion remains a
+  no-op.
+- Retain positional Q3 addressing unless the predecessor/v2 browser suite
+  produces concrete ambiguity. Do not add queues, rollback, timers, an
+  exchange-ID wire upgrade, R server behavior, retry/status UI, bookmarks,
+  or Phase 5 recovery behavior.
+
+Required evidence covers both directions and boundary no-ops, persisted
+`active_leaf`/`selected_child` across reload, exact turn-prefix rewind,
+UI-only/custom-prefix replay fidelity, held navigation blocking every
+mutation while preserving draft/attachments, success/error/cancellation
+completion, stale UUID behavior, and Python v1/R compatibility. A real v2
+browser path must prove the selected sibling transcript and subsequent model
+turn continue from that sibling exactly once.
