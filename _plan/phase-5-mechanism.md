@@ -1,7 +1,7 @@
 # Phase 5 mechanism: hard core and adversarial review (Python)
 
-**Status:** gate corrections incorporated; pending final self-review and driver
-sign-off · 2026-09-01
+**Status:** authorized gate corrections incorporated; pending final self-review
+and driver sign-off · 2026-09-01
 **Phase:** plan.md §4, Phase 5
 **Kata:** parent `shinychat#fg70` under epic `shinychat#6d0d`
 **Context:** `phase-4-mechanism.md` is completed context only. This note is
@@ -70,13 +70,20 @@ the existing destructive-history transaction; greeting and bookkeeping remain
 excluded exactly as in Phase 3. The gate releases on every initialization
 success, handled error, and cancellation.
 
-The client half reuses the existing `HistoryStore.initialized` state and
-`submissionBlocked` input surface for enabled `completion-v2` history only:
-the initial `history_update` is the decision-completion publication, and the
-client remains blocked while `initialized` is false or the existing
-transition marker is pending. History-disabled chats and the legacy
-completion protocol retain their current admission behavior. The existing
-ChatInput guards must cover Enter, send-button, attachment-only,
+Before input activation and before the first `history_update`, the Python
+server seeds the existing `HistoryStore` with static
+`completion-v2` capability/protocol configuration. This is configuration, not
+a lifecycle marker, completion signal, or release action. The client reuses
+that capability with the existing `HistoryStore.initialized` state and
+`submissionBlocked` input surface: a seeded v2 client remains blocked while
+`initialized` is false or the existing transition marker is pending. The
+initial runtime `history_update` remains the authoritative
+decision-completion publication; an update that withdraws capability replaces
+the seed and clears pending state under the existing Phase 4 protocol-change
+rule. History-disabled chats, Python v1, and R emit no Python-v2 seed and
+retain their current admission behavior.
+
+The existing ChatInput guards must cover Enter, send-button, attachment-only,
 slash-command, suggestion, and imperative submissions while preserving the
 uncontrolled draft and staged attachments; the ChatApp `submitUserInput`
 handler must recheck the same condition before optimistic `INPUT_SENT` or
@@ -116,7 +123,7 @@ The selected guard must:
 - admit no capture-eligible event before restore decision completion;
 - preserve the browser draft/attachments without synthetic rollback;
 - release on success, handled failure, and cancellation; and
-- composes with the existing `completion-v2` marker rather than introducing
+- compose with the existing `completion-v2` marker rather than introducing
   another marker.
 
 If disabled-until-decision cannot meet the constraints, stop for a plan
@@ -162,7 +169,8 @@ controller:
 
 1. completes normal graph validation and display replay;
 2. leaves the displayed exchange path and its retry eligibility intact;
-3. makes no `set_turns` call with a partial, guessed, or reconstructed turn
+3. makes no `set_turns` call with data derived from an incompatible stored
+   entry, a partial sequence, a guessed sequence, or a reconstructed
    sequence; and
 4. sends one bounded visible warning that model context could not be restored.
 
@@ -182,10 +190,12 @@ remain fail-closed through the approved fresh-draft recovery.
 
 When degradation is selected, the controller completes the ordinary target
 activation and metadata publication without entering fresh-draft recovery. It
-must establish the advertised live baseline before input is released: recorded
-bootstrap clears the attached client turns through the existing empty-turn
-reset, while live bootstrap leaves the app's live initialized prefix
-untouched. Neither path applies a stored partial or reconstructed sequence.
+must establish the advertised live baseline before input is released:
+recorded bootstrap deterministically calls `set_turns([])` solely to clear
+stale attached context, while live bootstrap leaves the app's live initialized
+prefix untouched. The recorded reset contains no data from an incompatible
+stored entry. No `set_turns` data may derive from an incompatible stored entry,
+and neither path applies a stored partial, guessed, or reconstructed sequence.
 The one fixed warning is bounded and provider-neutral:
 `Conversation display was restored, but model context was unavailable.` It is
 emitted once as part of the successful degraded restore, before the initial
@@ -194,32 +204,44 @@ emitted once as part of the successful degraded restore, before the initial
 ## P5.3: Detailed error on reload
 
 The v2 schema already stores only `ErrorEntry.message`. Define
-`MAX_HISTORY_ERROR_MESSAGE = 256` Unicode code points. At the error write
-boundary, accept only a safe user-facing summary; arbitrary exception text is
-not a safe source. Existing paths that have only `str(exception)` must use the
-fixed fallback `The response could not be completed.` rather than persist the
-exception text. For an already-approved safe summary, normalize it to NFC;
-replace control characters and line separators with spaces; collapse
-whitespace; trim; use the same fallback when it is empty; and truncate to 253
-code points plus `...` when it exceeds the limit. This normalization is a
-bound and presentation cleanup, not a secret or provider-body scrubber: no
-regex redaction or traceback filtering is treated as sufficient. Store only
-the resulting plain-text message, never a `repr`, traceback, or structured
-provider payload.
+`MAX_HISTORY_ERROR_MESSAGE = 256` Unicode code points and this closed,
+core-owned catalogue of fixed safe summaries:
+
+- `The response could not be completed.` (generic fallback)
+- `The response stream could not be started.` (known root-stream start
+  failure)
+- `The response stream could not be completed.` (known terminal stream-send
+  failure)
+
+At the error write boundary, a core outcome selects one exact catalogue value.
+Exception-derived text, including every existing `str(exception)` path, maps
+to the generic fallback; it is never a summary source. Normalize the selected
+value to NFC; replace control characters and line separators with spaces;
+collapse whitespace; trim; use the generic fallback when it is empty; and
+truncate to 253 code points plus `...` when it exceeds the limit. This
+normalization is a bound and presentation cleanup, not a secret or
+provider-body scrubber: no regex redaction or traceback filtering is treated
+as sufficient. Store only the resulting plain-text message, never a `repr`,
+traceback, or structured provider payload.
 
 On restored input-bearing `status == "error"` nodes, extend the existing
 ephemeral exchange-status projection with the bounded message and render it
 as plain text through React adjacent to the existing Retry affordance.
-Projection applies the same cap and normalization to existing values without
-mutating records. Pending/interrupted and cancelled nodes retain their current
-status/retry behavior and do not receive error detail.
+Projection applies the same cap and normalization without mutating records,
+then displays a value only when it exactly matches the fixed catalogue; every
+unknown or unrecognized legacy value becomes the generic fallback. A legacy
+value that happens to equal a catalogue literal contains only that safe
+literal and projects as it. Pending/interrupted and cancelled nodes retain
+their current status/retry behavior and do not receive error detail.
 
-No new persisted error fields, sanitizer subsystem, provider response,
-attachment metadata, or error-derived client state are added. The projection
-is ephemeral: it is regenerated from the selected record path, does not
-mutate the failed node, and does not affect sibling navigation or
-`resubmit()`. Tests cover an errored node with and without partial assistant
-content, normalization/truncation and plain-text React rendering, retry
+No new persisted error fields, provenance field, public trust API, sanitizer
+subsystem, regex sanitizer, provider response, attachment metadata, or
+error-derived client state are added. The projection is ephemeral: it is
+regenerated from the selected record path, does not mutate the failed node,
+and does not affect sibling navigation or `resubmit()`. Tests cover an errored
+node with and without partial assistant content, normalization/truncation and
+plain-text React rendering, generic fallback for exception-derived,
+unknown, and legacy values, catalogue-specific core outcomes, retry
 immutability, and the absence of detailed text for pending/cancelled nodes.
 
 ## Sequencing and task graph
@@ -251,10 +273,12 @@ must demonstrate discriminating behavior for both Q1 candidates and is
 deleted before implementation.
 
 For implementation, require focused controller and production browser tests
-for initial restore, clear/switch/abort, effective-suffix degradation, and
-restored-error states; JS lint/test/build and `make update-dist` when client
-code changes; the R shared-client hook check for shared bundle compatibility;
-and the full `make py-check` gate. Record any unrelated failure by Kata ID.
+for initial restore, the pre-`history_update` Python-v2 gate and unaffected
+history-disabled/v1/R admission, clear/switch/abort, effective-suffix
+degradation, and restored-error catalogue/legacy-fallback states; JS
+lint/test/build and `make update-dist` when client code changes; the R
+shared-client hook check for shared bundle compatibility; and the full
+`make py-check` gate. Record any unrelated failure by Kata ID.
 
 The final adversarial review must assess:
 
@@ -277,9 +301,9 @@ requirement trace, or delete it.
 ## Current handoff
 
 Landed: Phase 5 parent `shinychat#fg70` is created and claimed on
-`feat/history-exchange-tree`; gate corrections are incorporated in this note.
-This note and the Phase 5 reference in `plan.md` remain planning artifacts
-pending final self-review and driver sign-off.
+`feat/history-exchange-tree`; authorized gate corrections are incorporated in
+this note. This note and the Phase 5 reference in `plan.md` remain planning
+artifacts pending final self-review and driver sign-off.
 
 Next: complete final self-review and driver sign-off. After approval, create
 and claim only P5.0, run the required green baseline, and compare the two Q1
