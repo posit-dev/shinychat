@@ -672,6 +672,12 @@ async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> No
     controller._replay_exchange_display = cancel_replay  # type: ignore[method-assign]
     notifier = AsyncMock()
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+    settled: list[bool] = []
+
+    async def on_settled(restored: bool) -> None:
+        settled.append(restored)
+
+    controller.on_settled = on_settled
 
     with (
         session_context(cast(Any, session)),
@@ -684,6 +690,7 @@ async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> No
     assert controller.record is None
     assert controller._active_id_now() is None
     assert recorder.record is None
+    assert settled == [False]
     updates = [
         message["action"]
         for message in session.messages
@@ -692,6 +699,21 @@ async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> No
     assert len(updates) == 1
     assert updates[0]["active_id"] is None
     notifier.assert_awaited_once_with(recovery_incomplete=False)
+
+    with (
+        session_context(cast(Any, session)),
+        reactive.isolate(),
+    ):
+        await handlers["_init_history"]()
+
+    assert settled == [False]
+    assert len(
+        [
+            message
+            for message in session.messages
+            if message["action"]["type"] == "history_update"
+        ]
+    ) == 1
 
 
 @pytest.mark.anyio

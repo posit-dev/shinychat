@@ -2476,7 +2476,7 @@ class ChatHistory:
                     await controller._restore_initial_exchange_record(
                         target, node_id=node_id
                     )
-                except Exception:
+                except BaseException:
                     initialized = True
                     try:
                         await controller.notify_settled(False)
