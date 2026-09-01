@@ -1213,6 +1213,19 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore() -> (
     controller, _ = _make_controller(store=store, use_exchange_tree=True)
     recorder = controller._exchange_recorder
     assert recorder is not None
+
+    # Other test modules can leave errored mock-session effects pending in
+    # Shiny's process-global scheduler. Drain them before creating this test's
+    # effects so every raw-input flush below observes only this chat.
+    for _ in range(500):
+        try:
+            await reactive.flush()
+        except Exception:
+            continue
+        break
+    else:
+        raise AssertionError("Could not drain pre-existing reactive effects")
+
     session = _RealChatSession()
     session.input["history_switch_input_user_input"] = reactive.Value()
     with session_context(cast(Any, session)):
