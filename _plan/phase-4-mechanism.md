@@ -1321,3 +1321,21 @@ contract, and authorization question. Implementation remains stopped;
 `shinychat#5r50` stays open with `needs-review` and
 `work.attention="blocked"`, `shinychat#6drf` remains blocked/unstarted, and
 `shinychat#azvt` remains open with `work.attention="ok"`.
+
+### Garrick authorization: fail-to-fresh-draft approved (2026-09-01)
+
+Garrick approved the fail-to-fresh-draft restore contract. This is the
+intended domain behavior, not a patch or an atomic-rollback substitute:
+
+- Preflight validates the complete active path and all strictly owned state
+  data before mutation; unregistered keys fail closed.
+- After mutation begins, an error or cancellation clears recorder and active
+  ownership first, then attempts best-effort live cleanup and notification.
+- Stored records remain untouched and retryable. The original error or
+  cancellation outcome is preserved and re-raised; cleanup failures are
+  reported honestly as partial cleanup and never mask that outcome.
+
+Implementation may resume on `shinychat#5r50` only. `shinychat#6drf` remains
+blocked and unstarted. This is a docs-only authorization handoff;
+`shinychat#5r50` remains open with `needs-review` and
+`work.attention="blocked"` pending note review.
