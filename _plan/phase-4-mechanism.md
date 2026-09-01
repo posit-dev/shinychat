@@ -4,17 +4,17 @@
 implementation, evidence, and the required batched review are complete;
 Roborev 1146, 1152, 1158, 1159, and 1161 are closed or resolved as required
 by process. The bookmark-pointer disposition remains out of scope in
-`shinychat#g6tt`. P4.2 is parked pending Garrick authorization after the
-server-side resubmit defense landed green but independent review found a
-browser optimistic-submission gap. `shinychat#5r50` is closed;
-`shinychat#6drf` is open with `work.attention="blocked"`; and
-`shinychat#azvt` is open with `work.attention="blocked"` (2026-09-01).
+`shinychat#g6tt`. Garrick has authorized the revised P4.2 edit/resubmit
+projection; implementation may resume on `shinychat#6drf` only.
+`shinychat#5r50` is closed; `shinychat#6drf` is open with
+`work.attention="ok"`; and `shinychat#azvt` is open with
+`work.attention="ok"` (2026-09-01).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is closed after verified review
-evidence; successor `shinychat#6drf` is open and blocked with
-`work.attention="blocked"`; parent `shinychat#azvt` is open and blocked with
-`work.attention="blocked"` under epic `shinychat#6d0d`; P4.2 is parked pending
-Garrick authorization.
+evidence; successor `shinychat#6drf` is open with
+`work.attention="ok"`; parent `shinychat#azvt` is open with
+`work.attention="ok"` under epic `shinychat#6d0d`; P4.2 is authorized for
+implementation on `shinychat#6drf` only.
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
 the Phase 4 gate and the only phase-local mechanism reference for new work.
 
@@ -2460,3 +2460,61 @@ but no edit/navigation coverage. Decision: retain positional client addressing
 with no wire upgrade because there is no concrete red ambiguity. Next is the
 v2 graph/rewind/sibling-resubmit vertical slice. No production/test/client
 changes landed.
+
+### P4.2 authoritative edit-projection authorization (2026-09-01)
+
+This section is the current and authoritative P4.2 mechanism decision. It
+supersedes the preceding `P4.2 parked escalation` authorization question and
+the proposal there to extend completion-v1 broadly to edit/resubmit and
+sibling navigation. The preceding sections remain historical audit trail;
+they do not constrain this decision.
+
+Garrick's decision unblocks edit/resubmit implementation. It supersedes the
+prior proposal to reuse full display restore for edit and the earlier broad
+completion-v1 authorization question. The revised edit projection is the
+approved mechanism:
+
+- For edit, delete server `clear_messages()` and retained-prefix display
+  replay, and delete imperative `update_input(submit=True)` as the resubmit
+  tail. Retain graph validation, attachment normalization, current-leaf
+  close/capture, active-pointer rewind/persist, recorded-prefix state/turn
+  rewind, the recorder lock, and the `f6396a39` server-side input block.
+- The client sends edit with a request UUID and synchronously blocks every
+  mutating action while it is held: normal submit, attachment-only submit,
+  slash submit, edit, sibling navigation, switch, new, and delete. The
+  writable unstaged composer draft and attachments remain available.
+- A server-confirmed matching branch-projection action truncates display from
+  the target index, appends the validated replacement through the standard
+  `INPUT_SENT`/loading lifecycle, and dispatches exactly one raw accepted
+  input. It must not consume or overwrite unrelated composer draft or
+  attachments.
+- Matching best-effort, non-masking `finally` completion handles validation,
+  rewind, pre-admission error, and cancellation. A successful projection is
+  handed to the standard submission and stream busy behavior. Stale or
+  mismatched actions and completions are no-ops. Capability absence leaves
+  v1 and R unchanged. Q3 stays positional; the request UUID is lifecycle
+  correlation only, not an addressing or exchange-ID protocol.
+- If post-mutation projection delivery fails, apply the existing
+  fail-to-fresh-draft/incomplete-recovery contract rather than leaving mixed
+  ownership; preserve the original outcome. Input-less targets are rejected
+  before mutation.
+
+Navigation is not locally projectable because the client lacks the sibling
+path. Retain server replay/rewind for navigation and treat its lifecycle
+guard and projection as a separate implementation unit; do not fold it into
+edit.
+
+Commits `82ee43bf`, `e50ba734`, and `f6396a39` remain landed. The
+`e50ba734` display-replay/`update_input` tail is now approved for replacement.
+Implementation may resume on `shinychat#6drf` only. No later Phase 4 task may
+start from this authorization, and no R server, Phase 5, bookmark, retry UI,
+or legacy-import work is included.
+
+The exact regression matrix is: leaf and non-leaf truncation; UI-only and
+custom-prefix fidelity; replacement attachments; held edit blocks all
+mutations while preserving draft; exactly one raw/provider dispatch;
+validation, rewind, projection, error, cancel, no-provider, and no-output
+behavior; stale UUID; capability absence; and input-less no mutation.
+
+This is a documentation/Kata authorization only. No Roborev review is needed
+for this docs-only change.
