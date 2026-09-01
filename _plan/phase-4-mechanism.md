@@ -1,23 +1,17 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
-**Status (current and authoritative):** P4.0 and P4.1 are complete. P4.1
-implementation, evidence, and the required batched review are complete;
-Roborev 1146, 1152, 1158, 1159, and 1161 are closed or resolved as required
-by process. The bookmark-pointer disposition remains out of scope in
-`shinychat#g6tt`. Garrick has authorized the revised P4.2 edit/resubmit
-projection; its first implementation unit is landed and parked for three
-bounded review corrections on `shinychat#6drf` only. Those corrections are
-landed; the Roborev 1163 corrections are fixed, and Roborev 1164 has one
-bounded attachment-transport correction pending.
-`shinychat#5r50` is closed; `shinychat#6drf` is open with
-`work.attention="blocked"`; and `shinychat#azvt` is open with
-`work.attention="blocked"` (2026-09-01).
+**Status (current and authoritative):** P4.0 through P4.4 are complete.
+Restore/continuation, branching/edit/navigation, retry/regenerate, and
+pointer-only bookmarks are implemented, verified, reviewed, and closed in
+Kata. P4.5 final acceptance and deletion review is active on
+`shinychat#pvjx`; one bounded partial-display retry evidence correction is
+pending. `shinychat#azvt` remains open and attention-blocked during that
+correction (2026-09-01).
 **Phase:** plan.md §4, Phase 4
-**Kata (current):** child `shinychat#5r50` is closed after verified review
-evidence; successor `shinychat#6drf` is open with
-`work.attention="blocked"`; parent `shinychat#azvt` is open with
-`work.attention="blocked"` under epic `shinychat#6d0d`; the P4.2 edit
-projection awaits the Roborev 1164 attachment correction before navigation.
+**Kata (current):** `shinychat#ykxh`, `shinychat#5r50`,
+`shinychat#6drf`, `shinychat#72ee`, and `shinychat#g6tt` are closed.
+`shinychat#pvjx` is claimed with `work.attention="blocked"` under open parent
+`shinychat#azvt` and epic `shinychat#6d0d`.
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
 the Phase 4 gate and the only phase-local mechanism reference for new work.
 
@@ -2930,3 +2924,38 @@ hardening round or range review.
 P4.4 is complete. Next: unblock `shinychat#pvjx` for Phase 4 acceptance,
 production-path matrix verification, scope/deletion review, and final review
 disposition. Do not begin Phase 5 or any R-server/legacy work.
+
+### P4.5 acceptance/deletion review disposition (2026-09-01)
+
+The final adversarial architecture and scope review found no production
+defect. The acceptance runner passed every criterion except one bounded
+evidence gap: restored error retry has a real browser path, but restored
+pending and cancelled exchanges with retained partial assistant display have
+not been exercised through retry into a new sibling while proving the
+original node remains unchanged.
+
+Add discriminating production-controller evidence for pending and cancelled
+partial-display retry. It must restore the retained partial display, retry
+through the existing sibling primitive, prove the original node is immutable,
+and prove the replacement sibling continues from the parent prefix. This is a
+test-only correction unless red evidence demonstrates a production defect;
+stop before changing production behavior.
+
+Deletion pass:
+
+- one active v2 record owner: `_ExchangeRecorder.record`;
+- one client lifecycle marker: `historyTransitionPending`;
+- one destructive history transaction:
+  `Chat._destructive_history_mutation()`;
+- one branch-producing primitive: `resubmit()`;
+- three approved state-hook registries: capture, restore, and rewind.
+
+No mechanism can be deleted without removing an approved requirement.
+`bookmark_state_id` remains necessary for server-bookmark URL settlement and
+replacement cleanup. No queue, cursor protocol, reconciliation pass,
+rendered-HTML history storage, CAS, second v2 owner, detailed Phase 5
+degradation/error UI, R server port, or legacy import entered Phase 4.
+
+All other acceptance criteria and full gates are green. `shinychat#pvjx` and
+`shinychat#azvt` remain attention-blocked until the bounded evidence
+correction passes targeted review.
