@@ -81,17 +81,23 @@ the existing `Chat._destructive_history_mutation()` transaction; greeting and
 bookkeeping remain excluded exactly as in Phase 3. The gate releases on every
 initialization success, handled error, and live-session cancellation.
 
-Every Python `chat_ui()` emits a private static, conservative initialization
-seed before React/input activation. The seed configures a Python-v2
-`completion-v2` capability/protocol conservatively and starts submission
-blocked. It is configuration, not a lifecycle marker, owner, completion
-signal, release action, or persistence. V2 history's first authoritative
-runtime `history_update` resolves the configuration and releases admission;
-capability withdrawal remains authoritative and clears pending state under the
-Phase 4 protocol-change rule. Python v1 and history-disabled Chat
-initialization immediately withdraw the seed, with the authorized brief
+Every Python `chat_ui()` emits the private static attribute
+`data-shinychat-history-transition-protocol="completion-v2"` before
+React/input activation. This is intentionally an unconditional, conservative
+Python seed: `chat_ui()` has no `Chat` or history-mode context at tag
+construction time. The client parses the attribute in `chat-entry.ts` and
+seeds only the existing `HistoryStore.transitionProtocol`; it leaves
+`initialized` false, with empty conversations/active ID and no pending
+marker. The seed starts submission blocked. It is configuration, not a
+lifecycle marker, owner, completion signal, release action, or persistence.
+V2 history's first authoritative runtime `history_update` resolves the
+configuration and releases admission; capability withdrawal remains
+authoritative and clears pending state under the Phase 4 protocol-change rule.
+Python v1's existing `history_update` withdraws the seed to `completion-v1`;
+history-disabled Python uses the existing `history_update` action type with
+`enabled=false` as its initial withdrawal, accepting the authorized brief
 initial delay. R emits no seed and retains its current behavior. This adds no
-public API, Chat-tag registry, post-mount action, second marker or owner,
+public API, Chat-tag registry, new post-mount action, second marker or owner,
 deferred submission, payload field, continuation, queue, buffer, provisional
 record, merge state, or persistence.
 
@@ -128,10 +134,15 @@ metadata `list()`. The prototypes were deleted.
 `bdd5089b` (`fix(history): recover live restore materialization`) is the
 bounded prerequisite that moved live-bootstrap turn materialization into the
 existing restore failure contract. Its focused regressions independently PASS.
-For recorded bootstrap only, `_prepare_exchange_restore()` failure is caught
-at the `_init_history` restore call sites and routed through the existing
-fresh-draft cleanup and authoritative release path. Switch preflight remains
-unchanged: it retains the Phase 4 no-target-mutation behavior.
+P5.0 must add the remaining initial-only catch for recorded
+`_prepare_exchange_restore()` failures at the three `_init_history` restore
+call sites: bookmark pointer (`_history.py:2487`), bookmark conversation
+(`_history.py:2502`), and browser/URL target (`_history.py:2541`). Each
+ordinary preflight failure must use `_clear_failed_restore()`, publish its
+single authoritative release update, and settle initialization false; a
+cancellation must propagate unchanged. Do not move this catch into the
+shared preflight helper or the general restore method. Switch preflight
+remains unchanged: it retains the Phase 4 no-target-mutation behavior.
 
 The selected guard must:
 

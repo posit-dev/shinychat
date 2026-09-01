@@ -344,15 +344,19 @@ with a warning rather than failing the restore.
    inert and must not fail the originating capture-eligible send. Phase 5
    blocks user dispatch and capture-eligible initial sends until the restore
    decision and its authoritative metadata publication complete; it admits no
-   preselection capture. Every Python `chat_ui()` emits a private,
-   conservative static initialization seed before React/input activation, so
-   the client starts submission-blocked. V2 history's first authoritative
-   runtime `history_update` resolves that seed and releases admission; Python
-   v1 and history-disabled initialization immediately withdraw it, accepting
-   that brief initial delay. R emits no seed. There is no public API,
-   Chat-tag registry, post-mount action, second marker or owner, persistence,
-   deferred submission, preselection buffer, provisional record or merge,
-   queue, timer, or reconciliation.
+   preselection capture. Every Python `chat_ui()` emits the private static
+   `data-shinychat-history-transition-protocol="completion-v2"` attribute
+   before React/input activation. This is an unconditional conservative seed
+   because the tag constructor has no Chat/history context; the client seeds
+   only `HistoryStore.transitionProtocol`, leaving initialization and state
+   otherwise empty. V2's first authoritative `history_update` releases
+   admission; Python v1 withdraws through its existing `completion-v1`
+   update, and history-disabled Python uses the existing `history_update`
+   action type with `enabled=false`, accepting the authorized brief initial
+   delay. R emits no seed. There is no public API, Chat-tag registry, new
+   post-mount action, second marker or owner, persistence, deferred
+   submission, preselection buffer, provisional record or merge, queue, timer,
+   or reconciliation.
 
 ### 3.6 Branching, editing, retries, actions (R1, R3, R7)
 
