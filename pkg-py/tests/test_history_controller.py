@@ -1441,6 +1441,11 @@ async def test_v2_restore_failure_allows_next_input_to_record_normally():
     )
 
     async def fail_send() -> bool:
+        assert transcript._on_accepted_input is None
+        assert transcript._on_message_committed is None
+        assert transcript._on_stream_started is None
+        assert transcript._on_stream_updated is None
+        assert transcript._on_stream_finished is None
         raise RuntimeError("replay failed")
 
     async def replay_through_transcript(
@@ -1476,9 +1481,11 @@ async def test_v2_restore_failure_allows_next_input_to_record_normally():
 
     assert recorder.record is not None
     assert recorder.record.id != target.id
+    assert recorder.record.id != existing.id
     fresh_node = recorder.record.nodes[exchange_id]
     assert fresh_node.input is not None
     assert fresh_node.input.content == "fresh input"
+    assert existing == existing_before
 
 
 @pytest.mark.anyio
