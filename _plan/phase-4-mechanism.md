@@ -1435,3 +1435,22 @@ decision.
 Current task state: `shinychat#5r50` remains open with `needs-review`,
 `work.attention="blocked"`, and
 `work.branch="feat/history-exchange-tree"`. Task closure is unchanged.
+
+### P4.1 escalation-valve decision (2026-08-31)
+
+The Phase 4 orchestrator completed the escalation valve with **PATCH, not
+DELETE/REPLACE**. All four post-`90c9eee4` findings are
+test-discrimination gaps; no new runtime behavior defect was confirmed. The
+restore transaction remains the approved minimal single-owner design, so its
+shape is retained.
+
+Only focused test hardening for those four evidence gaps is authorized. This
+decision authorizes no production or test code change in this coordination
+update. If the focused hardening produces a test that falsifies the approved
+behavior, stop and obtain a new decision before proceeding.
+
+Task state is restored to open with labels `area:py,needs-review,phase-4`,
+`work.attention="ok"`, and
+`work.branch="feat/history-exchange-tree"`. Task closure is unchanged.
+Do not start `shinychat#6drf`; it remains blocked and unstarted. No Roborev
+request is authorized for this documentation-only decision.
