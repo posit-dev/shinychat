@@ -6,16 +6,17 @@ Roborev 1146, 1152, 1158, 1159, and 1161 are closed or resolved as required
 by process. The bookmark-pointer disposition remains out of scope in
 `shinychat#g6tt`. Garrick has authorized the revised P4.2 edit/resubmit
 projection; its first implementation unit is landed and parked for three
-bounded review corrections on `shinychat#6drf` only.
+bounded review corrections on `shinychat#6drf` only. Those corrections are
+now landed and green; the edit-projection slice awaits batched review.
 `shinychat#5r50` is closed; `shinychat#6drf` is open with
-`work.attention="blocked"`; and `shinychat#azvt` is open with
-`work.attention="blocked"` (2026-09-01).
+`work.attention="ok"`; and `shinychat#azvt` is open with
+`work.attention="ok"` (2026-09-01).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is closed after verified review
 evidence; successor `shinychat#6drf` is open with
-`work.attention="blocked"`; parent `shinychat#azvt` is open with
-`work.attention="blocked"` under epic `shinychat#6d0d`; P4.2 is parked for
-the accepted edit-projection review corrections below.
+`work.attention="ok"`; parent `shinychat#azvt` is open with
+`work.attention="ok"` under epic `shinychat#6d0d`; the P4.2 edit projection
+awaits batched review before sibling navigation begins.
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
 the Phase 4 gate and the only phase-local mechanism reference for new work.
 
@@ -2666,3 +2667,29 @@ Implementation is stopped until these corrections land and pass focused JS,
 Python, R compatibility, asset, browser, and full Python gates. Sibling
 navigation remains unstarted, positional Q3 addressing remains unchanged, and
 no later Phase 4 task is authorized.
+
+### P4.2 edit-projection correction resolution (2026-09-01)
+
+The three accepted corrections are complete:
+
+- `4b3e337b` clears pending transitions on every protocol change and
+  capability-gates ordinary `inputDisabled` history blocking to
+  `completion-v2`, preserving Python v1 and R behavior.
+- `013db8ee` adds the real Python-v2 browser edit path through rewind,
+  projection, raw input, public callback, and provider exactly once.
+- `95cac211` makes attachment preservation discriminating with distinct
+  replacement and unrelated-draft files, asserting attachment identity at
+  both the public callback and provider.
+
+Generated assets are current in `39bdc334`. Verification passed JS lint,
+build, and 1249 tests with 23 skipped; 22 R history-hook tests; format and
+Pyright; 44 history/transcript Playwright plus 476 non-browser tests;
+`history_edit` 9; and full `make py-check` with 201 Playwright, 853
+non-browser, 1 skipped, and 22 established warnings. `git diff --check`
+passed.
+
+The capability and compatibility findings are resolved, and the production
+browser path now proves unrelated composer attachment identity survives the
+edit projection. P4.2 remains open with attention `ok`; sibling navigation
+has not started. The next action is a batched Roborev review of this coherent
+edit-projection slice.
