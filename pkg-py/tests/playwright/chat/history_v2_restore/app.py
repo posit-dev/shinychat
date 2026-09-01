@@ -24,11 +24,21 @@ class EchoChatClient(chatlas.Chat):
         provider.model = "echo"
         super().__init__(provider)
         self.provider_context: reactive.Value[str] | None = None
+        self.provider_calls: reactive.Value[int] | None = None
+        self.provider_attachment_counts: reactive.Value[str] | None = None
 
     async def stream_async(
         self, *args: Any, **kwargs: Any
     ) -> AsyncGenerator[str, None]:  # type: ignore[override]
         user_input = str(args[0]) if args else ""
+        if self.provider_calls is not None:
+            self.provider_calls.set(self.provider_calls.get() + 1)
+        if self.provider_attachment_counts is not None:
+            existing = self.provider_attachment_counts.get()
+            count = str(len(args) - 1)
+            self.provider_attachment_counts.set(
+                ",".join([existing, count]) if existing else count
+            )
         context = [str(turn.contents) for turn in self._turns] + [user_input]
         if self.provider_context is not None:
             self.provider_context.set(" | ".join(context))
@@ -61,6 +71,10 @@ app_ui = ui.page_fillable(
     ui.output_text_verbatim("turns"),
     ui.output_text_verbatim("recorder"),
     ui.output_text_verbatim("provider_context"),
+    ui.output_text_verbatim("provider_calls"),
+    ui.output_text_verbatim("provider_attachment_counts"),
+    ui.output_text_verbatim("accepted_submissions"),
+    ui.output_text_verbatim("accepted_attachment_counts"),
     ui.output_text_verbatim("history_updates"),
     chat_ui("chat"),
 )
@@ -69,11 +83,17 @@ app_ui = ui.page_fillable(
 def server(input: Inputs, output: Outputs, session: Session) -> None:
     client = EchoChatClient()
     provider_context_value: reactive.Value[str] = reactive.Value("")
+    provider_calls_value: reactive.Value[int] = reactive.Value(0)
+    provider_attachment_counts_value: reactive.Value[str] = reactive.Value("")
+    accepted_submissions_value: reactive.Value[int] = reactive.Value(0)
+    accepted_attachment_counts_value: reactive.Value[str] = reactive.Value("")
     turns_value: reactive.Value[str] = reactive.Value("")
     recorder_value: reactive.Value[str] = reactive.Value("")
     history_updates_value: reactive.Value[int] = reactive.Value(0)
     history_update_count = 0
     client.provider_context = provider_context_value
+    client.provider_calls = provider_calls_value
+    client.provider_attachment_counts = provider_attachment_counts_value
 
     chat = Chat(
         id="chat",
@@ -86,6 +106,17 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         ),
     )
     send_action = chat._send_action
+
+    @chat.on_user_submit
+    async def _record_accepted_submission(
+        user_input: str, attachments: list[Any]
+    ) -> None:
+        accepted_submissions_value.set(accepted_submissions_value.get() + 1)
+        existing = accepted_attachment_counts_value.get()
+        count = str(len(attachments))
+        accepted_attachment_counts_value.set(
+            ",".join([existing, count]) if existing else count
+        )
 
     async def track_history_updates(action: Any, *args: Any) -> None:
         nonlocal history_update_count
@@ -134,6 +165,22 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     @render.text
     def provider_context() -> str:
         return provider_context_value()
+
+    @render.text
+    def provider_calls() -> str:
+        return str(provider_calls_value())
+
+    @render.text
+    def provider_attachment_counts() -> str:
+        return provider_attachment_counts_value()
+
+    @render.text
+    def accepted_submissions() -> str:
+        return str(accepted_submissions_value())
+
+    @render.text
+    def accepted_attachment_counts() -> str:
+        return accepted_attachment_counts_value()
 
     @render.text
     def turns() -> str:

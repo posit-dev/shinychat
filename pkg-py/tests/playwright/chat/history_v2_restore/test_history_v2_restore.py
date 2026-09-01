@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
 from shiny.playwright import controller
 from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
+
+
+HERE = Path(__file__).parent
 
 
 def _message_count(page: Page):
@@ -105,6 +109,68 @@ def test_v2_switch_replays_without_recapturing_the_active_tree(
     controller.InputActionButton(page, "inspect_turns").click()
     controller.OutputText(page, "recorder").expect_value(
         re.compile(r'"node_count": 2'), timeout=10_000
+    )
+
+
+def test_v2_edit_projects_once_through_the_real_provider_and_preserves_draft(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    """A v2 edit reaches the normal raw-input/provider path exactly once."""
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    chat.set_user_input("original")
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message("echo: original", timeout=30_000)
+    controller.OutputText(page, "provider_calls").expect_value("1")
+    controller.OutputText(page, "accepted_submissions").expect_value("1")
+
+    attachment = HERE.parent / "history_edit" / "one_px.png"
+    page.set_input_files(
+        ".shiny-chat-composer input[type=file]",
+        str(attachment),
+    )
+    chat.set_user_input("unrelated draft")
+    expect(chat.loc_input).to_have_text("unrelated draft")
+    expect(page.locator(".shiny-chat-composer .shiny-chat-input-thumbnail")).to_have_count(
+        1
+    )
+
+    original = page.locator(".shiny-chat-user-message").first
+    original.hover()
+    original.locator(".shiny-chat-edit-btn").click()
+    edit_box = original.locator(".shiny-chat-edit-box")
+    edit_box.locator("input[type=file]").set_input_files(str(attachment))
+    editor = original.get_by_role("textbox", name="Chat message")
+    editor.click()
+    editor.press("ControlOrMeta+a")
+    editor.press_sequentially("replacement")
+    original.locator(".shiny-chat-btn-send").click()
+
+    chat.expect_latest_message("echo: replacement", timeout=30_000)
+    controller.OutputText(page, "provider_calls").expect_value("2")
+    controller.OutputText(page, "accepted_submissions").expect_value("2")
+    controller.OutputText(page, "provider_attachment_counts").expect_value("0,1")
+    controller.OutputText(page, "accepted_attachment_counts").expect_value("0,1")
+
+    replacement = page.locator(".shiny-chat-user-message").first
+    expect(replacement).to_have_text("replacement")
+    expect(replacement.locator(".shiny-chat-message-image")).to_have_count(1)
+    expect(chat.loc_input).to_have_text("unrelated draft")
+    expect(page.locator(".shiny-chat-composer .shiny-chat-input-thumbnail")).to_have_count(
+        1
+    )
+
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message("echo: unrelated draft", timeout=30_000)
+    controller.OutputText(page, "provider_calls").expect_value("3")
+    controller.OutputText(page, "accepted_submissions").expect_value("3")
+    controller.OutputText(page, "provider_attachment_counts").expect_value(
+        "0,1,1"
+    )
+    controller.OutputText(page, "accepted_attachment_counts").expect_value(
+        "0,1,1"
     )
 
 
