@@ -1715,3 +1715,23 @@ required; no new review was requested. The documentation handoff is
 `work.attention="ok"`; do not close it here. `shinychat#6drf` remains blocked
 and unstarted. No branching/Q3, bookmark, Phase 5, JavaScript, R, queue,
 timer, CAS, second lock, or second owner work was added.
+
+### P4.1 Luna independent read-only review disposition (2026-08-31)
+
+Luna reviewed `04825f1f` + `dbde0c1a` + `5849f02e` against the Roborev 1135
+DELETE/REPLACE ownership boundary, found no in-scope production defect,
+verified actual complete-response and stream-terminal settlement wiring, and
+identified only two non-blocking test gaps: the focused chunk test invokes
+`controller.on_response` directly rather than the production callback; inactive
+v2 rename has no dedicated regression. Decision: neither gap falsifies
+production behavior nor is required by the approved bounded fix; do not
+expand scope.
+
+Roborev 1135 is closed; no new review was requested. All verified evidence
+from final `make py-check` remains: Ruff passed, Pyright passed, 200
+Playwright tests passed, 818 non-browser tests passed, 1 test was skipped,
+and 19 established warnings remained. `shinychat#5r50` remains open with
+`needs-review`, `work.attention="ok"`, and
+`work.branch="feat/history-exchange-tree"`. `shinychat#6drf` remains blocked
+and unstarted. This was a read-only review disposition; no production or
+test change is authorized or required.
