@@ -1,11 +1,11 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
 **Status (current and authoritative):** P4.0 complete; the P4.1 Roborev 1135
-DELETE/REPLACE unit is implemented, but its bounded blocked-input correction is
-not yet landed. `shinychat#5r50` remains open with `needs-review`,
+DELETE/REPLACE unit and its bounded blocked-input correction are landed, and a
+fresh batched Roborev review is pending. `shinychat#5r50` remains open with
 `work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`;
 `shinychat#6drf` remains open, blocked, and unstarted; and
-`shinychat#azvt` remains open with `work.attention="ok"` (2026-08-31).
+`shinychat#azvt` remains open with `work.attention="ok"` (2026-09-01).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is open with
 `needs-review`, `work.attention="ok"`, and
