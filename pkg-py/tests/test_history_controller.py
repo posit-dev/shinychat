@@ -630,6 +630,242 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
 
 
 @pytest.mark.anyio
+async def test_v2_active_rename_survives_later_capture_in_file_store(
+    tmp_path: Path,
+) -> None:
+    from shinychat._history_store import FileConversationStore
+
+    store = FileConversationStore(tmp_path)
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+    )
+
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "question")
+    )
+    assert recorder.record is not None
+    await controller.rename(recorder.record.id, "Renamed")
+    await transcript.append(
+        TranscriptEntry(message=_stored_message("assistant", "answer")),
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+
+    stored = await store.get(part(), recorder.record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    assert stored.title == "Renamed"
+    assert stored.title_source == "user"
+    assert [
+        message.as_stored_message().content
+        for message in stored.nodes[exchange_id].messages
+    ] == ["answer"]
+
+
+@pytest.mark.anyio
+async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
+    store = InMemoryConversationStore()
+    current_value = "response"
+    saved_values: list[str] = []
+    restored_values: list[dict[str, Any]] = []
+
+    def save_callback(values: dict[str, Any]) -> None:
+        values["value"] = current_value
+        saved_values.append(current_value)
+
+    controller, _ = _make_controller(
+        store=store,
+        save_callbacks=[save_callback],
+        use_exchange_tree=True,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+
+    def restore_callback(values: dict[str, Any]) -> None:
+        assert recorder.record is target
+        restored_values.append(dict(values))
+
+    controller._restore_callbacks.append(restore_callback)
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "source")
+    )
+    assert recorder.record is not None
+    source_id = recorder.record.id
+
+    await controller.on_response()
+    source = await store.get(part(), source_id)
+    assert isinstance(source, ConversationRecordV2)
+    assert source.values == {"value": "response"}
+
+    current_value = "save"
+    assert await controller.save()
+    assert source.values == {"value": "save"}
+
+    target = new_conversation_record_v2(
+        title="target",
+        id="c_target",
+        client_info={},
+    )
+    target.values = {"restored": "target"}
+    await store.put(part(), target)
+
+    current_value = "switch"
+    await controller.switch_to(target.id)
+    assert source.values == {"value": "switch"}
+    assert restored_values == [{"restored": "target"}]
+
+    current_value = "new"
+    await controller.new_chat()
+    assert target.values == {"value": "new"}
+    assert saved_values == ["response", "save", "switch", "new"]
+
+
+@pytest.mark.anyio
+async def test_v2_stream_chunks_are_durable_without_metadata_until_terminal(
+    tmp_path: Path,
+) -> None:
+    from shinychat._history_store import FileConversationStore
+
+    store = FileConversationStore(tmp_path)
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "question")
+    )
+    controller.send_history_update = AsyncMock()  # type: ignore[method-assign]
+
+    await transcript.start_stream(
+        stream_id="stream",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+    await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[],
+        message=_stored_message("assistant", "partial"),
+        operation="append",
+        send=_sent,
+    )
+
+    stored = await store.get(part(), recorder.record.id)  # type: ignore[union-attr]
+    assert isinstance(stored, ConversationRecordV2)
+    assert [
+        message.as_stored_message().content
+        for message in stored.nodes[exchange_id].messages
+    ] == ["partial"]
+    controller.send_history_update.assert_not_awaited()
+
+    await transcript.end_stream(
+        stream_id="stream",
+        status=None,
+        error=None,
+        send=_sent,
+    )
+    controller.send_history_update.assert_not_awaited()
+
+    await controller.on_response()
+    controller.send_history_update.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_v2_restore_marks_exact_record_published_after_callback() -> None:
+    controller, _ = _make_controller(use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    target = _restore_target()
+    published: list[str | None] = []
+
+    async def active_id_callback(record_id: str | None) -> None:
+        assert recorder.record is target
+        assert recorder._active_id_published_for is None
+        published.append(record_id)
+
+    controller._active_id.set("c_previous")
+    controller.on_active_id_change = active_id_callback
+
+    await controller.replay_exchange_record(target)
+
+    assert published == [target.id]
+    assert recorder._active_id_published_for is target
+
+    await recorder.message_committed(
+        None,
+        TranscriptEntry(message=_stored_message("assistant", "continued")),
+    )
+    assert published == [target.id]
+
+
+@pytest.mark.anyio
+async def test_v2_active_rename_waits_for_recorder_capture_lock() -> None:
+    class BlockingStore(InMemoryConversationStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.block = False
+            self.entered = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def put(
+            self, partition: ConversationPartition, record: Any
+        ) -> None:
+            if self.block:
+                self.block = False
+                self.entered.set()
+                await self.release.wait()
+            await super().put(partition, record)
+
+    store = BlockingStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+    )
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "question")
+    )
+    assert recorder.record is not None
+
+    store.block = True
+    capture = asyncio.create_task(
+        transcript.append(
+            TranscriptEntry(message=_stored_message("assistant", "answer")),
+            exchange_id=exchange_id,
+            send=_sent,
+        )
+    )
+    await store.entered.wait()
+    rename = asyncio.create_task(controller.rename(recorder.record.id, "Renamed"))
+    await asyncio.sleep(0)
+    assert not rename.done()
+
+    store.release.set()
+    await capture
+    await rename
+
+    stored = await store.get(part(), recorder.record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    assert stored.title == "Renamed"
+    assert [
+        message.as_stored_message().content
+        for message in stored.nodes[exchange_id].messages
+    ] == ["answer"]
+
+
+@pytest.mark.anyio
 async def test_v2_restore_materializes_turn_path_once_and_resets_baseline():
     adapter = _TrackingFakeAdapter()
     controller, _ = _make_controller(
@@ -3251,7 +3487,7 @@ async def test_exchange_recorder_is_default_off_and_uses_v1_save_path():
 
 
 @pytest.mark.anyio
-async def test_v2_path_does_not_dual_write_through_v1_response_settlement():
+async def test_v2_response_settlement_writes_through_recorder_once():
     store = _RecordingStore()
     controller, _ = _make_controller(store=store, use_exchange_tree=True)
     recorder = controller._exchange_recorder
@@ -3266,7 +3502,8 @@ async def test_v2_path_does_not_dual_write_through_v1_response_settlement():
 
     await controller.on_response()
 
-    assert len(store.put_calls) == 1
+    assert len(store.put_calls) == 2
+    assert isinstance(store.put_calls[-1][1], ConversationRecordV2)
     assert all(
         isinstance(record, ConversationRecordV2)
         for _, record in store.put_calls

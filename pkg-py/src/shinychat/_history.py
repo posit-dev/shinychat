@@ -561,26 +561,64 @@ class _ExchangeRecorder:
             return
 
         if self._active_id_published_for is not record:
-            callback = self._controller.on_active_id_change
-            if callback is None:
-                self._active_id_published_for = record
+            publisher = getattr(
+                self._controller, "_publish_active_v2_id", None
+            )
+            if publisher is not None:
+                published = await publisher(record)
             else:
-                try:
+                callback = self._controller.on_active_id_change
+                if callback is not None:
                     await callback(record_id)
-                except BaseException:
-                    if self._active_id_published_for is record:
-                        self._active_id_published_for = None
-                    raise
-                if (
+                published = (
                     self.record is record
                     and self._controller._active_id_now() == record_id
-                ):
-                    self._active_id_published_for = record
-        send_history_update = getattr(
-            self._controller, "send_history_update", None
-        )
-        if send_history_update is not None:
-            await send_history_update()
+                )
+            if published:
+                self._active_id_published_for = record
+
+    def _capture_app_state(self) -> None:
+        assert self.record is not None
+        values: dict[str, Any] = {}
+        for callback in self._controller._save_callbacks:
+            callback(values)
+        self.record.values = values
+
+    async def save_current(self) -> bool:
+        async with self._lock:
+            return await self.save_current_locked()
+
+    async def save_current_locked(self) -> bool:
+        if self.record is None or self._controller.partition is None:
+            return False
+        self._capture_app_state()
+        await self._persist_record()
+        return True
+
+    async def response_settled(self) -> bool:
+        async with self._lock:
+            if self.record is None or self._controller.partition is None:
+                return False
+            self._capture_app_state()
+            self.record.response_count += 1
+            await self._persist_record()
+            return True
+
+    async def rename_active(self, title: str) -> bool:
+        async with self._lock:
+            if self.record is None or self._controller.partition is None:
+                return False
+            self.record.title = title
+            self.record.title_source = "user"
+            await self._persist_record()
+            return True
+
+    def mark_active_id_published(self, record: ConversationRecordV2) -> None:
+        if (
+            self.record is record
+            and self._controller._active_id_now() == record.id
+        ):
+            self._active_id_published_for = record
 
     def _close_root_if_inactive(self) -> None:
         assert self.record is not None
@@ -601,12 +639,14 @@ class _ExchangeRecorder:
             return
 
         async with self._lock:
+            created = False
             if self.record is None:
                 title = (
                     " ".join(message.content.split())[:MAX_TITLE_LEN]
                     or "New chat"
                 )
                 self.record = await self._new_record(title=title)
+                created = True
             root_id = "n_0000"
             is_first_input = not any(
                 node.input is not None for node in self.record.nodes.values()
@@ -620,6 +660,11 @@ class _ExchangeRecorder:
                 await self._capture_state(active_leaf, "node_close")
             self.record.open_exchange(exchange_id, message)
             await self._persist_record()
+            send_history_update = getattr(
+                controller, "send_history_update", None
+            )
+            if created and send_history_update is not None:
+                await send_history_update()
 
     async def message_committed(
         self, exchange_id: str | None, entry: TranscriptEntry
@@ -848,6 +893,18 @@ class HistoryController:
         if self.on_active_id_change is not None:
             await self.on_active_id_change(id)
 
+    async def _publish_active_v2_id(self, record: ConversationRecordV2) -> bool:
+        if self._active_id_now() != record.id:
+            return False
+        if self.on_active_id_change is not None:
+            await self.on_active_id_change(record.id)
+        recorder = self._exchange_recorder
+        return (
+            recorder is not None
+            and recorder.record is record
+            and self._active_id_now() == record.id
+        )
+
     async def _get_record(
         self, partition: ConversationPartition, conv_id: str
     ) -> ConversationRecord | ConversationRecordV2 | None:
@@ -894,7 +951,17 @@ class HistoryController:
         outcome, so replay, clear, accepted input, and partial chunks do not
         settle history.
         """
-        if self._exchange_recorder is not None:
+        recorder = self._exchange_recorder
+        if recorder is not None:
+            if not await recorder.response_settled():
+                return
+            record = recorder.record
+            assert record is not None
+            await self._evict_if_needed()
+            if self.on_response_saved is not None:
+                await self.on_response_saved(cast(ConversationRecord, record))
+            await self.send_history_update()
+            await self._send_sibling_metadata()
             return
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
@@ -978,12 +1045,17 @@ class HistoryController:
     async def _evict_if_needed(self) -> None:
         if self.max_store_bytes is None or self.partition is None:
             return
+        active_record = (
+            self._exchange_recorder.record
+            if self._exchange_recorder is not None
+            else self.record
+        )
         metas = await self.store.list(self.partition)
         total = sum(m.size_bytes for m in metas)
         if total <= self.max_store_bytes:
             return
         for meta in reversed(metas):  # oldest first
-            if self.record is not None and meta.id == self.record.id:
+            if active_record is not None and meta.id == active_record.id:
                 continue
             total -= meta.size_bytes
             await self._evict_one(meta.id)
@@ -1003,11 +1075,15 @@ class HistoryController:
         """Persist app state for the active conversation."""
         if not await self.save_current():
             return False
-        record = self.record
+        record = (
+            self._exchange_recorder.record
+            if self._exchange_recorder is not None
+            else self.record
+        )
         assert record is not None
         await self._evict_if_needed()
         if self.on_response_saved is not None:
-            await self.on_response_saved(record)
+            await self.on_response_saved(cast(ConversationRecord, record))
         await self.send_history_update()
         await self._send_sibling_metadata()
         return True
@@ -1015,7 +1091,7 @@ class HistoryController:
     async def save_current(self) -> bool:
         """Persist the active conversation if it has ever been saved."""
         if self._exchange_recorder is not None:
-            return False
+            return await self._exchange_recorder.save_current()
         if self.record is None or self.partition is None:
             return False
         turn_groups = self.adapter.get_turns_grouped()
@@ -1150,6 +1226,7 @@ class HistoryController:
                     self.record = None
                     recorder.install_restored_record(target)
                     await self._set_active_id(target.id)
+                    recorder.mark_active_id_published(target)
                     self._restore_app_state(target.values or {})
                     await self.send_history_update()
                 except BaseException:
@@ -1169,6 +1246,9 @@ class HistoryController:
         if target is None:
             raise RuntimeError(f"Conversation {conv_id!r} no longer exists.")
         if isinstance(target, ConversationRecordV2):
+            recorder = self._exchange_recorder
+            assert recorder is not None
+            await recorder.save_current()
             await self._restore_exchange_record(target)
             return
 
@@ -1188,7 +1268,10 @@ class HistoryController:
     async def new_chat(self) -> None:
         async with self._destructive_mutation():
             async with self._exchange_mutation():
-                await self.save_current()
+                if self._exchange_recorder is not None:
+                    await self._exchange_recorder.save_current_locked()
+                else:
+                    await self.save_current()
                 self.adapter.set_turns_json([])
                 await self.chat.clear_messages()
                 # Announce the cleared state even when the active ID is already None:
@@ -1237,6 +1320,15 @@ class HistoryController:
             raise RuntimeError("HistoryController not initialized")
         title = " ".join(title.split())[:MAX_TITLE_LEN]
         if not title:
+            return
+        recorder = self._exchange_recorder
+        if (
+            recorder is not None
+            and recorder.record is not None
+            and recorder.record.id == conv_id
+        ):
+            if await recorder.rename_active(title):
+                await self.send_history_update()
             return
         record = (
             self.record
@@ -1880,8 +1972,6 @@ class ChatHistory:
 
         async def _save_on_response():
             if controller.partition is None:
-                return
-            if controller._exchange_recorder is not None:
                 return
             try:
                 await controller.on_response()
