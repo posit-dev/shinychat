@@ -25,7 +25,8 @@ from shinychat._chat_types import (
     StoredMessage,
     StoredSegment,
 )
-from shinychat._history import HistoryController
+from shinychat import _history as history_module
+from shinychat._history import HistoryController, HistoryOptions
 from shinychat._history_store import (
     ConversationPartition,
     InMemoryConversationStore,
@@ -508,10 +509,39 @@ def test_response_settlement_runs_after_complete_assistant_append():
     ]
 
 
-def test_v2_terminal_metadata_uses_registered_response_settlement_callback():
+def test_v2_terminal_metadata_uses_registered_response_settlement_callback(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class _HistorySession(_MockSession):
+        def __init__(self) -> None:
+            super().__init__()
+            self.bookmark = SimpleNamespace(
+                exclude=[],
+                store="disable",
+                _restore_context=None,
+            )
+            self.sent: list[dict[str, Any]] = []
+
+        def is_stub_session(self) -> bool:
+            return False
+
+        def root_scope(self) -> "_HistorySession":
+            return self
+
+        async def send_custom_message(
+            self, type: str, message: Any
+        ) -> None:
+            self.sent.append(message["action"])
+
     class _HistoryAdapter:
         def __init__(self) -> None:
             self.turns: list[dict[str, str]] = []
+
+        def get_turns(self) -> list[dict[str, str]]:
+            return list(self.turns)
+
+        def set_turns(self, turns: list[dict[str, str]]) -> None:
+            self.turns = list(turns)
 
         def get_turns_json(
             self, *, include_system_prompt: bool = False
@@ -524,49 +554,65 @@ def test_v2_terminal_metadata_uses_registered_response_settlement_callback():
         def client_info(self) -> dict[str, str]:
             return {}
 
-    with session_context(test_session):
-        chat = Chat("response_settlement_v2_metadata", history=False)
-        controller = HistoryController(
-            chat=chat,
-            adapter=_HistoryAdapter(),  # type: ignore[arg-type]
-            store=InMemoryConversationStore(),
-            title_fn=None,
-            title_enabled=False,
-            client=None,
-            use_exchange_tree=True,
-        )
-        controller.partition = ConversationPartition(
-            chat_id=chat.id, scope="response-settlement"
-        )
-        recorder = controller._exchange_recorder
-        assert recorder is not None
-        chat._transcript.set_capture_callbacks(
-            on_accepted_input=recorder.accepted_input,
-            on_message_committed=recorder.message_committed,
-            on_stream_started=recorder.stream_started,
-            on_stream_updated=recorder.stream_updated,
-            on_stream_finished=recorder.stream_finished,
-        )
-        chat._on_response_settled(controller.on_response)
+    session = _HistorySession()
+    client = _HistoryAdapter()
 
-        run_async(
-            lambda: chat._record_accepted_user_input_with_capture(
-                ChatMessage(content="prompt", role="user")
+    async def exercise() -> None:
+        with session_context(cast(Session, session)):
+            chat = Chat(
+                "response_settlement_v2_metadata",
+                client=client,  # type: ignore[arg-type]
+                history=HistoryOptions(
+                    restore_mode="none",
+                    store="memory",
+                    scope="response-settlement",
+                    title=None,
+                ),
             )
-        )
+            await reactive.flush()
+            session.sent.clear()
 
-        metadata_updates: list[str] = []
+            await chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="prompt", role="user"),
+                publish_latest=False,
+            )
+            session.sent.clear()
 
-        async def send_history_update() -> None:
-            metadata_updates.append("terminal")
+            async with chat.message_stream_context() as stream:
+                await stream.append("partial one")
+                assert not [
+                    action
+                    for action in session.sent
+                    if action["type"] == "history_update"
+                ]
+                await stream.append("partial two")
+                assert not [
+                    action
+                    for action in session.sent
+                    if action["type"] == "history_update"
+                ]
 
-        controller.send_history_update = send_history_update  # type: ignore[method-assign]
-        run_async(lambda: chat.append_message("answer"))
-        run_async(reactive.flush)
+            assert not [
+                action
+                for action in session.sent
+                if action["type"] == "history_update"
+            ]
+            await reactive.flush()
 
-    assert recorder.record is not None
-    assert recorder.record.response_count == 1
-    assert metadata_updates == ["terminal"]
+            controller = chat.history._controller
+            assert controller is not None
+            recorder = controller._exchange_recorder
+            assert recorder is not None
+            assert recorder.record is not None
+            assert recorder.record.response_count == 1
+
+    monkeypatch.setattr(history_module, "_EXCHANGE_TREE_HISTORY_V2", True)
+    run_async(exercise)
+
+    history_updates = [
+        action for action in session.sent if action["type"] == "history_update"
+    ]
+    assert len(history_updates) == 1
 
 
 def test_response_settlement_persists_source_response_before_new_chat():
