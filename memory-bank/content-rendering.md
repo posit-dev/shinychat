@@ -58,6 +58,8 @@ Three rules cover the whole system:
 
 Per-segment trust still exists within the string channel: `ChatMessage` selects the trusted vs untrusted component map by `content_type`, and MarkdownStream carries `{text, trusted}` runs so a plain string in a mixed TagList can't inherit trust from an adjacent Tag.
 
+**Construction semantics (server-side authoring):** `TagList`/`tagList()` message content is an HTML container — bare strings inside it are escaped text nodes, not markdown (the behavior of every shipped release). `split_content_by_trust` applies only to *streaming* provenance, where bare strings are model output; it is deliberately not applied to message construction. To mix markdown and UI in one constructed message, authors use the segment-list API — Python `ChatMessage(parts=[...])`, R `list(...)` content — where bare strings are markdown segments and tags/blocks interleave in order.
+
 One tool-specific invariant: `status: "running"` is never a wire value. The wire only knows `"success" | "error"`; the client derives "running" from an unpaired `tool_request` (a request with no matching `request_id` result yet).
 
 ## Restore: Re-Derive, Never Re-Parse
