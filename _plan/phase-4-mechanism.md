@@ -1204,3 +1204,37 @@ Next: retain `shinychat#5r50` open with `work.attention="ok"` pending the
 required human review; do not start `shinychat#6drf`. No graph operations,
 rewind hooks, sibling/resubmit work, Q3 protocol change, retry UI, bookmark
 pointer, JS/R work, init guard, or degradation behavior landed in this unit.
+
+### P4.1 restore-transaction review escalation (2026-08-31)
+
+Independent read-only review of `d7866b44` and `64e988c3` accepted a
+restore-transaction failure-semantics gap. The happy-path keystone is green,
+but no further implementation may proceed until this decision is made.
+
+1. Graph-path validation occurs before destructive mutation, but
+   `shinychat:turns` kind/version/data validation occurs only after display
+   replay begins. A malformed entry can therefore replace live display before
+   it raises.
+2. Replay transport failure or a restore-hook failure can leave a partially
+   restored display/state while the recorder still owns the previous record.
+   A later accepted input could then be captured into the wrong record.
+3. Active-ID callback failure or cancellation after recorder installation can
+   leave the new record active without completing app-state/history
+   publication; an ordinary same-ID retry is a no-op.
+
+The reviewer also found duplicate v2 initialization metadata publication and
+missing production switch/capture-suppression coverage. Those are bounded
+follow-ons once the transaction contract is selected.
+
+**Decision required from Garrick:** should P4.1 restore be failure-atomic
+after preflight, and if so what rollback contract is authorized for display,
+turns, recorder ownership, active ID, and external callbacks? The approved
+note requires install only after display/state success but does not specify
+how an already-mutated live session is recovered when replay, a hook, or
+publication fails. Do not guess by adding a second owner, queue, timer, CAS,
+or init guard.
+
+Current state: `d7866b44` and `64e988c3` remain committed and their full
+Python gate evidence remains valid. `shinychat#5r50` is open with
+`needs-review` and `work.attention="blocked"` pending the decision; do not
+start `shinychat#6drf` or request Roborev.
