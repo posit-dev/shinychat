@@ -3,13 +3,14 @@
 **Status (current and authoritative):** Phase 4 is complete.
 Restore/continuation, branching/edit/navigation, retry/regenerate,
 pointer-only bookmarks, final acceptance, and the deletion/scope audit are
-implemented, verified, reviewed, and ready for Kata closure. No Phase 5 work
-has started (2026-09-01).
+implemented, verified, reviewed, and closed in Kata. No Phase 5 work has
+started (2026-09-01).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** `shinychat#ykxh`, `shinychat#5r50`,
 `shinychat#6drf`, `shinychat#72ee`, and `shinychat#g6tt` are closed.
-`shinychat#pvjx` and parent `shinychat#azvt` are ready to close under epic
-`shinychat#6d0d`.
+`shinychat#pvjx` and parent `shinychat#azvt` are closed under epic
+`shinychat#6d0d`. Future WebSocket-harness backlog `shinychat#n5d3` is
+parented directly to the epic and is not Phase 4 work.
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
 the Phase 4 gate and the only phase-local mechanism reference for new work.
 
