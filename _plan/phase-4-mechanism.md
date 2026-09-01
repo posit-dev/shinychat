@@ -2063,3 +2063,32 @@ scope; the bookmark fixture was accepted only after reproduction in the full
 gate. `shinychat#5r50` remains open with `needs-review`,
 `work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`.
 `shinychat#6drf` remains blocked and unstarted. No Roborev was requested.
+
+### P4.1 current implementation and review handoff (2026-09-01)
+
+The earlier blocked-input handoff, including its statement that the correction
+was not landed, is historical and superseded by the committed implementation
+and follow-up evidence below. Those historical sections remain in place as an
+audit trail; they do not describe the current implementation status.
+
+The bounded implementation is landed: the existing destructive admission
+boundary blocks raw input through the v2 switch source save and restore, and
+the raw-input test-isolation replacement is committed. The terminal settlement
+regression is landed in `1bb5b886` and import-cleaned in `0cca3b49`. It uses
+normal `Chat(..., history=HistoryOptions(...))` startup wiring and the
+registered `_save_on_response`/response-settlement path; it does not assign
+`controller.on_response` directly. Stream chunks produce zero
+`history_update` metadata actions, while the production terminal settlement
+produces exactly one metadata update and one v2 recorder response capture.
+
+Verification for this handoff: the focused registered-settlement test passed;
+`make py-check-format` passed; `make py-check-types` passed with zero errors;
+and full `make py-check` passed with 200 Playwright tests, 824 non-browser
+tests, 1 skipped test, and 19 established warnings. A fresh batched Roborev
+review remains required and is not yet requested by this handoff.
+
+Current state: `shinychat#5r50` remains open with `needs-review`,
+`work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`,
+awaiting the fresh batched review. `shinychat#6drf` remains blocked and
+unstarted; `shinychat#azvt` remains open. No task closure or sibling work is
+authorized here.
