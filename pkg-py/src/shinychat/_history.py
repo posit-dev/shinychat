@@ -1392,6 +1392,46 @@ class HistoryController:
                     bootstrap=selected_bootstrap,
                 )
 
+    async def _restore_initial_exchange_record(
+        self,
+        target: ConversationRecordV2,
+        *,
+        node_id: str | None = None,
+    ) -> None:
+        """Restore an initial target, recovering only preflight failures."""
+        selected = target
+        persist_active_pointer = False
+        try:
+            if node_id is not None:
+                selected = target.model_copy(deep=True)
+                selected.set_active_leaf(node_id)
+                persist_active_pointer = target.active_leaf != node_id
+            node_ids, planned_state, bootstrap = (
+                self._prepare_exchange_restore(selected)
+            )
+        except Exception:
+            # Initial restore has no surrounding transaction to recover a
+            # failed preflight. Keep the shared restore methods fail-closed.
+            await self._clear_failed_restore()
+            raise
+
+        restore_body_entered = False
+        try:
+            async with self._destructive_mutation():
+                async with self._exchange_mutation():
+                    restore_body_entered = True
+                    await self._restore_exchange_record_locked(
+                        selected,
+                        node_ids=node_ids,
+                        planned_state=planned_state,
+                        bootstrap=bootstrap,
+                        persist_active_pointer=persist_active_pointer,
+                    )
+        except BaseException:
+            if not restore_body_entered:
+                await self._clear_failed_restore()
+            raise
+
     async def restore_bookmark_pointer(
         self, target: ConversationRecordV2, node_id: str
     ) -> None:
@@ -2426,6 +2466,25 @@ class ChatHistory:
             if initialized:
                 return
 
+            async def restore_initial_v2(
+                target: ConversationRecordV2,
+                *,
+                node_id: str | None = None,
+            ) -> None:
+                nonlocal initialized
+                try:
+                    await controller._restore_initial_exchange_record(
+                        target, node_id=node_id
+                    )
+                except Exception:
+                    initialized = True
+                    try:
+                        await controller.notify_settled(False)
+                    except BaseException:
+                        # Settlement is advisory; preserve the restore error.
+                        pass
+                    raise
+
             owner_scope = scope()  # req() retries until token arrives
             controller.partition = ConversationPartition(
                 chat_id=str(chat.id), scope=owner_scope
@@ -2484,7 +2543,7 @@ class ChatHistory:
                     await controller.notify_settled(False)
                     return
 
-                await controller.restore_bookmark_pointer(target, node_id)
+                await restore_initial_v2(target, node_id=node_id)
                 initialized = True
                 await controller.notify_settled(True)
                 return
@@ -2499,7 +2558,7 @@ class ChatHistory:
                     target = None
                 if target is not None:
                     if isinstance(target, ConversationRecordV2):
-                        await controller._restore_exchange_record(target)
+                        await restore_initial_v2(target)
                     else:
                         async with controller._destructive_mutation():
                             adapter.set_turns_json(target.path_turns())
@@ -2538,7 +2597,7 @@ class ChatHistory:
                     pointed = None
                 if pointed is not None:
                     if isinstance(pointed, ConversationRecordV2):
-                        await controller._restore_exchange_record(pointed)
+                        await restore_initial_v2(pointed)
                         initialized = True
                         await controller.notify_settled(True)
                         return

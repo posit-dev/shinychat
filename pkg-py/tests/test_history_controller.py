@@ -2368,6 +2368,83 @@ async def test_v2_restore_preflight_failure_leaves_live_state_untouched(
 
 
 @pytest.mark.anyio
+async def test_v2_initial_bookmark_projection_failure_recovers() -> None:
+    controller, _ = _make_controller(use_exchange_tree=True)
+    target = _restore_target()
+    target.nodes["n_0000"].parent_id = "missing"
+    fake_chat = cast(_FakeChat, controller.chat)
+    released_ids: list[str | None] = []
+
+    async def release_active_id(id: str | None) -> None:
+        released_ids.append(id)
+
+    controller.on_active_id_change = release_active_id
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError, match="Dangling parent reference"):
+        await controller._restore_initial_exchange_record(
+            target, node_id="n_0000"
+        )
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    assert recorder.record is None
+    assert controller._active_id_now() is None
+    assert released_ids == [None]
+    assert fake_chat.clear_messages_calls == 1
+    assert fake_chat.messages == []
+    history_updates = [
+        action for action in fake_chat.actions if action["type"] == "history_update"
+    ]
+    assert len(history_updates) == 1
+    assert history_updates[0]["active_id"] is None
+    notifier.assert_awaited_once_with(recovery_incomplete=False)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "failure",
+    [
+        RuntimeError("initial admission failed"),
+        asyncio.CancelledError("initial admission cancelled"),
+    ],
+)
+async def test_v2_initial_restore_admission_failure_recovers(
+    failure: BaseException,
+) -> None:
+    controller, _ = _make_controller(use_exchange_tree=True)
+    target = _restore_target()
+    fake_chat = cast(_FakeChat, controller.chat)
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+
+    @asynccontextmanager
+    async def fail_admission(*, block_input: bool = False):
+        del block_input
+        raise failure
+        yield
+
+    fake_chat._destructive_history_mutation = fail_admission  # type: ignore[method-assign]
+
+    with pytest.raises(type(failure)) as raised:
+        await controller._restore_initial_exchange_record(target)
+
+    assert raised.value is failure
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    assert recorder.record is None
+    assert controller._active_id_now() is None
+    assert fake_chat.clear_messages_calls == 1
+    history_updates = [
+        action for action in fake_chat.actions if action["type"] == "history_update"
+    ]
+    assert len(history_updates) == 1
+    assert history_updates[0]["active_id"] is None
+    notifier.assert_awaited_once_with(recovery_incomplete=False)
+
+
+@pytest.mark.anyio
 async def test_v2_live_restore_malformed_effective_turns_becomes_fresh_draft():
     store = InMemoryConversationStore()
     adapter = _TrackingFakeAdapter()
