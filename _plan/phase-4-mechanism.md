@@ -2092,3 +2092,38 @@ Current state: `shinychat#5r50` remains open with `needs-review`,
 awaiting the fresh batched review. `shinychat#6drf` remains blocked and
 unstarted; `shinychat#azvt` remains open. No task closure or sibling work is
 authorized here.
+
+### P4.1 Roborev 1146 disposition (2026-09-01)
+
+Mandatory batched Roborev job `1146` reviewed the exact code/test range
+`04825f1f^..0cca3b49` (canonical `39a61813..0cca3b49`), excluding the later
+docs-only heads `a4d107e7` and `eae64b48`. It reported three findings. After
+orchestrator disposition, one remains in scope for `shinychat#5r50`; the
+three-findings valve is not fired.
+
+The switch timing finding is declined. `switch_to()` must load and validate
+the target schema before destructive admission so a missing, slow, or invalid
+target leaves the current source usable and preserves the preflight contract.
+Blocking input during target lookup would violate that source-usability
+guarantee. The required regression coverage for any implementation follow-up
+is: a slow successful lookup permits source input before admission and rejects
+input once source save/restore begins; a missing or invalid lookup preserves
+the source and admission; and an active source stream rejects the switch.
+
+The terminal-settlement test teardown finding is accepted. The real `Chat`
+created by the registered settlement test must be destroyed in `try/finally`
+so reactive effects and callbacks cannot leak into later tests. Roborev `1146`
+remains open pending the fix commit; no code fix is made by this disposition.
+
+The v2 bookmark settlement finding is moved to existing task
+`shinychat#g6tt`, outside the `shinychat#5r50` blocker. That task must define
+the recorder-owned active-v2 `bookmark_state_id` under the recorder lock and
+cover late callbacks, replacement cleanup, v2 URL behavior, and stale-pointer
+behavior. This is a distinct bookmark pointer protocol, not a `shinychat#5r50`
+persistence/restore blocker.
+
+Current state remains truthful: `shinychat#5r50` is open with `needs-review`,
+`work.attention="blocked"`, and
+`work.branch="feat/history-exchange-tree"`; `shinychat#6drf` is open,
+blocked, and unstarted; and `shinychat#azvt` is open. No implementation,
+review closure, or task closure is authorized by this docs-only disposition.
