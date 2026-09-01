@@ -1528,7 +1528,7 @@ class HistoryController:
         node_ids = tuple(prefix.path_node_ids())
         rewind_state = recorder._preflight_rewind_state(prefix, node_ids)
 
-        async with self._destructive_mutation():
+        async with self._destructive_mutation(block_input=True):
             async with self._exchange_mutation():
                 current_leaf = record.active_leaf
                 if current_leaf is None:

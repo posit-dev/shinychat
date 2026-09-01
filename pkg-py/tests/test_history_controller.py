@@ -3518,6 +3518,70 @@ async def test_v2_resubmit_rewinds_parent_prefix_and_new_input_creates_sibling()
 
 
 @pytest.mark.anyio
+async def test_v2_resubmit_rejects_real_chat_input_until_replay_releases(
+    request: pytest.FixtureRequest,
+) -> None:
+    controller, _fake_chat, _adapter, _store, first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+
+    session = _RealChatSession()
+    with session_context(cast(Any, session)):
+        chat = Chat("history_resubmit_input", history=False)
+    request.addfinalizer(chat.destroy)
+    controller.chat = chat  # type: ignore[assignment]
+    chat._transcript.set_capture_callbacks(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+
+    clear_started = asyncio.Event()
+    release_clear = asyncio.Event()
+    original_clear_messages = chat.clear_messages
+
+    async def blocked_clear_messages() -> None:
+        clear_started.set()
+        await release_clear.wait()
+        await original_clear_messages()
+
+    chat.clear_messages = blocked_clear_messages  # type: ignore[method-assign]
+    resubmit = asyncio.create_task(controller.resubmit(target))
+    await clear_started.wait()
+
+    assert chat._destructive_history_blocks_input
+    with pytest.raises(
+        RuntimeError,
+        match="Cannot accept user input while switching conversations",
+    ):
+        await chat._record_accepted_user_input_with_capture(
+            ChatMessage(content="competing input", role="user")
+        )
+    assert record.active_leaf == first
+    assert record.children_of(first) == [target]
+
+    release_clear.set()
+    await resubmit
+
+    assert not chat._destructive_history_blocks_input
+    await chat._record_accepted_user_input_with_capture(
+        ChatMessage(content="second", role="user")
+    )
+    sibling = record.active_leaf
+    assert sibling is not None
+    sibling_input = record.nodes[sibling].input
+    assert sibling_input is not None
+    assert sibling_input.content == "second"
+    assert record.children_of(first) == [target, sibling]
+
+
+@pytest.mark.anyio
 async def test_v2_resubmit_rewind_hooks_are_ordered_and_always_recorded():
     controller, _chat, _adapter, _store, first, target = (
         _make_v2_resubmit_controller()
