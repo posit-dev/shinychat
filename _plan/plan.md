@@ -1,11 +1,11 @@
 # Plan: exchange-tree conversation history
 
-**Status:** committed · Phase 0 complete, Phase 1 in review, Phases 2–3
-complete, Phase 4 mechanism planning in progress; Q2 selects single-document
-atomic layout after split rejection · 2026-08-31
+**Status:** committed · Phase 0 complete, Phase 1 in review, Phases 2–4
+complete; Phase 5 mechanism planning in progress; Q2 selects single-document
+atomic layout after split rejection · 2026-09-01
 **Kata:** epic `shinychat#6d0d` · Phase 1 `shinychat#g49a` · Phase 2
 `shinychat#kjyt` · Phase 3 `shinychat#qf2r` · Phase 4 `shinychat#azvt`
-(the `kata` CLI issue tracker).
+· Phase 5 `shinychat#fg70` (the `kata` CLI issue tracker).
 All abbreviated Kata IDs below belong to the `shinychat` project;
 planning history in closed issue `kvhc`
 **Predecessor:** `feat/turn-history-sync-redesign` (stopped; see the
@@ -575,10 +575,11 @@ signed off by the driver before code (process.md §3.4).
   edit, retry, and regenerate all go through the one sibling primitive; a
   restored client continues the conversation correctly (turn count and
   content verified).
-- **Phase 5 — hard core + adversarial review (Python).** Init-window guard
-  (Q1); clear/switch/abort audit; unreplayable-turn
+- **Phase 5 — hard core + adversarial review (Python; `shinychat#fg70`).**
+  Init-window guard (Q1); clear/switch/abort audit; unreplayable-turn
   degrade; error-on-reload affordance. Then one adversarial review pass in
-  the critical-review format on exactly this subsystem.
+  the critical-review format on exactly this subsystem. See
+  `phase-5-mechanism.md`; Phase 4's mechanism note is completed context only.
   *Done when:* the audit checklist has a test or a recorded decision per
   item, and the adversarial pass's P1s are fixed or dispositioned.
 - **Phase 6 — R port.** After Python shape-stability (reviewed, chains
