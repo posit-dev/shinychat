@@ -1,10 +1,11 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
 **Status (current and authoritative):** P4.0 complete; the P4.1 Roborev 1135
-DELETE/REPLACE unit is implemented and fully verified. `shinychat#5r50`
-remains open with `needs-review`, `work.attention="ok"`, and
-`work.branch="feat/history-exchange-tree"`; `shinychat#6drf` remains blocked
-and unstarted (2026-08-31).
+DELETE/REPLACE unit is implemented, but its corrected handoff is stopped
+pending note review. `shinychat#5r50` remains open with `needs-review`,
+`work.attention="blocked"`, and `work.branch="feat/history-exchange-tree"`;
+`shinychat#6drf` remains open, blocked, and unstarted; and
+`shinychat#azvt` remains open with `work.attention="ok"` (2026-08-31).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is open with
 `needs-review`, `work.attention="ok"`, and
@@ -1735,3 +1736,43 @@ and 19 established warnings remained. `shinychat#5r50` remains open with
 `work.branch="feat/history-exchange-tree"`. `shinychat#6drf` remains blocked
 and unstarted. This was a read-only review disposition; no production or
 test change is authorized or required.
+
+### P4.1 corrected independent-review handoff (2026-08-31)
+
+This section is authoritative and supersedes/withdraws the prior Luna
+dispositions that called the following gaps non-blocking or optional:
+
+- Terminal production settlement coverage is an in-scope required regression.
+  The terminal metadata assertion must exercise the registered production
+  settlement callback, not call `controller.on_response` directly.
+- Inactive v2 rename coverage is an in-scope required regression, using
+  `use_exchange_tree=True`.
+
+The corrected review also records a P1 switch race in `04825f1f`: v2 source
+save currently occurs before destructive admission, so an input can be
+persisted and then visually cleared during a switch. The approved ordering
+uses only existing primitives:
+
+```text
+destructive transcript admission -> recorder lock/source save -> restore
+```
+
+No new mechanism is approved. The required regressions are:
+
+1. A deterministic interleaving proving accepted input cannot enter during
+   switch save/restore.
+2. Terminal metadata through the registered production settlement callback,
+   rather than a direct controller call.
+3. Inactive v2 rename with `use_exchange_tree=True`.
+
+A fresh mandatory batched Roborev review is required after these fixes.
+Roborev 1135 was a pre-replacement review and is insufficient for the
+corrected range; it is not current review evidence and must not be requested
+again now.
+
+Implementation is stopped pending note review. `shinychat#5r50` remains open
+with `needs-review`, `work.attention="blocked"`, and
+`work.branch="feat/history-exchange-tree"`. `shinychat#6drf` remains open,
+blocked, and unstarted. `shinychat#azvt` remains open with
+`work.attention="ok"`. No code implementation, test implementation, review
+request, or closure is authorized in this update.
