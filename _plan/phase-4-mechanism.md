@@ -2223,9 +2223,12 @@ Verification: the focused test
 passed; Pyright reported zero errors; and full `make py-check` passed 200
 Playwright tests, 827 non-browser tests, 1 skipped test, and 19 established
 warnings. No production defect or production change was required. No Roborev
-review was requested yet. `shinychat#5r50` remains open with `needs-review`
-and `work.attention="blocked"` pending the Roborev 1152 fixes; `shinychat#6drf`
-remains blocked and unstarted.
+review was requested for `7d3cd6ac` in this handoff. Roborev `1155` reviewed
+the pre-`7d3cd6ac` range and its provider-path gap is superseded by this
+regression; it is not evidence for this commit. Roborev `1152` is already
+closed after its fixes. `shinychat#5r50` remains open with `needs-review` and
+`work.attention="ok"` pending review of this new test commit;
+`shinychat#6drf` remains blocked and unstarted.
 
 ### P4.1 Roborev 1152 resolution and current handoff (2026-09-01)
 
