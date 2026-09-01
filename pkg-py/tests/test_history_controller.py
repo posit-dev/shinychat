@@ -1217,14 +1217,16 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore() -> (
     # Other test modules can leave errored mock-session effects pending in
     # Shiny's process-global scheduler. Drain them before creating this test's
     # effects so every raw-input flush below observes only this chat.
-    for _ in range(500):
-        try:
-            await reactive.flush()
-        except Exception:
-            continue
-        break
-    else:
-        raise AssertionError("Could not drain pre-existing reactive effects")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(500):
+            try:
+                await reactive.flush()
+            except Exception:
+                continue
+            break
+        else:
+            raise AssertionError("Could not drain pre-existing reactive effects")
 
     session = _RealChatSession()
     session.input["history_switch_input_user_input"] = reactive.Value()
@@ -1393,6 +1395,7 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore() -> (
         latest_input = chat.user_input()
         assert latest_input is not None
         assert latest_input.text == "accepted after switch"
+    chat.destroy()
 
 
 @pytest.mark.anyio
