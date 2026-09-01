@@ -53,7 +53,7 @@ Create a new file-based conversation store.
 
 ### `FileConversationStore$list()`
 
-All conversations in `partition`, newest-first by `updated_at`, read
+All conversations in `partition`, newest-first by `created_at`, read
 from one `record.json` per conversation directory on disk.
 
 #### Usage

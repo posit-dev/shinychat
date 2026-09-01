@@ -46,7 +46,7 @@ itself.
 ### `ConversationStore$list()`
 
 Must be implemented by subclasses. All conversations in `partition`,
-newest-first by `updated_at`.
+newest-first by `created_at`.
 
 #### Usage
 
