@@ -164,11 +164,13 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     index: number,
     content: string,
     attachments: AttachmentPayload[] = [],
+    requestId?: string,
   ): void {
     window.Shiny?.setInputValue?.(`${id}_message_edit`, {
       index,
       content,
       attachments,
+      ...(requestId === undefined ? {} : { requestId }),
       ts: Date.now(),
     })
   }

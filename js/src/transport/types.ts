@@ -138,6 +138,13 @@ export type ChatAction =
       type: "update_siblings"
       data: Record<number, { index: number; total: number }>
     }
+  | {
+      type: "history_edit_projection"
+      requestId: string
+      index: number
+      content: string
+      attachments: AttachmentPayload[]
+    }
   | { type: "history_transition_complete"; requestId: string }
 
 export type ShinyChatEnvelope = {
@@ -196,6 +203,7 @@ export interface ChatTransport {
     index: number,
     content: string,
     attachments?: AttachmentPayload[],
+    requestId?: string,
   ): void
   sendMessageNavigate(
     id: string,

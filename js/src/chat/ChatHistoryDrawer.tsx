@@ -323,7 +323,7 @@ export function ChatHistoryContent({
                 confirmingDelete={confirmingDelete === c.id}
                 onMenuOpenChange={(open) => setMenuFor(open ? c.id : null)}
                 onStartRename={() => {
-                  if (!connected) return
+                  if (busy || !connected) return
                   setRenaming(c.id)
                   setMenuFor(null)
                 }}
@@ -337,7 +337,7 @@ export function ChatHistoryContent({
                   setConfirmingDelete(null)
                 }}
                 onRename={(title) => {
-                  if (!connected) return
+                  if (busy || !connected) return
                   onRename(c.id, title)
                   setRenaming(null)
                 }}
@@ -423,7 +423,7 @@ function ConversationItem({
         <input
           className="shiny-chat-history-rename-input form-control form-control-sm"
           autoFocus
-          disabled={!connected}
+          disabled={busy || !connected}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -497,7 +497,7 @@ function ConversationItem({
             ref={refs.setReference}
             type="button"
             aria-label="Conversation actions"
-            disabled={!connected}
+            disabled={busy || !connected}
             title={
               !connected
                 ? "History is unavailable while chat reconnects"
@@ -524,7 +524,7 @@ function ConversationItem({
                 >
                   <button
                     type="button"
-                    disabled={!connected}
+                    disabled={busy || !connected}
                     title={
                       !connected
                         ? "History is unavailable while chat reconnects"

@@ -152,7 +152,7 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     @reactive.effect
     @reactive.event(input.protocol_unknown)
     async def _set_protocol_unknown() -> None:
-        await set_protocol("completion-v2", "unknown")
+        await set_protocol("completion-v3", "unknown")
 
     @reactive.effect
     @reactive.event(input.protocol_withdrawn)

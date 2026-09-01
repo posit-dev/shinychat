@@ -440,6 +440,27 @@ describe("ShinyTransport", () => {
         expect.objectContaining({ attachments: [] }),
       )
     })
+
+    it("includes an edit transition request ID when provided", () => {
+      const setInputValue = vi.fn()
+      ;(window as unknown as Record<string, unknown>).Shiny = {
+        setInputValue,
+        addCustomMessageHandler: vi.fn(),
+      }
+      const transport = new ShinyTransport()
+
+      transport.sendMessageEdit("chat1", 2, "edited text", [], "request-id")
+
+      expect(setInputValue).toHaveBeenCalledWith(
+        "chat1_message_edit",
+        expect.objectContaining({
+          index: 2,
+          content: "edited text",
+          attachments: [],
+          requestId: "request-id",
+        }),
+      )
+    })
   })
 
   describe("sendMessageNavigate", () => {

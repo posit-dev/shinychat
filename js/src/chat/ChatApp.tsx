@@ -256,10 +256,29 @@ export function ChatApp({
         historyStore.completeHistoryTransition(action.requestId)
         return
       }
+      if (action.type === "history_edit_projection") {
+        if (!historyStore.acceptEditProjection(action.requestId)) return
+        dispatch({ type: "TRUNCATE_MESSAGES", index: action.index })
+        dispatch({
+          type: "INPUT_SENT",
+          content: action.content,
+          role: "user",
+          ...(action.attachments.length > 0
+            ? { attachments: action.attachments }
+            : {}),
+        })
+        transport.sendInput(
+          inputId,
+          state.enableUpload
+            ? { text: action.content, attachments: action.attachments }
+            : action.content,
+        )
+        return
+      }
       dispatch(action)
     })
     return unsubscribe
-  }, [transport, elementId, historyStore])
+  }, [transport, elementId, historyStore, inputId, state.enableUpload])
 
   // State-driven `<inputId>_greeting_requested` input.
   //
@@ -352,26 +371,42 @@ export function ChatApp({
   }, [greetingIsDismissed, elementId])
 
   useLayoutEffect(() => {
-    historyStore.setBusy(state.streamingMessage !== null)
-  }, [historyStore, state.streamingMessage])
+    historyStore.setBusy(state.inputDisabled || state.streamingMessage !== null)
+  }, [historyStore, state.inputDisabled, state.streamingMessage])
 
   const handleEdit = useCallback(
     (index: number, content: string, attachments: AttachmentPayload[]) => {
-      transport.sendMessageEdit(elementId, index, content, attachments)
+      if (historyStore.isMutationBlocked()) return
+      const requestId = historyStore.beginEditTransition()
+      if (requestId === null) {
+        transport.sendMessageEdit(elementId, index, content, attachments)
+      } else {
+        transport.sendMessageEdit(
+          elementId,
+          index,
+          content,
+          attachments,
+          requestId,
+        )
+      }
     },
-    [transport, elementId],
+    [transport, elementId, historyStore],
   )
 
   const handleNavigate = useCallback(
     (index: number, direction: "prev" | "next") => {
-      if (siblingNavigationPendingRef.current) return
+      if (
+        siblingNavigationPendingRef.current ||
+        historyStore.isMutationBlocked()
+      )
+        return
 
       siblingNavigationPendingRef.current = true
       setSiblingNavigationPending(true)
       containerRef.current?.beginSiblingNavigation()
       transport.sendMessageNavigate(elementId, index, direction)
     },
-    [transport, elementId],
+    [transport, elementId, historyStore],
   )
 
   const supersededRequests = useSupersededRequests(

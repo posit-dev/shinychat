@@ -123,7 +123,7 @@ describe("historyStore", () => {
     registration.store.actions.delete("second")
     expect(transport.sendHistorySelect).toHaveBeenCalledTimes(1)
     expect(transport.sendHistoryNew).toHaveBeenCalledTimes(1)
-    expect(transport.sendHistoryRename).toHaveBeenCalledTimes(2)
+    expect(transport.sendHistoryRename).toHaveBeenCalledTimes(1)
     expect(transport.sendHistoryDelete).toHaveBeenCalledTimes(1)
   })
 
@@ -229,12 +229,76 @@ describe("historyStore", () => {
       enabled: true,
       conversations,
       activeId: "first",
-      transitionProtocol: "completion-v2",
+      transitionProtocol: "unknown",
     })
     expect(registration.store.getSnapshot()).toMatchObject({
       transitionProtocol: null,
       historyTransitionPending: null,
     })
+  })
+
+  it("uses completion-v2 for edit transitions while retaining v1 New/Delete", () => {
+    const transport = createMockTransport()
+    const registration = acquireHistoryStore("chat", transport)
+    const requestIds = vi
+      .spyOn(uuidUtils, "uuid")
+      .mockReturnValueOnce("v1-new")
+      .mockReturnValueOnce("v2-edit")
+
+    registration.store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      transitionProtocol: "completion-v1",
+    })
+    expect(registration.store.beginEditTransition()).toBeNull()
+    registration.store.actions.create()
+    expect(transport.sendHistoryNew).toHaveBeenCalledWith("chat", "v1-new")
+    registration.store.completeHistoryTransition("v1-new")
+
+    registration.store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      transitionProtocol: "completion-v2",
+    })
+    expect(registration.store.beginEditTransition()).toBe("v2-edit")
+    expect(registration.store.getSnapshot().historyTransitionPending).toBe(
+      "v2-edit",
+    )
+
+    registration.store.actions.select("first")
+    registration.store.actions.rename("first", "Blocked")
+    registration.store.actions.create()
+    registration.store.actions.delete("first")
+    expect(transport.sendHistorySelect).not.toHaveBeenCalled()
+    expect(transport.sendHistoryRename).not.toHaveBeenCalled()
+    expect(transport.sendHistoryNew).toHaveBeenCalledTimes(1)
+    expect(transport.sendHistoryDelete).not.toHaveBeenCalled()
+  })
+
+  it("accepts only the matching edit projection and keeps mutation busy", () => {
+    const registration = acquireHistoryStore("chat", createMockTransport())
+    vi.spyOn(uuidUtils, "uuid").mockReturnValue("edit-request")
+    registration.store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      transitionProtocol: "completion-v2",
+    })
+
+    expect(registration.store.beginEditTransition()).toBe("edit-request")
+    expect(registration.store.acceptEditProjection("stale")).toBe(false)
+    expect(registration.store.getSnapshot().busy).toBe(false)
+    expect(registration.store.acceptEditProjection("edit-request")).toBe(true)
+    expect(registration.store.getSnapshot().busy).toBe(true)
+
+    registration.store.completeHistoryTransition("stale")
+    expect(registration.store.getSnapshot().historyTransitionPending).toBe(
+      "edit-request",
+    )
+    registration.store.completeHistoryTransition("edit-request")
+    expect(registration.store.getSnapshot().historyTransitionPending).toBeNull()
   })
 
   it("uses remount-safe UUIDs so stale completions cannot release a new transition", async () => {

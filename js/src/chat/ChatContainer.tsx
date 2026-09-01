@@ -1021,7 +1021,12 @@ export const ChatContainer = forwardRef<
                     onEdit={history.enabled ? onEdit : undefined}
                     onNavigate={history.enabled ? onNavigate : undefined}
                     siblingNavigationPending={siblingNavigationPending}
-                    disabled={isStreaming}
+                    disabled={
+                      history.busy ||
+                      history.historyTransitionPending !== null ||
+                      inputDisabled ||
+                      isStreaming
+                    }
                     inputId={inputId}
                     submitKey={submitKey}
                     uploadAccept={uploadAccept}
@@ -1110,7 +1115,7 @@ export const ChatContainer = forwardRef<
           <ChatHistoryContent
             conversations={history.conversations}
             activeId={history.activeId}
-            busy={history.busy}
+            busy={history.busy || history.historyTransitionPending !== null}
             connected={history.connected}
             onSelect={historyStore.actions.select}
             onNew={historyStore.actions.create}

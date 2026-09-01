@@ -13,6 +13,7 @@ from pydantic import JsonValue
 from ._attachments import Attachment, validate_attachments
 from ._chat_transcript import TranscriptEntry
 from ._chat_types import (
+    HistoryEditProjectionAction,
     HistoryNavigateAction,
     HistoryUpdateAction,
     StoredMessage,
@@ -1468,36 +1469,13 @@ class HistoryController:
             attachments=parsed,
         )
 
-    async def _replay_exchange_prefix_locked(
-        self,
-        record: ConversationRecordV2,
-        *,
-        node_ids: tuple[str, ...],
-        rewind_state: RewindPlan,
-    ) -> None:
-        recorder = self._exchange_recorder
-        assert recorder is not None
-
-        await self.chat.clear_messages()
-        await self.chat.set_greeting(None)
-        with recorder.suspend_capture():
-            for node_id in node_ids:
-                node = record.nodes[node_id]
-                if node.input is not None:
-                    await self.chat._restore_bookmark_message(
-                        node.input.model_dump(mode="json")
-                    )
-                for message in node.messages:
-                    await self.chat._restore_bookmark_message(
-                        message.as_stored_message().model_dump(mode="json"),
-                        icon=message.icon,
-                    )
-        await recorder._rewind_state(rewind_state)
-
     async def resubmit(
         self,
         exchange_id: str,
         replacement_input: StoredMessage | None = None,
+        *,
+        request_id: str,
+        message_index: int,
     ) -> None:
         recorder = self._exchange_recorder
         if recorder is None:
@@ -1537,37 +1515,44 @@ class HistoryController:
                 record.set_active_leaf(target.parent_id)
                 await recorder._persist_record()
                 try:
-                    await self._replay_exchange_prefix_locked(
-                        record,
-                        node_ids=node_ids,
-                        rewind_state=rewind_state,
-                    )
+                    await recorder._rewind_state(rewind_state)
+                    action: HistoryEditProjectionAction = {
+                        "type": "history_edit_projection",
+                        "requestId": request_id,
+                        "index": message_index,
+                        "content": str(submitted_input.content),
+                        "attachments": [
+                            {
+                                "mime": attachment.mime,
+                                "data_url": attachment.data_url,
+                                "name": attachment.name,
+                                "size": attachment.size,
+                            }
+                            for attachment in submitted_input.attachments
+                        ],
+                    }
+                    await self.chat._send_action(action)
                 except BaseException:
                     await self._clear_failed_restore()
                     raise
 
-                action: UpdateInputAction = {
-                    "type": "update_input",
-                    "value": str(submitted_input.content),
-                    "attachments": [
-                        {
-                            "mime": attachment.mime,
-                            "data_url": attachment.data_url,
-                            "name": attachment.name,
-                            "size": attachment.size,
-                        }
-                        for attachment in submitted_input.attachments
-                    ],
-                    "attachment_mode": "set",
-                    "submit": True,
-                }
-                await self.chat._send_action(action)
+    async def retry(
+        self, exchange_id: str, *, request_id: str, message_index: int
+    ) -> None:
+        await self.resubmit(
+            exchange_id,
+            request_id=request_id,
+            message_index=message_index,
+        )
 
-    async def retry(self, exchange_id: str) -> None:
-        await self.resubmit(exchange_id)
-
-    async def regenerate(self, exchange_id: str) -> None:
-        await self.resubmit(exchange_id)
+    async def regenerate(
+        self, exchange_id: str, *, request_id: str, message_index: int
+    ) -> None:
+        await self.resubmit(
+            exchange_id,
+            request_id=request_id,
+            message_index=message_index,
+        )
 
     # -- list mutations ----------------------------------------------------
 
@@ -1702,15 +1687,24 @@ class HistoryController:
         message_index: int,
         content: str,
         attachments: "list[dict[str, Any]] | None" = None,
+        *,
+        request_id: str | None = None,
     ) -> None:
         recorder = self._exchange_recorder
         if recorder is not None:
             record = recorder.record
             if record is None:
                 return
+            if request_id is None:
+                raise ValueError("Exchange-tree edits require a request ID.")
             exchange_id = record.exchange_id_for_user_message_index(message_index)
             replacement = self._replacement_resubmit_input(content, attachments)
-            await self.resubmit(exchange_id, replacement)
+            await self.resubmit(
+                exchange_id,
+                replacement,
+                request_id=request_id,
+                message_index=message_index,
+            )
             return
 
         if self.record is None:
@@ -1780,7 +1774,11 @@ class HistoryController:
             "enabled": True,
             "conversations": [m.model_dump(mode="json") for m in metas],
             "active_id": self._active_id_now(),
-            "transition_protocol": "completion-v1",
+            "transition_protocol": (
+                "completion-v2"
+                if self._exchange_recorder is not None
+                else "completion-v1"
+            ),
         }
         await self.chat._send_action(action)
 
@@ -2316,17 +2314,30 @@ class ChatHistory:
         @reactive.effect
         @reactive.event(chat._session.input[ids.message_edit])
         async def _on_edit():
-            if controller.partition is None:
-                return
             payload = chat._session.input[ids.message_edit]()
+            request_id = _history_transition_request_id(payload)
             try:
+                if controller.partition is None:
+                    return
+                if not isinstance(payload, dict):
+                    raise TypeError("Edited message payload must be an object.")
+                index = payload.get("index")
+                content = payload.get("content")
+                if not isinstance(index, int):
+                    raise TypeError("Edited message index must be an integer.")
+                if not isinstance(content, str):
+                    raise TypeError("Edited message content must be a string.")
                 await controller.handle_edit(
-                    int(payload["index"]),
-                    str(payload["content"]),
+                    index,
+                    content,
                     payload.get("attachments"),
+                    request_id=request_id,
                 )
             except Exception as e:
                 await notify_error("Could not edit message", e)
+            finally:
+                if request_id is not None:
+                    await _complete_history_transition(chat, request_id)
 
         @reactive.effect
         @reactive.event(chat._session.input[ids.message_navigate])

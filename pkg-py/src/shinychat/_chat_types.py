@@ -154,7 +154,7 @@ class HistoryUpdateAction(TypedDict):
     enabled: bool
     conversations: list[dict[str, Any]]  # ConversationMeta dumps
     active_id: str | None
-    transition_protocol: NotRequired[Literal["completion-v1"]]
+    transition_protocol: NotRequired[Literal["completion-v1", "completion-v2"]]
 
 
 class HistoryNavigateAction(TypedDict):
@@ -167,6 +167,14 @@ class HistoryNavigateAction(TypedDict):
 class HistoryTransitionCompleteAction(TypedDict):
     type: Literal["history_transition_complete"]
     requestId: str
+
+
+class HistoryEditProjectionAction(TypedDict):
+    type: Literal["history_edit_projection"]
+    requestId: str
+    index: int
+    content: str
+    attachments: list[dict[str, Any]]
 
 
 class UpdateSiblingsAction(TypedDict):
@@ -197,6 +205,7 @@ ChatAction = Union[
     HistoryUpdateAction,
     HistoryNavigateAction,
     HistoryTransitionCompleteAction,
+    HistoryEditProjectionAction,
     UpdateSiblingsAction,
 ]
 

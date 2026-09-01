@@ -1,9 +1,12 @@
 import type { ConversationMeta, ChatTransport } from "../transport/types"
 import { uuid } from "../utils/uuid"
 
-type TransitionProtocol = "completion-v1"
+type TransitionProtocol = "completion-v1" | "completion-v2"
 
-const completionTransitionProtocol: TransitionProtocol = "completion-v1"
+const completionTransitionProtocols: readonly TransitionProtocol[] = [
+  "completion-v1",
+  "completion-v2",
+]
 
 export interface HistorySnapshot {
   initialized: boolean
@@ -46,14 +49,13 @@ export class HistoryStore {
   readonly actions: HistoryActions = {
     select: (conversationId) => {
       const transport = this.activeTransport()
-      if (transport && !this.snapshot.busy) {
+      if (transport && !this.isMutationBlocked()) {
         transport.sendHistorySelect(this.elementId, conversationId)
       }
     },
     create: () => {
       const transport = this.activeTransport()
-      if (!transport || this.snapshot.busy || this.hasPendingTransition())
-        return
+      if (!transport || this.isMutationBlocked()) return
       const requestId =
         this.snapshot.activeId === null || !this.supportsCompletionProtocol()
           ? undefined
@@ -65,16 +67,13 @@ export class HistoryStore {
       }
     },
     rename: (conversationId, title) => {
-      this.activeTransport()?.sendHistoryRename(
-        this.elementId,
-        conversationId,
-        title,
-      )
+      const transport = this.activeTransport()
+      if (!transport || this.isMutationBlocked()) return
+      transport.sendHistoryRename(this.elementId, conversationId, title)
     },
     delete: (conversationId) => {
       const transport = this.activeTransport()
-      if (!transport || this.snapshot.busy || this.hasPendingTransition())
-        return
+      if (!transport || this.isMutationBlocked()) return
       const requestId =
         conversationId === this.snapshot.activeId &&
         this.supportsCompletionProtocol()
@@ -124,6 +123,7 @@ export class HistoryStore {
           conversations.map((conversation) => ({ ...conversation })),
         )
 
+    const normalizedProtocol = normalizeTransitionProtocol(transitionProtocol)
     this.publish({
       initialized: true,
       enabled,
@@ -131,9 +131,9 @@ export class HistoryStore {
       activeId,
       busy: this.snapshot.busy,
       connected: this.snapshot.connected,
-      transitionProtocol: normalizeTransitionProtocol(transitionProtocol),
+      transitionProtocol: normalizedProtocol,
       historyTransitionPending:
-        transitionProtocol === completionTransitionProtocol
+        normalizedProtocol !== null
           ? this.snapshot.historyTransitionPending
           : null,
     })
@@ -141,6 +141,25 @@ export class HistoryStore {
 
   setBusy(busy: boolean): void {
     this.publish({ ...this.snapshot, busy })
+  }
+
+  beginEditTransition(): string | null {
+    if (!this.supportsEditProjectionProtocol() || this.isMutationBlocked())
+      return null
+    return this.beginTransition()
+  }
+
+  acceptEditProjection(requestId: string): boolean {
+    if (this.snapshot.historyTransitionPending !== requestId) return false
+    // Projection installs the ordinary input/loading state immediately after
+    // this call. Mark history busy first so no mutation can slip between the
+    // matching wire action and React's state commit.
+    this.setBusy(true)
+    return true
+  }
+
+  isMutationBlocked(): boolean {
+    return this.snapshot.busy || this.hasPendingTransition()
   }
 
   completeHistoryTransition(requestId: string): void {
@@ -161,7 +180,11 @@ export class HistoryStore {
   }
 
   private supportsCompletionProtocol(): boolean {
-    return this.snapshot.transitionProtocol === completionTransitionProtocol
+    return this.snapshot.transitionProtocol !== null
+  }
+
+  private supportsEditProjectionProtocol(): boolean {
+    return this.snapshot.transitionProtocol === "completion-v2"
   }
 
   private beginTransition(): string {
@@ -316,8 +339,8 @@ function snapshotsEqual(a: HistorySnapshot, b: HistorySnapshot): boolean {
 function normalizeTransitionProtocol(
   protocol: string | undefined,
 ): TransitionProtocol | null {
-  return protocol === completionTransitionProtocol
-    ? completionTransitionProtocol
+  return completionTransitionProtocols.includes(protocol as TransitionProtocol)
+    ? (protocol as TransitionProtocol)
     : null
 }
 

@@ -337,6 +337,9 @@ def _completion_actions(session: _LiveSession) -> list[dict[str, Any]]:
         ("delete", "success"),
         ("delete", "failure"),
         ("delete", "cancelled"),
+        ("edit", "success"),
+        ("edit", "failure"),
+        ("edit", "cancelled"),
     ],
 )
 async def test_history_transition_completion_always_matches_request(
@@ -381,7 +384,7 @@ async def test_history_transition_completion_always_matches_request(
         operation_fn = AsyncMock(side_effect=RuntimeError("expected failure"))
     elif outcome == "cancelled":
 
-        async def operation_fn(*_args: Any) -> None:
+        async def operation_fn(*_args: Any, **_kwargs: Any) -> None:
             raise asyncio.CancelledError()
 
     else:
@@ -392,10 +395,19 @@ async def test_history_transition_completion_always_matches_request(
         controller.new_chat = operation_fn  # type: ignore[method-assign]
         input_id = ids.new
         payload: object = {"requestId": f"{operation}-{outcome}"}
-    else:
+    elif operation == "delete":
         controller.delete = operation_fn  # type: ignore[method-assign]
         input_id = ids.delete
         payload = {"id": "active", "requestId": f"{operation}-{outcome}"}
+    else:
+        controller.handle_edit = operation_fn  # type: ignore[method-assign]
+        input_id = ids.message_edit
+        payload = {
+            "index": 0,
+            "content": "edited",
+            "attachments": [],
+            "requestId": f"{operation}-{outcome}",
+        }
 
     with session_context(cast(Any, session)):
         cast(Any, session.input[input_id])._set(payload)
@@ -414,7 +426,7 @@ async def test_history_transition_completion_always_matches_request(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("operation", ["new", "delete"])
+@pytest.mark.parametrize("operation", ["new", "delete", "edit"])
 async def test_history_transition_legacy_payload_does_not_send_completion(
     operation: str,
 ) -> None:
@@ -458,10 +470,14 @@ async def test_history_transition_legacy_payload_does_not_send_completion(
         controller.new_chat = AsyncMock()  # type: ignore[method-assign]
         input_id = ids.new
         payload: object = 1
-    else:
+    elif operation == "delete":
         controller.delete = AsyncMock()  # type: ignore[method-assign]
         input_id = ids.delete
         payload = {"id": "active"}
+    else:
+        controller.handle_edit = AsyncMock()  # type: ignore[method-assign]
+        input_id = ids.message_edit
+        payload = {"index": 0, "content": "edited", "attachments": []}
 
     with session_context(cast(Any, session)):
         cast(Any, session.input[input_id])._set(payload)
@@ -481,6 +497,9 @@ async def test_history_transition_legacy_payload_does_not_send_completion(
         ("delete", "success"),
         ("delete", "failure"),
         ("delete", "cancelled"),
+        ("edit", "success"),
+        ("edit", "failure"),
+        ("edit", "cancelled"),
     ],
 )
 async def test_completion_delivery_failure_does_not_mask_transition_outcome(
@@ -525,7 +544,7 @@ async def test_completion_delivery_failure_does_not_mask_transition_outcome(
         operation_fn = AsyncMock(side_effect=RuntimeError("expected failure"))
     elif outcome == "cancelled":
 
-        async def operation_fn(*_args: Any) -> None:
+        async def operation_fn(*_args: Any, **_kwargs: Any) -> None:
             raise asyncio.CancelledError()
 
     else:
@@ -536,10 +555,19 @@ async def test_completion_delivery_failure_does_not_mask_transition_outcome(
         controller.new_chat = operation_fn  # type: ignore[method-assign]
         input_id = ids.new
         payload: object = {"requestId": f"{operation}-{outcome}"}
-    else:
+    elif operation == "delete":
         controller.delete = operation_fn  # type: ignore[method-assign]
         input_id = ids.delete
         payload = {"id": "active", "requestId": f"{operation}-{outcome}"}
+    else:
+        controller.handle_edit = operation_fn  # type: ignore[method-assign]
+        input_id = ids.message_edit
+        payload = {
+            "index": 0,
+            "content": "edited",
+            "attachments": [],
+            "requestId": f"{operation}-{outcome}",
+        }
 
     async def fail_completion(action: dict[str, Any]) -> None:
         if action["type"] == "history_transition_complete":
