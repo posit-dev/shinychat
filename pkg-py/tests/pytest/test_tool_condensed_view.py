@@ -457,6 +457,40 @@ async def test_custom_tool_result_handler_is_wrapped_in_a_result_element(
 
 
 @pytest.mark.anyio
+async def test_custom_tool_result_fold_escapes_bare_strings(
+    custom_display_handler: Any,
+) -> None:
+    """roborev 1166 regression: a bare string carrying executable HTML inside
+    a custom display TagList must reach the HTML-valued tool_result fold
+    escaped. TagList content is an HTML container, so TagList().render()
+    escapes the string before the fold; the client renders value_type="html"
+    via RawHTML (innerHTML), where an unescaped string would be an XSS sink.
+    """
+
+    def handler(chunk: _CustomToolResult) -> ChatMessage:
+        return ChatMessage(
+            content=TagList(
+                '<img src=x onerror="alert(1)">', Tag("div", "safe")
+            )
+        )
+
+    custom_display_handler(handler)
+
+    request = _request(tool=_tool())
+    result = _CustomToolResult(value=2, request=request)
+    sent = await _stream_custom_result(result)
+
+    assert len(sent) == 1
+    block = sent[0].blocks[0]
+    assert block["type"] == "tool_result"
+    assert block.get("value_type") == "html"
+    value = block.get("value", "")
+    assert "<img src=x onerror=" not in value
+    assert "&lt;img src=x onerror=" in value
+    assert "safe" in value
+
+
+@pytest.mark.anyio
 async def test_custom_string_result_stays_markdown(
     custom_display_handler: Any,
 ) -> None:
