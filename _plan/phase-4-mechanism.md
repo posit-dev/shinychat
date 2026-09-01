@@ -1454,3 +1454,23 @@ Task state is restored to open with labels `area:py,needs-review,phase-4`,
 `work.branch="feat/history-exchange-tree"`. Task closure is unchanged.
 Do not start `shinychat#6drf`; it remains blocked and unstarted. No Roborev
 request is authorized for this documentation-only decision.
+
+### Test-hardening handoff (2026-08-31)
+
+Authorized test-hardening patch `91440e2b` landed. It covers the four evidence
+gaps: capture after both live-bootstrap admission and recorder-lock release;
+preservation of the original `CancelledError` across notification
+cancellation; continuation of every later cleanup action after an earlier
+cleanup failure; and exact clean/incomplete recovery notification text.
+
+Verification: controller 170 passed; history/transcript passed 42 Playwright
+plus 437 non-browser tests with 8 established warnings; `history_edit` passed
+9; `make py-check` passed 199 Playwright plus 811 non-browser tests, 1 skipped,
+with 19 established warnings; format and types passed green. Independent Luna
+review accepted the first three assertions. The suggestion to test the full
+Shiny notification transport was declined: the actual helper with a mocked UI
+sink is the approved controller boundary.
+
+No production code, decision, or scope changed. `shinychat#5r50` stays open
+with `needs-review` and `work.attention="ok"`; `shinychat#6drf` remains
+blocked and unstarted.
