@@ -2751,3 +2751,29 @@ This is a bounded PATCH in the existing edit attachment-transport mechanism;
 the three-findings escalation valve does not fire. Roborev 1164 remains open
 pending the fix. P4.2 and its parent remain attention-blocked, and sibling
 navigation remains unstarted.
+
+### P4.2 Roborev 1164 resolution and navigation handoff (2026-09-01)
+
+The accepted attachment-transport finding is fixed in `b9a31e86`; generated
+assets are current in `ac8338de`. A matching edit projection now sends the
+composite raw-input payload whenever projected attachments are present,
+including when composer uploads are disabled. The focused regression
+discriminates this path.
+
+Verification passed 1251 JS tests with 23 skipped, JS lint/build/update-dist,
+22 R history-hook tests, 44 history/transcript Playwright plus 477 non-browser
+tests, and full `make py-check` with 201 Playwright, 854 non-browser, and 1
+skipped. `git diff --check` passed. Roborev 1164 is closed.
+
+Driver decision: the edit-projection review chain has reached diminishing
+returns after its accepted findings were fixed and verified. Do not request
+another batched range review before continuing P4.2; later coherent-unit
+reviews may surface any remaining actionable issue. Attention returns to
+`ok`.
+
+Next: implement sibling navigation as the separate unit reserved by the edit
+authorization. It must replay the selected sibling path, persist
+`active_leaf` and `selected_child`, restore the exact recorded turn prefix,
+and define its lifecycle guard/projection without changing positional Q3
+addressing absent concrete red evidence. Do not begin `shinychat#72ee` or any
+later Phase 4 task.
