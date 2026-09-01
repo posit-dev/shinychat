@@ -130,7 +130,9 @@ describe("MarkdownStreamElement — pending message queue", () => {
     const el = document.createElement("shiny-markdown-stream")
     el.setAttribute("content", "streaming")
     el.setAttribute("streaming", "")
-    document.body.appendChild(el)
+    await act(async () => {
+      document.body.appendChild(el)
+    })
 
     await waitFor(() => {
       expect(el.querySelector(".markdown-stream-dot")).toBeTruthy()
@@ -259,8 +261,10 @@ describe("MarkdownStreamElement — pending message queue", () => {
     handle.handleMessage(msg)
     expect(internals(el).pendingMessages).toHaveLength(1)
 
-    handle.disconnectedCallback()
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await act(async () => {
+      handle.disconnectedCallback()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
 
     expect(internals(el).pendingMessages).toHaveLength(0)
     expect(internals(el).api).toBeNull()
