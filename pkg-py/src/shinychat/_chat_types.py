@@ -604,22 +604,17 @@ class ChatGreeting:
             # envelopes. Bare data-shinychat-react elements stay inline in
             # the string and resolve through the client's component map.
             #
-            # Mixed content (bare strings + tags) is split by trust:
-            # trusted runs (tags, HTML()-marked strings) render to HTML via
-            # TagList(...).render(); untrusted bare-string runs are kept raw
-            # (unescaped) so model-reachable text is not HTML-escaped.
-            # Accepted limitation: markdown in MIXED greetings is not
-            # processed — the greeting wire payload has no segments channel.
-            pieces: list[str] = []
-            for trusted, run in split_content_by_trust(content):
-                if trusted:
-                    rendered = TagList(run).render()
-                    pieces.append(rendered["html"])
-                    deps = deps + rendered["dependencies"]
-                else:
-                    # Untrusted bare-string run: keep raw, do not escape.
-                    pieces.append(str(run))
-            content = f"\n\n{''.join(pieces)}\n\n"
+            # The payload is a single HTML string rendered by the client via
+            # innerHTML, so TagList(content).render() is used directly: it
+            # renders trusted tags to HTML and escapes bare strings, which is
+            # the safe-and-correct behavior for this single-string payload
+            # (escaping prevents an XSS sink from untrusted bare strings).
+            # Markdown processing for mixed greetings needs a segments
+            # channel (follow-up, tracked separately as shinychat#2dzc).
+            ui = TagList(content).render()
+            content, ui_deps = ui["html"], ui["dependencies"]
+            deps = deps + ui_deps
+            content = f"\n\n{content}\n\n"
             content_type = "html"
 
         self.content = content

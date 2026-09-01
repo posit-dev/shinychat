@@ -183,12 +183,12 @@ test_that("chat_set_greeting() tag content flattens to a trusted html string", {
   expect_no_match(action$content, "shiny-chat-raw-html", fixed = TRUE)
 })
 
-test_that("chat_set_greeting() mixed tagList content keeps bare string raw (unescaped)", {
+test_that("chat_set_greeting() mixed tagList content escapes bare string HTML", {
   spy <- mock_session_with_spy()
   shiny::withReactiveDomain(spy$session, {
     chat_set_greeting(
       "chat",
-      tagList("**markdown**", tags$b("bold")),
+      tagList("<img src=x onerror=alert(1)>", tags$b("bold")),
       session = spy$session
     )
   })
@@ -196,21 +196,24 @@ test_that("chat_set_greeting() mixed tagList content keeps bare string raw (unes
   action <- msgs[[1]]$message$action
   expect_equal(action$type, "greeting")
   expect_equal(action$content_type, "html")
-  # The bare string portion is raw (unescaped), not HTML-escaped by renderTags.
-  # The markdown is NOT processed (accepted limitation: single-string payload),
-  # but the raw text survives so it is not doubly broken.
-  expect_match(action$content, "**markdown**", fixed = TRUE)
+  # The bare string is HTML-escaped — executable HTML is neutralized.
+  expect_match(action$content, "&lt;img", fixed = TRUE)
+  expect_no_match(action$content, "<img src=x onerror", fixed = TRUE)
   # The tag portion is rendered as HTML.
   expect_match(action$content, "<b>bold</b>", fixed = TRUE)
 })
 
-test_that("chat_ui() mixed tagList greeting keeps bare string raw (unescaped)", {
-  ui <- chat_ui("chat", greeting = tagList("**md**", tags$b("x")))
+test_that("chat_ui() mixed tagList greeting escapes bare string HTML", {
+  ui <- chat_ui(
+    "chat",
+    greeting = tagList("<img src=x onerror=alert(1)>", tags$b("x"))
+  )
   payload <- jsonlite::fromJSON(ui$attribs$greeting)
   expect_equal(payload$content_type, "html")
-  # Bare string raw, not escaped
-  expect_match(payload$content, "**md**", fixed = TRUE)
-  # Tag rendered
+  # Bare string is HTML-escaped, not raw.
+  expect_match(payload$content, "&lt;img", fixed = TRUE)
+  expect_no_match(payload$content, "<img src=x onerror", fixed = TRUE)
+  # Tag rendered.
   expect_match(payload$content, "<b>x</b>", fixed = TRUE)
 })
 

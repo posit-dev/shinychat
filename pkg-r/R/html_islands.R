@@ -119,48 +119,36 @@ derive_island_parts <- function(content) {
   })
 }
 
-#' Render content to a single HTML string via the island derivation
+#' Render trusted content to a single HTML string via the island derivation
 #'
 #' For wire surfaces that cannot carry structured blocks (the greeting
 #' payload, drawer content, static <shiny-chat-message> tags): island parts
 #' contribute their rendered HTML directly and bare React elements
-#' contribute their blank-line-wrapped residual runs.
+#' contribute their blank-line-wrapped residual runs. The whole string is
+#' server-authored and travels with content_type "html".
 #'
-#' Content is first split by trust (split_content_by_trust): trusted runs
-#' (tags, HTML()-marked strings) are rendered via derive_island_parts() as
-#' before; untrusted bare strings are concatenated RAW (unescaped) into the
-#' returned html string. (Accepted limitation: markdown in MIXED
-#' greeting/drawer content is not processed — these payloads are a single
-#' string with no segments channel.)
+#' The payload is a single HTML string rendered by the client via innerHTML,
+#' so bare strings are HTML-escaped by derive_island_parts() (via
+#' htmltools::renderTags()) — this is deliberate and safe for a single-string
+#' payload (escaping prevents an XSS sink from untrusted bare strings).
+#' Markdown processing for mixed greeting/drawer content needs a segments
+#' channel (follow-up, tracked separately as shinychat#2dzc).
 #'
 #' @param content A tag, tagList, or other HTML content.
 #' @return A list with `html` (character string) and `deps` (raw
 #'   `html_dependency` objects; session-process or attach as appropriate).
 #' @noRd
 render_island_string <- function(content) {
-  html_parts <- character(0)
-  all_deps <- list()
-
-  for (run in split_content_by_trust(content)) {
-    if (!run$trusted) {
-      # Untrusted bare string: concatenate RAW (unescaped). Previously this
-      # was rendered via renderTags() which escaped it; now it passes
-      # through verbatim so raw HTML survives.
-      html_parts <- c(html_parts, as.character(run$content))
-      next
-    }
-
-    parts <- derive_island_parts(run$content)
-    for (part in parts) {
-      html_parts <- c(html_parts, part$html)
-      all_deps <- c(all_deps, part$deps)
-    }
-  }
-
-  list(
-    html = paste0(html_parts, collapse = ""),
-    deps = all_deps %||% list()
+  parts <- derive_island_parts(content)
+  html <- paste0(
+    vapply(parts, function(part) part$html, character(1)),
+    collapse = ""
   )
+  deps <- unlist(
+    lapply(parts, function(part) part$deps),
+    recursive = FALSE
+  )
+  list(html = html, deps = deps %||% list())
 }
 
 #' Split mixed content into ordered provenance runs

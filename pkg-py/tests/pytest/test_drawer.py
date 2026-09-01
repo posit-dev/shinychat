@@ -264,17 +264,15 @@ def test_artifact_validates_title_and_content() -> None:
         _run_async(chat.drawer.show(cast(Any, object())))
 
 
-def test_drawer_mixed_content_bare_string_unescaped() -> None:
-    """Regression for PR #373: mixed TagList("**markdown**", tag) drawer
-    content — the bare-string portion must appear RAW (unescaped) in the
-    drawer action payload. Before the fix, TagList(...).render() HTML-escaped
-    the bare string (e.g. ``<b>html</b>`` → ``&lt;b&gt;html&lt;/b&gt;``) and
-    shipped it as a single trusted html string."""
+def test_drawer_mixed_content_bare_string_escaped() -> None:
+    """A bare string containing executable HTML in mixed drawer content is
+    HTML-escaped in the action payload (safe for the single-string innerHTML
+    payload), while trusted tags still render as real HTML."""
     chat, session = _make_chat()
 
     _run_async(
         chat.drawer.show(
-            TagList("**markdown** and <b>html</b>", tags.div("trusted"))
+            TagList("<img src=x onerror=alert(1)>", tags.div("trusted"))
         )
     )
 
@@ -283,20 +281,20 @@ def test_drawer_mixed_content_bare_string_unescaped() -> None:
     action = envelope["action"]
     assert action["type"] == "drawer_show"
     content = action["content"]
-    # Bare string kept raw — markdown syntax and literal HTML survive.
-    assert "**markdown** and <b>html</b>" in content
-    assert "&lt;b&gt;" not in content
+    # Bare string is HTML-escaped — executable HTML is neutralized.
+    assert "&lt;img" in content
+    assert "<img src=x onerror" not in content
     # Trusted tag rendered to HTML.
     assert "<div>trusted</div>" in content
 
 
-def test_drawer_mixed_content_update_bare_string_unescaped() -> None:
-    """Regression for PR #373: same fix applies to drawer.update()."""
+def test_drawer_mixed_content_update_bare_string_escaped() -> None:
+    """Same safe escaping applies to drawer.update()."""
     chat, session = _make_chat()
 
     _run_async(
         chat.drawer.update(
-            TagList("**markdown** and <b>html</b>", tags.span("trusted"))
+            TagList("<img src=x onerror=alert(1)>", tags.span("trusted"))
         )
     )
 
@@ -305,6 +303,6 @@ def test_drawer_mixed_content_update_bare_string_unescaped() -> None:
     action = envelope["action"]
     assert action["type"] == "drawer_update"
     content = action["content"]
-    assert "**markdown** and <b>html</b>" in content
-    assert "&lt;b&gt;" not in content
+    assert "&lt;img" in content
+    assert "<img src=x onerror" not in content
     assert "<span>trusted</span>" in content

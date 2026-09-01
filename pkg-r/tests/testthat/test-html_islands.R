@@ -206,17 +206,20 @@ test_that("HTML-marked strings are trusted independently of plain strings", {
   )
 })
 
-test_that("render_island_string() mixed content keeps bare string raw (unescaped)", {
-  # The bug: tagList("**markdown**", tags$b("x")) previously rendered the
-  # bare string through renderTags() which ESCAPED it, shipping it as a
-  # trusted html string with escaped markdown. Now the bare string is
-  # split out as untrusted and concatenated raw.
+test_that("render_island_string() mixed content escapes bare string HTML", {
+  # A bare string with executable HTML in mixed content is HTML-escaped
+  # (safe for the single-string innerHTML payload), while trusted tags
+  # render as real HTML.
   rendered <- render_island_string(
-    htmltools::tagList("**markdown**", htmltools::tags$b("bold"))
+    htmltools::tagList(
+      "<img src=x onerror=alert(1)>",
+      htmltools::tags$b("bold")
+    )
   )
-  # Bare string is raw, not escaped (the literal asterisks survive)
-  expect_match(rendered$html, "**markdown**", fixed = TRUE)
-  # Tag is rendered as HTML
+  # Bare string is HTML-escaped — executable HTML is neutralized.
+  expect_match(rendered$html, "&lt;img", fixed = TRUE)
+  expect_no_match(rendered$html, "<img src=x onerror", fixed = TRUE)
+  # Tag is rendered as HTML.
   expect_match(rendered$html, "<b>bold</b>", fixed = TRUE)
   expect_no_match(rendered$html, "shiny-chat-raw-html", fixed = TRUE)
 })
@@ -241,11 +244,12 @@ test_that("render_island_string() pure tag content is unchanged", {
   expect_equal(rendered$deps, list())
 })
 
-test_that("render_island_string() pure string content is raw (unescaped)", {
-  # A bare string (not HTML()-marked) is untrusted and should pass through
-  # raw, not escaped.
-  rendered <- render_island_string("**plain markdown**")
-  expect_equal(rendered$html, "**plain markdown**")
+test_that("render_island_string() pure string content is escaped", {
+  # A bare string (not HTML()-marked) is HTML-escaped by renderTags (safe
+  # for the single-string innerHTML payload).
+  rendered <- render_island_string("<img src=x onerror=alert(1)>")
+  expect_match(rendered$html, "&lt;img", fixed = TRUE)
+  expect_no_match(rendered$html, "<img src=x onerror", fixed = TRUE)
   expect_equal(rendered$deps, list())
 })
 
@@ -261,17 +265,17 @@ test_that("render_island_string() mixed content preserves ordering", {
   rendered <- render_island_string(
     htmltools::tagList(
       htmltools::div("first"),
-      "**middle**",
+      "<img src=x onerror=alert(1)>",
       htmltools::span("last")
     )
   )
-  # Order: first tag, bare string, last tag
+  # Order: first tag, escaped bare string, last tag
   expect_match(rendered$html, "<div>first</div>", fixed = TRUE)
-  expect_match(rendered$html, "**middle**", fixed = TRUE)
+  expect_match(rendered$html, "&lt;img", fixed = TRUE)
   expect_match(rendered$html, "<span>last</span>", fixed = TRUE)
-  # Verify ordering: first before middle before last
+  # Verify ordering: first before escaped-string before last
   first_pos <- regexpr("<div>first</div>", rendered$html, fixed = TRUE)
-  middle_pos <- regexpr("**middle**", rendered$html, fixed = TRUE)
+  middle_pos <- regexpr("&lt;img", rendered$html, fixed = TRUE)
   last_pos <- regexpr("<span>last</span>", rendered$html, fixed = TRUE)
   expect_true(first_pos < middle_pos)
   expect_true(middle_pos < last_pos)
