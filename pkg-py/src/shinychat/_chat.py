@@ -532,6 +532,24 @@ class Chat:
                 user_input: str, attachments: list[Attachment]
             ) -> None:
                 contents = [attachment_to_content(a) for a in attachments]
+
+                # Resolve the ID before model work begins: later history
+                # switches, new-chat actions, or client swaps must not
+                # relabel in-flight work.
+                history_controller = self.history._controller
+                conversation_id = (
+                    await history_controller.ensure_conversation_id()
+                    if history_controller is not None
+                    else None
+                )
+                # Older chatlas / non-chatlas clients lack this binding;
+                # their telemetry simply goes without the ID. The scalar
+                # handoff assumes one active stream per client; overlapping
+                # submissions could cross-label spans.
+                client = chat_client.value
+                if hasattr(client, "conversation_id"):
+                    client.conversation_id = conversation_id
+
                 response = await chat_client.value.stream_async(
                     user_input,
                     *contents,
@@ -1146,6 +1164,7 @@ class Chat:
                     chunk="end",
                     stream_id=stream_id,
                 )
+                await self._flush_pending_messages()
 
     async def _append_message_chunk(
         self,
@@ -2083,6 +2102,7 @@ class Chat:
         """
         self._destroy_effects()
         self._destroy_bookmarking()
+        self.history._teardown()
 
     def _destroy_effects(self):
         for x in self._effects:
@@ -2360,7 +2380,7 @@ class ChatExpress(Chat):
         ] = None,
         greeting: Optional[Union[str, HTML, Tag, TagList, ChatGreeting]] = None,
         placeholder: str = "Enter a message...",
-        width: "CssUnit" = "min(680px, 100%)",
+        width: "CssUnit" = "min(clamp(680px, 50vw, 760px), 100%)",
         height: "CssUnit" = "auto",
         fill: bool = True,
         icon_assistant: HTML | Tag | TagList | bool | None = None,
@@ -2625,7 +2645,7 @@ def chat_ui(
     ] = None,
     greeting: Optional[Union[str, HTML, Tag, TagList, ChatGreeting]] = None,
     placeholder: str = "Enter a message...",
-    width: "CssUnit" = "min(680px, 100%)",
+    width: "CssUnit" = "min(clamp(680px, 50vw, 760px), 100%)",
     height: "CssUnit" = "auto",
     fill: bool = True,
     icon_assistant: Optional[HTML | Tag | TagList | bool] = None,

@@ -906,14 +906,21 @@ async def test_delete_active_url_mode_sends_navigate_null():
     controller, store, chat = _make_nav_controller(with_url_mode=True)
     active = new_conversation_record(title="doomed")
     store.records[active.id] = active
-    controller.record = active
+    # Activate through the shared op so record and active ID move together,
+    # as every real code path does.
+    await controller.activate_record(active)
 
     await controller.delete(active.id)
 
     assert store.deleted == [active.id]
     navs = _nav_actions(chat)
     assert navs == [
-        {"type": "history_navigate", "url": None, "active_id": None}
+        {
+            "type": "history_navigate",
+            "url": f"?conv={active.id}",
+            "active_id": active.id,
+        },
+        {"type": "history_navigate", "url": None, "active_id": None},
     ]
 
 

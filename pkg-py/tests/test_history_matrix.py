@@ -3,7 +3,7 @@
 # Scenarios are defined once in tests/shared/history-behavior-matrix.json and
 # consumed by both this file and pkg-r/tests/testthat/test-chat_history_matrix.R
 # (via the vendored copy at pkg-r/tests/testthat/fixtures/, kept in sync by
-# `make history-matrix-sync`; CI fails the build if that copy drifts — see
+# `make r-sync-fixtures`; CI fails the build if that copy drifts — see
 # .github/workflows/verify-js-built.yaml).
 #
 # Only scenarios whose operation has a matching signature in both languages

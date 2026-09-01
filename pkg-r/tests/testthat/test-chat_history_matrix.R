@@ -6,7 +6,7 @@
 # fixtures/history-behavior-matrix.json because `R CMD check` builds this
 # package into an isolated tarball that doesn't contain anything outside
 # pkg-r/ — the vendored copy is kept in sync with the source by
-# `make history-matrix-sync`, and CI fails the build if it drifts (see
+# `make r-sync-fixtures`, and CI fails the build if it drifts (see
 # .github/workflows/verify-js-built.yaml).
 #
 # Only scenarios whose operation has a matching signature in both languages

@@ -49,7 +49,7 @@ def page_chat(
     ] = None,
     greeting: Optional[Union[str, HTML, Tag, TagList, "ChatGreeting"]] = None,
     placeholder: str = "Enter a message...",
-    width: "CssUnit" = "min(680px, 100%)",
+    width: "CssUnit" = "min(clamp(680px, 50vw, 760px), 100%)",
     icon_assistant: Optional[HTML | Tag | TagList | bool] = None,
     icon_send: Optional[HTML | Tag | TagList | bool] = None,
     enable_cancel: "bool | MISSING_TYPE" = MISSING,
