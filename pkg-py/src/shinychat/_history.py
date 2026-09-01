@@ -1325,13 +1325,13 @@ class HistoryController:
         recorder = self._exchange_recorder
         assert recorder is not None
 
-        # Live bootstrap is intentionally captured only after admission
-        # and recorder serialization, but before destructive effects.
-        if bootstrap == "live":
-            planned_state = recorder._materialize_live_restore_turns(
-                planned_state
-            )
         try:
+            # Live bootstrap is intentionally captured only after admission
+            # and recorder serialization, but before destructive effects.
+            if bootstrap == "live":
+                planned_state = recorder._materialize_live_restore_turns(
+                    planned_state
+                )
             await self._replay_exchange_display(target, node_ids)
             await recorder._restore_state(planned_state)
 

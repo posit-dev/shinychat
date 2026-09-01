@@ -14,7 +14,7 @@ from collections import deque
 from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Callable, cast
+from typing import Any, Callable, Literal, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -2365,6 +2365,148 @@ async def test_v2_restore_preflight_failure_leaves_live_state_untouched(
     assert fake_chat.messages == [_stored_message("assistant", "live")]
     assert adapter.set_calls == []
     notifier.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_v2_live_restore_malformed_effective_turns_becomes_fresh_draft():
+    store = InMemoryConversationStore()
+    adapter = _TrackingFakeAdapter()
+    adapter.turns = [{"role": "system", "content": "live"}]
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    controller.restore_bootstrap = "live"
+    _install_live_v2_record(controller)
+    target = _restore_target()
+    target.nodes["n_0000"].state["shinychat:turns"].data = ["malformed"]
+    target_before = target.model_copy(deep=True)
+    await store.put(part(), target)
+    fake_chat = cast(_FakeChat, controller.chat)
+    fake_chat.messages = [_stored_message("assistant", "live")]
+    fake_chat._transcript.replace(
+        [TranscriptEntry(message=_stored_message("assistant", "live"))]
+    )
+    released_ids: list[str | None] = []
+
+    async def release_active_id(id: str | None) -> None:
+        released_ids.append(id)
+
+    controller.on_active_id_change = release_active_id
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+
+    with pytest.raises(
+        ValueError, match="Turn-state entries must contain a list of JSON objects"
+    ):
+        await controller.replay_exchange_record(target)
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    assert recorder.record is None
+    assert controller.record is None
+    assert controller._active_id_now() is None
+    assert released_ids == [None]
+    assert fake_chat.clear_messages_calls == 1
+    assert fake_chat.messages == []
+    assert fake_chat._transcript.read() == ()
+    assert adapter.set_calls == [[]]
+    assert adapter.turns == []
+    assert target == target_before
+    assert await store.get(part(), target.id) is target
+    history_updates = [
+        action for action in fake_chat.actions if action["type"] == "history_update"
+    ]
+    assert len(history_updates) == 1
+    assert history_updates[0]["active_id"] is None
+    assert history_updates[0]["transition_protocol"] == "completion-v2"
+    notifier.assert_awaited_once_with(recovery_incomplete=False)
+
+
+@pytest.mark.anyio
+async def test_v2_live_restore_materialization_cancellation_cleans_up():
+    adapter = _TrackingFakeAdapter()
+    adapter.turns = [{"role": "system", "content": "live"}]
+    controller, _ = _make_controller(
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    controller.restore_bootstrap = "live"
+    _install_live_v2_record(controller)
+    target = _restore_target()
+    fake_chat = cast(_FakeChat, controller.chat)
+    fake_chat.messages = [_stored_message("assistant", "live")]
+    fake_chat._transcript.replace(
+        [TranscriptEntry(message=_stored_message("assistant", "live"))]
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    preflight_completed = False
+    admission_held = False
+    original_preflight = controller._prepare_exchange_restore
+    original = asyncio.CancelledError("cancel during materialization")
+    released_ids: list[str | None] = []
+
+    def prepare_restore(
+        target: ConversationRecordV2,
+        *,
+        bootstrap: Literal["recorded", "live"] | None = None,
+    ) -> tuple[tuple[str, ...], Any, Any]:
+        nonlocal preflight_completed
+        result = original_preflight(target, bootstrap=bootstrap)
+        preflight_completed = True
+        return result
+
+    @asynccontextmanager
+    async def observe_admission(*, block_input: bool = False):
+        nonlocal admission_held
+        del block_input
+        admission_held = True
+        try:
+            yield
+        finally:
+            admission_held = False
+
+    def cancel_materialization(plan: Any) -> Any:
+        assert preflight_completed
+        assert admission_held
+        assert recorder._lock.locked()
+        raise original
+
+    async def release_active_id(id: str | None) -> None:
+        released_ids.append(id)
+
+    controller._prepare_exchange_restore = prepare_restore  # type: ignore[method-assign]
+    fake_chat._destructive_history_mutation = observe_admission  # type: ignore[method-assign]
+    recorder._materialize_live_restore_turns = cancel_materialization  # type: ignore[method-assign]
+    fake_chat.set_greeting = AsyncMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("cleanup greeting failure")
+    )
+    controller.on_active_id_change = release_active_id
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+
+    with pytest.raises(asyncio.CancelledError) as raised:
+        await controller.replay_exchange_record(target)
+
+    assert raised.value is original
+    assert recorder.record is None
+    assert controller.record is None
+    assert controller._active_id_now() is None
+    assert released_ids == [None]
+    assert fake_chat.clear_messages_calls == 1
+    assert fake_chat.messages == []
+    assert fake_chat._transcript.read() == ()
+    assert adapter.set_calls == [[]]
+    assert adapter.turns == []
+    history_updates = [
+        action for action in fake_chat.actions if action["type"] == "history_update"
+    ]
+    assert len(history_updates) == 1
+    assert history_updates[0]["active_id"] is None
+    assert history_updates[0]["transition_protocol"] == "completion-v2"
+    notifier.assert_awaited_once_with(recovery_incomplete=True)
 
 
 @pytest.mark.anyio
