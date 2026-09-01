@@ -1286,3 +1286,38 @@ Implementation remains stopped pending that decision. `shinychat#5r50`
 remains open with `needs-review` and `work.attention="blocked"`;
 `shinychat#6drf` remains blocked and unstarted. `shinychat#azvt` remains open
 with `work.attention="ok"`.
+
+### Restore failure-contract correction (2026-09-01)
+
+The Phase 4 unknown-key policy is strict: every state key must be registered
+by the restore contract. Any unregistered key is unsupported and fails closed
+during preflight, before any mutation. Add a regression for an injected
+unknown key and prove that live display, turns, recorder ownership, and active
+ID are untouched.
+
+The outcome matrix is explicit:
+
+- Success produces no failure notification.
+- An error or cancellation preserves and re-raises the original outcome.
+- Cleanup, metadata-publication, and failure-notification errors are
+  secondary; they must never mask the original error or cancellation.
+- `CancelledError` is caught inside the restore transaction so local recorder
+  and active-ID ownership are cleared, best-effort async cleanup and
+  notification are attempted, and the original cancellation is re-raised.
+  Repeated cancellation or session unavailability may prevent a visible
+  notification; that absence is not a new outcome.
+
+The exact successful order is: install the recorder target; set the local
+active ID and invoke its callback; run application restore callbacks; send
+exactly one metadata update; and suppress the outer initialization duplicate.
+Required regressions add successful restore with no failure notification,
+cancellation with cleanup failure, cancellation with a notification attempt,
+and allowed notification absence under repeated cancellation or unavailable
+session, in addition to the unknown-key and previously listed injected
+failures.
+
+This correction preserves the prior scope, exclusions, fail-to-fresh-draft
+contract, and authorization question. Implementation remains stopped;
+`shinychat#5r50` stays open with `needs-review` and
+`work.attention="blocked"`, `shinychat#6drf` remains blocked/unstarted, and
+`shinychat#azvt` remains open with `work.attention="ok"`.
