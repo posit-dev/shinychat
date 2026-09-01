@@ -16,6 +16,7 @@ from ._chat_types import (
     HistoryNavigateAction,
     HistoryUpdateAction,
     StoredMessage,
+    StoredSegment,
     UpdateInputAction,
     UpdateSiblingsAction,
 )
@@ -88,6 +89,8 @@ class StatePathContext:
 
 RestoreHook = Callable[[StatePathContext], Awaitable[None] | None]
 RestorePlan = tuple[tuple[str, RestoreHook, StatePathContext], ...]
+RewindHook = Callable[[StatePathContext], Awaitable[None] | None]
+RewindPlan = tuple[tuple[str, RewindHook, StatePathContext], ...]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -289,16 +292,21 @@ class _ExchangeRecorder:
         self._lock = asyncio.Lock()
         self._capture_hooks: dict[str, CaptureHook] = {}
         self._restore_hooks: dict[str, RestoreHook] = {}
+        self._rewind_hooks: dict[str, RewindHook] = {}
         self._turn_baseline: list[str] = []
         self._active_id_published_for: ConversationRecordV2 | None = None
         self._register_capture_hook("shinychat:turns", self._capture_turns)
         self._register_restore_hook("shinychat:turns", self._restore_turns)
+        self._register_rewind_hook("shinychat:turns", self._restore_turns)
 
     def _register_capture_hook(self, name: str, hook: CaptureHook) -> None:
         self._capture_hooks[name] = hook
 
     def _register_restore_hook(self, name: str, hook: RestoreHook) -> None:
         self._restore_hooks[name] = hook
+
+    def _register_rewind_hook(self, name: str, hook: RewindHook) -> None:
+        self._rewind_hooks[name] = hook
 
     @staticmethod
     def _canonical_turns(
@@ -490,6 +498,49 @@ class _ExchangeRecorder:
         return tuple(materialized)
 
     async def _restore_state(self, planned: RestorePlan) -> None:
+        for _, hook, context in planned:
+            result = hook(context)
+            if inspect.isawaitable(result):
+                await result
+
+    def _preflight_rewind_state(
+        self,
+        record: ConversationRecordV2,
+        node_ids: tuple[str, ...],
+    ) -> RewindPlan:
+        if record.active_leaf is None:
+            raise ValueError("Exchange-tree record has no active leaf.")
+        for node_id in node_ids:
+            for name, entry in record.nodes[node_id].state.items():
+                if name not in self._rewind_hooks:
+                    raise ValueError(
+                        f"Unsupported rewind state entry {name!r}."
+                    )
+                self._validate_restore_state_entry(name, entry)
+
+        planned: list[tuple[str, RewindHook, StatePathContext]] = []
+        for name, hook in self._rewind_hooks.items():
+            entries = tuple(
+                (node_id, record.nodes[node_id].state[name])
+                for node_id in node_ids
+                if name in record.nodes[node_id].state
+            )
+            context = StatePathContext(
+                conversation_id=record.id,
+                active_leaf=record.active_leaf,
+                node_ids=node_ids,
+                entries=entries,
+                bootstrap="recorded",
+            )
+            if name == "shinychat:turns":
+                context = dataclasses.replace(
+                    context,
+                    prepared_turns=self._materialize_restore_turns(context),
+                )
+            planned.append((name, hook, context))
+        return tuple(planned)
+
+    async def _rewind_state(self, planned: RewindPlan) -> None:
         for _, hook, context in planned:
             result = hook(context)
             if inspect.isawaitable(result):
@@ -1390,6 +1441,134 @@ class HistoryController:
                 for message_dict in stored:
                     await self.chat._restore_bookmark_message(message_dict)
 
+    @staticmethod
+    def _normalize_resubmit_input(message: StoredMessage) -> StoredMessage:
+        if message.role != "user":
+            raise ValueError("Only user inputs can be resubmitted.")
+        normalized = message.model_copy(deep=True)
+        validate_attachments(normalized.attachments)
+        return normalized
+
+    @staticmethod
+    def _replacement_resubmit_input(
+        content: str,
+        attachments: list[dict[str, Any]] | None,
+    ) -> StoredMessage:
+        if not isinstance(content, str):
+            raise TypeError("Edited message content must be a string.")
+        parsed = (
+            [Attachment.model_validate(attachment) for attachment in attachments]
+            if attachments is not None
+            else []
+        )
+        validate_attachments(parsed)
+        return StoredMessage(
+            role="user",
+            segments=[StoredSegment(content=content, content_type="markdown")],
+            attachments=parsed,
+        )
+
+    async def _replay_exchange_prefix_locked(
+        self,
+        record: ConversationRecordV2,
+        *,
+        node_ids: tuple[str, ...],
+        rewind_state: RewindPlan,
+    ) -> None:
+        recorder = self._exchange_recorder
+        assert recorder is not None
+
+        await self.chat.clear_messages()
+        await self.chat.set_greeting(None)
+        with recorder.suspend_capture():
+            for node_id in node_ids:
+                node = record.nodes[node_id]
+                if node.input is not None:
+                    await self.chat._restore_bookmark_message(
+                        node.input.model_dump(mode="json")
+                    )
+                for message in node.messages:
+                    await self.chat._restore_bookmark_message(
+                        message.as_stored_message().model_dump(mode="json"),
+                        icon=message.icon,
+                    )
+        await recorder._rewind_state(rewind_state)
+
+    async def resubmit(
+        self,
+        exchange_id: str,
+        replacement_input: StoredMessage | None = None,
+    ) -> None:
+        recorder = self._exchange_recorder
+        if recorder is None:
+            raise RuntimeError("Exchange-tree history is not enabled")
+        record = recorder.record
+        if record is None:
+            raise RuntimeError("No exchange-tree conversation is active")
+
+        target = record.nodes.get(exchange_id)
+        if target is None:
+            raise ValueError(f"Unknown exchange id {exchange_id!r}")
+        if target.input is None:
+            raise ValueError(
+                f"Exchange {exchange_id!r} has no user input to resubmit."
+            )
+        if target.parent_id is None:
+            raise ValueError(
+                f"Exchange {exchange_id!r} has no parent prefix to resubmit."
+            )
+        submitted_input = self._normalize_resubmit_input(
+            target.input if replacement_input is None else replacement_input
+        )
+
+        # Preflight against a copy so malformed rewind state cannot move the
+        # persisted path after input validation has already succeeded.
+        prefix = record.model_copy(deep=True)
+        prefix.set_active_leaf(target.parent_id)
+        node_ids = tuple(prefix.path_node_ids())
+        rewind_state = recorder._preflight_rewind_state(prefix, node_ids)
+
+        async with self._destructive_mutation():
+            async with self._exchange_mutation():
+                current_leaf = record.active_leaf
+                if current_leaf is None:
+                    raise ValueError("Exchange-tree record has no active leaf.")
+                await recorder._capture_state(current_leaf, "node_close")
+                record.set_active_leaf(target.parent_id)
+                await recorder._persist_record()
+                try:
+                    await self._replay_exchange_prefix_locked(
+                        record,
+                        node_ids=node_ids,
+                        rewind_state=rewind_state,
+                    )
+                except BaseException:
+                    await self._clear_failed_restore()
+                    raise
+
+                action: UpdateInputAction = {
+                    "type": "update_input",
+                    "value": str(submitted_input.content),
+                    "attachments": [
+                        {
+                            "mime": attachment.mime,
+                            "data_url": attachment.data_url,
+                            "name": attachment.name,
+                            "size": attachment.size,
+                        }
+                        for attachment in submitted_input.attachments
+                    ],
+                    "attachment_mode": "set",
+                    "submit": True,
+                }
+                await self.chat._send_action(action)
+
+    async def retry(self, exchange_id: str) -> None:
+        await self.resubmit(exchange_id)
+
+    async def regenerate(self, exchange_id: str) -> None:
+        await self.resubmit(exchange_id)
+
     # -- list mutations ----------------------------------------------------
 
     async def rename(self, conv_id: str, title: str) -> None:
@@ -1524,6 +1703,16 @@ class HistoryController:
         content: str,
         attachments: "list[dict[str, Any]] | None" = None,
     ) -> None:
+        recorder = self._exchange_recorder
+        if recorder is not None:
+            record = recorder.record
+            if record is None:
+                return
+            exchange_id = record.exchange_id_for_user_message_index(message_index)
+            replacement = self._replacement_resubmit_input(content, attachments)
+            await self.resubmit(exchange_id, replacement)
+            return
+
         if self.record is None:
             return
 

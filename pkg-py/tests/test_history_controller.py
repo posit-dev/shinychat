@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable, cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from _history_test_helpers import branch_from
@@ -3427,6 +3427,249 @@ async def test_v2_recorder_runs_ordered_hooks_with_explicit_ids_and_removes_stat
     await recorder._capture_state("n_0000", "node_close")
     assert "first" not in root.state
     assert root.state["second"].data == {"node": "n_0000"}
+
+
+def _make_v2_resubmit_controller() -> tuple[
+    HistoryController, _FakeChat, _FakeAdapter, _RecordingStore, str, str
+]:
+    controller, store = _make_controller(use_exchange_tree=True)
+    fake_chat = cast(_FakeChat, controller.chat)
+    adapter = cast(_FakeAdapter, controller.adapter)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+
+    record = new_conversation_record_v2(
+        title="branching",
+        id="c_branching",
+        client_info={},
+    )
+    record.nodes["n_0000"].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[{"role": "system", "content": "bootstrap"}],
+    )
+    first = "exchange-first"
+    target = "exchange-target"
+    record.open_exchange(first, _stored_message("user", "first"))
+    record.nodes[first].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="delta",
+        data=[{"role": "user", "content": "first"}],
+    )
+    record.open_exchange(target, _stored_message("user", "second"))
+    record.nodes[target].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="delta",
+        data=[{"role": "user", "content": "second"}],
+    )
+    recorder.record = record
+    controller._active_id.set(record.id)
+    adapter.turns = [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+        {"role": "user", "content": "second"},
+    ]
+    recorder._set_turn_baseline(adapter.turns)
+    return controller, fake_chat, adapter, store, first, target
+
+
+@pytest.mark.anyio
+async def test_v2_resubmit_rewinds_parent_prefix_and_new_input_creates_sibling():
+    controller, chat, adapter, store, first, target = _make_v2_resubmit_controller()
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    target_input = recorder.record.nodes[target].input.model_copy(deep=True)  # type: ignore[union-attr]
+    target_state = recorder.record.nodes[target].state["shinychat:turns"].model_copy(  # type: ignore[union-attr]
+        deep=True
+    )
+
+    await controller.resubmit(target)
+
+    record = recorder.record
+    assert record is not None
+    assert record.active_leaf == first
+    assert adapter.turns == [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+    ]
+    assert [message["segments"][0]["content"] for message in chat.restored_messages] == [
+        "first"
+    ]
+    assert chat.actions[-1] == {
+        "type": "update_input",
+        "value": "second",
+        "attachments": [],
+        "attachment_mode": "set",
+        "submit": True,
+    }
+    assert len(store.put_calls) == 1
+    assert record.nodes[target].input == target_input
+    assert record.nodes[target].state["shinychat:turns"] == target_state
+
+    exchange_id = await chat._transcript.record_accepted_input_and_notify(
+        _stored_message("user", "second")
+    )
+    assert record.nodes[exchange_id].parent_id == first
+    assert record.children_of(first) == [target, exchange_id]
+    assert record.nodes[target].input == target_input
+
+
+@pytest.mark.anyio
+async def test_v2_resubmit_rewind_hooks_are_ordered_and_always_recorded():
+    controller, _chat, _adapter, _store, first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.nodes["n_0000"].state["first"] = StateEntry(
+        kind="test",
+        version=1,
+        mode="snapshot",
+        data={"root": True},
+    )
+    record.nodes[first].state["second"] = StateEntry(
+        kind="test",
+        version=1,
+        mode="delta",
+        data={"first": True},
+    )
+    observed: list[tuple[str, StatePathContext]] = []
+
+    def first_hook(context: StatePathContext) -> None:
+        observed.append(("first", context))
+
+    async def second_hook(context: StatePathContext) -> None:
+        observed.append(("second", context))
+
+    recorder._register_rewind_hook("first", first_hook)
+    recorder._register_rewind_hook("second", second_hook)
+
+    await controller.resubmit(target)
+
+    assert [name for name, _ in observed] == ["first", "second"]
+    assert observed[0][1].active_leaf == first
+    assert observed[0][1].node_ids == ("n_0000", first)
+    assert observed[0][1].entries == (
+        ("n_0000", record.nodes["n_0000"].state["first"]),
+    )
+    assert observed[0][1].bootstrap == "recorded"
+    assert observed[1][1].entries == (
+        (first, record.nodes[first].state["second"]),
+    )
+
+
+@pytest.mark.anyio
+async def test_v2_edit_validates_attachments_before_rewinding():
+    controller, chat, adapter, store, _first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    before = recorder.record.model_dump()  # type: ignore[union-attr]
+
+    with pytest.raises(ValueError, match="unsupported MIME type"):
+        await controller.handle_edit(
+            1,
+            "edited",
+            [
+                {
+                    "mime": "application/x-executable",
+                    "data_url": "data:application/x-executable;base64,AAAA",
+                    "name": "bad.exe",
+                    "size": 3,
+                }
+            ],
+        )
+
+    assert recorder.record.model_dump() == before  # type: ignore[union-attr]
+    assert adapter.turns == [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+        {"role": "user", "content": "second"},
+    ]
+    assert store.put_calls == []
+    assert chat.actions == []
+    assert recorder.record.nodes[target].input.content == "second"  # type: ignore[union-attr]
+
+
+@pytest.mark.anyio
+async def test_v2_edit_resubmit_forwards_validated_attachment_copy():
+    controller, chat, _adapter, _store, _first, target = (
+        _make_v2_resubmit_controller()
+    )
+    attachment = {
+        "mime": "image/png",
+        "data_url": "data:image/png;base64,AAAA",
+        "name": "replacement.png",
+        "size": 3,
+    }
+
+    await controller.handle_edit(1, "edited", [attachment])
+
+    assert chat.actions[-1] == {
+        "type": "update_input",
+        "value": "edited",
+        "attachments": [attachment],
+        "attachment_mode": "set",
+        "submit": True,
+    }
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    assert recorder.record is not None
+    target_input = recorder.record.nodes[target].input
+    assert target_input is not None
+    assert target_input.content == "second"
+    attachment["name"] = "mutated.png"
+    assert chat.actions[-1]["attachments"][0]["name"] == "replacement.png"
+
+
+@pytest.mark.anyio
+async def test_v2_resubmit_rejects_inputless_node_without_mutation():
+    controller, chat, adapter, store, _first, _target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    before = recorder.record.model_dump()  # type: ignore[union-attr]
+
+    with pytest.raises(ValueError, match="has no user input"):
+        await controller.resubmit("n_0000")
+
+    assert recorder.record.model_dump() == before  # type: ignore[union-attr]
+    assert adapter.turns == [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+        {"role": "user", "content": "second"},
+    ]
+    assert store.put_calls == []
+    assert chat.actions == []
+
+
+@pytest.mark.anyio
+async def test_v2_edit_retry_and_regenerate_use_resubmit():
+    controller, _chat, _adapter, _store, _first, target = (
+        _make_v2_resubmit_controller()
+    )
+    resubmit = AsyncMock()
+    controller.resubmit = resubmit  # type: ignore[method-assign]
+
+    await controller.handle_edit(1, "edited")
+    await controller.retry(target)
+    await controller.regenerate(target)
+
+    edited_input = resubmit.await_args_list[0].args[1]
+    assert isinstance(edited_input, StoredMessage)
+    assert edited_input.content == "edited"
+    assert resubmit.await_args_list == [
+        call(target, edited_input),
+        call(target),
+        call(target),
+    ]
 
 
 @pytest.mark.anyio
