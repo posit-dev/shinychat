@@ -1,7 +1,7 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
-**Status:** P4.0 complete; P4.1 fail-to-fresh-draft implementation complete,
-pending human review (2026-08-31)
+**Status:** P4.0 complete; P4.1 implementation and evidence are parked and
+blocked after mandatory Roborev 1135 `FAIL`, pending note review (2026-08-31)
 **Phase:** plan.md §4, Phase 4
 **Kata:** parent `shinychat#azvt` under epic `shinychat#6d0d`
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
@@ -1553,3 +1553,63 @@ request was made.
 `shinychat#5r50` remains open with `needs-review` and
 `work.attention="ok"`; `shinychat#6drf` remains blocked and unstarted. The
 approved restore contract and Phase 4 scope exclusions remain unchanged.
+
+### P4.1 Roborev 1135 escalation decision (2026-08-31)
+
+Mandatory batched range review job `1135` was requested from parent
+`3582d67` and covered `d7866b44` through `f311053c` inclusive. The job
+returned `FAIL` with four findings and remains open (`closed=false`); it must
+not be closed. All four findings are valid and in scope against the mixed v2
+persistence/projection layer:
+
+1. Active v2 rename mutates a separately loaded record while the recorder
+   retains the old title, allowing the next capture to overwrite the rename
+   with stale recorder state. Active rename must mutate the recorder-owned
+   record under its lock; storage loading is only for inactive records.
+2. V2 persistence omits `on_save` capture and switching bypasses
+   `save_current()`, so application values expected by restore are not
+   round-tripped. Capture app state through the recorder path at response
+   settlement and before switching.
+3. `stream_updated()` durably persists each streamed chunk and publishes a
+   full `history_update` on the streaming critical path. Chunk durability must
+   remain eager without emitting history metadata.
+4. Restore publishes the active ID without marking that exact record as
+   published, causing a redundant URL callback on the next capture. The exact
+   restored record must be marked ID-published after the active-ID callback.
+
+**Decision: DELETE/REPLACE the mixed layer, not patch it.** Replace the
+mixed persistence/projection ownership while retaining `_ExchangeRecorder`,
+the approved restore behavior, and the stable conversation ID. The exact
+replacement target is:
+
+- `_ExchangeRecorder` is the sole active v2 owner/mutator; it owns active
+  rename, `on_save` capture, and `store.put` under its existing lock.
+- `HistoryController` owns active ID and wire publication only; it never
+  separately writes active v2 records. Inactive rename may load from storage.
+- V2 response/save/switch/new capture `on_save` values and durably save the
+  departing record through the one recorder path.
+- Restore installs/publishes the exact record, marks that exact record
+  ID-published after the active-ID callback, runs restore callbacks, then sends
+  exactly one metadata update.
+- Stream chunks remain eagerly durable but do not emit `history_update`.
+  Metadata publication is limited to initial creation, terminal state,
+  rename, visible ID/metadata change, restore/switch/new/delete.
+
+Required regressions cover active rename/title preservation; `on_save`
+round-trip across response/save/switch/new; eager chunk durability without
+`history_update`; and restore exact-ID publication, callback, and one-metadata
+ordering. Include ownership and lock-serialization coverage as appropriate,
+proving the recorder remains the only active v2 mutator and that controller
+projection/publication does not race recorder-owned mutation.
+
+Exclusions are explicit: no mixed second active writer/projection owner, no
+new lock/queue/timer/CAS/second owner, no Phase 5 guard/degradation, and no
+unrelated Q3, bookmark, or R work. Preserve the existing Phase 4 scope
+boundaries and the stable recorder/restore/ID decisions.
+
+Implementation is stopped pending note review. `shinychat#5r50` remains open
+with `needs-review`, `work.attention="blocked"`, and
+`work.branch="feat/history-exchange-tree"`. `shinychat#6drf` remains open,
+blocked, and unstarted. `shinychat#azvt` remains open with
+`work.attention="ok"`. No implementation tests are authorized by this
+handoff.
