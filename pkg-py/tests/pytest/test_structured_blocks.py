@@ -329,3 +329,121 @@ def test_is_structured_segment_rejects_bare_strings() -> None:
         cast(Any, {"content": "text", "content_type": "markdown"})
     )
     assert is_structured_segment(cast(Any, _block()))
+
+
+# ---------------------------------------------------------------------------
+# Blockless mixed-type streaming: per-segment chunk emission
+# ---------------------------------------------------------------------------
+
+
+def _mixed_blockless_stored() -> StoredMessage:
+    """A blockless StoredMessage with mixed [markdown, html] string segments —
+    the shape that ChatMessage(content=TagList("**markdown**", react_element))
+    produces when the React run leaves a residual HTML string segment and no
+    structured blocks."""
+    return StoredMessage(
+        role="assistant",
+        segments=[
+            StoredSegment(content="**markdown**", content_type="markdown"),
+            StoredSegment(content="<span>html</span>", content_type="html"),
+        ],
+    )
+
+
+@pytest.mark.anyio
+async def test_stream_blockless_mixed_types_emits_per_segment_chunks() -> None:
+    """A blockless message with mixed [markdown, html] segments sent via the
+    intermediate streaming path must emit one chunk per segment, each carrying
+    its own content_type — not one collapsed chunk stamped with the last
+    segment's type (which would send markdown as html, unescaped)."""
+    from shiny.express._stub_session import ExpressStubSession
+    from shiny.session import session_context
+    from shinychat import Chat
+
+    sent: list[Any] = []
+
+    async def capture_action(action: Any, deps: Any = None) -> None:
+        sent.append(action)
+
+    with session_context(ExpressStubSession()):
+        chat = Chat(id="chat")
+        chat._send_action = capture_action  # type: ignore[method-assign]
+        await chat._send_append_message(_mixed_blockless_stored(), chunk=True)
+
+    types = [a["type"] for a in sent]
+    assert types == ["chunk", "chunk"]
+
+    chunks = [a for a in sent if a["type"] == "chunk"]
+    assert [c["content"] for c in chunks] == [
+        "**markdown**",
+        "<span>html</span>",
+    ]
+    assert [c["content_type"] for c in chunks] == ["markdown", "html"]
+    # Critically, the markdown segment must NOT be sent with content_type "html".
+    assert chunks[0]["content_type"] != "html"
+
+
+@pytest.mark.anyio
+async def test_stream_end_blockless_mixed_types_emits_per_segment_chunks() -> (
+    None
+):
+    """The chunk="end" path must also emit per-segment chunks for a blockless
+    mixed-type message, followed by chunk_end — not one collapsed chunk."""
+    from shiny.express._stub_session import ExpressStubSession
+    from shiny.session import session_context
+    from shinychat import Chat
+
+    sent: list[Any] = []
+
+    async def capture_action(action: Any, deps: Any = None) -> None:
+        sent.append(action)
+
+    with session_context(ExpressStubSession()):
+        chat = Chat(id="chat")
+        chat._send_action = capture_action  # type: ignore[method-assign]
+        await chat._send_append_message(_mixed_blockless_stored(), chunk="end")
+
+    types = [a["type"] for a in sent]
+    assert types == ["chunk", "chunk", "chunk_end"]
+
+    chunks = [a for a in sent if a["type"] == "chunk"]
+    assert [c["content"] for c in chunks] == [
+        "**markdown**",
+        "<span>html</span>",
+    ]
+    assert [c["content_type"] for c in chunks] == ["markdown", "html"]
+    # Critically, the markdown segment must NOT be sent with content_type "html".
+    assert chunks[0]["content_type"] != "html"
+
+
+@pytest.mark.anyio
+async def test_stream_blockless_homogeneous_collapses_to_one_chunk() -> None:
+    """A blockless message with homogeneous (all-markdown) segments must still
+    collapse into a single chunk — the per-segment path is only for mixed
+    types."""
+    from shiny.express._stub_session import ExpressStubSession
+    from shiny.session import session_context
+    from shinychat import Chat
+
+    sent: list[Any] = []
+
+    async def capture_action(action: Any, deps: Any = None) -> None:
+        sent.append(action)
+
+    stored = StoredMessage(
+        role="assistant",
+        segments=[
+            StoredSegment(content="Hello ", content_type="markdown"),
+            StoredSegment(content="world", content_type="markdown"),
+        ],
+    )
+
+    with session_context(ExpressStubSession()):
+        chat = Chat(id="chat")
+        chat._send_action = capture_action  # type: ignore[method-assign]
+        await chat._send_append_message(stored, chunk=True)
+
+    types = [a["type"] for a in sent]
+    assert types == ["chunk"]
+    assert sent[0]["content"] == "Hello world"
+    assert sent[0]["content_type"] == "markdown"

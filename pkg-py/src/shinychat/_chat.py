@@ -1525,6 +1525,10 @@ class Chat:
         elif chunk == "end":
             if message.blocks:
                 await self._send_message_parts(message, operation)
+            elif has_mixed_content_types(
+                cast(list[ContentSegment], message.segments)
+            ):
+                await self._send_blockless_chunks(message, operation)
             elif content:
                 chunk_action: ChatAction = {
                     "type": "chunk",
@@ -1537,6 +1541,10 @@ class Chat:
         elif chunk is True:
             if message.blocks:
                 await self._send_message_parts(message, operation)
+            elif has_mixed_content_types(
+                cast(list[ContentSegment], message.segments)
+            ):
+                await self._send_blockless_chunks(message, operation)
             else:
                 chunk_action = {
                     "type": "chunk",
@@ -1548,6 +1556,29 @@ class Chat:
         else:
             action = {"type": "message", "message": msg_payload}
             await self._send_action(action, message.html_deps)
+
+    async def _send_blockless_chunks(
+        self,
+        message: StoredMessage,
+        operation: Literal["append", "replace"],
+    ) -> None:
+        """Emit a blockless message's string segments as one `chunk` action
+        per segment, each carrying its own content_type. Used when the
+        segments span mixed content types (e.g. markdown + html) — collapsing
+        them into a single chunk would stamp the whole concatenation with one
+        type, sending markdown as html (unescaped injection) or html as
+        markdown (broken rendering). The homogeneous case is handled by the
+        caller's single-chunk collapse."""
+        for seg in message.segments:
+            if not seg.content:
+                continue
+            chunk_action: ChatAction = {
+                "type": "chunk",
+                "content": seg.content,
+                "operation": operation,
+                "content_type": seg.content_type,
+            }
+            await self._send_action(chunk_action, message.html_deps)
 
     async def _send_block_inserts(self, message: StoredMessage) -> None:
         """Emit one `block_insert` action per structured block in the message."""
