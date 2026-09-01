@@ -8,7 +8,7 @@ pending note review. `shinychat#5r50` remains open with `needs-review`,
 `shinychat#azvt` remains open with `work.attention="ok"` (2026-08-31).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is open with
-`needs-review`, `work.attention="ok"`, and
+`needs-review`, `work.attention="blocked"`, and
 `work.branch="feat/history-exchange-tree"`; successor `shinychat#6drf` is
 open, blocked, and unstarted; parent `shinychat#azvt` is open with
 `work.attention="ok"` under epic `shinychat#6d0d`
