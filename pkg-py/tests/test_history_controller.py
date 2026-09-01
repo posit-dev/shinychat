@@ -4553,6 +4553,111 @@ async def test_v2_retry_resubmits_an_error_exchange_without_mutating_it():
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("status", ["pending", "cancelled"])
+async def test_v2_retry_restores_partial_exchange_before_creating_sibling(
+    status: str,
+) -> None:
+    adapter = _TrackingFakeAdapter()
+    controller, _store = _make_controller(
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    chat = cast(_FakeChat, controller.chat)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+
+    record = new_conversation_record_v2(
+        title="restored retry",
+        id=f"c_restored_{status}",
+        client_info={},
+    )
+    record.nodes["n_0000"].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[{"role": "system", "content": "parent prefix"}],
+    )
+    target = "n_0001"
+    original_input = _stored_message("user", "retry this")
+    record.open_exchange(target, original_input)
+    record.nodes[target].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="delta",
+        data=[
+            {"role": "user", "content": "retry this"},
+            {"role": "assistant", "content": "partial response"},
+        ],
+    )
+    record.append_stream_message(
+        target,
+        CapturedMessage.from_stored_message(
+            _stored_message("assistant", "partial response"),
+            icon=None,
+        ),
+    )
+    if status == "cancelled":
+        record.finish_exchange(target, "cancelled", None)
+
+    recorder.record = record
+    controller._active_id.set(record.id)
+    chat._transcript.set_capture_callbacks(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+
+    await controller.replay_exchange_record(record)
+
+    assert [
+        message["segments"][0]["content"]
+        for message in chat.restored_messages
+    ] == ["retry this", "partial response"]
+    assert adapter.turns == [
+        {"role": "system", "content": "parent prefix"},
+        {"role": "user", "content": "retry this"},
+        {"role": "assistant", "content": "partial response"},
+    ]
+    original_node_json = record.nodes[target].model_dump_json()
+    parent_id = record.nodes[target].parent_id
+    assert parent_id == "n_0000"
+
+    await controller.handle_resubmit(0, "retry", request_id="retry")
+
+    assert chat.actions[-1] == {
+        "type": "history_edit_projection",
+        "requestId": "retry",
+        "index": 0,
+        "content": "retry this",
+        "attachments": [],
+    }
+    assert adapter.turns == [
+        {"role": "system", "content": "parent prefix"},
+    ]
+    assert record.active_leaf == parent_id
+    assert record.nodes[target].model_dump_json() == original_node_json
+    assert record.nodes[target].status == status
+    assert [
+        message.as_stored_message().content
+        for message in record.nodes[target].messages
+    ] == ["partial response"]
+
+    await chat._transcript.record_accepted_input_and_notify(original_input)
+
+    sibling = record.active_leaf
+    assert sibling is not None
+    assert sibling != target
+    assert record.nodes[sibling].parent_id == parent_id
+    assert record.nodes[sibling].input == original_input
+    assert adapter.turns == [
+        {"role": "system", "content": "parent prefix"},
+    ]
+    assert record.nodes[target].model_dump_json() == original_node_json
+
+
+@pytest.mark.anyio
 async def test_v2_regenerate_uses_the_real_resubmit_primitive():
     controller, chat, adapter, _store, first, target = (
         _make_v2_resubmit_controller()
