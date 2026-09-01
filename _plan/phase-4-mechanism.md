@@ -1164,3 +1164,43 @@ Roborev `1124` `PASS`/no findings. Its blocking relationship to
 Keystone implementation has not started. Human review is not a gate for this
 child; it remains reserved for the end of `shinychat#azvt`. The phase parent
 `shinychat#azvt` remains open with `work.attention="ok"`.
+
+### P4.1 restore keystone handoff (2026-08-31)
+
+Landed `d7866b444a3fba49c237dc224b13b5a97e9d9457`
+(`feat(history): restore v2 exchange trees`, `Kata: shinychat#5r50`).
+
+- `_ExchangeRecorder` owns the private insertion-ordered restore registry and
+  is still the sole v2 record owner. `StatePathContext` supplies each hook
+  only its keyed active-path entries, and the registered `shinychat:turns`
+  consumer materializes the most recent snapshot plus following deltas once,
+  calls `set_turns_json()` once, and resets the capture baseline.
+- `HistoryOptions.restore_bootstrap` defaults to `"recorded"`; `"live"` skips
+  only the implicit root snapshot. A later snapshot replaces the live prefix.
+- `HistoryController._restore_exchange_record()` is the v2 transaction used
+  by both initialization and switching. It validates the graph path before
+  destructive mutation, clears display/greeting, replays input and captured
+  messages through `_restore_bookmark_message`, executes restore hooks, then
+  installs the recorder record, publishes changed active identity, restores
+  app values, and sends history state. P4.1 has no selected-node pointer
+  mutation; bookmark-node persistence remains `shinychat#g6tt`.
+- Replay temporarily suppresses transcript capture only around the production
+  `_restore_bookmark_message` loop. This is required because that method
+  appends to `ChatTranscript`, which otherwise invokes recorder callbacks and
+  could persist replay as new exchanges. The suppression is restored before
+  state hooks, is inside the destructive v2 transaction, and adds no
+  lifecycle owner or persistent state.
+
+Evidence: focused controller restore tests passed 6; history configuration
+tests passed 2; dedicated production continuation Playwright passed 1;
+`history_edit` passed 9; `make py-check-format` and `make py-check-types`
+passed. Final `make py-check` passed Ruff, Pyright, 198 Playwright tests, and
+783 non-browser tests with 1 skipped and 19 known nonfatal warnings. The
+production fixture asserts restored turn count 2/node count 2, then turn count
+4/node count 3 after the next real submission, as well as the provider's
+restored-prefix context.
+
+Next: retain `shinychat#5r50` open with `work.attention="ok"` pending the
+required human review; do not start `shinychat#6drf`. No graph operations,
+rewind hooks, sibling/resubmit work, Q3 protocol change, retry UI, bookmark
+pointer, JS/R work, init guard, or degradation behavior landed in this unit.
