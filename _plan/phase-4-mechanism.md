@@ -2173,11 +2173,13 @@ For v2 rename, acquire the existing recorder lock before checking the active
 ID. Under that same lock, recheck the ID: if it matches, mutate and persist
 the active recorder record; otherwise load and rename the requested
 `conv_id` as an inactive record under the same lock. A missing record is a
-no-op. The required exact regression is
-`test_v2_active_rename_waits_for_recorder_capture_lock`, extended to change
-the active ID while the lock is held and prove the requested original ID is
-not renamed as the newly active record; it must also cover inactive rename
-persistence and missing-ID no-op behavior.
+no-op. Terra's exact required regression is a deterministic v2
+switch/rename interleaving: block source save, start a source rename, release
+the switch, and assert the source is renamed, the target title is unchanged,
+and recorder/active ID remain the target. Preserve and extend
+`test_v2_active_rename_waits_for_recorder_capture_lock` and
+`test_v2_inactive_rename_does_not_affect_active_recorder_capture` for the
+lock-time recheck, inactive persistence, and missing-ID no-op behavior.
 
 For slash/input semantics, `_latest_user_input` remains the public latest
 accepted input, including a captured echoed slash. Add a private normal
@@ -2187,11 +2189,18 @@ publish the event and provider/`on_user_submit` effects consume its snapshot.
 Echoed slash dispatch uses `dispatch_user_submit=False`: the slash handler
 runs and latest input updates, but no provider or public callback runs.
 Failed or blocked captures update neither latest input nor the normal event.
-The required exact regressions are
-`test_echoed_slash_command_records_once_before_its_callback` for latest-value
-and no-normal-dispatch behavior, plus the ordinary accepted-input/provider
-regression proving event snapshot invalidation and unchanged failed/blocked
-behavior.
+Terra's exact required tests are: extend
+`test_echoed_slash_command_records_once_before_its_callback` so an echoed
+command updates `user_input()` from `None` and after a prior normal input,
+triggers neither `on_user_submit` nor provider work, and leaves the direct
+slash handler observing the captured transcript; assert a normal raw
+submission dispatches once after capture with its own text/attachments and
+identical normal submissions dispatch twice; preserve failed/blocked
+behavior, with `test_v2_switch_rejects_real_chat_input_during_save_and_restore`
+as the blocked-path base, proving neither public latest nor private dispatch
+event changes. Update helper doubles and the settlement test's
+`publish_latest=False` control to the dispatch-only control introduced by
+this split.
 
 Implementation remains stopped pending note review. `shinychat#5r50` remains
 open with `needs-review`, `work.attention="blocked"`, and
