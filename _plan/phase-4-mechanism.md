@@ -2332,3 +2332,48 @@ code commit. Kata `shinychat#5r50` remains open with `needs-review`,
 `work.attention="ok"`, and `work.branch="feat/history-exchange-tree"`; the next
 action is orchestrator inspection and integration. `shinychat#6drf` remains
 blocked and unstarted.
+
+### P4.1 Roborev 1159 authoritative disposition (2026-09-01)
+
+Mandatory batched Roborev job `1159` reviewed
+`04825f1f3da2286008a6e1c8e7a475b33be2426f^..b99074b028d43687a8fa44bf97a5701fefffa7c1`
+(canonical `39a61813f51ff1d99bcd6182aa7b61c968af773d..b99074b028d43687a8fa44bf97a5701fefffa7c1`).
+Both findings are valid and in scope for `shinychat#5r50`.
+
+1. **Initial programmatic v2 creation metadata: PATCH; valve not fired.**
+   `_content_exchange()` must report whether it created the record. After the
+   first successful durable persistence, `message_committed()` and
+   `stream_started()` must each publish exactly one `history_update` for an
+   initially created record. `stream_updated()` and `stream_finished()` remain
+   metadata-free; streamed chunks stay eagerly durable without drawer
+   publication. The required regressions use the `ChatTranscript` callbacks
+   for both an initial complete-message path and an initial stream-start path,
+   asserting the persisted record, exactly one metadata update, and no
+   chunk/finish metadata.
+
+2. **Stale switch target versus rename: DELETE/REPLACE; valve fires.**
+   This is the third finding in the recorder-authority mechanism, following
+   Roborev `1135`, `1152`, and now `1159`. Replace only the
+   pre-lock-authoritative target snapshot. Keep the initial target lookup for
+   eligibility and stream preflight; inside the existing destructive-admission
+   boundary and recorder lock, save the source, reload the target as the
+   authoritative record, preflight it, and restore that fresh record. Add no
+   lock, owner, queue, CAS, or rollback mechanism.
+
+The decisions trace to R2 continuity, R4 durable restore fidelity, and R7's
+existing-primitives boundary. The deletion pass removes reliance on the
+unlocked target snapshot while retaining the recorder, existing lock,
+destructive admission, restore helper, and single-owner design. The
+snapshot-store interleaving regression must hold the first target lookup,
+complete a rename of the inactive target, release the stale lookup, switch,
+and then capture; the installed and persisted target must retain the renamed
+title. Preserve the reverse-direction source-rename interleaving, inactive
+rename, and source-save-before-invalid-target coverage.
+
+Implementation is stopped until this disposition is reviewed. Roborev `1159`
+remains open and unclosed. Fully qualified Kata issue `shinychat#5r50`
+remains open with `needs-review`, `work.attention="blocked"`, and
+`work.branch="feat/history-exchange-tree"`. Fully qualified
+`shinychat#6drf` remains open, blocked, and unstarted. No implementation,
+test, review closure, issue closure, or sibling work is authorized by this
+handoff.
