@@ -245,7 +245,16 @@ export function toolResultBlockToCall(block: ToolResultBlock): ToolCallItem {
   if (block.intent !== undefined) call.intent = block.intent
   if (block.value !== undefined) call.value = block.value
   if (block.value_type !== undefined) call.valueType = block.value_type
-  if (block.request_call !== undefined) call.requestCall = block.request_call
+  if (block.request_call !== undefined) {
+    // Defensive: some servers have sent the call as an array of wrapped
+    // lines; the renderer expects a single string.
+    const rc = block.request_call
+    call.requestCall = Array.isArray(rc)
+      ? rc.join("\n")
+      : typeof rc === "string"
+        ? rc
+        : String(rc)
+  }
   if (block.show_request !== undefined) call.showRequest = block.show_request
   if (block.full_screen !== undefined) call.fullScreen = block.full_screen
   if (block.open_style !== undefined) call.openStyle = block.open_style

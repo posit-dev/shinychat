@@ -428,6 +428,30 @@ test_that("ContentToolResult formats request_call correctly", {
   )
 })
 
+test_that("ContentToolResult request_call stays a single string when format() wraps", {
+  local_shinychat_tool_display(opt = "rich")
+
+  # ellmer's format(show = "call") line-wraps at argument boundaries once the
+  # deparsed call exceeds the console width; a long tool name plus several
+  # arguments reliably triggers it. The block must still carry a length-1
+  # string (the client calls .split() on it).
+  request <- new_tool_request(
+    name = "btw_tool_files_list",
+    arguments = list(
+      path = ".",
+      type = "any",
+      regexp = "README.*",
+      `_intent` = "Check for README file"
+    )
+  )
+  expect_gt(length(format(request, show = "call")), 1)
+
+  res <- contents_shinychat(new_tool_result(value = "test", request = request))
+  expect_type(res$request_call, "character")
+  expect_length(res$request_call, 1)
+  expect_match(res$request_call, "btw_tool_files_list", fixed = TRUE)
+})
+
 test_that("get_tool_result_display handles invalid formats", {
   # Test direct HTML warning
   result <- new_tool_result(

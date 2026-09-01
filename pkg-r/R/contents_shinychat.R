@@ -556,7 +556,12 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
   annotations <- shinychat_tool_annotations(content@request@tool)
 
   if (!is.null(content@request@tool)) {
-    request_call <- format(content@request, show = "call")
+    # format() line-wraps long calls into multiple elements; collapse so the
+    # wire value is always a single string (the client calls .split() on it).
+    request_call <- paste(
+      format(content@request, show = "call"),
+      collapse = "\n"
+    )
   } else {
     # formatting the request fails if tool is not present
     # (ellmer v0.3.0, tidyverse/ellmer#691)
