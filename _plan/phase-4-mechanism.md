@@ -7,16 +7,16 @@ by process. The bookmark-pointer disposition remains out of scope in
 `shinychat#g6tt`. Garrick has authorized the revised P4.2 edit/resubmit
 projection; its first implementation unit is landed and parked for three
 bounded review corrections on `shinychat#6drf` only. Those corrections are
-now landed and green; the edit-projection slice awaits batched review.
+landed; Roborev 1163 found two bounded corrections now awaiting fixes.
 `shinychat#5r50` is closed; `shinychat#6drf` is open with
-`work.attention="ok"`; and `shinychat#azvt` is open with
-`work.attention="ok"` (2026-09-01).
+`work.attention="blocked"`; and `shinychat#azvt` is open with
+`work.attention="blocked"` (2026-09-01).
 **Phase:** plan.md §4, Phase 4
 **Kata (current):** child `shinychat#5r50` is closed after verified review
 evidence; successor `shinychat#6drf` is open with
-`work.attention="ok"`; parent `shinychat#azvt` is open with
-`work.attention="ok"` under epic `shinychat#6d0d`; the P4.2 edit projection
-awaits batched review before sibling navigation begins.
+`work.attention="blocked"`; parent `shinychat#azvt` is open with
+`work.attention="blocked"` under epic `shinychat#6d0d`; the P4.2 edit
+projection awaits the Roborev 1163 corrections before sibling navigation.
 **Context:** `phase-3-mechanism.md` is closed historical context. This note is
 the Phase 4 gate and the only phase-local mechanism reference for new work.
 
@@ -2693,3 +2693,24 @@ browser path now proves unrelated composer attachment identity survives the
 edit projection. P4.2 remains open with attention `ok`; sibling navigation
 has not started. The next action is a batched Roborev review of this coherent
 edit-projection slice.
+
+### P4.2 Roborev 1163 disposition (2026-09-01)
+
+Roborev `1163` reviewed `82ee43bf^..95cac211` (canonical
+`3e346434..95cac211`) and returned two valid Medium findings in separate
+submechanisms. The three-findings escalation valve does not fire.
+
+1. **PATCH persistence failure recovery.** Move active-pointer mutation and
+   `_persist_record()` inside the existing resubmit recovery `try`. A store
+   failure after in-memory rewind must invoke the approved
+   fail-to-fresh-draft/incomplete-recovery path rather than leave the recorder
+   rewound while display and turns remain old.
+2. **PATCH page-owned control gating.** The external/page-owned history entry
+   must pass `history.busy || history.historyTransitionPending !== null` to
+   its controls, matching the chat-owned container. Add a discriminating test
+   proving New, select, rename, and delete are disabled during a pending edit
+   rather than silently discarded by store guards.
+
+Roborev `1163` remains open pending the fix commits. `shinychat#6drf` and
+`shinychat#azvt` remain attention-blocked; sibling navigation and later Phase
+4 work remain unstarted.
