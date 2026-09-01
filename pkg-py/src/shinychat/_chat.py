@@ -390,6 +390,7 @@ class Chat:
         self._destructive_history_transaction: object | None = None
         self._destructive_history_task: asyncio.Task[Any] | None = None
         self._destructive_history_depth = 0
+        self._destructive_history_blocks_input = False
 
         # Initialize chat state and user input effect
         from shiny import reactive
@@ -445,10 +446,9 @@ class Chat:
             self._append_init_messages = _append_init_messages
             self._init_chat = _init_chat
 
-            # Record the latest submission into `_latest_user_input`, which
-            # backs the public `user_input()` method. priority=9999 ensures
-            # this runs before `on_user_submit`/other effects so `user_input()`
-            # reflects the latest submission.
+            # Record accepted raw input before effects that consume the
+            # accepted-input signal. priority=9999 ensures those effects see
+            # the committed latest input.
             @reactive.effect(priority=9999)
             @reactive.event(self._user_input)
             async def _on_user_input():
@@ -486,7 +486,9 @@ class Chat:
                     if echo:
                         full_text = f"/{command} {user_text}".rstrip()
                         msg = ChatMessage(content=full_text, role="user")
-                        await self._record_accepted_user_input_with_capture(msg)
+                        await self._record_accepted_user_input_with_capture(
+                            msg, publish_latest=False
+                        )
                     cmds = self._slash_commands()
                     reg = cmds.get(command) if cmds else None
                     if reg is not None and reg.handler is not None:
@@ -679,7 +681,7 @@ class Chat:
             fn_params = inspect.signature(fn).parameters
 
             @reactive.effect
-            @reactive.event(self._user_input)
+            @reactive.event(self._latest_user_input)
             async def handle_user_input():
                 try:
                     if len(fn_params) > 2:
@@ -1924,7 +1926,7 @@ class Chat:
                 pass
 
     @asynccontextmanager
-    async def _destructive_history_mutation(self):
+    async def _destructive_history_mutation(self, *, block_input: bool = False):
         """Reserve destructive transcript admission through settlement and mutation."""
         task = asyncio.current_task()
         deliveries = _response_settlement_deliveries.get()
@@ -1950,6 +1952,7 @@ class Chat:
         self._destructive_history_transaction = transaction
         self._destructive_history_task = task
         self._destructive_history_depth = 1
+        self._destructive_history_blocks_input = block_input
         try:
             cancel_wakeup = self._cancel_response_settlement_wakeup
             self._cancel_response_settlement_wakeup = None
@@ -1963,6 +1966,7 @@ class Chat:
                 self._transcript._release_transaction(transaction)
                 self._destructive_history_transaction = None
                 self._destructive_history_task = None
+                self._destructive_history_blocks_input = False
 
     async def _restore_bookmark_message(
         self,
@@ -2141,6 +2145,10 @@ class Chat:
         self,
         message: ChatMessage,
     ) -> None:
+        if self._destructive_history_blocks_input:
+            raise RuntimeError(
+                "Cannot accept user input while switching conversations."
+            )
         stored = self._as_stored_message(message)
         self._transcript.record_accepted_input(stored)
         self._latest_user_input.set(stored)
@@ -2148,10 +2156,17 @@ class Chat:
     async def _record_accepted_user_input_with_capture(
         self,
         message: ChatMessage,
+        *,
+        publish_latest: bool = True,
     ) -> None:
+        if self._destructive_history_blocks_input:
+            raise RuntimeError(
+                "Cannot accept user input while switching conversations."
+            )
         stored = self._as_stored_message(message)
-        self._latest_user_input.set(stored)
         await self._transcript.record_accepted_input_and_notify(stored)
+        if publish_latest:
+            self._latest_user_input.set(stored)
 
     def user_input(self) -> "UserInput | None":
         """

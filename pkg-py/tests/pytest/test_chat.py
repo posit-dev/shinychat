@@ -240,8 +240,11 @@ def test_echoed_slash_command_capture_error_removes_loading_message():
     with session_context(session):
         chat = Chat("echoed_slash_capture_error", history=False)
 
-        async def _capture_error(message: ChatMessage) -> None:
+        async def _capture_error(
+            message: ChatMessage, *, publish_latest: bool = True
+        ) -> None:
             del message
+            del publish_latest
             raise RuntimeError("capture failed")
 
         async def _capture_action(

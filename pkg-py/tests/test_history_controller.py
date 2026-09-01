@@ -19,8 +19,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from _history_test_helpers import branch_from
 from pydantic import BaseModel
+from shiny import Inputs, reactive
+from shiny.module import ResolvedId
+from shiny.session import session_context
+from shinychat import Chat
 from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
-from shinychat._chat_types import StoredMessage, StoredSegment
+from shinychat._chat_types import ChatMessage, StoredMessage, StoredSegment
 from shinychat._history import (
     HistoryController,
     StatePathContext,
@@ -253,7 +257,8 @@ class _FakeChat:
         self._transcript.replace([])
 
     @asynccontextmanager
-    async def _destructive_history_mutation(self):
+    async def _destructive_history_mutation(self, *, block_input: bool = False):
+        del block_input
         self.destructive_preflight_calls += 1
         yield
 
@@ -265,6 +270,30 @@ class _FakeChat:
 
     async def set_greeting(self, greeting: Any) -> None:
         self.set_greeting_calls.append(greeting)
+
+
+class _RealChatSession:
+    ns = ResolvedId("")
+    app: object = None
+    id = "history-switch-input-session"
+
+    def __init__(self) -> None:
+        self.input = Inputs({}, ns=ResolvedId)
+
+    async def send_custom_message(self, _type: str, _message: Any) -> None:
+        pass
+
+    def on_ended(self, _callback: object) -> Callable[[], None]:
+        return lambda: None
+
+    def on_destroy(self, _callback: object) -> None:
+        pass
+
+    def _increment_busy_count(self) -> None:
+        pass
+
+    def _decrement_busy_count(self) -> None:
+        pass
 
 
 class _FakeAdapter:
@@ -1159,7 +1188,7 @@ async def test_v2_switch_uses_restore_transaction_and_controller_active_id():
 
 
 @pytest.mark.anyio
-async def test_v2_switch_holds_admission_and_recorder_lock_through_restore() -> (
+async def test_v2_switch_rejects_real_chat_input_during_save_and_restore() -> (
     None
 ):
     class BlockingStore(InMemoryConversationStore):
@@ -1168,10 +1197,12 @@ async def test_v2_switch_holds_admission_and_recorder_lock_through_restore() -> 
             self.block_id: str | None = None
             self.source_save_entered = asyncio.Event()
             self.release_source_save = asyncio.Event()
+            self.put_ids: list[str] = []
 
         async def put(
             self, partition: ConversationPartition, record: Any
         ) -> None:
+            self.put_ids.append(record.id)
             if record.id == self.block_id:
                 self.block_id = None
                 self.source_save_entered.set()
@@ -1182,12 +1213,25 @@ async def test_v2_switch_holds_admission_and_recorder_lock_through_restore() -> 
     controller, _ = _make_controller(store=store, use_exchange_tree=True)
     recorder = controller._exchange_recorder
     assert recorder is not None
-    transcript = ChatTranscript(
+    session = _RealChatSession()
+    with session_context(cast(Any, session)):
+        chat = Chat("history_switch_input", history=False)
+    controller.chat = chat  # type: ignore[assignment]
+    chat._transcript.set_capture_callbacks(
         on_accepted_input=recorder.accepted_input,
         on_message_committed=recorder.message_committed,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
     )
-    await transcript.record_accepted_input_and_notify(
-        _stored_message("user", "source")
+    provider_calls: list[str] = []
+
+    @chat.on_user_submit
+    async def _provider_input(text: str) -> None:
+        provider_calls.append(text)
+
+    await chat._record_accepted_user_input_with_capture(
+        ChatMessage(content="source", role="user")
     )
     assert recorder.record is not None
     source = recorder.record
@@ -1200,52 +1244,184 @@ async def test_v2_switch_holds_admission_and_recorder_lock_through_restore() -> 
 
     clear_started = asyncio.Event()
     release_clear = asyncio.Event()
-    fake_chat = cast(_FakeChat, controller.chat)
-    original_clear_messages = fake_chat.clear_messages
+    original_clear_messages = chat.clear_messages
 
     async def blocked_clear_messages() -> None:
         clear_started.set()
         await release_clear.wait()
         await original_clear_messages()
 
-    fake_chat.clear_messages = blocked_clear_messages  # type: ignore[method-assign]
+    chat.clear_messages = blocked_clear_messages  # type: ignore[method-assign]
+
+    async def assert_rejected(content: str) -> None:
+        original_as_stored_message = chat._as_stored_message
+
+        def unexpected_conversion(_message: ChatMessage) -> StoredMessage:
+            raise AssertionError("blocked input must not be converted")
+
+        chat._as_stored_message = unexpected_conversion  # type: ignore[method-assign]
+        try:
+            with pytest.raises(
+                RuntimeError,
+                match="Cannot accept user input while switching conversations",
+            ):
+                chat._record_accepted_user_input(
+                    ChatMessage(content=f"{content} sync", role="user")
+                )
+            with pytest.raises(
+                RuntimeError,
+                match="Cannot accept user input while switching conversations",
+            ):
+                await chat._record_accepted_user_input_with_capture(
+                    ChatMessage(content=content, role="user")
+                )
+        finally:
+            chat._as_stored_message = original_as_stored_message  # type: ignore[method-assign]
+
     store.block_id = source.id
     switch = asyncio.create_task(controller.switch_to(target.id))
     await store.source_save_entered.wait()
 
-    accepted_input = asyncio.create_task(
-        transcript.record_accepted_input_and_notify(
-            _stored_message("user", "late input")
-        )
-    )
-    await asyncio.sleep(0)
-    assert not accepted_input.done()
+    source_transcript = chat._transcript.read()
+    with reactive.isolate():
+        latest_before = chat.user_input()
+    put_count = len(store.put_ids)
+    await assert_rejected("blocked during source save")
+    assert chat._transcript.read() == source_transcript
+    with reactive.isolate():
+        assert chat.user_input() == latest_before
+    assert provider_calls == []
+    assert len(store.put_ids) == put_count
+    assert recorder.record is source
 
     store.release_source_save.set()
     await clear_started.wait()
 
     stored_source = await store.get(part(), source.id)
     assert isinstance(stored_source, ConversationRecordV2)
-    assert not accepted_input.done()
     assert [
         node.input.content
         for node in stored_source.nodes.values()
         if node.input is not None
     ] == ["source"]
 
+    put_count = len(store.put_ids)
+    await assert_rejected("blocked during restore")
+    assert chat._transcript.read() == source_transcript
+    with reactive.isolate():
+        assert chat.user_input() == latest_before
+    assert provider_calls == []
+    assert len(store.put_ids) == put_count
+    assert recorder.record is source
+
     release_clear.set()
     await switch
-    await accepted_input
 
     stored_target = await store.get(part(), target.id)
     assert isinstance(stored_target, ConversationRecordV2)
     assert recorder.record is target
-    assert fake_chat.destructive_preflight_calls == 1
     assert [
         node.input.content
         for node in stored_target.nodes.values()
         if node.input is not None
-    ] == ["late input"]
+    ] == []
+    assert chat._transcript.read() == ()
+    assert provider_calls == []
+
+
+@pytest.mark.anyio
+async def test_cancelled_v2_switch_releases_real_chat_input_admission() -> None:
+    class BlockingStore(InMemoryConversationStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.block_id: str | None = None
+            self.source_save_entered = asyncio.Event()
+
+        async def put(
+            self, partition: ConversationPartition, record: Any
+        ) -> None:
+            if record.id == self.block_id:
+                self.block_id = None
+                self.source_save_entered.set()
+                await asyncio.Event().wait()
+            await super().put(partition, record)
+
+    store = BlockingStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    session = _RealChatSession()
+    with session_context(cast(Any, session)):
+        chat = Chat("history_switch_cancel_input", history=False)
+    controller.chat = chat  # type: ignore[assignment]
+    chat._transcript.set_capture_callbacks(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+    await chat._record_accepted_user_input_with_capture(
+        ChatMessage(content="source", role="user")
+    )
+    assert recorder.record is not None
+    source = recorder.record
+    target = new_conversation_record_v2(
+        title="target",
+        id="c_target",
+        client_info={},
+    )
+    await store.put(part(), target)
+
+    store.block_id = source.id
+    switch = asyncio.create_task(controller.switch_to(target.id))
+    await store.source_save_entered.wait()
+    assert chat._destructive_history_blocks_input
+
+    switch.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await switch
+
+    assert not chat._destructive_history_blocks_input
+    await chat._record_accepted_user_input_with_capture(
+        ChatMessage(content="accepted after cancellation", role="user")
+    )
+    assert [entry.message.content for entry in chat._transcript.read()] == [
+        "source",
+        "accepted after cancellation",
+    ]
+    assert recorder.record is source
+
+
+@pytest.mark.anyio
+async def test_generic_destructive_admission_does_not_block_real_chat_input() -> (
+    None
+):
+    controller, _ = _make_controller(use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    session = _RealChatSession()
+    with session_context(cast(Any, session)):
+        chat = Chat("history_generic_input", history=False)
+    controller.chat = chat  # type: ignore[assignment]
+    chat._transcript.set_capture_callbacks(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+
+    async with controller._destructive_mutation():
+        await chat._record_accepted_user_input_with_capture(
+            ChatMessage(
+                content="accepted during generic admission", role="user"
+            )
+        )
+
+    assert [entry.message.content for entry in chat._transcript.read()] == [
+        "accepted during generic admission"
+    ]
 
 
 @pytest.mark.anyio

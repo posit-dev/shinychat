@@ -927,7 +927,13 @@ class HistoryController:
         await self.store.put(partition, record)
 
     @asynccontextmanager
-    async def _destructive_mutation(self):
+    async def _destructive_mutation(self, *, block_input: bool = False):
+        if block_input:
+            async with self.chat._destructive_history_mutation(
+                block_input=True
+            ):
+                yield
+            return
         async with self.chat._destructive_history_mutation():
             yield
 
@@ -1275,7 +1281,7 @@ class HistoryController:
         if isinstance(target, ConversationRecordV2):
             recorder = self._exchange_recorder
             assert recorder is not None
-            async with self._destructive_mutation():
+            async with self._destructive_mutation(block_input=True):
                 async with self._exchange_mutation():
                     await recorder.save_current_locked()
                     node_ids, planned_state, bootstrap = (
