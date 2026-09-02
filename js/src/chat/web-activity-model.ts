@@ -108,8 +108,8 @@ export function normalizeSources(value: unknown): WebSearchSource[] {
 
 /**
  * Apply one web_* wire block to an activity: a results block attaches its
- * sources to the search named by `search_id`, or to the earliest
- * still-pending search when no id is available; one arriving with no
+ * sources to the search named by `search_id`, or — only when no id was
+ * sent — to the earliest still-pending search; one arriving with no
  * matching search becomes a query-less search item; a fetch block appends a
  * standalone item. The pending state lives in the items themselves
  * (sources === null), so pairing works across block_insert boundaries
@@ -130,17 +130,14 @@ export function applyWebBlock(
     })
   } else if (block.type === "web_search_results") {
     const sources = normalizeSources(block.sources)
-    let index = -1
-    if (block.search_id !== undefined) {
-      index = items.findIndex(
-        (it) => it.kind === "search" && it.id === block.search_id,
-      )
-    }
-    if (index === -1) {
-      index = items.findIndex(
-        (it) => it.kind === "search" && it.sources === null,
-      )
-    }
+    // An unmatched search_id must not fall back to FIFO: attaching to an
+    // unrelated pending search would misattribute the results.
+    const index =
+      block.search_id !== undefined
+        ? items.findIndex(
+            (it) => it.kind === "search" && it.id === block.search_id,
+          )
+        : items.findIndex((it) => it.kind === "search" && it.sources === null)
     if (index !== -1) {
       const search = items[index] as WebActivitySearchItem
       items[index] = { ...search, sources }

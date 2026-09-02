@@ -189,23 +189,36 @@ def test_stream_sends_already_structured_block_dicts():
         "version": 1,
         "sources": [{"url": "https://example.com/weather"}],
     }
+    citations_block = {
+        "type": "web_search_citations",
+        "version": 1,
+        "sources": [{"url": "https://example.com/cited"}],
+    }
     with session_context(cast(Session, mock)):
         ms = MarkdownStream(id="stream")
         result = run_stream(
-            ms, ["model text ", search_block, results_block, " done"]
+            ms,
+            [
+                "model text ",
+                search_block,
+                results_block,
+                citations_block,
+                " done",
+            ],
         )
 
     msgs = content_messages(mock.messages)[1:]  # drop the leading clear
     kinds = ["block" if "block" in m else "content" for m in msgs]
-    assert kinds == ["content", "block", "block", "content"]
+    assert kinds == ["content", "block", "block", "block", "content"]
 
     assert msgs[1]["block"] == search_block
     assert msgs[2]["block"] == results_block
+    assert msgs[3]["block"] == citations_block
     assert "content" not in msgs[1]
     assert msgs[1]["operation"] == "append"
 
     assert msgs[0]["content"] == "model text "
-    assert msgs[3]["content"] == " done"
+    assert msgs[4]["content"] == " done"
 
     assert result == "model text  done"
 

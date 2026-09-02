@@ -582,6 +582,10 @@ test_that("web content emitters produce structured shinychat_block lists", {
     )
   )
   expect_equal(keyed_results$search_id, "srvtoolu_123")
+  # An empty results set is valid: `sources` must survive NULL-field
+  # stripping or the client rejects the block as malformed.
+  expect_true("sources" %in% names(keyed_results))
+  expect_length(keyed_results$sources, 0L)
 
   expect_null(contents_shinychat_fetch_request(list()))
 

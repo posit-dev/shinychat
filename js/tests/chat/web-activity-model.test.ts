@@ -234,6 +234,56 @@ describe("web_search_citations blocks", () => {
   })
 })
 
+describe("web_search_results pairing", () => {
+  it("attaches results to the search named by search_id", () => {
+    let blocks: MessageBlock[] = []
+    blocks = appendWebActivityBlock(
+      blocks,
+      { ...webSearchBlock(), id: "search-a", query: "query A" },
+      isWhitespaceContentBlock,
+    )
+    blocks = appendWebActivityBlock(
+      blocks,
+      { ...webSearchBlock(), id: "search-b", query: "query B" },
+      isWhitespaceContentBlock,
+    )
+    blocks = appendWebActivityBlock(
+      blocks,
+      { ...webSearchResultsBlock(), search_id: "search-b" },
+      isWhitespaceContentBlock,
+    )
+
+    const [a, b] = activityOf(blocks).items
+    if (a?.kind !== "search" || b?.kind !== "search")
+      throw new Error("expected search items")
+    expect(a.sources).toBeNull()
+    expect(b.sources).toHaveLength(2)
+  })
+
+  it("never falls back to FIFO when a search_id goes unmatched", () => {
+    let blocks: MessageBlock[] = []
+    blocks = appendWebActivityBlock(
+      blocks,
+      { ...webSearchBlock(), id: "search-a", query: "query A" },
+      isWhitespaceContentBlock,
+    )
+    blocks = appendWebActivityBlock(
+      blocks,
+      { ...webSearchResultsBlock(), search_id: "search-gone" },
+      isWhitespaceContentBlock,
+    )
+
+    const items = activityOf(blocks).items
+    const [a, orphan] = items
+    if (a?.kind !== "search" || orphan?.kind !== "search")
+      throw new Error("expected search items")
+    expect(items).toHaveLength(2)
+    expect(a.sources).toBeNull()
+    expect(orphan.query).toBe("")
+    expect(orphan.sources).toHaveLength(2)
+  })
+})
+
 describe("appendWebActivityBlock over MarkdownStream-shaped segments", () => {
   type StreamishSegment =
     | { text: string; trusted: boolean }

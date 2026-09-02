@@ -162,14 +162,14 @@ new_web_block <- function(type, ...) {
     "shinychat_block"
   )
 
-  # NULL optional fields (e.g. a missing provider search id) are omitted.
-  dots <- compact(
-    dots_list(
-      type = type,
-      version = 1L,
-      ...
-    )
+  dots <- dots_list(
+    type = type,
+    version = 1L,
+    ...
   )
+  # Omit NULL optional fields (e.g. a missing provider search id) while
+  # keeping empty-but-valid values like `sources = list()`.
+  dots <- dots[!vapply(dots, is.null, logical(1))]
 
   structure(dots, class = classes)
 }
