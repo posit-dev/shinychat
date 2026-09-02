@@ -2720,6 +2720,11 @@ def chat_ui(
               markdown. Use :class:`~shiny.ui.HTML` for trusted raw HTML strings.
         * A dictionary with `content` and `role` keys. The `content` key can contain a
           content as described above, and the `role` key can be "assistant" or "user".
+        * Advanced: to interleave markdown and UI in one message, construct a
+          :class:`~shinychat.types.ChatMessage` with ``parts=[...]`` — an
+          ordered list of bare strings (markdown segments) and structured
+          block dicts. This segment API is provisional and may change in a
+          future release.
         * More generally, any type registered with :func:`shinychat.message_content`.
 
         **NOTE:** content may include specially formatted **input suggestion** links

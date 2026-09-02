@@ -358,6 +358,9 @@ chat_greeting <- function(
 #'       [htmltools::HTML()] for trusted raw HTML strings.
 #'   * A named list of `content` and `role`. The `content` can contain content
 #'     as described above, and the `role` can be "assistant" or "user".
+#'   * Advanced: a `list()` mixing bare strings and UI elements interleaves
+#'     markdown segments and HTML in one message, in order. This segment API
+#'     is provisional and may change in a future release.
 #'
 #' @param greeting An optional greeting to display when the chat first loads.
 #'   Can be a [chat_greeting()] object, or a plain string (which is auto-wrapped
