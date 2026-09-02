@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import nullcontext
+from copy import deepcopy
 from typing import Any, Awaitable, Callable, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,6 +15,7 @@ from shinychat import Chat
 from shinychat._history import ChatHistory, HistoryInputIds
 from shinychat._history_store import (
     ConversationPartition,
+    FileConversationStore,
     InMemoryConversationStore,
 )
 from shinychat._history_types import new_conversation_record_v2
@@ -1974,3 +1976,271 @@ def test_session_end_runs_history_cleanup_once():
 def test_chat_destroy_without_history_start_is_safe():
     chat = _make_chat(history=False)
     chat.destroy()  # no session-level registrations to release
+
+
+async def _make_initialized_live_v2_chat(
+    tmp_path: Any, chat_id: str
+) -> tuple[Chat, _LiveSession, _MockClient, FileConversationStore]:
+    session = _LiveSession()
+    client = _MockClient()
+    store = FileConversationStore(tmp_path)
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            chat_id,
+            client=cast(Any, client),
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode="none",
+            ),
+        )
+        await reactive.flush()
+        await reactive.flush()
+    assert chat.history._initial_history_initialized
+    return chat, session, client, store
+
+
+def _transcript_snapshot(chat: Chat) -> list[dict[str, Any]]:
+    return [
+        {
+            "message": entry.message.model_dump(mode="json"),
+            "icon": entry.icon,
+            "status": entry.status,
+            "error": deepcopy(entry.error),
+            "exchange_id": entry.exchange_id,
+        }
+        for entry in chat._transcript.read()
+    ]
+
+
+@pytest.mark.anyio
+async def test_v2_clear_settles_terminal_response_before_clear_mutation(
+    tmp_path: Any,
+) -> None:
+    chat, session, _, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "clear_terminal_settlement"
+    )
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    partition = ConversationPartition(
+        chat_id="clear_terminal_settlement", scope="test"
+    )
+    settlements = 0
+    original_response_settled = recorder.response_settled
+
+    async def count_settlement() -> bool:
+        nonlocal settlements
+        settlements += 1
+        return await original_response_settled()
+
+    recorder.response_settled = count_settlement  # type: ignore[method-assign]
+    await chat._record_accepted_user_input_with_capture(
+        ChatMessage(content="before clear", role="user"),
+        dispatch_user_submit=False,
+    )
+    assert await chat._append_message_chunk(
+        "", chunk="start", stream_id="terminal-stream"
+    )
+    assert await chat._append_message_chunk(
+        "terminal response", stream_id="terminal-stream"
+    )
+    assert await chat._append_message_chunk(
+        "", chunk="end", stream_id="terminal-stream"
+    )
+    assert settlements == 0
+    assert len(chat._pending_response_settlements) == 1
+
+    clear_dispatched = asyncio.Event()
+    release_clear = asyncio.Event()
+    original_send = session.send_custom_message
+
+    async def hold_after_clear_dispatch(
+        type: str, message: object
+    ) -> None:
+        await original_send(type, message)
+        if cast(dict[str, Any], message)["action"]["type"] == "clear":
+            clear_dispatched.set()
+            await release_clear.wait()
+
+    session.send_custom_message = hold_after_clear_dispatch  # type: ignore[method-assign]
+    clear_task = asyncio.create_task(chat.clear_messages())
+    await clear_dispatched.wait()
+
+    assert settlements == 1
+    assert chat._transcript.read()[-1].message.content == "terminal response"
+    assert recorder.record is not None
+    assert recorder.record.nodes[recorder.record.active_leaf].status == "ok"  # type: ignore[index]
+    stored_before_clear = await FileConversationStore(tmp_path).get(
+        partition, recorder.record.id
+    )
+    assert stored_before_clear is not None
+    assert stored_before_clear.response_count == 1
+    assert stored_before_clear.nodes[stored_before_clear.active_leaf].status == "ok"  # type: ignore[index]
+
+    release_clear.set()
+    await clear_task
+
+    assert settlements == 1
+    assert chat._transcript.read() == ()
+    assert [
+        message["action"]
+        for message in session.messages
+        if message["action"]["type"] == "clear"
+    ] == [{"type": "clear"}]
+    chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_clear_rejects_active_stream_without_mutating_state(
+    tmp_path: Any,
+) -> None:
+    chat, session, client, store = await _make_initialized_live_v2_chat(
+        tmp_path, "clear_active_stream"
+    )
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    partition = ConversationPartition(chat_id="clear_active_stream", scope="test")
+    client.set_turns([{"role": "user", "content": "client turn"}])
+    await chat._record_accepted_user_input_with_capture(
+        ChatMessage(content="active input", role="user"),
+        dispatch_user_submit=False,
+    )
+    assert await chat._append_message_chunk(
+        "", chunk="start", stream_id="active-stream"
+    )
+    assert await chat._append_message_chunk(
+        "partial response", stream_id="active-stream"
+    )
+    assert recorder.record is not None
+    persisted = await FileConversationStore(tmp_path).get(
+        partition, recorder.record.id
+    )
+    assert persisted is not None
+    before = {
+        "transcript": _transcript_snapshot(chat),
+        "recorder": {
+            "record": recorder.record.model_dump(mode="json"),
+            "stream_exchanges": deepcopy(recorder._stream_exchanges),
+        },
+        "client_turns": deepcopy(client.get_turns()),
+        "active_id": controller._active_id_now(),
+        "persisted": persisted.model_dump(mode="json"),
+        "wire": deepcopy(session.messages),
+    }
+
+    with pytest.raises(
+        RuntimeError, match="Cannot clear or restore messages while a message stream"
+    ):
+        await chat.clear_messages()
+
+    persisted_after = await FileConversationStore(tmp_path).get(
+        partition, recorder.record.id
+    )
+    assert persisted_after is not None
+    after = {
+        "transcript": _transcript_snapshot(chat),
+        "recorder": {
+            "record": recorder.record.model_dump(mode="json"),
+            "stream_exchanges": deepcopy(recorder._stream_exchanges),
+        },
+        "client_turns": deepcopy(client.get_turns()),
+        "active_id": controller._active_id_now(),
+        "persisted": persisted_after.model_dump(mode="json"),
+        "wire": deepcopy(session.messages),
+    }
+    assert after == before
+
+    await chat._append_message_chunk(
+        "", chunk="end", stream_id="active-stream"
+    )
+    chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_clear_retains_input_admitted_after_clear_dispatch(
+    tmp_path: Any,
+) -> None:
+    chat, session, _, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "clear_tail_exchange"
+    )
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    partition = ConversationPartition(chat_id="clear_tail_exchange", scope="test")
+    await chat._record_accepted_user_input_with_capture(
+        ChatMessage(content="old input", role="user"),
+        dispatch_user_submit=False,
+    )
+    await chat.append_message("old response")
+    await reactive.flush()
+    await reactive.flush()
+    assert recorder.record is not None
+    old_leaf = recorder.record.active_leaf
+    assert old_leaf is not None
+
+    clear_dispatched = asyncio.Event()
+    release_clear = asyncio.Event()
+    original_send = session.send_custom_message
+
+    async def hold_after_clear_dispatch(
+        type: str, message: object
+    ) -> None:
+        await original_send(type, message)
+        if cast(dict[str, Any], message)["action"]["type"] == "clear":
+            clear_dispatched.set()
+            await release_clear.wait()
+
+    session.send_custom_message = hold_after_clear_dispatch  # type: ignore[method-assign]
+    clear_task = asyncio.create_task(chat.clear_messages())
+    await clear_dispatched.wait()
+
+    await chat._record_accepted_user_input_with_capture(
+        ChatMessage(content="tail input", role="user"),
+        dispatch_user_submit=False,
+    )
+    assert chat._transcript.read()[-1].message.content == "tail input"
+    release_clear.set()
+    await clear_task
+    await chat.append_message("tail response")
+    await reactive.flush()
+    await reactive.flush()
+
+    assert [
+        entry.message.content for entry in chat._transcript.read()
+    ] == ["tail input", "tail response"]
+    assert recorder.record is not None
+    tail_leaf = recorder.record.active_leaf
+    assert tail_leaf is not None
+    assert tail_leaf != old_leaf
+    tail_node = recorder.record.nodes[tail_leaf]
+    assert tail_node.input is not None
+    assert tail_node.input.content == "tail input"
+    assert [message.as_stored_message().content for message in tail_node.messages] == [
+        "tail response"
+    ]
+
+    persisted = await FileConversationStore(tmp_path).get(
+        partition, recorder.record.id
+    )
+    assert persisted is not None
+    persisted_tail = persisted.nodes[persisted.active_leaf]  # type: ignore[index]
+    assert persisted_tail.input is not None
+    assert persisted_tail.input.content == "tail input"
+    assert [
+        message.as_stored_message().content for message in persisted_tail.messages
+    ] == ["tail response"]
+    assert persisted.active_leaf == tail_leaf
+    assert [
+        message["action"]
+        for message in session.messages
+        if message["action"]["type"] == "clear"
+    ] == [{"type": "clear"}]
+    chat.destroy()
