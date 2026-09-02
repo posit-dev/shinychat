@@ -2580,8 +2580,9 @@ async def test_v2_restore_degrades_effective_turns_and_keeps_exchange_usable(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("restore_bootstrap", ["recorded", "live"])
-async def test_v2_degraded_retry_preserves_live_turns_and_immutable_target(
-    restore_bootstrap: str,
+@pytest.mark.parametrize("resubmit_kind", ["retry", "edit", "regenerate"])
+async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
+    restore_bootstrap: str, resubmit_kind: str
 ) -> None:
     adapter = _TrackingFakeAdapter()
     live_baseline = [{"role": "system", "content": "live"}]
@@ -2593,7 +2594,9 @@ async def test_v2_degraded_retry_preserves_live_turns_and_immutable_target(
     controller.restore_bootstrap = cast(Any, restore_bootstrap)
     target = _restore_target()
     exchange_id = "n_0001"
-    target.nodes[exchange_id].status = "error"
+    target.nodes[exchange_id].status = (
+        "ok" if resubmit_kind == "regenerate" else "error"
+    )
     target.nodes[exchange_id].state["shinychat:turns"] = StateEntry(
         kind="unsupported",
         version=1,
@@ -2633,12 +2636,20 @@ async def test_v2_degraded_retry_preserves_live_turns_and_immutable_target(
     original_node = target.nodes[exchange_id].model_dump_json()
     assert recorder._active_path_turns_are_incompatible(target)
 
-    await controller.handle_resubmit(0, "retry", request_id="retry")
+    if resubmit_kind == "edit":
+        await controller.handle_edit(0, "edited", request_id=resubmit_kind)
+    else:
+        await controller.handle_resubmit(
+            0, resubmit_kind, request_id=resubmit_kind
+        )
 
     assert target.active_leaf == "n_0000"
     assert target.nodes[exchange_id].model_dump_json() == original_node
     assert adapter.set_calls == restore_set_calls
     assert adapter.turns == expected_baseline
+    assert recorder._turn_baseline == recorder._canonical_turns(
+        expected_baseline
+    )[1]
     assert len(rewind_contexts) == 1
     assert rewind_contexts[0].node_ids == ("n_0000",)
     assert rewind_contexts[0].entries == (
@@ -2654,6 +2665,44 @@ async def test_v2_degraded_retry_preserves_live_turns_and_immutable_target(
     )
     assert sibling != exchange_id
     assert target.nodes[sibling].parent_id == "n_0000"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("data", "match"),
+    [
+        (["not a turn"], "Turn-state entries must contain a list of JSON objects"),
+        ([{1: "not a JSON object"}], "Non-string mapping key"),
+    ],
+)
+async def test_v2_resubmit_rejects_malformed_target_turn_data_before_mutation(
+    data: list[Any], match: str
+) -> None:
+    controller, chat, adapter, store, _first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    target_state = record.nodes[target].state["shinychat:turns"]
+    target_state.kind = "unsupported"
+    target_state.data = data  # type: ignore[assignment]
+    capture_state = AsyncMock()
+    recorder._capture_state = capture_state  # type: ignore[method-assign]
+    active_leaf = record.active_leaf
+    turns_before = list(adapter.turns)
+
+    with pytest.raises(ValueError, match=match):
+        await controller.handle_resubmit(1, "retry", request_id="retry")
+
+    capture_state.assert_not_awaited()
+    assert record.active_leaf == active_leaf
+    assert record.nodes[target].state["shinychat:turns"].data == data
+    assert adapter.turns == turns_before
+    assert chat.destructive_preflight_calls == 0
+    assert store.put_calls == []
+    assert chat.actions == []
 
 
 @pytest.mark.anyio

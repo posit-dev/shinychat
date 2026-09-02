@@ -418,17 +418,33 @@ class _ExchangeRecorder:
             self._effective_turn_entries(context)
         )
 
+    def _validate_turn_entries(
+        self, entries: tuple[tuple[str, StateEntry], ...]
+    ) -> None:
+        for _, entry in entries:
+            if not isinstance(entry.data, list) or not all(
+                isinstance(turn, dict) for turn in entry.data
+            ):
+                raise ValueError(
+                    "Turn-state entries must contain a list of JSON objects."
+                )
+            self._canonical_turns(cast(list[dict[str, Any]], entry.data))
+
     def _active_path_turns_are_incompatible(
         self, record: ConversationRecordV2
     ) -> bool:
         if record.active_leaf is None:
             raise ValueError("Exchange-tree record has no active leaf.")
         node_ids = tuple(record.path_node_ids())
+        for node_id in node_ids:
+            for name, entry in record.nodes[node_id].state.items():
+                self._validate_restore_state_entry(name, entry)
         entries = tuple(
             (node_id, record.nodes[node_id].state["shinychat:turns"])
             for node_id in node_ids
             if "shinychat:turns" in record.nodes[node_id].state
         )
+        self._validate_turn_entries(entries)
         return self._turn_entries_are_incompatible(
             self._effective_turn_entries(
                 StatePathContext(
@@ -452,13 +468,7 @@ class _ExchangeRecorder:
             else []
         )
         root_id = context.node_ids[0]
-        for _, entry in context.entries:
-            if not isinstance(entry.data, list) or not all(
-                isinstance(turn, dict) for turn in entry.data
-            ):
-                raise ValueError(
-                    "Turn-state entries must contain a list of JSON objects."
-                )
+        self._validate_turn_entries(context.entries)
         if self._turns_are_incompatible(context):
             return self._canonical_turns(turns)[0], True
 
@@ -1717,7 +1727,6 @@ class HistoryController:
         *,
         request_id: str,
         message_index: int,
-        preserve_live_turns: bool = False,
     ) -> None:
         recorder = self._exchange_recorder
         if recorder is None:
@@ -1737,6 +1746,7 @@ class HistoryController:
             raise ValueError(
                 f"Exchange {exchange_id!r} has no parent prefix to resubmit."
             )
+        preserve_live_turns = recorder._active_path_turns_are_incompatible(record)
         submitted_input = self._normalize_resubmit_input(
             target.input if replacement_input is None else replacement_input
         )
@@ -1786,20 +1796,6 @@ class HistoryController:
     async def retry(
         self, exchange_id: str, *, request_id: str, message_index: int
     ) -> None:
-        recorder = self._exchange_recorder
-        preserve_live_turns = False
-        if recorder is not None and recorder.record is not None:
-            preserve_live_turns = recorder._active_path_turns_are_incompatible(
-                recorder.record
-            )
-        if preserve_live_turns:
-            await self.resubmit(
-                exchange_id,
-                request_id=request_id,
-                message_index=message_index,
-                preserve_live_turns=True,
-            )
-            return
         await self.resubmit(
             exchange_id,
             request_id=request_id,
