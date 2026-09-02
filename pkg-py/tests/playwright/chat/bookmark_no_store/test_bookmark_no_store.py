@@ -15,5 +15,6 @@ def test_no_error_without_bookmark_store(
     # App loaded without crashing — the main assertion
     # Verify chat works normally
     chat.set_user_input("hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("You said: hello", timeout=30_000)

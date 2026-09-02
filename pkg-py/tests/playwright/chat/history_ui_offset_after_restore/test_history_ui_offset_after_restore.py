@@ -79,6 +79,7 @@ def test_new_turn_ui_survives_second_restore(
 
     # --- Conversation A, turn 1: rich reply with marker #1. ---
     chat.set_user_input("q1")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: q1", timeout=30_000)
     card_q1 = page.locator(
@@ -98,6 +99,7 @@ def test_new_turn_ui_survives_second_restore(
 
     # --- Conversation A, turn 2: rich reply with marker #2. ---
     chat.set_user_input("q2")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: q2", timeout=30_000)
     card_q2 = page.locator(

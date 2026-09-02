@@ -451,10 +451,19 @@ class Chat:
             @reactive.effect
             async def _init_chat():
                 await _append_init_messages()
+                if not self._history_enabled:
+                    await self._send_action(
+                        {
+                            "type": "history_update",
+                            "enabled": False,
+                            "conversations": [],
+                            "active_id": None,
+                        }
+                    )
 
-            @reactive.effect(priority=10_001)
-            async def _withdraw_initial_history_seed():
-                if not self._history_enabled or self.client is None:
+            @reactive.effect
+            async def _withdraw_unavailable_history_seed():
+                if self._history_enabled and self.client is None:
                     await self._send_action(
                         {
                             "type": "history_update",
@@ -527,7 +536,7 @@ class Chat:
                     await self._remove_loading_message()
 
             self._effects.append(_init_chat)
-            self._effects.append(_withdraw_initial_history_seed)
+            self._effects.append(_withdraw_unavailable_history_seed)
             self._effects.append(_on_user_input)
             self._effects.append(_sync_slash_commands)
             self._effects.append(_on_slash_command)
@@ -1323,12 +1332,10 @@ class Chat:
         status: Literal["cancelled", "error"] | None = None,
         error: str | None = None,
     ) -> bool:
-        exchange_id = (
-            self._transcript.open_exchange_id if chunk == "start" else None
-        )
         # Normalize various message types into a ChatMessage()
         if chunk == "start":
             await self.history._await_initial_v2_decision()
+            exchange_id = self._transcript.open_exchange_id
             transaction = self._transcript._reserve_stream_start()
             try:
                 msg = normalize_message_chunk(message)

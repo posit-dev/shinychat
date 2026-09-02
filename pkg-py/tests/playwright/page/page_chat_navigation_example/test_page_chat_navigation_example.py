@@ -39,6 +39,7 @@ def test_navigation_example_saves_conversations(
     page.locator("select#model-select").select_option("Opus")
     page.locator("select#reasoning-select").select_option("high")
     chat.set_user_input("Remember this exchange")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
     chat.expect_latest_message(
         "Opus [high] replied to your message: Remember this exchange"
@@ -72,6 +73,7 @@ def test_navigation_example_mobile_menu_includes_home_link(
 
     expect(page_chat.loc_identity_title).to_have_text("Field notes")
     chat.set_user_input("keep the mobile home link")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
     chat.expect_latest_message(
         "Sonnet [med] replied to your message: keep the mobile home link"
@@ -250,6 +252,7 @@ def test_navigation_example_chat_surfaces_follow_theme_radius(
 
     chat = ChatController(page, "chat")
     chat.set_user_input("Check theme radius")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
     chat.expect_latest_message(
         "Sonnet [med] replied to your message: Check theme radius"

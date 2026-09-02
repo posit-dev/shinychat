@@ -19,6 +19,7 @@ def test_server_authored_assistant_attachment_renders(
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     chat.set_user_input("show me the chart")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message(
         "Here is the chart you asked for.", timeout=10_000

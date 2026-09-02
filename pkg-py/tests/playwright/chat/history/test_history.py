@@ -34,6 +34,7 @@ def test_history_full_flow(page: Page, local_app: ShinyAppProc) -> None:
     )
 
     chat.set_user_input("first question")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: first question", timeout=30_000)
 
@@ -49,6 +50,7 @@ def test_history_full_flow(page: Page, local_app: ShinyAppProc) -> None:
 
     # Send a message in the second conversation.
     chat.set_user_input("second question")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: second question", timeout=30_000)
 

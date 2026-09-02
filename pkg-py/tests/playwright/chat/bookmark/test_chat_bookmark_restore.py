@@ -45,6 +45,7 @@ def test_bookmark_restore_preserves_user_messages(
 
     # Send first message and wait for response
     chat.set_user_input("Hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("You said: Hello", timeout=10_000)
 
@@ -56,6 +57,7 @@ def test_bookmark_restore_preserves_user_messages(
 
     # Send second message and wait for response
     chat.set_user_input("World")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("You said: World", timeout=10_000)
 

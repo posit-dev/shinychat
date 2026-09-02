@@ -51,6 +51,7 @@ def test_active_history_transition_preserves_draft_until_explicit_resubmit(
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     chat.set_user_input("seed")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: seed", timeout=30_000)
     controller.OutputText(page, "submissions").expect_value("1")
@@ -91,6 +92,7 @@ def test_remount_stale_completion_cannot_clear_new_marker(
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     chat.set_user_input("seed")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: seed", timeout=30_000)
     controller.OutputText(page, "submissions").expect_value("1")
@@ -152,6 +154,7 @@ def test_legacy_transition_protocol_keeps_submission_usable(
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     chat.set_user_input("seed")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: seed", timeout=30_000)
     controller.OutputText(page, "submissions").expect_value("1")

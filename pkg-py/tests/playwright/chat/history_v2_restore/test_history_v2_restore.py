@@ -24,6 +24,7 @@ def test_v2_restore_replays_turns_and_continues_provider_context(
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     chat.set_user_input("first question")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: first question", timeout=30_000)
     expect(_message_count(page)).to_have_count(2, timeout=10_000)
@@ -59,6 +60,7 @@ def test_v2_restore_replays_turns_and_continues_provider_context(
     )
 
     chat.set_user_input("second question")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: second question", timeout=30_000)
     expect(_message_count(page)).to_have_count(4, timeout=10_000)
@@ -83,6 +85,7 @@ def test_v2_switch_replays_without_recapturing_the_active_tree(
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     chat.set_user_input("conversation A")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: conversation A", timeout=30_000)
 
@@ -94,6 +97,7 @@ def test_v2_switch_replays_without_recapturing_the_active_tree(
     page.locator(".shiny-chat-history-drawer").wait_for(state="hidden")
 
     chat.set_user_input("conversation B")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: conversation B", timeout=30_000)
 
@@ -120,6 +124,7 @@ def test_v2_edit_projects_once_through_the_real_provider_and_preserves_draft(
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     chat.set_user_input("original")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: original", timeout=30_000)
     controller.OutputText(page, "provider_calls").expect_value("1")
@@ -193,6 +198,7 @@ def test_v2_restored_failure_retries_through_the_real_provider(
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     chat.set_user_input("retry me")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     expect(page.locator(".shiny-chat-user-message")).to_have_count(
         1, timeout=30_000
@@ -219,6 +225,7 @@ def test_v2_navigation_replays_the_selected_sibling_and_continues_from_it(
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     chat.set_user_input("original")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: original", timeout=30_000)
 
@@ -259,6 +266,7 @@ def test_v2_navigation_replays_the_selected_sibling_and_continues_from_it(
     expect(chat.loc).to_be_visible(timeout=30_000)
     chat.expect_latest_message("echo: original", timeout=30_000)
     chat.set_user_input("continued")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: continued", timeout=30_000)
     controller.OutputText(page, "provider_calls").expect_value("1")
@@ -277,6 +285,7 @@ def test_v2_server_bookmarks_restore_distinct_sibling_leaves(
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     chat.set_user_input("original bookmark")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: original bookmark", timeout=30_000)
     page.wait_for_url(lambda url: "_state_id_=" in url, timeout=10_000)
@@ -320,6 +329,7 @@ def test_v2_url_restore_publishes_one_history_update(
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     chat.set_user_input("url restore")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: url restore", timeout=30_000)
     page.wait_for_url(

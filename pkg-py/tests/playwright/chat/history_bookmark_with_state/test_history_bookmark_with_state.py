@@ -15,6 +15,7 @@ def start_conversation(page: Page, text: str) -> None:
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
     chat.set_user_input(text)
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message(f"echo: {text}", timeout=30_000)
 

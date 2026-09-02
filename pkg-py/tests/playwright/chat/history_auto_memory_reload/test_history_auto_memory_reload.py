@@ -18,6 +18,7 @@ def test_auto_dev_memory_survives_plain_reload(
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     chat.set_user_input("reload dev memory")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: reload dev memory", timeout=30_000)
 

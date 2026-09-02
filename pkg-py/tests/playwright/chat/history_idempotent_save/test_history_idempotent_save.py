@@ -68,6 +68,7 @@ def test_restore_does_not_trigger_extra_save(
 
     # --- Conversation A: one exchange, one save. ---
     chat.set_user_input("first question")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: first question", timeout=30_000)
     save_count.expect_value("1", timeout=10_000)
@@ -83,6 +84,7 @@ def test_restore_does_not_trigger_extra_save(
     save_count.expect_value("2", timeout=10_000)
 
     chat.set_user_input("second question")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: second question", timeout=30_000)
     save_count.expect_value("3", timeout=10_000)
@@ -134,6 +136,7 @@ def test_paused_stream_settles_history_after_terminal_response(
     save_count.expect_value("0")
 
     chat.set_user_input("paused question")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("partial: paused question", timeout=30_000)
     owner_messages.expect_value(

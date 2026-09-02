@@ -48,6 +48,7 @@ def test_desktop_navigation_streaming_and_history_auto_open(
 
     expect(chat.loc_input).to_be_visible(timeout=TIMEOUT)
     chat.set_user_input("stream while hidden")
+    expect(chat.loc_input_button).to_be_enabled(timeout=TIMEOUT)
     chat.send_user_input()
     chat.set_user_input("preserved draft")
 
@@ -791,6 +792,7 @@ def test_page_chat_remeasures_greeting_after_history_new(
     layout = chat.loc.locator(".shiny-chat-layout")
 
     chat.set_user_input("Save this conversation")
+    expect(chat.loc_input_button).to_be_enabled(timeout=TIMEOUT)
     chat.send_user_input()
     chat.expect_latest_message("echo: Save this conversation", timeout=TIMEOUT)
 

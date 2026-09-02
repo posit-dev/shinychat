@@ -76,19 +76,39 @@ def test_initial_history_update_blocks_and_preserves_draft_until_release(
     chat.loc_input.press("Enter")
     expect(chat.loc_input).to_have_text("held draft")
     expect(page.locator(".shiny-chat-input-attachments")).to_have_count(1)
+    page.get_by_role("button", name="Send message").click(force=True)
+    expect(chat.loc_input).to_have_text("held draft")
+    expect(page.locator(".shiny-chat-input-attachments")).to_have_count(1)
     page.locator("#held-submit-suggestion").click()
     expect(chat.loc_input).to_have_text("held draft")
     expect(page.locator(".shiny-chat-input-attachments")).to_have_count(1)
     controller.OutputText(page, "accepted_submissions").expect_value("0:0")
 
+    expect(chat.loc_input).to_have_attribute(
+        "aria-haspopup", "listbox", timeout=30_000
+    )
+    chat.loc_input.fill("/gate held")
+    chat.loc_input.press("Enter")
+    expect(chat.loc_input).to_have_text("/gate held")
+    controller.OutputText(page, "slash_submissions").expect_value("0")
+
     client_routes[0].send(held_history_updates.pop())
     expect(page.get_by_role("button", name="Send message")).to_be_enabled(
         timeout=30_000
     )
-    expect(chat.loc_input).to_have_text("held draft")
+    expect(chat.loc_input).to_have_text("/gate held")
     expect(page.locator(".shiny-chat-input-attachments")).to_have_count(1)
     controller.OutputText(page, "accepted_submissions").expect_value("0:0")
 
+    chat.loc_input.fill("/gate released")
+    expect(page.get_by_role("button", name="Send message")).to_be_enabled()
+    chat.loc_input.press("Enter")
+    controller.OutputText(page, "slash_submissions").expect_value(
+        "1", timeout=30_000
+    )
+
+    chat.set_user_input("released draft")
+    expect(page.get_by_role("button", name="Send message")).to_be_enabled()
     chat.send_user_input(method="click")
     controller.OutputText(page, "accepted_submissions").expect_value(
         "1:1", timeout=30_000

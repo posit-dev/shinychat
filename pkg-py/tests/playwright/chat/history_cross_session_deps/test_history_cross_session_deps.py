@@ -33,6 +33,7 @@ def test_html_deps_reregister_across_sessions(
     card = page.locator(".cross-session-nonstream-card")
 
     chat.set_user_input("first question")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     expect(
         page.locator(

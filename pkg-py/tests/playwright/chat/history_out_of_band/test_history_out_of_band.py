@@ -35,6 +35,7 @@ def test_out_of_band_message_survives_history_restore(
     # --- Conversation A: one exchange producing 3 messages (user, out-of-band
     # notice, streamed reply). ---
     chat.set_user_input("first question")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     expect(marker).to_be_visible(timeout=10_000)
     expect(marker).to_have_text("out-of-band notice")

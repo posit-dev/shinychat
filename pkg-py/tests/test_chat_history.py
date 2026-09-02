@@ -11,6 +11,7 @@ from shiny import reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat
+from shinychat._chat_types import StoredMessage, StoredSegment
 from shinychat._history import ChatHistory, HistoryInputIds
 from shinychat._history_store import (
     ConversationPartition,
@@ -611,6 +612,93 @@ async def test_v2_initial_barrier_does_not_use_partition_or_transaction_bypass()
 
 
 @pytest.mark.anyio
+async def test_v2_initial_stream_waits_for_restored_exchange_target() -> None:
+    chat_id = "initial_stream_restored_target"
+    session = _LiveSession()
+    store = InMemoryConversationStore()
+    history_ids = HistoryInputIds.for_chat(ResolvedId(chat_id))
+    session.input[history_ids.browser_token] = reactive.Value("token")
+    session.input[history_ids.current_id] = reactive.Value("c_target")
+    target = new_conversation_record_v2(
+        title="target",
+        id="c_target",
+        client_info={},
+    )
+    restored_exchange = "n_0001"
+    target.open_exchange(
+        restored_exchange,
+        StoredMessage(
+            role="user",
+            segments=[
+                StoredSegment(content="restored input", content_type="markdown")
+            ],
+        ),
+    )
+    await store.put(
+        ConversationPartition(chat_id=chat_id, scope="test"),
+        target,
+    )
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            chat_id,
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode="browser",
+            ),
+        )
+
+    try:
+        stale_exchange = chat._transcript.record_accepted_input(
+            StoredMessage(
+                role="user",
+                segments=[
+                    StoredSegment(
+                        content="pre-restore input",
+                        content_type="markdown",
+                    )
+                ],
+            )
+        )
+        with session_context(cast(Any, session)), reactive.isolate():
+            stream_start = asyncio.create_task(
+                chat._append_message_chunk(
+                    "",
+                    chunk="start",
+                    stream_id="restored-stream",
+                )
+            )
+        await asyncio.sleep(0)
+        assert not stream_start.done()
+
+        with session_context(cast(Any, session)), reactive.isolate():
+            await handlers["_init_history"]()
+        await stream_start
+
+        recorder = chat.history._controller._exchange_recorder  # type: ignore[union-attr]
+        assert recorder is not None
+        assert recorder.record is not None
+        stream_exchange = recorder._stream_exchanges["restored-stream"]
+        assert stale_exchange not in recorder.record.nodes
+        assert recorder.record.nodes[stream_exchange].parent_id == restored_exchange
+
+        await chat._append_message_chunk(
+            "",
+            chunk="end",
+            stream_id="restored-stream",
+        )
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
 async def test_v2_initial_messages_wait_for_fresh_decision() -> None:
     chat_id = "initial_messages_fresh"
     session = _LiveSession()
@@ -711,6 +799,50 @@ async def test_v2_initial_messages_suppress_restored_decision() -> None:
         assert chat._transcript.read() == ()
     finally:
         chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_initial_messages_suppress_real_restored_target() -> None:
+    chat_id = "initial_messages_real_restored_target"
+    session = _LiveSession()
+    store = InMemoryConversationStore()
+    history_ids = HistoryInputIds.for_chat(ResolvedId(chat_id))
+    session.input[history_ids.browser_token] = reactive.Value("token")
+    session.input[history_ids.current_id] = reactive.Value("c_target")
+    await store.put(
+        ConversationPartition(chat_id=chat_id, scope="test"),
+        new_conversation_record_v2(
+            title="target",
+            id="c_target",
+            client_info={},
+        ),
+    )
+
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            chat_id,
+            client=cast(Any, _MockClient()),
+            messages=["constructor message"],
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode="browser",
+            ),
+        )
+        try:
+            await reactive.flush()
+            await reactive.flush()
+        finally:
+            chat.destroy()
+
+    assert chat.history._initial_v2_barrier is not None
+    assert chat.history._initial_v2_barrier.result() == "restored"
+    assert [
+        entry.message.content for entry in chat._transcript.read()
+    ] == []
 
 
 @pytest.mark.anyio

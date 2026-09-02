@@ -14,6 +14,7 @@ history_module._EXCHANGE_TREE_HISTORY_V2 = True
 
 app_ui = ui.page_fillable(
     ui.output_text("accepted_submissions"),
+    ui.output_text("slash_submissions"),
     ui.output_text("history_updates_sent"),
     chat_ui(
         "chat",
@@ -31,6 +32,7 @@ app_ui = ui.page_fillable(
 def server(input: Inputs, output: Outputs, session: Session) -> None:
     accepted_submission_count = reactive.Value(0)
     accepted_attachment_count = reactive.Value(0)
+    slash_submission_count = reactive.Value(0)
     history_updates_sent_value = reactive.Value(0)
     provider = MagicMock()
     provider.name = "test"
@@ -60,11 +62,19 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         accepted_submission_count.set(accepted_submission_count() + 1)
         accepted_attachment_count.set(len(attachments))
 
+    @chat.slash_command("gate", "Record a gated slash submission")
+    async def _record_slash_submission(_input: str) -> None:
+        slash_submission_count.set(slash_submission_count() + 1)
+
     @render.text
     def accepted_submissions() -> str:
         return (
             f"{accepted_submission_count()}:{accepted_attachment_count()}"
         )
+
+    @render.text
+    def slash_submissions() -> str:
+        return str(slash_submission_count())
 
     @render.text
     def history_updates_sent() -> str:

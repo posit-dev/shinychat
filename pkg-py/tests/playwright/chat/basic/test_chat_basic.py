@@ -33,6 +33,7 @@ def test_validate_chat_basic(page: Page, local_app: ShinyAppProc) -> None:
     # Same as above, but with click instead of enter
     user_message2 = "I need help with something else"
     chat.set_user_input(user_message2)
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="click")
     chat.expect_latest_message(f"You said: {user_message2}")
     chat.expect_user_input("")

@@ -15,6 +15,9 @@ def test_python_v1_history_update_withdraws_static_seed(
     controller.OutputText(page, "v1_history_update").expect_value(
         "True:completion-v1", timeout=30_000
     )
+    v1_actions = page.locator("#v1_action_order").inner_text().split(",")
+    assert v1_actions.index("message") < v1_actions.index("history_update")
+    chat.expect_latest_message("v1 constructor message")
 
     chat.set_user_input("v1 input")
     expect(chat.loc_input_button).to_be_enabled()
@@ -33,6 +36,13 @@ def test_history_disabled_update_withdraws_static_seed(
     controller.OutputText(page, "disabled_history_update").expect_value(
         "False", timeout=30_000
     )
+    disabled_actions = page.locator("#disabled_action_order").inner_text().split(
+        ","
+    )
+    assert disabled_actions.index("message") < disabled_actions.index(
+        "history_update"
+    )
+    chat.expect_latest_message("disabled constructor message")
 
     chat.set_user_input("disabled input")
     expect(chat.loc_input_button).to_be_enabled()

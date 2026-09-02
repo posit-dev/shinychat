@@ -207,10 +207,6 @@ class Chat(UiBase):
         timeout
             The maximum time to wait for the chat input to be visible and interactable. Defaults to `None`.
         """
-        if self.loc_input.inner_text(timeout=timeout).strip():
-            playwright_expect(self.loc_input_button).to_be_enabled(
-                timeout=timeout
-            )
         if method == "enter":
             self.loc_input.press("Enter", timeout=timeout)
         else:

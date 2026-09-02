@@ -2494,7 +2494,9 @@ class ChatHistory:
             )
             await controller.notify_settled(restored)
 
-        @reactive.effect(priority=10_000)
+        @reactive.effect(
+            priority=10_000 if controller._exchange_recorder is not None else 0
+        )
         async def _init_history():
             nonlocal initialized
             if initialized:
