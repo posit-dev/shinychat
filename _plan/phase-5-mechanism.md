@@ -439,23 +439,19 @@ Final plan self-review scored 100/100 (25/25 each for clarity,
 comprehensiveness, feasibility, and consistency) with no remaining
 deficiencies.
 
-Current blocker (2026-09-02): `shinychat#fbhe` has no accessible existing
-server-side fact for "the authoritative initial `history_update` has
-published." The initial effect's closure-local `initialized` fact has those
-semantics, but `HistoryController.partition` is set earlier, before target
-selection and publication, and cannot safely admit input or startup appends.
-The required entry-point suppression cannot proceed by substituting that
-unsafe proxy.
+Readiness decision (2026-09-02): relocate the existing `_init_history`
+closure-local `initialized` fact to private `ChatHistory` state. It flips only
+after the authoritative initial `history_update` send completes and is checked
+synchronously at complete-append, root-stream-start, and user-input admission.
+`HistoryController.partition` is not a proxy because it is set before target
+selection and publication. This is the same initialization fact made
+accessible to its three consumers, not a barrier, awaitable, callback,
+payload holder, queue, client marker, second owner, or generic admission
+adapter. It must not grow any of those responsibilities.
 
-Decision needed: authorize relocating the existing `initialized` fact to
-private `ChatHistory` readiness state, set only after the authoritative
-initial `history_update`, for direct checks at complete-append, root-stream
-start, and user-input admission. This would add no barrier, await, payload,
-queue, client marker, owner, or generic `_capture_admission` adapter. Until
-that is resolved, do not resume P5.0 implementation. The focused baseline is
-green: `make py-check-tests FILTER='history or transcript'` passed 52
-Playwright and 541 Python tests. `shinychat#bj1n` and later children remain
-blocked.
+Implementation may resume. The focused baseline is green:
+`make py-check-tests FILTER='history or transcript'` passed 52 Playwright and
+541 Python tests. `shinychat#bj1n` and later children remain blocked.
 
 Boundary: `Chat(messages=...)` removal is follow-up `shinychat#mcbp`, not P5.0.
 Do not begin R, legacy, degradation/error-affordance work, or another
