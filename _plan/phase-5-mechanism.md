@@ -475,6 +475,25 @@ submission. Delete/replace would remove the only truthful publication fact
 without simplifying the shape. P5.0 remains open and later children remain
 blocked until these corrections pass review.
 
+Correction evidence (2026-09-02): the client-route fix landed in `175ea3ba`
+with generated assets in `c4124a8b`; Roborev 1178 found no issues. Python
+readiness correction `83869e5f` preserves the original restore/cancellation
+outcome, records a failed cleanup publication as incomplete, and leaves
+readiness false unless that cleanup's authoritative `history_update` returns.
+Test correction `aec34c8d` proves the public post-update stream is stored in
+the inputless root node and that the bookmark boundary restores `c_target` at
+`n_0000` before admitting the append. Python evidence: focused readiness and
+bookmark tests 9 passed, controller/history suite 305 passed, full
+history/transcript gate 52 Playwright plus 541 Python passed, the final
+history module run 83 passed, and format/Pyright passed with 0 errors. The
+focused `make py-check-tests` invocation is not a unit-test selector in this
+repository and exits after deselecting all browser tests; direct `uv run
+pytest pkg-py/tests/test_chat_history.py` supplied the focused unit evidence.
+Roborev 1179's claimed Ruff E306 failure was declined after the repository
+formatter passed; Roborev 1180 found no issues. Independent re-review passed
+after `aec34c8d`. P5.0 remains open for human review/closure; downstream
+`shinychat#bj1n` remains blocked.
+
 Boundary: `Chat(messages=...)` removal is follow-up `shinychat#mcbp`, not P5.0.
 Do not begin R, legacy, degradation/error-affordance work, or another
 scheduling/ownership mechanism.
