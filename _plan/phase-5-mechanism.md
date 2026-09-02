@@ -725,3 +725,29 @@ second input send; compatible resubmit ordering is unchanged.
 Focused controller and JS history tests, full controller/history/transcript
 tests, JS lint/test, `make update-dist`, Pyright, source diff checks, and the
 full `make py-check` gate passed (209 Playwright; 940 Python, 1 existing skip).
+
+Independent review then raised three findings against the landed replacement,
+firing the escalation valve. Decision: **PATCH**. The same-call sibling
+mechanism remains coherent; the defects are admission and publication ordering,
+not a second ownership or lifecycle problem.
+
+Once the degraded sibling and its compatible live-turn snapshot are durable,
+send the private render-only projection before publishing the accepted-input
+signal. Publication runs exactly once in a `finally`: success orders provider
+work after projection enqueue; projection failure still publishes the durable
+accepted input, then propagates the original exception through the transition
+wrapper. This avoids both assistant-before-projection truncation and a durable
+pending sibling with no provider execution. There is no post-accept rollback
+or fresh-draft recovery.
+
+`resubmit()` is the sole retry/edit/regenerate admission boundary. Before
+classification, transcript mutation, or persistence it requires an initialized
+partition and an input-bearing target on the current active path; ancestors are
+valid targets. Retry permits pending/error/cancelled, regenerate requires ok,
+and edit permits any input-bearing active-path node. The accepted-resubmit
+helper may not silently return after mutation.
+
+Self-review: 100/100 (clarity 25, comprehensiveness 25, feasibility 25,
+consistency 25). No deficiencies remain. The patch names exact ordering,
+failure behavior, admission rules, and the pre-mutation partition boundary
+without changing compatible resubmit behavior or adding state.
