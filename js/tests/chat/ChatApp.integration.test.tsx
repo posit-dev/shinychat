@@ -326,7 +326,7 @@ describe("ChatApp integration: editable messages gated by history state", () => 
 
   it("rechecks history admission before an imperative input dispatches", async () => {
     const transport = createMockTransport()
-    render(
+    const { container } = render(
       <ChatApp
         transport={transport}
         shinyLifecycle={createMockShinyLifecycle()}
@@ -335,8 +335,34 @@ describe("ChatApp integration: editable messages gated by history state", () => 
         uploadAccept={["image/png"]}
         maxUploadSize={30000000}
         placeholder="Type..."
+        enableUpload
       />,
     )
+
+    const draft = container.querySelector(
+      ".shiny-chat-composer textarea",
+    ) as HTMLTextAreaElement
+    fireEvent.change(draft, { target: { value: "preserved draft" } })
+    const fileInput = container.querySelector(
+      ".shiny-chat-composer input[type=file]",
+    ) as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(fileInput, {
+        target: {
+          files: [new File(["draft"], "draft.png", { type: "image/png" })],
+        },
+      })
+    })
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll(
+          ".shiny-chat-composer .shiny-chat-input-thumbnail",
+        ),
+      ).toHaveLength(1)
+    })
+    expect(
+      screen.getByRole("button", { name: "Send message" }),
+    ).not.toBeDisabled()
 
     const historyStore = getHistoryStore("direct-submit-recheck")
     await act(async () => {
@@ -350,6 +376,15 @@ describe("ChatApp integration: editable messages gated by history state", () => 
 
     expect(transport.sendInput).not.toHaveBeenCalled()
     expect(screen.queryByText("blocked server submission")).toBeNull()
+    expect(draft).toHaveValue("preserved draft")
+    expect(
+      container.querySelectorAll(
+        ".shiny-chat-composer .shiny-chat-input-thumbnail",
+      ),
+    ).toHaveLength(1)
+    expect(container.querySelectorAll(".shiny-chat-user-message")).toHaveLength(
+      0,
+    )
   })
 
   it("does not render the edit button on a user message when history was never enabled", async () => {

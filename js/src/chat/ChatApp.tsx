@@ -184,8 +184,8 @@ export function ChatApp({
   }, [elementId, historyStore, transport])
 
   const submitUserInput = useCallback(
-    (content: string, attachments: AttachmentPayload[]) => {
-      if (isHistorySubmissionBlocked(historyStore.getSnapshot())) return
+    (content: string, attachments: AttachmentPayload[]): boolean => {
+      if (isHistorySubmissionBlocked(historyStore.getSnapshot())) return false
       // Optimistic UI update (adds user message + loading placeholder).
       dispatch({
         type: "INPUT_SENT",
@@ -197,6 +197,7 @@ export function ChatApp({
         inputId,
         state.enableUpload ? { text: content, attachments } : content,
       )
+      return true
     },
     [dispatch, historyStore, transport, inputId, state.enableUpload],
   )

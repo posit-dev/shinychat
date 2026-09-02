@@ -50,7 +50,7 @@ export interface ChatInputHandle {
       attachments?: AttachmentPayload[]
       attachmentMode?: "append" | "set"
     },
-  ): void
+  ): boolean
   focus(): void
 }
 
@@ -166,8 +166,12 @@ export const ChatInput = memo(
             )
           }
         } else {
-          submitUserInput(content, payloads)
-          resetAll()
+          const submitted = submitUserInput(content, payloads)
+          if (submitted) {
+            resetAll()
+            onSend?.()
+          }
+          return submitted
         }
         onSend?.()
         return true
@@ -210,9 +214,9 @@ export const ChatInput = memo(
             attachments?: AttachmentPayload[]
             attachmentMode?: "append" | "set"
           } = {},
-        ): void {
+        ): boolean {
           const tiptap = tiptapRef.current
-          if (!tiptap) return
+          if (!tiptap) return false
 
           if (!submit) {
             if (newValue !== undefined) {
@@ -223,12 +227,12 @@ export const ChatInput = memo(
             if (attachments !== undefined) {
               applyPayloads(attachments, attachmentMode)
             }
-            return
+            return true
           }
 
           if (submissionBlocked) {
             if (focus) tiptap.focus()
-            return
+            return false
           }
 
           // Submit: stage the provided value (if any), send, then restore the
@@ -250,9 +254,8 @@ export const ChatInput = memo(
             // commands submitted programmatically still execute.
             submitted = submitValue(submitContent)
           } else if (!disabled && submitAttachments.length > 0) {
-            submitUserInput(submitContent, submitAttachments)
-            onSend?.()
-            submitted = true
+            submitted = submitUserInput(submitContent, submitAttachments)
+            if (submitted) onSend?.()
           }
 
           if (newValue !== undefined) {
@@ -263,6 +266,7 @@ export const ChatInput = memo(
           if (submitted && attachments !== undefined) {
             clearAttachments()
           }
+          return submitted
         },
         focus(): void {
           tiptapRef.current?.focus()

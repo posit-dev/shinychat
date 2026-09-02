@@ -670,7 +670,7 @@ export const ChatContainer = forwardRef<
 
   useImperativeHandle(ref, () => ({
     setInputValue(...args) {
-      chatInputRef.current?.setInputValue(...args)
+      return chatInputRef.current?.setInputValue(...args) ?? false
     },
     focus() {
       chatInputRef.current?.focus()

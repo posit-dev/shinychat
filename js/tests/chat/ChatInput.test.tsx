@@ -34,7 +34,11 @@ import {
   processFile,
   type AttachmentPayload,
 } from "../../src/chat/attachments"
-import { ChatDispatchContext, ChatSubmitContext } from "../../src/chat/context"
+import {
+  ChatDispatchContext,
+  ChatSubmitContext,
+  type SubmitUserInput,
+} from "../../src/chat/context"
 import type { ChatTransport } from "../../src/transport/types"
 import { createRef, type RefObject } from "react"
 
@@ -74,8 +78,8 @@ function makeSubmitUserInput(
   transport: ChatTransport,
   inputId: string,
   enableUpload: boolean,
-) {
-  return (content: string, attachments: AttachmentPayload[]): void => {
+): SubmitUserInput {
+  return (content: string, attachments: AttachmentPayload[]): boolean => {
     dispatch({
       type: "INPUT_SENT",
       content,
@@ -86,6 +90,7 @@ function makeSubmitUserInput(
       inputId,
       enableUpload ? { text: content, attachments } : content,
     )
+    return true
   }
 }
 
@@ -105,6 +110,7 @@ function renderChatInput(
     isStreaming: boolean
     onCancel: () => void
     iconSend: string
+    submitUserInput: SubmitUserInput
     slashCommandId: string
     slashCommands: Array<{
       name: string
@@ -119,12 +125,9 @@ function renderChatInput(
   const internalRef = ref ?? createRef<ChatInputHandle>()
   const inputId = props.inputId ?? "test-input"
   const enableUpload = props.enableUpload ?? true
-  const submitUserInput = makeSubmitUserInput(
-    dispatch,
-    transport,
-    inputId,
-    enableUpload,
-  )
+  const submitUserInput =
+    props.submitUserInput ??
+    makeSubmitUserInput(dispatch, transport, inputId, enableUpload)
 
   const result = render(
     <ChatDispatchContext.Provider value={dispatch}>
@@ -255,6 +258,44 @@ describe("ChatInput", () => {
     expect(dispatch).not.toHaveBeenCalled()
     expect(transport.sendInput).not.toHaveBeenCalled()
     expect(transport.sendSlashCommand).not.toHaveBeenCalled()
+  })
+
+  it("preserves draft and attachments when live submission admission rejects", async () => {
+    const onSend = vi.fn()
+    const submitUserInput = vi.fn<SubmitUserInput>(() => false)
+    const { editorEl, ref } = renderChatInput({
+      submitUserInput,
+      onSend,
+    })
+
+    act(() => {
+      ref.current?.setInputValue("draft")
+    })
+    await act(async () => {
+      fireEvent.paste(editorEl, {
+        clipboardData: {
+          items: [
+            {
+              kind: "file",
+              type: "image/png",
+              getAsFile: () =>
+                new File(["x"], "draft.png", { type: "image/png" }),
+            },
+          ],
+        },
+      })
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }))
+
+    expect(submitUserInput).toHaveBeenCalledWith("draft", [
+      expect.objectContaining({ name: "draft.png", mime: "image/png" }),
+    ])
+    expect(editorEl.textContent).toBe("draft")
+    expect(
+      screen.getByRole("img", { name: "Attached image: draft.png" }),
+    ).toBeTruthy()
+    expect(onSend).not.toHaveBeenCalled()
   })
 
   it("does not send empty input", () => {
