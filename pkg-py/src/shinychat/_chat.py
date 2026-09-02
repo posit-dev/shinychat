@@ -438,6 +438,11 @@ class Chat:
             async def _append_init_messages(
                 transaction: object | None = None,
             ) -> None:
+                if messages and (
+                    await self.history._await_initial_v2_decision()
+                    == "restored"
+                ):
+                    return
                 for msg in messages:
                     await self._append_complete_message(
                         msg, settle=False, transaction=transaction
@@ -446,7 +451,10 @@ class Chat:
             @reactive.effect
             async def _init_chat():
                 await _append_init_messages()
-                if not self._history_enabled:
+
+            @reactive.effect(priority=10_001)
+            async def _withdraw_initial_history_seed():
+                if not self._history_enabled or self.client is None:
                     await self._send_action(
                         {
                             "type": "history_update",
@@ -519,6 +527,7 @@ class Chat:
                     await self._remove_loading_message()
 
             self._effects.append(_init_chat)
+            self._effects.append(_withdraw_initial_history_seed)
             self._effects.append(_on_user_input)
             self._effects.append(_sync_slash_commands)
             self._effects.append(_on_slash_command)
@@ -1105,6 +1114,7 @@ class Chat:
         settle: bool,
         transaction: object | None = None,
     ) -> None:
+        await self.history._await_initial_v2_decision()
         exchange_id = self._transcript.open_exchange_id
         transaction, release = self._transcript._use_transaction(
             transaction, self._transcript._reserve_complete_append
@@ -1318,6 +1328,7 @@ class Chat:
         )
         # Normalize various message types into a ChatMessage()
         if chunk == "start":
+            await self.history._await_initial_v2_decision()
             transaction = self._transcript._reserve_stream_start()
             try:
                 msg = normalize_message_chunk(message)
@@ -2180,6 +2191,7 @@ class Chat:
             raise RuntimeError(
                 "Cannot accept user input while switching conversations."
             )
+        await self.history._await_initial_v2_decision()
         stored = self._as_stored_message(message)
         await self._transcript.record_accepted_input_and_notify(stored)
         self._publish_accepted_user_input(

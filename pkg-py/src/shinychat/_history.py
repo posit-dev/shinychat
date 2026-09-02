@@ -2076,6 +2076,7 @@ class ChatHistory:
         self._restore_bootstrap: "Literal['recorded', 'live']" = (
             cfg.restore_bootstrap
         )
+        self._initial_v2_barrier: "asyncio.Future[Literal['fresh', 'restored']] | None" = None
 
     def enable(self) -> None:
         """Enable chat history for the current session. No-op if already started."""
@@ -2104,6 +2105,30 @@ class ChatHistory:
         if on_end is not None:
             on_end()
         self._on_session_end = None
+        self._terminate_initial_v2_barrier()
+
+    def _install_initial_v2_barrier(self) -> None:
+        self._initial_v2_barrier = asyncio.get_running_loop().create_future()
+
+    async def _await_initial_v2_decision(
+        self,
+    ) -> Literal["fresh", "restored"] | None:
+        barrier = self._initial_v2_barrier
+        if barrier is None:
+            return None
+        return await asyncio.shield(barrier)
+
+    def _resolve_initial_v2_barrier(
+        self, outcome: Literal["fresh", "restored"]
+    ) -> None:
+        barrier = self._initial_v2_barrier
+        if barrier is not None and not barrier.done():
+            barrier.set_result(outcome)
+
+    def _terminate_initial_v2_barrier(self) -> None:
+        barrier = self._initial_v2_barrier
+        if barrier is not None and not barrier.done():
+            barrier.cancel()
 
     def conversation_id(self) -> str | None:
         """
@@ -2261,6 +2286,7 @@ class ChatHistory:
                 on_stream_updated=controller._exchange_recorder.stream_updated,
                 on_stream_finished=controller._exchange_recorder.stream_finished,
             )
+            self._install_initial_v2_barrier()
 
         if restore_mode == "url":
 
@@ -2460,7 +2486,15 @@ class ChatHistory:
 
         initialized = False
 
-        @reactive.effect
+        async def finish_initial(restored: bool) -> None:
+            nonlocal initialized
+            initialized = True
+            self._resolve_initial_v2_barrier(
+                "restored" if restored else "fresh"
+            )
+            await controller.notify_settled(restored)
+
+        @reactive.effect(priority=10_000)
         async def _init_history():
             nonlocal initialized
             if initialized:
@@ -2477,9 +2511,8 @@ class ChatHistory:
                         target, node_id=node_id
                     )
                 except BaseException:
-                    initialized = True
                     try:
-                        await controller.notify_settled(False)
+                        await finish_initial(False)
                     except BaseException:
                         # Settlement is advisory; preserve the restore error.
                         pass
@@ -2522,8 +2555,7 @@ class ChatHistory:
                     ValueError("Bookmark pointer is invalid."),
                 )
                 await controller.send_history_update()
-                initialized = True
-                await controller.notify_settled(False)
+                await finish_initial(False)
                 return
 
             if bookmark_pointer is not None:
@@ -2539,13 +2571,11 @@ class ChatHistory:
                 except Exception as e:
                     await notify_error("Could not load conversation", e)
                     await controller.send_history_update()
-                    initialized = True
-                    await controller.notify_settled(False)
+                    await finish_initial(False)
                     return
 
                 await restore_initial_v2(target, node_id=node_id)
-                initialized = True
-                await controller.notify_settled(True)
+                await finish_initial(True)
                 return
 
             if restored_conv_id is not None:
@@ -2567,8 +2597,7 @@ class ChatHistory:
                             controller._restore_app_state(target.values or {})
                             await controller._send_sibling_metadata()
                             await controller.send_history_update()
-                    initialized = True
-                    await controller.notify_settled(True)
+                    await finish_initial(True)
                     return
 
             # Priority 2: restore from the mode-specific ID source.
@@ -2598,8 +2627,7 @@ class ChatHistory:
                 if pointed is not None:
                     if isinstance(pointed, ConversationRecordV2):
                         await restore_initial_v2(pointed)
-                        initialized = True
-                        await controller.notify_settled(True)
+                        await finish_initial(True)
                         return
                     else:
                         async with controller._destructive_mutation():
@@ -2609,8 +2637,7 @@ class ChatHistory:
                             controller._restore_app_state(pointed.values or {})
                             await controller._send_sibling_metadata()
             await controller.send_history_update()
-            initialized = True
-            await controller.notify_settled(
+            await finish_initial(
                 controller._active_id_now() is not None
             )
 
@@ -2771,6 +2798,7 @@ class ChatHistory:
             # tracked state truthful so a later `_teardown()` won't re-run.
             self._session_end_cancel = None
             self._on_session_end = None
+            self._terminate_initial_v2_barrier()
             if stamp_cancel is not None:
                 stamp_cancel()
             cancel_response_settlement()
