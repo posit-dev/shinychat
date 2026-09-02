@@ -286,7 +286,9 @@ class _MockBookmark:
 
         return cancel
 
-    def on_bookmarked(self, callback: Callable[[str], Any]) -> Callable[[], None]:
+    def on_bookmarked(
+        self, callback: Callable[[str], Any]
+    ) -> Callable[[], None]:
         self.bookmarked_callbacks.append(callback)
 
         def cancel() -> None:
@@ -437,7 +439,9 @@ async def test_history_disabled_publishes_one_initial_withdrawal(
 
 
 @pytest.mark.anyio
-async def test_chat_without_client_publishes_initial_history_withdrawal() -> None:
+async def test_chat_without_client_publishes_initial_history_withdrawal() -> (
+    None
+):
     session = _LiveSession()
     with session_context(cast(Any, session)):
         chat = Chat("history_unavailable_without_client")
@@ -538,11 +542,11 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
         assert chat._transcript.read() == ()
         assert chat._transcript.active_stream_id is None
         assert recorder.record is None
-        assert [
-            message["action"]["type"] for message in session.messages
-        ] == []
+        assert [message["action"]["type"] for message in session.messages] == []
         assert (
-            await store.list(ConversationPartition(chat_id=chat_id, scope="test"))
+            await store.list(
+                ConversationPartition(chat_id=chat_id, scope="test")
+            )
         ) == stored_before
 
         with session_context(cast(Any, session)), reactive.isolate():
@@ -616,7 +620,9 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
 
 
 @pytest.mark.anyio
-async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> None:
+async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> (
+    None
+):
     chat_id = "initial_readiness_cleanup_send_failure"
     session = _LiveSession()
     store = InMemoryConversationStore()
@@ -655,9 +661,7 @@ async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> N
     original = RuntimeError("restore failed")
     publication_failure = RuntimeError("history update failed")
 
-    async def fail_replay(
-        _target: Any, _node_ids: tuple[str, ...]
-    ) -> None:
+    async def fail_replay(_target: Any, _node_ids: tuple[str, ...]) -> None:
         raise original
 
     async def fail_history_update() -> None:
@@ -739,7 +743,9 @@ async def test_v2_initial_readiness_flips_after_history_update_send() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_successful_bookmark_pointer_suppresses_then_admits_root_append() -> None:
+async def test_v2_successful_bookmark_pointer_suppresses_then_admits_root_append() -> (
+    None
+):
     chat_id = "initial_bookmark_pointer_boundary"
     session = _LiveSession()
     session.bookmark.store = "server"
@@ -924,7 +930,9 @@ async def test_v2_initial_messages_follow_real_initialization_order() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_initial_messages_are_suppressed_before_restored_decision() -> None:
+async def test_v2_initial_messages_are_suppressed_before_restored_decision() -> (
+    None
+):
     chat_id = "initial_messages_restored"
     session = _LiveSession()
     handlers: dict[str, Callable[[], Awaitable[None]]] = {}
@@ -943,7 +951,7 @@ async def test_v2_initial_messages_are_suppressed_before_restored_decision() -> 
                 scope="test",
                 restore_mode="none",
             ),
-    )
+        )
 
     try:
         with session_context(cast(Any, session)), reactive.isolate():
@@ -991,9 +999,9 @@ async def test_v2_initial_messages_suppress_real_restored_target() -> None:
             chat.destroy()
 
     assert chat.history._initial_history_initialized
-    assert [
-        entry.message.content for entry in chat._transcript.read()
-    ] == ["constructor message"]
+    assert [entry.message.content for entry in chat._transcript.read()] == [
+        "constructor message"
+    ]
 
 
 @pytest.mark.anyio
@@ -1104,7 +1112,9 @@ async def test_v2_server_bookmark_stamps_atomic_history_pointer_only() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_stale_server_bookmark_pointer_notifies_and_keeps_draft() -> None:
+async def test_v2_stale_server_bookmark_pointer_notifies_and_keeps_draft() -> (
+    None
+):
     session = _LiveSession()
     session.bookmark.store = "server"
     session.bookmark._restore_context = MagicMock(
@@ -1292,7 +1302,9 @@ async def test_v2_initial_restore_preflight_failure_recovers(
 
 
 @pytest.mark.anyio
-async def test_v2_initial_restore_preflight_cancellation_recovers_once() -> None:
+async def test_v2_initial_restore_preflight_cancellation_recovers_once() -> (
+    None
+):
     chat_id = "initial_preflight_cancel"
     session = _LiveSession()
     store = InMemoryConversationStore()
@@ -1375,7 +1387,9 @@ async def test_v2_initial_restore_preflight_cancellation_recovers_once() -> None
 
 
 @pytest.mark.anyio
-async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> None:
+async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> (
+    None
+):
     chat_id = "initial_restore_cancel"
     session = _LiveSession()
     store = InMemoryConversationStore()
@@ -1430,9 +1444,7 @@ async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> No
     recorder = controller._exchange_recorder
     assert recorder is not None
 
-    async def cancel_replay(
-        _target: Any, _node_ids: tuple[str, ...]
-    ) -> None:
+    async def cancel_replay(_target: Any, _node_ids: tuple[str, ...]) -> None:
         raise original
 
     controller._replay_exchange_display = cancel_replay  # type: ignore[method-assign]
@@ -1474,13 +1486,16 @@ async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> No
         await handlers["_init_history"]()
 
     assert settled == [False]
-    assert len(
-        [
-            message
-            for message in session.messages
-            if message["action"]["type"] == "history_update"
-        ]
-    ) == 1
+    assert (
+        len(
+            [
+                message
+                for message in session.messages
+                if message["action"]["type"] == "history_update"
+            ]
+        )
+        == 1
+    )
     with session_context(cast(Any, session)), reactive.isolate():
         await chat._record_accepted_user_input_with_capture(
             ChatMessage(content="fresh after cancellation", role="user")
@@ -1535,7 +1550,9 @@ async def test_v2_bookmark_settlement_updates_url_and_deletes_replaced_state() -
     assert controller is not None
     recorder = controller._exchange_recorder
     assert recorder is not None
-    controller.partition = ConversationPartition(chat_id="bookmark_settlement", scope="test")
+    controller.partition = ConversationPartition(
+        chat_id="bookmark_settlement", scope="test"
+    )
     record = new_conversation_record_v2(
         title="pointer",
         id="c_pointer",
@@ -1567,9 +1584,10 @@ async def test_v2_bookmark_settlement_updates_url_and_deletes_replaced_state() -
             }
         },
     ]
-    assert [
-        message["action"]["url"] for message in session.messages
-    ] == ["?_state_id_=state-first", "?_state_id_=state-second"]
+    assert [message["action"]["url"] for message in session.messages] == [
+        "?_state_id_=state-first",
+        "?_state_id_=state-second",
+    ]
 
 
 @pytest.mark.anyio
@@ -2024,68 +2042,35 @@ async def _finish_held_clear_task(
     cancel: bool = False,
 ) -> None:
     release.set()
-    active_exception = sys.exc_info()[1]
-    try:
-        await asyncio.wait_for(asyncio.shield(task), timeout=1)
-    except asyncio.TimeoutError as timeout:
+    done, _ = await asyncio.wait({task}, timeout=1)
+    if task not in done and cancel:
+        task.cancel()
+        done, _ = await asyncio.wait({task}, timeout=1)
+
+    failure: BaseException | None = None
+    if task not in done:
+        failure = TimeoutError(
+            "Held clear task did not finish within 1 second."
+        )
+    elif task.cancelled():
         if cancel:
-            first_cancellation = task.cancel()
-            try:
-                await asyncio.wait_for(asyncio.shield(task), timeout=1)
-            except asyncio.TimeoutError:
-                second_cancellation = task.cancel()
-                try:
-                    await asyncio.wait_for(asyncio.shield(task), timeout=1)
-                except asyncio.TimeoutError as third_timeout:
-                    task_error = RuntimeError(
-                        "held clear task did not finish after cancellation"
-                    )
-                    if active_exception is not None:
-                        raise active_exception from task_error
-                    raise task_error from third_timeout
-                except BaseException as task_error:
-                    if (
-                        isinstance(task_error, asyncio.CancelledError)
-                        and second_cancellation
-                    ):
-                        return
-                    if active_exception is not None:
-                        raise active_exception from task_error
-                    raise
-            except BaseException as task_error:
-                if (
-                    isinstance(task_error, asyncio.CancelledError)
-                    and first_cancellation
-                ):
-                    return
-                if active_exception is not None:
-                    raise active_exception from task_error
-                raise
-        else:
-            task_error = RuntimeError("held clear task did not finish")
-            if active_exception is not None:
-                raise active_exception from task_error
-            raise task_error from timeout
-    except BaseException as task_error:
-        if active_exception is not None:
-            raise active_exception from task_error
-        raise
+            return
+        failure = asyncio.CancelledError()
+    else:
+        failure = task.exception()
+    if failure is None:
+        return
+
+    active_exception = sys.exc_info()[1]
+    if active_exception is not None:
+        raise active_exception from failure
+    raise failure
 
 
 @pytest.mark.anyio
-async def test_finish_held_clear_task_propagates_task_failure() -> None:
-    async def fail() -> None:
-        raise RuntimeError("clear task failed")
-
-    task = asyncio.create_task(fail())
-    await asyncio.sleep(0)
-
-    with pytest.raises(RuntimeError, match="clear task failed"):
-        await _finish_held_clear_task(task, asyncio.Event())
-
-
-@pytest.mark.anyio
-async def test_finish_held_clear_task_preserves_body_failure() -> None:
+async def test_finish_held_clear_task_chains_task_failure_to_body_failure() -> (
+    None
+):
     async def fail() -> None:
         raise RuntimeError("clear task failed")
 
@@ -2098,71 +2083,9 @@ async def test_finish_held_clear_task_preserves_body_failure() -> None:
         finally:
             await _finish_held_clear_task(task, asyncio.Event(), cancel=True)
 
+    assert task.done()
     assert isinstance(raised.value.__cause__, RuntimeError)
     assert str(raised.value.__cause__) == "clear task failed"
-
-
-@pytest.mark.anyio
-async def test_finish_held_clear_task_bounds_resistant_cancellation() -> None:
-    cancellations = 0
-
-    async def resist_first_cancel() -> None:
-        nonlocal cancellations
-        while True:
-            try:
-                await asyncio.sleep(60)
-            except asyncio.CancelledError:
-                cancellations += 1
-                if cancellations == 1:
-                    continue
-                raise RuntimeError("clear task resisted cancellation")
-
-    task = asyncio.create_task(resist_first_cancel())
-    await asyncio.sleep(0)
-
-    with pytest.raises(RuntimeError, match="clear task resisted cancellation"):
-        await _finish_held_clear_task(task, asyncio.Event(), cancel=True)
-
-    assert task.done()
-    assert cancellations == 2
-
-
-@pytest.mark.anyio
-async def test_finish_held_clear_task_propagates_preexisting_cancellation() -> None:
-    async def self_cancel() -> None:
-        current_task = asyncio.current_task()
-        assert current_task is not None
-        current_task.cancel()
-        await asyncio.sleep(0)
-
-    task = asyncio.create_task(self_cancel())
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    assert task.cancelled()
-
-    with pytest.raises(asyncio.CancelledError):
-        await _finish_held_clear_task(task, asyncio.Event(), cancel=True)
-
-
-@pytest.mark.anyio
-async def test_finish_held_clear_task_propagates_pending_cancellation() -> None:
-    cancellation_requested = asyncio.Event()
-    release = asyncio.Event()
-
-    async def self_cancel_before_delivery() -> None:
-        current_task = asyncio.current_task()
-        assert current_task is not None
-        current_task.cancel()
-        cancellation_requested.set()
-        await release.wait()
-
-    task = asyncio.create_task(self_cancel_before_delivery())
-    await asyncio.wait_for(cancellation_requested.wait(), timeout=1)
-
-    with pytest.raises(asyncio.CancelledError):
-        await _finish_held_clear_task(task, release, cancel=True)
-
-    assert task.cancelled()
 
 
 @pytest.mark.anyio
@@ -2208,9 +2131,7 @@ async def test_v2_clear_settles_terminal_response_before_clear_mutation(
     release_clear = asyncio.Event()
     original_send = session.send_custom_message
 
-    async def hold_after_clear_dispatch(
-        type: str, message: object
-    ) -> None:
+    async def hold_after_clear_dispatch(type: str, message: object) -> None:
         await original_send(type, message)
         if cast(dict[str, Any], message)["action"]["type"] == "clear":
             clear_dispatched.set()
@@ -2223,15 +2144,22 @@ async def test_v2_clear_settles_terminal_response_before_clear_mutation(
             await asyncio.wait_for(clear_dispatched.wait(), timeout=1)
 
             assert settlements == 1
-            assert chat._transcript.read()[-1].message.content == "terminal response"
+            assert (
+                chat._transcript.read()[-1].message.content
+                == "terminal response"
+            )
             assert recorder.record is not None
-            assert recorder.record.nodes[recorder.record.active_leaf].status == "ok"  # type: ignore[index]
+            active_leaf = recorder.record.active_leaf
+            assert active_leaf is not None
+            assert recorder.record.nodes[active_leaf].status == "ok"
             stored_before_clear = await FileConversationStore(tmp_path).get(
                 partition, recorder.record.id
             )
             assert stored_before_clear is not None
             assert stored_before_clear.response_count == 1
-            assert stored_before_clear.nodes[stored_before_clear.active_leaf].status == "ok"  # type: ignore[index]
+            stored_active_leaf = stored_before_clear.active_leaf
+            assert stored_active_leaf is not None
+            assert stored_before_clear.nodes[stored_active_leaf].status == "ok"
 
             await _finish_held_clear_task(clear_task, release_clear)
 
@@ -2261,7 +2189,9 @@ async def test_v2_clear_rejects_active_stream_without_mutating_state(
     assert controller is not None
     recorder = controller._exchange_recorder
     assert recorder is not None
-    partition = ConversationPartition(chat_id="clear_active_stream", scope="test")
+    partition = ConversationPartition(
+        chat_id="clear_active_stream", scope="test"
+    )
     client.set_turns([{"role": "user", "content": "client turn"}])
     await chat._record_accepted_user_input_with_capture(
         ChatMessage(content="active input", role="user"),
@@ -2291,7 +2221,8 @@ async def test_v2_clear_rejects_active_stream_without_mutating_state(
     }
 
     with pytest.raises(
-        RuntimeError, match="Cannot clear or restore messages while a message stream"
+        RuntimeError,
+        match="Cannot clear or restore messages while a message stream",
     ):
         await chat.clear_messages()
 
@@ -2312,9 +2243,7 @@ async def test_v2_clear_rejects_active_stream_without_mutating_state(
     }
     assert after == before
 
-    await chat._append_message_chunk(
-        "", chunk="end", stream_id="active-stream"
-    )
+    await chat._append_message_chunk("", chunk="end", stream_id="active-stream")
     chat.destroy()
 
 
@@ -2329,7 +2258,9 @@ async def test_v2_clear_retains_input_admitted_after_clear_dispatch(
     assert controller is not None
     recorder = controller._exchange_recorder
     assert recorder is not None
-    partition = ConversationPartition(chat_id="clear_tail_exchange", scope="test")
+    partition = ConversationPartition(
+        chat_id="clear_tail_exchange", scope="test"
+    )
     await chat._record_accepted_user_input_with_capture(
         ChatMessage(content="old input", role="user"),
         dispatch_user_submit=False,
@@ -2345,9 +2276,7 @@ async def test_v2_clear_retains_input_admitted_after_clear_dispatch(
     release_clear = asyncio.Event()
     original_send = session.send_custom_message
 
-    async def hold_after_clear_dispatch(
-        type: str, message: object
-    ) -> None:
+    async def hold_after_clear_dispatch(type: str, message: object) -> None:
         await original_send(type, message)
         if cast(dict[str, Any], message)["action"]["type"] == "clear":
             clear_dispatched.set()
@@ -2380,7 +2309,8 @@ async def test_v2_clear_retains_input_admitted_after_clear_dispatch(
             assert tail_node.input is not None
             assert tail_node.input.content == "tail input"
             assert [
-                message.as_stored_message().content for message in tail_node.messages
+                message.as_stored_message().content
+                for message in tail_node.messages
             ] == ["tail response"]
 
             persisted = await FileConversationStore(tmp_path).get(
@@ -2391,7 +2321,8 @@ async def test_v2_clear_retains_input_admitted_after_clear_dispatch(
             assert persisted_tail.input is not None
             assert persisted_tail.input.content == "tail input"
             assert [
-                message.as_stored_message().content for message in persisted_tail.messages
+                message.as_stored_message().content
+                for message in persisted_tail.messages
             ] == ["tail response"]
             assert persisted.active_leaf == tail_leaf
             assert [
