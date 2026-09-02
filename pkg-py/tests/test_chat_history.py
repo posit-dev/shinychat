@@ -1920,6 +1920,9 @@ async def test_completion_delivery_failure_does_not_mask_transition_outcome(
     controller = chat.history._controller
     assert controller is not None
     controller.partition = cast(Any, object())
+    if operation == "navigate":
+        # Model an admitted post-initialization v2 action.
+        chat.history._initial_history_initialized = True
 
     if outcome == "failure":
         operation_fn = AsyncMock(side_effect=RuntimeError("expected failure"))
