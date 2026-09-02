@@ -834,3 +834,23 @@ queue, timer, or public API.
 P5.4 landed in `70dcdc7f`, `f91d4db7`, and `5647605d`.
 Next state: P5.4 repair complete and ready to proceed.
 Verification caveat: raw `git diff --check` across the `f91` asset refresh flags a pre-existing embedded tab in regenerated minified JS; no generated assets were hand-edited, and the source/test diff is clean.
+
+### P5.4 final handoff
+
+The deletion pass requirement-traced transcript, recorder, destructive
+transaction, one client marker, three hook registries as one extension
+surface, and the private synchronous readiness fact. No barrier, awaitable
+initialization adapter, startup queue/timer/sweep, reconciliation, cursor/CAS,
+second owner/marker, public hook/API, R server or legacy work, rendered HTML,
+or Q3 expansion entered Phase 5.
+
+The single adversarial review found only the restored branch-action readiness
+P1. It is fixed in `70dcdc7f` with production browser evidence in `5647605d`;
+`3cd1980c` updates the existing v2 cancellation fixture to model an admitted
+post-initialization action. Roborev 1197 and 1198 found no issues.
+
+Final acceptance is green: 210 Python Playwright tests; 964 Python tests with
+one existing skip; 1,274 JS tests with 23 skips; 425 R history/shared-client
+tests with no skips. Ruff, repository format, Pyright, JS lint/build,
+distributed asset rebuild/currentness, and worktree diff checks pass. Phase 5
+is shape-stable, review-clean, committed, and complete.
