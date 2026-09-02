@@ -511,3 +511,31 @@ initialization barrier is historical and must not return.
 Boundary: `Chat(messages=...)` removal is follow-up `shinychat#mcbp`, not P5.0.
 Do not begin R, legacy, degradation/error-affordance work, or another
 scheduling/ownership mechanism.
+
+### P5.1 entry audit (2026-09-02)
+
+`shinychat#bj1n` is claimed. The entry baseline is green: the focused
+history/transcript gate passed 593 tests, the transition/edit browser
+selection passed 15 tests, and format and Pyright passed with no tracked
+changes.
+
+The row-by-row production-path audit accepts existing discriminating evidence
+for inactive delete and failed-target preflight, explicit node-close catch-up,
+and older-stream attribution. Session teardown uses the contract already
+approved above: retain only display and state persisted before teardown, leave
+an open stream pending unless terminal state was already recorded, and add no
+synthetic settlement, sweep, queue, or discard behavior. This is a recorded
+R3/R4 disposition, not a new mechanism decision.
+
+Three bounded evidence units remain, in order:
+
+1. a v2 generic-clear keystone covering one terminal drain, active-stream
+   no-mutation, and ownership of a tail accepted after the clear send begins;
+2. a compact controller matrix joining stream error/cancellation before and
+   after sent chunks with durable display, status, verbatim turns, original
+   outcome, and switch error release; and
+3. production transition evidence that active New/Delete error and
+   cancellation release only their matching existing client marker.
+
+No production defect is established by the entry audit. Later Phase 5
+implementation remains blocked.
