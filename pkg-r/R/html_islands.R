@@ -88,6 +88,12 @@ new_island_residual_part <- function(html, deps) {
 #'   `html_dependency` objects in `deps`.
 #' @noRd
 derive_island_parts <- function(content) {
+  if (is.character(content) && !inherits(content, "html")) {
+    stop(
+      "derive_island_parts() requires trusted tag content; plain strings ",
+      "are markdown and must be handled by the caller."
+    )
+  }
   # Wrap in with_current_theme() so theme-aware bslib content compiles
   # against the correct theme.
   with_current_theme({
@@ -128,14 +134,18 @@ derive_island_parts <- function(content) {
 #' server-authored and travels with content_type "html".
 #'
 #' The payload is a single string rendered via innerHTML, so bare strings
-#' are HTML-escaped by derive_island_parts(). Mixed markdown+UI content
-#' needs a segments channel (follow-up: shinychat#2dzc).
+#' are HTML-escaped. Mixed markdown+UI content needs a segments channel
+#' (follow-up: shinychat#2dzc).
 #'
 #' @param content A tag, tagList, or other HTML content.
 #' @return A list with `html` (character string) and `deps` (raw
 #'   `html_dependency` objects; session-process or attach as appropriate).
 #' @noRd
 render_island_string <- function(content) {
+  if (is.character(content) && !inherits(content, "html")) {
+    rendered <- htmltools::renderTags(htmltools::tagList(content))
+    return(list(html = as.character(rendered$html), deps = list()))
+  }
   parts <- derive_island_parts(content)
   html <- paste0(
     vapply(parts, function(part) part$html, character(1)),

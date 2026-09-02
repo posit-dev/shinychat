@@ -98,12 +98,20 @@ def test_string_content_in_taglist_becomes_block_part():
     assert "hello world" in parts[0].html
 
 
-def test_bare_string_content_becomes_block_part():
-    """A bare string passed directly renders as a block part."""
-    parts = derive_island_parts("hello world")
+def test_bare_string_content_raises():
+    """A bare string is markdown, not trusted tag content — reject it."""
+    import pytest
+
+    with pytest.raises(TypeError, match="trusted tag content"):
+        derive_island_parts("hello world")
+
+
+def test_html_string_content_becomes_block_part():
+    """An HTML()-marked string is trusted and renders as a block part."""
+    parts = derive_island_parts(HTML("<b>hello</b>"))
     assert len(parts) == 1
     assert isinstance(parts[0], IslandBlockPart)
-    assert "hello world" in parts[0].html
+    assert "<b>hello</b>" in parts[0].html
 
 
 def test_tagifiable_with_react_attr_becomes_residual_part():
@@ -787,7 +795,9 @@ def test_chat_message_parts_and_blocks_raise():
     import pytest
     from shinychat._chat_types import ChatMessage
 
-    block = cast("HtmlBlock", {"type": "html_block", "version": 1, "content": "<b>x</b>"})
+    block = cast(
+        "HtmlBlock", {"type": "html_block", "version": 1, "content": "<b>x</b>"}
+    )
     with pytest.raises(ValueError, match="mutually exclusive"):
         ChatMessage(content="", blocks=[block], parts=["text"])
 
@@ -812,12 +822,29 @@ def test_chat_message_parts_and_tagchild_content_raise():
         ChatMessage(content=HTML("<b>x</b>"), parts=["text"])
 
 
+def test_chat_message_parts_setter_with_blocks_raises():
+    """Setting .parts on a block-carrying message raises instead of silently
+    discarding the blocks (mirrors the constructor's mutual exclusion)."""
+    import pytest
+    from shinychat._chat_types import ChatMessage
+
+    block = cast(
+        "HtmlBlock", {"type": "html_block", "version": 1, "content": "<b>x</b>"}
+    )
+    m = ChatMessage(content="text", blocks=[block])
+    with pytest.raises(ValueError, match="cannot be set"):
+        m.parts = ["new"]
+
+
 def test_chat_message_parts_only_construction_derives_views():
     """parts-only construction compiles to segments; content/blocks/parts are
     derived views and the wire round-trips the interleaving."""
     from shinychat._chat_types import ChatMessage, StoredMessage
 
-    block = cast("HtmlBlock", {"type": "html_block", "version": 1, "content": "<div>trusted</div>"})
+    block = cast(
+        "HtmlBlock",
+        {"type": "html_block", "version": 1, "content": "<div>trusted</div>"},
+    )
     m = ChatMessage("", parts=["**a**", block, "b"])
 
     assert m.content == "**a**b"

@@ -128,11 +128,15 @@ test_that("single tag without react attr derives a block part", {
   expect_equal(parts[[1]]$html, "<div>hello</div>")
 })
 
-test_that("bare string content derives a block part", {
-  parts <- derive_island_parts("hello world")
+test_that("bare string content raises", {
+  expect_error(derive_island_parts("hello world"), "trusted tag content")
+})
+
+test_that("HTML-marked string derives a block part", {
+  parts <- derive_island_parts(htmltools::HTML("<b>hello</b>"))
   expect_length(parts, 1)
   expect_s3_class(parts[[1]], "shinychat_island_block_part")
-  expect_match(parts[[1]]$html, "hello world", fixed = TRUE)
+  expect_match(parts[[1]]$html, "<b>hello</b>", fixed = TRUE)
 })
 
 test_that("island parts carry dependency objects", {

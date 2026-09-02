@@ -88,6 +88,11 @@ def derive_island_parts(content: TagChild | TagList) -> list[IslandPart]:
     `IslandResidualPart` string runs. This is the single derivation shared
     by `ChatMessage` and `MarkdownStream`; no wrapper tag is constructed.
     """
+    if isinstance(content, str) and not isinstance(content, HTML):
+        raise TypeError(
+            "derive_island_parts() requires trusted tag content; plain "
+            "strings are markdown and must be handled by the caller."
+        )
     if isinstance(content, (TagList, TagifiedTagList)):
         children: list[TagChild] = list(content)
     else:

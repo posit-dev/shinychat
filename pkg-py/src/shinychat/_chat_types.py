@@ -587,6 +587,12 @@ class ChatMessage:
             # leaves (one string segment, blocks trailing).
             self.content = self.content
         else:
+            if self.blocks:
+                raise ValueError(
+                    "`parts` cannot be set on a message with `blocks`: the "
+                    "segment list is the complete content spelling and "
+                    "setting it would discard the blocks."
+                )
             self.segments = self._parts_to_segments(value, self.content_type)
 
 
