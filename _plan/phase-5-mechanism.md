@@ -547,3 +547,20 @@ decision is **DELETE/REPLACE the duplicated test cleanup only**: use one
 bounded, failure-aware helper for task completion and cancellation. The
 production clear lifecycle and its assertions remain unchanged; this decision
 adds no runtime mechanism or scope.
+
+The replacement converged in `78285ea8` with unrelated formatter churn removed
+by `beacbbdb`; Roborev 1183 passed the complete clear slice with no findings.
+The compact stream/switch matrix landed in `7e1e1444`: it covers error and
+cancellation before and after a sent chunk, verbatim committed turns, original
+outcome identity, and switch admission release after error. Its current
+exception-text assertion is expected to change under P5.3's already-approved
+safe-catalogue write boundary; it is not a P5.1 error-detail contract.
+
+The attempted active New/Delete browser error/cancellation matrix produced
+red evidence only because the fixture's release input is serialized behind the
+awaited handler and its error event recorder ran after the injected throw.
+No production defect is established. Accept the existing production handler
+matrix for New/Delete success, error, and cancellation together with the
+client store's exact-match/stale-completion tests. Deterministic browser
+provenance remains backlog `shinychat#n5d3`; P5.1 adds no synchronization or
+runtime mechanism for it.
