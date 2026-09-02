@@ -11,6 +11,7 @@ import type {
   MessagePayload,
 } from "../transport/types"
 import { uuid } from "../utils/uuid"
+import { parseJsonArray } from "../utils/json"
 import { DEFAULT_UPLOAD_ACCEPT } from "./attachments"
 import {
   getCurrentConversationId,
@@ -59,21 +60,8 @@ function parseInitialMessagesAttr(
   raw: string,
   toolGrouping?: ToolGrouping,
 ): ChatMessageData[] | null {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    console.warn(
-      "Ignoring malformed data-initial-messages attribute: not valid JSON",
-    )
-    return null
-  }
-  if (!Array.isArray(parsed)) {
-    console.warn(
-      "Ignoring malformed data-initial-messages attribute: expected a JSON array",
-    )
-    return null
-  }
+  const parsed = parseJsonArray(raw, "data-initial-messages attribute")
+  if (parsed === null) return null
 
   const messages: ChatMessageData[] = []
   for (const entry of parsed) {

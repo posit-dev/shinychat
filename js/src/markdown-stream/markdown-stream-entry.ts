@@ -16,6 +16,7 @@ import {
   isWebActivityWireBlock,
 } from "../chat/web-activity-model"
 import { getShinyTransport } from "../transport/shiny-transport"
+import { parseJsonArray } from "../utils/json"
 import type { ContentType, StructuredBlock } from "../transport/types"
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
@@ -173,37 +174,29 @@ function readInitialSegments(
   const encoded = el.getAttribute("content-segments")
   if (encoded === null) return undefined
 
-  try {
-    const value: unknown = JSON.parse(encoded)
-    if (Array.isArray(value)) {
-      let segments: StreamSegment[] = []
-      for (const entry of value as unknown[]) {
-        if (isTextSegmentEntry(entry)) {
-          segments.push(entry)
-          continue
-        }
-        if (isBlockEntry(entry)) {
-          const block = asStreamBlock(entry.block)
-          if (block) {
-            segments =
-              block.type === "html_block"
-                ? [...segments, block]
-                : appendWebActivityBlock(
-                    segments,
-                    block,
-                    isWhitespaceTextSegment,
-                  )
-            continue
-          }
-        }
-        return [{ text: fallbackContent, trusted: false }]
-      }
-      return segments
+  const value = parseJsonArray(encoded, "content-segments attribute")
+  // Malformed provenance: fall back to the untrusted content.
+  if (value === null) return [{ text: fallbackContent, trusted: false }]
+
+  let segments: StreamSegment[] = []
+  for (const entry of value) {
+    if (isTextSegmentEntry(entry)) {
+      segments.push(entry)
+      continue
     }
-  } catch {
-    // Malformed provenance: fall through to the untrusted fallback.
+    if (isBlockEntry(entry)) {
+      const block = asStreamBlock(entry.block)
+      if (block) {
+        segments =
+          block.type === "html_block"
+            ? [...segments, block]
+            : appendWebActivityBlock(segments, block, isWhitespaceTextSegment)
+        continue
+      }
+    }
+    return [{ text: fallbackContent, trusted: false }]
   }
-  return [{ text: fallbackContent, trusted: false }]
+  return segments
 }
 
 function isTextSegmentEntry(value: unknown): value is ContentSegment {
