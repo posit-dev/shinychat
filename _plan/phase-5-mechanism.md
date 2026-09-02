@@ -29,7 +29,9 @@ Phase 5 adds no queue, preselection buffer, provisional record or merge,
 timer, reconciliation pass, cursor, CAS, second record owner, second client
 transition marker, client transcript state machine, rendered-HTML storage,
 Q3 addressing expansion, bookmark-fidelity change, R server work, or legacy
-work.
+work. The sole approved exception is P5.0's private one-shot Python-v2
+initialization barrier owned by `ChatHistory`, defined below; it is not a
+payload queue, recorder buffer, second marker, public API, or persistence.
 
 ## Existing ownership remains authoritative
 
@@ -41,6 +43,9 @@ The phase does not replace the Phase 4 shape:
 - `Chat._destructive_history_mutation()` remains the one destructive history
   transaction. Its existing input-block mode remains the only server-side
   destructive admission mechanism.
+- `ChatHistory` may own P5.0's one private, one-shot initialization barrier.
+  It is scoped to the initial v2 restore decision, not a general admission
+  predicate or lifecycle subsystem.
 - `historyTransitionPending` remains the one client lifecycle marker.
 - `resubmit()` remains the only branch-producing primitive.
 - The existing capture, restore, and rewind registries remain the three
@@ -67,7 +72,23 @@ approved fresh-draft recovery, in both cases followed by required metadata
 completion. Capture-eligible work remains closed until that completion even
 when `partition` is non-null.
 
-The server gate is before all three capture reservations:
+The disposable ambient `_capture_admission` predicate is **DELETE/REPLACE**
+and must not land. `partition`, record/controller state, and destructive
+transaction ownership cannot distinguish an unresolved restore from an
+ordinary fresh draft, and a task-owned destructive transaction cannot safely
+span construction plus reactive reruns. They therefore cannot supply the
+selected guard without either overblocking or introducing forbidden state.
+
+The sole approved server mechanism is one private, shared, one-shot
+initialization barrier owned by `ChatHistory`. Create it immediately after
+v2 recorder installation, before input activation can admit capture-eligible
+work. Its outcome contains only the initial-message decision needed by
+startup append behavior: `fresh` after a no-target result or approved
+fresh-draft recovery, and `restored` after a successful selected-target
+restore. It holds no input, attachment, message, continuation, recorder
+buffer, provisional record, merge state, or persisted state.
+
+Await that shared barrier immediately before each capture reservation:
 
 1. `Chat._record_accepted_user_input_with_capture()`, before accepted-input
    capture;
@@ -75,11 +96,29 @@ The server gate is before all three capture reservations:
 3. `Chat._append_message_chunk(..., chunk="start")`, before root-stream
    reservation.
 
-A post-commit recorder callback is too late. The gate never wraps
-`_send_action`. Restore replay bypasses it only while the current task owns
-the existing `Chat._destructive_history_mutation()` transaction; greeting and
-bookkeeping remain excluded exactly as in Phase 3. The gate releases on every
-initialization success, handled error, and live-session cancellation.
+Each waiter must shield (or equivalently isolate) the shared barrier so an
+individual cancellation cannot cancel it. Session teardown cancels/releases
+all barrier waiters. A post-commit recorder callback is too late. The barrier
+never wraps `_send_action`; greeting and bookkeeping remain excluded exactly
+as in Phase 3. Restore replay bypasses naturally because its internal replay
+path does not enter these admission paths, never because an arbitrary
+destructive transaction owner is exempt.
+
+Resolve the barrier only after the no-target/success result or approved
+fresh-draft cleanup **and** the authoritative `history_update`. A live-session
+error or cancellation completes cleanup and that update before releasing
+waiters; teardown cancellation ends the barrier without a client release.
+This preserves the existing fresh-draft failure contract and gives the client
+one authoritative release path.
+
+Manual startup `chat.append_*()` calls wait at the relevant reservation and
+then execute after either live decision. Deprecated `Chat(messages=...)`
+observes the one-shot result: it runs for no-target/fresh-draft and is
+suppressed after successful target restore, preserving its previous
+no-duplicate behavior. Python v1 and history-disabled modes create no server
+barrier; their existing first `history_update` withdraws the conservative
+client seed, with the authorized brief initial delay. R creates no seed or
+barrier and remains unchanged.
 
 Every Python `chat_ui()` emits the private static attribute
 `data-shinychat-history-transition-protocol="completion-v2"` before
@@ -105,11 +144,8 @@ The existing ChatInput guards must cover Enter, send-button, attachment-only,
 slash-command, suggestion, and imperative submissions while preserving the
 uncontrolled draft and staged attachments; the ChatApp `submitUserInput`
 handler must recheck the same condition before optimistic `INPUT_SENT` or
-transport dispatch. The server admission predicate remains owned by the
-existing transcript/history boundary; it is not a second client marker or a
-new scheduling owner. A live-session cancellation must complete fresh-draft
-cleanup and publish the same release metadata before admitting input;
-teardown cancellation may end with no client to release.
+transport dispatch. The `ChatHistory` barrier is neither a second client
+marker nor a general scheduling owner.
 
 ### Completed Q1 evidence
 
@@ -150,8 +186,8 @@ The selected guard must:
 - admit no capture-eligible event before restore decision completion;
 - preserve the browser draft/attachments without synthetic rollback;
 - release on success, handled failure, and cancellation; and
-- compose with the existing `completion-v2` marker rather than introducing
-  another marker.
+- compose with the existing `completion-v2` marker without introducing
+  another marker, owner, queue, or public surface.
 
 The completed evidence selects this guard. Do not retain deferred submission
 or invent a third scheduling mechanism.
@@ -320,9 +356,11 @@ The final adversarial review must assess:
 
 Phase 5 begins with five top-level lifecycle/state abstractions: transcript,
 recorder, destructive history transaction, one client transition marker, and
-the three hook registries counted as one extension surface. The selected Q1
-guard may reuse one of these, but may not become an additional owner or
-ordering subsystem. The final pass must name any retained guard and show its
+the three hook registries counted as one extension surface. The sole approved
+exception is the private, one-shot `ChatHistory` initialization barrier above.
+It may carry only the fresh-versus-restored initial-message outcome and must
+not become a general admission predicate, queue, marker, public surface, or
+ordering subsystem. The final pass must name that barrier, show its
 requirement trace, or delete it.
 
 ## Current handoff
@@ -330,9 +368,11 @@ requirement trace, or delete it.
 Landed: Phase 5 parent `shinychat#fg70` is created and claimed on
 `feat/history-exchange-tree`; the authorized Q1 seed amendment and probe
 evidence are incorporated in this note. `bdd5089b` independently repaired
-live materialization failure recovery. No Phase 5 retained implementation has
-begun.
+live materialization failure recovery. Client seed `ad177514` is committed.
+The uncommitted ambient `_capture_admission` predicate is parked/rejected and
+must not land.
 
-Next: `shinychat#fbhe` may implement the selected P5.0 guard, including the
-bounded initial recorded-preflight recovery. P5.1-P5.4 remain blocked by P5.0.
-Do not begin R, legacy, or another scheduling/ownership mechanism.
+Next: after self-review, `shinychat#fbhe` may replace the rejected predicate
+with the selected one-shot `ChatHistory` barrier and add the bounded initial
+recorded-preflight recovery. P5.1-P5.4 remain blocked by P5.0. Do not begin R,
+legacy, or another scheduling/ownership mechanism.

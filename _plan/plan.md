@@ -344,7 +344,18 @@ with a warning rather than failing the restore.
    inert and must not fail the originating capture-eligible send. Phase 5
    blocks user dispatch and capture-eligible initial sends until the restore
    decision and its authoritative metadata publication complete; it admits no
-   preselection capture. Every Python `chat_ui()` emits the private static
+   preselection capture. The rejected ambient `_capture_admission` predicate
+   is DELETE/REPLACE and must not land. The sole exception to the no-new-owner
+   boundary is a private one-shot Python-v2 initialization barrier owned by
+   `ChatHistory`: it is created after v2 recorder installation, carries only
+   the fresh-versus-restored initial-message outcome, and is awaited
+   immediately before accepted-input capture, complete-append reservation,
+   and root-stream reservation. It settles only after no-target/success or
+   approved fresh-draft cleanup plus authoritative `history_update`; individual
+   waiter cancellation cannot cancel it, while teardown cancels/releases its
+   waiters. Restore replay bypasses it naturally through its internal replay
+   path, never through a generic destructive-owner bypass. Every Python
+   `chat_ui()` emits the private static
    `data-shinychat-history-transition-protocol="completion-v2"` attribute
    before React/input activation. This is an unconditional conservative seed
    because the tag constructor has no Chat/history context; the client seeds
@@ -356,7 +367,11 @@ with a warning rather than failing the restore.
    delay. R emits no seed. There is no public API, Chat-tag registry, new
    post-mount action, second marker or owner, persistence, deferred
    submission, preselection buffer, provisional record or merge, queue, timer,
-   or reconciliation.
+   or reconciliation. The barrier is neither a payload queue, recorder buffer,
+   public API, lifecycle marker, persistence, nor a second marker or owner.
+   Manual startup appends await it and then execute after a live decision;
+   deprecated `Chat(messages=...)` executes for no-target/fresh-draft and is
+   suppressed after a successful target restore.
 
 ### 3.6 Branching, editing, retries, actions (R1, R3, R7)
 
@@ -588,8 +603,10 @@ signed off by the driver before code (process.md §3.4).
   content verified).
 - **Phase 5 — hard core + adversarial review (Python; `shinychat#fg70`).**
   Q1 is resolved: P5.0's selected disabled-until-restore-decision guard may
-  proceed under `shinychat#fbhe`; defer-one-submission is rejected. Later
-  children remain blocked. Then audit clear/switch/abort, unreplayable-turn
+  proceed under `shinychat#fbhe` using the authorized private one-shot
+  `ChatHistory` initialization barrier; defer-one-submission and the ambient
+  `_capture_admission` predicate are rejected. Later children remain blocked.
+  Then audit clear/switch/abort, unreplayable-turn
   degradation, and the error-on-reload affordance, followed by one adversarial
   review pass in the critical-review format on exactly this subsystem. See
   `phase-5-mechanism.md`; Phase 4's mechanism note is completed context only.
