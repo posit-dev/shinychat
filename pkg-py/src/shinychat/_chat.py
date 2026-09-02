@@ -1727,9 +1727,17 @@ class Chat:
         status: Literal["cancelled", "error"] | None = None
         error: str | None = None
         try:
-            started = await self._append_message_chunk(
-                empty, chunk="start", stream_id=id, icon=icon
-            )
+            try:
+                started = await self._append_message_chunk(
+                    empty, chunk="start", stream_id=id, icon=icon
+                )
+            except asyncio.CancelledError:
+                raise
+            except BaseException:
+                status = "error"
+                error = HISTORY_ERROR_STREAM_START
+                started = started or self._transcript.active_stream_id == id
+                raise
             if not started:
                 return ""
             async for msg in message:
@@ -1743,7 +1751,8 @@ class Chat:
             raise
         except BaseException as e:
             status = "error"
-            error = str(e)
+            if error is None:
+                error = str(e)
             started = started or self._transcript.active_stream_id == id
             raise
         finally:

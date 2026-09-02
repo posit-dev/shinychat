@@ -33,6 +33,7 @@ from shinychat._history_store import (
     InMemoryConversationStore,
 )
 from shinychat._history_types import (
+    HISTORY_ERROR_STREAM_START,
     HISTORY_ERROR_STREAM_TERMINAL,
     new_conversation_record,
 )
@@ -3105,7 +3106,7 @@ def test_stream_start_persistence_failure_closes_sent_stream():
 
     entry = chat._transcript.read()[0]
     assert entry.status == "error"
-    assert entry.error == {"message": "start persistence failed"}
+    assert entry.error == {"message": HISTORY_ERROR_STREAM_START}
     assert chat._transcript.active_stream_id is None
     assert sent[-1] == {"type": "chunk_end"}
 
