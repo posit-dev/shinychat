@@ -830,3 +830,7 @@ Self-review: 100/100 (clarity 25, comprehensiveness 25, feasibility 25,
 consistency 25). No deficiency remains: the fix reuses both existing readiness
 representations, covers UI and forged admission, and adds no marker, owner,
 queue, timer, or public API.
+
+P5.4 landed in `70dcdc7f`, `f91d4db7`, and `5647605d`.
+Next state: P5.4 repair complete and ready to proceed.
+Verification caveat: raw `git diff --check` across the `f91` asset refresh flags a pre-existing embedded tab in regenerated minified JS; no generated assets were hand-edited, and the source/test diff is clean.
