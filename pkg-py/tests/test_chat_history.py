@@ -2024,14 +2024,145 @@ async def _finish_held_clear_task(
     cancel: bool = False,
 ) -> None:
     release.set()
-    active_exception = sys.exc_info()[1] is not None
-    if cancel and not task.done():
-        task.cancel()
+    active_exception = sys.exc_info()[1]
     try:
         await asyncio.wait_for(asyncio.shield(task), timeout=1)
-    except BaseException:
-        if not cancel or not active_exception:
-            raise
+    except asyncio.TimeoutError as timeout:
+        if cancel:
+            first_cancellation = task.cancel()
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=1)
+            except asyncio.TimeoutError:
+                second_cancellation = task.cancel()
+                try:
+                    await asyncio.wait_for(asyncio.shield(task), timeout=1)
+                except asyncio.TimeoutError as third_timeout:
+                    task_error = RuntimeError(
+                        "held clear task did not finish after cancellation"
+                    )
+                    if active_exception is not None:
+                        raise active_exception from task_error
+                    raise task_error from third_timeout
+                except BaseException as task_error:
+                    if (
+                        isinstance(task_error, asyncio.CancelledError)
+                        and second_cancellation
+                    ):
+                        return
+                    if active_exception is not None:
+                        raise active_exception from task_error
+                    raise
+            except BaseException as task_error:
+                if (
+                    isinstance(task_error, asyncio.CancelledError)
+                    and first_cancellation
+                ):
+                    return
+                if active_exception is not None:
+                    raise active_exception from task_error
+                raise
+        else:
+            task_error = RuntimeError("held clear task did not finish")
+            if active_exception is not None:
+                raise active_exception from task_error
+            raise task_error from timeout
+    except BaseException as task_error:
+        if active_exception is not None:
+            raise active_exception from task_error
+        raise
+
+
+@pytest.mark.anyio
+async def test_finish_held_clear_task_propagates_task_failure() -> None:
+    async def fail() -> None:
+        raise RuntimeError("clear task failed")
+
+    task = asyncio.create_task(fail())
+    await asyncio.sleep(0)
+
+    with pytest.raises(RuntimeError, match="clear task failed"):
+        await _finish_held_clear_task(task, asyncio.Event())
+
+
+@pytest.mark.anyio
+async def test_finish_held_clear_task_preserves_body_failure() -> None:
+    async def fail() -> None:
+        raise RuntimeError("clear task failed")
+
+    task = asyncio.create_task(fail())
+    await asyncio.sleep(0)
+
+    with pytest.raises(AssertionError, match="body failed") as raised:
+        try:
+            raise AssertionError("body failed")
+        finally:
+            await _finish_held_clear_task(task, asyncio.Event(), cancel=True)
+
+    assert isinstance(raised.value.__cause__, RuntimeError)
+    assert str(raised.value.__cause__) == "clear task failed"
+
+
+@pytest.mark.anyio
+async def test_finish_held_clear_task_bounds_resistant_cancellation() -> None:
+    cancellations = 0
+
+    async def resist_first_cancel() -> None:
+        nonlocal cancellations
+        while True:
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                cancellations += 1
+                if cancellations == 1:
+                    continue
+                raise RuntimeError("clear task resisted cancellation")
+
+    task = asyncio.create_task(resist_first_cancel())
+    await asyncio.sleep(0)
+
+    with pytest.raises(RuntimeError, match="clear task resisted cancellation"):
+        await _finish_held_clear_task(task, asyncio.Event(), cancel=True)
+
+    assert task.done()
+    assert cancellations == 2
+
+
+@pytest.mark.anyio
+async def test_finish_held_clear_task_propagates_preexisting_cancellation() -> None:
+    async def self_cancel() -> None:
+        current_task = asyncio.current_task()
+        assert current_task is not None
+        current_task.cancel()
+        await asyncio.sleep(0)
+
+    task = asyncio.create_task(self_cancel())
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert task.cancelled()
+
+    with pytest.raises(asyncio.CancelledError):
+        await _finish_held_clear_task(task, asyncio.Event(), cancel=True)
+
+
+@pytest.mark.anyio
+async def test_finish_held_clear_task_propagates_pending_cancellation() -> None:
+    cancellation_requested = asyncio.Event()
+    release = asyncio.Event()
+
+    async def self_cancel_before_delivery() -> None:
+        current_task = asyncio.current_task()
+        assert current_task is not None
+        current_task.cancel()
+        cancellation_requested.set()
+        await release.wait()
+
+    task = asyncio.create_task(self_cancel_before_delivery())
+    await asyncio.wait_for(cancellation_requested.wait(), timeout=1)
+
+    with pytest.raises(asyncio.CancelledError):
+        await _finish_held_clear_task(task, release, cancel=True)
+
+    assert task.cancelled()
 
 
 @pytest.mark.anyio
@@ -2088,30 +2219,34 @@ async def test_v2_clear_settles_terminal_response_before_clear_mutation(
     session.send_custom_message = hold_after_clear_dispatch  # type: ignore[method-assign]
     clear_task = asyncio.create_task(chat.clear_messages())
     try:
-        await asyncio.wait_for(clear_dispatched.wait(), timeout=1)
+        try:
+            await asyncio.wait_for(clear_dispatched.wait(), timeout=1)
 
-        assert settlements == 1
-        assert chat._transcript.read()[-1].message.content == "terminal response"
-        assert recorder.record is not None
-        assert recorder.record.nodes[recorder.record.active_leaf].status == "ok"  # type: ignore[index]
-        stored_before_clear = await FileConversationStore(tmp_path).get(
-            partition, recorder.record.id
-        )
-        assert stored_before_clear is not None
-        assert stored_before_clear.response_count == 1
-        assert stored_before_clear.nodes[stored_before_clear.active_leaf].status == "ok"  # type: ignore[index]
+            assert settlements == 1
+            assert chat._transcript.read()[-1].message.content == "terminal response"
+            assert recorder.record is not None
+            assert recorder.record.nodes[recorder.record.active_leaf].status == "ok"  # type: ignore[index]
+            stored_before_clear = await FileConversationStore(tmp_path).get(
+                partition, recorder.record.id
+            )
+            assert stored_before_clear is not None
+            assert stored_before_clear.response_count == 1
+            assert stored_before_clear.nodes[stored_before_clear.active_leaf].status == "ok"  # type: ignore[index]
 
-        await _finish_held_clear_task(clear_task, release_clear)
+            await _finish_held_clear_task(clear_task, release_clear)
 
-        assert settlements == 1
-        assert chat._transcript.read() == ()
-        assert [
-            message["action"]
-            for message in session.messages
-            if message["action"]["type"] == "clear"
-        ] == [{"type": "clear"}]
+            assert settlements == 1
+            assert chat._transcript.read() == ()
+            assert [
+                message["action"]
+                for message in session.messages
+                if message["action"]["type"] == "clear"
+            ] == [{"type": "clear"}]
+        finally:
+            await _finish_held_clear_task(
+                clear_task, release_clear, cancel=True
+            )
     finally:
-        await _finish_held_clear_task(clear_task, release_clear, cancel=True)
         chat.destroy()
 
 
@@ -2221,48 +2356,52 @@ async def test_v2_clear_retains_input_admitted_after_clear_dispatch(
     session.send_custom_message = hold_after_clear_dispatch  # type: ignore[method-assign]
     clear_task = asyncio.create_task(chat.clear_messages())
     try:
-        await asyncio.wait_for(clear_dispatched.wait(), timeout=1)
+        try:
+            await asyncio.wait_for(clear_dispatched.wait(), timeout=1)
 
-        await chat._record_accepted_user_input_with_capture(
-            ChatMessage(content="tail input", role="user"),
-            dispatch_user_submit=False,
-        )
-        assert chat._transcript.read()[-1].message.content == "tail input"
-        await _finish_held_clear_task(clear_task, release_clear)
-        await chat.append_message("tail response")
-        await reactive.flush()
-        await reactive.flush()
+            await chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="tail input", role="user"),
+                dispatch_user_submit=False,
+            )
+            assert chat._transcript.read()[-1].message.content == "tail input"
+            await _finish_held_clear_task(clear_task, release_clear)
+            await chat.append_message("tail response")
+            await reactive.flush()
+            await reactive.flush()
 
-        assert [
-            entry.message.content for entry in chat._transcript.read()
-        ] == ["tail input", "tail response"]
-        assert recorder.record is not None
-        tail_leaf = recorder.record.active_leaf
-        assert tail_leaf is not None
-        assert tail_leaf != old_leaf
-        tail_node = recorder.record.nodes[tail_leaf]
-        assert tail_node.input is not None
-        assert tail_node.input.content == "tail input"
-        assert [
-            message.as_stored_message().content for message in tail_node.messages
-        ] == ["tail response"]
+            assert [
+                entry.message.content for entry in chat._transcript.read()
+            ] == ["tail input", "tail response"]
+            assert recorder.record is not None
+            tail_leaf = recorder.record.active_leaf
+            assert tail_leaf is not None
+            assert tail_leaf != old_leaf
+            tail_node = recorder.record.nodes[tail_leaf]
+            assert tail_node.input is not None
+            assert tail_node.input.content == "tail input"
+            assert [
+                message.as_stored_message().content for message in tail_node.messages
+            ] == ["tail response"]
 
-        persisted = await FileConversationStore(tmp_path).get(
-            partition, recorder.record.id
-        )
-        assert persisted is not None
-        persisted_tail = persisted.nodes[persisted.active_leaf]  # type: ignore[index]
-        assert persisted_tail.input is not None
-        assert persisted_tail.input.content == "tail input"
-        assert [
-            message.as_stored_message().content for message in persisted_tail.messages
-        ] == ["tail response"]
-        assert persisted.active_leaf == tail_leaf
-        assert [
-            message["action"]
-            for message in session.messages
-            if message["action"]["type"] == "clear"
-        ] == [{"type": "clear"}]
+            persisted = await FileConversationStore(tmp_path).get(
+                partition, recorder.record.id
+            )
+            assert persisted is not None
+            persisted_tail = persisted.nodes[persisted.active_leaf]  # type: ignore[index]
+            assert persisted_tail.input is not None
+            assert persisted_tail.input.content == "tail input"
+            assert [
+                message.as_stored_message().content for message in persisted_tail.messages
+            ] == ["tail response"]
+            assert persisted.active_leaf == tail_leaf
+            assert [
+                message["action"]
+                for message in session.messages
+                if message["action"]["type"] == "clear"
+            ] == [{"type": "clear"}]
+        finally:
+            await _finish_held_clear_task(
+                clear_task, release_clear, cancel=True
+            )
     finally:
-        await _finish_held_clear_task(clear_task, release_clear, cancel=True)
         chat.destroy()
