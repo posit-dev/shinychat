@@ -177,15 +177,19 @@ metadata `list()`. The prototypes were deleted.
 `bdd5089b` (`fix(history): recover live restore materialization`) is the
 bounded prerequisite that moved live-bootstrap turn materialization into the
 existing restore failure contract. Its focused regressions independently PASS.
-P5.0 must add the remaining initial-only catch for recorded
-`_prepare_exchange_restore()` failures at the three `_init_history` restore
-call sites: bookmark pointer (`_history.py:2487`), bookmark conversation
-(`_history.py:2502`), and browser/URL target (`_history.py:2541`). Each
-ordinary preflight failure must use `_clear_failed_restore()`, publish its
-single authoritative release update, and settle initialization false; a
-cancellation must propagate unchanged. Do not move this catch into the
-shared preflight helper or the general restore method. Switch preflight
-remains unchanged: it retains the Phase 4 no-target-mutation behavior.
+`e07c6c57` (`fix(history): recover cancelled initial preflight`) completes
+the remaining initial-only preflight boundary in
+`_restore_initial_exchange_record()`, shared by the bookmark-pointer,
+bookmark-conversation, and browser/URL `_init_history` target paths. Its
+`BaseException` catch runs `_clear_failed_restore()` exactly once before the
+existing outer initializer settles false/fresh, so it publishes the one
+authoritative release `history_update` and re-raises the exact cancellation.
+The production-init regression injects cancellation from
+`_prepare_exchange_restore()`, proves replay never begins, the stored target
+is untouched, cleanup and false settlement each occur once, and a later
+initialization call is a no-op. Do not move this catch into the shared
+preflight helper or the general restore method. Switch preflight remains
+unchanged: it retains the Phase 4 no-target-mutation behavior.
 
 The selected guard must:
 
@@ -404,7 +408,12 @@ literal again. Production-path coverage includes a held root stream attaching
 below the restored exchange, real restored-target `Chat(messages=...)`
 suppression, v1/history-disabled message-before-withdrawal ordering, and
 held-WebSocket Send-button, attachment-only, suggestion, and real
-slash-command blocking.
+slash-command blocking. `e07c6c57` fixes the independent initial-preflight
+cancellation P1: the initial-only `BaseException` boundary executes approved
+fresh-draft cleanup and one release update before false/fresh barrier
+settlement, preserves the exact cancellation, and cannot rerun initialization.
+Its focused history/controller suite passed 303 tests; format and Pyright are
+clean.
 
 The test contract is resolved by the 2026-09-02 `shinychat#fbhe` orchestrator
 decision: no global/helper/fixture readiness wait. Ordinary existing browser
@@ -413,6 +422,11 @@ their raced send; initial-gate, initial-seed-withdrawal, and stale-completion
 evidence deliberately retain their direct blocked submissions. The full
 browser gate identified the ordinary sites, including page-chat fixtures, and
 they are now explicit rather than hidden behind controller behavior.
+
+The P2 imperative-route review request is dispositioned: the mounted
+`ChatInput` and `ChatApp.submitUserInput` transport integration is the
+production boundary, and existing unit coverage exercises the imperative
+recheck there. No test-only imperative browser hook will be added.
 
 Verification is green: `make py-check` passed with 207 Playwright tests and
 915 Python tests (one skipped, 34 established warnings); JS lint and 1,260
@@ -425,5 +439,6 @@ by `shinychat#fbhe`, `shinychat#yebr` by `shinychat#bj1n`,
 mechanism.
 
 Status-only self-review: 98/100 (clarity 25/25, comprehensiveness 24/25,
-feasibility 25/25, consistency 24/25). Remaining acceptance work is the
-required independent review; no mechanism decision is open.
+feasibility 25/25, consistency 24/25). P5.0 remains pending independent
+review; `shinychat#bj1n` and later children remain blocked. No mechanism
+decision is open.
