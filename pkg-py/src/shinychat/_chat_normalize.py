@@ -423,14 +423,12 @@ try:
 
     @message_content.register
     def _(message: Turn):
-        content = ""
         deps: list[HTMLDependency] = []
         blocks: list[StructuredBlock] = []
         parts: list[str | StructuredBlock] = []
         block_dep_objs: dict[int, list[HTMLDependency]] = {}
         for x in message.contents:
             item = normalize_message(x)
-            content += item.content
             deps += item.html_deps
             offset = len(blocks)
             blocks.extend(item.blocks)
@@ -447,9 +445,11 @@ try:
             role = "assistant"
         else:
             role = message.role
-        result = ChatMessage(
-            content=content, role=role, blocks=blocks, parts=parts or None
-        )
+        # The merged segment list already carries the blocks, so it is the
+        # only content spelling passed. String parts flatten to the
+        # message-level content_type (markdown), matching the pre-segments
+        # merge; per-item content_type fidelity is a future improvement.
+        result = ChatMessage(content="", role=role, parts=parts or None)
         result.html_deps = deps + result.html_deps
         result._block_html_deps = block_dep_objs
         return result

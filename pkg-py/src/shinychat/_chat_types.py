@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 from ._attachments import Attachment
 from ._html_islands import (
     IslandBlockPart,
+    build_html_block,
     derive_island_parts,
 )
 from ._typing_extensions import NotRequired, TypedDict, TypeGuard
@@ -387,6 +388,16 @@ class ChatMessageDict(TypedDict):
 
 
 class ChatMessage:
+    """A chat message whose content is a single ordered segment list.
+
+    ``segments`` (string :class:`ContentSegment`s interleaved with structured
+    blocks) is the one internal content representation — the same shape as
+    the wire and :class:`StoredMessage`. ``content``, ``blocks``, and
+    ``parts`` are derived views; the constructor's input spellings compile to
+    segments once and are mutually exclusive (``parts=`` raises when combined
+    with ``blocks=`` or non-empty ``content``).
+    """
+
     def __init__(
         self,
         content: TagChild,
@@ -401,92 +412,154 @@ class ChatMessage:
             Attachment.model_validate(a) if isinstance(a, dict) else a
             for a in (attachments or [])
         ]
-        self.content_type: ContentType = (
-            content_type if content_type is not None else "markdown"
-        )
+        # Parallel to the block entries of `segments`: raw HTMLDependency
+        # objects per block index. ChatMessage has no session at construction
+        # time, so dep objects are stashed here for session-processing at
+        # send/persist time.
+        self._block_html_deps: dict[int, list[HTMLDependency]] = {}
+
         # Server-authored structured blocks; they travel as typed
         # segments/`block_insert` actions, never as markup in `content`.
         supplied_blocks: list[StructuredBlock] = list(blocks) if blocks else []
-        self.blocks: list[StructuredBlock] = list(supplied_blocks)
-        # Ordered interleaving of string runs and structured blocks, set only
-        # when the message was normalized from multi-part content. Bare
-        # strings are stamped with the message-level content_type (markdown
-        # by default) at from_chat_message() time.
-        self.parts: list[str | StructuredBlock] | None = parts
-        # Parallel to self.blocks: HTMLDependency objects per block index.
-        # ChatMessage.__init__ has no session, so raw dep objects are stashed
-        # here for session-processing at send/persist time.
-        self._block_html_deps: dict[int, list[HTMLDependency]] = {}
 
-        # content _can_ be a TagChild, but it's most likely just a string (of
-        # markdown), so only process it if it's not a string.
+        resolved_type: ContentType
         deps: list[HTMLDependency] = []
-        if not isinstance(content, str):
+        segments: list[ContentSegment | StructuredBlock]
+
+        if parts is not None:
+            if supplied_blocks:
+                raise ValueError(
+                    "`parts` and `blocks` are mutually exclusive: `parts` is "
+                    "the ordered segment list and already carries its blocks."
+                )
+            if not isinstance(content, str) or content:
+                raise ValueError(
+                    "`parts` cannot be combined with `content`: the segment "
+                    "list is the complete content spelling. Pass "
+                    "`content=''`."
+                )
+            resolved_type = (
+                content_type if content_type is not None else "markdown"
+            )
+            segments = self._compile_parts(parts, resolved_type)
+        elif isinstance(content, str):
+            resolved_type = (
+                content_type if content_type is not None else "markdown"
+            )
+            segments = [
+                ContentSegment(content=content, content_type=resolved_type),
+                *supplied_blocks,
+            ]
+        else:
             # TagList/tag content is an HTML container: bare strings inside
             # it are escaped text nodes (via TagList().render()), NOT
             # markdown. To mix markdown and UI in one message, use `parts`.
-            content_parts: list[str | StructuredBlock] = []
-            content_part_deps: list[list[HTMLDependency] | None] = []
-            for part in derive_island_parts(content):
+            # The shared derive_island_parts() partition turns non-React runs
+            # into html_block structured blocks; bare React elements are
+            # rendered and concatenated as residual string segments.
+            island_parts = derive_island_parts(content)
+            resolved_type = (
+                content_type
+                if content_type is not None
+                else ("html" if island_parts else "markdown")
+            )
+            segments = []
+            block_idx = 0
+            for part in island_parts:
                 deps.extend(part.deps)
                 if isinstance(part, IslandBlockPart):
-                    block: HtmlBlock = {
-                        "type": "html_block",
-                        "version": 1,
-                        "content": part.html,
-                    }
+                    segments.append(
+                        build_html_block(
+                            part.html,
+                            [d.as_dict() for d in part.deps]
+                            if part.deps
+                            else None,
+                        )
+                    )
                     if part.deps:
-                        # The raw as_dict() copy is the no-session fallback;
-                        # the send path overwrites it with processed deps.
-                        block["html_deps"] = [d.as_dict() for d in part.deps]
-                        content_part_deps.append(part.deps)
-                    else:
-                        content_part_deps.append(None)
-                    content_parts.append(block)
-                else:
-                    content_parts.append(part.html)
-                    content_part_deps.append(None)
-            residual_html = "".join(
-                p for p in content_parts if isinstance(p, str)
-            )
-            if residual_html:
-                content = residual_html
-                if content_type is None:
-                    self.content_type = "html"
-            else:
-                content = ""
-                if content_parts and content_type is None:
-                    self.content_type = "html"
-            merged_parts = list(content_parts) + supplied_blocks
-            self.blocks = [p for p in merged_parts if not isinstance(p, str)]
-            block_idx = 0
-            for i, p in enumerate(content_parts):
-                if not isinstance(p, str):
-                    block_deps = content_part_deps[i]
-                    if block_deps:
-                        self._block_html_deps[block_idx] = block_deps
+                        # The raw as_dict() copy on the block is the
+                        # no-session fallback; the send path overwrites it
+                        # with session-processed deps.
+                        self._block_html_deps[block_idx] = part.deps
                     block_idx += 1
-            # parts stays None for single-block content so the flat layout
-            # path in from_chat_message handles it.
-            if merged_parts and (
-                len(merged_parts) > 1 or isinstance(merged_parts[0], str)
-            ):
-                coalesced: list[str | StructuredBlock] = []
-                for p in merged_parts:
-                    if (
-                        isinstance(p, str)
-                        and coalesced
-                        and isinstance(coalesced[-1], str)
-                    ):
-                        coalesced[-1] += p
-                    else:
-                        coalesced.append(p)
-                self.parts = coalesced
-            elif parts:
-                self.parts = parts
+                else:
+                    segments.append(
+                        ContentSegment(
+                            content=part.html, content_type=resolved_type
+                        )
+                    )
+            # Supplied blocks trail the content-derived segments, preserving
+            # prior flat-layout semantics.
+            segments.extend(supplied_blocks)
 
-        self.content = content
+        self.content_type: ContentType = resolved_type
+        self.segments: list[ContentSegment | StructuredBlock] = segments
         self.html_deps: list[HTMLDependency] = deps
+
+    @staticmethod
+    def _compile_parts(
+        parts: list[str | StructuredBlock], content_type: ContentType
+    ) -> list[ContentSegment | StructuredBlock]:
+        # Bare strings become string segments stamped with the message
+        # content_type (markdown by default) — the segment-list API is the
+        # deliberate way to mix markdown and UI in one message, unlike
+        # TagList content which is an HTML container. Blocks pass through in
+        # order; adjacent string runs coalesce.
+        segments: list[ContentSegment | StructuredBlock] = []
+        for part in parts:
+            if isinstance(part, str):
+                last = segments[-1] if segments else None
+                if isinstance(last, ContentSegment):
+                    last.content += part
+                else:
+                    segments.append(
+                        ContentSegment(content=part, content_type=content_type)
+                    )
+            else:
+                segments.append(part)
+        return segments
+
+    @property
+    def content(self) -> str:
+        """The message's string content: its string segments, joined."""
+        return "".join(
+            s.content for s in self.segments if isinstance(s, ContentSegment)
+        )
+
+    @content.setter
+    def content(self, value: str) -> None:
+        # Replaces the string runs with a single segment stamped with the
+        # message content_type; blocks are kept, trailing (flat layout).
+        self.segments = [
+            ContentSegment(content=value, content_type=self.content_type),
+            *[s for s in self.segments if isinstance(s, dict)],
+        ]
+
+    @property
+    def blocks(self) -> list[StructuredBlock]:
+        """The message's structured blocks, in content order."""
+        return [s for s in self.segments if isinstance(s, dict)]
+
+    @property
+    def parts(self) -> list[str | StructuredBlock] | None:
+        """The ordered segment list in the ``parts`` input spelling (bare
+        strings interleaved with blocks), or None when the message holds at
+        most one segment (flat layout)."""
+        if len(self.segments) <= 1:
+            return None
+        return [
+            s.content if isinstance(s, ContentSegment) else s
+            for s in self.segments
+        ]
+
+    @parts.setter
+    def parts(self, value: "list[str | StructuredBlock] | None") -> None:
+        if value is None:
+            # Collapse to flat layout — the same shape the content setter
+            # leaves (one string segment, blocks trailing).
+            self.content = self.content
+        else:
+            self.segments = self._compile_parts(value, self.content_type)
 
 
 class ChatGreeting:
@@ -697,40 +770,31 @@ class StoredMessage(BaseModel):
         message: ChatMessage,
         html_deps: list[SerializedDep] | None = None,
     ) -> StoredMessage:
-        parts = message.parts
-        if not parts or not any(isinstance(p, str) for p in parts):
-            # Flat layout (also covers a blocks-only multi-part message).
-            return cls(
-                role=message.role,
-                segments=[
-                    StoredSegment(
-                        content=str(message.content),
-                        content_type=message.content_type,
-                        html_deps=html_deps,
-                    )
-                ],
-                attachments=message.attachments,
-                blocks=list(message.blocks),
-            )
-        # Multi-part layout: split the string runs into their own segments so
-        # the blocks can be re-interleaved at their original positions. String
-        # parts are stamped with the message-level content_type.
         segments: list[StoredSegment] = []
         blocks: list[StructuredBlock] = []
         positions: list[int] = []
-        for part in parts:
-            if isinstance(part, str):
+        for seg in message.segments:
+            if isinstance(seg, ContentSegment):
                 segments.append(
                     StoredSegment(
-                        content=part,
-                        content_type=message.content_type,
+                        content=seg.content, content_type=seg.content_type
                     )
                 )
             else:
                 positions.append(len(segments))
-                blocks.append(part)
-        if segments:
-            segments[0].html_deps = html_deps
+                blocks.append(seg)
+        if not segments:
+            # The wire always carries at least one string segment, even for
+            # a blocks-only message.
+            segments = [
+                StoredSegment(content="", content_type=message.content_type)
+            ]
+            positions = []
+        segments[0].html_deps = html_deps
+        # Blocks that all trail the string segments are the flat layout;
+        # record positions only for true interleaving.
+        if positions and all(p == len(segments) for p in positions):
+            positions = []
         return cls(
             role=message.role,
             segments=segments,
