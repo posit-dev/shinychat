@@ -751,3 +751,9 @@ Self-review: 100/100 (clarity 25, comprehensiveness 25, feasibility 25,
 consistency 25). No deficiencies remain. The patch names exact ordering,
 failure behavior, admission rules, and the pre-mutation partition boundary
 without changing compatible resubmit behavior or adding state.
+
+### P5.2 degraded-resubmit PATCH handoff (2026-09-02)
+
+Landed: `f4d906f3` projects the durable degraded sibling before its exactly-once provider publication and centralizes resubmit admission.
+Verified: focused/full controller, history, and transcript tests; Pyright; Python format; JS lint and tests pass, with no JS or asset changes.
+Next: no provisional decision; the bounded `shinychat#yebr` PATCH is complete.
