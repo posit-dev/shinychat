@@ -754,14 +754,10 @@ without changing compatible resubmit behavior or adding state.
 
 ### P5.2 degraded-resubmit PATCH handoff (2026-09-02)
 
-Landed: `f4d906f3` projects the durable degraded sibling before its exactly-once provider publication and centralizes resubmit admission.
-Verified: focused/full controller, history, and transcript tests; Pyright; Python format; JS lint and tests pass, with no JS or asset changes.
-The three-findings valve disposition is **PATCH**, not DELETE/REPLACE. The
-source mechanism remains coherent: only the first finding was a source
-semantics defect; the remaining two were missing discriminating test
-evidence. No production mechanism change is required.
-
-The narrowly remaining evidence is a projection-and-publication both-fail
-regression proving exactly one publication attempt and a persisted/durable
-sibling. This is a small test-evidence follow-up for `shinychat#yebr`; the
-PATCH is not yet complete.
+The P5.2 **PATCH** is complete in `f4d906f3`, `19b5703a`, `051a9e00`, and
+`b096715a`. Production now projects the durable degraded sibling before
+exactly-one publication and preserves projection failure with publication
+failure chained. Evidence covers projection-only failure, both failure, and
+publication-only failure with the sibling persisted. Focused/full controller
+tests, format, Pyright, diff, and independent closing review are green with
+no findings. No new decision was required.
