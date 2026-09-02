@@ -564,3 +564,13 @@ matrix for New/Delete success, error, and cancellation together with the
 client store's exact-match/stale-completion tests. Deterministic browser
 provenance remains backlog `shinychat#n5d3`; P5.1 adds no synchronization or
 runtime mechanism for it.
+
+P5.1 closure (2026-09-02): Roborev 1184's sole persistence-discrimination
+finding was fixed in `1435e4ff` by replacing an aliasing in-memory test store
+with a deep-copying snapshot store. Roborev 1186 passed the complete amended
+task range with no findings. The final full gate before that test-only
+correction passed 209 Playwright and 927 Python tests with one existing skip;
+the corrected matrix passed all four cases, the full controller module passed
+227 tests, and format, Pyright, and diff checks passed. Every P5.1 row now has
+discriminating evidence or the requirement-grounded disposition recorded
+above. `shinychat#yebr` is next; later Phase 5 children remain blocked.
