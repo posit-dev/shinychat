@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from functools import singledispatch
-from typing import TYPE_CHECKING, Any, TypeAlias, TypeGuard
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 from htmltools import HTML, HTMLDependency, Tag, Tagifiable, TagList
 
@@ -11,6 +11,7 @@ from ._chat_types import (
     StructuredBlock,
     WebFetchBlock,
     WebSearchBlock,
+    WebSearchCitationsBlock,
     WebSearchResultsBlock,
     WebSearchSource,
     is_structured_segment,
@@ -323,6 +324,12 @@ try:
                 "version": 1,
                 "query": message.query,
             }
+            # Providers that key their search calls (Anthropic, OpenAI)
+            # carry the id in extra; the client pairs results against it.
+            if message.extra is not None:
+                search_id = message.extra.get("id")
+                if isinstance(search_id, str):
+                    block["id"] = search_id
             return ChatMessage(content="", blocks=[block])
 
         @message_content_chunk.register
@@ -344,6 +351,10 @@ try:
                 "version": 1,
                 "sources": sources,
             }
+            if message.extra is not None:
+                search_id = message.extra.get("tool_use_id")
+                if isinstance(search_id, str):
+                    block["search_id"] = search_id
             return ChatMessage(content="", blocks=[block])
 
         @message_content_chunk.register
@@ -381,6 +392,16 @@ try:
                 message.source, WebSource
             ):
                 return ChatMessage(content="")
+            cited: WebSearchSource = {"url": message.source.url}
+            if message.source.title:
+                cited["title"] = message.source.title
+            # Citations ride their own block so the client can pair them
+            # with the search on both the stream and replay paths.
+            citations: WebSearchCitationsBlock = {
+                "type": "web_search_citations",
+                "version": 1,
+                "sources": [cited],
+            }
             return ChatMessage(
                 content=citation_aside(
                     message.source.url,
@@ -389,6 +410,7 @@ try:
                     cited_quote=message.cited_quote,
                 ),
                 content_type="markdown",
+                blocks=[citations],
             )
 
         @message_content_chunk.register
@@ -440,7 +462,6 @@ try:
                 else:
                     parts.append(item.content)
             parts.extend(item.blocks)
-        _attach_cited_sources(message.contents, blocks)
         if all(isinstance(x, ContentToolResult) for x in message.contents):
             role = "assistant"
         else:
@@ -463,60 +484,6 @@ try:
     # shinychat_contents() method for Chat, but Python doesn't.
 except ImportError:
     pass
-
-
-BurstCited: TypeAlias = tuple[list[WebSearchSource], dict[str, WebSearchSource]]
-
-
-def _attach_cited_sources(
-    contents: list[Any], blocks: list[StructuredBlock]
-) -> None:
-    """Cited sources ride the web_search block as a fallback when no provider
-    results attach; FIFO pairing with the earliest pending search."""
-    web_search_blocks = [b for b in blocks if b["type"] == "web_search"]
-    if not web_search_blocks:
-        return
-    try:
-        from chatlas.types import (
-            ContentCitation,
-            ContentToolRequestSearch,
-            ContentToolResponseSearch,
-            WebSource,
-        )
-    except ImportError:
-        return
-
-    bursts: list[tuple[bool, BurstCited]] = []
-    for x in contents:
-        if isinstance(x, ContentToolRequestSearch):
-            bursts.append((False, ([], {})))
-        elif isinstance(x, ContentToolResponseSearch):
-            # Client pairs results with the earliest pending search (FIFO).
-            for j, (satisfied, bucket) in enumerate(bursts):
-                if not satisfied:
-                    bursts[j] = (True, bucket)
-                    break
-        elif isinstance(x, ContentCitation) and isinstance(x.source, WebSource):
-            if not bursts:
-                continue  # Citation before any search request: no burst.
-            cited, by_url = bursts[-1][1]
-            existing = by_url.get(x.source.url)
-            if existing is not None:
-                # Merge by URL (first occurrence wins).
-                if "title" not in existing and x.source.title:
-                    existing["title"] = x.source.title
-                continue
-            source: WebSearchSource = {"url": x.source.url}
-            if x.source.title:
-                source["title"] = x.source.title
-            by_url[x.source.url] = source
-            cited.append(source)
-
-    for i, (has_results, (cited, _)) in enumerate(bursts):
-        if has_results or not cited:
-            continue
-        if i < len(web_search_blocks):
-            web_search_blocks[i]["cited_sources"] = cited
 
 
 def normalize_message(message: Any) -> ChatMessage:

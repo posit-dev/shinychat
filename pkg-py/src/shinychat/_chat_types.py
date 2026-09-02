@@ -115,7 +115,8 @@ class WebSearchBlock(TypedDict):
     type: Literal["web_search"]
     version: Literal[1]
     query: str
-    cited_sources: NotRequired[list[WebSearchSource]]
+    # Provider search id, when the provider supplies one.
+    id: NotRequired[str]
 
 
 class WebSearchResultsBlock(TypedDict):
@@ -125,6 +126,22 @@ class WebSearchResultsBlock(TypedDict):
     """
 
     type: Literal["web_search_results"]
+    version: Literal[1]
+    sources: list[WebSearchSource]
+    # `id` of the `web_search` these results answer, when known.
+    search_id: NotRequired[str]
+
+
+class WebSearchCitationsBlock(TypedDict):
+    """
+    Answer citations for the most recent `web_search` (mirrors
+    `WebSearchCitationsBlock` in `js/src/transport/types.ts`). A pure data
+    carrier: the client merges `sources` into that search and renders
+    nothing for the block itself. Shown only while no provider results
+    attach to the search.
+    """
+
+    type: Literal["web_search_citations"]
     version: Literal[1]
     sources: list[WebSearchSource]
 
@@ -163,6 +180,7 @@ StructuredBlock = Union[
     ToolResultBlock,
     WebSearchBlock,
     WebSearchResultsBlock,
+    WebSearchCitationsBlock,
     WebFetchBlock,
     HtmlBlock,
 ]
@@ -174,6 +192,7 @@ StructuredBlock = Union[
 StreamBlock = Union[
     WebSearchBlock,
     WebSearchResultsBlock,
+    WebSearchCitationsBlock,
     WebFetchBlock,
     HtmlBlock,
 ]
