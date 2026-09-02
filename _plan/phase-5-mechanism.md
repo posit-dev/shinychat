@@ -191,6 +191,32 @@ initialization call is a no-op. Do not move this catch into the shared
 preflight helper or the general restore method. Switch preflight remains
 unchanged: it retains the Phase 4 no-target-mutation behavior.
 
+Roborev 1174 HIGH is the second independent P1 against the one-shot barrier
+mechanism, after the root-stream identity correction. In browser/URL restore,
+the browser sends `browser_token` only after the first server reactive flush.
+An initial constructor message or ordinary startup append awaiting the barrier
+during that sequential flush therefore prevented the input which lets
+`_init_history` settle the barrier from arriving. The existing private
+`_await_initial_v2_decision()` now reactively requires the existing
+`browser_token` before shielding the barrier only for browser/URL callers that
+can read reactive sources. Initial effects then suspend and rerun when the
+token arrives instead of parking the flush. Nonreactive/manual callers and
+Shiny `ExtendedTask`s cannot safely register that dependency and continue to
+await the same shielded barrier directly; extended tasks do not participate in
+the sequential initial flush, and normal user-originated work cannot reach
+them before the existing client gate releases. This adds no state, queue,
+marker, owner, or second barrier.
+
+Production-browser regressions cover both previously deadlocking shapes:
+browser/no-target renders the constructor message and an ordinary startup
+append after token/init; URL/selected-target replays the stored input,
+suppresses the constructor message, and records the startup complete append
+as its existing inputless child (`n_0002` parent `n_0001`). The focused
+nonreactive unit regression proves a browser-mode manual caller still waits
+for and receives the one shared fresh result without a browser token. The new
+startup-barrier browser suite (2 tests), focused history unit selection (10
+tests), and adjacent v2 restore browser suite (7 tests) pass.
+
 The selected guard must:
 
 - create no durable preselection record, recorder buffer, or merge state;
@@ -414,6 +440,25 @@ fresh-draft cleanup and one release update before false/fresh barrier
 settlement, preserves the exact cancellation, and cannot rerun initialization.
 Its focused history/controller suite passed 303 tests; format and Pyright are
 clean.
+
+Roborev 1174 HIGH is incorporated as the second independent P1 against the
+barrier mechanism. The existing barrier awaiter now makes browser/URL initial
+effects require the existing `browser_token` before waiting, which lets the
+first flush suspend and rerun instead of deadlocking. Nonreactive/manual and
+`ExtendedTask` callers retain the direct shielded wait because they cannot
+subscribe to reactive input; this preserves normal post-release streaming.
+New real-browser coverage passes for browser/no-target constructor plus
+startup append and URL/target restore, constructor suppression, and the
+startup append's existing inputless-child targeting. The focused history
+selection (10 tests), full history unit module (82 tests), and adjacent v2
+restore browser suite (7 tests) pass; the new startup-barrier browser suite
+passes 2 tests. `make py-check-format`, `make py-check-types`, and
+`git diff --check` pass. Self-review is 100/100: the browser-token dependency
+is limited to the existing barrier awaiter and browser/URL reactive effects,
+the `ExtendedTask` exception is documented and covered by the adjacent
+streaming browser suite, and the fixture discriminates both no-target and
+selected-target outcomes. This bounded correction is pending commit and the
+existing independent P5.0 review; downstream children remain blocked.
 
 The test contract is resolved by the 2026-09-02 `shinychat#fbhe` orchestrator
 decision: no global/helper/fixture readiness wait. Ordinary existing browser
