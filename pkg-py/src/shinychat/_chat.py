@@ -407,9 +407,6 @@ class Chat:
             # TODO: deprecate messages once we start promoting managing LLM message
             # state through other means
             async def _append_init_messages():
-                # `chat_ui(messages=)` initial messages ride the DOM, so only
-                # the deprecated `Chat(messages=)` constructor arg is appended
-                # here.
                 for msg in messages:
                     await self.append_message(msg)
 
