@@ -418,6 +418,29 @@ class _ExchangeRecorder:
             self._effective_turn_entries(context)
         )
 
+    def _active_path_turns_are_incompatible(
+        self, record: ConversationRecordV2
+    ) -> bool:
+        if record.active_leaf is None:
+            raise ValueError("Exchange-tree record has no active leaf.")
+        node_ids = tuple(record.path_node_ids())
+        entries = tuple(
+            (node_id, record.nodes[node_id].state["shinychat:turns"])
+            for node_id in node_ids
+            if "shinychat:turns" in record.nodes[node_id].state
+        )
+        return self._turn_entries_are_incompatible(
+            self._effective_turn_entries(
+                StatePathContext(
+                    conversation_id=record.id,
+                    active_leaf=record.active_leaf,
+                    node_ids=node_ids,
+                    entries=entries,
+                    bootstrap="recorded",
+                )
+            )
+        )
+
     def _materialize_restore_turns(
         self, context: StatePathContext
     ) -> tuple[list[dict[str, Any]], bool]:
@@ -566,6 +589,8 @@ class _ExchangeRecorder:
         self,
         record: ConversationRecordV2,
         node_ids: tuple[str, ...],
+        *,
+        preserve_live_turns: bool = False,
     ) -> RewindPlan:
         if record.active_leaf is None:
             raise ValueError("Exchange-tree record has no active leaf.")
@@ -592,14 +617,19 @@ class _ExchangeRecorder:
                 bootstrap="recorded",
             )
             if name == "shinychat:turns":
-                prepared_turns, turns_unavailable = (
-                    self._materialize_restore_turns(context)
-                )
-                if turns_unavailable:
-                    # A degraded restore advertised the attached client's live
-                    # baseline. Rewind must retain it rather than applying an
-                    # unavailable stored prefix.
+                if preserve_live_turns:
+                    adapter = self._controller.adapter
+                    include_system_prompt = getattr(
+                        adapter, "is_chatlas", lambda: False
+                    )()
+                    prepared_turns = self._canonical_turns(
+                        adapter.get_turns_json(
+                            include_system_prompt=include_system_prompt
+                        )
+                    )[0]
+                    turns_unavailable = True
                     context = dataclasses.replace(context, bootstrap="live")
+                else:
                     prepared_turns, turns_unavailable = (
                         self._materialize_restore_turns(context)
                     )
@@ -1683,6 +1713,7 @@ class HistoryController:
         *,
         request_id: str,
         message_index: int,
+        preserve_live_turns: bool = False,
     ) -> None:
         recorder = self._exchange_recorder
         if recorder is None:
@@ -1711,14 +1742,19 @@ class HistoryController:
         prefix = record.model_copy(deep=True)
         prefix.set_active_leaf(target.parent_id)
         node_ids = tuple(prefix.path_node_ids())
-        rewind_state = recorder._preflight_rewind_state(prefix, node_ids)
+        rewind_state = recorder._preflight_rewind_state(
+            prefix,
+            node_ids,
+            preserve_live_turns=preserve_live_turns,
+        )
 
         async with self._destructive_mutation(block_input=True):
             async with self._exchange_mutation():
                 current_leaf = record.active_leaf
                 if current_leaf is None:
                     raise ValueError("Exchange-tree record has no active leaf.")
-                await recorder._capture_state(current_leaf, "node_close")
+                if not preserve_live_turns:
+                    await recorder._capture_state(current_leaf, "node_close")
                 try:
                     record.set_active_leaf(target.parent_id)
                     await recorder._persist_record()
@@ -1746,6 +1782,20 @@ class HistoryController:
     async def retry(
         self, exchange_id: str, *, request_id: str, message_index: int
     ) -> None:
+        recorder = self._exchange_recorder
+        preserve_live_turns = False
+        if recorder is not None and recorder.record is not None:
+            preserve_live_turns = recorder._active_path_turns_are_incompatible(
+                recorder.record
+            )
+        if preserve_live_turns:
+            await self.resubmit(
+                exchange_id,
+                request_id=request_id,
+                message_index=message_index,
+                preserve_live_turns=True,
+            )
+            return
         await self.resubmit(
             exchange_id,
             request_id=request_id,

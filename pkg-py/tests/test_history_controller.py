@@ -2579,7 +2579,10 @@ async def test_v2_restore_degrades_effective_turns_and_keeps_exchange_usable(
 
 
 @pytest.mark.anyio
-async def test_v2_degraded_live_restore_retains_live_baseline() -> None:
+@pytest.mark.parametrize("restore_bootstrap", ["recorded", "live"])
+async def test_v2_degraded_retry_preserves_live_turns_and_immutable_target(
+    restore_bootstrap: str,
+) -> None:
     adapter = _TrackingFakeAdapter()
     live_baseline = [{"role": "system", "content": "live"}]
     adapter.turns = list(live_baseline)
@@ -2587,19 +2590,24 @@ async def test_v2_degraded_live_restore_retains_live_baseline() -> None:
         use_exchange_tree=True,
         adapter=adapter,
     )
-    controller.restore_bootstrap = "live"
+    controller.restore_bootstrap = cast(Any, restore_bootstrap)
     target = _restore_target()
     exchange_id = "n_0001"
     target.nodes[exchange_id].status = "error"
     target.nodes[exchange_id].state["shinychat:turns"] = StateEntry(
-        kind="turns",
+        kind="unsupported",
         version=1,
         mode="delta",
         data=[],
     )
-    target.nodes["n_0000"].state["shinychat:turns"].version = 2
-    original_node = target.nodes[exchange_id].model_dump_json()
+    target.nodes["n_0000"].state["parent"] = StateEntry(
+        kind="test",
+        version=1,
+        mode="snapshot",
+        data={"parent": True},
+    )
     events: list[str] = []
+    rewind_contexts: list[StatePathContext] = []
 
     async def warn() -> None:
         events.append("warning")
@@ -2609,23 +2617,34 @@ async def test_v2_degraded_live_restore_retains_live_baseline() -> None:
 
     controller._notify_turns_unavailable = warn  # type: ignore[method-assign]
     controller.send_history_update = publish  # type: ignore[method-assign]
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    recorder._register_restore_hook("parent", lambda _context: None)
+    recorder._register_rewind_hook("parent", rewind_contexts.append)
 
     await controller.replay_exchange_record(target)
 
-    recorder = controller._exchange_recorder
-    assert recorder is not None
     assert recorder.record is target
-    assert adapter.set_calls == []
-    assert adapter.turns == live_baseline
+    expected_baseline = [] if restore_bootstrap == "recorded" else live_baseline
+    assert adapter.turns == expected_baseline
     assert events == ["warning", "history_update"]
     restored_display = list(cast(_FakeChat, controller.chat).restored_messages)
+    restore_set_calls = list(adapter.set_calls)
+    original_node = target.nodes[exchange_id].model_dump_json()
+    assert recorder._active_path_turns_are_incompatible(target)
 
     await controller.handle_resubmit(0, "retry", request_id="retry")
 
     assert target.active_leaf == "n_0000"
     assert target.nodes[exchange_id].model_dump_json() == original_node
-    assert adapter.set_calls == []
-    assert adapter.turns == live_baseline
+    assert adapter.set_calls == restore_set_calls
+    assert adapter.turns == expected_baseline
+    assert len(rewind_contexts) == 1
+    assert rewind_contexts[0].node_ids == ("n_0000",)
+    assert rewind_contexts[0].entries == (
+        ("n_0000", target.nodes["n_0000"].state["parent"]),
+    )
+    assert rewind_contexts[0].bootstrap == "recorded"
     assert cast(_FakeChat, controller.chat).restored_messages == restored_display
 
     sibling = await cast(
@@ -5028,7 +5047,7 @@ async def test_v2_projects_retry_metadata_for_restored_interrupted_exchanges(
 
 
 @pytest.mark.anyio
-async def test_v2_retry_resubmits_an_error_exchange_without_mutating_it():
+async def test_v2_compatible_retry_rewinds_stored_parent_turns():
     controller, chat, adapter, _store, first, target = (
         _make_v2_resubmit_controller()
     )
