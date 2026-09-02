@@ -1409,7 +1409,7 @@ class HistoryController:
             node_ids, planned_state, bootstrap = (
                 self._prepare_exchange_restore(selected)
             )
-        except Exception:
+        except BaseException:
             # Initial restore has no surrounding transaction to recover a
             # failed preflight. Keep the shared restore methods fail-closed.
             await self._clear_failed_restore()

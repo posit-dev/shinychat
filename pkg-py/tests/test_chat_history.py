@@ -1143,6 +1143,90 @@ async def test_v2_initial_restore_preflight_failure_recovers(
 
 
 @pytest.mark.anyio
+async def test_v2_initial_restore_preflight_cancellation_recovers_once() -> None:
+    chat_id = "initial_preflight_cancel"
+    session = _LiveSession()
+    store = InMemoryConversationStore()
+    history_ids = HistoryInputIds.for_chat(ResolvedId(chat_id))
+    session.input[history_ids.browser_token] = reactive.Value("token")
+    session.input[history_ids.current_id] = reactive.Value("c_target")
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            chat_id,
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode="browser",
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    target = new_conversation_record_v2(
+        title="target",
+        id="c_target",
+        client_info={},
+    )
+    target_before = target.model_dump(mode="json")
+    partition = ConversationPartition(chat_id=chat_id, scope="test")
+    await store.put(partition, target)
+    original = asyncio.CancelledError("initial preflight cancelled")
+    preflight = MagicMock(side_effect=original)
+    replay = AsyncMock(side_effect=AssertionError("replay must not run"))
+    controller._prepare_exchange_restore = preflight  # type: ignore[method-assign]
+    controller._replay_exchange_display = replay  # type: ignore[method-assign]
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+    settled: list[bool] = []
+
+    async def on_settled(restored: bool) -> None:
+        settled.append(restored)
+
+    controller.on_settled = on_settled
+
+    with (
+        session_context(cast(Any, session)),
+        reactive.isolate(),
+        pytest.raises(asyncio.CancelledError) as raised,
+    ):
+        await handlers["_init_history"]()
+
+    assert raised.value is original
+    assert preflight.call_count == 1
+    replay.assert_not_awaited()
+    assert settled == [False]
+    assert controller.record is None
+    assert controller._active_id_now() is None
+    assert recorder.record is None
+    assert target.model_dump(mode="json") == target_before
+    assert await store.get(partition, target.id) is target
+    updates = _history_updates(session)
+    assert len(updates) == 1
+    assert updates[0]["active_id"] is None
+    assert updates[0]["transition_protocol"] == "completion-v2"
+    assert chat.history._initial_v2_barrier is not None
+    assert chat.history._initial_v2_barrier.result() == "fresh"
+    notifier.assert_awaited_once_with(recovery_incomplete=False)
+
+    with session_context(cast(Any, session)), reactive.isolate():
+        await handlers["_init_history"]()
+
+    assert preflight.call_count == 1
+    replay.assert_not_awaited()
+    assert settled == [False]
+    assert len(_history_updates(session)) == 1
+
+
+@pytest.mark.anyio
 async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> None:
     chat_id = "initial_restore_cancel"
     session = _LiveSession()
