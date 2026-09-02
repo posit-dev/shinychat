@@ -671,3 +671,44 @@ supersedes the incompatible suffix and reloads without warning; rewind and
 degraded retry/edit/regenerate baseline behavior remain unchanged. Focused and
 full controller/chat-history tests, the history/transcript gate, format,
 Pyright, and diff checks passed. Independent review found no defects.
+
+Roborev 1192 invalidated the final sentence above for degraded resubmit.
+Preserving the live baseline across rewind still lets the later accepted-input
+callback capture on the shared parent before opening its sibling. A delta can
+therefore merge with stale parent turn state; forcing a snapshot there would
+instead overwrite the old branch's inherited context. The failed target and
+shared parent's payload and state must remain unchanged. Creating the sibling
+may update only required graph metadata (`children`, `selected_child`, and the
+active pointer).
+
+Valve decision: **DELETE/REPLACE the degraded-resubmit continuation path.**
+Compatible resubmit keeps the Phase 4 capture-parent-then-open-sibling order.
+Only after `resubmit()` has strictly classified a degraded active path and
+preflighted the parent prefix, it server-accepts the already validated
+retry/edit/regenerate input in the same call. The private recorder path:
+
+1. applies the preflighted non-turn rewind hooks before graph mutation;
+2. opens the new sibling under the parent without capturing parent turn state;
+3. invalidates the turn fingerprint and captures a full compatible snapshot
+   from the preserved live adapter turns on that sibling; and
+4. persists through the existing recorder owner and accepted-input path.
+
+The browser receives a private render-only projection of that accepted input
+and must not issue the ordinary duplicate input send. This is a stack-local
+handoff, not deferred lifecycle state: no directive survives `resubmit()`, and
+no field, request correlation, timeout, queue, owner, schema, or public hook is
+added. Validation and rewind-hook failures occur before sibling creation;
+post-accept transcript or persistence failures remain visible and propagate
+without invented rollback.
+
+Regressions cover retry/edit/regenerate in recorded and live bootstrap with a
+persisted store. They assert unchanged failed-target and parent payload/state,
+only required parent graph-edge changes, a first full compatible snapshot on
+the new sibling, reload without degradation, no duplicate browser input, and
+unchanged compatible resubmit ordering.
+
+Self-review: 100/100 (clarity 25, comprehensiveness 25, feasibility 25,
+consistency 25). No deficiencies remain. The replacement preserves retry
+eligibility and branch payload/state while isolating the ordering exception to
+the already-classified degraded call; rejected alternatives required hidden
+cross-request lifecycle state.
