@@ -2033,7 +2033,20 @@ async def test_v2_real_stream_failure_preserves_capture_matrix(
 ) -> None:
     adapter = _FakeAdapter()
     adapter.turns = []
-    store = InMemoryConversationStore()
+
+    class SnapshotStore(InMemoryConversationStore):
+        async def put(
+            self, partition: ConversationPartition, record: Any
+        ) -> None:
+            await super().put(partition, record.model_copy(deep=True))
+
+        async def get(
+            self, partition: ConversationPartition, conv_id: str
+        ) -> Any:
+            record = await super().get(partition, conv_id)
+            return record.model_copy(deep=True) if record is not None else None
+
+    store = SnapshotStore()
     controller, _ = _make_controller(
         store=store,
         use_exchange_tree=True,
@@ -2080,6 +2093,7 @@ async def test_v2_real_stream_failure_preserves_capture_matrix(
     assert recorder.record is not None
     stored = await store.get(part(), recorder.record.id)
     assert isinstance(stored, ConversationRecordV2)
+    assert stored is not recorder.record
     assert stored.active_leaf is not None
     node = stored.nodes[stored.active_leaf]
     assert [
