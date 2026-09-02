@@ -2931,9 +2931,6 @@ def chat_ui(
                     "shiny-chat-message",
                     *msg.html_deps,
                     content=msg.content,
-                    # The assistant default must not leak onto user messages,
-                    # which render `message.icon` directly (no assistant
-                    # fallback chain).
                     icon=icon_attr if msg.role != "user" else None,
                     data_role=msg.role,
                     content_type=msg.content_type,
