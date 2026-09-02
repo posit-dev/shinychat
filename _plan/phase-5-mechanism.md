@@ -1,7 +1,7 @@
 # Phase 5 mechanism: hard core and adversarial review (Python)
 
-**Status:** Q1 resolved and authorized for P5.0 retained implementation ·
-2026-09-01
+**Status:** P5.0 blocked on a supported Py Shiny reactive-context capability ·
+2026-09-02
 **Phase:** plan.md §4, Phase 5
 **Kata:** parent `shinychat#fg70` under epic `shinychat#6d0d`
 **Context:** `phase-4-mechanism.md` is completed context only. This note is
@@ -496,6 +496,27 @@ settled path preserves cancellation/result behavior through the same shielded
 future, and the production regression covers the former ExtendedTask failure.
 This follow-up is pending commit and the existing independent P5.0 review.
 Downstream children remain blocked.
+
+Post-valve independent review supersedes the preceding self-review conclusion:
+`49572407` closes the observed ExtendedTask failure, but it is not an accepted
+final shape. It imports Py Shiny's private `DenialContext`, and the fallback
+cannot distinguish an expected unavailable reactive read from an unrelated
+`RuntimeError` using supported APIs. No further incremental barrier patch is
+authorized.
+
+P5.0 is blocked pending Garrick's decision. The recommended replacement is a
+narrow typed public Py Shiny predicate, conceptually
+`reactive.can_read_reactive_sources()`, that is true only where a reactive read
+is legal and registers a useful dependency, and false outside reactive
+execution and inside `ExtendedTask`. Shinychat would then delete all private
+context imports and exception classification, require `browser_token` only
+when that predicate is true, and otherwise await the same one-shot barrier.
+This retains the approved owner and outcomes without a queue, continuation,
+payload holder, marker, or new shinychat public API. Caller flags cannot cover
+arbitrary app startup effects; isolation loses invalidation; post-flush
+continuations reintroduce prohibited retained scheduling; and moving browser
+input delivery earlier requires a broader client/Shiny lifecycle contract.
+`shinychat#fbhe` and all downstream Phase 5 children remain blocked.
 
 The test contract is resolved by the 2026-09-02 `shinychat#fbhe` orchestrator
 decision: no global/helper/fixture readiness wait. Ordinary existing browser
