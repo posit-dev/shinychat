@@ -1,26 +1,8 @@
 import { visit } from "unist-util-visit"
-import type { Root, RootContent, Element, ElementContent } from "hast"
+import type { Root, Element } from "hast"
 import type { Plugin } from "unified"
+import { isElementContent, isRaw } from "./hastRaw"
 import { rewriteTagsHtml } from "./rewriteEndTags"
-
-// `raw` nodes are hast-util-raw's string carriers that exist between
-// remark-rehype and rehype-raw; they are not part of the standard hast union.
-interface RawNode {
-  type: "raw"
-  value: string
-}
-
-function isRaw(node: unknown): node is RawNode {
-  return (node as { type?: string })?.type === "raw"
-}
-
-// `Root.children` is typed as `RootContent[]`, which includes `Doctype` (only
-// ever produced at a full document's root); a `<template>`'s `.content`
-// fragment can't contain one, so this narrows to the `ElementContent[]` that
-// `Element.children` requires.
-function isElementContent(node: RootContent): node is ElementContent {
-  return node.type !== "doctype"
-}
 
 export function rewriteAsideToTemplateHtml(value: string): string {
   return rewriteTagsHtml(value, {

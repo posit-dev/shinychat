@@ -220,6 +220,14 @@ function isStructuredSegment(seg: SegmentPayload): seg is StructuredBlock {
   return "type" in seg
 }
 
+// Tool UI and web activity are assistant-only; html_block is valid in any role.
+function blockAllowedForRole(
+  role: "user" | "assistant",
+  blockType: string,
+): boolean {
+  return role !== "user" || blockType === "html_block"
+}
+
 export function messagePayloadToData(
   msg: MessagePayload,
   grouping: ToolGrouping = "tool",
@@ -228,8 +236,7 @@ export function messagePayloadToData(
   let htmlDeps: HtmlDep[] | undefined
   for (const seg of msg.segments) {
     if (isStructuredSegment(seg)) {
-      // Tool UI and web activity are assistant-only; html_block is valid in any role.
-      if (msg.role === "user" && seg.type !== "html_block") {
+      if (!blockAllowedForRole(msg.role, seg.type)) {
         console.warn(
           "Ignoring non-html_block structured block in a user-role message",
         )
@@ -986,8 +993,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         )
         return state
       }
-      // Tool and web-activity blocks are assistant-only; html_block is valid in any role.
-      if (last.role === "user" && action.block.type !== "html_block") {
+      if (!blockAllowedForRole(last.role, action.block.type)) {
         console.warn(
           "Ignoring non-html_block block_insert for a user-role message",
         )

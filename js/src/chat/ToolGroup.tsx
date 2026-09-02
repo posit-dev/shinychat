@@ -2,7 +2,6 @@ import {
   Fragment,
   memo,
   useEffect,
-  useId,
   useRef,
   useState,
   type ReactNode,
@@ -27,6 +26,7 @@ import { ToolResult, ToolResultValue } from "./ToolResult"
 import { ToolRequest } from "./ToolRequest"
 import { RawHTML } from "./RawHTML"
 import { useChatStopScroll } from "./context"
+import { useToolUiId } from "./useToolUiId"
 import { useFadingValue } from "./useFadingText"
 import { bareDot, chevronDown, exclamationCircleFill } from "../utils/icons"
 
@@ -215,9 +215,7 @@ function ToolCallRow({
   // whichever glyph it ends up with, and it keeps the "failed" note below, so
   // failure stays legible even when an icon replaces the exclamation.
   const glyph = glyphHtml(toolCallGlyph(item, heterogeneous))
-  // Not derived from `item.requestId`: it is optional, and a request can
-  // render in a different message than its result before pairing settles.
-  const contentId = `tool-call${useId()}`
+  const contentId = useToolUiId("tool-call")
 
   return (
     <li
@@ -303,12 +301,7 @@ export const ToolGroup = memo(function ToolGroup({
 }) {
   const { row, standalonePayloads } = projectToolGroup(group)
   const [expanded, setExpanded] = useExpandable(row?.hasExpandedCall)
-  // Not seeded from `group.key` or a call's `requestId`: `group.key` is only
-  // unique within one routed loop (two messages that both group "all", or
-  // repeat a tool name, would point their rows' `aria-controls` at the same
-  // region), and a request id is optional and can render in a different message
-  // than its result before pairing settles.
-  const bodyId = `tool-group${useId()}`
+  const bodyId = useToolUiId("tool-group")
 
   // A rendered result supersedes its matching request wherever it lives, but
   // that is not this component's job to announce: ChatApp derives it from the

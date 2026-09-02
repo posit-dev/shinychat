@@ -5,10 +5,8 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
-  type ComponentType,
 } from "react"
 import { MarkdownContent } from "../markdown/MarkdownContent"
-import { EscapedIsland } from "../markdown/EscapedIsland"
 import { useAutoScroll, findScrollableParent } from "../markdown/useAutoScroll"
 import { HtmlBlockContent } from "../chat/HtmlBlockContent"
 import type { HtmlBlock } from "../chat/html-block-model"
@@ -19,8 +17,10 @@ import {
   type WebActivityBlock,
   type WebActivityWireBlock,
 } from "../chat/web-activity-model"
-import { chatTagToComponentMap } from "../chat/chatTagToComponentMap"
-import { UntrustedAsideGroup } from "../chat/AsideGroup"
+import {
+  chatTagToComponentMap,
+  untrustedChatTagToComponentMap,
+} from "../chat/chatTagToComponentMap"
 import type { ContentType } from "../transport/types"
 
 const CHAT_CONTAINER_TAG = "shiny-chat-container"
@@ -51,16 +51,6 @@ function isBlockSegment(
 /** Whitespace-separator check for appendWebActivityBlock (mirrors rehypeGroupWebActivity). */
 export function isWhitespaceTextSegment(segment: StreamSegment): boolean {
   return !isBlockSegment(segment) && segment.text.trim() === ""
-}
-
-// Spoof guard: untrusted segments get the raw-html island escapes so a forged
-// island tag renders as inert text. The aside-group resolver is the untrusted
-// variant so the popover body reparse keeps these escapes.
-const untrustedStreamComponents: Record<string, ComponentType<unknown>> = {
-  ...chatTagToComponentMap,
-  "shiny-aside-group": UntrustedAsideGroup as ComponentType<unknown>,
-  "shiny-chat-raw-html": EscapedIsland,
-  "shinychat-raw-html": EscapedIsland,
 }
 
 export interface MarkdownStreamProps {
@@ -248,7 +238,7 @@ export function MarkdownStream({
             tagToComponentMap={
               segment.trusted
                 ? chatTagToComponentMap
-                : untrustedStreamComponents
+                : untrustedChatTagToComponentMap
             }
           />
         ),

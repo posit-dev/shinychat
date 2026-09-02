@@ -1,9 +1,10 @@
-import { useState, useId, type ReactNode, type Ref } from "react"
+import { useState, type ReactNode, type Ref } from "react"
 import { BlockErrorBoundary } from "./BlockErrorBoundary"
 import { bareDot, plus } from "../utils/icons"
 import { fullscreenEnter } from "./useFullscreen"
 import { RawHTML } from "./RawHTML"
 import { useChatStopScroll } from "./context"
+import { useToolUiId } from "./useToolUiId"
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -55,12 +56,8 @@ export function ToolCard({
   const [expanded, setExpanded] = useState(initialExpanded)
   const stopScroll = useChatStopScroll()
 
-  // Not derived from the tool's `request-id`: that is optional in routed
-  // content (anonymous calls get a loop-local synthetic id) and can repeat
-  // across messages, which would produce duplicate document ids.
-  const uid = useId()
-  const headerId = `tool-header${uid}`
-  const contentId = `tool-content${uid}`
+  const headerId = useToolUiId("tool-header")
+  const contentId = useToolUiId("tool-content")
   const iconHtml = icon || bareDot
   // toolTitle is server-attested HTML (rendered raw); toolName is
   // model-influenced text, so the fallback must be escaped before

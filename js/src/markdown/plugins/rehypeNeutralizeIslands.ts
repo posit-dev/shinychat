@@ -1,7 +1,8 @@
 import { toHtml } from "hast-util-to-html"
-import type { Element, ElementContent, Root, RootContent } from "hast"
+import type { Element, Root } from "hast"
 import type { Plugin } from "unified"
 import { SKIP, visit } from "unist-util-visit"
+import { isElementContent, isRaw } from "./hastRaw"
 import { rewriteTagsHtml } from "./rewriteEndTags"
 
 // Spoof guard: island tags in markdown are forged (trusted HTML arrives as
@@ -12,19 +13,6 @@ const islandTags = ["shiny-chat-raw-html", "shinychat-raw-html"]
 const islandTagSet = new Set(islandTags)
 const disguiseAttr = "data-reserved-island"
 const disguiseProp = "dataReservedIsland"
-
-interface RawNode {
-  type: "raw"
-  value: string
-}
-
-function isRaw(node: unknown): node is RawNode {
-  return (node as { type?: string })?.type === "raw"
-}
-
-function isElementContent(node: RootContent): node is ElementContent {
-  return node.type !== "doctype"
-}
 
 export function disguiseIslandsHtml(value: string): string {
   return rewriteTagsHtml(

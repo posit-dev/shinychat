@@ -12,6 +12,7 @@ import type {
 } from "../transport/types"
 import { uuid } from "../utils/uuid"
 import { parseJsonArray } from "../utils/json"
+import { DeferredTeardown } from "../utils/deferredTeardown"
 import { DEFAULT_UPLOAD_ACCEPT } from "./attachments"
 import {
   getCurrentConversationId,
@@ -178,7 +179,7 @@ class ChatContainerElement extends HTMLElement {
   private toolbarEl: Element | null = null
   private footerEl: Element | null = null
   private drawerEl: Element | null = null
-  private pendingUnmount: ReturnType<typeof setTimeout> | null = null
+  private deferredTeardown = new DeferredTeardown()
   // Retained so an observed attribute can re-render with one field replaced
   // instead of rebuilding every prop (and re-parsing the initial messages,
   // which by then have been superseded by live reducer state).
@@ -187,14 +188,7 @@ class ChatContainerElement extends HTMLElement {
   static observedAttributes = ["tool-grouping", "show-history"]
 
   connectedCallback() {
-    // Moving the element in the DOM fires disconnectedCallback then
-    // connectedCallback synchronously in the same tick. The deferred unmount
-    // scheduled on disconnect hasn't run yet, so cancel it here to keep the
-    // live React root (and its rendered conversation) intact across the move.
-    if (this.pendingUnmount !== null) {
-      clearTimeout(this.pendingUnmount)
-      this.pendingUnmount = null
-    }
+    this.deferredTeardown.cancel()
 
     if (this.reactRoot) return
 
@@ -350,15 +344,11 @@ class ChatContainerElement extends HTMLElement {
   }
 
   disconnectedCallback() {
-    // Defer teardown so a move (disconnect immediately followed by reconnect)
-    // can cancel it. If the element is genuinely removed, no reconnect cancels
-    // the timer and cleanup runs on the next tick.
-    this.pendingUnmount = setTimeout(() => {
+    this.deferredTeardown.schedule(() => {
       transport.unbindAll(this)
       this.reactRoot?.unmount()
       this.reactRoot = null
-      this.pendingUnmount = null
-    }, 0)
+    })
   }
 }
 
