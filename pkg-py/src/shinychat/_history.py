@@ -896,7 +896,7 @@ class _ExchangeRecorder:
     ) -> None:
         """Open a degraded-resubmit sibling without closing its shared parent."""
         if self._controller.partition is None:
-            return
+            raise RuntimeError("HistoryController not initialized")
 
         if self.record is None:
             raise RuntimeError("No exchange-tree conversation is active")
@@ -1758,9 +1758,12 @@ class HistoryController:
         exchange_id: str,
         replacement_input: StoredMessage | None = None,
         *,
+        kind: str,
         request_id: str,
         message_index: int,
     ) -> None:
+        if self.partition is None:
+            raise RuntimeError("HistoryController not initialized")
         recorder = self._exchange_recorder
         if recorder is None:
             raise RuntimeError("Exchange-tree history is not enabled")
@@ -1775,10 +1778,22 @@ class HistoryController:
             raise ValueError(
                 f"Exchange {exchange_id!r} has no user input to resubmit."
             )
+        if exchange_id not in record.path_node_ids():
+            raise ValueError(
+                f"Exchange {exchange_id!r} is not on the active path."
+            )
         if target.parent_id is None:
             raise ValueError(
                 f"Exchange {exchange_id!r} has no parent prefix to resubmit."
             )
+        if kind == "retry":
+            if target.status not in ("pending", "error", "cancelled"):
+                raise ValueError("Only interrupted or failed exchanges can be retried.")
+        elif kind == "regenerate":
+            if target.status != "ok":
+                raise ValueError("Only completed exchanges can be regenerated.")
+        elif kind != "edit":
+            raise ValueError(f"Unknown exchange resubmit kind {kind!r}.")
         preserve_live_turns = recorder._active_path_turns_are_incompatible(record)
         submitted_input = self._normalize_resubmit_input(
             target.input if replacement_input is None else replacement_input
@@ -1812,7 +1827,6 @@ class HistoryController:
                     await recorder._accepted_resubmit_input_locked(
                         accepted_exchange_id, submitted_input
                     )
-                    self.chat._publish_accepted_user_input(submitted_input)
                     accepted_input_action: HistoryAcceptedInputProjectionAction = {
                         "type": "history_accepted_input_projection",
                         "index": message_index,
@@ -1827,7 +1841,10 @@ class HistoryController:
                             for attachment in submitted_input.attachments
                         ],
                     }
-                    await self.chat._send_action(accepted_input_action)
+                    try:
+                        await self.chat._send_action(accepted_input_action)
+                    finally:
+                        self.chat._publish_accepted_user_input(submitted_input)
                     return
                 await recorder._capture_state(current_leaf, "node_close")
                 try:
@@ -1859,6 +1876,7 @@ class HistoryController:
     ) -> None:
         await self.resubmit(
             exchange_id,
+            kind="retry",
             request_id=request_id,
             message_index=message_index,
         )
@@ -1868,6 +1886,7 @@ class HistoryController:
     ) -> None:
         await self.resubmit(
             exchange_id,
+            kind="regenerate",
             request_id=request_id,
             message_index=message_index,
         )
@@ -2025,22 +2044,12 @@ class HistoryController:
         if record is None:
             return
         exchange_id = record.exchange_id_for_user_message_index(message_index)
-        target = record.nodes[exchange_id]
-        if kind == "retry":
-            if target.status not in ("pending", "error", "cancelled"):
-                raise ValueError("Only interrupted or failed exchanges can be retried.")
-            await self.retry(
-                exchange_id, request_id=request_id, message_index=message_index
-            )
-            return
-        if kind == "regenerate":
-            if target.status != "ok":
-                raise ValueError("Only completed exchanges can be regenerated.")
-            await self.regenerate(
-                exchange_id, request_id=request_id, message_index=message_index
-            )
-            return
-        raise ValueError(f"Unknown exchange resubmit kind {kind!r}.")
+        await self.resubmit(
+            exchange_id,
+            kind=kind,
+            request_id=request_id,
+            message_index=message_index,
+        )
 
     async def handle_navigate(
         self,
@@ -2146,6 +2155,7 @@ class HistoryController:
             await self.resubmit(
                 exchange_id,
                 replacement,
+                kind="edit",
                 request_id=request_id,
                 message_index=message_index,
             )

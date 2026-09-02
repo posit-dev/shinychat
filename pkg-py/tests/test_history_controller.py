@@ -2706,6 +2706,19 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
     original_node = target.nodes[exchange_id].model_dump_json()
     parent_before = target.nodes["n_0000"].model_copy(deep=True)
     assert recorder._active_path_turns_are_incompatible(target)
+    original_send_action = cast(_FakeChat, controller.chat)._send_action
+    original_publish = cast(_FakeChat, controller.chat)._publish_accepted_user_input
+
+    async def send_projection(action: dict[str, Any]) -> None:
+        events.append("projection")
+        await original_send_action(action)
+
+    def publish_after_projection(message: StoredMessage) -> None:
+        events.append("published")
+        original_publish(message)
+
+    cast(_FakeChat, controller.chat)._send_action = send_projection  # type: ignore[method-assign]
+    cast(_FakeChat, controller.chat)._publish_accepted_user_input = publish_after_projection  # type: ignore[method-assign]
 
     if resubmit_kind == "edit":
         await controller.handle_edit(0, "edited", request_id=resubmit_kind)
@@ -2732,6 +2745,7 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
     )
     assert rewind_contexts[0].bootstrap == "recorded"
     assert cast(_FakeChat, controller.chat).restored_messages == restored_display
+    assert events == ["warning", "history_update", "projection", "published"]
     assert target.nodes["n_0000"].input == parent_before.input
     assert target.nodes["n_0000"].state == parent_before.state
     assert target.nodes["n_0000"].messages == parent_before.messages
@@ -2797,12 +2811,175 @@ async def test_v2_degraded_resubmit_rewind_failure_precedes_sibling_mutation():
     recorder._register_rewind_hook("parent", fail_rewind)
 
     with pytest.raises(RuntimeError) as raised:
-        await controller.resubmit(target, request_id="retry", message_index=1)
+        await controller.resubmit(
+            target, kind="retry", request_id="retry", message_index=1
+        )
 
     assert raised.value is error
     assert record.model_dump() == before
     assert chat._transcript.read() == transcript_before
     assert adapter.turns == turns_before
+    assert store.put_calls == []
+    assert chat.actions == []
+    assert chat.published_inputs == []
+
+
+@pytest.mark.anyio
+async def test_v2_degraded_resubmit_projection_failure_publishes_durable_input_once():
+    controller, chat, _adapter, store, first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.nodes[target].state["shinychat:turns"].kind = "unsupported"
+    error = RuntimeError("projection unavailable")
+    events: list[str] = []
+
+    async def fail_projection(action: dict[str, Any]) -> None:
+        events.append(action["type"])
+        raise error
+
+    original_publish = chat._publish_accepted_user_input
+
+    def publish(message: StoredMessage) -> None:
+        events.append("published")
+        original_publish(message)
+
+    chat._send_action = fail_projection  # type: ignore[method-assign]
+    chat._publish_accepted_user_input = publish  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError) as raised:
+        await controller.resubmit(
+            target, kind="retry", request_id="retry", message_index=1
+        )
+
+    assert raised.value is error
+    sibling = record.active_leaf
+    assert sibling is not None
+    assert sibling != target
+    assert record.nodes[sibling].parent_id == first
+    assert len(store.put_calls) == 1
+    assert store.put_calls[0][1] is record
+    assert chat.published_inputs == [record.nodes[sibling].input]
+    assert events == ["history_accepted_input_projection", "published"]
+    assert chat.clear_messages_calls == 0
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("kind", "status", "match"),
+    [
+        ("retry", "ok", "Only interrupted or failed exchanges"),
+        ("regenerate", "pending", "Only completed exchanges"),
+        ("regenerate", "error", "Only completed exchanges"),
+        ("regenerate", "cancelled", "Only completed exchanges"),
+    ],
+)
+async def test_v2_resubmit_validates_kind_status_before_mutation(
+    kind: str, status: str, match: str
+) -> None:
+    controller, chat, adapter, store, _first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.nodes[target].status = cast(Any, status)
+    before = record.model_dump()
+    turns_before = list(adapter.turns)
+
+    with pytest.raises(ValueError, match=match):
+        await controller.resubmit(
+            target, kind=kind, request_id=kind, message_index=1
+        )
+
+    assert record.model_dump() == before
+    assert adapter.turns == turns_before
+    assert chat.destructive_preflight_calls == 0
+    assert store.put_calls == []
+    assert chat.actions == []
+    assert chat.published_inputs == []
+
+
+@pytest.mark.anyio
+async def test_v2_resubmit_accepts_active_path_ancestor_for_edit():
+    controller, chat, adapter, store, first, _target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+
+    await controller.resubmit(
+        first,
+        _stored_message("user", "first replacement"),
+        kind="edit",
+        request_id="edit-ancestor",
+        message_index=0,
+    )
+
+    assert record.active_leaf == "n_0000"
+    assert adapter.turns == [{"role": "system", "content": "bootstrap"}]
+    assert len(store.put_calls) == 1
+    assert chat.actions[-1]["type"] == "history_edit_projection"
+
+
+@pytest.mark.anyio
+async def test_v2_resubmit_rejects_off_path_target_before_mutation():
+    controller, chat, adapter, store, first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.set_active_leaf(first)
+    off_path = "exchange-off-path"
+    record.open_exchange(off_path, _stored_message("user", "off path"))
+    record.set_active_leaf(target)
+    before = record.model_dump()
+    turns_before = list(adapter.turns)
+
+    with pytest.raises(ValueError, match="not on the active path"):
+        await controller.resubmit(
+            off_path, kind="edit", request_id="off-path", message_index=1
+        )
+
+    assert record.model_dump() == before
+    assert adapter.turns == turns_before
+    assert chat.destructive_preflight_calls == 0
+    assert store.put_calls == []
+    assert chat.actions == []
+    assert chat.published_inputs == []
+
+
+@pytest.mark.anyio
+async def test_v2_resubmit_rejects_missing_partition_before_mutation():
+    controller, chat, adapter, store, _first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    before = record.model_dump()
+    transcript_before = chat._transcript.read()
+    turns_before = list(adapter.turns)
+    controller.partition = None
+
+    with pytest.raises(RuntimeError, match="HistoryController not initialized"):
+        await controller.resubmit(
+            target, kind="retry", request_id="retry", message_index=1
+        )
+
+    assert record.model_dump() == before
+    assert chat._transcript.read() == transcript_before
+    assert adapter.turns == turns_before
+    assert chat.destructive_preflight_calls == 0
     assert store.put_calls == []
     assert chat.actions == []
     assert chat.published_inputs == []
@@ -4879,7 +5056,9 @@ async def test_v2_resubmit_rewinds_parent_prefix_and_new_input_creates_sibling()
         deep=True
     )
 
-    await controller.resubmit(target, request_id="request", message_index=1)
+    await controller.resubmit(
+        target, kind="retry", request_id="request", message_index=1
+    )
 
     record = recorder.record
     assert record is not None
@@ -4943,7 +5122,9 @@ async def test_v2_resubmit_rejects_real_chat_input_until_replay_releases(
 
     recorder._rewind_state = blocked_rewind_state  # type: ignore[method-assign]
     resubmit = asyncio.create_task(
-        controller.resubmit(target, request_id="request", message_index=1)
+        controller.resubmit(
+            target, kind="retry", request_id="request", message_index=1
+        )
     )
     await rewind_started.wait()
 
@@ -5005,7 +5186,9 @@ async def test_v2_resubmit_rewind_hooks_are_ordered_and_always_recorded():
     recorder._register_rewind_hook("first", first_hook)
     recorder._register_rewind_hook("second", second_hook)
 
-    await controller.resubmit(target, request_id="request", message_index=1)
+    await controller.resubmit(
+        target, kind="retry", request_id="request", message_index=1
+    )
 
     assert [name for name, _ in observed] == ["first", "second"]
     assert observed[0][1].active_leaf == first
@@ -5184,7 +5367,9 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
     store.put = fail_put  # type: ignore[method-assign]
 
     with pytest.raises(RuntimeError) as raised:
-        await controller.resubmit(target, request_id="request", message_index=1)
+        await controller.resubmit(
+            target, kind="retry", request_id="request", message_index=1
+        )
 
     assert raised.value is expected
     assert put_attempts == [record]
@@ -5231,7 +5416,9 @@ async def test_v2_resubmit_rejects_inputless_node_without_mutation():
     before = recorder.record.model_dump()  # type: ignore[union-attr]
 
     with pytest.raises(ValueError, match="has no user input"):
-        await controller.resubmit("n_0000", request_id="request", message_index=0)
+        await controller.resubmit(
+            "n_0000", kind="retry", request_id="request", message_index=0
+        )
 
     assert recorder.record.model_dump() == before  # type: ignore[union-attr]
     assert adapter.turns == [
@@ -5259,9 +5446,20 @@ async def test_v2_edit_retry_and_regenerate_use_resubmit():
     assert isinstance(edited_input, StoredMessage)
     assert edited_input.content == "edited"
     assert resubmit.await_args_list == [
-        call(target, edited_input, request_id="edit", message_index=1),
-        call(target, request_id="retry", message_index=1),
-        call(target, request_id="regenerate", message_index=1),
+        call(
+            target,
+            edited_input,
+            kind="edit",
+            request_id="edit",
+            message_index=1,
+        ),
+        call(target, kind="retry", request_id="retry", message_index=1),
+        call(
+            target,
+            kind="regenerate",
+            request_id="regenerate",
+            message_index=1,
+        ),
     ]
 
 
