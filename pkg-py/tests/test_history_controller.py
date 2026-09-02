@@ -11,6 +11,7 @@ import sys
 import textwrap
 import warnings
 from collections import deque
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 from pathlib import Path
@@ -2016,6 +2017,85 @@ async def test_v2_switch_rejects_active_attached_provider_without_mutating_sourc
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("failure_kind", "sent_chunk"),
+    [
+        ("error", False),
+        ("error", True),
+        ("cancelled", False),
+        ("cancelled", True),
+    ],
+)
+async def test_v2_real_stream_failure_preserves_capture_matrix(
+    failure_kind: str,
+    sent_chunk: bool,
+    request: pytest.FixtureRequest,
+) -> None:
+    adapter = _FakeAdapter()
+    adapter.turns = []
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    session = _RealChatSession()
+    with session_context(cast(Any, session)):
+        chat = Chat("history_stream_failure", history=False)
+    request.addfinalizer(chat.destroy)
+    controller.chat = chat  # type: ignore[assignment]
+    chat._transcript.set_capture_callbacks(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+    await chat._record_accepted_user_input_with_capture(
+        ChatMessage(content="question", role="user")
+    )
+    committed_turns = [{"role": "user", "content": "question"}]
+    adapter.turns = committed_turns
+    original: BaseException = (
+        RuntimeError("provider failure")
+        if failure_kind == "error"
+        else asyncio.CancelledError()
+    )
+
+    async def stream() -> AsyncIterator[str]:
+        if sent_chunk:
+            adapter.turns = [
+                *committed_turns,
+                {"role": "assistant", "content": "sent"},
+            ]
+            yield "sent"
+        raise original
+
+    with pytest.raises(type(original)) as raised:
+        await chat._append_message_stream(stream())
+
+    assert raised.value is original
+    assert recorder.record is not None
+    stored = await store.get(part(), recorder.record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    assert stored.active_leaf is not None
+    node = stored.nodes[stored.active_leaf]
+    assert [
+        message.as_stored_message().content for message in node.messages
+    ] == (["sent"] if sent_chunk else [""])
+    assert node.status == failure_kind
+    if failure_kind == "error":
+        assert node.error is not None
+        assert node.error.message == str(original)
+    else:
+        assert node.error is None
+    assert node.state["shinychat:turns"].data == adapter.turns
+    assert chat._transcript.active_stream_id is None
+
+
+@pytest.mark.anyio
 async def test_cancelled_v2_switch_releases_real_chat_input_admission(
     request: pytest.FixtureRequest,
 ) -> None:
@@ -2085,6 +2165,68 @@ async def test_cancelled_v2_switch_releases_real_chat_input_admission(
     assert [entry.message.content for entry in chat._transcript.read()] == [
         "source",
         "accepted after cancellation",
+    ]
+    assert recorder.record is source
+
+
+@pytest.mark.anyio
+async def test_error_v2_switch_releases_real_chat_input_admission(
+    request: pytest.FixtureRequest,
+) -> None:
+    class ErrorStore(InMemoryConversationStore):
+        fail_source = False
+        source_id: str | None = None
+        source_error = RuntimeError("source save failed")
+
+        async def put(
+            self, partition: ConversationPartition, record: Any
+        ) -> None:
+            if self.fail_source and record.id == self.source_id:
+                raise self.source_error
+            await super().put(partition, record)
+
+    store = ErrorStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    session = _RealChatSession()
+    with session_context(cast(Any, session)):
+        chat = Chat("history_switch_error_input", history=False)
+    request.addfinalizer(chat.destroy)
+    controller.chat = chat  # type: ignore[assignment]
+    chat._transcript.set_capture_callbacks(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+    await chat._record_accepted_user_input_with_capture(
+        ChatMessage(content="source", role="user")
+    )
+    assert recorder.record is not None
+    source = recorder.record
+    store.source_id = source.id
+    target = new_conversation_record_v2(
+        title="target",
+        id="c_target",
+        client_info={},
+    )
+    await store.put(part(), target)
+    store.fail_source = True
+
+    with pytest.raises(RuntimeError) as raised:
+        await controller.switch_to(target.id)
+
+    assert raised.value is store.source_error
+    assert not chat._destructive_history_blocks_input
+    store.fail_source = False
+    await chat._record_accepted_user_input_with_capture(
+        ChatMessage(content="accepted after error", role="user")
+    )
+    assert [entry.message.content for entry in chat._transcript.read()] == [
+        "source",
+        "accepted after error",
     ]
     assert recorder.record is source
 
