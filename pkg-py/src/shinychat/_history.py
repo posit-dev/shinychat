@@ -633,6 +633,10 @@ class _ExchangeRecorder:
                     prepared_turns, turns_unavailable = (
                         self._materialize_restore_turns(context)
                     )
+                    if turns_unavailable:
+                        raise ValueError(
+                            "Unsupported shinychat:turns state entry."
+                        )
                 context = dataclasses.replace(
                     context,
                     prepared_turns=prepared_turns,

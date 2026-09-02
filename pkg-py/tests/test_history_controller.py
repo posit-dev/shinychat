@@ -2657,6 +2657,63 @@ async def test_v2_degraded_retry_preserves_live_turns_and_immutable_target(
 
 
 @pytest.mark.anyio
+async def test_v2_retry_rejects_incompatible_parent_superseded_by_target_snapshot():
+    adapter = _TrackingFakeAdapter()
+    controller, store = _make_controller(
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    target = _restore_target()
+    exchange_id = "n_0001"
+    target.nodes[exchange_id].status = "error"
+    target.nodes["n_0000"].state["shinychat:turns"].kind = "unsupported"
+    target.nodes[exchange_id].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[{"role": "system", "content": "target snapshot"}],
+    )
+    events: list[str] = []
+
+    async def warn() -> None:
+        events.append("warning")
+
+    async def publish() -> None:
+        events.append("history_update")
+
+    controller._notify_turns_unavailable = warn  # type: ignore[method-assign]
+    controller.send_history_update = publish  # type: ignore[method-assign]
+
+    await controller.replay_exchange_record(target)
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    chat = cast(_FakeChat, controller.chat)
+    assert not recorder._active_path_turns_are_incompatible(target)
+    assert adapter.turns == [{"role": "system", "content": "target snapshot"}]
+    assert events == ["history_update"]
+
+    record_before = target.model_dump()
+    turns_before = list(adapter.turns)
+    set_calls_before = list(adapter.set_calls)
+    display_before = list(chat.restored_messages)
+    actions_before = list(chat.actions)
+    clear_messages_before = chat.clear_messages_calls
+
+    with pytest.raises(ValueError, match="Unsupported shinychat:turns"):
+        await controller.handle_resubmit(0, "retry", request_id="retry")
+
+    assert target.model_dump() == record_before
+    assert adapter.turns == turns_before
+    assert adapter.set_calls == set_calls_before
+    assert chat.restored_messages == display_before
+    assert chat.actions == actions_before
+    assert chat.clear_messages_calls == clear_messages_before
+    assert chat.destructive_preflight_calls == 1
+    assert store.put_calls == []
+
+
+@pytest.mark.anyio
 async def test_v2_degraded_restore_warning_is_provider_neutral() -> None:
     controller, _ = _make_controller(use_exchange_tree=True)
     fake_chat = cast(_FakeChat, controller.chat)
