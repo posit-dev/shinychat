@@ -3166,6 +3166,34 @@ def test_stream_preserves_sent_partial_when_terminal_send_fails():
     assert chat._transcript.active_stream_id is None
 
 
+def test_stream_success_reports_ok_without_error():
+    with session_context(test_session):
+        chat = Chat(id="successful_stream", history=False)
+        finished: list[tuple[str, str | None]] = []
+
+        async def _capture_finished(
+            _stream_id: str, status: str, error: str | None
+        ) -> None:
+            finished.append((status, error))
+
+        chat._transcript.set_capture_callbacks(
+            on_accepted_input=None,
+            on_message_committed=None,
+            on_stream_started=None,
+            on_stream_updated=None,
+            on_stream_finished=_capture_finished,
+        )
+
+        async def _stream():
+            yield "completed"
+
+    run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.error is None
+    assert finished == [("ok", None)]
+
+
 def test_stream_commits_final_transformed_content_before_chunk_end_failure():
     with session_context(test_session):
         chat = Chat(id="terminal_transformed_error", history=False)

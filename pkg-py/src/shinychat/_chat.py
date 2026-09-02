@@ -1446,7 +1446,7 @@ class Chat:
                     return await self._transcript.end_stream(
                         stream_id=stream_id,
                         status=status,
-                        error=error or HISTORY_ERROR_STREAM_TERMINAL,
+                        error=error,
                         send=send_end,
                     )
                 return True
@@ -1498,7 +1498,7 @@ class Chat:
             return await self._transcript.end_stream(
                 stream_id=stream_id,
                 status=status,
-                error=error or HISTORY_ERROR_STREAM_TERMINAL,
+                error=error,
                 send=send_end,
             )
 
