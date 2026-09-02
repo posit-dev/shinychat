@@ -1014,6 +1014,28 @@ new_html_block <- function(content) {
   )
 }
 
+# Append a markdown string segment, coalescing onto a preceding markdown
+# segment with a paragraph break (direct concatenation is unsafe at a
+# markdown seam). Mirrors coalesce_content_strings() and Python's
+# _compile_parts().
+append_markdown_segment <- function(segments, text) {
+  last <- if (length(segments) > 0) segments[[length(segments)]] else NULL
+  if (
+    !is.null(last) &&
+      !"type" %in% names(last) &&
+      identical(last$content_type, "markdown")
+  ) {
+    last$content <- paste(last$content, text, sep = "\n\n")
+    segments[[length(segments)]] <- last
+  } else {
+    segments[[length(segments) + 1]] <- list(
+      content = text,
+      content_type = "markdown"
+    )
+  }
+  segments
+}
+
 # Build wire segments from a shinychat_block or a mixed content list
 # (strings + blocks). Returns list(segments, deps).
 build_wire_segments <- function(content, session) {
@@ -1033,10 +1055,7 @@ build_wire_segments <- function(content, session) {
         all_deps <- c(all_deps, result$deps)
         segments[[length(segments) + 1]] <- result$block
       } else if (is.character(item) && !inherits(item, "html")) {
-        segments[[length(segments) + 1]] <- list(
-          content = as.character(item),
-          content_type = "markdown"
-        )
+        segments <- append_markdown_segment(segments, as.character(item))
       } else if (
         inherits(item, c("html", "shiny.tag", "shiny.tag.list", "htmlwidget"))
       ) {
@@ -1046,10 +1065,7 @@ build_wire_segments <- function(content, session) {
         all_deps <- c(all_deps, island_result$deps)
         segments <- c(segments, island_result$segments)
       } else {
-        segments[[length(segments) + 1]] <- list(
-          content = as.character(item),
-          content_type = "markdown"
-        )
+        segments <- append_markdown_segment(segments, as.character(item))
       }
     }
     list(segments = segments, deps = all_deps)
@@ -1187,10 +1203,7 @@ build_wire_segments_static <- function(content) {
         all_deps <- c(all_deps, result$deps)
         segments[[length(segments) + 1]] <- result$block
       } else if (is.character(item) && !inherits(item, "html")) {
-        segments[[length(segments) + 1]] <- list(
-          content = as.character(item),
-          content_type = "markdown"
-        )
+        segments <- append_markdown_segment(segments, as.character(item))
       } else if (
         inherits(item, c("html", "shiny.tag", "shiny.tag.list", "htmlwidget"))
       ) {
@@ -1198,10 +1211,7 @@ build_wire_segments_static <- function(content) {
         all_deps <- c(all_deps, island_result$deps)
         segments <- c(segments, island_result$segments)
       } else {
-        segments[[length(segments) + 1]] <- list(
-          content = as.character(item),
-          content_type = "markdown"
-        )
+        segments <- append_markdown_segment(segments, as.character(item))
       }
     }
     list(segments = segments, deps = all_deps)

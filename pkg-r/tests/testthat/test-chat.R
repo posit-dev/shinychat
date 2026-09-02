@@ -1086,6 +1086,53 @@ test_that("chat_append_message() tagList (HTML container) vs list (segment list)
   expect_equal(list_segments[[2]]$type, "html_block")
 })
 
+test_that("build_wire_segments() coalesces adjacent bare strings with a paragraph break", {
+  # Direct concatenation is unsafe at a markdown seam ("text" + "# Title"
+  # fuses); adjacent markdown strings join with "\n\n", matching
+  # coalesce_content_strings() and Python's _compile_parts().
+  block <- structure(
+    list(
+      type = "tool_result",
+      version = 1L,
+      request_id = "req-1",
+      tool_name = "get_weather",
+      status = "success",
+      value = "Sunny",
+      value_type = "markdown"
+    ),
+    class = c("shinychat_tool_result", "shinychat_block")
+  )
+
+  segments <- build_wire_segments(list("# Title", "body text"), NULL)$segments
+  expect_length(segments, 1)
+  expect_equal(segments[[1]]$content, "# Title\n\nbody text")
+  expect_equal(segments[[1]]$content_type, "markdown")
+
+  # Blocks bound the coalescing: strings on either side stay separate.
+  segments <- build_wire_segments(list("a", block, "b"), NULL)$segments
+  expect_length(segments, 3)
+  expect_equal(segments[[1]]$content, "a")
+  expect_equal(segments[[2]]$type, "tool_result")
+  expect_equal(segments[[3]]$content, "b")
+
+  # A markdown string does not coalesce onto an html island residual.
+  segments <- build_wire_segments(
+    list(htmltools::HTML("<b>x</b>"), "after"),
+    NULL
+  )$segments
+  expect_length(segments, 2)
+  expect_equal(segments[[1]]$type, "html_block")
+  expect_equal(segments[[2]]$content, "after")
+  expect_equal(segments[[2]]$content_type, "markdown")
+})
+
+test_that("build_wire_segments_static() coalesces adjacent bare strings", {
+  segments <- build_wire_segments_static(list("# Title", "body text"))$segments
+  expect_length(segments, 1)
+  expect_equal(segments[[1]]$content, "# Title\n\nbody text")
+  expect_equal(segments[[1]]$content_type, "markdown")
+})
+
 test_that("chat_append_message() mixed tagList renders all children in one html_block", {
   captured <- list()
   local_mocked_bindings(
