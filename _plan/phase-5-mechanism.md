@@ -808,3 +808,25 @@ task review 1196 found no issues. Full Python tests pass (961 passed, one
 existing skip), full JS tests pass (1,272 passed, 23 skipped), and Ruff,
 format, Pyright, JS lint, asset distribution, and diff checks are green.
 P5.3 is complete.
+
+### P5.4 adversarial review
+
+The required single adversarial pass found one blocking readiness gap.
+Restored Retry, Edit, and sibling-navigation controls could dispatch while the
+initial v2 selection was unresolved, and their private server action handlers
+did not independently reject forged arrivals before mutation.
+
+Decision: **PATCH through the existing readiness fact and client predicate.**
+Branch-action eligibility and message-control disabling must include the
+existing v2-only `isHistorySubmissionBlocked()` result. The private Python
+Edit, Navigate, and Resubmit action handlers must reject unresolved v2
+initialization before controller mutation. V1, history-disabled, and R behavior
+remain unchanged because they do not enter the seeded completion-v2 unresolved
+state. Add a held-`history_update` browser regression for all three controls and
+a forged server-action regression proving no transcript, record, turns,
+active-ID, or store mutation.
+
+Self-review: 100/100 (clarity 25, comprehensiveness 25, feasibility 25,
+consistency 25). No deficiency remains: the fix reuses both existing readiness
+representations, covers UI and forged admission, and adds no marker, owner,
+queue, timer, or public API.
