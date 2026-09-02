@@ -759,6 +759,39 @@ describe("ChatApp integration: editable messages gated by history state", () => 
     })
   })
 
+  it("renders a server-accepted resubmit input without sending it again", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    renderChatApp(transport)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+        transition_protocol: "completion-v2",
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "replace me", content_type: "markdown" }],
+        },
+      })
+      transport.fire("test-chat", {
+        type: "history_accepted_input_projection",
+        index: 0,
+        content: "server accepted",
+        attachments: [],
+      })
+    })
+
+    expect(transport.sendInput).not.toHaveBeenCalled()
+    expect(screen.getByText("server accepted")).toBeTruthy()
+    expect(screen.queryByText("replace me")).toBeNull()
+  })
+
   it("sends an eligible restored retry through the v2 transition transport", async () => {
     mockMatchMedia(false)
     const transport = createMockTransport()

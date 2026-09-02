@@ -290,6 +290,18 @@ export function ChatApp({
         )
         return
       }
+      if (action.type === "history_accepted_input_projection") {
+        dispatch({ type: "TRUNCATE_MESSAGES", index: action.index })
+        dispatch({
+          type: "INPUT_SENT",
+          content: action.content,
+          role: "user",
+          ...(action.attachments.length > 0
+            ? { attachments: action.attachments }
+            : {}),
+        })
+        return
+      }
       dispatch(action)
     })
     return unsubscribe

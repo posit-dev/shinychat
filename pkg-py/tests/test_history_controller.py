@@ -40,6 +40,7 @@ from shinychat._history_client import TurnsAdapter
 from shinychat._history_store import (
     ConversationPartition,
     ConversationStore,
+    FileConversationStore,
     InMemoryConversationStore,
 )
 from shinychat._history_types import (
@@ -250,6 +251,7 @@ class _FakeChat:
         self.restored_icons: list[str | None] = []
         self.messages: list[Any] = []
         self.clear_messages_calls = 0
+        self.published_inputs: list[StoredMessage] = []
         self._transcript = ChatTranscript()
         self.latest_message_stream = _InactiveMessageStream()
 
@@ -281,6 +283,9 @@ class _FakeChat:
 
     async def set_greeting(self, greeting: Any) -> None:
         self.set_greeting_calls.append(greeting)
+
+    def _publish_accepted_user_input(self, message: StoredMessage) -> None:
+        self.published_inputs.append(message)
 
 
 class _RealChatSession:
@@ -2635,12 +2640,14 @@ async def test_v2_degraded_restore_continuation_snapshots_compatible_turns_for_r
 @pytest.mark.parametrize("restore_bootstrap", ["recorded", "live"])
 @pytest.mark.parametrize("resubmit_kind", ["retry", "edit", "regenerate"])
 async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
-    restore_bootstrap: str, resubmit_kind: str
+    tmp_path: Path, restore_bootstrap: str, resubmit_kind: str
 ) -> None:
     adapter = _TrackingFakeAdapter()
     live_baseline = [{"role": "system", "content": "live"}]
     adapter.turns = list(live_baseline)
+    store = FileConversationStore(tmp_path)
     controller, _ = _make_controller(
+        store=store,
         use_exchange_tree=True,
         adapter=adapter,
     )
@@ -2675,8 +2682,18 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
     controller.send_history_update = publish  # type: ignore[method-assign]
     recorder = controller._exchange_recorder
     assert recorder is not None
+    await store.put(part(), target)
     recorder._register_restore_hook("parent", lambda _context: None)
-    recorder._register_rewind_hook("parent", rewind_contexts.append)
+    rewind_before_branch: list[bool] = []
+
+    def rewind_parent(context: StatePathContext) -> None:
+        rewind_before_branch.append(
+            context.active_leaf == "n_0000"
+            and target.children_of("n_0000") == [exchange_id]
+        )
+        rewind_contexts.append(context)
+
+    recorder._register_rewind_hook("parent", rewind_parent)
 
     await controller.replay_exchange_record(target)
 
@@ -2687,6 +2704,7 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
     restored_display = list(cast(_FakeChat, controller.chat).restored_messages)
     restore_set_calls = list(adapter.set_calls)
     original_node = target.nodes[exchange_id].model_dump_json()
+    parent_before = target.nodes["n_0000"].model_copy(deep=True)
     assert recorder._active_path_turns_are_incompatible(target)
 
     if resubmit_kind == "edit":
@@ -2696,7 +2714,10 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
             0, resubmit_kind, request_id=resubmit_kind
         )
 
-    assert target.active_leaf == "n_0000"
+    sibling = target.active_leaf
+    assert sibling is not None
+    assert sibling != exchange_id
+    assert target.nodes[sibling].parent_id == "n_0000"
     assert target.nodes[exchange_id].model_dump_json() == original_node
     assert adapter.set_calls == restore_set_calls
     assert adapter.turns == expected_baseline
@@ -2704,20 +2725,87 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
         expected_baseline
     )[1]
     assert len(rewind_contexts) == 1
+    assert rewind_before_branch == [True]
     assert rewind_contexts[0].node_ids == ("n_0000",)
     assert rewind_contexts[0].entries == (
         ("n_0000", target.nodes["n_0000"].state["parent"]),
     )
     assert rewind_contexts[0].bootstrap == "recorded"
     assert cast(_FakeChat, controller.chat).restored_messages == restored_display
+    assert target.nodes["n_0000"].input == parent_before.input
+    assert target.nodes["n_0000"].state == parent_before.state
+    assert target.nodes["n_0000"].messages == parent_before.messages
+    assert target.nodes["n_0000"].status == parent_before.status
+    assert target.nodes["n_0000"].children == [exchange_id, sibling]
+    assert target.nodes["n_0000"].selected_child == sibling
+    sibling_turns = target.nodes[sibling].state["shinychat:turns"]
+    assert sibling_turns.mode == "snapshot"
+    assert sibling_turns.data == expected_baseline
+    assert cast(_FakeChat, controller.chat).published_inputs == [
+        target.nodes[sibling].input
+    ]
+    assert cast(_FakeChat, controller.chat).actions[-1] == {
+        "type": "history_accepted_input_projection",
+        "index": 0,
+        "content": "edited" if resubmit_kind == "edit" else "question",
+        "attachments": [],
+    }
 
-    sibling = await cast(
-        _FakeChat, controller.chat
-    )._transcript.record_accepted_input_and_notify(
-        _stored_message("user", "question")
+    stored = await store.get(part(), target.id)
+    assert isinstance(stored, ConversationRecordV2)
+    reloaded_adapter = _TrackingFakeAdapter()
+    reloaded, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+        adapter=reloaded_adapter,
     )
-    assert sibling != exchange_id
-    assert target.nodes[sibling].parent_id == "n_0000"
+    reloaded.restore_bootstrap = cast(Any, restore_bootstrap)
+    reloaded_warning = AsyncMock()
+    reloaded._notify_turns_unavailable = reloaded_warning  # type: ignore[method-assign]
+    reloaded_recorder = reloaded._exchange_recorder
+    assert reloaded_recorder is not None
+    reloaded_recorder._register_restore_hook("parent", lambda _context: None)
+
+    await reloaded.replay_exchange_record(stored)
+
+    reloaded_warning.assert_not_awaited()
+    assert reloaded_adapter.turns == expected_baseline
+
+
+@pytest.mark.anyio
+async def test_v2_degraded_resubmit_rewind_failure_precedes_sibling_mutation():
+    controller, chat, adapter, store, first, target = _make_v2_resubmit_controller()
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.nodes[target].state["shinychat:turns"].kind = "unsupported"
+    record.nodes[first].state["parent"] = StateEntry(
+        kind="test",
+        version=1,
+        mode="snapshot",
+        data={"parent": True},
+    )
+    before = record.model_dump()
+    transcript_before = chat._transcript.read()
+    turns_before = list(adapter.turns)
+    error = RuntimeError("rewind failed")
+
+    async def fail_rewind(_context: StatePathContext) -> None:
+        raise error
+
+    recorder._register_rewind_hook("parent", fail_rewind)
+
+    with pytest.raises(RuntimeError) as raised:
+        await controller.resubmit(target, request_id="retry", message_index=1)
+
+    assert raised.value is error
+    assert record.model_dump() == before
+    assert chat._transcript.read() == transcript_before
+    assert adapter.turns == turns_before
+    assert store.put_calls == []
+    assert chat.actions == []
+    assert chat.published_inputs == []
 
 
 @pytest.mark.anyio

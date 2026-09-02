@@ -1237,6 +1237,10 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       // truncate and dispatch the normal INPUT_SENT action.
       return state
 
+    case "history_accepted_input_projection":
+      // ChatApp renders the server-accepted input without dispatching it back.
+      return state
+
     case "update_siblings": {
       const updated = state.messages.map((msg, i) => {
         const siblingData = action.data[i]

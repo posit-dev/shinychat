@@ -177,6 +177,13 @@ class HistoryEditProjectionAction(TypedDict):
     attachments: list[dict[str, Any]]
 
 
+class HistoryAcceptedInputProjectionAction(TypedDict):
+    type: Literal["history_accepted_input_projection"]
+    index: int
+    content: str
+    attachments: list[dict[str, Any]]
+
+
 class UpdateSiblingsAction(TypedDict):
     type: Literal["update_siblings"]
     data: dict[int, dict[str, int]]
@@ -211,6 +218,7 @@ ChatAction = Union[
     HistoryNavigateAction,
     HistoryTransitionCompleteAction,
     HistoryEditProjectionAction,
+    HistoryAcceptedInputProjectionAction,
     UpdateSiblingsAction,
     UpdateExchangeMetadataAction,
 ]

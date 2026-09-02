@@ -13,6 +13,7 @@ from pydantic import JsonValue
 from ._attachments import Attachment, validate_attachments
 from ._chat_transcript import TranscriptEntry
 from ._chat_types import (
+    HistoryAcceptedInputProjectionAction,
     HistoryEditProjectionAction,
     HistoryNavigateAction,
     HistoryUpdateAction,
@@ -665,6 +666,14 @@ class _ExchangeRecorder:
             if inspect.isawaitable(result):
                 await result
 
+    async def _rewind_non_turn_state(self, planned: RewindPlan) -> None:
+        for name, hook, context in planned:
+            if name == "shinychat:turns":
+                continue
+            result = hook(context)
+            if inspect.isawaitable(result):
+                await result
+
     def install_restored_record(self, record: ConversationRecordV2) -> None:
         self.record = record
         self._stream_exchanges.clear()
@@ -881,6 +890,24 @@ class _ExchangeRecorder:
             )
             if created and send_history_update is not None:
                 await send_history_update()
+
+    async def _accepted_resubmit_input_locked(
+        self, exchange_id: str, message: StoredMessage
+    ) -> None:
+        """Open a degraded-resubmit sibling without closing its shared parent."""
+        if self._controller.partition is None:
+            return
+
+        if self.record is None:
+            raise RuntimeError("No exchange-tree conversation is active")
+        self.record.open_exchange(exchange_id, message)
+        self._invalidate_turn_baseline()
+        self.record.nodes[exchange_id].state["shinychat:turns"] = (
+            self._capture_turns(
+                CaptureContext(node_id=exchange_id, reason="node_close")
+            )
+        )
+        await self._persist_record()
 
     async def message_committed(
         self, exchange_id: str | None, entry: TranscriptEntry
@@ -1773,8 +1800,36 @@ class HistoryController:
                 current_leaf = record.active_leaf
                 if current_leaf is None:
                     raise ValueError("Exchange-tree record has no active leaf.")
-                if not preserve_live_turns:
-                    await recorder._capture_state(current_leaf, "node_close")
+                if preserve_live_turns:
+                    # The failed target and its shared parent stay immutable.
+                    # Non-turn hooks still rewind the ordinary parent prefix
+                    # before the accepted input opens its sibling.
+                    await recorder._rewind_non_turn_state(rewind_state)
+                    record.set_active_leaf(target.parent_id)
+                    accepted_exchange_id = (
+                        self.chat._transcript.record_accepted_input(submitted_input)
+                    )
+                    await recorder._accepted_resubmit_input_locked(
+                        accepted_exchange_id, submitted_input
+                    )
+                    self.chat._publish_accepted_user_input(submitted_input)
+                    accepted_input_action: HistoryAcceptedInputProjectionAction = {
+                        "type": "history_accepted_input_projection",
+                        "index": message_index,
+                        "content": str(submitted_input.content),
+                        "attachments": [
+                            {
+                                "mime": attachment.mime,
+                                "data_url": attachment.data_url,
+                                "name": attachment.name,
+                                "size": attachment.size,
+                            }
+                            for attachment in submitted_input.attachments
+                        ],
+                    }
+                    await self.chat._send_action(accepted_input_action)
+                    return
+                await recorder._capture_state(current_leaf, "node_close")
                 try:
                     record.set_active_leaf(target.parent_id)
                     await recorder._persist_record()

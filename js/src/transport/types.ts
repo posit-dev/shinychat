@@ -155,6 +155,12 @@ export type ChatAction =
       content: string
       attachments: AttachmentPayload[]
     }
+  | {
+      type: "history_accepted_input_projection"
+      index: number
+      content: string
+      attachments: AttachmentPayload[]
+    }
   | { type: "history_transition_complete"; requestId: string }
 
 export type ShinyChatEnvelope = {
