@@ -2,8 +2,8 @@
 
 **Status:** committed · Phase 0 complete, Phase 1 in review, Phases 2–4
 complete; Phase 5 mechanism approved, with Q1 selecting
-disabled-until-restore-decision; Q2 selects single-document atomic layout
-after split rejection · 2026-09-01
+disabled-until-restore-decision plus suppression of unadmitted startup work;
+Q2 selects single-document atomic layout after split rejection · 2026-09-02
 **Kata:** epic `shinychat#6d0d` · Phase 1 `shinychat#g49a` · Phase 2
 `shinychat#kjyt` · Phase 3 `shinychat#qf2r` · Phase 4 `shinychat#azvt`
 · Phase 5 `shinychat#fg70` (the `kata` CLI issue tracker).
@@ -42,9 +42,10 @@ writes at moments the server already observes, plus a lazy close.
 1. **Open** at user input. A content send with no open exchange (a timer, a
    background notice) creates an input-less node at the current leaf. The
    *first* user input additionally closes the implicit **root node**:
-   everything that existed before it — pre-input UI appends and the client's
-   pre-existing turns (system prompt, app-attached history) — is snapshotted
-   into an input-less node at the tree root (§3.4, baseline snapshot).
+   everything accepted after conversation selection but before that input —
+   pre-input UI appends and the client's pre-existing turns (system prompt,
+   app-attached history) — is snapshotted into an input-less node at the tree
+   root (§3.4, baseline snapshot).
 2. **Write eagerly.** Message specs are appended to the open node at send
    time. State capture (the turn delta) and the node status (`ok` / `error`
    / `cancelled`) are written when an asynchronous `chat_append()` input — a
@@ -83,14 +84,15 @@ fixed-on-branch.
 - **R2 — Cross-session resume:** a conversation restores with both its
   display and its client state (the model can continue where it left off),
   including state established *before* the first user input — the system
-  prompt, app-attached turns, and pre-input UI appends (§3.4 baseline
-  snapshot; capture is unconditional, restore behavior is configurable).
+  prompt, app-attached turns, and pre-input UI appends admitted after
+  conversation selection (§3.4 baseline snapshot; capture is unconditional
+  for accepted work, restore behavior is configurable).
 - **R3 — Durable failures:** a failed or cancelled exchange survives reload —
   the user's input, any partial response, and a retry affordance.
-- **R4 — Display fidelity:** what was shown restores as shown, including
-  UI-only appends and content with custom display. (History is an archive:
-  restore shows what was shown *then*; changed display code affects future
-  exchanges, not past ones.)
+- **R4 — Display fidelity:** what was shown restores as shown, including every
+  admitted and sent UI-only append and content with custom display. (History
+  is an archive: restore shows what was shown *then*; changed display code
+  affects future exchanges, not past ones.)
 - **R5 — Display/model divergence:** what the model sees and what the user
   sees may differ and must be free to evolve independently. The mechanism
   for divergence remains ellmer/chatlas content types with custom display
@@ -153,7 +155,7 @@ channel. `messages` is not a state entry — it is universal and automatic.
   "nodes": [
     { "id": "x_00", "parent": null, "status": "ok",          // root: closed by the first user input
       "input": null,
-      "messages": [],                                        // pre-input chat_append()s would be captured here
+      "messages": [],                                        // admitted pre-input chat_append()s are captured here
       "state": { "shinychat:turns": { "kind": "chatlas", "version": 1, "mode": "snapshot",
                  "data": ["<system turn>"] } } },            // baseline: system prompt + app-attached turns
 
@@ -215,18 +217,22 @@ the hook) and appended to the owning node.
 Known edges, decided here:
 
 - **`system`-role appends and pre-input state** are captured by the baseline
-  snapshot: at the first user input, everything already in the display and
-  in the client's turns — system prompt, app-attached turns, pre-input UI
-  appends — is recorded into the root node (§3.4). Mid-conversation
+  snapshot. At the first user input, every pre-input display append admitted
+  after conversation selection and already sent, plus the client's
+  pre-existing turns (system prompt and app-attached turns), is recorded into
+  the root node (§3.4). Mid-conversation
   `system`-role messages still never reach the wire (Python drops them at
   `_chat.py:1463-1464`); they surface in the record only through turn capture,
   not through `messages`.
 - **HTML dependencies** are session-scoped after serialization; the record
   stores specs pre-processing and restore re-sends through the live-session
   pipeline (exactly what bookmark restore does today in both languages).
-- **UI-only appends are durable** — anything sent through the choke point is
-  captured, whether or not a turn corresponds to it. This is R4/R5 working
-  as designed, and it's what dissolves the old "fidelity cap" concern.
+- **UI-only appends are durable** — every app append admitted and sent through
+  the choke point is captured, whether or not a turn corresponds to it. An
+  append attempted while Python v2 history selection is unresolved is
+  suppressed before send and is outside the transcript. This is R4/R5 working
+  as designed, and it dissolves the old "fidelity cap" concern without
+  creating a second startup-content model.
 
 ### 3.3 Boundaries, attribution, and admission
 
@@ -279,9 +285,10 @@ records the client's turns under the `shinychat:turns` entry:
 - **Baseline snapshot (root node).** The first user input closes the
   implicit root node with a `mode: "snapshot"` entry of everything already
   in the client's turns — the system prompt and any app-attached history —
-  plus, in `messages`, any pre-input UI appends. (The greeting stays an
-  ambient slot excluded from capture, per §2 — it is the one pre-input
-  display element the root node does *not* own.) Capture is unconditional;
+  plus, in `messages`, any pre-input UI appends admitted after conversation
+  selection. (The greeting stays an ambient slot excluded from capture, per
+  §2 — it is the one pre-input display element the root node does *not* own.)
+  Capture is unconditional for accepted work;
   what is configurable is restore (§3.5): replay the recorded bootstrap
   (default), or let the app's live initialization supply the prefix and
   layer the recorded user-driven deltas on top. The live option is a
@@ -337,24 +344,23 @@ with a warning rather than failing the restore.
    recent snapshot on the path plus every delta after it. Under the
    live-bootstrap option (§3.4) the root snapshot is skipped and the deltas
    layer on whatever prefix the app's own initialization produced.
-4. **Init/restore race:** Q1 resolved 2026-09-01: use
-   disabled-until-restore-decision and reject defer-one-submission, which
-   requires prohibited retained payload/continuation state. While
-   `HistoryController.partition is None`, Phase 3 recorder callbacks are
-   inert and must not fail the originating capture-eligible send. Phase 5
-   blocks user dispatch and capture-eligible initial sends until the restore
-   decision and its authoritative metadata publication complete; it admits no
-   preselection capture. The rejected ambient `_capture_admission` predicate
-   is DELETE/REPLACE and must not land. The sole exception to the no-new-owner
-   boundary is a private one-shot Python-v2 initialization barrier owned by
-   `ChatHistory`: it is created after v2 recorder installation, carries only
-   the fresh-versus-restored initial-message outcome, and is awaited
-   immediately before accepted-input capture, complete-append reservation,
-   and root-stream reservation. It settles only after no-target/success or
-   approved fresh-draft cleanup plus authoritative `history_update`; individual
-   waiter cancellation cannot cancel it, while teardown cancels/releases its
-   waiters. Restore replay bypasses it naturally through its internal replay
-   path, never through a generic destructive-owner bypass. Every Python
+4. **Init/restore race:** Q1 resolved 2026-09-01 and simplified after the
+   Phase 5 three-findings review on 2026-09-02: use
+   disabled-until-restore-decision and reject both defer-one-submission and
+   delayed startup appends. Work attempted while Python v2 history selection
+   is unresolved is not accepted transcript work. The browser blocks every
+   user-submission route while preserving its draft and attachments; a
+   premature submission that nevertheless reaches the server is rejected
+   before transcript or capture mutation. Capture-eligible complete appends
+   and root-stream starts attempted during that window are suppressed rather
+   than buffered, delayed, replayed, or provisionally attributed. Greeting
+   remains the ambient startup-presentation mechanism. Once the restore
+   decision and authoritative metadata publication complete, normal appends
+   and submissions are admitted, including pre-first-input appends owned by
+   the root exchange. Restore replay continues through its existing private
+   internal path and is not a startup append.
+
+   Every Python
    `chat_ui()` emits the private static
    `data-shinychat-history-transition-protocol="completion-v2"` attribute
    before React/input activation. This is an unconditional conservative seed
@@ -367,11 +373,11 @@ with a warning rather than failing the restore.
    delay. R emits no seed. There is no public API, Chat-tag registry, new
    post-mount action, second marker or owner, persistence, deferred
    submission, preselection buffer, provisional record or merge, queue, timer,
-   or reconciliation. The barrier is neither a payload queue, recorder buffer,
-   public API, lifecycle marker, persistence, nor a second marker or owner.
-   Manual startup appends await it and then execute after a live decision;
-   deprecated `Chat(messages=...)` executes for no-target/fresh-draft and is
-   suppressed after a successful target restore.
+   reconciliation, initialization barrier, or reactive-context adapter.
+   Deprecated `Chat(messages=...)` is not removed in this phase; when v2
+   history is unresolved, its startup append is subject to the same
+   suppression contract. Its removal is deferred to follow-up
+   `shinychat#mcbp`.
 
 ### 3.6 Branching, editing, retries, actions (R1, R3, R7)
 
@@ -602,10 +608,14 @@ signed off by the driver before code (process.md §3.4).
   restored client continues the conversation correctly (turn count and
   content verified).
 - **Phase 5 — hard core + adversarial review (Python; `shinychat#fg70`).**
-  Q1 is resolved: P5.0's selected disabled-until-restore-decision guard may
-  proceed under `shinychat#fbhe` using the authorized private one-shot
-  `ChatHistory` initialization barrier; defer-one-submission and the ambient
-  `_capture_admission` predicate are rejected. Later children remain blocked.
+  Q1 is resolved: P5.0's selected disabled-until-restore-decision guard
+  proceeds under `shinychat#fbhe` by suppressing capture-eligible startup
+  appends while authoritative initialization is incomplete and rejecting
+  premature server submissions. Suppressed work is never replayed after
+  initialization. The
+  one-shot barrier, reactive-context adapter, defer-one-submission, and
+  ambient `_capture_admission` predicate are rejected. Later children remain
+  blocked.
   Then audit clear/switch/abort, unreplayable-turn
   degradation, and the error-on-reload affordance, followed by one adversarial
   review pass in the critical-review format on exactly this subsystem. See
@@ -629,7 +639,7 @@ signed off by the driver before code (process.md §3.4).
 
 | # | Question | Cheapest check |
 |---|---|---|
-| Q1 | **Resolved 2026-09-01:** disabled-until-restore-decision; defer-one-submission rejected because it needs prohibited retained payload/continuation state. The prototype found the current path fail-open (a real browser accepted and cleared in 35 ms while its first update was held); disposable client checks preserved a draft plus attachment and blocked every submission route; server checks covered 12 recorded/live, no-target/success, raw/complete/stream cases plus live cancellation. Across 31 samples/path, no-delay medians were about 0.08-0.40 ms; with 25 ms per store operation, no-target medians were about 27.2 ms and target medians 54.2-54.4 ms, with p95 at most 54.9 ms. | Retained P5.0 implementation under `shinychat#fbhe`; see `phase-5-mechanism.md`. |
+| Q1 | **Resolved 2026-09-01; simplified 2026-09-02:** disabled-until-restore-decision. Defer-one-submission and delayed startup appends are rejected because they require prohibited retained payload, continuation, barrier, or scheduling state. The browser preserves draft and attachments while blocked; premature server input is rejected; capture-eligible startup appends are suppressed while authoritative initialization is incomplete and are never replayed after it completes. The earlier barrier probes remain historical evidence for why delayed delivery was deleted. | Replacement P5.0 implementation under `shinychat#fbhe`; see `phase-5-mechanism.md`. |
 | Q2 | Resolved 2026-08-28: single-document atomic layout; split rejected on coherent-recovery failure (§3.10). | 153,348-token deterministic workload; 25 repetitions after three warm-ups. Split met latency thresholds (minimum 6.90x median, 2.50x p95; cold reads 1.38x slower) but failed interrupted-append recovery. |
 | Q3 | Does the *client wire* need node ids, or does `main`'s positional edit/navigate addressing survive adversarial use? (Record nodes have ids regardless.) | Port the predecessor branch's edit/navigate Playwright tests; upgrade the wire narrowly only on red. |
 | Q4 | Provider version skew tolerance? | Save turns under current ellmer/chatlas, replay under the adjacent release (half a day). |

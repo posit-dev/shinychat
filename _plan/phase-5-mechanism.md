@@ -1,7 +1,6 @@
 # Phase 5 mechanism: hard core and adversarial review (Python)
 
-**Status:** P5.0 blocked on a supported Py Shiny reactive-context capability ·
-2026-09-02
+**Status:** P5.0 replacement approved; implementation may resume · 2026-09-02
 **Phase:** plan.md §4, Phase 5
 **Kata:** parent `shinychat#fg70` under epic `shinychat#6d0d`
 **Context:** `phase-4-mechanism.md` is completed context only. This note is
@@ -29,9 +28,7 @@ Phase 5 adds no queue, preselection buffer, provisional record or merge,
 timer, reconciliation pass, cursor, CAS, second record owner, second client
 transition marker, client transcript state machine, rendered-HTML storage,
 Q3 addressing expansion, bookmark-fidelity change, R server work, or legacy
-work. The sole approved exception is P5.0's private one-shot Python-v2
-initialization barrier owned by `ChatHistory`, defined below; it is not a
-payload queue, recorder buffer, second marker, public API, or persistence.
+work. P5.0 adds no initialization barrier or reactive-context adapter.
 
 ## Existing ownership remains authoritative
 
@@ -43,9 +40,6 @@ The phase does not replace the Phase 4 shape:
 - `Chat._destructive_history_mutation()` remains the one destructive history
   transaction. Its existing input-block mode remains the only server-side
   destructive admission mechanism.
-- `ChatHistory` may own P5.0's one private, one-shot initialization barrier.
-  It is scoped to the initial v2 restore decision, not a general admission
-  predicate or lifecycle subsystem.
 - `historyTransitionPending` remains the one client lifecycle marker.
 - `resubmit()` remains the only branch-producing primitive.
 - The existing capture, restore, and rewind registries remain the three
@@ -57,75 +51,68 @@ model state), or R7 (reuse existing primitives).
 
 ## P5.0: Q1 decision gate
 
-**Q1 resolved 2026-09-01:** select
-**disabled-until-restore-decision** for `shinychat#fbhe`. Reject
-**defer-one-submission**: preserving its first raw input and attachments for
-later re-entry requires prohibited retained payload/continuation state. There
-is no third mechanism.
+**Q1 resolved 2026-09-01 and replacement approved 2026-09-02:** select
+**disabled-until-restore-decision** for `shinychat#fbhe`, but do not defer
+startup work. Preserving a first user submission or app append for later
+execution requires exactly the payload, continuation, barrier, or scheduling
+machinery this effort excludes.
 
-The Phase 3 no-op while `HistoryController.partition is None` is deliberate
-only until Phase 5. It avoids failing an originating send before history
-selection, but it does not make that send durable. `partition` is assigned
-before target lookup and restore, so it is not the restore-decision boundary.
-Decision completion means either a successful selected-target restore or an
-approved fresh-draft recovery, in both cases followed by required metadata
-completion. Capture-eligible work remains closed until that completion even
-when `partition` is non-null.
+The product contract is admission, not eventual delivery:
 
-The disposable ambient `_capture_admission` predicate is **DELETE/REPLACE**
-and must not land. `partition`, record/controller state, and destructive
-transaction ownership cannot distinguish an unresolved restore from an
-ordinary fresh draft, and a task-owned destructive transaction cannot safely
-span construction plus reactive reruns. They therefore cannot supply the
-selected guard without either overblocking or introducing forbidden state.
+- While Python v2 history selection is unresolved, every browser submission
+  path remains disabled and preserves the browser-owned draft and attachments.
+  Rejected attempts produce no optimistic `INPUT_SENT`, transport dispatch,
+  draft clearing, or attachment clearing. A direct or forged submission that
+  nevertheless reaches the server is rejected before transcript, recorder,
+  turns, active-ID, or store mutation and is not retained for later execution.
+  After the authoritative `history_update`, the preserved draft remains
+  available for an ordinary submission.
+- Capture-eligible complete appends and root-stream starts attempted while
+  selection is unresolved are suppressed. They are not displayed, captured,
+  buffered, delayed, replayed, or assigned provisionally. Their callers do not
+  wait for history initialization. The suppression boundary precedes display
+  dispatch, transcript/recorder reservation, turn capture, and store mutation;
+  it leaves no continuation, task, buffer, or replay obligation that can send
+  later.
+- Greeting remains the ambient startup-presentation mechanism. The new
+  admission guard applies only to user-input admission and app-owned,
+  capture-eligible append entry points. It must not be placed at
+  `_send_action` or another shared lower-level send path. Restore replay
+  remains allowed during initialization through
+  `_replay_exchange_display()` -> `Chat._restore_bookmark_message()`, creates
+  no new exchange, and is not captured as a new startup append.
+- After a no-target result, successful selected-target restore, or approved
+  fresh-draft recovery completes its authoritative `history_update`, normal
+  appends and submissions are admitted. An append accepted after that point
+  but before the first user input is still captured by the root exchange.
 
-The sole approved server mechanism is one private, shared, one-shot
-initialization barrier owned by `ChatHistory`. Create it immediately after
-v2 recorder installation, before input activation can admit capture-eligible
-work. Its outcome contains only the initial-message decision needed by
-startup append behavior: `fresh` after a no-target result or approved
-fresh-draft recovery, and `restored` after a successful selected-target
-restore. It holds no input, attachment, message, continuation, recorder
-buffer, provisional record, merge state, or persisted state.
+This narrows R2/R4 to accepted server work: shinychat durably records every
+append it accepts after conversation selection, but does not claim durability
+for work attempted while no conversation is authoritative. No reconciliation
+or second startup-content model is introduced.
 
-Await that shared barrier immediately before each capture reservation:
+The disposable ambient `_capture_admission` predicate and the committed
+one-shot barrier/context adapter are **DELETE/REPLACE**. Remove the shared
+barrier, its waiters/outcome, browser-token reactive-context probing, private
+`DenialContext` import, generic `RuntimeError` classification, and tests whose
+only purpose is delayed startup delivery. No Py Shiny
+`reactive.can_read_reactive_sources()` API is required.
 
-1. `Chat._record_accepted_user_input_with_capture()`, before accepted-input
-   capture;
-2. `Chat._append_complete_message()`, before complete-append reservation; and
-3. `Chat._append_message_chunk(..., chunk="start")`, before root-stream
-   reservation.
+Deprecated `Chat(messages=...)` is not removed by P5.0. Its initialization
+effect is subject to the same unresolved-v2 suppression contract, so it does
+not create a compatibility exception or delayed path. `shinychat#mcbp` owns
+removal of that argument and its startup-seeding machinery after the Python
+core is shape-stable. That task also decides whether
+`chat_ui(messages=...)` and `Chat.ui(messages=...)` belong in the same
+compatibility change, and owns migration guidance and release compatibility.
+Historical predecessor tasks `shinychat#1wmb` and `shinychat#yx3c` are not
+current specifications.
 
-Each waiter must shield (or equivalently isolate) the shared barrier so an
-individual cancellation cannot cancel it. Session teardown must terminate the
-shared barrier itself and cancel/release its blocked waiter tasks; shielding
-does not keep teardown-owned tasks alive. No teardown path may publish a
-client release after the session is gone. A post-commit recorder callback is
-too late. The barrier never wraps `_send_action`; greeting and bookkeeping
-remain excluded exactly as in Phase 3. Restore replay bypasses naturally
-through the existing `_replay_exchange_display()` ->
-`Chat._restore_bookmark_message()` route: that private restore append uses the
-existing destructive transaction and direct transcript reservation rather than
-any of the three admission methods above. Do not route replay through public
-`_append_complete_message()` or root-stream start, and do not infer a bypass
-from arbitrary destructive-transaction ownership.
-
-Resolve the barrier only after the no-target/success result or approved
-fresh-draft cleanup **and** the authoritative `history_update`. A live-session
-error or cancellation completes cleanup and that update before releasing
-waiters; teardown cancellation ends the barrier without a client release.
-This preserves the existing fresh-draft failure contract and gives the client
-one authoritative release path.
-
-For Python v2, manual startup `chat.append_*()` calls wait at the relevant
-reservation and then execute after either live decision. The v2
-`Chat(messages=...)` initialization effect must likewise wait for the
-one-shot result: it runs for no-target/fresh-draft and is suppressed after
-successful target restore, preserving its previous no-duplicate behavior.
-Python v1 and history-disabled modes create no server barrier and retain their
-existing constructor-message ordering; their existing first
-`history_update` withdraws the conservative client seed, with the authorized
-brief initial delay. R creates no seed or barrier and remains unchanged.
+Server-side startup-append suppression applies only to Python v2 chats with
+history enabled. Python v1 and history-disabled Python retain their existing
+constructor-message and append behavior; their only new behavior is the brief
+conservative client-seed withdrawal documented below. R emits no seed, adds no
+server guard, and remains unchanged.
 
 Every Python `chat_ui()` emits the private static attribute
 `data-shinychat-history-transition-protocol="completion-v2"` before
@@ -151,10 +138,10 @@ The existing ChatInput guards must cover Enter, send-button, attachment-only,
 slash-command, suggestion, and imperative submissions while preserving the
 uncontrolled draft and staged attachments; the ChatApp `submitUserInput`
 handler must recheck the same condition before optimistic `INPUT_SENT` or
-transport dispatch. The `ChatHistory` barrier is neither a second client
-marker nor a general scheduling owner.
+transport dispatch. The server independently rejects premature input without
+retaining it.
 
-### Completed Q1 evidence
+### Superseded Q1 evidence
 
 On 2026-09-01, the current path was shown fail-open: a real browser accepted
 and cleared while its first `history_update` was held, in 35 ms. Disposable
@@ -237,17 +224,10 @@ post-initialization Shiny `ExtendedTask` neither reads the token nor fails.
 The unit regression separately proves a pre-settled barrier returns from a
 real `ExtendedTask` without a token read.
 
-The selected guard must:
-
-- create no durable preselection record, recorder buffer, or merge state;
-- admit no capture-eligible event before restore decision completion;
-- preserve the browser draft/attachments without synthetic rollback;
-- release on success, handled failure, and cancellation; and
-- compose with the existing `completion-v2` marker without introducing
-  another marker, owner, queue, or public surface.
-
-The completed evidence selects this guard. Do not retain deferred submission
-or invent a third scheduling mechanism.
+This evidence established the browser gate and exposed the cost of delayed
+startup delivery. The barrier and browser-token context adapter are historical
+evidence only and are superseded by the admission contract above. Do not
+retain deferred submission or invent another scheduling mechanism.
 
 ## P5.1: Clear, switch, and abort audit
 
@@ -407,10 +387,14 @@ must demonstrate discriminating behavior for both Q1 candidates and is
 deleted before implementation.
 
 For implementation, require focused controller and production browser tests
-for initial restore, the pre-`history_update` Python-v2 gate, immediate
-v1/history-disabled withdrawal, unchanged R admission, clear/switch/abort,
-effective-suffix
-degradation, and restored-error catalogue/legacy-fallback states; JS
+for initial restore; the pre-`history_update` Python-v2 client gate; a
+suppressed complete append absent from display and history; a suppressed root
+stream with no later continuation; a post-`history_update`, pre-first-input
+append captured in the root node; direct/forged early input with no mutation;
+restore replay before client release; immediate v1/history-disabled
+withdrawal and unchanged append behavior; unchanged R admission;
+clear/switch/abort; effective-suffix degradation; and restored-error
+catalogue/legacy-fallback states; JS
 lint/test/build and `make update-dist` when client code changes; the R
 shared-client hook check for shared bundle compatibility; and the full
 `make py-check` gate. Record any unrelated failure by Kata ID.
@@ -428,120 +412,39 @@ The final adversarial review must assess:
 
 Phase 5 begins with five top-level lifecycle/state abstractions: transcript,
 recorder, destructive history transaction, one client transition marker, and
-the three hook registries counted as one extension surface. The sole approved
-exception is the private, one-shot `ChatHistory` initialization barrier above.
-It may carry only the fresh-versus-restored initial-message outcome and must
-not become a general admission predicate, queue, marker, public surface, or
-ordering subsystem. The final pass must name that barrier, show its
-requirement trace, or delete it.
+the three hook registries counted as one extension surface. The rejected
+`ChatHistory` initialization barrier and reactive-context adapter must be
+deleted in P5.0. The final pass must confirm that no delayed startup-delivery
+mechanism remains.
 
 ## Current handoff
 
-Landed: Phase 5 parent `shinychat#fg70` is created and claimed on
-`feat/history-exchange-tree`; the authorized Q1 seed amendment and probe
-evidence are incorporated in this note. `bdd5089b` independently repaired
-live materialization failure recovery. Client seed `ad177514` is committed.
-The uncommitted ambient `_capture_admission` predicate is parked/rejected and
-must not land. All Phase 5 children are instantiated:
-`shinychat#fbhe`, `shinychat#bj1n`, `shinychat#yebr`, `shinychat#bfq8`, and
-`shinychat#xt5q`.
+### Superseded history
 
-Current: `0e3ecd1a` corrects the three `1826d8f6` P1s. Root-stream exchange
-selection now occurs after the one-shot barrier; elevated initialization
-priority is completion-v2-only; history-disabled withdrawal follows
-constructor messages; and `shinychat.playwright.Chat.send_user_input()` is
-literal again. Production-path coverage includes a held root stream attaching
-below the restored exchange, real restored-target `Chat(messages=...)`
-suppression, v1/history-disabled message-before-withdrawal ordering, and
-held-WebSocket Send-button, attachment-only, suggestion, and real
-slash-command blocking. `e07c6c57` fixes the independent initial-preflight
-cancellation P1: the initial-only `BaseException` boundary executes approved
-fresh-draft cleanup and one release update before false/fresh barrier
-settlement, preserves the exact cancellation, and cannot rerun initialization.
-Its focused history/controller suite passed 303 tests; format and Pyright are
-clean.
+Earlier Phase 5 work implemented a one-shot initialization barrier, then found
+three review findings and a post-valve private Py Shiny context-adapter
+problem. Those experiments and their test results are historical evidence
+only. Garrick resolved the escalation on 2026-09-02 by replacing delayed
+startup delivery with admission suppression.
 
-Roborev 1174 HIGH is incorporated as the second independent P1 against the
-barrier mechanism. The existing barrier awaiter now makes browser/URL initial
-effects require the existing `browser_token` before waiting, which lets the
-first flush suspend and rerun instead of deadlocking. Nonreactive/manual and
-`ExtendedTask` callers retain the direct shielded wait because they cannot
-subscribe to reactive input; this preserves normal post-release streaming.
-New real-browser coverage passes for browser/no-target constructor plus
-startup append and URL/target restore, constructor suppression, and the
-startup append's existing inputless-child targeting. The focused history
-selection (10 tests), full history unit module (82 tests), and adjacent v2
-restore browser suite (7 tests) pass; the new startup-barrier browser suite
-passes 2 tests. `make py-check-format`, `make py-check-types`, and
-`git diff --check` pass. Self-review is 100/100: the browser-token dependency
-is limited to the existing barrier awaiter and browser/URL reactive effects,
-the `ExtendedTask` exception is documented and covered by the adjacent
-streaming browser suite, and the fixture discriminates both no-target and
-selected-target outcomes. This bounded correction is pending commit and the
-existing independent P5.0 review; downstream children remain blocked.
+### Current replacement handoff
 
-The three-findings valve is now resolved by the authorized PATCH above:
-`bdea58c3`'s RuntimeError text matching is removed. The barrier fast-path
-returns before reactive access, and unresolved browser-token access falls
-back only for absent reactive context or Shiny `DenialContext`; `req(token)`
-and all other errors propagate. The startup fixture now has a per-process
-temporary store and proves normal automatic streaming succeeds through the
-real Shiny `ExtendedTask` after initialization, while the existing browser
-no-target and URL-target startup cases remain intact. Focused unit selection
-(11 tests), startup-barrier browser suite (2 tests), and adjacent v2 restore
-browser suite (7 tests) pass. The full history unit module passes 83 tests;
-`make py-check-format`, `make py-check-types`, and `git diff --check` pass.
-Self-review is 100/100: the fallbacks are restricted to the token read, the
-settled path preserves cancellation/result behavior through the same shielded
-future, and the production regression covers the former ExtendedTask failure.
-This follow-up is pending commit and the existing independent P5.0 review.
-Downstream children remain blocked.
+Decision: Garrick selected **DELETE/REPLACE** for delayed startup delivery.
+Keep the static client seed and submission guards. Delete the one-shot barrier
+and context adapter. Suppress capture-eligible startup appends and reject
+premature server input until authoritative initialization completes. No
+Py Shiny API change is required.
 
-Post-valve independent review supersedes the preceding self-review conclusion:
-`49572407` closes the observed ExtendedTask failure, but it is not an accepted
-final shape. It imports Py Shiny's private `DenialContext`, and the fallback
-cannot distinguish an expected unavailable reactive read from an unrelated
-`RuntimeError` using supported APIs. No further incremental barrier patch is
-authorized.
+Final plan self-review scored 100/100 (25/25 each for clarity,
+comprehensiveness, feasibility, and consistency) with no remaining
+deficiencies.
 
-P5.0 is blocked pending Garrick's decision. The recommended replacement is a
-narrow typed public Py Shiny predicate, conceptually
-`reactive.can_read_reactive_sources()`, that is true only where a reactive read
-is legal and registers a useful dependency, and false outside reactive
-execution and inside `ExtendedTask`. Shinychat would then delete all private
-context imports and exception classification, require `browser_token` only
-when that predicate is true, and otherwise await the same one-shot barrier.
-This retains the approved owner and outcomes without a queue, continuation,
-payload holder, marker, or new shinychat public API. Caller flags cannot cover
-arbitrary app startup effects; isolation loses invalidation; post-flush
-continuations reintroduce prohibited retained scheduling; and moving browser
-input delivery earlier requires a broader client/Shiny lifecycle contract.
-`shinychat#fbhe` and all downstream Phase 5 children remain blocked.
+Next: implement that bounded replacement under `shinychat#fbhe`, update tests
+from delayed-delivery expectations to suppression expectations, run focused
+JS/Python/R compatibility checks and full `make py-check`, commit the coherent
+unit, and request the required independent review. `shinychat#bj1n` and later
+children remain blocked until `shinychat#fbhe` is reviewed and closed.
 
-The test contract is resolved by the 2026-09-02 `shinychat#fbhe` orchestrator
-decision: no global/helper/fixture readiness wait. Ordinary existing browser
-tests explicitly wait for a nonempty `loc_input_button` immediately before
-their raced send; initial-gate, initial-seed-withdrawal, and stale-completion
-evidence deliberately retain their direct blocked submissions. The full
-browser gate identified the ordinary sites, including page-chat fixtures, and
-they are now explicit rather than hidden behind controller behavior.
-
-The P2 imperative-route review request is dispositioned: the mounted
-`ChatInput` and `ChatApp.submitUserInput` transport integration is the
-production boundary, and existing unit coverage exercises the imperative
-recheck there. No test-only imperative browser hook will be added.
-
-Verification is green: `make py-check` passed with 207 Playwright tests and
-915 Python tests (one skipped, 34 established warnings); JS lint and 1,260
-tests passed with 23 skips and two existing React `act()` warnings; 22 R
-history-hook tests passed; and all package asset copies are equal. This task
-is pending its required independent review; `shinychat#bj1n` remains blocked
-by `shinychat#fbhe`, `shinychat#yebr` by `shinychat#bj1n`,
-`shinychat#bfq8` by `shinychat#yebr`, and `shinychat#xt5q` by
-`shinychat#bfq8`. Do not begin R, legacy, or another scheduling/ownership
-mechanism.
-
-Status-only self-review: 98/100 (clarity 25/25, comprehensiveness 24/25,
-feasibility 25/25, consistency 24/25). P5.0 remains pending independent
-review; `shinychat#bj1n` and later children remain blocked. No mechanism
-decision is open.
+Boundary: `Chat(messages=...)` removal is follow-up `shinychat#mcbp`, not P5.0.
+Do not begin R, legacy, degradation/error-affordance work, or another
+scheduling/ownership mechanism.
