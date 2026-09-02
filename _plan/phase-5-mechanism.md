@@ -756,4 +756,12 @@ without changing compatible resubmit behavior or adding state.
 
 Landed: `f4d906f3` projects the durable degraded sibling before its exactly-once provider publication and centralizes resubmit admission.
 Verified: focused/full controller, history, and transcript tests; Pyright; Python format; JS lint and tests pass, with no JS or asset changes.
-Next: no provisional decision; the bounded `shinychat#yebr` PATCH is complete.
+The three-findings valve disposition is **PATCH**, not DELETE/REPLACE. The
+source mechanism remains coherent: only the first finding was a source
+semantics defect; the remaining two were missing discriminating test
+evidence. No production mechanism change is required.
+
+The narrowly remaining evidence is a projection-and-publication both-fail
+regression proving exactly one publication attempt and a persisted/durable
+sibling. This is a small test-evidence follow-up for `shinychat#yebr`; the
+PATCH is not yet complete.
