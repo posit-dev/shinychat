@@ -662,3 +662,12 @@ No persistent degraded flag, new capture mode, or lifecycle state is added.
 Self-review: 100/100. The patch is requirement-traced to R2, uses the
 already-designed snapshot escape hatch, distinguishes restore from rewind,
 and closes cross-session continuation without changing branch ownership.
+
+The snapshot correction landed in `32a2828b`. A degraded restore now
+invalidates the existing in-memory turn fingerprint only after restore hooks
+finish, so the next ordinary capture takes the existing snapshot fallback.
+The persisted FileConversationStore regression proves a compatible continuation
+supersedes the incompatible suffix and reloads without warning; rewind and
+degraded retry/edit/regenerate baseline behavior remain unchanged. Focused and
+full controller/chat-history tests, the history/transcript gate, format,
+Pyright, and diff checks passed. Independent review found no defects.
