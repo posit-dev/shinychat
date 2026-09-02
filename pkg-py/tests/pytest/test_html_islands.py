@@ -777,3 +777,145 @@ def test_chat_message_html_marked_string_stays_trusted_html_block():
         "content_type": "html",
     }
     assert cast("HtmlBlock", wire[1])["content"] == "<b>raw</b>"
+
+
+# --- Segments-native ChatMessage ---
+
+
+def test_chat_message_parts_and_blocks_raise():
+    """parts= and blocks= are mutually exclusive input spellings."""
+    import pytest
+    from shinychat._chat_types import ChatMessage
+
+    block = cast("HtmlBlock", {"type": "html_block", "version": 1, "content": "<b>x</b>"})
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        ChatMessage(content="", blocks=[block], parts=["text"])
+
+
+def test_chat_message_parts_and_nonempty_content_raise():
+    """parts= combined with string content raises instead of silently
+    discarding the content."""
+    import pytest
+    from shinychat._chat_types import ChatMessage
+
+    with pytest.raises(ValueError, match="cannot be combined"):
+        ChatMessage(content="dropped", parts=["text"])
+
+
+def test_chat_message_parts_and_tagchild_content_raise():
+    """parts= combined with TagChild content raises instead of silently
+    overwriting the caller's parts."""
+    import pytest
+    from shinychat._chat_types import ChatMessage
+
+    with pytest.raises(ValueError, match="cannot be combined"):
+        ChatMessage(content=HTML("<b>x</b>"), parts=["text"])
+
+
+def test_chat_message_parts_only_construction_derives_views():
+    """parts-only construction compiles to segments; content/blocks/parts are
+    derived views and the wire round-trips the interleaving."""
+    from shinychat._chat_types import ChatMessage, StoredMessage
+
+    block = cast("HtmlBlock", {"type": "html_block", "version": 1, "content": "<div>trusted</div>"})
+    m = ChatMessage("", parts=["**a**", block, "b"])
+
+    assert m.content == "**a**b"
+    assert m.blocks == [block]
+    assert m.parts == ["**a**", block, "b"]
+    assert m.content_type == "markdown"
+
+    stored = StoredMessage.from_chat_message(m)
+    wire = stored.wire_segments()
+    assert len(wire) == 3
+    assert wire[0] == {"content": "**a**", "content_type": "markdown"}
+    assert cast("HtmlBlock", wire[1])["type"] == "html_block"
+    assert wire[2] == {"content": "b", "content_type": "markdown"}
+
+
+def test_chat_message_segments_pin_taglist_html_container():
+    """The TagList-as-HTML-container contract on segments: one html_block
+    with bare strings escaped, content_type flipped to html."""
+    from shinychat._chat_types import ChatMessage
+
+    m = ChatMessage(
+        content=TagList("**markdown** and <b>html</b>", div("trusted"))
+    )
+
+    assert len(m.segments) == 1
+    block = m.segments[0]
+    assert isinstance(block, dict)
+    assert block["type"] == "html_block"
+    assert "**markdown** and &lt;b&gt;html&lt;/b&gt;" in str(block["content"])
+    assert "<div>trusted</div>" in str(block["content"])
+    assert m.content_type == "html"
+
+
+def test_chat_message_segments_pin_mixed_react_interleave():
+    """Mixed TagList content compiles to [html_block, residual string,
+    html_block] segments; the residual string segment is content_type html."""
+    from shinychat._chat_types import ChatMessage, ContentSegment
+
+    react_el = Tag(
+        "shiny-tool-result", data_shinychat_react=True, request_id="abc"
+    )
+    m = ChatMessage(content=TagList(div("before"), react_el, div("after")))
+
+    assert len(m.segments) == 3
+    first, middle, last = m.segments
+    assert isinstance(first, dict) and first["type"] == "html_block"
+    assert isinstance(middle, ContentSegment)
+    assert middle.content_type == "html"
+    assert "shiny-tool-result" in middle.content
+    assert isinstance(last, dict) and last["type"] == "html_block"
+
+
+def test_chat_message_content_setter_collapses_to_flat_layout():
+    """The streaming replace path (content= then parts=None) collapses an
+    interleaved message to one string segment with blocks trailing."""
+    from shinychat._chat_types import ChatMessage, ContentSegment, StoredMessage
+
+    react_el = Tag(
+        "shiny-tool-result", data_shinychat_react=True, request_id="abc"
+    )
+    m = ChatMessage(content=TagList(div("before"), react_el, div("after")))
+
+    m.content = "replaced"
+    m.parts = None
+
+    assert isinstance(m.segments[0], ContentSegment)
+    assert m.content == "replaced"
+    assert len(m.blocks) == 2
+
+    stored = StoredMessage.from_chat_message(m)
+    assert stored.block_positions is None
+    wire = stored.wire_segments()
+    assert [s.get("type", "str") for s in wire] == [
+        "str",
+        "html_block",
+        "html_block",
+    ]
+    assert wire[0] == {"content": "replaced", "content_type": "html"}
+
+
+def test_turn_normalization_round_trips_through_parts():
+    """A text-only Turn merges into a single flat markdown segment, as
+    before the segments-native refactor."""
+    from chatlas import Turn
+    from chatlas._content import ContentText
+    from shinychat import _chat_normalize
+    from shinychat._chat_types import StoredMessage
+
+    turn = Turn(
+        [ContentText(text="a"), ContentText(text="b")], role="assistant"
+    )
+    m = _chat_normalize.message_content(turn)
+
+    assert m.content == "ab"
+    assert m.content_type == "markdown"
+    assert m.parts is None
+    assert m.blocks == []
+
+    stored = StoredMessage.from_chat_message(m)
+    wire = stored.wire_segments()
+    assert wire == [{"content": "ab", "content_type": "markdown"}]
