@@ -814,10 +814,19 @@ describe("ChatApp integration: editable messages gated by history state", () => 
       })
       transport.fire("test-chat", {
         type: "update_exchange_metadata",
-        data: { 0: { status: "error", retryable: true } },
+        data: {
+          0: {
+            status: "error",
+            retryable: true,
+            error_message: "The response stream could not be started.",
+          },
+        },
       })
     })
 
+    expect(
+      screen.getByText("The response stream could not be started."),
+    ).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "Retry message" }))
     expect(transport.sendMessageResubmit).toHaveBeenCalledWith(
       "test-chat",

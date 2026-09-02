@@ -145,6 +145,7 @@ export type ChatAction =
         {
           status: "pending" | "ok" | "error" | "cancelled"
           retryable: boolean
+          error_message?: string
         }
       >
     }

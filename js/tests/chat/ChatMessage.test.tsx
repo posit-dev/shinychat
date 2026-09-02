@@ -640,6 +640,12 @@ describe("ChatMessage attachments", () => {
 })
 
 describe("ChatMessage retry", () => {
+  const errorMessages = [
+    "The response could not be completed.",
+    "The response stream could not be started.",
+    "The response stream could not be completed.",
+  ]
+
   it("offers a keyboard-accessible retry only for eligible restored exchanges", () => {
     const onRetry = vi.fn()
     render(
@@ -656,6 +662,132 @@ describe("ChatMessage retry", () => {
     expect(retry).toHaveAttribute("title", "Retry message")
     fireEvent.click(retry)
     expect(onRetry).toHaveBeenCalledWith(3)
+  })
+
+  it.each(errorMessages)(
+    "shows the projected error detail as text: %s",
+    (errorMessage) => {
+      render(
+        <ChatMessage
+          index={0}
+          message={userMessage({
+            exchange: {
+              status: "error",
+              retryable: true,
+              error_message: errorMessage,
+            },
+          })}
+          onRetry={vi.fn()}
+        />,
+      )
+
+      expect(screen.getByText(errorMessage)).toBeTruthy()
+      expect(screen.getByRole("button", { name: "Retry message" })).toBeTruthy()
+    },
+  )
+
+  it("keeps projected error detail beside retry when a partial assistant is present", () => {
+    const onRetry = vi.fn()
+    const { container } = render(
+      <>
+        <ChatMessage
+          index={0}
+          message={userMessage({
+            exchange: {
+              status: "error",
+              retryable: true,
+              error_message: "The response stream could not be completed.",
+            },
+          })}
+          onRetry={onRetry}
+        />
+        <ChatMessage
+          index={1}
+          message={{
+            ...userMessage({
+              id: "assistant-1",
+              content: "Partial answer",
+              blocks: [
+                {
+                  type: "content",
+                  content: "Partial answer",
+                  contentType: "markdown",
+                },
+              ],
+            }),
+            role: "assistant",
+            streaming: true,
+          }}
+        />
+      </>,
+    )
+
+    expect(
+      screen.getByText("The response stream could not be completed."),
+    ).toBeTruthy()
+    expect(screen.getByText("Partial answer")).toBeTruthy()
+    expect(container.querySelector(".shiny-chat-retry-error")).not.toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }))
+    expect(onRetry).toHaveBeenCalledWith(0)
+  })
+
+  it.each(["pending", "ok", "cancelled"] as const)(
+    "does not show error detail for %s exchanges",
+    (status) => {
+      render(
+        <ChatMessage
+          index={0}
+          message={userMessage({
+            exchange: {
+              status,
+              retryable: status !== "ok",
+              error_message: "The response could not be completed.",
+            },
+          })}
+          onRetry={vi.fn()}
+        />,
+      )
+
+      expect(
+        screen.queryByText("The response could not be completed."),
+      ).toBeNull()
+    },
+  )
+
+  it("does not show detail for an error exchange without a projected message", () => {
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          exchange: { status: "error", retryable: true },
+        })}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.queryByText("The response could not be completed."),
+    ).toBeNull()
+  })
+
+  it("renders markup-like projected error detail as plain text", () => {
+    const errorMessage = "<script>alert('xss')</script>"
+    const { container } = render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          exchange: {
+            status: "error",
+            retryable: true,
+            error_message: errorMessage,
+          },
+        })}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(errorMessage)).toBeTruthy()
+    expect(container.querySelector("script")).toBeNull()
   })
 
   it("does not expose a retry for completed exchanges", () => {

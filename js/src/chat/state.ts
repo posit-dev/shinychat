@@ -73,6 +73,7 @@ export interface ChatMessageData {
   exchange?: {
     status: "pending" | "ok" | "error" | "cancelled"
     retryable: boolean
+    error_message?: string
   }
 }
 
