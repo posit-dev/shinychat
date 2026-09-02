@@ -162,10 +162,13 @@ new_web_block <- function(type, ...) {
     "shinychat_block"
   )
 
-  dots <- dots_list(
-    type = type,
-    version = 1L,
-    ...
+  # NULL optional fields (e.g. a missing provider search id) are omitted.
+  dots <- compact(
+    dots_list(
+      type = type,
+      version = 1L,
+      ...
+    )
   )
 
   structure(dots, class = classes)
@@ -176,7 +179,9 @@ contents_shinychat_search_request <- function(content) {
     return(NULL)
   }
 
-  new_web_block("web_search", query = content@query)
+  # Providers that key their search calls (Anthropic, OpenAI) keep the id
+  # in the raw block in extra; the client pairs results against it.
+  new_web_block("web_search", query = content@query, id = content@extra$id)
 }
 
 contents_shinychat_search_response <- function(content) {
@@ -187,7 +192,11 @@ contents_shinychat_search_response <- function(content) {
   sources <- lapply(content@sources, web_source_record)
   sources <- Filter(Negate(is.null), sources)
 
-  new_web_block("web_search_results", sources = sources)
+  new_web_block(
+    "web_search_results",
+    sources = sources,
+    search_id = content@extra$tool_use_id
+  )
 }
 
 contents_shinychat_fetch_request <- function(content) {
@@ -225,7 +234,7 @@ contents_shinychat_citation <- function(content) {
   }
 
   # Keep citation asides in markdown so grounded-text processing can match them.
-  as.character(
+  aside <- as.character(
     htmltools::tag(
       "shiny-aside",
       list(
@@ -243,6 +252,29 @@ contents_shinychat_citation <- function(content) {
       )
     )
   )
+
+  # Citations also ride their own block so the client can pair them with
+  # the search on both the stream and replay paths.
+  citations <- new_web_block(
+    "web_search_citations",
+    sources = list(web_source_record(source))
+  )
+
+  structure(list(aside, citations), class = "shinychat_content_splice")
+}
+
+# Splice multi-item method results into a flat content list (a citation
+# yields an aside string plus a web_search_citations block).
+flatten_content_splices <- function(content) {
+  out <- list()
+  for (item in content) {
+    if (inherits(item, "shinychat_content_splice")) {
+      out <- c(out, unclass(item))
+    } else {
+      out[[length(out) + 1]] <- item
+    }
+  }
+  out
 }
 
 ellmer_web_content_methods <- function() {
@@ -993,9 +1025,7 @@ method(contents_shinychat, ellmer::Turn) <- function(content) {
   # with no `<shiny-tool-result>` to pair its request against.
   raw_contents <- content@contents
   content <- compact(map(raw_contents, contents_shinychat_wrapped))
-  # Attach cited sources to the web_search block. Mirrors Python's
-  # `_attach_cited_sources`.
-  attach_cited_sources(raw_contents, content)
+  flatten_content_splices(content)
 }
 
 ellmer_turn_effective_role <- function(turn) {
@@ -1072,82 +1102,6 @@ coalesce_content_strings <- function(content) {
   result
 }
 
-# Attach cited sources to the last web_search block when a turn has search
-# requests and citations but no provider results. Mirrors Python's
-# `_attach_cited_sources`.
-attach_cited_sources <- function(raw_contents, content) {
-  has_web_search <- some(content, function(x) {
-    inherits(x, "shinychat_block") && identical(x$type, "web_search")
-  })
-  if (!has_web_search) {
-    return(content)
-  }
-  # Provider results win; cited sources are only a fallback when there
-  # are no results at all.
-  has_web_results <- some(content, function(x) {
-    inherits(x, "shinychat_block") && identical(x$type, "web_search_results")
-  })
-  if (has_web_results) {
-    return(content)
-  }
-  # Collect cited sources from ContentCitation objects, merging by URL
-  # (first occurrence wins; a later title fills a missing one).
-  WebSource_class <- tryCatch(
-    getExportedValue("ellmer", "WebSource"),
-    error = function(e) NULL
-  )
-  if (is.null(WebSource_class)) {
-    return(content)
-  }
-  Citation_class <- tryCatch(
-    getExportedValue("ellmer", "ContentCitation"),
-    error = function(e) NULL
-  )
-  if (is.null(Citation_class)) {
-    return(content)
-  }
-  cited <- list()
-  # Track the index into `cited` for each URL so a later citation can
-  # backfill a missing title.
-  url_index <- new.env(parent = emptyenv())
-  for (x in raw_contents) {
-    if (!S7_inherits(x, Citation_class)) {
-      next
-    }
-    source <- x@source
-    if (!S7_inherits(source, WebSource_class)) {
-      next
-    }
-    record <- web_source_record(source)
-    if (is.null(record)) {
-      next
-    }
-    idx <- url_index[[record$url]]
-    if (!is.null(idx)) {
-      if (is.null(cited[[idx]]$title) && !is.null(record$title)) {
-        cited[[idx]]$title <- record$title
-      }
-      next
-    }
-    url_index[[record$url]] <- length(cited) + 1L
-    cited <- c(cited, list(record))
-  }
-  if (length(cited) == 0) {
-    return(content)
-  }
-  # Attach to the last web_search block.
-  for (i in rev(seq_along(content))) {
-    if (
-      inherits(content[[i]], "shinychat_block") &&
-        identical(content[[i]]$type, "web_search")
-    ) {
-      content[[i]]$cited_sources <- cited
-      break
-    }
-  }
-  content
-}
-
 merge_ellmer_turn_group <- function(group, tools) {
   role <- ellmer_turn_effective_role(group[[1]])
 
@@ -1181,9 +1135,7 @@ merge_ellmer_turn_group <- function(group, tools) {
   if (is.null(content) || identical(content, "")) {
     return(NULL)
   }
-  # Attach cited sources to the web_search block. Mirrors Python's
-  # `_attach_cited_sources`.
-  content <- attach_cited_sources(contents, content)
+  content <- flatten_content_splices(content)
   has_thinking <- some(content, function(x) {
     is.character(x) && inherits(x, "shinychat_thinking")
   })

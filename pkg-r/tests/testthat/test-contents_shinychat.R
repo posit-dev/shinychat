@@ -509,11 +509,17 @@ test_that("web content emitters produce structured shinychat_block lists", {
 
   MockSearchRequest <- S7::new_class(
     "MockSearchRequest",
-    properties = list(query = S7::class_character)
+    properties = list(
+      query = S7::class_character,
+      extra = NULL | S7::class_list
+    )
   )
   MockSearchResponse <- S7::new_class(
     "MockSearchResponse",
-    properties = list(sources = S7::class_list)
+    properties = list(
+      sources = S7::class_list,
+      extra = NULL | S7::class_list
+    )
   )
   MockWebSource <- S7::new_class(
     "MockWebSource",
@@ -531,6 +537,15 @@ test_that("web content emitters produce structured shinychat_block lists", {
   expect_equal(search_block$type, "web_search")
   expect_equal(search_block$version, 1L)
   expect_equal(search_block$query, "ggplot2 release date")
+  expect_false("id" %in% names(search_block))
+
+  keyed_search <- contents_shinychat_search_request(
+    MockSearchRequest(
+      query = "ggplot2 release date",
+      extra = list(type = "server_tool_use", id = "srvtoolu_123")
+    )
+  )
+  expect_equal(keyed_search$id, "srvtoolu_123")
 
   results_content <- MockSearchResponse(
     sources = list(
@@ -555,6 +570,18 @@ test_that("web content emitters produce structured shinychat_block lists", {
   expect_equal(results_block$sources[[1]]$title, "ggplot2")
   expect_equal(results_block$sources[[2]]$url, "https://example.com")
   expect_false("title" %in% names(results_block$sources[[2]]))
+  expect_false("search_id" %in% names(results_block))
+
+  keyed_results <- contents_shinychat_search_response(
+    MockSearchResponse(
+      sources = list(),
+      extra = list(
+        type = "web_search_tool_result",
+        tool_use_id = "srvtoolu_123"
+      )
+    )
+  )
+  expect_equal(keyed_results$search_id, "srvtoolu_123")
 
   expect_null(contents_shinychat_fetch_request(list()))
 
@@ -634,6 +661,31 @@ test_that("web_source_record omits title when NA and filters NA urls", {
   expect_null(web_source_record(source_no_url))
 })
 
+test_that("ContentCitation yields an aside plus a web_search_citations block", {
+  skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
+
+  result <- contents_shinychat(
+    ellmer::ContentCitation(
+      source = ellmer::WebSource("https://x.example", "Example")
+    )
+  )
+  expect_s3_class(result, "shinychat_content_splice")
+  expect_length(result, 2L)
+
+  aside <- result[[1]]
+  expect_match(aside, "data-citation", fixed = TRUE)
+  expect_match(aside, "https://x.example", fixed = TRUE)
+
+  block <- result[[2]]
+  expect_s3_class(block, "shinychat_block")
+  expect_equal(block$type, "web_search_citations")
+  expect_equal(block$version, 1L)
+  expect_equal(
+    block$sources,
+    list(list(url = "https://x.example", title = "Example"))
+  )
+})
+
 test_that("ContentCitation preserves optional metadata independently", {
   skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
 
@@ -642,7 +694,7 @@ test_that("ContentCitation preserves optional metadata independently", {
       source = ellmer::WebSource("https://x.example", "Example"),
       grounded_span = "Supported answer"
     )
-  )
+  )[[1]]
   expect_match(
     grounded_only,
     'grounded-span="Supported answer"',
@@ -655,7 +707,7 @@ test_that("ContentCitation preserves optional metadata independently", {
       source = ellmer::WebSource("https://x.example", "Example"),
       cited_quote = "Source evidence"
     )
-  )
+  )[[1]]
   expect_match(quote_only, 'cited-quote="Source evidence"', fixed = TRUE)
   expect_false(grepl("grounded-span=", quote_only, fixed = TRUE))
 })
@@ -669,50 +721,7 @@ test_that("web content feature detection derives classes from registered methods
   expect_false(ellmer_web_content_available(methods, exports[-2]))
 })
 
-test_that("attach_cited_sources adds cited_sources to last web_search when no results", {
-  search_block <- new_web_block("web_search", query = "test query")
-  content <- list("answer text", search_block)
-
-  result <- attach_cited_sources(list(), content)
-  expect_null(result[[2]]$cited_sources)
-
-  results_block <- new_web_block(
-    "web_search_results",
-    sources = list(list(url = "https://provider.example", title = "Provider"))
-  )
-  content_with_results <- list("answer", search_block, results_block)
-  result <- attach_cited_sources(list(), content_with_results)
-  expect_null(result[[2]]$cited_sources)
-
-  content_no_search <- list("just text")
-  result <- attach_cited_sources(list(), content_no_search)
-  expect_equal(result, content_no_search)
-})
-
-test_that("attach_cited_sources backfills a missing title from a later citation for the same URL", {
-  skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
-
-  cit_no_title <- ellmer::ContentCitation(
-    source = ellmer::WebSource("https://shared.example", title = NULL),
-    grounded_span = "claim one"
-  )
-  cit_with_title <- ellmer::ContentCitation(
-    source = ellmer::WebSource("https://shared.example", "Later Title"),
-    grounded_span = "claim two"
-  )
-  raw_contents <- list(cit_no_title, cit_with_title)
-
-  search_block <- new_web_block("web_search", query = "test")
-  content <- list("answer", search_block)
-
-  result <- attach_cited_sources(raw_contents, content)
-  expect_false(is.null(result[[2]]$cited_sources))
-  expect_length(result[[2]]$cited_sources, 1L)
-  expect_equal(result[[2]]$cited_sources[[1]]$url, "https://shared.example")
-  expect_equal(result[[2]]$cited_sources[[1]]$title, "Later Title")
-})
-
-test_that("Turn conversion attaches cited_sources to a results-less web_search", {
+test_that("Turn conversion emits citations as their own blocks", {
   skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
 
   turn <- ellmer::AssistantTurn(
@@ -729,17 +738,31 @@ test_that("Turn conversion attaches cited_sources to a results-less web_search",
   )
 
   results <- contents_shinychat(turn)
-  search_block <- Filter(
+  block_types <- vapply(
+    Filter(function(x) inherits(x, "shinychat_block"), results),
+    function(x) x$type,
+    character(1)
+  )
+  expect_equal(block_types, c("web_search", "web_search_citations"))
+
+  citations <- Filter(
     function(x) {
-      inherits(x, "shinychat_block") && identical(x$type, "web_search")
+      inherits(x, "shinychat_block") &&
+        identical(x$type, "web_search_citations")
     },
     results
   )
-  expect_length(search_block, 1L)
   expect_equal(
-    search_block[[1]]$cited_sources,
+    citations[[1]]$sources,
     list(list(url = "https://example.com/docs", title = "Docs"))
   )
+
+  # The splice is flattened: the aside rides as a plain string item.
+  asides <- Filter(
+    function(x) is.character(x) && grepl("data-citation", x, fixed = TRUE),
+    results
+  )
+  expect_length(asides, 1L)
 })
 
 test_that("processes a Turn object", {
