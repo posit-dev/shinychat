@@ -315,24 +315,39 @@ immutability, and the absence of detailed text for pending/cancelled nodes.
 
 ## Sequencing and task graph
 
-Do not create Phase 5 implementation children until this note is approved.
-After approval, create sequential children under `shinychat#fg70`:
+All Phase 5 children are now instantiated under `shinychat#fg70`. Their
+implementation dependency chain is explicit:
 
 1. **P5.0 selected init guard (`shinychat#fbhe`).** It is the entry slice and
-   must land before the audit hardening.
-2. **P5.1 lifecycle audit.** Exercise clear/switch/abort against the selected
-   guard and existing transaction boundaries.
-3. **P5.2 unsupported-turn degradation.** Keep strict corruption behavior
-   separate from effective-suffix compatibility degradation.
-4. **P5.3 detailed error reload affordance.** Add only the bounded
-   input-bearing error projection and its plain-text React rendering; run
-   `make update-dist` if JS/SCSS changes.
-5. **P5.4 acceptance, deletion pass, and adversarial review.** Review the
-   coherent Phase 5 subsystem in critical-review format. Every P1 is fixed
-   with a regression or dispositioned in Kata before closure.
+   is the only active implementation task.
+2. **P5.1 lifecycle audit (`shinychat#bj1n`).** Blocked by
+   `shinychat#fbhe`; exercise clear/switch/abort against the selected guard
+   and existing transaction boundaries.
+3. **P5.2 unsupported-turn degradation (`shinychat#yebr`).** Blocked by
+   `shinychat#bj1n`; keep strict corruption behavior separate from
+   effective-suffix compatibility degradation.
+4. **P5.3 detailed error reload affordance (`shinychat#bfq8`).** Blocked by
+   `shinychat#yebr`; add only the bounded input-bearing error projection and
+   its plain-text React rendering; run `make update-dist` if JS/SCSS changes.
+5. **P5.4 acceptance, deletion pass, and adversarial review
+   (`shinychat#xt5q`).** Blocked by `shinychat#bfq8`; review the coherent Phase
+   5 subsystem in critical-review format. Every P1 is fixed with a regression
+   or dispositioned in Kata before closure.
 
-Each child is blocked by its predecessor. A review finding outside R2-R5/R7
-receives the standing `real, out of scope -> backlog` disposition.
+Only implementation is blocked by these links; independent read-only
+investigation, test design, verification, and review may run ahead. A review
+finding outside R2-R5/R7 receives the standing
+`real, out of scope -> backlog` disposition.
+
+### Velocity and concurrency policy
+
+Use parallel agents proactively for independent read-only investigation, test
+design, verification, and review. Parallel code changes are allowed only when
+the dependency state permits them and write scopes are disjoint. Never start
+blocked implementation, or trade away required reviews, verification, or
+phase gates for speed. Later-task investigations may run ahead, but every
+decision and finding must be revalidated against that task's eventual baseline
+before implementation or disposition.
 
 ## Verification
 
@@ -377,9 +392,14 @@ Landed: Phase 5 parent `shinychat#fg70` is created and claimed on
 evidence are incorporated in this note. `bdd5089b` independently repaired
 live materialization failure recovery. Client seed `ad177514` is committed.
 The uncommitted ambient `_capture_admission` predicate is parked/rejected and
-must not land.
+must not land. All Phase 5 children are instantiated:
+`shinychat#fbhe`, `shinychat#bj1n`, `shinychat#yebr`, `shinychat#bfq8`, and
+`shinychat#xt5q`.
 
-Next: after self-review, `shinychat#fbhe` may replace the rejected predicate
-with the selected one-shot `ChatHistory` barrier and add the bounded initial
-recorded-preflight recovery. P5.1-P5.4 remain blocked by P5.0. Do not begin R,
-legacy, or another scheduling/ownership mechanism.
+Current: only `shinychat#fbhe` implementation is active. It may replace the
+rejected predicate with the selected one-shot `ChatHistory` barrier and add
+the bounded initial recorded-preflight recovery. `shinychat#bj1n` is blocked
+by `shinychat#fbhe`; `shinychat#yebr` is blocked by `shinychat#bj1n`;
+`shinychat#bfq8` is blocked by `shinychat#yebr`; and `shinychat#xt5q` is
+blocked by `shinychat#bfq8`. Do not begin R, legacy, or another
+scheduling/ownership mechanism.
