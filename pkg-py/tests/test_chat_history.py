@@ -773,6 +773,44 @@ async def test_v2_initial_barrier_nonreactive_browser_waits_without_token() -> (
 
 
 @pytest.mark.anyio
+async def test_v2_initial_barrier_settled_before_extended_task_skips_token_read() -> (
+    None
+):
+    session = _LiveSession()
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "initial_barrier_extended_task",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store="memory",
+                scope="test",
+                restore_mode="browser",
+            ),
+        )
+        barrier = chat.history._initial_v2_barrier
+        assert barrier is not None
+        barrier.set_result("fresh")
+
+        @reactive.extended_task
+        async def wait_for_initial_decision() -> str | None:
+            return await chat.history._await_initial_v2_decision()
+
+        wait_for_initial_decision()
+        task = wait_for_initial_decision._task
+
+    try:
+        assert task is not None
+        assert await task == "fresh"
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
 async def test_v2_initial_messages_follow_real_initialization_order() -> None:
     session = _LiveSession()
     with (

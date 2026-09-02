@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Any
+import os
+import tempfile
+from typing import Any, AsyncGenerator
 from unittest.mock import MagicMock
 
 import chatlas
@@ -21,10 +22,8 @@ history_module._EXCHANGE_TREE_HISTORY_V2 = True
 
 TARGET_ID = "startup-target"
 TARGET_EXCHANGE_ID = "n_0001"
-STORE = FileConversationStore(
-    dir=Path(__file__).parent / "_history_initial_startup_barrier_store"
-)
 RESTORE_MODE = "browser"
+_store_dirs: dict[int, str] = {}
 
 app_ui = ui.page_fillable(
     ui.output_text("startup_exchange"),
@@ -53,12 +52,34 @@ def _target_record() -> Any:
     return record
 
 
+def _store_dir() -> str:
+    pid = os.getpid()
+    if pid not in _store_dirs:
+        _store_dirs[pid] = tempfile.mkdtemp(
+            prefix="shinychat-history-initial-startup-"
+        )
+    return _store_dirs[pid]
+
+
+class EchoStreamChatClient(chatlas.Chat):
+    async def stream_async(
+        self, *args: Any, **kwargs: Any
+    ) -> AsyncGenerator[str, None]:  # type: ignore[override]
+        user_input = str(args[0]) if args else ""
+
+        async def stream() -> AsyncGenerator[str, None]:
+            yield f"echo: {user_input}"
+
+        return stream()
+
+
 def server(input: Inputs, output: Outputs, session: Session) -> None:
     startup_exchange_value = reactive.Value("")
+    store = FileConversationStore(dir=_store_dir())
 
     @reactive.effect(priority=20_000)
     async def _seed_target() -> None:
-        await STORE.put(
+        await store.put(
             ConversationPartition(chat_id="chat", scope="test-user"),
             _target_record(),
         )
@@ -68,10 +89,10 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     provider.model = "test"
     chat = Chat(
         "chat",
-        client=chatlas.Chat(provider),
+        client=EchoStreamChatClient(provider),
         messages=["constructor message"],
         history=HistoryOptions(
-            store=STORE,
+            store=store,
             scope="test-user",
             restore_mode=RESTORE_MODE,
         ),

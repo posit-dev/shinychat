@@ -6,6 +6,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from shiny.playwright import controller
 from shiny.run import ShinyAppProc
+from shinychat.playwright import ChatController
 
 
 def test_browser_no_target_releases_constructor_and_startup_append(
@@ -21,6 +22,11 @@ def test_browser_no_target_releases_constructor_and_startup_append(
         re.compile(r'"messages": \["startup append"\]'),
         timeout=30_000,
     )
+    chat = ChatController(page, "chat")
+    chat.set_user_input("extended task response")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message("echo: extended task response", timeout=30_000)
 
 
 @pytest.mark.parametrize("local_app", ["app_url.py"], indirect=True)

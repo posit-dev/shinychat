@@ -217,6 +217,26 @@ for and receives the one shared fresh result without a browser token. The new
 startup-barrier browser suite (2 tests), focused history unit selection (10
 tests), and adjacent v2 restore browser suite (7 tests) pass.
 
+The third finding against the barrier mechanism triggered the required
+three-findings valve. The selected PATCH keeps the one-shot barrier but
+deletes the `bdea58c3` RuntimeError message matching. A settled barrier now
+returns through the same shielded await before any browser-token read. For an
+unsettled browser/URL barrier, only the `browser_token` reactive read is
+guarded: a caller with no reactive context or Shiny's `DenialContext` falls
+back to that same shielded await, while `req(token)` remains outside the
+guard so token validation errors propagate unchanged. Ordinary initial effects
+still subscribe to the existing token and suspend until it arrives. This is a
+context distinction, not another barrier, queue, marker, owner, or admission
+state.
+
+The startup fixture now uses a per-process temporary store, matching adjacent
+isolated Playwright fixtures rather than a repository-local directory.
+Its browser/no-target case also submits through normal `Chat(client=...)`
+automatic streaming and receives the expected assistant response, proving a
+post-initialization Shiny `ExtendedTask` neither reads the token nor fails.
+The unit regression separately proves a pre-settled barrier returns from a
+real `ExtendedTask` without a token read.
+
 The selected guard must:
 
 - create no durable preselection record, recorder buffer, or merge state;
@@ -459,6 +479,23 @@ the `ExtendedTask` exception is documented and covered by the adjacent
 streaming browser suite, and the fixture discriminates both no-target and
 selected-target outcomes. This bounded correction is pending commit and the
 existing independent P5.0 review; downstream children remain blocked.
+
+The three-findings valve is now resolved by the authorized PATCH above:
+`bdea58c3`'s RuntimeError text matching is removed. The barrier fast-path
+returns before reactive access, and unresolved browser-token access falls
+back only for absent reactive context or Shiny `DenialContext`; `req(token)`
+and all other errors propagate. The startup fixture now has a per-process
+temporary store and proves normal automatic streaming succeeds through the
+real Shiny `ExtendedTask` after initialization, while the existing browser
+no-target and URL-target startup cases remain intact. Focused unit selection
+(11 tests), startup-barrier browser suite (2 tests), and adjacent v2 restore
+browser suite (7 tests) pass. The full history unit module passes 83 tests;
+`make py-check-format`, `make py-check-types`, and `git diff --check` pass.
+Self-review is 100/100: the fallbacks are restricted to the token read, the
+settled path preserves cancellation/result behavior through the same shielded
+future, and the production regression covers the former ExtendedTask failure.
+This follow-up is pending commit and the existing independent P5.0 review.
+Downstream children remain blocked.
 
 The test contract is resolved by the 2026-09-02 `shinychat#fbhe` orchestrator
 decision: no global/helper/fixture readiness wait. Ordinary existing browser

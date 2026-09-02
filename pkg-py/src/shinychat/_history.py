@@ -2116,26 +2116,27 @@ class ChatHistory:
         barrier = self._initial_v2_barrier
         if barrier is None:
             return None
+        if barrier.done():
+            return await asyncio.shield(barrier)
         if self._restore_mode in ("browser", "url"):
             from shiny import req
+            from shiny.reactive._core import get_current_context
+            from shiny.reactive._extended_task import DenialContext
 
             ids = HistoryInputIds.for_chat(self._chat.id)
             try:
                 token = self._chat._session.input[ids.browser_token]()
-            except RuntimeError as error:
-                # Nonreactive/manual callers and ExtendedTasks cannot
-                # participate in the sequential initial flush. ExtendedTasks
-                # intentionally deny all reactive-source reads, but the
-                # client gate means their normal user-originated work begins
-                # only after the initial decision has released.
-                if str(error) not in (
-                    "No current reactive context",
-                    "You're not allowed to read reactive sources from inside a "
-                    "Extended Task. Instead, read the reactive sources before "
-                    "calling the extended task, and pass them in as function "
-                    "arguments.",
-                ):
-                    raise
+            except RuntimeError:
+                # Nonreactive/manual callers have no context; ExtendedTasks
+                # use DenialContext to reject reactive-source reads. Neither
+                # participates in the sequential initial flush.
+                try:
+                    context = get_current_context()
+                except RuntimeError:
+                    pass
+                else:
+                    if not isinstance(context, DenialContext):
+                        raise
             else:
                 req(token)
         return await asyncio.shield(barrier)
