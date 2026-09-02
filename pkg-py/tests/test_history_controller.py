@@ -1424,8 +1424,8 @@ async def test_evict_if_needed_removes_oldest_preserves_active():
     rec1 = new_conversation_record(title="oldest")
     rec2 = new_conversation_record(title="middle")
     rec3 = new_conversation_record(title="newest")
-    rec2.updated_at = rec2.updated_at + timedelta(seconds=1)
-    rec3.updated_at = rec3.updated_at + timedelta(seconds=2)
+    rec2.created_at = rec2.created_at + timedelta(seconds=1)
+    rec3.created_at = rec3.created_at + timedelta(seconds=2)
     for rec in [rec1, rec2, rec3]:
         await store.put(part(scope="alice"), rec)
 
@@ -1458,8 +1458,8 @@ async def test_evict_if_needed_calls_list_once_and_never_total_size():
     rec1 = new_conversation_record(title="oldest")
     rec2 = new_conversation_record(title="middle")
     rec3 = new_conversation_record(title="newest")
-    rec2.updated_at = rec2.updated_at + timedelta(seconds=1)
-    rec3.updated_at = rec3.updated_at + timedelta(seconds=2)
+    rec2.created_at = rec2.created_at + timedelta(seconds=1)
+    rec3.created_at = rec3.created_at + timedelta(seconds=2)
     for rec in [rec1, rec2, rec3]:
         await store.put(part(scope="alice"), rec)
 

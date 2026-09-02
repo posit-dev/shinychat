@@ -59,6 +59,8 @@ export interface ChatAppProps {
   placeholder?: string
   initialMessages?: ChatMessageData[]
   initialGreeting?: InitialGreeting
+  /** True when a stored/URL conversation ID suggests a history restore is pending. */
+  restorePending?: boolean
   initialDrawer?: ChatDrawerState
   drawerSource?: Element
   enableCancel?: boolean
@@ -75,10 +77,14 @@ export interface ChatAppProps {
 function makeInitialGreeting(
   greeting: InitialGreeting,
   messagesLength: number,
+  held = false,
 ): GreetingData {
   const persistent = greeting.options.persistent === true
-  const status: GreetingData["status"] =
-    !persistent && messagesLength > 0 ? "dismissed" : "visible"
+  const status: GreetingData["status"] = held
+    ? "held"
+    : !persistent && messagesLength > 0
+      ? "dismissed"
+      : "visible"
   return {
     content: greeting.content,
     contentType: greeting.contentType,
@@ -108,6 +114,7 @@ export function ChatApp({
   placeholder,
   initialMessages,
   initialGreeting,
+  restorePending = false,
   initialDrawer,
   drawerSource,
   enableCancel,
@@ -141,7 +148,7 @@ export function ChatApp({
     inputPlaceholder: placeholder ?? initialState.inputPlaceholder,
     messages,
     greeting: initialGreeting
-      ? makeInitialGreeting(initialGreeting, messages.length)
+      ? makeInitialGreeting(initialGreeting, messages.length, restorePending)
       : null,
     enableCancel: enableCancel ?? initialState.enableCancel,
     enableCancelExplicit: enableCancel !== undefined,
@@ -256,6 +263,10 @@ export function ChatApp({
           conversations: action.conversations,
           activeId: action.active_id,
         })
+        dispatch({
+          type: "greeting_settle",
+          restored: action.active_id != null,
+        })
         if (action.enabled) {
           setCurrentConversationId(elementId, action.active_id)
         }
@@ -312,6 +323,32 @@ export function ChatApp({
       priority: "event",
     })
   }, [shouldRequestGreeting, elementId])
+
+  // Safety net: a held greeting is normally released by the first
+  // history_update. If history is server-disabled (or init fails) despite a
+  // stale stored conversation ID, no history_update ever arrives — release
+  // the greeting after a generous timeout rather than hiding it forever.
+  const greetingIsHeld = state.greeting?.status === "held"
+  useEffect(() => {
+    if (!greetingIsHeld) return
+    const timer = setTimeout(
+      () => dispatch({ type: "greeting_settle", restored: false }),
+      15000,
+    )
+    return () => clearTimeout(timer)
+  }, [greetingIsHeld])
+
+  // "Restoring conversation…" indicator, shown only when the hold outlasts
+  // a short delay so fast restores don't flicker it.
+  const [showRestoring, setShowRestoring] = useState(false)
+  useEffect(() => {
+    if (!greetingIsHeld) {
+      setShowRestoring(false)
+      return
+    }
+    const timer = setTimeout(() => setShowRestoring(true), 500)
+    return () => clearTimeout(timer)
+  }, [greetingIsHeld])
 
   const greetingIsDismissed = state.greeting?.status === "dismissed"
   // Note: greetingDismissedSentRef resets on remount. If the greeting reaches
@@ -388,6 +425,7 @@ export function ChatApp({
                   maxUploadSize={maxUploadSize}
                   elementId={elementId}
                   greeting={state.greeting}
+                  restoring={greetingIsHeld && showRestoring}
                   cancelId={cancelId}
                   enableCancel={state.enableCancel}
                   enableUpload={state.enableUpload}

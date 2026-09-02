@@ -489,10 +489,23 @@ async def test_list_is_meta_only_newest_first(store: FileConversationStore):
     a = new_conversation_record(title="older")
     b = new_conversation_record(title="newer")
     await store.put(part(scope="alice"), a)
-    # Force b.updated_at to be strictly after a.updated_at since
+    # Force b.created_at to be strictly after a.created_at since
     # utcnow() has second resolution and both may share the same timestamp.
-    b.updated_at = b.updated_at + timedelta(seconds=1)
+    b.created_at = b.created_at + timedelta(seconds=1)
     await store.put(part(scope="alice"), b)
+    metas = await store.list(part(scope="alice"))
+    assert [m.title for m in metas] == ["newer", "older"]
+
+
+@pytest.mark.anyio
+async def test_list_order_stable_after_update(store: FileConversationStore):
+    a = new_conversation_record(title="older")
+    b = new_conversation_record(title="newer")
+    b.created_at = b.created_at + timedelta(seconds=1)
+    await store.put(part(scope="alice"), a)
+    await store.put(part(scope="alice"), b)
+    a.updated_at = a.updated_at + timedelta(seconds=10)
+    await store.put(part(scope="alice"), a)
     metas = await store.list(part(scope="alice"))
     assert [m.title for m in metas] == ["newer", "older"]
 
@@ -876,8 +889,23 @@ async def test_memory_list_newest_first(mem_store: InMemoryConversationStore):
     a = new_conversation_record(title="older")
     b = new_conversation_record(title="newer")
     await mem_store.put(part(scope="alice"), a)
-    b.updated_at = b.updated_at + timedelta(seconds=1)
+    b.created_at = b.created_at + timedelta(seconds=1)
     await mem_store.put(part(scope="alice"), b)
+    metas = await mem_store.list(part(scope="alice"))
+    assert [m.title for m in metas] == ["newer", "older"]
+
+
+@pytest.mark.anyio
+async def test_memory_list_order_stable_after_update(
+    mem_store: InMemoryConversationStore,
+):
+    a = new_conversation_record(title="older")
+    b = new_conversation_record(title="newer")
+    b.created_at = b.created_at + timedelta(seconds=1)
+    await mem_store.put(part(scope="alice"), a)
+    await mem_store.put(part(scope="alice"), b)
+    a.updated_at = a.updated_at + timedelta(seconds=10)
+    await mem_store.put(part(scope="alice"), a)
     metas = await mem_store.list(part(scope="alice"))
     assert [m.title for m in metas] == ["newer", "older"]
 

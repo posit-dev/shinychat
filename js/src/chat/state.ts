@@ -104,7 +104,13 @@ export interface GreetingData {
   content: string
   contentType: ContentType
   streaming: boolean
-  status: "visible" | "dismissing" | "dismissed"
+  /**
+   * "held" means the greeting is withheld because a history restore may be
+   * pending (the client found a stored conversation ID at load). The first
+   * `history_update` from the server releases it: to "visible" when no
+   * conversation was restored, or clears it when one was.
+   */
+  status: "visible" | "dismissing" | "dismissed" | "held"
   options: GreetingOptions
   blocks: ContentBlock[]
 }
@@ -186,6 +192,7 @@ export type UIAction =
       attachments?: AttachmentPayload[]
     }
   | { type: "greeting_dismissed" }
+  | { type: "greeting_settle"; restored: boolean }
   | { type: "CANCEL_REQUESTED" }
 
 export type AnyAction = ChatAction | UIAction
@@ -1133,7 +1140,11 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         : state.greeting
           ? {
               ...state.greeting,
-              status: "visible" as const,
+              // A "held" greeting stays held — the history_update that
+              // follows every clear decides whether to release it.
+              status: (state.greeting.status === "held"
+                ? "held"
+                : "visible") as "held" | "visible",
             }
           : null
       return {
@@ -1291,6 +1302,20 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "greeting_clear":
       return { ...state, greeting: null }
+
+    case "greeting_settle": {
+      // The server's restore decision is in (dispatched from ChatApp's
+      // history_update handling, or a safety timeout). Dropping the
+      // greeting on restore mirrors the server, which clears it during
+      // replay regardless of `persistent` ("a restored conversation is
+      // never a new chat") and re-sends it server-side on new_chat().
+      const held = state.greeting
+      if (!held || held.status !== "held") return state
+      if (action.restored || state.messages.length > 0) {
+        return { ...state, greeting: null }
+      }
+      return { ...state, greeting: { ...held, status: "visible" } }
+    }
 
     case "update_slash_commands":
       return { ...state, slashCommands: action.commands }

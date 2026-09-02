@@ -103,15 +103,33 @@ test_that("InMemoryConversationStore handles recorded HTML widgets", {
 test_that("InMemoryConversationStore: list returns newest first", {
   store <- InMemoryConversationStore$new()
   rec1 <- new_conversation_record("First")
-  rec1$updated_at <- "2026-01-01T00:00:00Z"
+  rec1$created_at <- "2026-01-01T00:00:00Z"
   rec2 <- new_conversation_record("Second")
-  rec2$updated_at <- "2026-06-01T00:00:00Z"
+  rec2$created_at <- "2026-06-01T00:00:00Z"
 
   store$put(part(), rec1)
   store$put(part(), rec2)
 
   metas <- store$list(part())
   expect_length(metas, 2)
+  expect_equal(metas[[1]]$title, "Second")
+  expect_equal(metas[[2]]$title, "First")
+})
+
+test_that("InMemoryConversationStore: update does not reorder list", {
+  store <- InMemoryConversationStore$new()
+  rec1 <- new_conversation_record("First")
+  rec1$created_at <- "2026-01-01T00:00:00Z"
+  rec2 <- new_conversation_record("Second")
+  rec2$created_at <- "2026-06-01T00:00:00Z"
+
+  store$put(part(), rec1)
+  store$put(part(), rec2)
+
+  rec1$updated_at <- "2026-07-01T00:00:00Z"
+  store$put(part(), rec1)
+
+  metas <- store$list(part())
   expect_equal(metas[[1]]$title, "Second")
   expect_equal(metas[[2]]$title, "First")
 })
@@ -438,16 +456,19 @@ test_that("FileConversationStore: put errors when atomic rename fails", {
   )
 })
 
-test_that("FileConversationStore: list returns newest first", {
+test_that("FileConversationStore: list returns newest first, stable after update", {
   dir <- withr::local_tempdir()
   store <- FileConversationStore$new(dir = dir)
   rec1 <- new_conversation_record("First")
-  rec1$updated_at <- "2026-01-01T00:00:00Z"
+  rec1$created_at <- "2026-01-01T00:00:00Z"
   rec2 <- new_conversation_record("Second")
-  rec2$updated_at <- "2026-06-01T00:00:00Z"
+  rec2$created_at <- "2026-06-01T00:00:00Z"
 
   store$put(part(), rec1)
   store$put(part(), rec2)
+
+  rec1$updated_at <- "2026-07-01T00:00:00Z"
+  store$put(part(), rec1)
 
   metas <- store$list(part())
   expect_length(metas, 2)

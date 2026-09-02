@@ -211,6 +211,14 @@ class ChatContainerElement extends HTMLElement {
 
     const toolGrouping = parseToolGrouping(this.getAttribute("tool-grouping"))
     const showHistory = this.getAttribute("show-history") !== "false"
+    // When history is enabled and this browser has a current conversation
+    // (localStorage in "browser" mode, query param in "url" mode), the server
+    // may restore it — hold the greeting until the first history_update
+    // confirms either way, so it doesn't flash on restored conversations.
+    const restorePending =
+      showHistory &&
+      (getCurrentConversationId(elementId) != null ||
+        getConversationIdFromUrl() != null)
 
     const inputEl = this.querySelector(CHAT_INPUT_TAG)
     const placeholder = inputEl?.getAttribute("placeholder") ?? undefined
@@ -311,6 +319,7 @@ class ChatContainerElement extends HTMLElement {
       enableUpload,
       asideFavicon,
       showHistory,
+      restorePending,
       toolGrouping,
       toolbarEl: this.toolbarEl ?? undefined,
       footerEl: this.footerEl ?? undefined,
