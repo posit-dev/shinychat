@@ -609,3 +609,17 @@ Plan self-review: 100/100 (clarity 25, comprehensiveness 25, feasibility 25,
 consistency 25). No deficiencies remain: the replacement names its
 pre-mutation input, exact turn and non-turn behavior, compatibility fallback,
 tests, and prohibited mechanisms.
+
+The replacement landed in `a823c745`. One additional effective-suffix case is
+resolved in `8071eae9`: when a compatible target snapshot supersedes an
+incompatible parent, restore remains ordinary because the parent entry is
+irrelevant. Retry removes that target snapshot, making the incompatible parent
+effective. It must reject before mutation. Preserving current live turns would
+retain the abandoned target's context, while applying or reconstructing the
+parent is prohibited. The rejection leaves record, display, turns, capture,
+and persistence untouched. This is a narrow retry preflight outcome, not a
+new corruption class or degradation mode.
+
+Decision self-review remains 100/100: the superseded-entry rule and retry
+transition now cover both possible effective suffixes without inferred turns,
+target mutation, or new state.
