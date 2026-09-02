@@ -437,9 +437,11 @@ def resolve_tool_annotations(tool: Any) -> ResolvedToolAnnotations:
     )
 
 
-def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
+def tool_request_contents(
+    x: "ContentToolRequest",
+) -> Optional[ToolRequestComponent]:
     if tool_display_override() == "none":
-        return TagList()
+        return None
 
     intent = None
     if isinstance(x.arguments, dict):
@@ -468,9 +470,11 @@ def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
     )
 
 
-def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
+def tool_result_contents(
+    x: "ContentToolResult",
+) -> Optional[ToolResultComponent]:
     if tool_display_override() == "none":
-        return TagList()
+        return None
 
     if x.request is None:
         raise ValueError(
@@ -561,7 +565,9 @@ def tool_request_block(
     return block, deps
 
 
-def tool_request_message(request: Tagifiable) -> ChatMessage:
+def tool_request_message(
+    request: Optional[ToolRequestComponent],
+) -> ChatMessage:
     """Wrap shinychat's rich tool-request card in a block-carrying message."""
     if isinstance(request, ToolRequestComponent):
         # The tagify code is retained for the none display override.
@@ -572,7 +578,9 @@ def tool_request_message(request: Tagifiable) -> ChatMessage:
         msg = ChatMessage(content="", blocks=[block])
         msg.html_deps = deps + msg.html_deps
         return msg
-    return ChatMessage(content=request)
+    # None is the "none" display override; an empty TagList is the spelling
+    # that compiles to a zero-segment message.
+    return ChatMessage(content=TagList())
 
 
 def tool_result_block(
@@ -638,7 +646,9 @@ def tool_result_block(
     return block, deps
 
 
-def tool_result_message(result: Tagifiable) -> ChatMessage:
+def tool_result_message(
+    result: Optional[ToolResultComponent],
+) -> ChatMessage:
     """Wrap shinychat's rich tool card in a marker message."""
     if isinstance(result, ToolResultComponent):
         # The default rich path emits the structured `tool_result` envelope.
@@ -647,7 +657,9 @@ def tool_result_message(result: Tagifiable) -> ChatMessage:
         msg = ShinyToolCardMessage(content="", blocks=[block])
         msg.html_deps = deps + msg.html_deps
         return msg
-    return ChatMessage(content=result)
+    # None is the "none" display override; an empty TagList is the spelling
+    # that compiles to a zero-segment message.
+    return ChatMessage(content=TagList())
 
 
 def wrap_custom_tool_result(
@@ -663,12 +675,8 @@ def wrap_custom_tool_result(
     value: Union[Tagifiable, str],
     value_type: ValueType,
     grouping: Optional[GroupingValue],
-) -> Tagifiable:
-    """Build the `<shiny-tool-result>` wrapper for an author's custom result UI.
-
-    Kept as a factory here so the caller only sees the opaque `Tagifiable`
-    return type.
-    """
+) -> ToolResultComponent:
+    """Build the `<shiny-tool-result>` wrapper for an author's custom result UI."""
     return ToolResultComponent(
         request_id=request_id,
         tool_name=tool_name,

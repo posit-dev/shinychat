@@ -19,7 +19,8 @@ from shinychat._htmltools_serialization import serialize_htmltools
 from shinychat.types import ToolResultDisplay
 
 
-def _render(component: Tagifiable) -> str:
+def _render(component: "Tagifiable | None") -> str:
+    assert component is not None
     return TagList(component.tagify()).render()["html"]
 
 

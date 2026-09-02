@@ -313,17 +313,15 @@ def test_tool_display_override_renders_without_crashing(
     request_component = tool_request_contents(request)
     result_component = tool_result_contents(result)
 
-    request_html = _render(request_component)
-    result_html = _render(result_component)
-
     if override == "none":
-        # Bare fallback: nothing rendered at all.
-        assert request_html == ""
-        assert result_html == ""
+        # Bare fallback: no component, nothing rendered.
+        assert request_component is None
+        assert result_component is None
     else:
         # "basic": still renders a tool result element, but suppresses the
         # per-call display metadata (label / value_preview) -- only the raw
         # model-visible value comes through.
+        result_html = _render(result_component)
         assert "shiny-tool-result" in result_html
         assert "label=" not in result_html
         assert "value-preview=" not in result_html
@@ -705,8 +703,8 @@ async def test_custom_tool_result_wrap_uses_tool_grouping_annotation(
 async def test_tool_display_none_is_not_misread_as_custom_display(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`SHINYCHAT_TOOL_DISPLAY=none` returns `TagList()` -- shinychat's own
-    (empty) return, not an author bypass -- so no `custom-display` either."""
+    """`SHINYCHAT_TOOL_DISPLAY=none` yields an empty message -- shinychat's
+    own return, not an author bypass -- so no `custom-display` either."""
     monkeypatch.setenv("SHINYCHAT_TOOL_DISPLAY", "none")
 
     result = _result(_request(tool=_tool()))
