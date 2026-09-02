@@ -558,6 +558,20 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
             for message in cast(Any, root).messages
         ] == ["root captured append"]
 
+        async def root_stream():
+            yield "root captured public stream"
+
+        stream_task = await chat.append_message_stream(root_stream())
+        assert stream_task is not None
+        stream_status = "running"
+        for _ in range(100):
+            with reactive.isolate():
+                stream_status = stream_task.status()
+            if stream_status == "success":
+                break
+            await asyncio.sleep(0.01)
+        assert stream_status == "success"
+
         async with chat.message_stream_context() as stream:
             await stream.append("root captured stream append")
             await stream.replace("root captured stream replace")
@@ -577,12 +591,92 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
 
         assert [entry.message.content for entry in chat._transcript.read()] == [
             "root captured append",
+            "root captured public stream",
             "root captured stream replace",
             "accepted input",
             "accepted stream update",
         ]
         assert chat._transcript.active_stream_id is None
         assert recorder.record is not None
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> None:
+    chat_id = "initial_readiness_cleanup_send_failure"
+    session = _LiveSession()
+    store = InMemoryConversationStore()
+    history_ids = HistoryInputIds.for_chat(ResolvedId(chat_id))
+    session.input[history_ids.browser_token] = reactive.Value("token")
+    session.input[history_ids.current_id] = reactive.Value("c_target")
+    await store.put(
+        ConversationPartition(chat_id=chat_id, scope="test"),
+        new_conversation_record_v2(
+            title="target",
+            id="c_target",
+            client_info={},
+        ),
+    )
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            chat_id,
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode="browser",
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    original = RuntimeError("restore failed")
+    publication_failure = RuntimeError("history update failed")
+
+    async def fail_replay(
+        _target: Any, _node_ids: tuple[str, ...]
+    ) -> None:
+        raise original
+
+    async def fail_history_update() -> None:
+        raise publication_failure
+
+    controller._replay_exchange_display = fail_replay  # type: ignore[method-assign]
+    controller.send_history_update = fail_history_update  # type: ignore[method-assign]
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+    settled: list[bool] = []
+
+    async def on_settled(restored: bool) -> None:
+        settled.append(restored)
+
+    controller.on_settled = on_settled
+
+    try:
+        with (
+            session_context(cast(Any, session)),
+            reactive.isolate(),
+            pytest.raises(RuntimeError) as raised,
+        ):
+            await handlers["_init_history"]()
+
+        assert raised.value is original
+        assert not chat.history._initial_history_initialized
+        assert settled == [False]
+        assert recorder.record is None
+        assert controller.record is None
+        assert controller._active_id_now() is None
+        assert _history_updates(session) == []
+        notifier.assert_awaited_once_with(recovery_incomplete=True)
     finally:
         chat.destroy()
 
@@ -627,6 +721,78 @@ async def test_v2_initial_readiness_flips_after_history_update_send() -> None:
         release_send.set()
         await init
         assert chat.history._initial_history_initialized
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_successful_bookmark_pointer_suppresses_then_admits_root_append() -> None:
+    chat_id = "initial_bookmark_pointer_boundary"
+    session = _LiveSession()
+    session.bookmark.store = "server"
+    session.bookmark._restore_context = MagicMock(
+        active=True,
+        values={
+            f"{chat_id}_history_exchange_pointer": {
+                "conversation_id": "c_target",
+                "node_id": "n_0000",
+            }
+        },
+    )
+    store = InMemoryConversationStore()
+    await store.put(
+        ConversationPartition(chat_id=chat_id, scope="test"),
+        new_conversation_record_v2(
+            title="target",
+            id="c_target",
+            client_info={},
+        ),
+    )
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            chat_id,
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode="bookmark",
+            ),
+        )
+
+    try:
+        controller = chat.history._controller
+        assert controller is not None
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+
+        await chat.append_message("suppressed bookmark append")
+        assert not chat.history._initial_history_initialized
+        assert chat._transcript.read() == ()
+        assert recorder.record is None
+        assert session.messages == []
+
+        with session_context(cast(Any, session)), reactive.isolate():
+            await handlers["_init_history"]()
+
+        assert chat.history._initial_history_initialized
+        assert len(_history_updates(session)) == 1
+
+        await chat.append_message("admitted bookmark append")
+        assert recorder.record is not None
+        active_leaf = recorder.record.active_leaf
+        assert active_leaf is not None
+        root = recorder.record.nodes[active_leaf]
+        assert root.input is None
+        assert [
+            message.as_stored_message().content
+            for message in cast(Any, root).messages
+        ] == ["admitted bookmark append"]
     finally:
         chat.destroy()
 

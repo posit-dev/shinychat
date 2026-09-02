@@ -1257,7 +1257,6 @@ class HistoryController:
         self._active_id.set(None)
 
         cleanup_failures: list[BaseException] = []
-
         async def best_effort(operation: Callable[[], Any]) -> None:
             try:
                 result = operation()
@@ -1272,7 +1271,17 @@ class HistoryController:
         active_id_callback = self.on_active_id_change
         if active_id_callback is not None:
             await best_effort(lambda: active_id_callback(None))
-        await best_effort(self.send_history_update)
+        try:
+            await self.send_history_update()
+        except BaseException as error:
+            cleanup_failures.append(error)
+        else:
+            history = getattr(self.chat, "history", None)
+            if (
+                history is not None
+                and not history._initial_history_initialized
+            ):
+                history._initial_history_initialized = True
         try:
             await self._notify_restore_failure(
                 recovery_incomplete=bool(cleanup_failures)
@@ -2485,7 +2494,7 @@ class ChatHistory:
                     )
                 except BaseException:
                     try:
-                        await finish_initial(False)
+                        await controller.notify_settled(False)
                     except BaseException:
                         # Settlement is advisory; preserve the restore error.
                         pass
