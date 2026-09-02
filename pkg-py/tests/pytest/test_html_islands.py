@@ -935,3 +935,15 @@ def test_chat_message_parts_coalesce_with_paragraph_break():
     assert stored.wire_segments() == [
         {"content": "# Title\n\nbody text", "content_type": "markdown"}
     ]
+
+
+def test_chat_message_parts_coalesce_non_markdown_directly():
+    """Only markdown parts coalesce with a paragraph break; html and text
+    parts concatenate directly (author controls the exact bytes)."""
+    from shinychat._chat_types import ChatMessage
+
+    m = ChatMessage("", content_type="html", parts=["<b>", "</b>"])
+    assert m.content == "<b></b>"
+
+    m = ChatMessage("", content_type="text", parts=["a", "b"])
+    assert m.content == "ab"
