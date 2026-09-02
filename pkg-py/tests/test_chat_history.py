@@ -502,6 +502,9 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
                     client_info={},
                 ),
             )
+        stored_before = await store.list(
+            ConversationPartition(chat_id=chat_id, scope="test")
+        )
 
         await chat._record_accepted_user_input_with_capture(
             ChatMessage(content="blocked input", role="user")
@@ -510,6 +513,9 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
         assert not await chat._append_message_chunk(
             "", chunk="start", stream_id="blocked-stream"
         )
+        async with chat.message_stream_context() as stream:
+            await stream.append("blocked stream append")
+            await stream.replace("blocked stream replace")
 
         stream_started = False
 
@@ -532,6 +538,9 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
         assert [
             message["action"]["type"] for message in session.messages
         ] == []
+        assert (
+            await store.list(ConversationPartition(chat_id=chat_id, scope="test"))
+        ) == stored_before
 
         with session_context(cast(Any, session)), reactive.isolate():
             await handlers["_init_history"]()
@@ -549,6 +558,10 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
             for message in cast(Any, root).messages
         ] == ["root captured append"]
 
+        async with chat.message_stream_context() as stream:
+            await stream.append("root captured stream append")
+            await stream.replace("root captured stream replace")
+
         await chat._record_accepted_user_input_with_capture(
             ChatMessage(content="accepted input", role="user")
         )
@@ -564,6 +577,7 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
 
         assert [entry.message.content for entry in chat._transcript.read()] == [
             "root captured append",
+            "root captured stream replace",
             "accepted input",
             "accepted stream update",
         ]

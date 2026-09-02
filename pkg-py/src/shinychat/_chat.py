@@ -1239,6 +1239,14 @@ class Chat:
         is_root_stream = stream_id is None
         started = False
         if is_root_stream:
+            controller = self.history._controller
+            if (
+                controller is not None
+                and controller._exchange_recorder is not None
+                and not self.history._initial_history_initialized
+            ):
+                yield MessageStream(self, None)
+                return
             stream_id = _utils.private_random_id()
             try:
                 started = await self._append_message_chunk(
@@ -3475,7 +3483,7 @@ class MessageStream:
     An object to yield from a `.message_stream_context()` context manager.
     """
 
-    def __init__(self, chat: Chat, stream_id: str):
+    def __init__(self, chat: Chat, stream_id: str | None):
         self._chat = chat
         self._stream_id = stream_id
 
@@ -3488,10 +3496,13 @@ class MessageStream:
         message_chunk
             The new content to replace the current content.
         """
+        stream_id = self._stream_id
+        if stream_id is None:
+            return
         await self._chat._append_message_chunk(
             message_chunk,
             operation="replace",
-            stream_id=self._stream_id,
+            stream_id=stream_id,
         )
 
     async def append(self, message_chunk: Any):
@@ -3503,9 +3514,12 @@ class MessageStream:
         message_chunk
             A message chunk to append to this stream
         """
+        stream_id = self._stream_id
+        if stream_id is None:
+            return
         await self._chat._append_message_chunk(
             message_chunk,
-            stream_id=self._stream_id,
+            stream_id=stream_id,
         )
 
 
