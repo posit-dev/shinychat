@@ -494,6 +494,15 @@ formatter passed; Roborev 1180 found no issues. Independent re-review passed
 after `aec34c8d`. P5.0 remains open for human review/closure; downstream
 `shinychat#bj1n` remains blocked.
 
+Final integrated verification passed at `e7a6d2cf`: `make py-check` ran 209
+Playwright and 918 Python tests with one existing skip; JS lint and 1,262
+tests passed with 23 skips; R history hooks passed 22 tests; and `js/dist`
+bundle/map assets are byte-identical to both package copies. The only ordinary
+diff-check reports are established whitespace in generated minified bundles;
+the source/non-generated diff check passes. At verification, no tracked
+implementation changes remained; this paragraph is the documentation-only
+evidence update.
+
 Boundary: `Chat(messages=...)` removal is follow-up `shinychat#mcbp`, not P5.0.
 Do not begin R, legacy, degradation/error-affordance work, or another
 scheduling/ownership mechanism.
