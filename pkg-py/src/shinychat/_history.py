@@ -333,6 +333,10 @@ class _ExchangeRecorder:
     def _set_turn_baseline(self, turns: list[dict[str, Any]]) -> None:
         _, self._turn_baseline = self._canonical_turns(turns)
 
+    def _invalidate_turn_baseline(self) -> None:
+        # Canonical turn fingerprints always serialize a dictionary, never "".
+        self._turn_baseline = [""]
+
     def _capture_turns(self, context: CaptureContext) -> StateEntry:
         adapter = self._controller.adapter
         include_system_prompt = getattr(adapter, "is_chatlas", lambda: False)()
@@ -1464,6 +1468,8 @@ class HistoryController:
                 )
             await self._replay_exchange_display(target, node_ids)
             await recorder._restore_state(planned_state)
+            if recorder._turns_unavailable(planned_state):
+                recorder._invalidate_turn_baseline()
 
             # `_ExchangeRecorder` remains the sole v2 record owner.
             # The controller only sequences its installation after

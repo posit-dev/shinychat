@@ -2574,8 +2574,61 @@ async def test_v2_restore_degrades_effective_turns_and_keeps_exchange_usable(
         adapter.system_turns = list(adapter.turns)
     await recorder._capture_state(exchange_id, "node_close")
     continued = target.nodes[exchange_id].state["shinychat:turns"]
-    assert continued.mode == "delta"
+    assert continued.mode == "snapshot"
     assert continued.data == [{"role": "user", "content": "continued"}]
+
+
+@pytest.mark.anyio
+async def test_v2_degraded_restore_continuation_snapshots_compatible_turns_for_reload(
+    tmp_path: Path,
+) -> None:
+    from shinychat._history_store import FileConversationStore
+
+    store = FileConversationStore(tmp_path)
+    adapter = _TrackingFakeAdapter()
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    target = _restore_target()
+    target.nodes["n_0000"].state["shinychat:turns"].kind = "unsupported"
+    await store.put(part(), target)
+    warning = AsyncMock()
+    controller._notify_turns_unavailable = warning  # type: ignore[method-assign]
+
+    await controller.replay_exchange_record(target)
+
+    warning.assert_awaited_once()
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+
+    compatible_turns = [{"role": "user", "content": "continued"}]
+    adapter.turns = compatible_turns
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "continued")
+    )
+
+    continued = target.nodes["n_0001"].state["shinychat:turns"]
+    assert continued.mode == "snapshot"
+    assert continued.data == compatible_turns
+
+    stored = await store.get(part(), target.id)
+    assert isinstance(stored, ConversationRecordV2)
+    reloaded_adapter = _TrackingFakeAdapter()
+    reloaded, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+        adapter=reloaded_adapter,
+    )
+    reloaded_warning = AsyncMock()
+    reloaded._notify_turns_unavailable = reloaded_warning  # type: ignore[method-assign]
+
+    await reloaded.replay_exchange_record(stored)
+
+    reloaded_warning.assert_not_awaited()
+    assert reloaded_adapter.turns == compatible_turns
 
 
 @pytest.mark.anyio
