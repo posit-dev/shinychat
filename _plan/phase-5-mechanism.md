@@ -462,6 +462,19 @@ would add prohibited outcome state and conflicts with P5.0's admitted
 post-update pre-input append contract. `shinychat#bj1n` and later children
 remain blocked pending P5.0 human review/closure.
 
+Independent review then raised three findings against readiness admission plus
+one client-route finding, firing the replacement mechanism's three-findings
+valve. Decision: **PATCH**. The readiness fact remains necessary and has no
+scheduling or ownership behavior to replace. Fix the invariant so readiness
+cannot become true unless an authoritative `history_update` send succeeds;
+if that send raises, readiness remains false and no client release is claimed.
+Add a post-update `append_message_stream()` root-capture regression and a
+successful bookmark-pointer suppression/admission boundary test. Make
+slash-command dispatch perform the same live admission recheck as normal
+submission. Delete/replace would remove the only truthful publication fact
+without simplifying the shape. P5.0 remains open and later children remain
+blocked until these corrections pass review.
+
 Boundary: `Chat(messages=...)` removal is follow-up `shinychat#mcbp`, not P5.0.
 Do not begin R, legacy, degradation/error-affordance work, or another
 scheduling/ownership mechanism.
