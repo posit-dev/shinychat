@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any, AsyncIterable, Iterable, Literal, Union
 from htmltools import Tag, TagChild, css
 
 from ._chat_types import (
-    HtmlBlock,
     StreamBlock,
     StructuredBlock,
     serialize_html_deps,
@@ -13,6 +12,7 @@ from ._chat_types import (
 from ._html_deps_py_shiny import shinychat_dependency
 from ._html_islands import (
     IslandBlockPart,
+    build_html_block,
     derive_island_parts,
     split_content_by_trust,
 )
@@ -250,14 +250,9 @@ class MarkdownStream:
         for part_index, part in enumerate(parts):
             envelope_deps = run_deps if part_index == 0 else []
             if isinstance(part, IslandBlockPart):
-                block: HtmlBlock = {
-                    "type": "html_block",
-                    "version": 1,
-                    "content": part.html,
-                }
-                block_deps = serialize_html_deps(part.deps, self._session)
-                if block_deps:
-                    block["html_deps"] = block_deps
+                block = build_html_block(
+                    part.html, serialize_html_deps(part.deps, self._session)
+                )
                 html += part.html
                 await self._send_block_message(block, envelope_deps)
             else:
@@ -492,13 +487,10 @@ def output_markdown_stream(
             # at UI-construction time, so block deps carry raw as_dict() dicts.
             for part in derive_island_parts(segment):
                 if isinstance(part, IslandBlockPart):
-                    block: HtmlBlock = {
-                        "type": "html_block",
-                        "version": 1,
-                        "content": part.html,
-                    }
-                    if part.deps:
-                        block["html_deps"] = [d.as_dict() for d in part.deps]
+                    block = build_html_block(
+                        part.html,
+                        [d.as_dict() for d in part.deps] if part.deps else None,
+                    )
                     rendered_segments.append({"block": block})
                 else:
                     rendered_segments.append(
