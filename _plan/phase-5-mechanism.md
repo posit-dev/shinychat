@@ -647,3 +647,18 @@ incompatible-parent rejection remain unchanged. Focused and full controller
 and chat-history tests, the history/transcript gate, format, Pyright, and diff
 checks passed. Independent review found no defects; no further P5.2 mechanism
 decision is pending.
+
+Roborev 1191 found the third issue against the replacement: a degraded restore
+reset the ordinary turn baseline, so a later continuation wrote a delta behind
+the still-incompatible snapshot and degraded again on reload. Valve decision:
+**PATCH through the existing snapshot fallback.** After degraded restore
+hooks apply, invalidate the recorder's existing turn fingerprint baseline;
+the next ordinary capture must therefore write a compatible snapshot that
+supersedes the incompatible suffix. Rewind uses its separate execution path,
+so degraded retry/edit/regenerate retains its valid live baseline and does not
+rewrite the shared parent. Add a continue -> capture -> reload regression.
+No persistent degraded flag, new capture mode, or lifecycle state is added.
+
+Self-review: 100/100. The patch is requirement-traced to R2, uses the
+already-designed snapshot escape hatch, distinguishes restore from rewind,
+and closes cross-session continuation without changing branch ownership.
