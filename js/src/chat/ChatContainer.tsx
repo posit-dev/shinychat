@@ -28,7 +28,7 @@ import {
   ChatHistoryDrawer,
   HistoryIcon,
 } from "./ChatHistoryDrawer"
-import type { HistoryStore } from "./historyStore"
+import { isHistorySubmissionBlocked, type HistoryStore } from "./historyStore"
 import { useFillPaddingTransfer } from "./useFillPaddingTransfer"
 import { useOverlapNudge } from "./useOverlapNudge"
 import type { ChatDrawerState, ChatMessageData, GreetingData } from "./state"
@@ -1027,6 +1027,7 @@ export const ChatContainer = forwardRef<
                     disabled={
                       history.busy ||
                       history.historyTransitionPending !== null ||
+                      isHistorySubmissionBlocked(history) ||
                       (history.transitionProtocol === "completion-v2" &&
                         inputDisabled) ||
                       isStreaming

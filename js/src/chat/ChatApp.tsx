@@ -412,7 +412,11 @@ export function ChatApp({
 
   const handleEdit = useCallback(
     (index: number, content: string, attachments: AttachmentPayload[]) => {
-      if (historyStore.isMutationBlocked()) return
+      if (
+        isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
+        historyStore.isMutationBlocked()
+      )
+        return
       const requestId = historyStore.beginEditTransition()
       if (requestId === null) {
         transport.sendMessageEdit(elementId, index, content, attachments)
@@ -433,6 +437,7 @@ export function ChatApp({
     (index: number, direction: "prev" | "next") => {
       if (
         siblingNavigationPendingRef.current ||
+        isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
         historyStore.isMutationBlocked()
       )
         return
@@ -452,7 +457,11 @@ export function ChatApp({
 
   const handleRetry = useCallback(
     (index: number) => {
-      if (historyStore.isMutationBlocked()) return
+      if (
+        isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
+        historyStore.isMutationBlocked()
+      )
+        return
       const requestId = historyStore.beginEditTransition()
       if (requestId === null) return
       transport.sendMessageResubmit(elementId, index, "retry", requestId)

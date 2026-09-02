@@ -3,6 +3,7 @@ import { render, screen, act, fireEvent, waitFor } from "@testing-library/react"
 import { StrictMode } from "react"
 import { ChatApp } from "../../src/chat/ChatApp"
 import { getHistoryStore } from "../../src/chat/historyStore"
+import type { ChatMessageData } from "../../src/chat/state"
 import {
   createMockTransport,
   createMockShinyLifecycle,
@@ -309,6 +310,7 @@ describe("ChatApp integration: editable messages gated by history state", () => 
   function renderChatApp(
     transport: ReturnType<typeof createMockTransport>,
     enableUpload?: boolean,
+    initialMessages?: ChatMessageData[],
   ) {
     return render(
       <ChatApp
@@ -320,6 +322,7 @@ describe("ChatApp integration: editable messages gated by history state", () => 
         maxUploadSize={30000000}
         placeholder="Type..."
         enableUpload={enableUpload}
+        initialMessages={initialMessages}
       />,
     )
   }
@@ -837,6 +840,103 @@ describe("ChatApp integration: editable messages gated by history state", () => 
     expect(
       screen.getByRole("button", { name: /send message/i }),
     ).toHaveProperty("disabled", true)
+  })
+
+  it("blocks restored retry, edit, and sibling navigation until completion-v2 initializes", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    const historyStore = getHistoryStore("test-chat")
+    historyStore.seedCompletionV2TransitionProtocol()
+    renderChatApp(transport, false, [
+      {
+        id: "restored-user",
+        role: "user",
+        content: "restored message",
+        streaming: false,
+        blocks: [
+          {
+            type: "content",
+            content: "restored message",
+            contentType: "markdown",
+          },
+        ],
+        siblings: { index: 0, total: 2 },
+        exchange: {
+          status: "error",
+          retryable: true,
+          error_message: "Restored error",
+        },
+      },
+    ])
+
+    await waitFor(() => {
+      expect(screen.getByText("restored message")).toBeTruthy()
+      expect(screen.getByText("Restored error")).toBeTruthy()
+    })
+    expect(screen.getByRole("button", { name: "Next version" })).toHaveProperty(
+      "disabled",
+      true,
+    )
+    expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+    expect(transport.sendMessageNavigate).not.toHaveBeenCalled()
+    expect(transport.sendMessageResubmit).not.toHaveBeenCalled()
+    expect(transport.sendMessageEdit).not.toHaveBeenCalled()
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+        transition_protocol: "completion-v2",
+      })
+    })
+
+    expect(screen.getByRole("button", { name: "Next version" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Retry message" })).toBeEnabled()
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }))
+    const resubmitRequestId = vi.mocked(transport.sendMessageResubmit).mock
+      .calls[0]?.[3]
+    expect(resubmitRequestId).toEqual(expect.any(String))
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_transition_complete",
+        requestId: resubmitRequestId as string,
+      })
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit message" }))
+    const editInput = screen.getByPlaceholderText("Edit message")
+    expect(editInput).toHaveAccessibleName("Chat message")
+    fireEvent.change(editInput, {
+      target: { value: "edited restored message" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Save and resend" }))
+    expect(transport.sendMessageEdit).toHaveBeenCalledWith(
+      "test-chat",
+      0,
+      "edited restored message",
+      [],
+      expect.any(String),
+    )
+    const editRequestId = vi.mocked(transport.sendMessageEdit).mock
+      .calls[0]?.[4]
+    expect(editRequestId).toEqual(expect.any(String))
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_transition_complete",
+        requestId: editRequestId as string,
+      })
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Next version" }))
+    expect(transport.sendMessageNavigate).toHaveBeenCalledWith(
+      "test-chat",
+      0,
+      "next",
+      expect.any(String),
+    )
   })
 
   it.each([

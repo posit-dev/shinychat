@@ -1777,6 +1777,86 @@ async def test_history_transition_legacy_payload_does_not_send_completion(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("operation", ["edit", "navigate", "resubmit"])
+async def test_v2_message_actions_reject_before_initial_history_readiness(
+    operation: str,
+) -> None:
+    session = _LiveSession()
+    store = InMemoryConversationStore()
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            f"forged_{operation}",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store, scope="test", restore_mode="none"
+            ),
+        )
+
+    try:
+        controller = chat.history._controller
+        assert controller is not None
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+        controller.partition = ConversationPartition(
+            chat_id=f"forged_{operation}", scope="test"
+        )
+        record = new_conversation_record_v2(
+            title="before", id="c_before", client_info={}
+        )
+        recorder.record = record
+        await store.put(controller.partition, record)
+        controller.adapter.set_turns_json(
+            [{"role": "user", "content": "before"}]
+        )
+        controller._active_id.set(record.id)
+        operation_fn = AsyncMock()
+        setattr(controller, f"handle_{operation}", operation_fn)
+
+        ids = HistoryInputIds.for_chat(ResolvedId(f"forged_{operation}"))
+        payload: dict[str, Any] = {
+            "index": 0,
+            "requestId": f"forged-{operation}",
+        }
+        if operation == "edit":
+            payload.update(content="after", attachments=[])
+        elif operation == "navigate":
+            payload["direction"] = "next"
+        else:
+            payload["kind"] = "retry"
+        input_id = getattr(ids, f"message_{operation}")
+        with session_context(cast(Any, session)):
+            cast(Any, session.input[input_id])._set(payload)
+
+        record_before = record.model_copy(deep=True)
+        turns_before = controller.adapter.get_turns_json()
+        active_id_before = controller._active_id_now()
+        transcript_before = chat._transcript.read()
+        store_before = await store.list(controller.partition)
+
+        with reactive.isolate():
+            await handlers[f"_on_{operation}"]()
+
+        operation_fn.assert_not_awaited()
+        assert recorder.record == record_before
+        assert controller.adapter.get_turns_json() == turns_before
+        assert controller._active_id_now() == active_id_before
+        assert chat._transcript.read() == transcript_before
+        assert await store.list(controller.partition) == store_before
+
+        chat.history._initial_history_initialized = True
+        with reactive.isolate():
+            await handlers[f"_on_{operation}"]()
+        operation_fn.assert_awaited_once()
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     ("operation", "outcome"),
     [

@@ -2310,6 +2310,15 @@ class ChatHistory:
         if not self._started:
             self._start()
 
+    def _history_action_admitted(self) -> bool:
+        """Admit private actions once v2's initial history decision is known."""
+        controller = self._controller
+        return (
+            controller is None
+            or controller._exchange_recorder is None
+            or self._initial_history_initialized
+        )
+
     def _teardown(self) -> None:
         """
         Release session-level registrations when the owning `Chat` is destroyed
@@ -2912,6 +2921,8 @@ class ChatHistory:
             payload = chat._session.input[ids.message_edit]()
             request_id = _history_transition_request_id(payload)
             try:
+                if not self._history_action_admitted():
+                    return
                 if controller.partition is None:
                     return
                 if not isinstance(payload, dict):
@@ -2940,6 +2951,8 @@ class ChatHistory:
             payload = chat._session.input[ids.message_navigate]()
             request_id = _history_transition_request_id(payload)
             try:
+                if not self._history_action_admitted():
+                    return
                 if controller.partition is None:
                     return
                 if not isinstance(payload, dict):
@@ -2970,6 +2983,8 @@ class ChatHistory:
             payload = chat._session.input[ids.message_resubmit]()
             request_id = _history_transition_request_id(payload)
             try:
+                if not self._history_action_admitted():
+                    return
                 if controller.partition is None:
                     return
                 if not isinstance(payload, dict):
