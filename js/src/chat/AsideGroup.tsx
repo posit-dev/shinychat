@@ -152,7 +152,6 @@ export const AsideGroup = memo(function AsideGroup({
   )
 })
 
-/** Aside-group resolver for untrusted component maps. */
 export const UntrustedAsideGroup = memo(function UntrustedAsideGroup({
   node,
 }: {

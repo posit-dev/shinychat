@@ -960,9 +960,7 @@ process_block_deps <- function(block, session) {
 # string parts. Mirrors Python's ChatMessage.__init__ non-string content path.
 #
 # tagList() content is an HTML container: bare strings inside it are escaped
-# text nodes (via htmltools::renderTags()), NOT markdown. To mix markdown and
-# UI in one message, use list() content (see build_wire_segments), where bare
-# strings become markdown segments.
+# text, NOT markdown. To mix markdown and UI, use list() content instead.
 build_html_island_segments <- function(content, session) {
   parts <- derive_island_parts(content)
   if (length(parts) == 0) {
@@ -978,8 +976,6 @@ build_html_island_segments <- function(content, session) {
       if (length(part$deps) > 0) {
         attr(block, "shinychat_html_deps") <- part$deps
       }
-      # Only processed deps enter all_deps — raw html_dependency objects
-      # cannot be JSON-serialized.
       result <- process_block_deps(block, session)
       all_deps <- c(all_deps, result$deps)
       segments[[length(segments) + 1]] <- result$block
@@ -1198,8 +1194,6 @@ build_wire_segments_static <- function(content) {
       } else if (
         inherits(item, c("html", "shiny.tag", "shiny.tag.list", "htmlwidget"))
       ) {
-        # Route tag/HTML items through the HTML-island builder so ordinary
-        # tags become html_block islands, not bare HTML string segments.
         island_result <- build_html_island_segments_static(item)
         all_deps <- c(all_deps, island_result$deps)
         segments <- c(segments, island_result$segments)

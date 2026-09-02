@@ -182,8 +182,7 @@ class MarkdownStream:
                 async for x in content:
                     if isinstance(x, dict):
                         # An already-structured block ships as one complete
-                        # block message. Reject unsupported types here rather
-                        # than let the client silently discard them.
+                        # block message.
                         block_type = x.get("type")
                         if block_type not in _STREAM_BLOCK_TYPES:
                             raise ValueError(
@@ -489,9 +488,8 @@ def output_markdown_stream(
         if trusted:
             # Trusted UI walks the shared island derivation: non-React runs
             # become {block: html_block} entries; bare data-shinychat-react
-            # elements stay trusted residual text segments. There is no
-            # session at UI-construction time, so block deps carry the raw
-            # as_dict() serialization and propagate as page-level deps below.
+            # elements stay trusted residual text segments. No session exists
+            # at UI-construction time, so block deps carry raw as_dict() dicts.
             for part in derive_island_parts(segment):
                 if isinstance(part, IslandBlockPart):
                     block: HtmlBlock = {

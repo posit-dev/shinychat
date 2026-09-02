@@ -486,7 +486,6 @@ def _attach_cited_sources(
     except ImportError:
         return
 
-    # Walk contents in order, grouping citations into per-burst buckets.
     bursts: list[tuple[bool, BurstCited]] = []
     for x in contents:
         if isinstance(x, ContentToolRequestSearch):
@@ -513,7 +512,6 @@ def _attach_cited_sources(
             by_url[x.source.url] = source
             cited.append(source)
 
-    # Attach each results-less burst's citations onto its web_search block.
     for i, (has_results, (cited, _)) in enumerate(bursts):
         if has_results or not cited:
             continue
@@ -611,7 +609,6 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
         grouping=annotations.grouping,
     )
 
-    # Emit a structured `tool_result` block (with `custom_display: True`).
     result = tool_result_message(wrapped)
     result.role = msg.role
     result.attachments = msg.attachments

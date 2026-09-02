@@ -377,8 +377,6 @@ function ToolGroupRow({
           setExpanded((v) => !v)
         }}
       >
-        {/* The expanded card owns the Shiny bindings; these copies bind only
-            while collapsed. */}
         <RawHTML
           html={glyph}
           as="span"

@@ -173,7 +173,6 @@ export function appendWebActivityBlock<T>(
   if (tail !== undefined && isWhitespaceText(tail)) {
     const prev = out[out.length - 2]
     if (isWebActivityBlock(prev)) {
-      // The whitespace-only separator is part of the run; drop it.
       out.pop()
       tail = prev
     }

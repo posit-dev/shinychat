@@ -211,7 +211,6 @@ export function rewriteTagsHtml(
     const name = readTagName(value, nameStart)
     const tagEnd = scanTagEnd(value, name.end)
     if (!tagEnd) {
-      // This emitted tag consumes the remaining input without reaching '>'.
       break
     }
 

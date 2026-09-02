@@ -33,18 +33,17 @@ export function rewriteAsideToTemplateHtml(value: string): string {
 }
 
 /**
- * BEFORE rehype-raw: rewrite `<shiny-aside …>`/`</shiny-aside>` raw
- * strings to `<template data-shiny-aside …>`/`</template>`. `<template>` is
- * the one tag parse5 gives "in template" tree construction, so its content is
- * pulled into a `.content` fragment with full block nesting instead of being
- * orphaned by the `<p>`-can't-contain-blocks auto-close rule. Operating on raw
- * nodes only means literal aside text inside code fences/spans is untouched.
- * The shared tokenizer-aware scan avoids `<shiny-aside-group>`.
+ * BEFORE rehype-raw: rewrite `<shiny-aside …>`/`</shiny-aside>` raw strings
+ * to `<template data-shiny-aside …>`/`</template>`. `<template>` is the one
+ * tag parse5 gives "in template" tree construction, so its content is pulled
+ * into a `.content` fragment with full block nesting instead of being
+ * orphaned by the `<p>`-can't-contain-blocks auto-close rule. Operating on
+ * raw nodes only leaves literal aside text inside code fences/spans
+ * untouched.
  *
  * Self-closing `<shiny-aside .../>` is normalized to an open/close pair
  * first: a lone `<template data-shiny-aside/>` would ignore the `/` and
- * swallow everything up to the next `</template>`. The tokenizer-aware scan
- * skips quoted values so a `/` inside a URL isn't mistaken for the close.
+ * swallow everything up to the next `</template>`.
  */
 export const rehypeRewriteAsideToTemplate: Plugin<[], Root> = () => (tree) => {
   visit(tree, (node) => {

@@ -785,8 +785,6 @@ test_that("extend_record_linear() records children pointers", {
   expect_equal(rec$nodes$n_0002$children, list())
 })
 
-# ---- build_stored_message_from_content: shinychat_thinking round-trip ----
-
 test_that("build_stored_message_from_content stores thinking as its own segment between markdown (no blocks)", {
   thinking <- structure("my thoughts", class = "shinychat_thinking")
   content <- list("before text", thinking, "after text")
@@ -835,12 +833,10 @@ test_that("build_stored_message_from_content stores thinking alongside blocks", 
     content = content
   )
 
-  # With a block present, segments preserve order and thinking gets its own.
   seg_types <- vapply(msg$segments, function(s) s$content_type, character(1))
   expect_true("thinking" %in% seg_types)
   thinking_idx <- which(seg_types == "thinking")
   expect_equal(msg$segments[[thinking_idx]]$content, "reasoning")
-  # The block is stored in msg$blocks.
   expect_true(!is.null(msg$blocks))
   expect_length(msg$blocks, 1)
   expect_equal(msg$blocks[[1]]$type, "web_search")

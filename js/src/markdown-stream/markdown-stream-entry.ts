@@ -124,7 +124,6 @@ class MarkdownStreamElement extends HTMLElement {
       return
     }
 
-    // A message carries string content XOR a structured block.
     if (message.block !== undefined) {
       const block = asStreamBlock(message.block)
       if (!block) return

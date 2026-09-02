@@ -138,23 +138,14 @@ export const ChatMessage = memo(function ChatMessage({
   const editRef = useRef<TiptapInputHandle>(null)
   const isUser = message.role === "user"
 
-  // Finalized messages already carry tool_loop blocks (built in the reducer
-  // from structured wire blocks); while streaming, tool elements arrive as
-  // structured block_insert actions, so message.blocks is always current.
   const blocks = message.blocks
 
   // Drop running requests whose result has rendered elsewhere in the transcript
   // (the router can only pair the two within one content string), then any group
-  // left empty. Done here rather than in the render pass so `hasContent` — and
-  // the decision to render a row at all — reflect what is actually visible. The
-  // original block index is kept so React keys stay stable when a block drops
-  // out.
-  //
-  // A group that loses a call this way rederives its whole identity from the
-  // survivors rather than patching `count` alone: the row must describe the
-  // calls it actually renders, and title/segments/icon are just as call-shaped
-  // as count is. Patching one field while leaving the rest is exactly what let
-  // a filtered group keep naming a tool it no longer shows.
+  // left empty. Done here so `hasContent` reflects what is actually visible;
+  // original block indices are kept for stable React keys. A group that loses
+  // a call rederives its whole identity (title, segments, icon, count) from the
+  // survivors so the row describes what it renders.
   const visibleBlocks = useMemo(() => {
     const out: { block: MessageBlock; index: number }[] = []
     blocks.forEach((block, index) => {

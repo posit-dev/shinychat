@@ -33,8 +33,6 @@ async def generate_title(
     """
     try:
         if title_fn is not None:
-            # TitleFn is a user callback typed over plain dicts; TurnDicts
-            # are dicts at runtime.
             title = await wrap_async(title_fn)(
                 cast(list[dict[str, Any]], turns)
             )

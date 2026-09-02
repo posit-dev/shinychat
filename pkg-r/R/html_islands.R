@@ -127,12 +127,9 @@ derive_island_parts <- function(content) {
 #' contribute their blank-line-wrapped residual runs. The whole string is
 #' server-authored and travels with content_type "html".
 #'
-#' The payload is a single HTML string rendered by the client via innerHTML,
-#' so bare strings are HTML-escaped by derive_island_parts() (via
-#' htmltools::renderTags()) — this is deliberate and safe for a single-string
-#' payload (escaping prevents an XSS sink from untrusted bare strings).
-#' Markdown processing for mixed greeting/drawer content needs a segments
-#' channel (follow-up, tracked separately as shinychat#2dzc).
+#' The payload is a single string rendered via innerHTML, so bare strings
+#' are HTML-escaped by derive_island_parts(). Mixed markdown+UI content
+#' needs a segments channel (follow-up: shinychat#2dzc).
 #'
 #' @param content A tag, tagList, or other HTML content.
 #' @return A list with `html` (character string) and `deps` (raw

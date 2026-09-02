@@ -1100,11 +1100,8 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "SET_TOOL_GROUPING": {
-      // Re-routing makes `tool-grouping` a live attribute: the router is a pure
-      // function of (blocks, grouping, role), so the same content regroups at
-      // the new mode. The no-op guard is load-bearing: ChatApp dispatches once
-      // on mount, and re-routing there would throw away every group's expand
-      // state for no change in output.
+      // The no-op guard is load-bearing: ChatApp dispatches once on mount,
+      // and re-routing unchanged messages would drop every group's expand state.
       if (action.grouping === state.toolGrouping) return state
       return {
         ...state,

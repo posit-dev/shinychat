@@ -265,14 +265,10 @@ def extend_record_linear(
     new_node_ids: list[str] = []
     n_derived = 0
     for g in new_groups:
-        # The record model persists turns as plain dicts; TurnDicts are
-        # dicts at runtime.
         node_id = record.append_linear(cast(list[dict[str, Any]], g))
         new_node_ids.append(node_id)
         derived = derive_stored_ui_message(g, session=session)
         if derived is not None:
-            # The node model's ui field also holds client-reported message
-            # dicts, so it stays typed as plain dicts.
             record.nodes[node_id].ui = cast(list[dict[str, Any]], [derived])
             n_derived += 1
 
@@ -670,8 +666,6 @@ class HistoryController:
             # Old-format stored UI (no version marker) is discarded and
             # re-derived from the node's stored turns, never re-parsed.
             if stored is None or not is_stored_ui_versioned(stored):
-                # node.turns persists as plain dicts (pydantic record model);
-                # they are serialized turn dicts by construction.
                 stored = derive_node_ui(
                     cast(list[TurnDict], node.turns), session=self.chat._session
                 )

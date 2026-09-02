@@ -1774,9 +1774,8 @@ class Chat:
         if content is None:
             return None
 
-        # Reuse the already-processed blocks from res (whose html_deps were
-        # session-processed in _as_stored_message) rather than message.blocks
-        # (which carry raw as_dict() deps).
+        # Reuse res.blocks: its html_deps are already session-processed,
+        # unlike message.blocks (raw as_dict() deps).
         return StoredMessage.from_chat_message(
             ChatMessage(
                 content=content,
@@ -1805,8 +1804,6 @@ class Chat:
         if isinstance(message, StoredMessage):
             return message
 
-        # Overwrite each block's raw as_dict() html_deps with session-processed
-        # deps (route-registered hrefs, lib_prefix applied).
         return _assemble_stored_message(message, self._serialize_html_deps)
 
     def user_input(self) -> "UserInput | None":

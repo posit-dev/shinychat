@@ -377,11 +377,6 @@ class ShinyChatEnvelope(TypedDict):
 # ---------------------------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------
-# Domain types
-# ---------------------------------------------------------------------------
-
-
 # TODO: content should probably be [{"type": "text", "content": "..."}, {"type": "image", ...}]
 # in order to support multiple content types...
 class ChatMessageDict(TypedDict):
@@ -409,18 +404,14 @@ class ChatMessage:
         self.content_type: ContentType = (
             content_type if content_type is not None else "markdown"
         )
-        # Server-authored structured blocks carried alongside the string
-        # content. They travel the wire as typed segments/`block_insert`
-        # actions, never as markup in `content`.
+        # Server-authored structured blocks; they travel as typed
+        # segments/`block_insert` actions, never as markup in `content`.
         supplied_blocks: list[StructuredBlock] = list(blocks) if blocks else []
         self.blocks: list[StructuredBlock] = list(supplied_blocks)
         # Ordered interleaving of string runs and structured blocks, set only
-        # when the message was normalized from multi-part content. `parts`
-        # preserves the original order so wire emission can reproduce it.
-        # Bare strings are stamped with the message-level content_type
-        # (markdown by default) at from_chat_message() time — this is the
-        # segment-list API: the deliberate way to mix markdown and UI in one
-        # message, unlike TagList content which is an HTML container.
+        # when the message was normalized from multi-part content. Bare
+        # strings are stamped with the message-level content_type (markdown
+        # by default) at from_chat_message() time.
         self.parts: list[str | StructuredBlock] | None = parts
         # Parallel to self.blocks: HTMLDependency objects per block index.
         # ChatMessage.__init__ has no session, so raw dep objects are stashed
@@ -431,16 +422,10 @@ class ChatMessage:
         # markdown), so only process it if it's not a string.
         deps: list[HTMLDependency] = []
         if not isinstance(content, str):
-            # TagList/tag content is an HTML container: bare strings inside it
-            # are escaped text nodes (via TagList().render()), NOT markdown.
-            # To mix markdown and UI in one message, use the `parts` segment
-            # list instead. Walk the shared derive_island_parts() partition:
-            # non-React runs become HtmlBlock structured blocks; bare React
-            # elements are rendered and concatenated as the residual string
-            # content.
+            # TagList/tag content is an HTML container: bare strings inside
+            # it are escaped text nodes (via TagList().render()), NOT
+            # markdown. To mix markdown and UI in one message, use `parts`.
             content_parts: list[str | StructuredBlock] = []
-            # Parallel to content_parts: dep objects for each block entry
-            # (None for string entries). Used to populate _block_html_deps.
             content_part_deps: list[list[HTMLDependency] | None] = []
             for part in derive_island_parts(content):
                 deps.extend(part.deps)
@@ -451,10 +436,8 @@ class ChatMessage:
                         "content": part.html,
                     }
                     if part.deps:
-                        # Stash the dep objects for this block so the
-                        # session-aware send path can serialize them through
-                        # session._process_ui. The raw as_dict() copy here is
-                        # the no-session fallback, overwritten at send time.
+                        # The raw as_dict() copy is the no-session fallback;
+                        # the send path overwrites it with processed deps.
                         block["html_deps"] = [d.as_dict() for d in part.deps]
                         content_part_deps.append(part.deps)
                     else:
@@ -474,12 +457,8 @@ class ChatMessage:
                 content = ""
                 if content_parts and content_type is None:
                     self.content_type = "html"
-            # Merge supplied blocks after the content-derived parts,
-            # preserving prior flat-layout semantics (string segments
-            # first, then blocks).
             merged_parts = list(content_parts) + supplied_blocks
             self.blocks = [p for p in merged_parts if not isinstance(p, str)]
-            # Map block index → dep objects for content-derived blocks.
             block_idx = 0
             for i, p in enumerate(content_parts):
                 if not isinstance(p, str):
@@ -487,14 +466,11 @@ class ChatMessage:
                     if block_deps:
                         self._block_html_deps[block_idx] = block_deps
                     block_idx += 1
-            # Only set parts when the content was multi-part (string + block
-            # interleaving). A single block with no string content keeps
-            # parts = None so the flat layout path in from_chat_message
-            # handles it.
+            # parts stays None for single-block content so the flat layout
+            # path in from_chat_message handles it.
             if merged_parts and (
                 len(merged_parts) > 1 or isinstance(merged_parts[0], str)
             ):
-                # Coalesce adjacent string runs.
                 coalesced: list[str | StructuredBlock] = []
                 for p in merged_parts:
                     if (
@@ -545,20 +521,11 @@ class ChatGreeting:
         deps: list[HTMLDependency] = []
         content_type: ContentType = "markdown"
         if not isinstance(content, str):
-            # Greetings are entirely server-authored, so the payload is
-            # trusted by construction: tag content renders as a single HTML
-            # string with content_type "html". The greeting wire payload has
-            # no blocks channel, so there is nowhere to carry html_block
-            # envelopes. Bare data-shinychat-react elements stay inline in
-            # the string and resolve through the client's component map.
-            #
-            # The payload is a single HTML string rendered by the client via
-            # innerHTML, so TagList(content).render() is used directly: it
-            # renders trusted tags to HTML and escapes bare strings, which is
-            # the safe-and-correct behavior for this single-string payload
-            # (escaping prevents an XSS sink from untrusted bare strings).
-            # Markdown processing for mixed greetings needs a segments
-            # channel (follow-up, tracked separately as shinychat#2dzc).
+            # The greeting wire payload is a single string with no blocks
+            # channel, so trusted tag content renders as one HTML string via
+            # TagList().render(), which escapes bare strings (safe under the
+            # client's innerHTML). Mixed markdown+UI greetings need a
+            # segments channel (follow-up: shinychat#2dzc).
             ui = TagList(content).render()
             content, ui_deps = ui["html"], ui["dependencies"]
             deps = deps + ui_deps
@@ -798,12 +765,8 @@ def _assemble_stored_message(
 ) -> StoredMessage:
     """Assemble a :class:`StoredMessage`, session-processing html deps.
 
-    ``ChatMessage`` stashes raw :class:`~htmltools.HTMLDependency` objects
-    per block in ``_block_html_deps`` (it has no session at construction
-    time); ``serialize_deps`` serializes dep objects for the current session
-    (registering web-dependency routes, applying ``lib_prefix``), and each
-    block's raw ``as_dict()`` ``html_deps`` fallback is overwritten with the
-    processed form.
+    Each block's raw ``as_dict()`` ``html_deps`` fallback is overwritten
+    with the session-processed form (see :func:`serialize_html_deps`).
     """
     html_deps = serialize_deps(message.html_deps)
     stored = StoredMessage.from_chat_message(message, html_deps=html_deps)
@@ -824,10 +787,8 @@ def as_stored_message(
 ) -> StoredMessage:
     """Assemble a :class:`StoredMessage` from a :class:`ChatMessage`.
 
-    This is the in-memory wire assembly shared by live send
-    (:meth:`Chat._send_append_message`), history save (turns-based
-    derivation), and replay emission. Message-level and per-block html deps
-    are session-processed through ``session._process_ui``.
+    Message-level and per-block html deps are session-processed through
+    ``session._process_ui``.
     """
     return _assemble_stored_message(
         message, lambda deps: serialize_html_deps(deps, session)
@@ -839,21 +800,14 @@ def initial_message_payload(
 ) -> "tuple[dict[str, Any], list[HTMLDependency]]":
     """Build the ``data-initial-messages`` JSON entry for one message.
 
-    This is the session-free complement to :func:`as_stored_message` for
-    ``chat_ui(messages=)`` initial messages: it runs at UI render time,
-    where no session may exist (e.g. a dynamically rendered ``render_ui``
-    output), so it cannot session-process html deps. Instead the payload
-    omits every ``html_deps`` field and the raw
-    :class:`~htmltools.HTMLDependency` objects (message-level and
-    per-block) are returned separately so the caller can attach them to
-    the container tag — Shiny's dependency system renders them, session
-    or not.
+    Session-free complement to :func:`as_stored_message` for
+    ``chat_ui(messages=)`` initial messages: no session may exist at UI
+    render time, so the payload omits every ``html_deps`` field and the raw
+    :class:`~htmltools.HTMLDependency` objects are returned separately for
+    the caller to attach to the container tag.
 
     The entry shape mirrors the ``message`` wire action's payload:
-    ``{"role": ..., "segments": [...]}`` where ``segments`` is the same
-    ordered union (:meth:`StoredMessage.wire_segments`) — string parts as
-    ``{"content", "content_type"}`` and structured blocks as their block
-    dicts — plus ``attachments`` when present.
+    ``{"role": ..., "segments": [...]}``, plus ``attachments`` when present.
     """
     stored = StoredMessage.from_chat_message(message)
     segments: list[MessagePayloadSegment] = []

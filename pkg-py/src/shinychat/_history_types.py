@@ -189,8 +189,6 @@ class ConversationRecord(BaseModel):
         return ids
 
     def path_turns(self) -> list[TurnDict]:
-        # Nodes persist turns as plain dicts (pydantic record model); they
-        # are serialized turn dicts by construction.
         return cast(
             list[TurnDict],
             [

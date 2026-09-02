@@ -18,16 +18,13 @@ export function HtmlBlockContent({
   htmlDeps: HtmlDep[]
   /**
    * Called after the island's HTML mounts (once the deps gate resolves and
-   * RawHTML's innerHTML effect has run). Parents whose layout logic keyed
-   * on the initial render use this to re-run it.
+   * RawHTML's innerHTML effect has run).
    */
   onMounted?: () => void
 }) {
   const shiny = useContext(ShinyLifecycleContext)
-  // Readiness is tracked against the CURRENT htmlDeps identity: React reuses
-  // this component when a block is replaced at the same position. A
-  // replacement with different deps re-gates; a dependency-free replacement
-  // ungates immediately.
+  // Readiness tracks the CURRENT htmlDeps identity: React reuses this
+  // component when a block is replaced in place, so new deps must re-gate.
   const [readyDeps, setReadyDeps] = useState<HtmlDep[] | null>(null)
 
   useEffect(() => {

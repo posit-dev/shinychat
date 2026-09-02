@@ -4,12 +4,10 @@ import type { Plugin } from "unified"
 import { SKIP, visit } from "unist-util-visit"
 import { rewriteTagsHtml } from "./rewriteEndTags"
 
-// Spoof guard: any island tag reaching the markdown processor is forged
-// (trusted HTML arrives as structured html_block envelopes, not in markdown).
-// The disguise→template round-trip is required because rehypeRaw's parse5 pass
-// hoists block-level children out of unknown custom elements before the
-// component map sees them. Disguising as <template> captures children as inert
-// template content; after parse5, the template is restored as literal text.
+// Spoof guard: island tags in markdown are forged (trusted HTML arrives as
+// html_block envelopes). Disguise as <template> because rehypeRaw's parse5
+// pass hoists block children out of unknown custom elements; restore as
+// literal text after parse5.
 const islandTags = ["shiny-chat-raw-html", "shinychat-raw-html"]
 const islandTagSet = new Set(islandTags)
 const disguiseAttr = "data-reserved-island"

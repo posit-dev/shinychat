@@ -564,11 +564,10 @@ def tool_request_block(
 def tool_request_message(request: Tagifiable) -> ChatMessage:
     """Wrap shinychat's rich tool-request card in a block-carrying message."""
     if isinstance(request, ToolRequestComponent):
-        # The default rich path emits the structured `tool_request` envelope.
         # The tagify code is retained for the none display override.
-        # Unlike results, requests get a plain ChatMessage: the ShinyToolCardMessage marker
-        # exists for the result custom-wrap postprocessing, which requests
-        # skip.
+        # Unlike results, requests get a plain ChatMessage: the
+        # ShinyToolCardMessage marker exists for the result custom-wrap
+        # postprocessing, which requests skip.
         block, deps = tool_request_block(request)
         msg = ChatMessage(content="", blocks=[block])
         msg.html_deps = deps + msg.html_deps

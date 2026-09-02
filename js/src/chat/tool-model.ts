@@ -390,8 +390,8 @@ function collectResultIds(msg: ChatMessageData, into: Set<string>): void {
 
   for (const block of msg.blocks) {
     if (block.type !== "tool_loop") continue
-    // Keep migrated custom calls here: transcript suppression depends on the
-    // lifecycle model, not on the presentation layer's visible subset.
+    // Keep migrated custom calls: suppression is decided on the lifecycle
+    // model, not the presentation layer's visible subset.
     for (const group of block.groups) {
       for (const call of group.calls) {
         if (call.status !== "running" && call.requestId) {

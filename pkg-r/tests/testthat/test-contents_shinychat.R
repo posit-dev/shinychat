@@ -797,7 +797,7 @@ test_that("doesn't consolidate adjacent turns with different roles in a Chat obj
   )
 
   messages <- contents_shinychat(chat)
-  expect_length(messages, 2) # Previous consolidated message + 2 new messages
+  expect_length(messages, 2)
   expect_equal(messages[[1]]$role, "user")
   expect_equal(messages[[2]]$role, "assistant")
 })
@@ -1281,8 +1281,6 @@ test_that("group_ellmer_turns() returns an empty list for no turns", {
   expect_equal(group_ellmer_turns(list()), list())
 })
 
-# ---- shinychat_thinking preservation through merge / coalesce ------------
-
 test_that("coalesce_content_strings keeps a shinychat_thinking string separate between markdown strings", {
   thinking1 <- structure("let me think", class = "shinychat_thinking")
   content <- list("before", thinking1, "after")
@@ -1344,15 +1342,12 @@ test_that("merge_ellmer_turn_group preserves ContentThinking class in the merged
 
   merged <- merge_ellmer_turn_group(list(turn), tools = list())
   expect_equal(merged$role, "assistant")
-  # With thinking present, content stays a list (not pasted into a string).
   expect_type(merged$content, "list")
-  # The first part should be the thinking string with its class intact.
   expect_s3_class(merged$content[[1]], "shinychat_thinking")
   expect_equal(
     as.character(merged$content[[1]]),
     "reasoning about the question"
   )
-  # The remaining parts are plain markdown, coalesced into one string.
   expect_equal(merged$content[[2]], "Here is my answer.\n\nAnd more detail.")
 })
 
@@ -1368,14 +1363,12 @@ test_that("merge_ellmer_turn_group preserves ContentThinking alongside a tool bl
 
   merged <- merge_ellmer_turn_group(list(turn), tools = list())
   expect_type(merged$content, "list")
-  # Thinking part survives with class intact.
   thinking_parts <- Filter(
     function(x) is.character(x) && inherits(x, "shinychat_thinking"),
     merged$content
   )
   expect_length(thinking_parts, 1)
   expect_equal(as.character(thinking_parts[[1]]), "let me check the weather")
-  # The tool request block is also preserved.
   block_parts <- Filter(
     function(x) inherits(x, "shinychat_block"),
     merged$content
