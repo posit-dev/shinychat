@@ -460,7 +460,7 @@ the root-context gap; `0e019a61` fixes it with regression coverage. Roborev
 1177's proposed restored-outcome constructor suppression is declined: it
 would add prohibited outcome state and conflicts with P5.0's admitted
 post-update pre-input append contract. `shinychat#bj1n` and later children
-remain blocked pending P5.0 human review/closure.
+remained blocked during the correction review.
 
 Independent review then raised three findings against readiness admission plus
 one client-route finding, firing the replacement mechanism's three-findings
@@ -472,8 +472,8 @@ Add a post-update `append_message_stream()` root-capture regression and a
 successful bookmark-pointer suppression/admission boundary test. Make
 slash-command dispatch perform the same live admission recheck as normal
 submission. Delete/replace would remove the only truthful publication fact
-without simplifying the shape. P5.0 remains open and later children remain
-blocked until these corrections pass review.
+without simplifying the shape. The corrections remained blocking until they
+passed review.
 
 Correction evidence (2026-09-02): the client-route fix landed in `175ea3ba`
 with generated assets in `c4124a8b`; Roborev 1178 found no issues. Python
@@ -491,8 +491,7 @@ repository and exits after deselecting all browser tests; direct `uv run
 pytest pkg-py/tests/test_chat_history.py` supplied the focused unit evidence.
 Roborev 1179's claimed Ruff E306 failure was declined after the repository
 formatter passed; Roborev 1180 found no issues. Independent re-review passed
-after `aec34c8d`. P5.0 remains open for human review/closure; downstream
-`shinychat#bj1n` remains blocked.
+after `aec34c8d`.
 
 Final integrated verification passed at `e7a6d2cf`: `make py-check` ran 209
 Playwright and 918 Python tests with one existing skip; JS lint and 1,262
@@ -502,6 +501,12 @@ diff-check reports are established whitespace in generated minified bundles;
 the source/non-generated diff check passes. At verification, no tracked
 implementation changes remained; this paragraph is the documentation-only
 evidence update.
+
+P5.0 closure (2026-09-02): Garrick accepted the completed Roborev and
+independent review evidence as the required human review. `shinychat#fbhe` is
+complete. P5.1 `shinychat#bj1n` is the next sequential task and must preserve
+the finalized synchronous readiness/suppression contract; the deleted
+initialization barrier is historical and must not return.
 
 Boundary: `Chat(messages=...)` removal is follow-up `shinychat#mcbp`, not P5.0.
 Do not begin R, legacy, degradation/error-affordance work, or another
