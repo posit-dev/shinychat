@@ -61,7 +61,10 @@ class EchoChatClient(chatlas.Chat):
         context = [str(turn.contents) for turn in self._turns] + [user_input]
         if self.provider_context is not None:
             self.provider_context.set(" | ".join(context))
-        if user_input == "retry me" and user_input not in _failed_inputs:
+        if (
+            user_input in ("retry me", "held retry")
+            and user_input not in _failed_inputs
+        ):
             _failed_inputs.add(user_input)
             raise RuntimeError("intentional retry fixture failure")
         self._turns.extend(

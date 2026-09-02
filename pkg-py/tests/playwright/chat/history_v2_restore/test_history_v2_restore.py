@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, WebSocketRoute, expect
 from shiny.playwright import controller
 from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
@@ -14,6 +15,22 @@ HERE = Path(__file__).parent
 
 def _message_count(page: Page):
     return page.locator(".shiny-chat-message, .shiny-chat-user-message")
+
+
+def _is_history_update(message: str | bytes) -> bool:
+    return _action_type(message) == "history_update"
+
+
+def _action_type(message: str | bytes) -> str | None:
+    if not isinstance(message, str):
+        return None
+    try:
+        payload = json.loads(message)
+        action = payload["custom"]["shinyChatMessage"]["action"]
+    except (KeyError, TypeError, json.JSONDecodeError):
+        return None
+    action_type = action.get("type")
+    return action_type if isinstance(action_type, str) else None
 
 
 def test_v2_restore_replays_turns_and_continues_provider_context(
@@ -146,7 +163,9 @@ def test_v2_edit_projects_once_through_the_real_provider_and_preserves_draft(
     original.hover()
     original.locator(".shiny-chat-edit-btn").click()
     edit_box = original.locator(".shiny-chat-edit-box")
-    edit_box.locator("input[type=file]").set_input_files(str(replacement_attachment))
+    edit_box.locator("input[type=file]").set_input_files(
+        str(replacement_attachment)
+    )
     editor = original.get_by_role("textbox", name="Chat message")
     editor.click()
     editor.press("ControlOrMeta+a")
@@ -156,8 +175,12 @@ def test_v2_edit_projects_once_through_the_real_provider_and_preserves_draft(
     chat.expect_latest_message("echo: replacement", timeout=30_000)
     controller.OutputText(page, "provider_calls").expect_value("2")
     controller.OutputText(page, "accepted_submissions").expect_value("2")
-    controller.OutputText(page, "provider_attachment_counts").expect_value("0,1")
-    controller.OutputText(page, "accepted_attachment_counts").expect_value("0,1")
+    controller.OutputText(page, "provider_attachment_counts").expect_value(
+        "0,1"
+    )
+    controller.OutputText(page, "accepted_attachment_counts").expect_value(
+        "0,1"
+    )
     controller.OutputText(page, "provider_attachment_names").expect_value(
         "replacement.txt"
     )
@@ -273,6 +296,130 @@ def test_v2_navigation_replays_the_selected_sibling_and_continues_from_it(
     controller.OutputText(page, "provider_context").expect_value(
         "[original] | [echo: original] | continued",
         timeout=10_000,
+    )
+
+
+def test_v2_restore_holds_retry_edit_and_navigation_until_history_release(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    # Create a failed exchange, then edit it into a sibling. Restore the
+    # original failed sibling so its error/retry and sibling metadata share
+    # the same restored v2 path.
+    chat.set_user_input("held retry")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
+    chat.send_user_input(method="enter")
+    failed = page.locator(".shiny-chat-user-message").first
+    expect(failed).to_contain_text("held retry", timeout=30_000)
+    expect(page.locator(".shiny-chat-message")).to_have_count(0, timeout=10_000)
+
+    failed.hover()
+    failed.locator(".shiny-chat-edit-btn").click()
+    editor = failed.get_by_role("textbox", name="Chat message")
+    editor.click()
+    editor.press("ControlOrMeta+a")
+    editor.press_sequentially("first sibling")
+    failed.locator(".shiny-chat-btn-send").click()
+    chat.expect_latest_message("echo: first sibling", timeout=30_000)
+
+    first_sibling = page.locator(".shiny-chat-user-message").first
+    first_sibling.hover()
+    first_sibling.get_by_role("button", name="Previous version").click()
+    failed = page.locator(".shiny-chat-user-message").first
+    expect(failed).to_contain_text("held retry", timeout=30_000)
+    expect(page.get_by_role("button", name="Retry message")).to_be_visible()
+
+    held_history_updates: list[str | bytes] = []
+    client_routes: list[WebSocketRoute] = []
+    restored_action_types: list[str] = []
+
+    def hold_first_history_update(route: WebSocketRoute) -> None:
+        server = route.connect_to_server()
+        client_routes.append(route)
+        route.on_message(server.send)
+
+        def forward_from_server(message: str | bytes) -> None:
+            action_type = _action_type(message)
+            if action_type is not None:
+                restored_action_types.append(action_type)
+            if not held_history_updates and _is_history_update(message):
+                held_history_updates.append(message)
+            else:
+                route.send(message)
+
+        server.on_message(forward_from_server)
+
+    page.route_web_socket(re.compile(r".*"), hold_first_history_update)
+    page.reload()
+    expect(chat.loc).to_be_visible(timeout=30_000)
+    expect(page.locator(".shiny-chat-messages-content")).to_contain_text(
+        "held retry", timeout=30_000
+    )
+    controller.OutputText(page, "history_updates").expect_value(
+        "1", timeout=30_000
+    )
+    assert len(client_routes) == 1
+    assert len(held_history_updates) == 1
+    assert restored_action_types.index("update_exchange_metadata") < (
+        restored_action_types.index("history_update")
+    )
+    assert restored_action_types.index("update_siblings") < (
+        restored_action_types.index("history_update")
+    )
+
+    # The restored branch controls cannot dispatch before the authoritative
+    # initial update: retry/edit are withheld, and the real valid direction
+    # remains visible but disabled.
+    failed = page.locator(".shiny-chat-user-message").first
+    next_version = failed.get_by_role("button", name="Next version")
+    expect(next_version).to_be_visible()
+    expect(next_version).to_be_disabled()
+    expect(page.get_by_role("button", name="Retry message")).to_have_count(0)
+    expect(failed.locator(".shiny-chat-edit-btn")).to_have_count(0)
+    next_version.click(force=True)
+    controller.OutputText(page, "provider_calls").expect_value("0")
+    controller.OutputText(page, "accepted_submissions").expect_value("0")
+    controller.OutputText(page, "history_updates").expect_value("1")
+
+    client_routes[0].send(held_history_updates.pop())
+    retry = page.get_by_role("button", name="Retry message")
+    expect(retry).to_be_visible(timeout=30_000)
+    expect(retry).to_be_enabled()
+    failed = page.locator(".shiny-chat-user-message").first
+    failed.hover()
+    edit = failed.locator(".shiny-chat-edit-btn")
+    expect(edit).to_be_visible()
+    expect(edit).to_be_enabled()
+    next_version = failed.get_by_role("button", name="Next version")
+    expect(next_version).to_be_enabled()
+
+    retry.click()
+    chat.expect_latest_message("echo: held retry", timeout=30_000)
+    controller.OutputText(page, "provider_calls").expect_value("1")
+    controller.OutputText(page, "accepted_submissions").expect_value("1")
+
+    failed = page.locator(".shiny-chat-user-message").first
+    failed.hover()
+    failed.locator(".shiny-chat-edit-btn").click()
+    editor = failed.get_by_role("textbox", name="Chat message")
+    editor.click()
+    editor.press("ControlOrMeta+a")
+    editor.press_sequentially("edited retry")
+    failed.locator(".shiny-chat-btn-send").click()
+    chat.expect_latest_message("echo: edited retry", timeout=30_000)
+    controller.OutputText(page, "provider_calls").expect_value("2")
+    controller.OutputText(page, "accepted_submissions").expect_value("2")
+
+    edited = page.locator(".shiny-chat-user-message").first
+    edited.hover()
+    previous = edited.get_by_role("button", name="Previous version")
+    expect(previous).to_be_enabled()
+    previous.click()
+    expect(page.locator(".shiny-chat-messages-content")).to_contain_text(
+        "held retry", timeout=30_000
     )
 
 
