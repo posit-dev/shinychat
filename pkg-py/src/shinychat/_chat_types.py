@@ -460,7 +460,7 @@ class ChatMessage:
             resolved_type = (
                 content_type if content_type is not None else "markdown"
             )
-            segments = self._compile_parts(parts, resolved_type)
+            segments = self._parts_to_segments(parts, resolved_type)
         elif isinstance(content, str):
             resolved_type = (
                 content_type if content_type is not None else "markdown"
@@ -516,17 +516,13 @@ class ChatMessage:
         self.html_deps: list[HTMLDependency] = deps
 
     @staticmethod
-    def _compile_parts(
+    def _parts_to_segments(
         parts: list[str | StructuredBlock], content_type: ContentType
     ) -> list[ContentSegment | StructuredBlock]:
-        # Bare strings become string segments stamped with the message
-        # content_type (markdown by default) — the segment-list API is the
-        # deliberate way to mix markdown and UI in one message, unlike
-        # TagList content which is an HTML container. Blocks pass through in
-        # order; adjacent string runs coalesce. Markdown runs join with a
-        # paragraph break (direct concatenation is unsafe at a markdown
-        # seam); other content types concatenate directly so the author
-        # controls the exact bytes.
+        # Bare strings become segments stamped with the message content_type;
+        # blocks pass through in order. Adjacent markdown strings join with a
+        # paragraph break (direct concatenation is unsafe at a markdown seam);
+        # other content types concatenate verbatim.
         segments: list[ContentSegment | StructuredBlock] = []
         for part in parts:
             if isinstance(part, str):
@@ -583,7 +579,7 @@ class ChatMessage:
             # leaves (one string segment, blocks trailing).
             self.content = self.content
         else:
-            self.segments = self._compile_parts(value, self.content_type)
+            self.segments = self._parts_to_segments(value, self.content_type)
 
 
 class ChatGreeting:

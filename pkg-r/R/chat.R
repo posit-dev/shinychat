@@ -1017,7 +1017,7 @@ new_html_block <- function(content) {
 # Append a markdown string segment, coalescing onto a preceding markdown
 # segment with a paragraph break (direct concatenation is unsafe at a
 # markdown seam). Mirrors coalesce_content_strings() and Python's
-# _compile_parts().
+# _parts_to_segments().
 append_markdown_segment <- function(segments, text) {
   last <- if (length(segments) > 0) segments[[length(segments)]] else NULL
   if (

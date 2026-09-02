@@ -1089,7 +1089,7 @@ test_that("chat_append_message() tagList (HTML container) vs list (segment list)
 test_that("build_wire_segments() coalesces adjacent bare strings with a paragraph break", {
   # Direct concatenation is unsafe at a markdown seam ("text" + "# Title"
   # fuses); adjacent markdown strings join with "\n\n", matching
-  # coalesce_content_strings() and Python's _compile_parts().
+  # coalesce_content_strings() and Python's _parts_to_segments().
   block <- structure(
     list(
       type = "tool_result",
