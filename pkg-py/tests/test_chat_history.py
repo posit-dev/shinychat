@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from contextlib import nullcontext
 from copy import deepcopy
 from typing import Any, Awaitable, Callable, cast
@@ -2016,6 +2017,23 @@ def _transcript_snapshot(chat: Chat) -> list[dict[str, Any]]:
     ]
 
 
+async def _finish_held_clear_task(
+    task: asyncio.Task[Any],
+    release: asyncio.Event,
+    *,
+    cancel: bool = False,
+) -> None:
+    release.set()
+    active_exception = sys.exc_info()[1] is not None
+    if cancel and not task.done():
+        task.cancel()
+    try:
+        await asyncio.wait_for(asyncio.shield(task), timeout=1)
+    except BaseException:
+        if not cancel or not active_exception:
+            raise
+
+
 @pytest.mark.anyio
 async def test_v2_clear_settles_terminal_response_before_clear_mutation(
     tmp_path: Any,
@@ -2083,8 +2101,7 @@ async def test_v2_clear_settles_terminal_response_before_clear_mutation(
         assert stored_before_clear.response_count == 1
         assert stored_before_clear.nodes[stored_before_clear.active_leaf].status == "ok"  # type: ignore[index]
 
-        release_clear.set()
-        await clear_task
+        await _finish_held_clear_task(clear_task, release_clear)
 
         assert settlements == 1
         assert chat._transcript.read() == ()
@@ -2094,13 +2111,7 @@ async def test_v2_clear_settles_terminal_response_before_clear_mutation(
             if message["action"]["type"] == "clear"
         ] == [{"type": "clear"}]
     finally:
-        release_clear.set()
-        if not clear_task.done():
-            clear_task.cancel()
-        try:
-            await clear_task
-        except asyncio.CancelledError:
-            pass
+        await _finish_held_clear_task(clear_task, release_clear, cancel=True)
         chat.destroy()
 
 
@@ -2217,8 +2228,7 @@ async def test_v2_clear_retains_input_admitted_after_clear_dispatch(
             dispatch_user_submit=False,
         )
         assert chat._transcript.read()[-1].message.content == "tail input"
-        release_clear.set()
-        await clear_task
+        await _finish_held_clear_task(clear_task, release_clear)
         await chat.append_message("tail response")
         await reactive.flush()
         await reactive.flush()
@@ -2254,11 +2264,5 @@ async def test_v2_clear_retains_input_admitted_after_clear_dispatch(
             if message["action"]["type"] == "clear"
         ] == [{"type": "clear"}]
     finally:
-        release_clear.set()
-        if not clear_task.done():
-            clear_task.cancel()
-        try:
-            await clear_task
-        except asyncio.CancelledError:
-            pass
+        await _finish_held_clear_task(clear_task, release_clear, cancel=True)
         chat.destroy()
