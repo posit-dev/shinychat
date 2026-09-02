@@ -1841,10 +1841,21 @@ class HistoryController:
                             for attachment in submitted_input.attachments
                         ],
                     }
+                    projection_error: BaseException | None = None
                     try:
                         await self.chat._send_action(accepted_input_action)
+                    except BaseException as error:
+                        projection_error = error
+                        raise
                     finally:
-                        self.chat._publish_accepted_user_input(submitted_input)
+                        try:
+                            self.chat._publish_accepted_user_input(
+                                submitted_input
+                            )
+                        except BaseException as publication_error:
+                            if projection_error is None:
+                                raise
+                            raise projection_error from publication_error
                     return
                 await recorder._capture_state(current_leaf, "node_close")
                 try:

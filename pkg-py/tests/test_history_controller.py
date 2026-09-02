@@ -2787,6 +2787,44 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
 
 
 @pytest.mark.anyio
+async def test_v2_degraded_resubmit_preserves_projection_error_when_publication_fails():
+    controller, chat, _adapter, _store, first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.nodes[target].state["shinychat:turns"].kind = "unsupported"
+
+    projection_error = RuntimeError("projection unavailable")
+    publication_error = RuntimeError("publication unavailable")
+
+    async def fail_projection(_action: dict[str, Any]) -> None:
+        raise projection_error
+
+    def fail_publication(_message: StoredMessage) -> None:
+        raise publication_error
+
+    chat._send_action = fail_projection  # type: ignore[method-assign]
+    chat._publish_accepted_user_input = fail_publication  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError) as raised:
+        await controller.handle_resubmit(
+            1, "retry", request_id="retry"
+        )
+
+    assert raised.value is projection_error
+    assert raised.value.__cause__ is publication_error
+    assert raised.value.__context__ is publication_error
+    sibling = record.active_leaf
+    assert sibling is not None
+    assert sibling != target
+    assert record.nodes[sibling].parent_id == first
+    assert record.children_of(first) == [target, sibling]
+
+
+@pytest.mark.anyio
 async def test_v2_degraded_resubmit_rewind_failure_precedes_sibling_mutation():
     controller, chat, adapter, store, first, target = _make_v2_resubmit_controller()
     recorder = controller._exchange_recorder
