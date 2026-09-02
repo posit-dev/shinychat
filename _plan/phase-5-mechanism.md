@@ -539,3 +539,11 @@ Three bounded evidence units remain, in order:
 
 No production defect is established by the entry audit. Later Phase 5
 implementation remains blocked.
+
+The clear keystone landed in `5d37f77c` and bounded follow-up `a70a5c4d`.
+Its three production-path cases pass, but Roborev 1181/1182 identified three
+recurring wait/cleanup defects in the held-clear test tasks. The escalation
+decision is **DELETE/REPLACE the duplicated test cleanup only**: use one
+bounded, failure-aware helper for task completion and cancellation. The
+production clear lifecycle and its assertions remain unchanged; this decision
+adds no runtime mechanism or scope.
