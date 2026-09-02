@@ -1061,6 +1061,7 @@ export const ChatContainer = forwardRef<
                 uploadAccept={uploadAccept}
                 maxUploadSize={maxUploadSize}
                 disabled={inputDisabled}
+                historyStore={historyStore}
                 submissionBlocked={submissionBlocked}
                 hasTopShadow={!isAtBottom}
                 placeholder={inputPlaceholder}

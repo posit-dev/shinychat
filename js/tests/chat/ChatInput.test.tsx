@@ -40,6 +40,7 @@ import {
   type SubmitUserInput,
 } from "../../src/chat/context"
 import type { ChatTransport } from "../../src/transport/types"
+import { HistoryStore } from "../../src/chat/historyStore"
 import { createRef, type RefObject } from "react"
 
 // ---------------------------------------------------------------------------
@@ -100,6 +101,7 @@ function renderChatInput(
     uploadAccept: string[]
     maxUploadSize: number
     disabled: boolean
+    historyStore: HistoryStore
     submissionBlocked: boolean
     placeholder: string
     onSend: () => void
@@ -125,6 +127,7 @@ function renderChatInput(
   const internalRef = ref ?? createRef<ChatInputHandle>()
   const inputId = props.inputId ?? "test-input"
   const enableUpload = props.enableUpload ?? true
+  const historyStore = props.historyStore ?? new HistoryStore(inputId)
   const submitUserInput =
     props.submitUserInput ??
     makeSubmitUserInput(dispatch, transport, inputId, enableUpload)
@@ -147,6 +150,7 @@ function renderChatInput(
           }
           maxUploadSize={props.maxUploadSize ?? 30_000_000}
           disabled={props.disabled ?? false}
+          historyStore={historyStore}
           submissionBlocked={props.submissionBlocked}
           placeholder={props.placeholder ?? "Type here..."}
           onSend={props.onSend}
@@ -296,6 +300,38 @@ describe("ChatInput", () => {
       screen.getByRole("img", { name: "Attached image: draft.png" }),
     ).toBeTruthy()
     expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it("blocks a stale slash submission closure after live history admission changes", () => {
+    const historyStore = new HistoryStore("stale-slash")
+    const ref = createRef<ChatInputHandle>()
+    const { editorEl, dispatch, transport } = renderChatInput(
+      {
+        historyStore,
+        slashCommandId: "test-slash-command",
+        slashCommands: [
+          {
+            name: "help",
+            description: "Show help",
+            echo: true,
+          },
+        ],
+      },
+      ref,
+    )
+
+    act(() => {
+      ref.current?.setInputValue("draft")
+    })
+    historyStore.seedCompletionV2TransitionProtocol()
+
+    act(() => {
+      ref.current?.setInputValue("/help topic details", { submit: true })
+    })
+
+    expect(dispatch).not.toHaveBeenCalled()
+    expect(transport.sendSlashCommand).not.toHaveBeenCalled()
+    expect(editorEl.textContent).toBe("draft")
   })
 
   it("does not send empty input", () => {
@@ -478,6 +514,7 @@ describe("ChatInput", () => {
               ref={ref}
               transport={transport}
               inputId="test-input"
+              historyStore={new HistoryStore("test-input")}
               uploadAccept={[
                 "image/png",
                 "image/jpeg",
@@ -506,6 +543,7 @@ describe("ChatInput", () => {
               ref={ref}
               transport={transport}
               inputId="test-input"
+              historyStore={new HistoryStore("test-input")}
               uploadAccept={[
                 "image/png",
                 "image/jpeg",

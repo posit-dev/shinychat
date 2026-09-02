@@ -18,6 +18,7 @@ import type { SubmitKey } from "./tiptap/submitShortcut"
 import { type AttachmentPayload } from "./attachments"
 import { useAttachmentStaging } from "./useAttachmentStaging"
 import { AttachmentTray } from "./AttachmentTray"
+import { isHistorySubmissionBlocked, type HistoryStore } from "./historyStore"
 
 export interface ChatInputProps {
   transport: ChatTransport
@@ -25,6 +26,7 @@ export interface ChatInputProps {
   uploadAccept: string[]
   maxUploadSize: number | null
   disabled: boolean
+  historyStore: HistoryStore
   submissionBlocked?: boolean
   hasTopShadow?: boolean
   placeholder: string
@@ -78,6 +80,7 @@ export const ChatInput = memo(
       uploadAccept,
       maxUploadSize,
       disabled,
+      historyStore,
       submissionBlocked = false,
       hasTopShadow = false,
       placeholder,
@@ -118,7 +121,11 @@ export const ChatInput = memo(
 
     const submitValue = useCallback(
       (content: string): boolean => {
-        if (submissionBlocked) return false
+        if (
+          submissionBlocked ||
+          isHistorySubmissionBlocked(historyStore.getSnapshot())
+        )
+          return false
         const payloads = getPayloads()
         if (content.trim().length === 0 && payloads.length === 0) return false
         if (disabled) return false
@@ -178,6 +185,7 @@ export const ChatInput = memo(
       },
       [
         disabled,
+        historyStore,
         submissionBlocked,
         dispatch,
         transport,
