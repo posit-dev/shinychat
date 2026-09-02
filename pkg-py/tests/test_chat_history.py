@@ -2069,37 +2069,46 @@ async def test_v2_clear_settles_terminal_response_before_clear_mutation(
 
     session.send_custom_message = hold_after_clear_dispatch  # type: ignore[method-assign]
     clear_task = asyncio.create_task(chat.clear_messages())
-    await clear_dispatched.wait()
+    try:
+        await asyncio.wait_for(clear_dispatched.wait(), timeout=1)
 
-    assert settlements == 1
-    assert chat._transcript.read()[-1].message.content == "terminal response"
-    assert recorder.record is not None
-    assert recorder.record.nodes[recorder.record.active_leaf].status == "ok"  # type: ignore[index]
-    stored_before_clear = await FileConversationStore(tmp_path).get(
-        partition, recorder.record.id
-    )
-    assert stored_before_clear is not None
-    assert stored_before_clear.response_count == 1
-    assert stored_before_clear.nodes[stored_before_clear.active_leaf].status == "ok"  # type: ignore[index]
+        assert settlements == 1
+        assert chat._transcript.read()[-1].message.content == "terminal response"
+        assert recorder.record is not None
+        assert recorder.record.nodes[recorder.record.active_leaf].status == "ok"  # type: ignore[index]
+        stored_before_clear = await FileConversationStore(tmp_path).get(
+            partition, recorder.record.id
+        )
+        assert stored_before_clear is not None
+        assert stored_before_clear.response_count == 1
+        assert stored_before_clear.nodes[stored_before_clear.active_leaf].status == "ok"  # type: ignore[index]
 
-    release_clear.set()
-    await clear_task
+        release_clear.set()
+        await clear_task
 
-    assert settlements == 1
-    assert chat._transcript.read() == ()
-    assert [
-        message["action"]
-        for message in session.messages
-        if message["action"]["type"] == "clear"
-    ] == [{"type": "clear"}]
-    chat.destroy()
+        assert settlements == 1
+        assert chat._transcript.read() == ()
+        assert [
+            message["action"]
+            for message in session.messages
+            if message["action"]["type"] == "clear"
+        ] == [{"type": "clear"}]
+    finally:
+        release_clear.set()
+        if not clear_task.done():
+            clear_task.cancel()
+        try:
+            await clear_task
+        except asyncio.CancelledError:
+            pass
+        chat.destroy()
 
 
 @pytest.mark.anyio
 async def test_v2_clear_rejects_active_stream_without_mutating_state(
     tmp_path: Any,
 ) -> None:
-    chat, session, client, store = await _make_initialized_live_v2_chat(
+    chat, session, client, _ = await _make_initialized_live_v2_chat(
         tmp_path, "clear_active_stream"
     )
     controller = chat.history._controller
@@ -2200,47 +2209,56 @@ async def test_v2_clear_retains_input_admitted_after_clear_dispatch(
 
     session.send_custom_message = hold_after_clear_dispatch  # type: ignore[method-assign]
     clear_task = asyncio.create_task(chat.clear_messages())
-    await clear_dispatched.wait()
+    try:
+        await asyncio.wait_for(clear_dispatched.wait(), timeout=1)
 
-    await chat._record_accepted_user_input_with_capture(
-        ChatMessage(content="tail input", role="user"),
-        dispatch_user_submit=False,
-    )
-    assert chat._transcript.read()[-1].message.content == "tail input"
-    release_clear.set()
-    await clear_task
-    await chat.append_message("tail response")
-    await reactive.flush()
-    await reactive.flush()
+        await chat._record_accepted_user_input_with_capture(
+            ChatMessage(content="tail input", role="user"),
+            dispatch_user_submit=False,
+        )
+        assert chat._transcript.read()[-1].message.content == "tail input"
+        release_clear.set()
+        await clear_task
+        await chat.append_message("tail response")
+        await reactive.flush()
+        await reactive.flush()
 
-    assert [
-        entry.message.content for entry in chat._transcript.read()
-    ] == ["tail input", "tail response"]
-    assert recorder.record is not None
-    tail_leaf = recorder.record.active_leaf
-    assert tail_leaf is not None
-    assert tail_leaf != old_leaf
-    tail_node = recorder.record.nodes[tail_leaf]
-    assert tail_node.input is not None
-    assert tail_node.input.content == "tail input"
-    assert [message.as_stored_message().content for message in tail_node.messages] == [
-        "tail response"
-    ]
+        assert [
+            entry.message.content for entry in chat._transcript.read()
+        ] == ["tail input", "tail response"]
+        assert recorder.record is not None
+        tail_leaf = recorder.record.active_leaf
+        assert tail_leaf is not None
+        assert tail_leaf != old_leaf
+        tail_node = recorder.record.nodes[tail_leaf]
+        assert tail_node.input is not None
+        assert tail_node.input.content == "tail input"
+        assert [
+            message.as_stored_message().content for message in tail_node.messages
+        ] == ["tail response"]
 
-    persisted = await FileConversationStore(tmp_path).get(
-        partition, recorder.record.id
-    )
-    assert persisted is not None
-    persisted_tail = persisted.nodes[persisted.active_leaf]  # type: ignore[index]
-    assert persisted_tail.input is not None
-    assert persisted_tail.input.content == "tail input"
-    assert [
-        message.as_stored_message().content for message in persisted_tail.messages
-    ] == ["tail response"]
-    assert persisted.active_leaf == tail_leaf
-    assert [
-        message["action"]
-        for message in session.messages
-        if message["action"]["type"] == "clear"
-    ] == [{"type": "clear"}]
-    chat.destroy()
+        persisted = await FileConversationStore(tmp_path).get(
+            partition, recorder.record.id
+        )
+        assert persisted is not None
+        persisted_tail = persisted.nodes[persisted.active_leaf]  # type: ignore[index]
+        assert persisted_tail.input is not None
+        assert persisted_tail.input.content == "tail input"
+        assert [
+            message.as_stored_message().content for message in persisted_tail.messages
+        ] == ["tail response"]
+        assert persisted.active_leaf == tail_leaf
+        assert [
+            message["action"]
+            for message in session.messages
+            if message["action"]["type"] == "clear"
+        ] == [{"type": "clear"}]
+    finally:
+        release_clear.set()
+        if not clear_task.done():
+            clear_task.cancel()
+        try:
+            await clear_task
+        except asyncio.CancelledError:
+            pass
+        chat.destroy()
