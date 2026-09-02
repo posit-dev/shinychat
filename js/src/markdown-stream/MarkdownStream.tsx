@@ -193,7 +193,9 @@ export function MarkdownStream({
     (block: StreamBlock) => {
       repinIfAtBottom()
       setSegments(
-        block.type === "html_block" ? [block] : [applyWebBlock(null, block)],
+        block.type === "html_block"
+          ? [block]
+          : appendWebActivityBlock([], block, isWhitespaceTextSegment),
       )
     },
     [repinIfAtBottom],
