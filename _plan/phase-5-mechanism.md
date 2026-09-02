@@ -449,9 +449,18 @@ accessible to its three consumers, not a barrier, awaitable, callback,
 payload holder, queue, client marker, second owner, or generic admission
 adapter. It must not grow any of those responsibilities.
 
-Implementation may resume. The focused baseline is green:
-`make py-check-tests FILTER='history or transcript'` passed 52 Playwright and
-541 Python tests. `shinychat#bj1n` and later children remain blocked.
+P5.0 implementation landed in `631c97e9` and correction `0e019a61`.
+The private readiness fact now suppresses unresolved v2 complete appends,
+public streams, and root `message_stream_context()` streams without a task,
+continuation, display, transcript, recorder, or store mutation; post-update
+pre-input appends remain root-captured. The barrier/context adapter is gone.
+Focused history tests, R history hooks (22), and the final `make py-check`
+are green (209 Playwright, 916 Python, 1 existing skip). Roborev 1176 found
+the root-context gap; `0e019a61` fixes it with regression coverage. Roborev
+1177's proposed restored-outcome constructor suppression is declined: it
+would add prohibited outcome state and conflicts with P5.0's admitted
+post-update pre-input append contract. `shinychat#bj1n` and later children
+remain blocked pending P5.0 human review/closure.
 
 Boundary: `Chat(messages=...)` removal is follow-up `shinychat#mcbp`, not P5.0.
 Do not begin R, legacy, degradation/error-affordance work, or another
