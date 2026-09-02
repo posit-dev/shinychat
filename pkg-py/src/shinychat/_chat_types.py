@@ -20,7 +20,6 @@ if TYPE_CHECKING:
 from ._attachments import Attachment
 from ._html_islands import (
     IslandBlockPart,
-    build_html_block,
     derive_island_parts,
 )
 from ._typing_extensions import NotRequired, TypedDict, TypeGuard
@@ -171,6 +170,15 @@ class HtmlBlock(TypedDict):
     version: Literal[1]
     content: str
     html_deps: NotRequired[list[SerializedDep]]
+
+
+def html_block(
+    html: str, html_deps: list[SerializedDep] | None = None
+) -> HtmlBlock:
+    block: HtmlBlock = {"type": "html_block", "version": 1, "content": html}
+    if html_deps:
+        block["html_deps"] = html_deps
+    return block
 
 
 # The union of typed blocks carried in `MessagePayload.segments` (outside a
@@ -488,7 +496,7 @@ class ChatMessage:
                 deps.extend(part.deps)
                 if isinstance(part, IslandBlockPart):
                     segments.append(
-                        build_html_block(
+                        html_block(
                             part.html,
                             [d.as_dict() for d in part.deps]
                             if part.deps

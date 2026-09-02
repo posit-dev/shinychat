@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from itertools import groupby
-from typing import TYPE_CHECKING, Union
+from typing import Union
 
 from htmltools import (
     HTML,
@@ -14,23 +14,6 @@ from htmltools import (
     TagifiedTagList,
     TagList,
 )
-
-if TYPE_CHECKING:
-    from ._chat_types import HtmlBlock, SerializedDep
-
-
-def build_html_block(
-    html: str, html_deps: list[SerializedDep] | None = None
-) -> HtmlBlock:
-    """Build an ``html_block`` structured block (a trusted raw-HTML island).
-
-    ``html_deps`` are accepted in whatever serialized form the caller has
-    (session-processed or raw ``as_dict()``); omitted when empty.
-    """
-    block: HtmlBlock = {"type": "html_block", "version": 1, "content": html}
-    if html_deps:
-        block["html_deps"] = html_deps
-    return block
 
 
 def _resolve_tagifiable(content: TagChild) -> TagChild:
