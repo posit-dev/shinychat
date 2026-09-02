@@ -688,6 +688,10 @@ describe("ChatMessage retry", () => {
 
   it("keeps projected error detail beside retry when a partial assistant is present", () => {
     const onRetry = vi.fn()
+    const errorMessage =
+      "catalogue-entry-" +
+      "a".repeat(180) +
+      "-The response stream could not be completed."
     const { container } = render(
       <>
         <ChatMessage
@@ -696,7 +700,7 @@ describe("ChatMessage retry", () => {
             exchange: {
               status: "error",
               retryable: true,
-              error_message: "The response stream could not be completed.",
+              error_message: errorMessage,
             },
           })}
           onRetry={onRetry}
@@ -722,13 +726,62 @@ describe("ChatMessage retry", () => {
       </>,
     )
 
-    expect(
-      screen.getByText("The response stream could not be completed."),
-    ).toBeTruthy()
+    const footer = container.querySelector(".shiny-chat-message-footer")!
+    const error = container.querySelector(".shiny-chat-retry-error")!
+    const retry = screen.getByRole("button", { name: "Retry message" })
+    expect(footer).toHaveClass("shiny-chat-message-footer-error")
+    expect(error).toHaveTextContent(errorMessage)
+    expect(error.parentElement).toBe(footer)
+    expect(retry.parentElement).toBe(footer)
+    expect(footer.className).toContain("shiny-chat-message-footer")
+    expect(container.querySelector(".shiny-chat-sibling-nav")).toBeNull()
     expect(screen.getByText("Partial answer")).toBeTruthy()
-    expect(container.querySelector(".shiny-chat-retry-error")).not.toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: "Retry message" }))
+    fireEvent.click(retry)
     expect(onRetry).toHaveBeenCalledWith(0)
+  })
+
+  it("keeps sibling navigation and edit controls actionable in an error footer", () => {
+    const onEdit = vi.fn()
+    const onNavigate = vi.fn()
+    const onRetry = vi.fn()
+    const onStartEdit = vi.fn()
+    const errorMessage = "The response stream could not be completed."
+    const { container } = render(
+      <ChatMessage
+        index={2}
+        message={userMessage({
+          siblings: { index: 1, total: 3 },
+          exchange: {
+            status: "error",
+            retryable: true,
+            error_message: errorMessage,
+          },
+        })}
+        onEdit={onEdit}
+        onNavigate={onNavigate}
+        onRetry={onRetry}
+        onStartEdit={onStartEdit}
+      />,
+    )
+
+    const footer = container.querySelector(".shiny-chat-message-footer-error")!
+    const siblingNav = footer.querySelector(".shiny-chat-sibling-nav")!
+    const edit = screen.getByRole("button", { name: "Edit message" })
+    const retry = screen.getByRole("button", { name: "Retry message" })
+    const error = screen.getByText(errorMessage)
+    expect(siblingNav.parentElement).toBe(footer)
+    expect(edit.parentElement).toBe(footer)
+    expect(retry.parentElement).toBe(footer)
+    expect(error.parentElement).toBe(footer)
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous version" }))
+    fireEvent.click(screen.getByRole("button", { name: "Next version" }))
+    fireEvent.click(edit)
+    fireEvent.click(retry)
+    expect(onNavigate).toHaveBeenNthCalledWith(1, 2, "prev")
+    expect(onNavigate).toHaveBeenNthCalledWith(2, 2, "next")
+    expect(onStartEdit).toHaveBeenCalledWith("m1")
+    expect(onRetry).toHaveBeenCalledWith(2)
   })
 
   it.each(["pending", "ok", "cancelled"] as const)(

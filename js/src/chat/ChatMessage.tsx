@@ -623,7 +623,14 @@ export const ChatMessage = memo(function ChatMessage({
         ((onEdit && !disabled) ||
           (message.siblings && message.siblings.total > 1) ||
           (message.exchange?.retryable && onRetry)) && (
-          <div className="shiny-chat-message-footer">
+          <div
+            className={`shiny-chat-message-footer${
+              message.exchange?.status === "error" &&
+              message.exchange.error_message
+                ? " shiny-chat-message-footer-error"
+                : ""
+            }`}
+          >
             {message.siblings && message.siblings.total > 1 && (
               <div className="shiny-chat-sibling-nav">
                 <button
