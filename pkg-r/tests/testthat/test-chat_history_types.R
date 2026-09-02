@@ -66,7 +66,6 @@ test_that("is_stored_ui_versioned() requires an exact current-version match", {
     segments = list(list(content = "hi", content_type = "markdown"))
   ))))
 
-  expect_false(is_stored_ui_versioned(message_with_version(1L)))
   expect_false(is_stored_ui_versioned(message_with_version(0L)))
   expect_false(is_stored_ui_versioned(message_with_version(
     STORED_UI_VERSION + 1L

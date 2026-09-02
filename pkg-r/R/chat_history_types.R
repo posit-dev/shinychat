@@ -87,7 +87,7 @@ MAX_SCHEMA_VERSION <- 1L
 
 # Current version marker for stored UI messages. Older or unversioned UI is
 # discarded at replay time and re-derived from the node's stored turns.
-STORED_UI_VERSION <- 2L
+STORED_UI_VERSION <- 1L
 
 # Build a stored UI message from merge_ellmer_turn_group() output.
 # Mirrors Python's StoredMessage.from_chat_message.
