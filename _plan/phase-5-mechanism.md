@@ -769,3 +769,16 @@ the warning is part of successful degraded restore before authoritative gate
 release. A failed warning send therefore remains a restore transport failure;
 it must not silently publish a display-restored state that omitted its required
 model-context warning.
+
+### P5.3 implementation handoff (2026-09-02)
+
+Python catalogue selection, normalization, persistence, and ephemeral error
+projection landed in `a89b035c`. Plain-text React rendering adjacent to Retry
+landed in `9b7a2a97`; shared Python/R assets were rebuilt in `645f35d0`.
+Focused Python and JS tests, full Python tests (960 passed, one existing skip),
+Ruff, Pyright, JS lint, format, and worktree diff checks passed. Task-level
+Roborev review remains before closure.
+
+Self-review: 100/100. The implementation handoff records landed scope and
+verification without changing the settled P5.3 mechanism or acceptance
+boundary.
