@@ -623,3 +623,17 @@ new corruption class or degradation mode.
 Decision self-review remains 100/100: the superseded-entry rule and retry
 transition now cover both possible effective suffixes without inferred turns,
 target mutation, or new state.
+
+P5.2 review found two valid PATCH items in the replacement. First, active-path
+classification must run strict envelope and turn-data validation before
+compatibility classification so malformed target state cannot enter
+degradation. Second, classification belongs inside the shared `resubmit()`
+primitive, not only `retry()`, so retry, edit, and regenerate all preserve a
+degraded live baseline and immutable target consistently. The complete order
+is: validate the active path; classify its effective turn suffix; preflight the
+parent prefix; then mutate. Structurally valid incompatibility may degrade;
+malformed state still fails closed before capture or mutation.
+
+Self-review: 100/100 (25/25 each). The patch reuses the one branch primitive,
+closes every resubmit entry point, preserves strict/degraded classification,
+and adds no state, hook, owner, or lifecycle behavior.
