@@ -16,7 +16,6 @@ from htmltools import (
     Tagifiable,
     TagList,
 )
-from packaging import version
 from pydantic import BaseModel, field_serializer, field_validator
 from typing_extensions import TypeAliasType
 
@@ -442,11 +441,6 @@ def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
     if tool_display_override() == "none":
         return TagList()
 
-    # These content objects do have tagify() methods,
-    # but that's for legacy behavior
-    if is_legacy():
-        return x
-
     intent = None
     if isinstance(x.arguments, dict):
         intent = x.arguments.get("_intent")
@@ -477,11 +471,6 @@ def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
 def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
     if tool_display_override() == "none":
         return TagList()
-
-    # These content objects do have tagify() methods,
-    # but that's the legacy behavior
-    if is_legacy():
-        return x
 
     if x.request is None:
         raise ValueError(
@@ -576,7 +565,7 @@ def tool_request_message(request: Tagifiable) -> ChatMessage:
     """Wrap shinychat's rich tool-request card in a block-carrying message."""
     if isinstance(request, ToolRequestComponent):
         # The default rich path emits the structured `tool_request` envelope.
-        # The tagify code is retained for the legacy/none overrides.
+        # The tagify code is retained for the none display override.
         # Unlike results, requests get a plain ChatMessage: the ShinyToolCardMessage marker
         # exists for the result custom-wrap postprocessing, which requests
         # skip.
@@ -654,7 +643,7 @@ def tool_result_message(result: Tagifiable) -> ChatMessage:
     """Wrap shinychat's rich tool card in a marker message."""
     if isinstance(result, ToolResultComponent):
         # The default rich path emits the structured `tool_result` envelope.
-        # The tagify code is retained for the legacy/none overrides.
+        # The tagify code is retained for the none display override.
         block, deps = tool_result_block(result)
         msg = ShinyToolCardMessage(content="", blocks=[block])
         msg.html_deps = deps + msg.html_deps
@@ -755,15 +744,6 @@ def tool_result_display(
         return json.dumps(items), "content_extra"
 
     return str(x.get_model_value()), "code"
-
-
-# Tools started getting added to ContentToolRequest staring with 0.11.1
-def is_legacy():
-    import chatlas
-
-    v = chatlas._version.version_tuple
-    ver = f"{v[0]}.{v[1]}.{v[2]}"
-    return version.parse(ver) < version.parse("0.11.1")
 
 
 def tool_display_override() -> Literal["none", "basic", "rich"]:

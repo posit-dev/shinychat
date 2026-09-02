@@ -717,21 +717,6 @@ async def test_tool_display_none_is_not_misread_as_custom_display(
 
 
 @pytest.mark.anyio
-async def test_legacy_chatlas_tool_result_is_not_misread_as_custom_display(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`is_legacy()` returns the raw content object -- shinychat's own
-    fallback for old chatlas versions -- so no `custom-display` either."""
-    monkeypatch.setattr("chatlas._version.version_tuple", (0, 10, 0))
-
-    result = _result(_request(tool=_tool()))
-    sent = await _stream_custom_result(result)
-
-    assert len(sent) == 1
-    assert "custom-display" not in sent[0].content
-
-
-@pytest.mark.anyio
 async def test_custom_tool_result_html_dependencies_survive_the_wrap(
     custom_display_handler: Any,
 ) -> None:

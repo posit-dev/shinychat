@@ -571,7 +571,6 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
         from ._chat_normalize_chatlas import (
             ShinyToolCardMessage,
             ValueType,
-            is_legacy,
             resolve_tool_annotations,
             tool_display_override,
             tool_result_message,
@@ -584,7 +583,7 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
         return msg
 
     # These are shinychat's own early returns, not an author's bypass.
-    if tool_display_override() == "none" or is_legacy():
+    if tool_display_override() == "none":
         return msg
 
     # Mirror the author's payload mode, while keeping the wrapper itself
