@@ -11,7 +11,6 @@ from shiny import reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat
-from shinychat._chat_types import StoredMessage, StoredSegment
 from shinychat._history import ChatHistory, HistoryInputIds
 from shinychat._history_store import (
     ConversationPartition,
@@ -460,7 +459,7 @@ async def test_chat_without_client_publishes_initial_history_withdrawal() -> Non
 @pytest.mark.anyio
 @pytest.mark.parametrize("restore_bootstrap", ["recorded", "live"])
 @pytest.mark.parametrize("target_id", [None, "c_target"])
-async def test_v2_initial_barrier_releases_capture_after_initial_decision(
+async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
     restore_bootstrap: str,
     target_id: str | None,
 ) -> None:
@@ -493,9 +492,7 @@ async def test_v2_initial_barrier_releases_capture_after_initial_decision(
         assert controller is not None
         recorder = controller._exchange_recorder
         assert recorder is not None
-        barrier = chat.history._initial_v2_barrier
-        assert barrier is not None
-        assert not barrier.done()
+        assert not chat.history._initial_history_initialized
         if target_id is not None:
             await store.put(
                 ConversationPartition(chat_id=chat_id, scope="test"),
@@ -506,39 +503,55 @@ async def test_v2_initial_barrier_releases_capture_after_initial_decision(
                 ),
             )
 
-        operations = [
-            lambda: chat._record_accepted_user_input_with_capture(
-                ChatMessage(content="blocked input", role="user")
-            ),
-            lambda: chat.append_message("blocked complete append"),
-            lambda: chat._append_message_chunk(
-                "", chunk="start", stream_id="blocked-stream"
-            ),
-        ]
-        for operation in operations:
-            with session_context(cast(Any, session)), reactive.isolate():
-                waiter = asyncio.ensure_future(operation())
-            await asyncio.sleep(0)
-            assert not waiter.done()
-            assert chat._transcript.read() == ()
-            assert chat._transcript.active_stream_id is None
-            assert recorder.record is None
-            waiter.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await waiter
-            assert not barrier.done()
+        await chat._record_accepted_user_input_with_capture(
+            ChatMessage(content="blocked input", role="user")
+        )
+        await chat.append_message(object())
+        assert not await chat._append_message_chunk(
+            "", chunk="start", stream_id="blocked-stream"
+        )
+
+        stream_started = False
+
+        async def blocked_stream():
+            nonlocal stream_started
+            stream_started = True
+            yield "blocked stream update"
+
+        with patch.object(
+            reactive,
+            "extended_task",
+            wraps=reactive.extended_task,
+        ) as extended_task:
+            assert await chat.append_message_stream(blocked_stream()) is None
+        extended_task.assert_not_called()
+        assert not stream_started
+        assert chat._transcript.read() == ()
+        assert chat._transcript.active_stream_id is None
+        assert recorder.record is None
+        assert [
+            message["action"]["type"] for message in session.messages
+        ] == []
 
         with session_context(cast(Any, session)), reactive.isolate():
             await handlers["_init_history"]()
 
-        assert barrier.result() == (
-            "restored" if target_id is not None else "fresh"
-        )
+        assert chat.history._initial_history_initialized
         assert len(_history_updates(session)) == 1
+        await chat.append_message("root captured append")
+        assert recorder.record is not None
+        root_id = recorder.record.active_leaf
+        assert root_id is not None
+        root = recorder.record.nodes[root_id]
+        assert root.input is None
+        assert [
+            message.as_stored_message().content
+            for message in cast(Any, root).messages
+        ] == ["root captured append"]
+
         await chat._record_accepted_user_input_with_capture(
             ChatMessage(content="accepted input", role="user")
         )
-        await chat.append_message("accepted complete append")
         await chat._append_message_chunk(
             "", chunk="start", stream_id="accepted-stream"
         )
@@ -550,8 +563,8 @@ async def test_v2_initial_barrier_releases_capture_after_initial_decision(
         )
 
         assert [entry.message.content for entry in chat._transcript.read()] == [
+            "root captured append",
             "accepted input",
-            "accepted complete append",
             "accepted stream update",
         ]
         assert chat._transcript.active_stream_id is None
@@ -561,10 +574,54 @@ async def test_v2_initial_barrier_releases_capture_after_initial_decision(
 
 
 @pytest.mark.anyio
-async def test_v2_initial_barrier_does_not_use_partition_or_transaction_bypass() -> (
+async def test_v2_initial_readiness_flips_after_history_update_send() -> None:
+    session = _LiveSession()
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "initial_readiness_send",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store="memory",
+                scope="test",
+                restore_mode="none",
+            ),
+        )
+
+    try:
+        controller = chat.history._controller
+        assert controller is not None
+        send_started = asyncio.Event()
+        release_send = asyncio.Event()
+        send_history_update = controller.send_history_update
+
+        async def blocked_history_update() -> None:
+            send_started.set()
+            await release_send.wait()
+            await send_history_update()
+
+        controller.send_history_update = blocked_history_update  # type: ignore[method-assign]
+        with session_context(cast(Any, session)), reactive.isolate():
+            init = asyncio.ensure_future(handlers["_init_history"]())
+        await send_started.wait()
+        assert not chat.history._initial_history_initialized
+
+        release_send.set()
+        await init
+        assert chat.history._initial_history_initialized
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_initial_readiness_rejects_direct_input_without_mutation() -> (
     None
 ):
-    chat_id = "initial_barrier_partition"
+    chat_id = "initial_readiness_direct_input"
     session = _LiveSession()
     handlers: dict[str, Callable[[], Awaitable[None]]] = {}
 
@@ -587,119 +644,26 @@ async def test_v2_initial_barrier_does_not_use_partition_or_transaction_bypass()
     assert controller is not None
     recorder = controller._exchange_recorder
     assert recorder is not None
-    barrier = chat.history._initial_v2_barrier
-    assert barrier is not None
     controller.partition = ConversationPartition(chat_id=chat_id, scope="test")
 
-    async def attempt_capture_inside_transaction() -> None:
-        async with chat._destructive_history_mutation():
-            await chat._record_accepted_user_input_with_capture(
-                ChatMessage(content="blocked input", role="user")
-            )
-
     with session_context(cast(Any, session)), reactive.isolate():
-        waiter = asyncio.create_task(attempt_capture_inside_transaction())
-    await asyncio.sleep(0)
-    assert not waiter.done()
+        chat._record_accepted_user_input(
+            ChatMessage(content="forged input", role="user")
+        )
+        await chat._record_accepted_user_input_with_capture(
+            ChatMessage(content="direct input", role="user")
+        )
+
     assert chat._transcript.read() == ()
+    with reactive.isolate():
+        assert chat._latest_user_input() is None
+        assert chat._normal_user_submission() is None
+    assert controller._active_id_now() is None
     assert recorder.record is None
 
-    chat.destroy()
-    with pytest.raises(asyncio.CancelledError):
-        await waiter
-    assert barrier.cancelled()
-    assert chat.history._on_session_end is None
-
 
 @pytest.mark.anyio
-async def test_v2_initial_stream_waits_for_restored_exchange_target() -> None:
-    chat_id = "initial_stream_restored_target"
-    session = _LiveSession()
-    store = InMemoryConversationStore()
-    history_ids = HistoryInputIds.for_chat(ResolvedId(chat_id))
-    session.input[history_ids.browser_token] = reactive.Value("token")
-    session.input[history_ids.current_id] = reactive.Value("c_target")
-    target = new_conversation_record_v2(
-        title="target",
-        id="c_target",
-        client_info={},
-    )
-    restored_exchange = "n_0001"
-    target.open_exchange(
-        restored_exchange,
-        StoredMessage(
-            role="user",
-            segments=[
-                StoredSegment(content="restored input", content_type="markdown")
-            ],
-        ),
-    )
-    await store.put(
-        ConversationPartition(chat_id=chat_id, scope="test"),
-        target,
-    )
-    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
-
-    with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
-        patch.object(reactive, "effect", _capture_history_effects(handlers)),
-        session_context(cast(Any, session)),
-    ):
-        chat = Chat(
-            chat_id,
-            client=cast(Any, _MockClient()),
-            history=HistoryOptions(
-                store=store,
-                scope="test",
-                restore_mode="browser",
-            ),
-        )
-
-    try:
-        stale_exchange = chat._transcript.record_accepted_input(
-            StoredMessage(
-                role="user",
-                segments=[
-                    StoredSegment(
-                        content="pre-restore input",
-                        content_type="markdown",
-                    )
-                ],
-            )
-        )
-        with session_context(cast(Any, session)), reactive.isolate():
-            stream_start = asyncio.create_task(
-                chat._append_message_chunk(
-                    "",
-                    chunk="start",
-                    stream_id="restored-stream",
-                )
-            )
-        await asyncio.sleep(0)
-        assert not stream_start.done()
-
-        with session_context(cast(Any, session)), reactive.isolate():
-            await handlers["_init_history"]()
-        await stream_start
-
-        recorder = chat.history._controller._exchange_recorder  # type: ignore[union-attr]
-        assert recorder is not None
-        assert recorder.record is not None
-        stream_exchange = recorder._stream_exchanges["restored-stream"]
-        assert stale_exchange not in recorder.record.nodes
-        assert recorder.record.nodes[stream_exchange].parent_id == restored_exchange
-
-        await chat._append_message_chunk(
-            "",
-            chunk="end",
-            stream_id="restored-stream",
-        )
-    finally:
-        chat.destroy()
-
-
-@pytest.mark.anyio
-async def test_v2_initial_messages_wait_for_fresh_decision() -> None:
+async def test_v2_initial_messages_are_suppressed_while_unresolved() -> None:
     chat_id = "initial_messages_fresh"
     session = _LiveSession()
     handlers: dict[str, Callable[[], Awaitable[None]]] = {}
@@ -722,90 +686,13 @@ async def test_v2_initial_messages_wait_for_fresh_decision() -> None:
 
     try:
         with session_context(cast(Any, session)), reactive.isolate():
-            init_messages = asyncio.ensure_future(handlers["_init_chat"]())
-        await asyncio.sleep(0)
-        assert not init_messages.done()
+            await handlers["_init_chat"]()
         assert chat._transcript.read() == ()
 
         with session_context(cast(Any, session)), reactive.isolate():
             await handlers["_init_history"]()
-        await init_messages
 
-        assert [
-            entry.message.content for entry in chat._transcript.read()
-        ] == ["initial message"]
-    finally:
-        chat.destroy()
-
-
-@pytest.mark.anyio
-async def test_v2_initial_barrier_nonreactive_browser_waits_without_token() -> (
-    None
-):
-    session = _LiveSession()
-    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
-    with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
-        patch.object(reactive, "effect", _capture_history_effects(handlers)),
-        session_context(cast(Any, session)),
-    ):
-        chat = Chat(
-            "initial_barrier_nonreactive",
-            client=cast(Any, _MockClient()),
-            history=HistoryOptions(
-                store="memory",
-                scope="test",
-                restore_mode="browser",
-            ),
-        )
-
-    try:
-        barrier = chat.history._initial_v2_barrier
-        assert barrier is not None
-        waiter = asyncio.create_task(chat.history._await_initial_v2_decision())
-        await asyncio.sleep(0)
-        assert not waiter.done()
-
-        barrier.set_result("fresh")
-        assert await waiter == "fresh"
-    finally:
-        chat.destroy()
-
-
-@pytest.mark.anyio
-async def test_v2_initial_barrier_settled_before_extended_task_skips_token_read() -> (
-    None
-):
-    session = _LiveSession()
-    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
-    with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
-        patch.object(reactive, "effect", _capture_history_effects(handlers)),
-        session_context(cast(Any, session)),
-    ):
-        chat = Chat(
-            "initial_barrier_extended_task",
-            client=cast(Any, _MockClient()),
-            history=HistoryOptions(
-                store="memory",
-                scope="test",
-                restore_mode="browser",
-            ),
-        )
-        barrier = chat.history._initial_v2_barrier
-        assert barrier is not None
-        barrier.set_result("fresh")
-
-        @reactive.extended_task
-        async def wait_for_initial_decision() -> str | None:
-            return await chat.history._await_initial_v2_decision()
-
-        wait_for_initial_decision()
-        task = wait_for_initial_decision._task
-
-    try:
-        assert task is not None
-        assert await task == "fresh"
+        assert chat._transcript.read() == ()
     finally:
         chat.destroy()
 
@@ -833,15 +720,14 @@ async def test_v2_initial_messages_follow_real_initialization_order() -> None:
         finally:
             chat.destroy()
 
-    assert chat.history._initial_v2_barrier is not None
-    assert chat.history._initial_v2_barrier.result() == "fresh"
+    assert chat.history._initial_history_initialized
     assert [entry.message.content for entry in chat._transcript.read()] == [
         "initial message"
     ]
 
 
 @pytest.mark.anyio
-async def test_v2_initial_messages_suppress_restored_decision() -> None:
+async def test_v2_initial_messages_are_suppressed_before_restored_decision() -> None:
     chat_id = "initial_messages_restored"
     session = _LiveSession()
     handlers: dict[str, Callable[[], Awaitable[None]]] = {}
@@ -860,12 +746,9 @@ async def test_v2_initial_messages_suppress_restored_decision() -> None:
                 scope="test",
                 restore_mode="none",
             ),
-        )
+    )
 
     try:
-        barrier = chat.history._initial_v2_barrier
-        assert barrier is not None
-        barrier.set_result("restored")
         with session_context(cast(Any, session)), reactive.isolate():
             await handlers["_init_chat"]()
         assert chat._transcript.read() == ()
@@ -910,11 +793,10 @@ async def test_v2_initial_messages_suppress_real_restored_target() -> None:
         finally:
             chat.destroy()
 
-    assert chat.history._initial_v2_barrier is not None
-    assert chat.history._initial_v2_barrier.result() == "restored"
+    assert chat.history._initial_history_initialized
     assert [
         entry.message.content for entry in chat._transcript.read()
-    ] == []
+    ] == ["constructor message"]
 
 
 @pytest.mark.anyio
@@ -1086,8 +968,7 @@ async def test_v2_stale_server_bookmark_pointer_notifies_and_keeps_draft() -> No
     assert controller.record is None
     assert controller._exchange_recorder is not None
     assert controller._exchange_recorder.record is None
-    assert chat.history._initial_v2_barrier is not None
-    assert chat.history._initial_v2_barrier.result() == "fresh"
+    assert chat.history._initial_history_initialized
     assert chat.messages() == ()
     notification.assert_called_once()
 
@@ -1204,8 +1085,7 @@ async def test_v2_initial_restore_preflight_failure_recovers(
     assert len(updates) == 1
     assert updates[0]["active_id"] is None
     assert updates[0]["transition_protocol"] == "completion-v2"
-    assert chat.history._initial_v2_barrier is not None
-    assert chat.history._initial_v2_barrier.result() == "fresh"
+    assert chat.history._initial_history_initialized
     notifier.assert_awaited_once_with(recovery_incomplete=False)
     with session_context(cast(Any, session)), reactive.isolate():
         await chat._record_accepted_user_input_with_capture(
@@ -1285,8 +1165,7 @@ async def test_v2_initial_restore_preflight_cancellation_recovers_once() -> None
     assert len(updates) == 1
     assert updates[0]["active_id"] is None
     assert updates[0]["transition_protocol"] == "completion-v2"
-    assert chat.history._initial_v2_barrier is not None
-    assert chat.history._initial_v2_barrier.result() == "fresh"
+    assert chat.history._initial_history_initialized
     notifier.assert_awaited_once_with(recovery_incomplete=False)
 
     with session_context(cast(Any, session)), reactive.isolate():
@@ -1388,8 +1267,7 @@ async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> No
     ]
     assert len(updates) == 1
     assert updates[0]["active_id"] is None
-    assert chat.history._initial_v2_barrier is not None
-    assert chat.history._initial_v2_barrier.result() == "fresh"
+    assert chat.history._initial_history_initialized
     notifier.assert_awaited_once_with(recovery_incomplete=False)
 
     with (

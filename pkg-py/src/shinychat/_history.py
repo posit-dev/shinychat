@@ -2076,7 +2076,9 @@ class ChatHistory:
         self._restore_bootstrap: "Literal['recorded', 'live']" = (
             cfg.restore_bootstrap
         )
-        self._initial_v2_barrier: "asyncio.Future[Literal['fresh', 'restored']] | None" = None
+        # This is the initial history effect's existing completion fact. V2
+        # admission reads it synchronously at its three entry points.
+        self._initial_history_initialized = False
 
     def enable(self) -> None:
         """Enable chat history for the current session. No-op if already started."""
@@ -2105,53 +2107,6 @@ class ChatHistory:
         if on_end is not None:
             on_end()
         self._on_session_end = None
-        self._terminate_initial_v2_barrier()
-
-    def _install_initial_v2_barrier(self) -> None:
-        self._initial_v2_barrier = asyncio.get_running_loop().create_future()
-
-    async def _await_initial_v2_decision(
-        self,
-    ) -> Literal["fresh", "restored"] | None:
-        barrier = self._initial_v2_barrier
-        if barrier is None:
-            return None
-        if barrier.done():
-            return await asyncio.shield(barrier)
-        if self._restore_mode in ("browser", "url"):
-            from shiny import req
-            from shiny.reactive._core import get_current_context
-            from shiny.reactive._extended_task import DenialContext
-
-            ids = HistoryInputIds.for_chat(self._chat.id)
-            try:
-                token = self._chat._session.input[ids.browser_token]()
-            except RuntimeError:
-                # Nonreactive/manual callers have no context; ExtendedTasks
-                # use DenialContext to reject reactive-source reads. Neither
-                # participates in the sequential initial flush.
-                try:
-                    context = get_current_context()
-                except RuntimeError:
-                    pass
-                else:
-                    if not isinstance(context, DenialContext):
-                        raise
-            else:
-                req(token)
-        return await asyncio.shield(barrier)
-
-    def _resolve_initial_v2_barrier(
-        self, outcome: Literal["fresh", "restored"]
-    ) -> None:
-        barrier = self._initial_v2_barrier
-        if barrier is not None and not barrier.done():
-            barrier.set_result(outcome)
-
-    def _terminate_initial_v2_barrier(self) -> None:
-        barrier = self._initial_v2_barrier
-        if barrier is not None and not barrier.done():
-            barrier.cancel()
 
     def conversation_id(self) -> str | None:
         """
@@ -2309,7 +2264,6 @@ class ChatHistory:
                 on_stream_updated=controller._exchange_recorder.stream_updated,
                 on_stream_finished=controller._exchange_recorder.stream_finished,
             )
-            self._install_initial_v2_barrier()
 
         if restore_mode == "url":
 
@@ -2507,22 +2461,17 @@ class ChatHistory:
             with session_context(session):
                 shiny_ui.notification_show(f"{prefix}: {e}", type="error")
 
-        initialized = False
-
         async def finish_initial(restored: bool) -> None:
-            nonlocal initialized
-            initialized = True
-            self._resolve_initial_v2_barrier(
-                "restored" if restored else "fresh"
-            )
+            # Every initial path sends its authoritative history_update before
+            # calling this helper.
+            self._initial_history_initialized = True
             await controller.notify_settled(restored)
 
         @reactive.effect(
             priority=10_000 if controller._exchange_recorder is not None else 0
         )
         async def _init_history():
-            nonlocal initialized
-            if initialized:
+            if self._initial_history_initialized:
                 return
 
             async def restore_initial_v2(
@@ -2530,7 +2479,6 @@ class ChatHistory:
                 *,
                 node_id: str | None = None,
             ) -> None:
-                nonlocal initialized
                 try:
                     await controller._restore_initial_exchange_record(
                         target, node_id=node_id
@@ -2629,8 +2577,8 @@ class ChatHistory:
             # Reading these inputs may raise SilentException if the browser
             # hasn't sent them yet (they're delivered after Shiny's
             # initializedPromise resolves, which is after the first flush).
-            # Keep initialized=False until after send_history_update() so
-            # the effect retries correctly on the next flush rather than
+            # Keep the initial readiness false until after send_history_update()
+            # so the effect retries correctly on the next flush rather than
             # exiting early via the guard above.
             if restore_mode == "url":
                 raw = chat._session.input[ids.url_id]()
@@ -2823,7 +2771,6 @@ class ChatHistory:
             # tracked state truthful so a later `_teardown()` won't re-run.
             self._session_end_cancel = None
             self._on_session_end = None
-            self._terminate_initial_v2_barrier()
             if stamp_cancel is not None:
                 stamp_cancel()
             cancel_response_settlement()

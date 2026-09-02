@@ -106,9 +106,12 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         recorder = controller._exchange_recorder
         assert recorder is not None
         record = recorder.record
-        assert record is not None
-        active_id = record.active_leaf
-        active = record.nodes[active_id] if active_id is not None else None
+        active_id = record.active_leaf if record is not None else None
+        active = (
+            record.nodes[active_id]
+            if record is not None and active_id is not None
+            else None
+        )
         startup_exchange_value.set(
             json.dumps(
                 {

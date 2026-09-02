@@ -438,11 +438,6 @@ class Chat:
             async def _append_init_messages(
                 transaction: object | None = None,
             ) -> None:
-                if messages and (
-                    await self.history._await_initial_v2_decision()
-                    == "restored"
-                ):
-                    return
                 for msg in messages:
                     await self._append_complete_message(
                         msg, settle=False, transaction=transaction
@@ -513,6 +508,13 @@ class Chat:
                 user_text = data.get("userText", "")
                 echo = bool(data.get("echo", True))
                 try:
+                    controller = self.history._controller
+                    if (
+                        controller is not None
+                        and controller._exchange_recorder is not None
+                        and not self.history._initial_history_initialized
+                    ):
+                        return
                     if echo:
                         full_text = f"/{command} {user_text}".rstrip()
                         msg = ChatMessage(content=full_text, role="user")
@@ -1123,7 +1125,13 @@ class Chat:
         settle: bool,
         transaction: object | None = None,
     ) -> None:
-        await self.history._await_initial_v2_decision()
+        controller = self.history._controller
+        if (
+            controller is not None
+            and controller._exchange_recorder is not None
+            and not self.history._initial_history_initialized
+        ):
+            return
         exchange_id = self._transcript.open_exchange_id
         transaction, release = self._transcript._use_transaction(
             transaction, self._transcript._reserve_complete_append
@@ -1334,7 +1342,13 @@ class Chat:
     ) -> bool:
         # Normalize various message types into a ChatMessage()
         if chunk == "start":
-            await self.history._await_initial_v2_decision()
+            controller = self.history._controller
+            if (
+                controller is not None
+                and controller._exchange_recorder is not None
+                and not self.history._initial_history_initialized
+            ):
+                return False
             exchange_id = self._transcript.open_exchange_id
             transaction = self._transcript._reserve_stream_start()
             try:
@@ -1629,6 +1643,14 @@ class Chat:
             stream.
         """
         from shiny import reactive
+
+        controller = self.history._controller
+        if (
+            controller is not None
+            and controller._exchange_recorder is not None
+            and not self.history._initial_history_initialized
+        ):
+            return None
 
         message = _utils.wrap_async_iterable(message)
 
@@ -2184,6 +2206,13 @@ class Chat:
             raise RuntimeError(
                 "Cannot accept user input while switching conversations."
             )
+        controller = self.history._controller
+        if (
+            controller is not None
+            and controller._exchange_recorder is not None
+            and not self.history._initial_history_initialized
+        ):
+            return
         stored = self._as_stored_message(message)
         self._transcript.record_accepted_input(stored)
         self._publish_accepted_user_input(stored)
@@ -2198,7 +2227,13 @@ class Chat:
             raise RuntimeError(
                 "Cannot accept user input while switching conversations."
             )
-        await self.history._await_initial_v2_decision()
+        controller = self.history._controller
+        if (
+            controller is not None
+            and controller._exchange_recorder is not None
+            and not self.history._initial_history_initialized
+        ):
+            return
         stored = self._as_stored_message(message)
         await self._transcript.record_accepted_input_and_notify(stored)
         self._publish_accepted_user_input(
