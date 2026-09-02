@@ -761,3 +761,11 @@ failure chained. Evidence covers projection-only failure, both failure, and
 publication-only failure with the sibling persisted. Focused/full controller
 tests, format, Pyright, diff, and independent closing review are green with
 no findings. No new decision was required.
+
+Task review 1193 proposed making degraded-warning delivery best-effort. This
+finding is declined because it conflicts with the approved P5.2 boundary:
+restore-send failures remain fail-closed through fresh-draft recovery, and
+the warning is part of successful degraded restore before authoritative gate
+release. A failed warning send therefore remains a restore transport failure;
+it must not silently publish a display-restored state that omitted its required
+model-context warning.
