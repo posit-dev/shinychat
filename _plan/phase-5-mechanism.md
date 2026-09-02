@@ -97,12 +97,18 @@ Await that shared barrier immediately before each capture reservation:
    reservation.
 
 Each waiter must shield (or equivalently isolate) the shared barrier so an
-individual cancellation cannot cancel it. Session teardown cancels/releases
-all barrier waiters. A post-commit recorder callback is too late. The barrier
-never wraps `_send_action`; greeting and bookkeeping remain excluded exactly
-as in Phase 3. Restore replay bypasses naturally because its internal replay
-path does not enter these admission paths, never because an arbitrary
-destructive transaction owner is exempt.
+individual cancellation cannot cancel it. Session teardown must terminate the
+shared barrier itself and cancel/release its blocked waiter tasks; shielding
+does not keep teardown-owned tasks alive. No teardown path may publish a
+client release after the session is gone. A post-commit recorder callback is
+too late. The barrier never wraps `_send_action`; greeting and bookkeeping
+remain excluded exactly as in Phase 3. Restore replay bypasses naturally
+through the existing `_replay_exchange_display()` ->
+`Chat._restore_bookmark_message()` route: that private restore append uses the
+existing destructive transaction and direct transcript reservation rather than
+any of the three admission methods above. Do not route replay through public
+`_append_complete_message()` or root-stream start, and do not infer a bypass
+from arbitrary destructive-transaction ownership.
 
 Resolve the barrier only after the no-target/success result or approved
 fresh-draft cleanup **and** the authoritative `history_update`. A live-session
@@ -111,14 +117,15 @@ waiters; teardown cancellation ends the barrier without a client release.
 This preserves the existing fresh-draft failure contract and gives the client
 one authoritative release path.
 
-Manual startup `chat.append_*()` calls wait at the relevant reservation and
-then execute after either live decision. Deprecated `Chat(messages=...)`
-observes the one-shot result: it runs for no-target/fresh-draft and is
-suppressed after successful target restore, preserving its previous
-no-duplicate behavior. Python v1 and history-disabled modes create no server
-barrier; their existing first `history_update` withdraws the conservative
-client seed, with the authorized brief initial delay. R creates no seed or
-barrier and remains unchanged.
+For Python v2, manual startup `chat.append_*()` calls wait at the relevant
+reservation and then execute after either live decision. The v2
+`Chat(messages=...)` initialization effect must likewise wait for the
+one-shot result: it runs for no-target/fresh-draft and is suppressed after
+successful target restore, preserving its previous no-duplicate behavior.
+Python v1 and history-disabled modes create no server barrier and retain their
+existing constructor-message ordering; their existing first
+`history_update` withdraws the conservative client seed, with the authorized
+brief initial delay. R creates no seed or barrier and remains unchanged.
 
 Every Python `chat_ui()` emits the private static attribute
 `data-shinychat-history-transition-protocol="completion-v2"` before
