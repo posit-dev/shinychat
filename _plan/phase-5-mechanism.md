@@ -637,3 +637,13 @@ malformed state still fails closed before capture or mutation.
 Self-review: 100/100 (25/25 each). The patch reuses the one branch primitive,
 closes every resubmit entry point, preserves strict/degraded classification,
 and adds no state, hook, owner, or lifecycle behavior.
+
+P5.2 resubmit hardening landed in `a252e9ac`: `resubmit()` now validates every
+active-path envelope and turn payload before classifying the effective turn
+suffix. Retry, edit, and regenerate consequently share immutable degraded
+target handling, retained live baseline, reset capture baseline, and ordinary
+non-turn parent rewind; compatible paths and the pre-mutation
+incompatible-parent rejection remain unchanged. Focused and full controller
+and chat-history tests, the history/transcript gate, format, Pyright, and diff
+checks passed. Independent review found no defects; no further P5.2 mechanism
+decision is pending.
