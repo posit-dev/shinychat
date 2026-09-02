@@ -87,6 +87,7 @@ class StatePathContext:
     entries: tuple[tuple[str, StateEntry], ...]
     bootstrap: Literal["recorded", "live"]
     prepared_turns: list[dict[str, Any]] | None = None
+    turns_unavailable: bool = False
 
 
 RestoreHook = Callable[[StatePathContext], Awaitable[None] | None]
@@ -381,9 +382,45 @@ class _ExchangeRecorder:
             else:
                 node.state[name] = entry
 
+    @staticmethod
+    def _effective_turn_entries(
+        context: StatePathContext,
+    ) -> tuple[tuple[str, StateEntry], ...]:
+        last_snapshot = -1
+        for index, (_, entry) in enumerate(context.entries):
+            if entry.mode == "snapshot":
+                last_snapshot = index
+        return context.entries[last_snapshot if last_snapshot >= 0 else 0 :]
+
+    def _turn_entries_are_incompatible(
+        self, entries: tuple[tuple[str, StateEntry], ...]
+    ) -> bool:
+        expected_kind = (
+            "chatlas"
+            if getattr(self._controller.adapter, "is_chatlas", lambda: False)()
+            else "turns"
+        )
+        for _, entry in entries:
+            if entry.kind != expected_kind or entry.version != 1:
+                return True
+            if expected_kind == "chatlas":
+                from chatlas import Turn
+
+                try:
+                    for turn in cast(list[dict[str, Any]], entry.data):
+                        Turn.model_validate(turn)
+                except (TypeError, ValueError):
+                    return True
+        return False
+
+    def _turns_are_incompatible(self, context: StatePathContext) -> bool:
+        return self._turn_entries_are_incompatible(
+            self._effective_turn_entries(context)
+        )
+
     def _materialize_restore_turns(
         self, context: StatePathContext
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], bool]:
         adapter = self._controller.adapter
         include_system_prompt = getattr(adapter, "is_chatlas", lambda: False)()
         turns = (
@@ -392,19 +429,17 @@ class _ExchangeRecorder:
             else []
         )
         root_id = context.node_ids[0]
-        expected_kind = "chatlas" if include_system_prompt else "turns"
-        for node_id, entry in context.entries:
-            if entry.kind != expected_kind or entry.version != 1:
-                raise ValueError(
-                    "Unsupported shinychat:turns state entry "
-                    f"({entry.kind!r}, version {entry.version!r})."
-                )
+        for _, entry in context.entries:
             if not isinstance(entry.data, list) or not all(
                 isinstance(turn, dict) for turn in entry.data
             ):
                 raise ValueError(
                     "Turn-state entries must contain a list of JSON objects."
                 )
+        if self._turns_are_incompatible(context):
+            return self._canonical_turns(turns)[0], True
+
+        for node_id, entry in self._effective_turn_entries(context):
             entry_turns = cast(list[dict[str, Any]], entry.data)
             if (
                 context.bootstrap == "live"
@@ -417,13 +452,18 @@ class _ExchangeRecorder:
             else:
                 turns.extend(entry_turns)
 
-        return self._canonical_turns(turns)[0]
+        return self._canonical_turns(turns)[0], False
 
     async def _restore_turns(self, context: StatePathContext) -> None:
         if context.prepared_turns is None:
             raise RuntimeError("Turns must be materialized before restore.")
         turns = context.prepared_turns
         adapter = self._controller.adapter
+        if context.turns_unavailable:
+            if context.bootstrap == "recorded":
+                adapter.set_turns_json([])
+            self._set_turn_baseline(turns)
+            return
         adapter.set_turns_json(turns)
         self._set_turn_baseline(turns)
 
@@ -480,9 +520,13 @@ class _ExchangeRecorder:
                 bootstrap=bootstrap,
             )
             if name == "shinychat:turns" and bootstrap == "recorded":
+                prepared_turns, turns_unavailable = (
+                    self._materialize_restore_turns(context)
+                )
                 context = dataclasses.replace(
                     context,
-                    prepared_turns=self._materialize_restore_turns(context),
+                    prepared_turns=prepared_turns,
+                    turns_unavailable=turns_unavailable,
                 )
             planned.append((name, hook, context))
         return tuple(planned)
@@ -494,12 +538,23 @@ class _ExchangeRecorder:
         for name, hook, context in planned:
             prepared_context = context
             if name == "shinychat:turns":
+                prepared_turns, turns_unavailable = (
+                    self._materialize_restore_turns(context)
+                )
                 prepared_context = dataclasses.replace(
                     context,
-                    prepared_turns=self._materialize_restore_turns(context),
+                    prepared_turns=prepared_turns,
+                    turns_unavailable=turns_unavailable,
                 )
             materialized.append((name, hook, prepared_context))
         return tuple(materialized)
+
+    @staticmethod
+    def _turns_unavailable(planned: RestorePlan) -> bool:
+        return any(
+            name == "shinychat:turns" and context.turns_unavailable
+            for name, _, context in planned
+        )
 
     async def _restore_state(self, planned: RestorePlan) -> None:
         for _, hook, context in planned:
@@ -537,9 +592,12 @@ class _ExchangeRecorder:
                 bootstrap="recorded",
             )
             if name == "shinychat:turns":
+                if self._turn_entries_are_incompatible(context.entries):
+                    raise ValueError("Unsupported shinychat:turns state entry.")
+                prepared_turns, _ = self._materialize_restore_turns(context)
                 context = dataclasses.replace(
                     context,
-                    prepared_turns=self._materialize_restore_turns(context),
+                    prepared_turns=prepared_turns,
                 )
             planned.append((name, hook, context))
         return tuple(planned)
@@ -1246,6 +1304,16 @@ class HistoryController:
                 type="error",
             )
 
+    async def _notify_turns_unavailable(self) -> None:
+        from shiny import ui as shiny_ui
+        from shiny.session import session_context
+
+        with session_context(self.chat._session):
+            shiny_ui.notification_show(
+                "Conversation display was restored, but model context was unavailable.",
+                type="warning",
+            )
+
     async def _clear_failed_restore(self) -> None:
         recorder = self._exchange_recorder
         assert recorder is not None
@@ -1356,6 +1424,8 @@ class HistoryController:
             self._restore_app_state(target.values or {})
             await self._send_exchange_metadata()
             await self._send_sibling_metadata()
+            if recorder._turns_unavailable(planned_state):
+                await self._notify_turns_unavailable()
             await self.send_history_update()
         except BaseException:
             await self._clear_failed_restore()

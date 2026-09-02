@@ -1190,10 +1190,10 @@ async def test_v2_restore_materializes_turn_path_once_and_resets_baseline():
     )
     root = record.nodes["n_0000"]
     root.state["shinychat:turns"] = StateEntry(
-        kind="turns",
-        version=1,
+        kind="unsupported",
+        version=2,
         mode="snapshot",
-        data=[{"role": "system", "content": "root"}],
+        data=[{"role": "system", "content": "superseded"}],
     )
     record.open_exchange("n_0001", _stored_message("user", "first"))
     record.nodes["n_0001"].state["shinychat:turns"] = StateEntry(
@@ -2474,14 +2474,6 @@ def _install_live_v2_record(
     "invalid",
     [
         ("unknown", StateEntry(kind="test", version=1, mode="delta", data={})),
-        (
-            "kind",
-            StateEntry(kind="unsupported", version=1, mode="snapshot", data=[]),
-        ),
-        (
-            "version",
-            StateEntry(kind="turns", version=2, mode="snapshot", data=[]),
-        ),
         ("mode", StateEntry(kind="turns", version=1, mode="snapshot", data=[])),
         ("data", StateEntry(kind="turns", version=1, mode="snapshot", data=[])),
     ],
@@ -2521,6 +2513,123 @@ async def test_v2_restore_preflight_failure_leaves_live_state_untouched(
     assert fake_chat.messages == [_stored_message("assistant", "live")]
     assert adapter.set_calls == []
     notifier.assert_not_awaited()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("incompatibility", ["kind", "version", "content"])
+async def test_v2_restore_degrades_effective_turns_and_keeps_exchange_usable(
+    incompatibility: str,
+) -> None:
+    adapter = _TrackingFakeAdapter(chatlas=incompatibility == "content")
+    controller, _ = _make_controller(
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    target = _restore_target()
+    exchange_id = "n_0001"
+    target.nodes[exchange_id].status = "error"
+    entry = target.nodes["n_0000"].state["shinychat:turns"]
+    if incompatibility == "kind":
+        entry.kind = "unsupported"
+    elif incompatibility == "version":
+        entry.version = 2
+    else:
+        entry.kind = "chatlas"
+        entry.data = [{"role": "not-a-chatlas-role"}]
+    target_before = target.model_copy(deep=True)
+    events: list[str] = []
+
+    async def warn() -> None:
+        events.append("warning")
+
+    async def publish() -> None:
+        events.append("history_update")
+
+    controller._notify_turns_unavailable = warn  # type: ignore[method-assign]
+    controller.send_history_update = publish  # type: ignore[method-assign]
+
+    await controller.replay_exchange_record(target)
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    fake_chat = cast(_FakeChat, controller.chat)
+    assert recorder.record is target
+    assert controller._active_id_now() == target.id
+    assert [message["role"] for message in fake_chat.restored_messages] == [
+        "user",
+        "assistant",
+        "assistant",
+    ]
+    assert adapter.set_calls == [[]]
+    assert adapter.turns == []
+    assert target == target_before
+    assert events == ["warning", "history_update"]
+    assert {
+        "type": "update_exchange_metadata",
+        "data": {0: {"status": "error", "retryable": True}},
+    } in fake_chat.actions
+
+    adapter.turns = [{"role": "user", "content": "continued"}]
+    if incompatibility == "content":
+        adapter.system_turns = list(adapter.turns)
+    await recorder._capture_state(exchange_id, "node_close")
+    continued = target.nodes[exchange_id].state["shinychat:turns"]
+    assert continued.mode == "delta"
+    assert continued.data == [{"role": "user", "content": "continued"}]
+
+
+@pytest.mark.anyio
+async def test_v2_degraded_live_restore_retains_live_baseline() -> None:
+    adapter = _TrackingFakeAdapter()
+    adapter.turns = [{"role": "system", "content": "live"}]
+    controller, _ = _make_controller(
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    controller.restore_bootstrap = "live"
+    target = _restore_target()
+    target.nodes["n_0000"].state["shinychat:turns"].version = 2
+    events: list[str] = []
+
+    async def warn() -> None:
+        events.append("warning")
+
+    async def publish() -> None:
+        events.append("history_update")
+
+    controller._notify_turns_unavailable = warn  # type: ignore[method-assign]
+    controller.send_history_update = publish  # type: ignore[method-assign]
+
+    await controller.replay_exchange_record(target)
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    assert recorder.record is target
+    assert adapter.set_calls == []
+    assert adapter.turns == [{"role": "system", "content": "live"}]
+    assert events == ["warning", "history_update"]
+
+    adapter.turns.append({"role": "user", "content": "continued"})
+    await recorder._capture_state("n_0001", "node_close")
+    continued = target.nodes["n_0001"].state["shinychat:turns"]
+    assert continued.mode == "delta"
+    assert continued.data == [{"role": "user", "content": "continued"}]
+
+
+@pytest.mark.anyio
+async def test_v2_degraded_restore_warning_is_provider_neutral() -> None:
+    controller, _ = _make_controller(use_exchange_tree=True)
+    fake_chat = cast(_FakeChat, controller.chat)
+    fake_chat._session = _RealHistorySession()  # type: ignore[attr-defined]
+    notification = MagicMock()
+
+    with patch("shiny.ui.notification_show", notification):
+        await controller._notify_turns_unavailable()
+
+    notification.assert_called_once_with(
+        "Conversation display was restored, but model context was unavailable.",
+        type="warning",
+    )
 
 
 @pytest.mark.anyio
