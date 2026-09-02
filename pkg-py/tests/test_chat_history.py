@@ -571,6 +571,16 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
                 break
             await asyncio.sleep(0.01)
         assert stream_status == "success"
+        assert recorder.record is not None
+        stream_root_id = recorder.record.active_leaf
+        assert stream_root_id is not None
+        stream_root = recorder.record.nodes[stream_root_id]
+        assert stream_root.input is None
+        assert stream_root.status == "ok"
+        assert [
+            message.as_stored_message().content
+            for message in cast(Any, stream_root).messages
+        ] == ["root captured public stream"]
 
         async with chat.message_stream_context() as stream:
             await stream.append("root captured stream append")
@@ -782,6 +792,10 @@ async def test_v2_successful_bookmark_pointer_suppresses_then_admits_root_append
 
         assert chat.history._initial_history_initialized
         assert len(_history_updates(session)) == 1
+        assert recorder.record is not None
+        assert recorder.record.id == "c_target"
+        assert recorder.record.active_leaf == "n_0000"
+        assert controller._active_id_now() == "c_target"
 
         await chat.append_message("admitted bookmark append")
         assert recorder.record is not None
