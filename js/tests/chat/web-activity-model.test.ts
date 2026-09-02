@@ -8,6 +8,7 @@ import type { ContentBlock, MessageBlock } from "../../src/chat/state"
 import type {
   WebFetchBlock,
   WebSearchBlock,
+  WebSearchCitationsBlock,
   WebSearchResultsBlock,
 } from "../../src/transport/types"
 
@@ -31,6 +32,14 @@ const webFetchBlock = (): WebFetchBlock => ({
   version: 1,
   url: "https://example.net/article",
   status: "success",
+})
+
+const webSearchCitationsBlock = (
+  sources: WebSearchCitationsBlock["sources"],
+): WebSearchCitationsBlock => ({
+  type: "web_search_citations",
+  version: 1,
+  sources,
 })
 
 const contentBlock = (content: string): ContentBlock => ({
@@ -118,6 +127,160 @@ describe("appendWebActivityBlock over Chat MessageBlock lists", () => {
       "content",
       "web_activity",
     ])
+  })
+})
+
+describe("web_search_citations blocks", () => {
+  it("merges sources into the most recent search, backfilling titles by URL", () => {
+    let blocks: MessageBlock[] = []
+    blocks = appendWebActivityBlock(
+      blocks,
+      webSearchBlock(),
+      isWhitespaceContentBlock,
+    )
+    blocks = appendWebActivityBlock(
+      blocks,
+      webSearchCitationsBlock([
+        { url: "https://a.com" },
+        { url: "https://b.com", title: "Beta" },
+      ]),
+      isWhitespaceContentBlock,
+    )
+    blocks = appendWebActivityBlock(
+      blocks,
+      webSearchCitationsBlock([
+        { url: "https://a.com", title: "Alpha" },
+        { url: "https://b.com", title: "Ignored duplicate" },
+      ]),
+      isWhitespaceContentBlock,
+    )
+
+    expect(blocks.map((b) => b.type)).toEqual(["web_activity"])
+    const search = activityOf(blocks).items[0]
+    if (search?.kind !== "search") throw new Error("expected a search item")
+    expect(search.citedSources).toEqual([
+      { url: "https://a.com", title: "Alpha" },
+      { url: "https://b.com", title: "Beta" },
+    ])
+  })
+
+  it("reaches back across prose to the most recent activity's search", () => {
+    let blocks: MessageBlock[] = []
+    blocks = appendWebActivityBlock(
+      blocks,
+      { ...webSearchBlock(), query: "first" },
+      isWhitespaceContentBlock,
+    )
+    blocks = [...blocks, contentBlock("Some prose. ")]
+    blocks = appendWebActivityBlock(
+      blocks,
+      { ...webSearchBlock(), query: "second" },
+      isWhitespaceContentBlock,
+    )
+    blocks = [...blocks, contentBlock("More prose. ")]
+    blocks = appendWebActivityBlock(
+      blocks,
+      webSearchCitationsBlock([{ url: "https://a.com" }]),
+      isWhitespaceContentBlock,
+    )
+
+    expect(blocks.map((b) => b.type)).toEqual([
+      "web_activity",
+      "content",
+      "web_activity",
+      "content",
+    ])
+    const first = blocks[0] as WebActivityBlock
+    const second = blocks[2] as WebActivityBlock
+    expect(first.items[0]).toMatchObject({ citedSources: [] })
+    expect(second.items[0]).toMatchObject({
+      citedSources: [{ url: "https://a.com" }],
+    })
+  })
+
+  it("leaves the list untouched when no search exists", () => {
+    const blocks: MessageBlock[] = [contentBlock("just text")]
+    const out = appendWebActivityBlock(
+      blocks,
+      webSearchCitationsBlock([{ url: "https://a.com" }]),
+      isWhitespaceContentBlock,
+    )
+    expect(out).toEqual(blocks)
+  })
+
+  it("does not break the adjacency run for a following web block", () => {
+    let blocks: MessageBlock[] = []
+    blocks = appendWebActivityBlock(
+      blocks,
+      webSearchBlock(),
+      isWhitespaceContentBlock,
+    )
+    blocks = appendWebActivityBlock(
+      blocks,
+      webSearchCitationsBlock([{ url: "https://a.com" }]),
+      isWhitespaceContentBlock,
+    )
+    blocks = appendWebActivityBlock(
+      blocks,
+      webFetchBlock(),
+      isWhitespaceContentBlock,
+    )
+
+    expect(blocks.map((b) => b.type)).toEqual(["web_activity"])
+    expect(activityOf(blocks).items.map((it) => it.kind)).toEqual([
+      "search",
+      "fetch",
+    ])
+  })
+})
+
+describe("web_search_results pairing", () => {
+  it("attaches results to the search named by search_id", () => {
+    let blocks: MessageBlock[] = []
+    blocks = appendWebActivityBlock(
+      blocks,
+      { ...webSearchBlock(), id: "search-a", query: "query A" },
+      isWhitespaceContentBlock,
+    )
+    blocks = appendWebActivityBlock(
+      blocks,
+      { ...webSearchBlock(), id: "search-b", query: "query B" },
+      isWhitespaceContentBlock,
+    )
+    blocks = appendWebActivityBlock(
+      blocks,
+      { ...webSearchResultsBlock(), search_id: "search-b" },
+      isWhitespaceContentBlock,
+    )
+
+    const [a, b] = activityOf(blocks).items
+    if (a?.kind !== "search" || b?.kind !== "search")
+      throw new Error("expected search items")
+    expect(a.sources).toBeNull()
+    expect(b.sources).toHaveLength(2)
+  })
+
+  it("never falls back to FIFO when a search_id goes unmatched", () => {
+    let blocks: MessageBlock[] = []
+    blocks = appendWebActivityBlock(
+      blocks,
+      { ...webSearchBlock(), id: "search-a", query: "query A" },
+      isWhitespaceContentBlock,
+    )
+    blocks = appendWebActivityBlock(
+      blocks,
+      { ...webSearchResultsBlock(), search_id: "search-gone" },
+      isWhitespaceContentBlock,
+    )
+
+    const items = activityOf(blocks).items
+    const [a, orphan] = items
+    if (a?.kind !== "search" || orphan?.kind !== "search")
+      throw new Error("expected search items")
+    expect(items).toHaveLength(2)
+    expect(a.sources).toBeNull()
+    expect(orphan.query).toBe("")
+    expect(orphan.sources).toHaveLength(2)
   })
 })
 

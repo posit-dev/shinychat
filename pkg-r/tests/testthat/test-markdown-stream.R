@@ -126,10 +126,15 @@ test_that("markdown_stream() sends already-structured blocks", {
     "web_search_results",
     sources = list(list(url = "https://example.com/weather"))
   )
+  citations_block <- new_web_block(
+    "web_search_citations",
+    sources = list(list(url = "https://example.com/cited"))
+  )
   stream <- coro::gen({
     yield("model text ")
     yield(search_block)
     yield(results_block)
+    yield(citations_block)
     yield(" done")
   })
   shiny::withReactiveDomain(mock$session, {
@@ -142,15 +147,16 @@ test_that("markdown_stream() sends already-structured blocks", {
     function(m) if ("block" %in% names(m)) "block" else "content",
     character(1)
   )
-  expect_identical(kinds, c("content", "block", "block", "content"))
+  expect_identical(kinds, c("content", "block", "block", "block", "content"))
 
   expect_identical(msgs[[2]]$block, search_block)
   expect_identical(msgs[[3]]$block, results_block)
+  expect_identical(msgs[[4]]$block, citations_block)
   expect_false("content" %in% names(msgs[[2]]))
   expect_identical(msgs[[2]]$operation, "append")
 
   expect_identical(msgs[[1]]$content, "model text ")
-  expect_identical(msgs[[4]]$content, " done")
+  expect_identical(msgs[[5]]$content, " done")
 
   expect_identical(result, "model text  done")
 })

@@ -101,13 +101,26 @@ export type WebSearchBlock = {
   type: "web_search"
   version: 1
   query: string
-  /** Answer-citation fallback: shown only while no provider results attach. */
-  cited_sources?: WebSearchSource[]
+  /** Provider search id, when the provider supplies one. */
+  id?: string
 }
 
 /** Results paired with a preceding `web_search`. */
 export type WebSearchResultsBlock = {
   type: "web_search_results"
+  version: 1
+  sources: WebSearchSource[]
+  /** `id` of the `web_search` these results answer, when known. */
+  search_id?: string
+}
+
+/**
+ * Answer citations for the most recent `web_search`. A pure data carrier:
+ * the client merges `sources` into that search and renders nothing for the
+ * block itself. Shown only while no provider results attach to the search.
+ */
+export type WebSearchCitationsBlock = {
+  type: "web_search_citations"
   version: 1
   sources: WebSearchSource[]
 }
@@ -139,6 +152,7 @@ export type StructuredBlock =
   | ToolResultBlock
   | WebSearchBlock
   | WebSearchResultsBlock
+  | WebSearchCitationsBlock
   | WebFetchBlock
   | HtmlBlock
 

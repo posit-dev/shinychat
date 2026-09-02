@@ -232,6 +232,7 @@ STREAM_BLOCK_TYPES <- c(
   "html_block",
   "web_search",
   "web_search_results",
+  "web_search_citations",
   "web_fetch"
 )
 
@@ -349,7 +350,8 @@ rlang::on_load(
             "Unsupported structured block in a markdown stream: ",
             if (is.null(block_type)) "NULL" else sprintf("'%s'", block_type),
             ". `markdown_stream()` accepts only html_block and web_* blocks ",
-            "(web_search, web_search_results, web_fetch); other block types ",
+            "(web_search, web_search_results, web_search_citations, ",
+            "web_fetch); other block types ",
             "(e.g. tool blocks) are dropped by the client and so are ",
             "rejected here."
           ))

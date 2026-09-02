@@ -8,7 +8,7 @@ from chatlas.types import (
     ContentToolResponseSearch,
     WebSource,
 )
-from shinychat._chat_normalize import message_content
+from shinychat._chat_normalize import message_content, message_content_chunk
 
 
 def test_search_request_emits_web_search_block():
@@ -163,7 +163,71 @@ def test_citation_without_source_renders_nothing():
     assert msg.content == ""
 
 
-def test_turn_search_with_citations_but_no_results_carries_cited_sources():
+def test_search_request_with_provider_id_emits_it():
+    msg = message_content(
+        ContentToolRequestSearch(
+            query="ggplot2 release date",
+            extra={"type": "server_tool_use", "id": "srvtoolu_123"},
+        )
+    )
+    assert msg.blocks == [
+        {
+            "type": "web_search",
+            "version": 1,
+            "query": "ggplot2 release date",
+            "id": "srvtoolu_123",
+        }
+    ]
+
+
+def test_search_response_with_provider_id_emits_search_id():
+    msg = message_content(
+        ContentToolResponseSearch(
+            sources=[WebSource(url="https://a.com")],
+            extra={
+                "type": "web_search_tool_result",
+                "tool_use_id": "srvtoolu_123",
+            },
+        )
+    )
+    assert msg.blocks == [
+        {
+            "type": "web_search_results",
+            "version": 1,
+            "sources": [{"url": "https://a.com"}],
+            "search_id": "srvtoolu_123",
+        }
+    ]
+
+
+def test_citation_emits_citations_block_alongside_aside():
+    msg = message_content(
+        ContentCitation(
+            source=WebSource(url="https://a.com", title="Alpha"),
+        )
+    )
+    assert msg.blocks == [
+        {
+            "type": "web_search_citations",
+            "version": 1,
+            "sources": [{"url": "https://a.com", "title": "Alpha"}],
+        }
+    ]
+    assert "data-citation" in msg.content
+
+
+def test_citation_chunk_matches_complete_message():
+    citation = ContentCitation(
+        source=WebSource(url="https://a.com", title="Alpha"),
+        grounded_span="answer text",
+    )
+    chunk = message_content_chunk(citation)
+    complete = message_content(citation)
+    assert chunk.blocks == complete.blocks
+    assert chunk.content == complete.content
+
+
+def test_turn_search_with_citations_emits_citation_blocks_in_order():
     msg = message_content(
         Turn(
             [
@@ -180,22 +244,34 @@ def test_turn_search_with_citations_but_no_results_carries_cited_sources():
             role="assistant",
         )
     )
-    search_blocks = [b for b in msg.blocks if b["type"] == "web_search"]
-    assert search_blocks == [
+    assert msg.blocks == [
         {
             "type": "web_search",
             "version": 1,
             "query": "ggplot2 release date",
-            "cited_sources": [
-                {"url": "https://a.com", "title": "Alpha"},
-                {"url": "https://b.com", "title": "Beta"},
-            ],
-        }
+        },
+        {
+            "type": "web_search_citations",
+            "version": 1,
+            "sources": [{"url": "https://a.com", "title": "Alpha"}],
+        },
+        {
+            "type": "web_search_citations",
+            "version": 1,
+            "sources": [{"url": "https://b.com"}],
+        },
+        {
+            "type": "web_search_citations",
+            "version": 1,
+            "sources": [{"url": "https://b.com", "title": "Beta"}],
+        },
     ]
     assert msg.content.count("data-citation") == 3
 
 
-def test_turn_search_with_results_does_not_carry_cited_sources():
+def test_turn_search_with_results_still_emits_citation_blocks():
+    # The client hides cited sources once provider results attach; the
+    # server emits them unconditionally so stream and replay agree.
     msg = message_content(
         Turn(
             [
@@ -208,53 +284,17 @@ def test_turn_search_with_results_does_not_carry_cited_sources():
             role="assistant",
         )
     )
-    search_blocks = [b for b in msg.blocks if b["type"] == "web_search"]
-    assert search_blocks == [
-        {
-            "type": "web_search",
-            "version": 1,
-            "query": "ggplot2 release date",
-        }
+    assert [b["type"] for b in msg.blocks] == [
+        "web_search",
+        "web_search_results",
+        "web_search_citations",
     ]
 
 
-def test_two_bursts_second_has_citations_no_results_carries_cited_sources():
-    msg = message_content(
-        Turn(
-            [
-                # Burst 1: search request + provider results → satisfied.
-                ContentToolRequestSearch(query="first query"),
-                ContentToolResponseSearch(
-                    sources=[
-                        WebSource(url="https://results.com", title="Results")
-                    ]
-                ),
-                ContentText(text="First answer. "),
-                # Burst 2: search request, no results, but citations follow.
-                ContentToolRequestSearch(query="second query"),
-                ContentText(text="Second answer "),
-                ContentCitation(
-                    source=WebSource(url="https://a.com", title="Alpha")
-                ),
-                ContentCitation(source=WebSource(url="https://b.com")),
-                ContentCitation(
-                    source=WebSource(url="https://b.com", title="Beta")
-                ),
-            ],
-            role="assistant",
-        )
-    )
-    search_blocks = [b for b in msg.blocks if b["type"] == "web_search"]
-    assert len(search_blocks) == 2
-    assert "cited_sources" not in search_blocks[0]
-    assert search_blocks[1].get("cited_sources") == [
-        {"url": "https://a.com", "title": "Alpha"},
-        {"url": "https://b.com", "title": "Beta"},
-    ]
-    assert msg.content.count("data-citation") == 3
-
-
-def test_citations_before_any_search_request_not_attached():
+def test_citations_before_any_search_request_still_emit_blocks():
+    # Pairing is the client's job; a citations block with no preceding
+    # search is dropped there, never filtered here (the chunk path
+    # couldn't know).
     msg = message_content(
         Turn(
             [
@@ -266,24 +306,11 @@ def test_citations_before_any_search_request_not_attached():
             role="assistant",
         )
     )
-    search_blocks = [b for b in msg.blocks if b["type"] == "web_search"]
-    assert len(search_blocks) == 1
-    assert "cited_sources" not in search_blocks[0]
+    assert [b["type"] for b in msg.blocks] == [
+        "web_search_citations",
+        "web_search",
+    ]
     assert msg.content.count("data-citation") == 1
-
-
-def test_turn_citations_without_search_stay_markup_only():
-    msg = message_content(
-        Turn(
-            [
-                ContentText(text="Hello "),
-                ContentCitation(source=WebSource(url="https://a.com")),
-            ],
-            role="assistant",
-        )
-    )
-    assert msg.blocks == []
-    assert "data-citation" in msg.content
 
 
 def test_tool_display_none_suppresses(monkeypatch):
@@ -306,7 +333,9 @@ def test_tool_display_none_suppresses(monkeypatch):
     )
 
 
-def test_overlapping_pending_searches_results_pair_fifo():
+def test_overlapping_pending_searches_emit_blocks_without_pairing():
+    # Results↔search pairing (by search_id, else earliest pending) is
+    # single-sourced in the client; the server just emits blocks in order.
     msg = message_content(
         Turn(
             [
@@ -323,9 +352,9 @@ def test_overlapping_pending_searches_results_pair_fifo():
             role="assistant",
         )
     )
-    search_blocks = [b for b in msg.blocks if b["type"] == "web_search"]
-    assert len(search_blocks) == 2
-    assert "cited_sources" not in search_blocks[0]
-    assert search_blocks[1].get("cited_sources") == [
-        {"url": "https://b.com", "title": "Beta"},
+    assert [b["type"] for b in msg.blocks] == [
+        "web_search",
+        "web_search",
+        "web_search_results",
+        "web_search_citations",
     ]

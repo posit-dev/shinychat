@@ -2,6 +2,7 @@ import type {
   StructuredBlock,
   WebFetchBlock,
   WebSearchBlock,
+  WebSearchCitationsBlock,
   WebSearchResultsBlock,
   WebSearchSource,
 } from "../transport/types"
@@ -11,6 +12,7 @@ import type { MessageBlock } from "./state"
 export type WebActivityWireBlock =
   | WebSearchBlock
   | WebSearchResultsBlock
+  | WebSearchCitationsBlock
   | WebFetchBlock
 
 /** One cited/result source, shared by the wire and render models. */
@@ -19,11 +21,13 @@ export type WebActivitySource = WebSearchSource
 export interface WebActivitySearchItem {
   kind: "search"
   query: string
+  /** Provider search id, when the wire block carried one. */
+  id?: string
   /** null while the search's results block hasn't arrived (or never will). */
   sources: WebSearchSource[] | null
   /**
    * Answer-citation fallback, shown only while no provider results attach
-   * (sources === null). Populated by a web_search block's `cited_sources`.
+   * (sources === null). Populated by `web_search_citations` blocks.
    */
   citedSources: WebSearchSource[]
 }
@@ -53,6 +57,7 @@ export function isWebActivityWireBlock(
   return (
     type === "web_search" ||
     type === "web_search_results" ||
+    type === "web_search_citations" ||
     type === "web_fetch"
   )
 }
@@ -103,41 +108,97 @@ export function normalizeSources(value: unknown): WebSearchSource[] {
 
 /**
  * Apply one web_* wire block to an activity: a results block attaches its
- * sources to the earliest still-pending search; one arriving with no
- * pending search becomes a query-less search item; a fetch block appends a
+ * sources to the search named by `search_id`, or — only when no id was
+ * sent — to the earliest still-pending search; one arriving with no
+ * matching search becomes a query-less search item; a fetch block appends a
  * standalone item. The pending state lives in the items themselves
  * (sources === null), so pairing works across block_insert boundaries
  * mid-stream.
  */
 export function applyWebBlock(
   activity: WebActivityBlock | null,
-  block: WebActivityWireBlock,
+  block: Exclude<WebActivityWireBlock, WebSearchCitationsBlock>,
 ): WebActivityBlock {
   const items = [...(activity?.items ?? [])]
   if (block.type === "web_search") {
     items.push({
       kind: "search",
       query: block.query,
+      id: block.id,
       sources: null,
-      // Answer-citation fallback. A later results block's sources still win:
-      // the UI reads `sources ?? citedSources`.
-      citedSources: normalizeSources(block.cited_sources),
+      citedSources: [],
     })
   } else if (block.type === "web_search_results") {
     const sources = normalizeSources(block.sources)
-    const pendingIndex = items.findIndex(
-      (it) => it.kind === "search" && it.sources === null,
-    )
-    if (pendingIndex !== -1) {
-      const pending = items[pendingIndex] as WebActivitySearchItem
-      items[pendingIndex] = { ...pending, sources }
+    // An unmatched search_id must not fall back to FIFO: attaching to an
+    // unrelated pending search would misattribute the results.
+    const index =
+      block.search_id !== undefined
+        ? items.findIndex(
+            (it) => it.kind === "search" && it.id === block.search_id,
+          )
+        : items.findIndex((it) => it.kind === "search" && it.sources === null)
+    if (index !== -1) {
+      const search = items[index] as WebActivitySearchItem
+      items[index] = { ...search, sources }
     } else {
       items.push({ kind: "search", query: "", sources, citedSources: [] })
     }
-  } else {
+  } else if (block.type === "web_fetch") {
     items.push({ kind: "fetch", url: block.url, status: block.status })
   }
   return { type: "web_activity", items }
+}
+
+/**
+ * Merge cited sources into a search item's fallback list, by URL (first
+ * occurrence wins; a later title backfills a missing one).
+ */
+function mergeCitedSources(
+  existing: WebSearchSource[],
+  incoming: WebSearchSource[],
+): WebSearchSource[] {
+  const byUrl = new Map(existing.map((s) => [s.url, s]))
+  for (const source of incoming) {
+    const current = byUrl.get(source.url)
+    if (current === undefined) {
+      byUrl.set(source.url, source)
+    } else if (current.title === undefined && source.title !== undefined) {
+      byUrl.set(source.url, { ...current, title: source.title })
+    }
+  }
+  return [...byUrl.values()]
+}
+
+/**
+ * Apply a citations block to the most recent search item in the list,
+ * walking back across activities and intervening content. The block renders
+ * nothing itself, so the list shape is unchanged when no search exists to
+ * receive the sources.
+ */
+function applyWebCitations<T>(
+  blocks: (T | WebActivityBlock)[],
+  block: WebSearchCitationsBlock,
+): (T | WebActivityBlock)[] {
+  const sources = normalizeSources(block.sources)
+  if (sources.length === 0) return blocks
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const candidate = blocks[i]
+    if (!isWebActivityBlock(candidate)) continue
+    const items = [...candidate.items]
+    for (let j = items.length - 1; j >= 0; j--) {
+      const item = items[j]
+      if (item === undefined || item.kind !== "search") continue
+      items[j] = {
+        ...item,
+        citedSources: mergeCitedSources(item.citedSources, sources),
+      }
+      const out = [...blocks]
+      out[i] = { ...candidate, items }
+      return out
+    }
+  }
+  return blocks
 }
 
 /** Structural check for a grouped web-activity block in any block list. */
@@ -159,15 +220,20 @@ export function isWhitespaceContentBlock(
 /**
  * Append one web_* wire block to a block list, grouping into the trailing
  * web activity when reachable — tolerating a whitespace-only separator
- * (dropped; any other block ends the run). Generic over the list's entry
- * shape so Chat (MessageBlock[]) and MarkdownStream (StreamSegment[]) share
- * one implementation.
+ * (dropped; any other block ends the run). A citations block is the
+ * exception: it renders nothing and instead updates the most recent search
+ * item wherever it sits, so it neither joins nor breaks the adjacency run.
+ * Generic over the list's entry shape so Chat (MessageBlock[]) and
+ * MarkdownStream (StreamSegment[]) share one implementation.
  */
 export function appendWebActivityBlock<T>(
   blocks: (T | WebActivityBlock)[],
   block: WebActivityWireBlock,
   isWhitespaceText: (block: T | WebActivityBlock) => boolean,
 ): (T | WebActivityBlock)[] {
+  if (block.type === "web_search_citations") {
+    return applyWebCitations(blocks, block)
+  }
   const out: (T | WebActivityBlock)[] = [...blocks]
   let tail = out[out.length - 1]
   if (tail !== undefined && isWhitespaceText(tail)) {

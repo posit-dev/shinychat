@@ -23,6 +23,7 @@ import type {
   ToolResultBlock,
   WebFetchBlock,
   WebSearchBlock,
+  WebSearchCitationsBlock,
   WebSearchResultsBlock,
 } from "../../src/transport/types"
 import type { ShinyLifecycle, HtmlDep } from "../../src/transport/types"
@@ -83,6 +84,18 @@ const webFetchBlock = (
   version: 1,
   url: "https://example.net/article",
   status: "success",
+  ...overrides,
+})
+
+const webSearchCitationsBlock = (
+  overrides: Partial<WebSearchCitationsBlock> = {},
+): WebSearchCitationsBlock => ({
+  type: "web_search_citations",
+  version: 1,
+  sources: [
+    { url: "https://example.com/cited", title: "Cited page" },
+    { url: "https://example.org/also-cited" },
+  ],
   ...overrides,
 })
 
@@ -933,19 +946,12 @@ describe("structured web_* blocks via message.segments", () => {
     ])
   })
 
-  it("attaches a search block's cited_sources as the cited-sources fallback", () => {
+  it("attaches a citations block's sources as the cited-sources fallback", () => {
     const state = chatReducer(makeState(), {
       type: "message",
       message: {
         role: "assistant",
-        segments: [
-          webSearchBlock({
-            cited_sources: [
-              { url: "https://example.com/cited", title: "Cited page" },
-              { url: "https://example.org/also-cited" },
-            ],
-          }),
-        ],
+        segments: [webSearchBlock(), webSearchCitationsBlock()],
       },
     })
 
@@ -970,14 +976,15 @@ describe("structured web_* blocks via message.segments", () => {
     expect(container.textContent).toContain("Cited page")
   })
 
-  it("results pairing overrides the cited_sources fallback", () => {
+  it("results pairing overrides the cited-sources fallback", () => {
     const state = chatReducer(makeState(), {
       type: "message",
       message: {
         role: "assistant",
         segments: [
-          webSearchBlock({
-            cited_sources: [
+          webSearchBlock(),
+          webSearchCitationsBlock({
+            sources: [
               { url: "https://example.com/cited", title: "Cited page" },
             ],
           }),
@@ -1002,6 +1009,102 @@ describe("structured web_* blocks via message.segments", () => {
     expect(container.textContent).toContain("Duluth weather")
     expect(container.textContent).not.toContain("Cited sources")
     expect(container.textContent).not.toContain("Cited page")
+  })
+
+  it("pairs results with the search named by search_id, not FIFO order", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          webSearchBlock({ id: "search-a", query: "query A" }),
+          webSearchBlock({ id: "search-b", query: "query B" }),
+          webSearchResultsBlock({ search_id: "search-b" }),
+        ],
+      },
+    })
+
+    const activity = state.messages[0]!.blocks[0]!
+    if (activity.type !== "web_activity")
+      throw new Error("expected web_activity")
+    const a = activity.items[0]!
+    const b = activity.items[1]!
+    if (a.kind !== "search" || b.kind !== "search")
+      throw new Error("expected search items")
+    expect(a.sources).toBeNull()
+    expect(b.sources).toHaveLength(2)
+  })
+
+  it("falls back to the earliest pending search when results carry no search_id", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          webSearchBlock({ query: "query A" }),
+          webSearchBlock({ query: "query B" }),
+          webSearchResultsBlock(),
+        ],
+      },
+    })
+
+    const activity = state.messages[0]!.blocks[0]!
+    if (activity.type !== "web_activity")
+      throw new Error("expected web_activity")
+    const a = activity.items[0]!
+    const b = activity.items[1]!
+    if (a.kind !== "search" || b.kind !== "search")
+      throw new Error("expected search items")
+    expect(a.sources).toHaveLength(2)
+    expect(b.sources).toBeNull()
+  })
+
+  it("attaches citations to the most recent search across intervening prose", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          webSearchBlock({ query: "first query" }),
+          webSearchResultsBlock({ sources: [{ url: "https://results.com" }] }),
+          { content: "First answer. ", content_type: "markdown" },
+          webSearchBlock({ query: "second query" }),
+          { content: "Second answer ", content_type: "markdown" },
+          webSearchCitationsBlock({
+            sources: [{ url: "https://example.com/cited", title: "Cited" }],
+          }),
+        ],
+      },
+    })
+
+    const activities = state.messages[0]!.blocks.filter(
+      (b) => b.type === "web_activity",
+    )
+    expect(activities).toHaveLength(2)
+    const first = activities[0]!.items[0]!
+    const second = activities[1]!.items[0]!
+    if (first.kind !== "search" || second.kind !== "search")
+      throw new Error("expected search items")
+    expect(first.citedSources).toEqual([])
+    expect(second.citedSources).toEqual([
+      { url: "https://example.com/cited", title: "Cited" },
+    ])
+  })
+
+  it("drops citations when no search exists and renders nothing for the block", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "just text", content_type: "markdown" },
+          webSearchCitationsBlock(),
+        ],
+      },
+    })
+
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["content"])
   })
 
   it("ignores web blocks with unsupported versions with a warning", () => {
