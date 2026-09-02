@@ -1,10 +1,21 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, AsyncIterable, Callable, Literal, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncIterable,
+    Callable,
+    Literal,
+    Union,
+    cast,
+)
 
 from htmltools import HTML, HTMLDependency, Tag, TagChild, TagList
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from shiny.session import Session
 
 from ._attachments import Attachment
 from ._html_islands import (
@@ -174,9 +185,6 @@ MessagePayloadSegment = Union[StringSegment, StructuredBlock]
 def is_structured_segment(
     seg: MessagePayloadSegment,
 ) -> TypeGuard[StructuredBlock]:
-    # The isinstance guard matters at runtime: `in` on a bare string is
-    # substring matching, so a string segment containing "type" would
-    # otherwise be misclassified as a structured block.
     return isinstance(seg, dict) and "type" in seg
 
 
@@ -767,7 +775,7 @@ class StoredMessage(BaseModel):
 
 def serialize_html_deps(
     deps: list[HTMLDependency] | None,
-    session: Any,
+    session: Session | None,
 ) -> list[SerializedDep] | None:
     """Serialize HTML dependencies through the session's ``_process_ui``.
 
@@ -811,7 +819,9 @@ def _assemble_stored_message(
     return stored
 
 
-def as_stored_message(message: ChatMessage, session: Any) -> StoredMessage:
+def as_stored_message(
+    message: ChatMessage, session: Session | None
+) -> StoredMessage:
     """Assemble a :class:`StoredMessage` from a :class:`ChatMessage`.
 
     This is the in-memory wire assembly shared by live send

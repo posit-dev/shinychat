@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from htmltools import HTMLDependency
 
-from ._chat_types import ContentSegment, ContentType
+from ._chat_types import ContentSegment, ContentType, _SegmentBase
 
 
 def segments_content(segments: list[ContentSegment]) -> str:
@@ -28,7 +30,7 @@ def copy_segments(segments: list[ContentSegment]) -> list[ContentSegment]:
     ]
 
 
-def has_mixed_content_types(segments: list[ContentSegment]) -> bool:
+def has_mixed_content_types(segments: Sequence[_SegmentBase]) -> bool:
     if not segments:
         return False
     first_content_type = segments[0].content_type

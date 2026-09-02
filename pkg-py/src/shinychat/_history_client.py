@@ -58,12 +58,14 @@ class TurnsAdapter:
         raw = self._turns_client()
         turns = raw.get_turns()
         if is_chatlas_chat_client(raw):
+            # serialize_chatlas_turn() returns dict[str, Any]; the cast
+            # narrows to TurnDict (pyright won't assign dict to a TypedDict).
             return cast(
                 list[TurnDict], [serialize_chatlas_turn(t) for t in turns]
             )
         # Non-chatlas clients return arbitrary JSON dicts; they are turn
         # dicts by construction (see TurnDict's docstring).
-        return cast(list[TurnDict], list(turns))
+        return list(turns)
 
     def get_turns_grouped(self) -> list[list[TurnDict]]:
         turns = self.get_turns_json()

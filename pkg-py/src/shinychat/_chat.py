@@ -1529,9 +1529,7 @@ class Chat:
         elif chunk == "end":
             if message.blocks:
                 await self._send_message_parts(message, operation)
-            elif has_mixed_content_types(
-                cast(list[ContentSegment], message.segments)
-            ):
+            elif has_mixed_content_types(message.segments):
                 await self._send_blockless_chunks(message, operation)
             elif content:
                 chunk_action: ChatAction = {
@@ -1545,9 +1543,7 @@ class Chat:
         elif chunk is True:
             if message.blocks:
                 await self._send_message_parts(message, operation)
-            elif has_mixed_content_types(
-                cast(list[ContentSegment], message.segments)
-            ):
+            elif has_mixed_content_types(message.segments):
                 await self._send_blockless_chunks(message, operation)
             else:
                 chunk_action = {
