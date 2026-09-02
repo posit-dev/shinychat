@@ -782,3 +782,21 @@ Roborev review remains before closure.
 Self-review: 100/100. The implementation handoff records landed scope and
 verification without changing the settled P5.3 mechanism or acceptance
 boundary.
+
+Roborev 1194 found and the branch fixed two P5.3 defects: successful stream
+completion now preserves `error=None`, and restored error detail uses a
+normal-flow wrapping footer rather than the absolute single-control layout.
+Roborev 1195 then found the third P5.3 issue, firing the escalation valve.
+
+Valve decision: **PATCH**. The closed catalogue and projection mechanism remain
+coherent. The alternate `append_message_stream()` root-start path must classify
+a failure from its initial `chunk="start"` call as
+`HISTORY_ERROR_STREAM_START`, matching `message_stream_context()`. Failures
+after start succeeds, including generator and later chunk failures, remain
+generic unless they are the already-classified terminal send outcome. Add a
+production-path regression that discriminates initial-start failure from a
+later stream failure.
+
+Self-review: 100/100 (clarity 25, comprehensiveness 25, feasibility 25,
+consistency 25). No deficiencies remain. This is a bounded missing outcome in
+an existing core path, not a catalogue, schema, or ownership replacement.
