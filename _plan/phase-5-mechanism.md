@@ -574,3 +574,38 @@ the corrected matrix passed all four cases, the full controller module passed
 227 tests, and format, Pyright, and diff checks passed. Every P5.1 row now has
 discriminating evidence or the requirement-grounded disposition recorded
 above. `shinychat#yebr` is next; later Phase 5 children remain blocked.
+
+### P5.2 retry degradation escalation (2026-09-02)
+
+The degradation keystone landed in `eca9d5a7` and its first retry correction
+in `d65710af`. Focused tests and the history/transcript gate were green, but
+review found two further defects in the same retry/degradation mechanism:
+when only the failed target has an incompatible entry, parent-prefix preflight
+reapplies stored parent turns over the advertised live baseline, and
+node-close capture rewrites the incompatible failed target before branching.
+Together with the first retry finding, the three-findings valve fires.
+
+Decision: **DELETE/REPLACE the narrow parent-prefix degradation rule.** Before
+any retry mutation, classify the current active restored path using the same
+private effective-suffix compatibility logic as restore. If that active path
+is degraded:
+
+1. do not run node-close capture on the immutable failed target;
+2. prepare the parent rewind so the turns hook preserves the current attached
+   live baseline and resets its capture baseline without applying stored
+   parent turns; and
+3. continue to run every non-turn rewind hook against the ordinary parent
+   prefix before creating the sibling.
+
+The classification is recomputed from the current record and path. It is not
+stored lifecycle state, a new hook contract, owner, queue, reconciliation
+mechanism, or inferred turn sequence. Compatible retries retain the existing
+parent-prefix rewind and catch-up behavior. Required regressions cover an
+incompatible target over a compatible parent in recorded and live bootstrap,
+target immutability, retained live baseline, non-turn rewind execution, and
+unchanged compatible retry behavior.
+
+Plan self-review: 100/100 (clarity 25, comprehensiveness 25, feasibility 25,
+consistency 25). No deficiencies remain: the replacement names its
+pre-mutation input, exact turn and non-turn behavior, compatibility fallback,
+tests, and prohibited mechanisms.
