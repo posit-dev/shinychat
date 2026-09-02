@@ -201,52 +201,7 @@ class MarkdownStream:
                     composite = not isinstance(x, str) or len(segments) > 1
                     for index, (trusted, segment) in enumerate(segments):
                         if trusted:
-                            # Trusted content walks the shared island
-                            # derivation: non-React runs ship as structured
-                            # html_block messages; bare data-shinychat-react
-                            # elements stay trusted residual string segments.
-                            parts = list(derive_island_parts(segment))
-                            # Aggregate the run's deps onto the first outbound
-                            # envelope so every dep loads before any part mounts.
-                            run_deps = (
-                                serialize_html_deps(
-                                    [
-                                        dep
-                                        for part in parts
-                                        for dep in part.deps
-                                    ],
-                                    self._session,
-                                )
-                                or []
-                            )
-                            for part_index, part in enumerate(parts):
-                                envelope_deps = (
-                                    run_deps if part_index == 0 else []
-                                )
-                                if isinstance(part, IslandBlockPart):
-                                    block: HtmlBlock = {
-                                        "type": "html_block",
-                                        "version": 1,
-                                        "content": part.html,
-                                    }
-                                    block_deps = serialize_html_deps(
-                                        part.deps, self._session
-                                    )
-                                    if block_deps:
-                                        block["html_deps"] = block_deps
-                                    result += part.html
-                                    await self._send_block_message(
-                                        block, envelope_deps
-                                    )
-                                else:
-                                    result += part.html
-                                    await self._send_content_message(
-                                        part.html,
-                                        "append",
-                                        envelope_deps,
-                                        trusted=True,
-                                        segment_start=True,
-                                    )
+                            result += await self._send_trusted_segment(segment)
                         else:
                             text = str(segment)
                             result += text
@@ -274,6 +229,48 @@ class MarkdownStream:
             _handle_error.destroy()  # type: ignore
 
         return _task
+
+    async def _send_trusted_segment(self, segment: TagChild) -> str:
+        """Send one trusted content segment as island parts; return its HTML.
+
+        Trusted content walks the shared island derivation: non-React runs
+        ship as structured html_block messages; bare data-shinychat-react
+        elements stay trusted residual string segments. The run's deps are
+        aggregated onto the first outbound envelope so every dep loads before
+        any part mounts.
+        """
+        parts = list(derive_island_parts(segment))
+        run_deps = (
+            serialize_html_deps(
+                [dep for part in parts for dep in part.deps],
+                self._session,
+            )
+            or []
+        )
+        html = ""
+        for part_index, part in enumerate(parts):
+            envelope_deps = run_deps if part_index == 0 else []
+            if isinstance(part, IslandBlockPart):
+                block: HtmlBlock = {
+                    "type": "html_block",
+                    "version": 1,
+                    "content": part.html,
+                }
+                block_deps = serialize_html_deps(part.deps, self._session)
+                if block_deps:
+                    block["html_deps"] = block_deps
+                html += part.html
+                await self._send_block_message(block, envelope_deps)
+            else:
+                html += part.html
+                await self._send_content_message(
+                    part.html,
+                    "append",
+                    envelope_deps,
+                    trusted=True,
+                    segment_start=True,
+                )
+        return html
 
     @property
     def latest_stream(self):

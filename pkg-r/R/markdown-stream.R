@@ -235,6 +235,50 @@ STREAM_BLOCK_TYPES <- c(
   "web_fetch"
 )
 
+# Send one trusted content segment as island parts; returns the run's HTML.
+# Trusted content walks the shared island derivation: non-React runs ship as
+# structured html_block messages; bare data-shinychat-react elements stay
+# trusted residual string segments. The run's deps are aggregated onto the
+# first outbound envelope so every dep loads before any part mounts.
+send_trusted_segment <- function(
+  segment_content,
+  session,
+  send_content_message,
+  send_block_message
+) {
+  parts <- derive_island_parts(segment_content)
+  run_deps <- serialize_html_deps(
+    unlist(lapply(parts, function(part) part$deps), recursive = FALSE),
+    session
+  )
+  html <- ""
+  for (part_index in seq_along(parts)) {
+    part <- parts[[part_index]]
+    envelope_deps <- list()
+    if (part_index == 1) {
+      envelope_deps <- run_deps
+    }
+    html <- paste0(html, part$html)
+    if (inherits(part, "shinychat_island_block_part")) {
+      block <- new_html_block(part$html)
+      if (length(part$deps) > 0) {
+        attr(block, "shinychat_html_deps") <- part$deps
+      }
+      block <- process_block_deps(block, session)$block
+      send_block_message(block, envelope_deps)
+    } else {
+      send_content_message(
+        part$html,
+        "append",
+        envelope_deps,
+        trusted = TRUE,
+        segment_start = TRUE
+      )
+    }
+  }
+  html
+}
+
 markdown_stream_impl <- NULL
 rlang::on_load(
   markdown_stream_impl <- coro::async(function(id, stream, operation, session) {
@@ -320,38 +364,15 @@ rlang::on_load(
       for (index in seq_along(segments)) {
         segment <- segments[[index]]
         if (segment$trusted) {
-          # Trusted content walks the shared island derivation.
-          parts <- derive_island_parts(segment$content)
-          # Aggregate the run's deps onto the first outbound envelope so
-          # every dep loads before any part mounts.
-          run_deps <- serialize_html_deps(
-            unlist(lapply(parts, function(part) part$deps), recursive = FALSE),
-            session
+          result <- paste0(
+            result,
+            send_trusted_segment(
+              segment$content,
+              session,
+              send_content_message,
+              send_block_message
+            )
           )
-          for (part_index in seq_along(parts)) {
-            part <- parts[[part_index]]
-            envelope_deps <- list()
-            if (part_index == 1) {
-              envelope_deps <- run_deps
-            }
-            result <- paste0(result, part$html)
-            if (inherits(part, "shinychat_island_block_part")) {
-              block <- new_html_block(part$html)
-              if (length(part$deps) > 0) {
-                attr(block, "shinychat_html_deps") <- part$deps
-              }
-              block <- process_block_deps(block, session)$block
-              send_block_message(block, envelope_deps)
-            } else {
-              send_content_message(
-                part$html,
-                "append",
-                envelope_deps,
-                trusted = TRUE,
-                segment_start = TRUE
-              )
-            }
-          }
         } else {
           text <- as.character(segment$content)
           result <- paste0(result, text)
