@@ -2581,14 +2581,24 @@ async def test_v2_restore_degrades_effective_turns_and_keeps_exchange_usable(
 @pytest.mark.anyio
 async def test_v2_degraded_live_restore_retains_live_baseline() -> None:
     adapter = _TrackingFakeAdapter()
-    adapter.turns = [{"role": "system", "content": "live"}]
+    live_baseline = [{"role": "system", "content": "live"}]
+    adapter.turns = list(live_baseline)
     controller, _ = _make_controller(
         use_exchange_tree=True,
         adapter=adapter,
     )
     controller.restore_bootstrap = "live"
     target = _restore_target()
+    exchange_id = "n_0001"
+    target.nodes[exchange_id].status = "error"
+    target.nodes[exchange_id].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="delta",
+        data=[],
+    )
     target.nodes["n_0000"].state["shinychat:turns"].version = 2
+    original_node = target.nodes[exchange_id].model_dump_json()
     events: list[str] = []
 
     async def warn() -> None:
@@ -2606,14 +2616,25 @@ async def test_v2_degraded_live_restore_retains_live_baseline() -> None:
     assert recorder is not None
     assert recorder.record is target
     assert adapter.set_calls == []
-    assert adapter.turns == [{"role": "system", "content": "live"}]
+    assert adapter.turns == live_baseline
     assert events == ["warning", "history_update"]
+    restored_display = list(cast(_FakeChat, controller.chat).restored_messages)
 
-    adapter.turns.append({"role": "user", "content": "continued"})
-    await recorder._capture_state("n_0001", "node_close")
-    continued = target.nodes["n_0001"].state["shinychat:turns"]
-    assert continued.mode == "delta"
-    assert continued.data == [{"role": "user", "content": "continued"}]
+    await controller.handle_resubmit(0, "retry", request_id="retry")
+
+    assert target.active_leaf == "n_0000"
+    assert target.nodes[exchange_id].model_dump_json() == original_node
+    assert adapter.set_calls == []
+    assert adapter.turns == live_baseline
+    assert cast(_FakeChat, controller.chat).restored_messages == restored_display
+
+    sibling = await cast(
+        _FakeChat, controller.chat
+    )._transcript.record_accepted_input_and_notify(
+        _stored_message("user", "question")
+    )
+    assert sibling != exchange_id
+    assert target.nodes[sibling].parent_id == "n_0000"
 
 
 @pytest.mark.anyio

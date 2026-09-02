@@ -592,12 +592,21 @@ class _ExchangeRecorder:
                 bootstrap="recorded",
             )
             if name == "shinychat:turns":
-                if self._turn_entries_are_incompatible(context.entries):
-                    raise ValueError("Unsupported shinychat:turns state entry.")
-                prepared_turns, _ = self._materialize_restore_turns(context)
+                prepared_turns, turns_unavailable = (
+                    self._materialize_restore_turns(context)
+                )
+                if turns_unavailable:
+                    # A degraded restore advertised the attached client's live
+                    # baseline. Rewind must retain it rather than applying an
+                    # unavailable stored prefix.
+                    context = dataclasses.replace(context, bootstrap="live")
+                    prepared_turns, turns_unavailable = (
+                        self._materialize_restore_turns(context)
+                    )
                 context = dataclasses.replace(
                     context,
                     prepared_turns=prepared_turns,
+                    turns_unavailable=turns_unavailable,
                 )
             planned.append((name, hook, context))
         return tuple(planned)
