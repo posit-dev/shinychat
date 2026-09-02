@@ -504,13 +504,14 @@ class ChatMessage:
         # content_type (markdown by default) — the segment-list API is the
         # deliberate way to mix markdown and UI in one message, unlike
         # TagList content which is an HTML container. Blocks pass through in
-        # order; adjacent string runs coalesce.
+        # order; adjacent string runs coalesce with a paragraph break
+        # (direct concatenation is unsafe at a markdown seam).
         segments: list[ContentSegment | StructuredBlock] = []
         for part in parts:
             if isinstance(part, str):
                 last = segments[-1] if segments else None
                 if isinstance(last, ContentSegment):
-                    last.content += part
+                    last.content += "\n\n" + part
                 else:
                     segments.append(
                         ContentSegment(content=part, content_type=content_type)

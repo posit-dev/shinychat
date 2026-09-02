@@ -919,3 +919,19 @@ def test_turn_normalization_round_trips_through_parts():
     stored = StoredMessage.from_chat_message(m)
     wire = stored.wire_segments()
     assert wire == [{"content": "ab", "content_type": "markdown"}]
+
+
+def test_chat_message_parts_coalesce_with_paragraph_break():
+    """Adjacent bare strings in parts= coalesce into one segment joined by a
+    paragraph break (direct concatenation is unsafe at a markdown seam)."""
+    from shinychat._chat_types import ChatMessage, StoredMessage
+
+    m = ChatMessage("", parts=["# Title", "body text"])
+
+    assert m.content == "# Title\n\nbody text"
+    assert m.parts is None
+
+    stored = StoredMessage.from_chat_message(m)
+    assert stored.wire_segments() == [
+        {"content": "# Title\n\nbody text", "content_type": "markdown"}
+    ]
