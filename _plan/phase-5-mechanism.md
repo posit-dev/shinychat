@@ -800,3 +800,11 @@ later stream failure.
 Self-review: 100/100 (clarity 25, comprehensiveness 25, feasibility 25,
 consistency 25). No deficiencies remain. This is a bounded missing outcome in
 an existing core path, not a catalogue, schema, or ownership replacement.
+
+The valve patch landed in `e4d1b822`; normal completion remains error-free,
+the alternate root-start path now persists the start catalogue literal, and
+later failures retain their existing generic/terminal classification. Final
+task review 1196 found no issues. Full Python tests pass (961 passed, one
+existing skip), full JS tests pass (1,272 passed, 23 skipped), and Ruff,
+format, Pyright, JS lint, asset distribution, and diff checks are green.
+P5.3 is complete.
