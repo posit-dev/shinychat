@@ -396,10 +396,34 @@ must not land. All Phase 5 children are instantiated:
 `shinychat#fbhe`, `shinychat#bj1n`, `shinychat#yebr`, `shinychat#bfq8`, and
 `shinychat#xt5q`.
 
-Current: only `shinychat#fbhe` implementation is active. It may replace the
-rejected predicate with the selected one-shot `ChatHistory` barrier and add
-the bounded initial recorded-preflight recovery. `shinychat#bj1n` is blocked
-by `shinychat#fbhe`; `shinychat#yebr` is blocked by `shinychat#bj1n`;
-`shinychat#bfq8` is blocked by `shinychat#yebr`; and `shinychat#xt5q` is
-blocked by `shinychat#bfq8`. Do not begin R, legacy, or another
-scheduling/ownership mechanism.
+Current: `0e3ecd1a` corrects the three `1826d8f6` P1s. Root-stream exchange
+selection now occurs after the one-shot barrier; elevated initialization
+priority is completion-v2-only; history-disabled withdrawal follows
+constructor messages; and `shinychat.playwright.Chat.send_user_input()` is
+literal again. Production-path coverage includes a held root stream attaching
+below the restored exchange, real restored-target `Chat(messages=...)`
+suppression, v1/history-disabled message-before-withdrawal ordering, and
+held-WebSocket Send-button, attachment-only, suggestion, and real
+slash-command blocking.
+
+The test contract is resolved by the 2026-09-02 `shinychat#fbhe` orchestrator
+decision: no global/helper/fixture readiness wait. Ordinary existing browser
+tests explicitly wait for a nonempty `loc_input_button` immediately before
+their raced send; initial-gate, initial-seed-withdrawal, and stale-completion
+evidence deliberately retain their direct blocked submissions. The full
+browser gate identified the ordinary sites, including page-chat fixtures, and
+they are now explicit rather than hidden behind controller behavior.
+
+Verification is green: `make py-check` passed with 207 Playwright tests and
+915 Python tests (one skipped, 34 established warnings); JS lint and 1,260
+tests passed with 23 skips and two existing React `act()` warnings; 22 R
+history-hook tests passed; and all package asset copies are equal. This task
+is pending its required independent review; `shinychat#bj1n` remains blocked
+by `shinychat#fbhe`, `shinychat#yebr` by `shinychat#bj1n`,
+`shinychat#bfq8` by `shinychat#yebr`, and `shinychat#xt5q` by
+`shinychat#bfq8`. Do not begin R, legacy, or another scheduling/ownership
+mechanism.
+
+Status-only self-review: 98/100 (clarity 25/25, comprehensiveness 24/25,
+feasibility 25/25, consistency 24/25). Remaining acceptance work is the
+required independent review; no mechanism decision is open.
