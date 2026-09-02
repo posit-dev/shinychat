@@ -6,10 +6,12 @@ import type {
 } from "../transport/types"
 import type { ChatMessageData, MessageBlock } from "./state"
 import { uuid } from "../utils/uuid"
-import type { ToolResultOpenStyle } from "./tool-protocol"
 
 /** How a loop's tool calls are aggregated in the condensed view. */
 export type ToolGrouping = "none" | "tool" | "all"
+
+/** Display style for a tool result's expandable region. */
+export type ToolResultOpenStyle = "minimal" | "framed"
 
 /** One tool call — a request and/or its matching result. */
 export interface ToolCallItem {
