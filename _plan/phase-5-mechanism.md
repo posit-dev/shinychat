@@ -712,3 +712,16 @@ consistency 25). No deficiencies remain. The replacement preserves retry
 eligibility and branch payload/state while isolating the ordering exception to
 the already-classified degraded call; rejected alternatives required hidden
 cross-request lifecycle state.
+
+### P5.2 replacement handoff (2026-09-02)
+
+The approved replacement landed in `cb7358f5`, with generated assets in
+`28dad6ae`. Degraded retry, edit, and regenerate now run only preflighted
+non-turn rewind hooks, server-accept the validated input into a new sibling,
+and persist a full live-turn snapshot without mutating the failed target or
+shared parent payload/state. The browser renders that accepted input without a
+second input send; compatible resubmit ordering is unchanged.
+
+Focused controller and JS history tests, full controller/history/transcript
+tests, JS lint/test, `make update-dist`, Pyright, source diff checks, and the
+full `make py-check` gate passed (209 Playwright; 940 Python, 1 existing skip).
