@@ -44,14 +44,21 @@ from shinychat._history_store import (
     InMemoryConversationStore,
 )
 from shinychat._history_types import (
+    HISTORY_ERROR_GENERIC,
+    HISTORY_ERROR_MESSAGES,
+    HISTORY_ERROR_STREAM_START,
+    HISTORY_ERROR_STREAM_TERMINAL,
     MAX_SCHEMA_VERSION,
     CapturedMessage,
     ConversationRecord,
     ConversationRecordV2,
+    ErrorEntry,
     StateEntry,
     UnsupportedSchemaVersionError,
     new_conversation_record,
     new_conversation_record_v2,
+    normalize_history_error_message,
+    project_history_error_message,
 )
 
 
@@ -2107,7 +2114,7 @@ async def test_v2_real_stream_failure_preserves_capture_matrix(
     assert node.status == failure_kind
     if failure_kind == "error":
         assert node.error is not None
-        assert node.error.message == str(original)
+        assert node.error.message == HISTORY_ERROR_GENERIC
     else:
         assert node.error is None
     assert node.state["shinychat:turns"].data == adapter.turns
@@ -2569,9 +2576,14 @@ async def test_v2_restore_degrades_effective_turns_and_keeps_exchange_usable(
     assert adapter.turns == []
     assert target == target_before
     assert events == ["warning", "history_update"]
+    expected_metadata = {
+        "status": "error",
+        "retryable": True,
+        "error_message": HISTORY_ERROR_GENERIC,
+    }
     assert {
         "type": "update_exchange_metadata",
-        "data": {0: {"status": "error", "retryable": True}},
+        "data": {0: expected_metadata},
     } in fake_chat.actions
 
     adapter.turns = [{"role": "user", "content": "continued"}]
@@ -5576,15 +5588,150 @@ async def test_v2_projects_retry_metadata_for_restored_interrupted_exchanges(
 
     await controller._send_exchange_metadata()
 
+    expected_target = {"status": status, "retryable": True}
+    if status == "error":
+        expected_target["error_message"] = HISTORY_ERROR_GENERIC
     assert chat.actions == [
         {
             "type": "update_exchange_metadata",
             "data": {
                 0: {"status": "ok", "retryable": False},
-                1: {"status": status, "retryable": True},
+                1: expected_target,
             },
         }
     ]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        (HISTORY_ERROR_GENERIC, HISTORY_ERROR_GENERIC),
+        (HISTORY_ERROR_STREAM_START, HISTORY_ERROR_STREAM_START),
+        (HISTORY_ERROR_STREAM_TERMINAL, HISTORY_ERROR_STREAM_TERMINAL),
+        ("provider timeout", HISTORY_ERROR_GENERIC),
+        ("legacy \n unsafe", HISTORY_ERROR_GENERIC),
+    ],
+)
+async def test_v2_error_catalogue_is_bounded_at_write_and_projection(
+    message: str, expected: str
+) -> None:
+    controller, chat, _adapter, _store, first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.nodes[first].status = "ok"
+    record.nodes[target].status = "error"
+    record.finish_exchange(target, "error", message)
+
+    await controller._send_exchange_metadata()
+
+    assert record.nodes[target].error is not None
+    error_entry = record.nodes[target].error
+    assert error_entry is not None
+    assert error_entry.message == expected
+    assert chat.actions[-1]["data"][1]["error_message"] == expected
+
+
+def test_v2_error_normalization_is_nfc_whitespace_safe_and_bounded() -> None:
+    long_message = "e\u0301\t\r\n" + ("x" * 300)
+    normalized = normalize_history_error_message(long_message)
+
+    assert normalized.startswith("é x")
+    assert len(normalized) == 256
+    assert normalized.endswith("...")
+    assert "\t" not in normalized
+    assert "\r" not in normalized
+    assert "\n" not in normalized
+    assert (
+        project_history_error_message("unknown legacy error")
+        == HISTORY_ERROR_GENERIC
+    )
+    assert project_history_error_message(HISTORY_ERROR_STREAM_START) == (
+        HISTORY_ERROR_STREAM_START
+    )
+    assert HISTORY_ERROR_MESSAGES == frozenset(
+        {
+            HISTORY_ERROR_GENERIC,
+            HISTORY_ERROR_STREAM_START,
+            HISTORY_ERROR_STREAM_TERMINAL,
+        }
+    )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("status", ["pending", "cancelled"])
+async def test_v2_error_detail_is_absent_for_non_error_or_inputless_nodes(
+    status: str,
+) -> None:
+    controller, chat, _adapter, _store, first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.nodes[first].status = "ok"
+    record.nodes[target].status = cast(Any, status)
+    record.nodes[target].error = None
+    await controller._send_exchange_metadata()
+
+    assert all(
+        "error_message" not in item
+        for item in chat.actions[-1]["data"].values()
+    )
+
+
+@pytest.mark.anyio
+async def test_v2_error_detail_is_absent_for_inputless_error_node() -> None:
+    controller, chat, _adapter, _store, first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.nodes[first].status = "ok"
+    record.nodes[target].status = "error"
+    record.nodes[target].input = None
+    record.nodes[target].error = ErrorEntry(message=HISTORY_ERROR_GENERIC)
+
+    await controller._send_exchange_metadata()
+
+    assert all(
+        "error_message" not in item
+        for item in chat.actions[-1]["data"].values()
+    )
+
+
+@pytest.mark.anyio
+async def test_v2_error_projection_does_not_mutate_failed_node_with_partial_display(
+) -> None:
+    controller, chat, _adapter, _store, first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.nodes[first].status = "ok"
+    record.nodes[target].status = "error"
+    record.nodes[target].error = ErrorEntry(message="unknown legacy error")
+    record.nodes[target].messages.append(
+        CapturedMessage.from_stored_message(
+            _stored_message("assistant", "partial response"),
+            icon=None,
+        )
+    )
+    before = record.nodes[target].model_dump_json()
+
+    await controller._send_exchange_metadata()
+
+    assert chat.actions[-1]["data"][1]["error_message"] == HISTORY_ERROR_GENERIC
+    assert record.nodes[target].model_dump_json() == before
 
 
 @pytest.mark.anyio
@@ -6576,7 +6723,7 @@ async def test_v2_recorder_persists_stream_terminal_status(
         assert node.error is None
     else:
         assert node.error is not None
-        assert node.error.message == error
+        assert node.error.message == HISTORY_ERROR_GENERIC
     assert [
         message.as_stored_message().content for message in node.messages
     ] == ["partial"]
@@ -6724,7 +6871,7 @@ async def test_terminal_state_capture_failure_propagates_without_rollback():
         ("update-one", ["first"], "pending", None),
         ("update-two", ["first second"], "pending", None),
         ("ok", ["first second"], "ok", None),
-        ("error", ["first second"], "error", "provider timeout"),
+        ("error", ["first second"], "error", HISTORY_ERROR_GENERIC),
         ("cancelled", ["first second"], "cancelled", None),
     ],
 )

@@ -13,6 +13,7 @@ from pydantic import JsonValue
 from ._attachments import Attachment, validate_attachments
 from ._chat_transcript import TranscriptEntry
 from ._chat_types import (
+    ExchangeMetadata,
     HistoryAcceptedInputProjectionAction,
     HistoryEditProjectionAction,
     HistoryNavigateAction,
@@ -53,6 +54,7 @@ from ._history_types import (
     new_conversation_id,
     new_conversation_record,
     new_conversation_record_v2,
+    project_history_error_message,
 )
 
 if TYPE_CHECKING:
@@ -2019,17 +2021,20 @@ class HistoryController:
         if recorder is None or recorder.record is None:
             return
 
-        data: dict[
-            int, dict[str, bool | Literal["pending", "ok", "error", "cancelled"]]
-        ] = {}
+        data: dict[int, ExchangeMetadata] = {}
         message_index = 0
         for node_id in recorder.record.path_node_ids():
             node = recorder.record.nodes[node_id]
             if node.input is not None:
-                data[message_index] = {
+                metadata: ExchangeMetadata = {
                     "status": node.status,
                     "retryable": node.status in ("pending", "error", "cancelled"),
                 }
+                if node.status == "error" and node.input is not None:
+                    metadata["error_message"] = project_history_error_message(
+                        node.error.message if node.error is not None else None
+                    )
+                data[message_index] = metadata
                 message_index += 1
             message_index += len(node.messages)
         if data:

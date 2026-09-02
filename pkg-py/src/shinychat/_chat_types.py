@@ -189,9 +189,15 @@ class UpdateSiblingsAction(TypedDict):
     data: dict[int, dict[str, int]]
 
 
+class ExchangeMetadata(TypedDict):
+    status: Literal["pending", "ok", "error", "cancelled"]
+    retryable: bool
+    error_message: NotRequired[str]
+
+
 class UpdateExchangeMetadataAction(TypedDict):
     type: Literal["update_exchange_metadata"]
-    data: dict[int, dict[str, bool | Literal["pending", "ok", "error", "cancelled"]]]
+    data: dict[int, ExchangeMetadata]
 
 
 ChatAction = Union[

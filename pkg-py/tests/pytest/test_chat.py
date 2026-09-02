@@ -32,7 +32,10 @@ from shinychat._history_store import (
     ConversationPartition,
     InMemoryConversationStore,
 )
-from shinychat._history_types import new_conversation_record
+from shinychat._history_types import (
+    HISTORY_ERROR_STREAM_TERMINAL,
+    new_conversation_record,
+)
 from shinychat._utils_types import MISSING
 
 # ----------------------------------------------------------------------
@@ -3159,7 +3162,7 @@ def test_stream_preserves_sent_partial_when_terminal_send_fails():
     entry = chat._transcript.read()[0]
     assert entry.message.content == "kept"
     assert entry.status == "error"
-    assert entry.error == {"message": "end send failed"}
+    assert entry.error == {"message": HISTORY_ERROR_STREAM_TERMINAL}
     assert chat._transcript.active_stream_id is None
 
 
@@ -3186,7 +3189,7 @@ def test_stream_commits_final_transformed_content_before_chunk_end_failure():
     entry = chat._transcript.read()[0]
     assert entry.message.content == "partial final"
     assert entry.status == "error"
-    assert entry.error == {"message": "end send failed"}
+    assert entry.error == {"message": HISTORY_ERROR_STREAM_TERMINAL}
 
 
 def test_stream_transform_error_best_effort_closes_the_wire_and_owner():
@@ -3214,7 +3217,7 @@ def test_stream_transform_error_best_effort_closes_the_wire_and_owner():
     entry = chat._transcript.read()[0]
     assert entry.message.content == "kept"
     assert entry.status == "error"
-    assert entry.error == {"message": "terminal transform failed"}
+    assert entry.error == {"message": HISTORY_ERROR_STREAM_TERMINAL}
     assert chat._transcript.active_stream_id is None
     assert sent[-1] == {"type": "chunk_end"}
 
@@ -3441,7 +3444,7 @@ def test_stream_final_display_error_best_effort_closes_the_wire_and_owner():
     entry = chat._transcript.read()[0]
     assert entry.message.content == "kept"
     assert entry.status == "error"
-    assert entry.error == {"message": "terminal display failed"}
+    assert entry.error == {"message": HISTORY_ERROR_STREAM_TERMINAL}
     assert chat._transcript.active_stream_id is None
     assert sent[-1] == {"type": "chunk_end"}
 
@@ -3612,7 +3615,7 @@ def test_suppressed_terminal_transform_surfaces_end_send_failure():
     entry = chat._transcript.read()[0]
     assert entry.message.content == "kept"
     assert entry.status == "error"
-    assert entry.error == {"message": "end send failed"}
+    assert entry.error == {"message": HISTORY_ERROR_STREAM_TERMINAL}
     assert chat._transcript.active_stream_id is None
 
 

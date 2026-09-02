@@ -78,6 +78,10 @@ from ._chat_types import (
 )
 from ._drawer import ChatDrawerController
 from ._history import ChatHistory, HistoryOptions
+from ._history_types import (
+    HISTORY_ERROR_STREAM_START,
+    HISTORY_ERROR_STREAM_TERMINAL,
+)
 from ._html_deps_py_shiny import shinychat_dependency
 from ._page_chat import (
     ChatDrawer,
@@ -1252,7 +1256,7 @@ class Chat:
                 started = await self._append_message_chunk(
                     "", chunk="start", stream_id=stream_id
                 )
-            except BaseException as start_error:
+            except BaseException:
                 if self._transcript.active_stream_id == stream_id:
                     try:
                         await self._append_message_chunk(
@@ -1260,7 +1264,7 @@ class Chat:
                             chunk="end",
                             stream_id=stream_id,
                             status="error",
-                            error=str(start_error),
+                            error=HISTORY_ERROR_STREAM_START,
                         )
                     except BaseException:
                         if self._transcript.active_stream_id == stream_id:
@@ -1268,7 +1272,7 @@ class Chat:
                                 await self._transcript.abort_stream(
                                     stream_id,
                                     status="error",
-                                    error=str(start_error),
+                                    error=HISTORY_ERROR_STREAM_START,
                                 )
                             except BaseException:
                                 pass
@@ -1330,7 +1334,7 @@ class Chat:
                                 else (
                                     error
                                     if error is not None
-                                    else str(terminal_error)
+                                    else HISTORY_ERROR_STREAM_TERMINAL
                                 )
                             ),
                         )
@@ -1442,7 +1446,7 @@ class Chat:
                     return await self._transcript.end_stream(
                         stream_id=stream_id,
                         status=status,
-                        error=error,
+                        error=error or HISTORY_ERROR_STREAM_TERMINAL,
                         send=send_end,
                     )
                 return True
@@ -1494,7 +1498,7 @@ class Chat:
             return await self._transcript.end_stream(
                 stream_id=stream_id,
                 status=status,
-                error=error,
+                error=error or HISTORY_ERROR_STREAM_TERMINAL,
                 send=send_end,
             )
 
@@ -1773,7 +1777,7 @@ class Chat:
                                 else (
                                     error
                                     if error is not None
-                                    else str(terminal_error)
+                                    else HISTORY_ERROR_STREAM_TERMINAL
                                 )
                             ),
                         )

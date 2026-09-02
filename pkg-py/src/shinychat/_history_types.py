@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import secrets
 import time
+import unicodedata
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -11,6 +12,42 @@ from ._attachments import Attachment
 from ._chat_types import StoredMessage, StoredSegment
 
 TitleSource = Literal["llm", "user"]
+
+MAX_HISTORY_ERROR_MESSAGE = 256
+HISTORY_ERROR_GENERIC = "The response could not be completed."
+HISTORY_ERROR_STREAM_START = "The response stream could not be started."
+HISTORY_ERROR_STREAM_TERMINAL = "The response stream could not be completed."
+HISTORY_ERROR_MESSAGES = frozenset(
+    {
+        HISTORY_ERROR_GENERIC,
+        HISTORY_ERROR_STREAM_START,
+        HISTORY_ERROR_STREAM_TERMINAL,
+    }
+)
+
+
+def normalize_history_error_message(message: str | None) -> str:
+    """Return the bounded, catalogue-backed error summary for persistence."""
+    value = unicodedata.normalize("NFC", message or "")
+    value = "".join(
+        " "
+        if unicodedata.category(char) in {"Cc", "Cf"}
+        or char in {"\u2028", "\u2029"}
+        else char
+        for char in value
+    )
+    value = " ".join(value.split()).strip()
+    if not value:
+        value = HISTORY_ERROR_GENERIC
+    if len(value) > MAX_HISTORY_ERROR_MESSAGE:
+        value = f"{value[: MAX_HISTORY_ERROR_MESSAGE - 3]}..."
+    return value
+
+
+def project_history_error_message(message: str | None) -> str:
+    """Project only a normalized safe catalogue value to the browser."""
+    value = normalize_history_error_message(message)
+    return value if value in HISTORY_ERROR_MESSAGES else HISTORY_ERROR_GENERIC
 
 
 def new_conversation_record(
@@ -493,7 +530,11 @@ class ConversationRecordV2(BaseModel):
         if node is None:
             raise ValueError(f"Unknown exchange id {exchange_id!r}")
         node.status = status
-        node.error = ErrorEntry(message=error or "") if status == "error" else None
+        node.error = (
+            ErrorEntry(message=project_history_error_message(error))
+            if status == "error"
+            else None
+        )
         self.updated_at = utcnow()
 
 
