@@ -2787,10 +2787,14 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
 
 
 @pytest.mark.anyio
-async def test_v2_degraded_resubmit_preserves_projection_error_when_publication_fails():
+async def test_v2_degraded_resubmit_preserves_projection_error_when_publication_fails(
+    tmp_path: Path,
+):
     controller, chat, _adapter, _store, first, target = (
         _make_v2_resubmit_controller()
     )
+    file_store = FileConversationStore(tmp_path)
+    controller.store = file_store
     recorder = controller._exchange_recorder
     assert recorder is not None
     record = recorder.record
@@ -2799,11 +2803,13 @@ async def test_v2_degraded_resubmit_preserves_projection_error_when_publication_
 
     projection_error = RuntimeError("projection unavailable")
     publication_error = RuntimeError("publication unavailable")
+    publication_calls: list[StoredMessage] = []
 
     async def fail_projection(_action: dict[str, Any]) -> None:
         raise projection_error
 
-    def fail_publication(_message: StoredMessage) -> None:
+    def fail_publication(message: StoredMessage) -> None:
+        publication_calls.append(message)
         raise publication_error
 
     chat._send_action = fail_projection  # type: ignore[method-assign]
@@ -2817,11 +2823,19 @@ async def test_v2_degraded_resubmit_preserves_projection_error_when_publication_
     assert raised.value is projection_error
     assert raised.value.__cause__ is publication_error
     assert raised.value.__context__ is publication_error
+    assert len(publication_calls) == 1
     sibling = record.active_leaf
     assert sibling is not None
     assert sibling != target
     assert record.nodes[sibling].parent_id == first
     assert record.children_of(first) == [target, sibling]
+    assert publication_calls == [record.nodes[sibling].input]
+
+    stored = await FileConversationStore(tmp_path).get(part(), record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    assert stored.active_leaf == sibling
+    assert stored.nodes[sibling].parent_id == first
+    assert stored.children_of(first) == [target, sibling]
 
 
 @pytest.mark.anyio
