@@ -439,11 +439,23 @@ Final plan self-review scored 100/100 (25/25 each for clarity,
 comprehensiveness, feasibility, and consistency) with no remaining
 deficiencies.
 
-Next: implement that bounded replacement under `shinychat#fbhe`, update tests
-from delayed-delivery expectations to suppression expectations, run focused
-JS/Python/R compatibility checks and full `make py-check`, commit the coherent
-unit, and request the required independent review. `shinychat#bj1n` and later
-children remain blocked until `shinychat#fbhe` is reviewed and closed.
+Current blocker (2026-09-02): `shinychat#fbhe` has no accessible existing
+server-side fact for "the authoritative initial `history_update` has
+published." The initial effect's closure-local `initialized` fact has those
+semantics, but `HistoryController.partition` is set earlier, before target
+selection and publication, and cannot safely admit input or startup appends.
+The required entry-point suppression cannot proceed by substituting that
+unsafe proxy.
+
+Decision needed: authorize relocating the existing `initialized` fact to
+private `ChatHistory` readiness state, set only after the authoritative
+initial `history_update`, for direct checks at complete-append, root-stream
+start, and user-input admission. This would add no barrier, await, payload,
+queue, client marker, owner, or generic `_capture_admission` adapter. Until
+that is resolved, do not resume P5.0 implementation. The focused baseline is
+green: `make py-check-tests FILTER='history or transcript'` passed 52
+Playwright and 541 Python tests. `shinychat#bj1n` and later children remain
+blocked.
 
 Boundary: `Chat(messages=...)` removal is follow-up `shinychat#mcbp`, not P5.0.
 Do not begin R, legacy, degradation/error-affordance work, or another
