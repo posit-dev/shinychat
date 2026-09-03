@@ -40,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * A tool's definition `title` (from its annotations) and its result `title` (from `ToolResultDisplay`) are now shown as-is, without any client-side tense conjugation. The definition title is shown while the call is running and labels multi-call groups. For a single-call row, the result title (if provided) replaces it when the result arrives; in a multi-call group, a distinct result title can identify that call in the expanded list. The old `"Running {title}"` / `"{title} failed"` client-side title template has been removed. If a tool's title reads oddly while running now that the automatic "Running " prefix is gone, write an explicit present-tense definition title (e.g. "Running R code") and, optionally, a past-tense result title (e.g. "Ran R code"). Failures are shown via a separate status cue (a "failed"/"N failed" note and icon) rather than appended to the title.
 
+* The `messages` parameter is deprecated in favor of the conversation-history feature. `Chat(messages=...)` now errors when history is enabled (the default); use `greeting` for a startup message, `Chat.append_message()` to replay messages, or `history=False` if you manage state yourself.
+
 ### Bug fixes
 
 * Attachment data URLs must now use the declared MIME type and a valid base64 header. PDF previews are also restricted to PDF content and rendered in a sandboxed iframe, preventing mismatched attachment data from being interpreted as active HTML. (#325)
