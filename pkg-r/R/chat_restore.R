@@ -109,10 +109,7 @@ chat_restore <- function(
         "_cancel",
         "_slash_command",
         "_greeting_requested",
-        "_greeting_dismissed",
-        # Carries StoredMessage-like list objects, which aren't
-        # JSON-serializable for Shiny's bookmark input.json.
-        "_messages"
+        "_greeting_dismissed"
       )
     ),
     excluded_names

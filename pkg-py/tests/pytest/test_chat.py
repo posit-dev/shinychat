@@ -649,17 +649,12 @@ def test_bookmark_round_trips_echoed_slash_command():
 
     with session_context(test_session):
         chat = Chat(id="chat")
-        # `_messages_for_bookmark()` reads the client-reported snapshot input,
-        # not the server-side append log, so seed that input directly.
-        reported = (
-            chat._as_stored_message(
-                ChatMessage(content="/greet world", role="user")
-            ),
-            chat._as_stored_message(
-                ChatMessage(content="Hello! You said: world", role="assistant")
-            ),
+        cast(Any, chat)._store_message(
+            ChatMessage(content="/greet world", role="user")
         )
-        test_session.input[chat.messages_input_id]._set(reported)
+        cast(Any, chat)._store_message(
+            ChatMessage(content="Hello! You said: world", role="assistant")
+        )
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
 
@@ -684,27 +679,11 @@ def test_bookmark_round_trips_echoed_slash_command():
     async def restore() -> list[tuple[Role, str]]:
         with session_context(test_session):
             restored = Chat(id="chat_restored")
-            sent: list[dict[str, Any]] = []
-
-            async def _capture(action: Any, deps: Any = None) -> None:
-                sent.append(action)
-
-            restored._send_action = _capture  # type: ignore[method-assign]
-
             for message_dict in saved:
                 await restored._restore_bookmark_message(message_dict)
 
-            # `_restore_bookmark_message` re-sends each message to the client
-            # (which re-reports it into the messages snapshot on render); the
-            # server no longer keeps its own append log to read back from.
-            return [
-                (
-                    cast(Role, a["message"]["role"]),
-                    a["message"]["segments"][0]["content"],
-                )
-                for a in sent
-                if a["type"] == "message"
-            ]
+            with reactive.isolate():
+                return [(m.role, str(m.content)) for m in restored._messages()]
 
     result: list[tuple[Role, str]] = []
 
@@ -728,16 +707,10 @@ def test_bookmark_omits_side_effect_only_slash_command():
     with session_context(test_session):
         chat = Chat(id="chat")
         chat.slash_command("note", "Side-effect only", echo=False)
-        # `_messages_for_bookmark()` reads the client-reported snapshot
-        # input, not the server-side append log, so seed that input
-        # directly with only the explicit message (the echo=False command
-        # reports nothing).
-        reported = (
-            chat._as_stored_message(
-                ChatMessage(content="real message", role="user")
-            ),
+        # The echo=False command stored nothing; only an explicit message lands.
+        cast(Any, chat)._store_message(
+            ChatMessage(content="real message", role="user")
         )
-        test_session.input[chat.messages_input_id]._set(reported)
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
 
@@ -1059,19 +1032,15 @@ def test_bookmark_roundtrip_thinking_segment():
             sent.append(action)
 
         chat._send_action = _capture  # type: ignore[method-assign]
-        # `_messages_for_bookmark()` reads the client-reported snapshot
-        # input, not the server-side append log, so seed that input
-        # directly.
-        reported = (
+        cast(Any, chat)._store_message(
             StoredMessage(
                 role="assistant",
                 segments=[
                     StoredSegment(content="reasoning", content_type="thinking"),
                     StoredSegment(content="answer", content_type="markdown"),
                 ],
-            ),
+            )
         )
-        test_session.input[chat.messages_input_id]._set(reported)
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
         assert saved[0]["segments"][0]["content_type"] == "thinking"
@@ -1374,9 +1343,7 @@ def test_messages_surfaces_attachments():
     with session_context(test_session):
         chat = Chat(id="chat")
 
-        # `.messages()` reads the client-reported snapshot input, not the
-        # server-side append log, so seed that input directly.
-        reported = (
+        cast(Any, chat)._store_message(
             StoredMessage.from_chat_message(
                 ChatMessage(
                     "see attached",
@@ -1387,14 +1354,13 @@ def test_messages_surfaces_attachments():
                         ),
                     ],
                 )
-            ),
+            )
+        )
+        cast(Any, chat)._store_message(
             StoredMessage.from_chat_message(
                 ChatMessage("plain text", role="assistant")
-            ),
+            )
         )
-        # Input values are read-only from application code; `_set()` is the
-        # same mechanism Shiny itself uses to deliver client-reported values.
-        test_session.input[chat.messages_input_id]._set(reported)
 
         with reactive.isolate():
             msgs = chat.messages()
