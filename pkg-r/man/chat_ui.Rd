@@ -298,7 +298,7 @@ works -- it just won't have sub-section headings.
 
 The send button is a filled circle (24px by default) whose background
 color reflects the current state (primary when ready, gray when
-empty/disabled, danger when cancelling) with a white icon (18px by
+empty/disabled, danger when cancelling) with a white icon (22px by
 default) centered inside. The \code{icon_send} parameter swaps the
 ready-state icon without changing the button's surface.
 
@@ -357,7 +357,7 @@ variable resolves on the button itself:
 \strong{Key CSS variables:}
 \itemize{
 \item \code{--shiny-chat-btn-send-size} — Button width and height (default \verb{24px})
-\item \code{--shiny-chat-input-icon-size} — Icon size, shared with the attach button (default \verb{18px})
+\item \code{--shiny-chat-input-icon-size} — Icon size, shared with the attach button (default \verb{22px})
 \item \code{--shiny-chat-btn-send-bg} — Button background (default: state color)
 \item \code{--shiny-chat-btn-send-color} — Icon color (default: \verb{#fff})
 \item \code{--shiny-chat-btn-send-border} — Button border (default: \code{none})

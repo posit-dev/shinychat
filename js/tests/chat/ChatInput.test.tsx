@@ -695,7 +695,9 @@ describe("ChatInput", () => {
 
     it("uses the default arrow icon when iconSend is not provided", () => {
       renderChatInput()
-      expect(sendButton().querySelector("svg.bi-arrow-up-short")).toBeTruthy()
+      expect(
+        sendButton().querySelector("svg.shiny-chat-icon-arrow-up"),
+      ).toBeTruthy()
     })
 
     it("renders a custom iconSend in the ready/empty states only", () => {
@@ -716,7 +718,9 @@ describe("ChatInput", () => {
         enableCancel: true,
       })
       expect(sendButton().querySelector("svg.custom-send")).toBeNull()
-      expect(sendButton().querySelector("svg.bi-stop-fill")).toBeTruthy()
+      expect(
+        sendButton().querySelector("svg.shiny-chat-icon-stop"),
+      ).toBeTruthy()
     })
   })
 

@@ -2628,7 +2628,7 @@ def chat_ui(
         container or any ancestor:
 
         * ``--shiny-chat-btn-send-size`` -- button width and height (default ``24px``)
-        * ``--shiny-chat-input-icon-size`` -- icon size, shared with the attach button (default ``18px``)
+        * ``--shiny-chat-input-icon-size`` -- icon size, shared with the attach button (default ``22px``)
         * ``--shiny-chat-btn-send-bg`` -- button background (default: state color)
         * ``--shiny-chat-btn-send-color`` -- icon color (default: ``#fff``)
         * ``--shiny-chat-btn-send-border`` -- button border (default: ``none``)
