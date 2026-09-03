@@ -73,6 +73,7 @@ from ._chat_types import (
     SerializedDep,
     SlashCommandDef,
     StoredMessage,
+    StoredSegment,
     StringSegment,
     _assemble_stored_message,
     chat_greeting,
@@ -1233,7 +1234,9 @@ class Chat:
                     # _transform_message returns a single-segment StoredMessage, so all stream
                     # deps belong on segments[0].
                     if serialized_deps and msg.segments:
-                        msg.segments[0].html_deps = serialized_deps
+                        first = msg.segments[0]
+                        if isinstance(first, StoredSegment):
+                            first.html_deps = serialized_deps
 
             # Send the message to the client
             await self._send_append_message(
@@ -1579,8 +1582,6 @@ class Chat:
             d = m.model_dump(exclude_none=True)
             if not d.get("attachments"):
                 d.pop("attachments", None)
-            if not d.get("blocks"):
-                d.pop("blocks", None)
             dumps.append(d)
         return dumps
 

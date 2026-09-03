@@ -914,7 +914,7 @@ def test_chat_message_content_setter_collapses_to_flat_layout():
     assert len(m.blocks) == 2
 
     stored = StoredMessage.from_chat_message(m)
-    assert stored.block_positions is None
+    assert [isinstance(s, dict) for s in stored.segments] == [False, True, True]
     wire = stored.wire_segments()
     assert [s.get("type", "str") for s in wire] == [
         "str",

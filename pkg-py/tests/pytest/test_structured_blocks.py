@@ -7,8 +7,8 @@ Covers:
   keeps its source order on the wire — as one `message` action's segments
   (non-streaming) and as a `chunk`/`block_insert`/`chunk` action sequence
   (streaming).
-- `StoredMessage.wire_segments()` re-interleaves blocks at their recorded
-  `block_positions`.
+- `StoredMessage.segments` is interleaved (string segments and blocks in
+  content order); `wire_segments()` projects it onto the wire shape.
 """
 
 from __future__ import annotations
@@ -228,10 +228,9 @@ async def test_send_wire_segment_actions_replace_wipes_before_reemitting() -> (
         role="assistant",
         segments=[
             StoredSegment(content="Before ", content_type="markdown"),
+            _block(),
             StoredSegment(content=" After", content_type="markdown"),
         ],
-        blocks=[_block()],
-        block_positions=[1],
     )
 
     with session_context(ExpressStubSession()):
@@ -269,8 +268,7 @@ async def test_send_wire_segment_actions_replace_blocks_only_still_wipes() -> (
 
     stored = StoredMessage(
         role="assistant",
-        segments=[],
-        blocks=[_block()],
+        segments=[_block()],
     )
 
     with session_context(ExpressStubSession()):
@@ -285,17 +283,16 @@ async def test_send_wire_segment_actions_replace_blocks_only_still_wipes() -> (
     assert sent[1]["block"]["type"] == "tool_result"
 
 
-def test_wire_segments_reinterleaves_blocks_at_recorded_positions() -> None:
-    """`block_positions` records how many string segments precede each block;
-    `wire_segments()` must reproduce that interleaving."""
+def test_wire_segments_projects_interleaved_segments() -> None:
+    """Stored segments are interleaved; `wire_segments()` reduces string
+    segments to content/content_type dicts and passes blocks through."""
     stored = StoredMessage(
         role="assistant",
         segments=[
             StoredSegment(content="Before ", content_type="markdown"),
+            _block(),
             StoredSegment(content=" After", content_type="markdown"),
         ],
-        blocks=[_block()],
-        block_positions=[1],
     )
 
     segments = stored.wire_segments()
@@ -304,22 +301,6 @@ def test_wire_segments_reinterleaves_blocks_at_recorded_positions() -> None:
     assert segments[0] == {"content": "Before ", "content_type": "markdown"}
     assert segments[1] == cast(Any, _block())
     assert segments[2] == {"content": " After", "content_type": "markdown"}
-
-
-def test_wire_segments_falls_back_to_flat_layout() -> None:
-    """Without `block_positions`, blocks keep following the string segments
-    (the pre-interleaving wire shape)."""
-    stored = StoredMessage(
-        role="assistant",
-        segments=[StoredSegment(content="text", content_type="markdown")],
-        blocks=[_block()],
-    )
-
-    segments = stored.wire_segments()
-
-    assert len(segments) == 2
-    assert segments[0] == {"content": "text", "content_type": "markdown"}
-    assert segments[1] == cast(Any, _block())
 
 
 def test_is_structured_segment_rejects_bare_strings() -> None:

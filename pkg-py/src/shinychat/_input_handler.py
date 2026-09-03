@@ -23,7 +23,7 @@ from ._attachments import (
     Attachment,
     validate_attachments,
 )
-from ._chat_types import StoredMessage, StoredSegment
+from ._chat_types import StoredMessage, StoredSegment, StructuredBlock
 from ._typing_extensions import TypedDict
 
 if TYPE_CHECKING:
@@ -70,7 +70,7 @@ def messages_input_value(value: Any) -> list[StoredMessage]:
         # The browser reports dependencies at message scope. Store them once
         # because StoredMessage.html_deps aggregates dependencies across segments.
         html_deps = m.get("htmlDeps")
-        segments = [
+        segments: list[StoredSegment | StructuredBlock] = [
             StoredSegment(
                 content=s["content"],
                 content_type=s["content_type"],

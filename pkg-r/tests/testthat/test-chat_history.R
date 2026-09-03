@@ -1878,7 +1878,7 @@ make_tool_turns <- function(
   list(user_turn, tool_request_turn, tool_result_turn, final_turn)
 }
 
-test_that("saving after a tool request+result stores UI with structured blocks and block_positions", {
+test_that("saving after a tool request+result stores UI with interleaved blocks", {
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
@@ -1922,26 +1922,31 @@ test_that("saving after a tool request+result stores UI with structured blocks a
   derived <- ctrl$record$nodes$n_0002$ui[[1]]
   expect_equal(derived$version, STORED_UI_VERSION)
   expect_equal(derived$role, "assistant")
-  expect_false(is.null(derived$blocks))
-  expect_true(length(derived$blocks) >= 2)
+  # Blocks live inline in segments now; the parallel fields are gone.
+  expect_null(derived$blocks)
+  expect_null(derived$block_positions)
 
-  block_types <- vapply(derived$blocks, function(b) b$type, character(1))
+  # Segments are interleaved: blocks inline at their positions.
+  block_segs <- Filter(function(s) "type" %in% names(s), derived$segments)
+  expect_true(length(block_segs) >= 2)
+  block_types <- vapply(block_segs, function(s) s$type, character(1))
   expect_true("tool_request" %in% block_types)
   expect_true("tool_result" %in% block_types)
 
-  expect_false(is.null(derived$block_positions))
-  expect_length(derived$block_positions, length(derived$blocks))
-
-  req_block <- derived$blocks[[which(block_types == "tool_request")[1]]]
+  req_block <- block_segs[[which(block_types == "tool_request")[1]]]
   expect_equal(req_block$request_id, "t1")
   expect_equal(req_block$tool_name, "get_weather")
   expect_equal(req_block$version, 1L)
 
-  res_block <- derived$blocks[[which(block_types == "tool_result")[1]]]
+  res_block <- block_segs[[which(block_types == "tool_result")[1]]]
   expect_equal(res_block$request_id, "t1")
   expect_equal(res_block$tool_name, "get_weather")
   expect_equal(res_block$status, "success")
   expect_equal(res_block$version, 1L)
+
+  # String segments interleave with the blocks in order.
+  string_segs <- Filter(function(s) !"type" %in% names(s), derived$segments)
+  expect_true(length(string_segs) >= 1)
 })
 
 test_that("replay emits message actions with structured blocks inline in segments", {

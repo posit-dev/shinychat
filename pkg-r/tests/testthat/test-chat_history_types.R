@@ -712,13 +712,22 @@ test_that("extend_record_linear() derives UI with structured blocks from tool-ca
   derived <- rec$nodes$n_0002$ui[[1]]
   expect_equal(derived$version, STORED_UI_VERSION)
   expect_equal(derived$role, "assistant")
-  expect_false(is.null(derived$blocks))
-  expect_true(length(derived$blocks) > 0)
-  block_types <- vapply(derived$blocks, function(b) b$type, character(1))
+  # Segments are interleaved: blocks inline, no parallel blocks field.
+  expect_null(derived$blocks)
+  expect_null(derived$block_positions)
+  block_segs <- Filter(function(s) "type" %in% names(s), derived$segments)
+  expect_true(length(block_segs) > 0)
+  block_types <- vapply(block_segs, function(s) s$type, character(1))
   expect_true("tool_request" %in% block_types)
   expect_true("tool_result" %in% block_types)
-  seg_contents <- vapply(derived$segments, function(s) s$content, character(1))
-  expect_true("sunny" %in% seg_contents)
+  # Interleaving order: "checking" (request text), blocks, then "sunny".
+  seg_contents <- vapply(
+    Filter(function(s) !"type" %in% names(s), derived$segments),
+    function(s) s$content,
+    character(1)
+  )
+  expect_equal(seg_contents[1], "checking")
+  expect_equal(seg_contents[length(seg_contents)], "sunny")
   expect_null(rec$nodes$n_0002$ui[[2]]$version)
   expect_equal(rec$nodes$n_0002$ui[[2]]$segments[[1]]$content, "sunny")
 })
@@ -833,13 +842,40 @@ test_that("build_stored_message_from_content stores thinking alongside blocks", 
     content = content
   )
 
-  seg_types <- vapply(msg$segments, function(s) s$content_type, character(1))
+  string_segs <- Filter(function(s) !"type" %in% names(s), msg$segments)
+  seg_types <- vapply(string_segs, function(s) s$content_type, character(1))
   expect_true("thinking" %in% seg_types)
   thinking_idx <- which(seg_types == "thinking")
-  expect_equal(msg$segments[[thinking_idx]]$content, "reasoning")
-  expect_true(!is.null(msg$blocks))
-  expect_length(msg$blocks, 1)
-  expect_equal(msg$blocks[[1]]$type, "web_search")
+  expect_equal(string_segs[[thinking_idx]]$content, "reasoning")
+  # Blocks are interleaved in segments; no parallel blocks field.
+  expect_null(msg$blocks)
+  block_segs <- Filter(function(s) "type" %in% names(s), msg$segments)
+  expect_length(block_segs, 1)
+  expect_equal(block_segs[[1]]$type, "web_search")
+  # Interleaving order: "intro", thinking, web_search block, "outro".
+  expect_equal(msg$segments[[1]]$content, "intro")
+  expect_equal(msg$segments[[2]]$content, "reasoning")
+  expect_equal(msg$segments[[3]]$type, "web_search")
+  expect_equal(msg$segments[[4]]$content, "outro")
+})
+
+test_that("build_stored_message_from_content blocks-only message carries one leading empty string segment", {
+  block <- new_web_block("web_search", query = "test")
+  content <- list(block, block)
+
+  msg <- build_stored_message_from_content(
+    role = "assistant",
+    content = content
+  )
+
+  # The wire always carries at least one string segment.
+  expect_length(msg$segments, 3)
+  expect_equal(msg$segments[[1]]$content, "")
+  expect_equal(msg$segments[[1]]$content_type, "markdown")
+  expect_equal(msg$segments[[2]]$type, "web_search")
+  expect_equal(msg$segments[[3]]$type, "web_search")
+  expect_null(msg$blocks)
+  expect_null(msg$block_positions)
 })
 
 test_that("build_stored_message_from_content stores only-thinking + markdown (no blocks) round-trips", {

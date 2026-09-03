@@ -3,7 +3,7 @@ from __future__ import annotations
 import warnings
 
 import pytest
-from shinychat._chat_types import StoredMessage
+from shinychat._chat_types import StoredMessage, StoredSegment
 from shinychat._input_handler import messages_input_value
 
 
@@ -22,8 +22,9 @@ def test_messages_handler_deserializes_snapshot():
     out = messages_input_value(payload)
     assert all(isinstance(m, StoredMessage) for m in out)
     assert out[0].role == "user"
-    assert out[1].segments[0].html_deps == [{"name": "w", "version": "1.0.0"}]
-    assert isinstance(out[1].segments[0].html_deps, list)
+    seg = out[1].segments[0]
+    assert isinstance(seg, StoredSegment)
+    assert seg.html_deps == [{"name": "w", "version": "1.0.0"}]
 
     with warnings.catch_warnings():
         warnings.simplefilter("error")

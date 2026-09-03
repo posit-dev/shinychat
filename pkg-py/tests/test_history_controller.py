@@ -132,14 +132,14 @@ def test_extend_groups_tool_exchange_into_single_node():
     asst_ui = asst_node.ui[0]
     assert asst_ui["version"] == STORED_UI_VERSION
     assert asst_ui["role"] == "assistant"
-    block_types = [b["type"] for b in asst_ui["blocks"]]
+    block_types = [s["type"] for s in asst_ui["segments"] if "type" in s]
     assert block_types == ["tool_request", "tool_result"]
-    assert asst_ui["blocks"][0]["request_id"] == "x"
-    assert asst_ui["blocks"][1]["value"] == "Sunny"
-    assert asst_ui["block_positions"] == [0, 0]
-    assert asst_ui["segments"] == [
-        {"content": "It's sunny.", "content_type": "markdown"}
-    ]
+    assert asst_ui["segments"][0]["request_id"] == "x"
+    assert asst_ui["segments"][1]["value"] == "Sunny"
+    assert asst_ui["segments"][2] == {
+        "content": "It's sunny.",
+        "content_type": "markdown",
+    }
 
     assert rec.path_turns() == [user_turn, asst_req, user_res, asst_final]
 
@@ -2228,16 +2228,16 @@ async def test_on_response_stores_derived_ui_with_structured_blocks():
     stored = asst_ui[0]
     assert stored["version"] == STORED_UI_VERSION
     assert stored["role"] == "assistant"
-    assert [b["type"] for b in stored["blocks"]] == [
+    assert [s["type"] for s in stored["segments"] if "type" in s] == [
         "tool_request",
         "tool_result",
     ]
-    assert stored["blocks"][0]["tool_name"] == "get_weather"
-    assert stored["blocks"][1]["value"] == "Sunny"
-    assert stored["block_positions"] == [0, 0]
-    assert stored["segments"] == [
-        {"content": "It's sunny.", "content_type": "markdown"}
-    ]
+    assert stored["segments"][0]["tool_name"] == "get_weather"
+    assert stored["segments"][1]["value"] == "Sunny"
+    assert stored["segments"][2] == {
+        "content": "It's sunny.",
+        "content_type": "markdown",
+    }
 
 
 @pytest.mark.anyio
@@ -2315,7 +2315,7 @@ async def test_replay_discards_old_format_ui_and_rederives_from_turns():
     ]
     asst = chat.messages_[1]
     assert asst["version"] == STORED_UI_VERSION
-    assert [b["type"] for b in asst["blocks"]] == [
+    assert [s["type"] for s in asst["segments"] if "type" in s] == [
         "tool_request",
         "tool_result",
     ]
@@ -2402,7 +2402,9 @@ async def test_out_of_band_message_survives_save_and_replay():
 
     assert len(chat.messages_) == 3
     assert chat.messages_[2] == note
-    assert [b["type"] for b in chat.messages_[1]["blocks"]] == [
+    assert [
+        s["type"] for s in chat.messages_[1]["segments"] if "type" in s
+    ] == [
         "tool_request",
         "tool_result",
     ]

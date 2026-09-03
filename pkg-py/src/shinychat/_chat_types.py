@@ -777,57 +777,40 @@ class StoredSegment(_SegmentBase):
 
 class StoredMessage(BaseModel):
     role: Role
-    segments: list[StoredSegment]
+    # Interleaved in content order, mirroring ChatMessage.segments and the
+    # wire format: StoredSegment entries for strings, StructuredBlock dicts
+    # (distinguished by a "type" key) for blocks.
+    segments: list[StoredSegment | StructuredBlock]
     attachments: list[Attachment] = []
-    # Server-authored structured blocks carried by this message. Stored
-    # separately from the string `segments`; `wire_segments()` recombines
-    # them.
-    blocks: list[StructuredBlock] = []
-    # Parallel to `blocks`: how many string `segments` precede each block in
-    # the source content. `wire_segments()` re-interleaves instead of
-    # appending all blocks after the string segments.
-    block_positions: list[int] | None = None
 
     @property
     def content(self) -> str:
         return "".join(
             StoredSegment.stringify(s.content, s.content_type)
             for s in self.segments
+            if isinstance(s, StoredSegment)
         )
+
+    @property
+    def blocks(self) -> list[StructuredBlock]:
+        """The structured blocks in the message, in content order."""
+        return [s for s in self.segments if isinstance(s, dict)]
 
     @property
     def html_deps(self) -> list[SerializedDep] | None:
         deps: list[SerializedDep] = []
         for s in self.segments:
-            if s.html_deps:
+            if isinstance(s, StoredSegment) and s.html_deps:
                 deps.extend(s.html_deps)
         return deps or None
 
     def wire_segments(self) -> list[SegmentPayload]:
-        segments: list[SegmentPayload] = [
+        return [
             {"content": s.content, "content_type": s.content_type}
+            if isinstance(s, StoredSegment)
+            else s
             for s in self.segments
         ]
-        if self.block_positions is None or len(self.block_positions) != len(
-            self.blocks
-        ):
-            # Flat layout: blocks follow the string segments.
-            segments.extend(self.blocks)
-            return segments
-        # Multi-part layout: re-interleave each block at its recorded
-        # position so the wire order matches the source content order.
-        out: list[SegmentPayload] = []
-        positioned = list(zip(self.block_positions, self.blocks))
-        bi = 0
-        for i, seg in enumerate(segments):
-            while bi < len(positioned) and positioned[bi][0] <= i:
-                out.append(positioned[bi][1])
-                bi += 1
-            out.append(seg)
-        while bi < len(positioned):
-            out.append(positioned[bi][1])
-            bi += 1
-        return out
 
     @classmethod
     def from_chat_message(
@@ -835,37 +818,25 @@ class StoredMessage(BaseModel):
         message: ChatMessage,
         html_deps: list[SerializedDep] | None = None,
     ) -> StoredMessage:
-        segments: list[StoredSegment] = []
-        blocks: list[StructuredBlock] = []
-        positions: list[int] = []
-        for seg in message.segments:
-            if isinstance(seg, ContentSegment):
-                segments.append(
-                    StoredSegment(
-                        content=seg.content, content_type=seg.content_type
-                    )
-                )
-            else:
-                positions.append(len(segments))
-                blocks.append(seg)
-        if not segments:
+        segments: list[StoredSegment | StructuredBlock] = [
+            StoredSegment(content=seg.content, content_type=seg.content_type)
+            if isinstance(seg, ContentSegment)
+            else seg
+            for seg in message.segments
+        ]
+        if not any(isinstance(s, StoredSegment) for s in segments):
             # The wire always carries at least one string segment, even for
             # a blocks-only message.
-            segments = [
-                StoredSegment(content="", content_type=message.content_type)
-            ]
-            positions = []
-        segments[0].html_deps = html_deps
-        # Blocks that all trail the string segments are the flat layout;
-        # record positions only for true interleaving.
-        if positions and all(p == len(segments) for p in positions):
-            positions = []
+            segments.insert(
+                0,
+                StoredSegment(content="", content_type=message.content_type),
+            )
+        first = next(s for s in segments if isinstance(s, StoredSegment))
+        first.html_deps = html_deps
         return cls(
             role=message.role,
             segments=segments,
             attachments=message.attachments,
-            blocks=blocks,
-            block_positions=positions or None,
         )
 
 

@@ -196,17 +196,17 @@ build_stored_message_from_content <- function(
       )
     }
   } else {
+    # `segments` is interleaved: each entry is either a string segment
+    # (content/content_type) or a structured block (distinguished by a
+    # `type` field). Mirrors Python's interleaved StoredMessage.segments.
     segments <- list()
-    blocks <- list()
-    positions <- integer(0)
 
     for (part in parts) {
       if (inherits(part, "shinychat_block")) {
-        positions <- c(positions, length(segments))
         block <- as.list(part)
         result <- process_block_deps(block, session)
         all_deps <- c(all_deps, result$deps)
-        blocks <- c(blocks, list(result$block))
+        segments <- c(segments, list(result$block))
       } else if (is.character(part) && inherits(part, "shinychat_thinking")) {
         segments <- c(
           segments,
@@ -246,12 +246,7 @@ build_stored_message_from_content <- function(
         }
         all_deps <- c(all_deps, island_result$deps)
         for (seg in island_result$segments) {
-          if ("type" %in% names(seg)) {
-            positions <- c(positions, length(segments))
-            blocks <- c(blocks, list(seg))
-          } else {
-            segments <- c(segments, list(seg))
-          }
+          segments <- c(segments, list(seg))
         }
       } else {
         segments <- c(
@@ -264,9 +259,19 @@ build_stored_message_from_content <- function(
       }
     }
 
-    # Blocks-only: add an empty segment so htmlDeps can ride on it.
-    if (length(segments) == 0) {
-      segments <- list(list(content = "", content_type = "markdown"))
+    # Blocks-only (no string segments): add an empty string segment so
+    # htmlDeps can ride on it and the wire always carries at least one
+    # string segment.
+    has_string_segment <- any(vapply(
+      segments,
+      function(seg) !"type" %in% names(seg),
+      logical(1)
+    ))
+    if (!has_string_segment) {
+      segments <- c(
+        list(list(content = "", content_type = "markdown")),
+        segments
+      )
     }
 
     message <- list(
@@ -274,12 +279,6 @@ build_stored_message_from_content <- function(
       role = role,
       segments = segments
     )
-    if (length(blocks) > 0) {
-      message$blocks <- blocks
-      if (length(positions) > 0 && !identical(positions, integer(0))) {
-        message$block_positions <- as.integer(positions)
-      }
-    }
   }
 
   if (length(all_deps) > 0) {

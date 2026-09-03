@@ -35,16 +35,15 @@ class StoredUiMessage(TypedDict):
     """A serialized :class:`StoredMessage` persisted in a node's ``ui`` list.
 
     Matches ``StoredMessage.model_dump(exclude_none=True)`` plus the
-    ``version`` marker. Empty ``attachments`` and ``blocks`` are dropped,
-    so those fields are ``NotRequired``.
+    ``version`` marker. ``segments`` is interleaved: string segment dicts
+    and structured blocks in content order. Empty ``attachments`` is
+    dropped, so it is ``NotRequired``.
     """
 
     role: Role
-    segments: list[StoredSegmentDict]
+    segments: list[StoredSegmentDict | StructuredBlock]
     version: int
     attachments: NotRequired[list[AttachmentDict]]
-    blocks: NotRequired[list[StructuredBlock]]
-    block_positions: NotRequired[list[int]]
 
 
 def new_conversation_record(

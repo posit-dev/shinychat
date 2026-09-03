@@ -169,14 +169,12 @@ class HistoryOptions:
 def _stored_ui_dict(stored: StoredMessage) -> StoredUiMessage:
     """Serialize a StoredMessage for persistence in a node's ``ui`` list.
 
-    Adds the version marker and drops empty ``attachments`` and ``blocks``
-    so text-only messages keep their previous shape.
+    Adds the version marker and drops empty ``attachments`` so text-only
+    messages keep their previous shape.
     """
     d = stored.model_dump(exclude_none=True)
     if not d.get("attachments"):
         d.pop("attachments", None)
-    if not d.get("blocks"):
-        d.pop("blocks", None)
     d["version"] = STORED_UI_VERSION
     return cast(StoredUiMessage, d)
 
@@ -188,8 +186,8 @@ def derive_stored_ui_message(
     """Derive one stored UI message from a turn group.
 
     The group is merged and normalized through ``normalize_turn_group``,
-    so the result carries structured ``blocks`` and ``block_positions``.
-    Returns ``None`` when the group has nothing to display.
+    so the result's ``segments`` interleave string segments and structured
+    blocks. Returns ``None`` when the group has nothing to display.
     """
     msg = normalize_turn_group(group)
     if msg is None:
