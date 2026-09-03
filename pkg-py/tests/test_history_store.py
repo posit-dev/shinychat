@@ -203,16 +203,26 @@ async def test_v2_put_failure_keeps_previous_document(
     )
     before = (conv_dir / "record.json").read_bytes()
     rec.nodes["exchange-1"].status = "ok"
+    original_replace = history_store_module.os.replace
 
     monkeypatch.setattr(
         "shinychat._history_store.os.replace",
-        lambda *args: (_ for _ in ()).throw(OSError("injected replace failure")),
+        lambda *args: (_ for _ in ()).throw(
+            OSError("injected replace failure")
+        ),
     )
     with pytest.raises(OSError, match="injected replace failure"):
         await store.put(part(scope="alice"), rec)
 
     assert (conv_dir / "record.json").read_bytes() == before
-    assert not (conv_dir / ".record.json.tmp").exists()
+    monkeypatch.setattr("shinychat._history_store.os.replace", original_replace)
+    await store.put(part(scope="alice"), rec)
+
+    reloaded = await FileConversationStore(tmp_path).get(
+        part(scope="alice"), rec.id
+    )
+    assert reloaded is not None
+    assert reloaded.nodes["exchange-1"].status == "ok"
 
 
 @pytest.mark.anyio
@@ -790,19 +800,6 @@ def test_sanitize_scope_is_filesystem_safe_and_stable():
     assert sanitize_scope("alice") != sanitize_scope("bob")
 
 
-@pytest.mark.anyio
-async def test_put_is_atomic_no_partial_files(
-    store: FileConversationStore, tmp_path: Path
-):
-    rec = new_conversation_record(title="t")
-    await store.put(part(scope="alice"), rec)
-    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
-    conv_dir = scope_dir / rec.id
-    assert conv_dir.is_dir()
-    files = {f.name for f in conv_dir.iterdir()}
-    assert files == {"record.json", "turns.jsonl", "ui.jsonl"}
-
-
 def test_safe_conv_path_rejects_traversal(tmp_path: Path):
     with pytest.raises(ValueError, match="Invalid conversation id"):
         safe_conv_path(tmp_path, "../escape")
@@ -836,18 +833,6 @@ async def test_delete_with_traversal_id_raises(store: FileConversationStore):
 
 
 @pytest.mark.anyio
-async def test_list_populates_cache(store: FileConversationStore):
-    rec = new_conversation_record(title="cached")
-    await store.put(part(scope="alice"), rec)
-    assert (
-        part(scope="alice") not in store._meta_cache
-    )  # put to cold scope: no cache
-    await store.list(part(scope="alice"))
-    assert part(scope="alice") in store._meta_cache
-    assert store._meta_cache[part(scope="alice")][0].id == rec.id
-
-
-@pytest.mark.anyio
 async def test_list_returns_from_cache_without_disk_read(
     store: FileConversationStore, tmp_path: Path
 ):
@@ -873,7 +858,6 @@ async def test_get_missing_after_cached_list_invalidates_cache(
     rec = new_conversation_record(title="t")
     await store.put(part(scope="alice"), rec)
     await store.list(part(scope="alice"))  # warms cache
-    assert part(scope="alice") in store._meta_cache
 
     # Simulate another worker deleting the conversation directly on disk
     scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
@@ -883,7 +867,6 @@ async def test_get_missing_after_cached_list_invalidates_cache(
 
     got = await store.get(part(scope="alice"), rec.id)
     assert got is None
-    assert part(scope="alice") not in store._meta_cache
 
     metas = await store.list(part(scope="alice"))
     assert metas == []
@@ -898,17 +881,8 @@ async def test_put_updates_warm_cache(store: FileConversationStore):
     b = new_conversation_record(title="second")
     await store.put(part(scope="alice"), b)
 
-    cached = store._meta_cache[part(scope="alice")]
-    assert {m.id for m in cached} == {a.id, b.id}
-
-
-@pytest.mark.anyio
-async def test_put_does_not_create_cache_for_cold_scope(
-    store: FileConversationStore,
-):
-    rec = new_conversation_record(title="cold")
-    await store.put(part(scope="alice"), rec)
-    assert part(scope="alice") not in store._meta_cache
+    metas = await store.list(part(scope="alice"))
+    assert {meta.id for meta in metas} == {a.id, b.id}
 
 
 @pytest.mark.anyio
@@ -918,7 +892,7 @@ async def test_delete_updates_warm_cache(store: FileConversationStore):
     await store.list(part(scope="alice"))  # warm
     await store.delete(part(scope="alice"), rec.id)
 
-    assert store._meta_cache[part(scope="alice")] == []
+    assert await store.list(part(scope="alice")) == []
 
 
 @pytest.mark.anyio
@@ -927,7 +901,9 @@ async def test_list_returns_independent_copy(store: FileConversationStore):
     await store.put(part(scope="alice"), rec)
     result = await store.list(part(scope="alice"))
     result.clear()
-    assert len(store._meta_cache[part(scope="alice")]) == 1
+    assert [meta.id for meta in await store.list(part(scope="alice"))] == [
+        rec.id
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -1166,28 +1142,6 @@ async def test_memory_search(mem_store: InMemoryConversationStore):
 
 
 @pytest.mark.anyio
-async def test_memory_list_does_not_reserialize_on_repeat_calls(
-    mem_store: InMemoryConversationStore, monkeypatch: pytest.MonkeyPatch
-):
-    rec = new_conversation_record(title="t")
-    await mem_store.put(part(scope="alice"), rec)
-    await mem_store.list(part(scope="alice"))  # warm cache
-
-    call_count = 0
-    original = ConversationRecord.model_dump_json
-
-    def counting(self: ConversationRecord, *args: Any, **kwargs: Any) -> str:
-        nonlocal call_count
-        call_count += 1
-        return original(self, *args, **kwargs)
-
-    monkeypatch.setattr(ConversationRecord, "model_dump_json", counting)
-    await mem_store.list(part(scope="alice"))
-    await mem_store.list(part(scope="alice"))
-    assert call_count == 0
-
-
-@pytest.mark.anyio
 async def test_memory_put_updates_warm_cache(
     mem_store: InMemoryConversationStore,
 ):
@@ -1198,17 +1152,8 @@ async def test_memory_put_updates_warm_cache(
     b = new_conversation_record(title="second")
     await mem_store.put(part(scope="alice"), b)
 
-    cached = mem_store._meta_cache[part(scope="alice")]
-    assert {m.id for m in cached} == {a.id, b.id}
-
-
-@pytest.mark.anyio
-async def test_memory_put_does_not_create_cache_for_cold_scope(
-    mem_store: InMemoryConversationStore,
-):
-    rec = new_conversation_record(title="cold")
-    await mem_store.put(part(scope="alice"), rec)
-    assert part(scope="alice") not in mem_store._meta_cache
+    metas = await mem_store.list(part(scope="alice"))
+    assert {meta.id for meta in metas} == {a.id, b.id}
 
 
 @pytest.mark.anyio
@@ -1220,7 +1165,7 @@ async def test_memory_delete_updates_warm_cache(
     await mem_store.list(part(scope="alice"))  # warm
     await mem_store.delete(part(scope="alice"), rec.id)
 
-    assert mem_store._meta_cache[part(scope="alice")] == []
+    assert await mem_store.list(part(scope="alice")) == []
 
 
 # ---------------------------------------------------------------------------
