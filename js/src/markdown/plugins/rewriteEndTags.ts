@@ -169,7 +169,7 @@ export type HtmlTagRewrite = {
 
 /**
  * Rewrite emitted start and end tags in one tokenizer-aware pass.
- * Start-tag replacements only replace `<tag`; attributes stay intact.
+ * Start-tag replacements only replace `<tag`. Attributes stay intact.
  * A self-closing `/>` is normalized to `>` plus `selfClosingEnd`.
  */
 export function rewriteTagsHtml(
@@ -198,7 +198,7 @@ export function rewriteTagsHtml(
     const nameStart = open + (isEndTag ? 2 : 1)
     const firstNameChar = value.charAt(nameStart)
     if (!isAsciiAlpha(firstNameChar)) {
-      // Invalid end-tag openers become bogus comments; invalid start-tag
+      // Invalid end-tag openers become bogus comments. Invalid start-tag
       // openers emit `<` as text.
       if (isEndTag) {
         i = skipBogusComment(value, nameStart)

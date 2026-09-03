@@ -23,19 +23,18 @@ export type MessagePayloadSegment = {
   content_type: ContentType
 }
 
-/** Per-call grouping override; mirrors `ToolGrouping` in chat/tool-model.ts. */
+/** Per-call grouping override. */
 export type StructuredBlockGrouping = "none" | "tool" | "all"
 
 /**
- * Server-authored tool request envelope. The envelope is the trust signal:
- * only the server constructs these blocks, so HTML fields render through
- * RawHTML while text fields are escaped. An unpaired request is a `running`
- * call.
+ * A tool call request from the server. HTML fields render through RawHTML;
+ * text fields are escaped. The client shows a `running` call when a request
+ * has no matching result.
  */
 export type ToolRequestBlock = {
   type: "tool_request"
   version: 1
-  /** Correlates with the result; keys transcript-wide request suppression. */
+  /** Correlates with the result. Keys transcript-wide request suppression. */
   request_id: string
   tool_name: string
   /** HTML → RawHTML */
@@ -50,15 +49,14 @@ export type ToolRequestBlock = {
 }
 
 /**
- * Server-authored tool result envelope. The envelope is the trust signal:
- * only the server constructs these blocks, so HTML fields (`value` with
- * `value_type: "html"`, `title`, `icon`, `footer`) render through RawHTML
- * while text fields are escaped.
+ * The result of a completed tool call. HTML fields (`value` with
+ * `value_type: "html"`, `title`, `icon`, `footer`) render through RawHTML;
+ * text fields are escaped.
  */
 export type ToolResultBlock = {
   type: "tool_result"
   version: 1
-  /** Correlates with the request; keys transcript-wide request suppression. */
+  /** Correlates with the request. Keys transcript-wide request suppression. */
   request_id: string
   tool_name: string
   status: "success" | "error"
@@ -94,8 +92,8 @@ export type WebSearchSource = {
 }
 
 /**
- * Server-authored web-search envelope. Consecutive web_* blocks group
- * client-side into one `web_activity` block on arrival.
+ * A web search query. Consecutive `web_*` blocks group into one
+ * `web_activity` block on the client.
  */
 export type WebSearchBlock = {
   type: "web_search"
@@ -115,9 +113,9 @@ export type WebSearchResultsBlock = {
 }
 
 /**
- * Answer citations for the most recent `web_search`. A pure data carrier:
- * the client merges `sources` into that search and renders nothing for the
- * block itself. Shown only while no provider results attach to the search.
+ * Citations for the most recent `web_search`. The client merges `sources`
+ * into the search and renders nothing for the block itself. Citations appear
+ * only while no provider results are attached.
  */
 export type WebSearchCitationsBlock = {
   type: "web_search_citations"
@@ -125,7 +123,7 @@ export type WebSearchCitationsBlock = {
   sources: WebSearchSource[]
 }
 
-/** Server-authored web-fetch envelope. */
+/** A fetched URL from a web search session. */
 export type WebFetchBlock = {
   type: "web_fetch"
   version: 1
@@ -133,10 +131,7 @@ export type WebFetchBlock = {
   status?: "success" | "error"
 }
 
-/**
- * Server-authored raw-HTML island. The envelope is the trust signal: only the
- * server constructs these blocks, so `content` renders through RawHTML.
- */
+/** Trusted HTML rendered through RawHTML. */
 export type HtmlBlock = {
   type: "html_block"
   version: 1
@@ -146,7 +141,7 @@ export type HtmlBlock = {
   html_deps?: HtmlDep[]
 }
 
-/** Server-authored structured blocks carried in segments or via block_insert. */
+/** Structured blocks carried in segments or via block_insert. */
 export type StructuredBlock =
   | ToolRequestBlock
   | ToolResultBlock
@@ -218,7 +213,7 @@ export type ChatAction =
     }
   | { type: "chunk_end" }
   | {
-      /** Delivers one structured block mid-stream (appends to streamingMessage.blocks). */
+      /** Delivers one structured block mid-stream. The client appends it to the in-flight message's block list. */
       type: "block_insert"
       block: StructuredBlock
       html_deps?: HtmlDep[]

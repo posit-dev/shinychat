@@ -234,7 +234,7 @@ function ToolCallRow({
           setOpen((v) => !v)
         }}
       >
-        {/* The expanded card owns the Shiny bindings; this copy binds only
+        {/* The expanded card owns the Shiny bindings. This copy binds only
             while collapsed. */}
         <RawHTML
           html={glyph}

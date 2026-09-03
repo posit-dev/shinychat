@@ -20,11 +20,11 @@ interface State {
 }
 
 /**
- * Containment boundary for a single unit of message content (a block, a tool
- * card body, ...). A render error degrades only that unit to `fallback`
+ * Containment boundary for a single unit of message content (a block or a
+ * tool card body). A render error degrades only that unit to `fallback`
  * instead of bubbling to the per-message boundary and wiping the whole
- * message. Unlike MessageErrorBoundary it recovers: when `resetKey` changes,
- * the error clears and the children retry.
+ * message. Unlike MessageErrorBoundary it recovers: when `resetKey`
+ * changes, the error clears and the children retry.
  */
 export class BlockErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {

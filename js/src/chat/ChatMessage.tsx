@@ -142,8 +142,8 @@ export const ChatMessage = memo(function ChatMessage({
 
   // Drop running requests whose result has rendered elsewhere in the transcript
   // (the router can only pair the two within one content string), then any group
-  // left empty. Done here so `hasContent` reflects what is actually visible;
-  // original block indices are kept for stable React keys. A group that loses
+  // left empty. Done here so `hasContent` reflects what is actually visible.
+  // Original block indices are kept for stable React keys. A group that loses
   // a call rederives its whole identity (title, segments, icon, count) from the
   // survivors so the row describes what it renders.
   const visibleBlocks = useMemo(() => {

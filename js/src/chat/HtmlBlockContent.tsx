@@ -4,10 +4,9 @@ import { RawHTML } from "./RawHTML"
 import type { HtmlDep } from "../transport/types"
 
 /**
- * A structured `html_block` island: server-authored trusted HTML mounted
- * through the shared RawHTML sink. Block-level dependencies render before
- * the HTML mounts. Shared by Chat (message blocks) and MarkdownStream
- * (stream segments).
+ * A structured `html_block` island: trusted HTML mounted through the shared
+ * RawHTML sink. Block-level dependencies render before the HTML mounts.
+ * Shared by Chat (message blocks) and MarkdownStream (stream segments).
  */
 export function HtmlBlockContent({
   content,

@@ -52,7 +52,7 @@ const CHAT_FOOTER_TAG = "shiny-chat-footer"
 const CHAT_DRAWER_TAG = "shiny-chat-drawer"
 
 /**
- * Parse the `data-initial-messages` attribute: a JSON array of message
+ * Parse the `data-initial-messages` attribute. A JSON array of message
  * payloads the server embeds when any initial message carries structured
  * blocks. Each entry replays through `messagePayloadToData()`. Returns null
  * when malformed so the caller can fall back to static tags.

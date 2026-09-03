@@ -13,7 +13,7 @@ export type ToolGrouping = "none" | "tool" | "all"
 /** Display style for a tool result's expandable region. */
 export type ToolResultOpenStyle = "minimal" | "framed"
 
-/** One tool call — a request and/or its matching result. */
+/** One tool call, a request and/or its matching result. */
 export interface ToolCallItem {
   /**
    * The server-emitted request identifier, which pairs a request with its
@@ -249,7 +249,7 @@ export function toolResultBlockToCall(block: ToolResultBlock): ToolCallItem {
   if (block.value_type !== undefined) call.valueType = block.value_type
   if (block.request_call !== undefined) {
     // Defensive: some servers have sent the call as an array of wrapped
-    // lines; the renderer expects a single string.
+    // lines. The renderer expects a single string.
     const rc = block.request_call
     call.requestCall = Array.isArray(rc)
       ? rc.join("\n")
@@ -336,8 +336,8 @@ export function appendCallToToolLoop(
 
 /**
  * Append a one-call tool loop to a message's block list, merging into an
- * adjacent trailing tool loop — tolerating a whitespace-only content block
- * between carriers (mirrors `appendWebActivityBlock`).
+ * adjacent trailing tool loop. Tolerates a whitespace-only content block
+ * between carriers.
  */
 export function appendToolLoopBlock(
   blocks: MessageBlock[],

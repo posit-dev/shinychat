@@ -5,9 +5,8 @@ import type {
 } from "../transport/types"
 
 /**
- * Render-model form of a structured `html_block`: a server-authored
- * raw-HTML island. Shared by Chat (message blocks) and MarkdownStream
- * (stream segments).
+ * Render-model form of a structured `html_block`. Shared by Chat (message
+ * blocks) and MarkdownStream (stream segments).
  */
 export interface HtmlBlock {
   type: "html_block"
@@ -18,9 +17,9 @@ export interface HtmlBlock {
 }
 
 /**
- * Defensively narrow a structured block to a supported `html_block` wire
- * block. A block whose version this client predates is ignored with a
- * warning rather than breaking the message around it.
+ * Narrow a structured block to a supported `html_block` wire block.
+ * Returns null (with a warning) for an unsupported version or malformed
+ * block, so the rest of the message renders.
  */
 export function asHtmlBlock(block: StructuredBlock): HtmlBlockWire | null {
   if ((block as { type?: unknown }).type !== "html_block") return null

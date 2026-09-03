@@ -33,7 +33,7 @@ export type ContentSegment = {
 /**
  * One item of stream state: a string segment, a structured `html_block`
  * island, or a grouped web-activity block. Blocks are hard structural
- * boundaries — adjacent same-trust string segments merge, but a block
+ * boundaries. Adjacent same-trust string segments merge, but a block
  * never merges with anything.
  */
 export type StreamSegment = ContentSegment | HtmlBlock | WebActivityBlock
@@ -41,14 +41,14 @@ export type StreamSegment = ContentSegment | HtmlBlock | WebActivityBlock
 /** A validated block accepted by the stream API: an `html_block` island or a web_* wire block. */
 export type StreamBlock = HtmlBlock | WebActivityWireBlock
 
-/** Structural discrimination: string segments carry `text`; blocks a `type`. */
+/** Structural discrimination. String segments carry `text`. Blocks carry a `type`. */
 function isBlockSegment(
   segment: StreamSegment,
 ): segment is HtmlBlock | WebActivityBlock {
   return "type" in segment
 }
 
-/** Whitespace-separator check for appendWebActivityBlock (mirrors rehypeGroupWebActivity). */
+/** Whitespace-separator check for appendWebActivityBlock. */
 export function isWhitespaceTextSegment(segment: StreamSegment): boolean {
   return !isBlockSegment(segment) && segment.text.trim() === ""
 }
@@ -72,7 +72,7 @@ export type MarkdownStreamApi = {
   /** Append one complete structured block (html_block or web_*). */
   appendBlock: (block: StreamBlock) => void
   replaceContent: (content: string, trusted?: boolean) => void
-  /** Uniform replace: wipe all segments and blocks, then append the block. */
+  /** Uniform replace. Wipe all segments and blocks, then append the block. */
   replaceWithBlock: (block: StreamBlock) => void
   setStreaming: (streaming: boolean) => void
   setContentType: (contentType: ContentType) => void

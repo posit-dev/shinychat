@@ -59,7 +59,7 @@ export function ToolCard({
   const headerId = useToolUiId("tool-header")
   const contentId = useToolUiId("tool-content")
   const iconHtml = icon || bareDot
-  // toolTitle is server-attested HTML (rendered raw); toolName is
+  // toolTitle is server-attested HTML (rendered raw). toolName is
   // model-influenced text, so the fallback must be escaped before
   // interpolation into the RawHTML title span.
   const displayName = toolTitle || `${escapeHtml(toolName)}()`

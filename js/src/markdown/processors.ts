@@ -31,10 +31,10 @@ import { remarkNormalizeListItemAsides } from "./plugins/normalizeAsideMarkdown"
 
 /**
  * Frozen processor for assistant markdown content (trusted and untrusted).
- * No rehypeSanitize: output is converted to React elements via toJsxRuntime
+ * No rehypeSanitize. Output is converted to React elements via toJsxRuntime
  * (not innerHTML), so script tags and event-handler attributes are inert.
- * The disguise/neutralize pair around rehypeRaw is a spoof guard that reduces
- * forged island tags to inert text (see rehypeNeutralizeIslands).
+ * The disguise/neutralize pair around rehypeRaw is a spoof guard that
+ * reduces forged island tags to inert text (see rehypeNeutralizeIslands).
  */
 export const markdownProcessor = unified()
   .use(remarkParse)

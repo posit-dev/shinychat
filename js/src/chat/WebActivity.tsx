@@ -24,7 +24,7 @@ function faviconUrl(domain: string): string {
   return `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`
 }
 
-/** Renders one web-activity burst (searches + fetches) as a collapsible timeline. */
+/** Renders one web-activity burst (searches and fetches) as a collapsible timeline. */
 export const WebActivity = memo(function WebActivity({
   items,
 }: WebActivityProps) {

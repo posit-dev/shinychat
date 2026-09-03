@@ -11,8 +11,8 @@ export interface RawHTMLProps {
   html: string
   className?: string
   /**
-   * Use "span" when the island sits in a phrasing-content context (a <span>
-   * or <button>), where a <div> would be invalid nesting.
+   * Use "span" when the island sits in a phrasing-content context (a
+   * `<span>` or `<button>`), where a `<div>` would be invalid nesting.
    */
   as?: "div" | "span"
   /**
@@ -25,7 +25,7 @@ export interface RawHTMLProps {
   /**
    * Whether to join the fill layout when the parent is a fill container, so a
    * Shiny output payload (a plot, a value box) can absorb the available height
-   * instead of collapsing. Pass `false` for card chrome — a footer is sized by
+   * instead of collapsing. Pass `false` for card chrome. A footer is sized by
    * its content, and promoting it makes it split the free space with the body.
    */
   fillable?: boolean

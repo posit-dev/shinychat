@@ -1,6 +1,6 @@
 // Moving a custom element in the DOM fires disconnectedCallback then
-// connectedCallback synchronously in the same tick, so teardown is deferred:
-// a reconnect cancels it and the live React root survives the move. If the
+// connectedCallback synchronously in the same tick, so teardown is deferred.
+// A reconnect cancels it and the live React root survives the move. If the
 // element was genuinely removed, no reconnect arrives and teardown runs on
 // the next tick.
 export class DeferredTeardown {

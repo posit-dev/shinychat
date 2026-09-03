@@ -26,7 +26,7 @@ export interface WebActivitySearchItem {
   /** null while the search's results block hasn't arrived (or never will). */
   sources: WebSearchSource[] | null
   /**
-   * Answer-citation fallback, shown only while no provider results attach
+   * Citation fallback, shown only while no provider results are attached
    * (sources === null). Populated by `web_search_citations` blocks.
    */
   citedSources: WebSearchSource[]
@@ -63,9 +63,9 @@ export function isWebActivityWireBlock(
 }
 
 /**
- * Defensively narrow a structured block to a supported web_* wire block.
- * A block whose version this client predates is ignored with a warning
- * rather than breaking the message around it.
+ * Narrow a structured block to a supported web_* wire block. Returns null
+ * (with a warning) for an unsupported version or malformed block, so the
+ * rest of the message renders.
  */
 export function asWebActivityWireBlock(
   block: StructuredBlock,
@@ -107,13 +107,12 @@ export function normalizeSources(value: unknown): WebSearchSource[] {
 }
 
 /**
- * Apply one web_* wire block to an activity: a results block attaches its
- * sources to the search named by `search_id`, or — only when no id was
- * sent — to the earliest still-pending search; one arriving with no
- * matching search becomes a query-less search item; a fetch block appends a
- * standalone item. The pending state lives in the items themselves
- * (sources === null), so pairing works across block_insert boundaries
- * mid-stream.
+ * Apply one web_* wire block to an activity. A results block attaches its
+ * sources to the search named by `search_id`, or when no id was sent, to
+ * the earliest still-pending search. One arriving with no matching search
+ * becomes a query-less search item. A fetch block appends a standalone
+ * item. The pending state lives in the items themselves (sources === null),
+ * so pairing works across block_insert boundaries mid-stream.
  */
 export function applyWebBlock(
   activity: WebActivityBlock | null,
@@ -151,8 +150,8 @@ export function applyWebBlock(
 }
 
 /**
- * Merge cited sources into a search item's fallback list, by URL (first
- * occurrence wins; a later title backfills a missing one).
+ * Merge cited sources into a search item's fallback list, by URL. First
+ * occurrence wins; a later title backfills a missing one.
  */
 function mergeCitedSources(
   existing: WebSearchSource[],
@@ -172,9 +171,9 @@ function mergeCitedSources(
 
 /**
  * Apply a citations block to the most recent search item in the list,
- * walking back across activities and intervening content. The block renders
- * nothing itself, so the list shape is unchanged when no search exists to
- * receive the sources.
+ * walking back across activities and intervening content. The block
+ * renders nothing itself, so the list shape is unchanged when no search
+ * exists to receive the sources.
  */
 function applyWebCitations<T>(
   blocks: (T | WebActivityBlock)[],
@@ -219,7 +218,7 @@ export function isWhitespaceContentBlock(
 
 /**
  * Append one web_* wire block to a block list, grouping into the trailing
- * web activity when reachable — tolerating a whitespace-only separator
+ * web activity when reachable. Tolerates a whitespace-only separator
  * (dropped; any other block ends the run). A citations block is the
  * exception: it renders nothing and instead updates the most recent search
  * item wherever it sits, so it neither joins nor breaks the adjacency run.

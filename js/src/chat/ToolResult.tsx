@@ -112,7 +112,7 @@ export const ToolResult = memo(function ToolResult({
         footer={footer}
         onEnterFullscreen={enterFullscreen}
         cardRef={cardRef}
-        // Body errors can derive from any of these inputs; the boundary must
+        // Body errors can derive from any of these inputs. The boundary must
         // retry when any of them changes, not just the result value.
         resetKey={`${valueType}${showRequest}${requestCall}${value}`}
       >

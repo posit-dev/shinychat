@@ -222,12 +222,12 @@ export const initialState: ChatState = {
   },
 }
 
-/** Discriminator: structured blocks carry `type`; string segments do not. */
+/** Discriminator: structured blocks carry `type`. String segments do not. */
 function isStructuredSegment(seg: SegmentPayload): seg is StructuredBlock {
   return "type" in seg
 }
 
-// Tool UI and web activity are assistant-only; html_block is valid in any role.
+// Tool UI and web activity are assistant-only. html_block is valid in any role.
 function blockAllowedForRole(
   role: "user" | "assistant",
   blockType: string,
@@ -734,7 +734,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const last = state.streamingMessage
       if (!last || !last.streaming) return state
 
-      // Uniform replace: a replace chunk supersedes the whole in-flight message
+      // Uniform replace. A replace chunk supersedes the whole in-flight message
       // (wipe all blocks, reset tag/fence state), then re-appends.
       if (action.operation === "replace") {
         const wipedState: ChatState = {
@@ -1113,7 +1113,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "SET_TOOL_GROUPING": {
-      // The no-op guard is load-bearing: ChatApp dispatches once on mount,
+      // The no-op guard is load-bearing. ChatApp dispatches once on mount,
       // and re-routing unchanged messages would drop every group's expand state.
       if (action.grouping === state.toolGrouping) return state
       return {

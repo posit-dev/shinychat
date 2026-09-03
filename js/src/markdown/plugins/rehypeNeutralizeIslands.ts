@@ -7,7 +7,7 @@ import { rewriteTagsHtml } from "./rewriteEndTags"
 
 // Spoof guard: island tags in markdown are forged (trusted HTML arrives as
 // html_block envelopes). Disguise as <template> because rehypeRaw's parse5
-// pass hoists block children out of unknown custom elements; restore as
+// pass hoists block children out of unknown custom elements. Restore as
 // literal text after parse5.
 const islandTags = ["shiny-chat-raw-html", "shinychat-raw-html"]
 const islandTagSet = new Set(islandTags)

@@ -26,7 +26,7 @@ const transport = getShinyTransport()
 
 type ContentMessage = {
   id: string
-  /** String content; absent when the message carries a structured `block`. */
+  /** String content. Absent when the message carries a structured `block`. */
   content?: string
   operation: "append" | "replace"
   html_deps?: HtmlDep[]
@@ -164,7 +164,7 @@ function readInitialSegments(
   if (encoded === null) return undefined
 
   const value = parseJsonArray(encoded, "content-segments attribute")
-  // Malformed provenance: fall back to the untrusted content.
+  // Malformed provenance. Fall back to the untrusted content.
   if (value === null) return [{ text: fallbackContent, trusted: false }]
 
   let segments: StreamSegment[] = []
