@@ -2319,8 +2319,7 @@ class ChatExpress(Chat):
         Parameters
         ----------
         messages
-            Deprecated. Startup messages can't be recorded by the
-            conversation-history feature.
+            Deprecated.
         greeting
             An optional greeting to display at the top of the chat before any conversation
             messages. Can be a markdown string or a :func:`~shinychat.chat_greeting`

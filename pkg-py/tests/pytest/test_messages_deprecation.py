@@ -7,7 +7,7 @@ from shiny import Inputs, Session
 from shiny._deprecated import ShinyDeprecationWarning
 from shiny.module import ResolvedId
 from shiny.session import session_context
-from shinychat import Chat, chat_ui, page_chat
+from shinychat import Chat, chat_ui
 
 
 class _MockSession:
@@ -53,8 +53,3 @@ def test_chat_messages_with_history_false_warns():
 def test_chat_ui_messages_warns():
     with pytest.warns(ShinyDeprecationWarning):
         chat_ui("chat", messages=["Hello"])
-
-
-def test_page_chat_messages_warns():
-    with pytest.warns(ShinyDeprecationWarning):
-        page_chat("Assistant", messages=["Hello"])
