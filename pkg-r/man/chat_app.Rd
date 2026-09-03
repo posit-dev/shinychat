@@ -78,7 +78,7 @@ returns an environment containing:
 when attachments are disabled, a list of ellmer \code{Content} objects when
 enabled).
 \item \code{last_turn}: A reactive value containing the last assistant turn.
-\item \code{on_submit(fn)}: Add a callback that changes the contents sent to the
+\item \code{on_user_input(fn)}: Add a callback that changes the contents sent to the
 chat client. \code{fn} receives the submitted contents and must return the
 contents to send. Use it to add per-message context without changing
 the message in the chat UI or \code{last_input}. Callbacks run in

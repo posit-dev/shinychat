@@ -461,7 +461,7 @@ knitr::include_graphics("images/chat-card.png")
 
 ## Add context to a message
 
-Use `chat$on_submit()` when the model needs extra context for each message.
+Use `chat$on_user_input()` when the model needs extra context for each message.
 This works well for retrieval-augmented generation and apps where the model
 acts on the current document or dashboard state.
 
@@ -475,7 +475,7 @@ server <- function(input, output, session) {
   client <- ellmer::chat_openai()
   chat <- chat_server("chat", client)
 
-  chat$on_submit(function(contents) {
+  chat$on_user_input(function(contents) {
     context <- retrieve_context(contents)
     c(list(context), contents)
   })

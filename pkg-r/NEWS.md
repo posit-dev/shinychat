@@ -2,7 +2,7 @@
 
 ## New features and improvements
 
-* `chat_server()` now returns `on_submit()`, which lets an app add per-message
+* `chat_server()` now returns `on_user_input()`, which lets an app add per-message
   context before content reaches the chat client. The callback receives the
   submitted contents and returns the contents to send. The chat UI and
   `last_input()` continue to show the user's original message. (#376)

@@ -353,7 +353,7 @@ test_that("chat_server handles string user_input values", {
   )
 })
 
-test_that("chat_server on_submit transforms only outbound contents", {
+test_that("chat_server on_user_input transforms only outbound contents", {
   local_mocked_bindings(
     chat_restore = function(...) function() invisible(NULL),
     chat_append = function(...) invisible(NULL),
@@ -376,8 +376,10 @@ test_that("chat_server on_submit transforms only outbound contents", {
   shiny::testServer(
     function(input, output, session) {
       mod <- chat_server("chat", client, history = FALSE, session = session)
-      mod$on_submit(function(contents) c("Retrieved context", contents))
-      mod$on_submit(function(contents) c(contents, "Additional instruction"))
+      mod$on_user_input(function(contents) c("Retrieved context", contents))
+      mod$on_user_input(function(contents) {
+        c(contents, "Additional instruction")
+      })
       last_input <<- mod$last_input
     },
     {
@@ -393,7 +395,7 @@ test_that("chat_server on_submit transforms only outbound contents", {
   )
 })
 
-test_that("chat_server on_submit keeps contents when a callback returns NULL", {
+test_that("chat_server on_user_input keeps contents when a callback returns NULL", {
   local_mocked_bindings(
     chat_restore = function(...) function() invisible(NULL),
     chat_append = function(...) invisible(NULL),
@@ -416,12 +418,12 @@ test_that("chat_server on_submit keeps contents when a callback returns NULL", {
     function(input, output, session) {
       mod <- chat_server("chat", client, history = FALSE, session = session)
       callback <- function(contents) NULL
-      expect_identical(mod$on_submit(callback), callback)
+      expect_identical(mod$on_user_input(callback), callback)
     },
     {
       expect_warning(
         session$setInputs(chat_user_input = "hello"),
-        "on_submit.*returned NULL"
+        "on_user_input.*returned NULL"
       )
       expect_identical(args_seen[[1]], "hello")
       later::run_now(0.05)
