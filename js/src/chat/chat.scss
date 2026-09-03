@@ -500,12 +500,13 @@ shiny-chat-container:not([fill]) {
   --_btn-send-state-color:
     var(--shiny-chat-btn-send-color-ready, var(--bs-primary, #007bc2));
 
-  // The default arrow glyph only fills ~42%x55% of its own viewBox (see
-  // icons.ts), so it needs a bigger box than a glyph that fills its viewBox
-  // edge-to-edge to read at the same size. 22px reproduces the original
-  // arrow-up-circle-fill's rendered arrow size within the 24px button.
+  // The arrow and stop glyphs are extracted from their original
+  // circle-enclosed icons (bi-arrow-up-circle-fill / bi-stop-circle-fill,
+  // see icons.ts) and keep that viewBox's coordinates verbatim, so a box
+  // equal to the button's own size (24px) reproduces those icons' original
+  // rendered size exactly — no separate compensation factor needed.
   // Setting --shiny-chat-input-icon-size unifies send and attach.
-  --_input-icon-size: var(--shiny-chat-input-icon-size, 22px);
+  --_input-icon-size: var(--shiny-chat-input-icon-size, 24px);
 
   position: absolute;
   bottom: var(--_input-control-inset, 8px);
@@ -570,6 +571,13 @@ shiny-chat-container:not([fill]) {
     pointer-events: none;
     cursor: default;
     svg {
+      // spinnerArc isn't extracted from the original circle icons and
+      // already fills most of its own viewBox, so it keeps the smaller size
+      // that predates the arrow/stop-icon fix above (2px under the main
+      // icon size) instead of picking that fix up too — still responsive to
+      // a --shiny-chat-input-icon-size override, just offset from it.
+      width: calc(var(--_input-icon-size) - 2px) !important;
+      height: calc(var(--_input-icon-size) - 2px) !important;
       animation: shiny-chat-spin 0.75s linear infinite;
       transform-origin: center;
     }

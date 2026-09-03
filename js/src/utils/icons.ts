@@ -48,7 +48,12 @@ export const xLg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="2
 export const chevronDown = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-chevron-down" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708"/></svg>`
 
 // Bare stop square (no enclosing circle) — the button provides the surface.
-export const stopFill = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-stop-fill" viewBox="0 0 16 16"><path d="M5 3.5h6A1.5 1.5 0 0 1 12.5 5v6a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 11V5A1.5 1.5 0 0 1 5 3.5"/></svg>`
+// This is the exact square contour from bi-stop-circle-fill (the icon used
+// before the send-button redesign), extracted from that icon's combined
+// circle+square path. bi-stop-fill (a standalone Bootstrap icon) fills more
+// of its own viewBox and so renders larger than the original; this
+// reproduces the original's proportions instead, matching the arrowUp fix.
+export const stopFill = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi shiny-chat-icon-stop" viewBox="0 0 16 16"><path d="M6.5 5A1.5 1.5 0 0 0 5 6.5v3A1.5 1.5 0 0 0 6.5 11h3A1.5 1.5 0 0 0 11 9.5v-3A1.5 1.5 0 0 0 9.5 5z"/></svg>`
 
 export const spinnerArc = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="47 16"/></svg>`
 

@@ -718,7 +718,9 @@ describe("ChatInput", () => {
         enableCancel: true,
       })
       expect(sendButton().querySelector("svg.custom-send")).toBeNull()
-      expect(sendButton().querySelector("svg.bi-stop-fill")).toBeTruthy()
+      expect(
+        sendButton().querySelector("svg.shiny-chat-icon-stop"),
+      ).toBeTruthy()
     })
   })
 
