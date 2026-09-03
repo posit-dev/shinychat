@@ -10,8 +10,14 @@ export const dots_fade =
   '<svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><style>.spinner_S1WN{animation:spinner_MGfb .8s linear infinite;animation-delay:-.8s}.spinner_Km9P{animation-delay:-.65s}.spinner_JApP{animation-delay:-.5s}@keyframes spinner_MGfb{93.75%,100%{opacity:.2}}</style><circle class="spinner_S1WN" cx="4" cy="12" r="3"/><circle class="spinner_S1WN spinner_Km9P" cx="12" cy="12" r="3"/><circle class="spinner_S1WN spinner_JApP" cx="20" cy="12" r="3"/></svg>'
 
 // Bare up-arrow (no enclosing circle) — the button provides the surface.
-export const arrowUpShort =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-up-short" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 12a.5.5 0 0 0 .5-.5V5.707l2.146 2.147a.5.5 0 0 0 .708-.708l-3-3a.5.5 0 0 0-.708 0l-3 3a.5.5 0 1 0 .708.708L7.5 5.707V11.5a.5.5 0 0 0 .5.5"/></svg>'
+// This is the exact arrow contour from bi-arrow-up-circle-fill (the icon
+// used before the send-button redesign), extracted from that icon's
+// combined circle+arrow path and re-centered as its own standalone shape.
+// Neither bi-arrow-up (taller/thinner) nor bi-arrow-up-short (extra
+// viewBox padding) reproduce the original's proportions; this does, since
+// it's the same contour, just filled instead of knocked out of the circle.
+export const arrowUp =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi shiny-chat-icon-arrow-up" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8.5 11.5a.5.5 0 0 1-1 0V5.707L5.354 7.854a.5.5 0 1 1-.708-.708l3-3a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 5.707z"/></svg>'
 
 // From chat-tools.ts ICONS object
 export const exclamationCircleFill = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-exclamation-circle-fill" viewBox="0 0 16 16">

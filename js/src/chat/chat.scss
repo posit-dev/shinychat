@@ -500,9 +500,12 @@ shiny-chat-container:not([fill]) {
   --_btn-send-state-color:
     var(--shiny-chat-btn-send-color-ready, var(--bs-primary, #007bc2));
 
-  // 18px default gives 3px padding within the 24px button. Setting
-  // --shiny-chat-input-icon-size unifies send and attach.
-  --_input-icon-size: var(--shiny-chat-input-icon-size, 18px);
+  // The default arrow glyph only fills ~42%x55% of its own viewBox (see
+  // icons.ts), so it needs a bigger box than a glyph that fills its viewBox
+  // edge-to-edge to read at the same size. 22px reproduces the original
+  // arrow-up-circle-fill's rendered arrow size within the 24px button.
+  // Setting --shiny-chat-input-icon-size unifies send and attach.
+  --_input-icon-size: var(--shiny-chat-input-icon-size, 22px);
 
   position: absolute;
   bottom: var(--_input-control-inset, 8px);

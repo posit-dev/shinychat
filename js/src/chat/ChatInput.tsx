@@ -12,7 +12,7 @@ import type {
   SlashCommandDef,
   SlashCommandEventDetail,
 } from "../transport/types"
-import { arrowUpShort, spinnerArc, stopFill } from "../utils/icons"
+import { arrowUp, spinnerArc, stopFill } from "../utils/icons"
 import { TiptapInput, type TiptapInputHandle } from "./TiptapInput"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 import { type AttachmentPayload } from "./attachments"
@@ -291,7 +291,7 @@ export const ChatInput = memo(
         ? stopFill
         : sendButtonState === "pending" || sendButtonState === "cancelling"
           ? spinnerArc
-          : (iconSend ?? arrowUpShort)
+          : (iconSend ?? arrowUp)
 
     const sendButtonLabel =
       sendButtonState === "cancel"
