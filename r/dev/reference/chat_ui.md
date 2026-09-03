@@ -47,7 +47,13 @@ chat_ui(
 
 - messages:
 
-  A list of messages to prepopulate the chat with. Each message can be
+  Deprecated. A list of messages to prepopulate the chat with. Startup
+  messages can't be recorded by the conversation-history feature. Use
+  `greeting` for a startup message,
+  [`chat_append()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md)
+  to replay messages from the server, or set `history = FALSE` in
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  if you're managing conversation state yourself. Each message can be
   one of the following:
 
   - A string, which is interpreted as markdown and rendered to HTML on

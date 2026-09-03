@@ -232,6 +232,13 @@
   attachments are disabled, and a list of ellmer `Content` objects when
   enabled.
 
+- The `messages` parameter is deprecated in favor of the
+  conversation-history feature. `chat_app(messages = ...)` now errors
+  when history is enabled (the default); use `greeting` for a startup
+  message,
+  [`chat_append()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md)
+  to replay messages, or `history = FALSE` if you manage state yourself.
+
 ### Bug fixes
 
 - A response that fails before it streams anything is now reported in

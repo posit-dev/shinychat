@@ -309,18 +309,14 @@ ui <- page_fillable(
       card_header("Chat with Claude"),
       chat_ui(
         "claude",
-        messages = list(
-          "Hi! Use this chat interface to chat with Anthropic's `claude-3-5-sonnet`."
-        )
+        greeting = "Hi! Use this chat interface to chat with Anthropic's `claude-3-5-sonnet`."
       )
     ),
     card(
       card_header("Chat with ChatGPT"),
       chat_ui(
         "openai",
-        messages = list(
-          "Hi! Use this chat interface to chat with OpenAI's `gpt-4o`."
-        )
+        greeting = "Hi! Use this chat interface to chat with OpenAI's `gpt-4o`."
       )
     )
   )

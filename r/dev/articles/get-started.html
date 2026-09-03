@@ -207,7 +207,7 @@ the file as <code>app.R</code> and then run the app.</p>
 <span></span>
 <span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">chat</span> <span class="op">&lt;-</span> <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/chat_openai.html" class="external-link">chat_openai</a></span><span class="op">(</span><span class="op">)</span></span>
-<span>  </span>
+<span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent</a></span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span>, <span class="op">{</span></span>
 <span>    <span class="va">stream</span> <span class="op">&lt;-</span> <span class="va">chat</span><span class="op">$</span><span class="fu">stream_async</span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span><span class="op">)</span></span>
 <span>    <span class="fu"><a href="../reference/chat_append.html">chat_append</a></span><span class="op">(</span><span class="st">"chat"</span>, <span class="va">stream</span><span class="op">)</span></span>
@@ -238,7 +238,7 @@ Screenshot of a conversation using shinychat.
 <span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="co"># Initialize a chat with your chosen model provider</span></span>
 <span>  <span class="va">chat</span> <span class="op">&lt;-</span> <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/chat_openai.html" class="external-link">chat_openai</a></span><span class="op">(</span>system_prompt <span class="op">=</span> <span class="st">"You are a helpful assistant."</span><span class="op">)</span></span>
-<span>  </span>
+<span></span>
 <span>  <span class="co"># Listen for user input and communicate with the model</span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent</a></span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span>, <span class="op">{</span></span>
 <span>    <span class="va">stream</span> <span class="op">&lt;-</span> <span class="va">chat</span><span class="op">$</span><span class="fu">stream_async</span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span><span class="op">)</span></span>
@@ -287,18 +287,19 @@ supply it directly as a string to the <code>system_prompt</code>
 argument.</p>
 </div>
 <div class="section level3">
-<h3 id="add-messages-and-suggestions">Add messages and suggestions<a class="anchor" aria-label="anchor" href="#add-messages-and-suggestions"></a>
+<h3 id="add-greetings-and-suggestions">Add greetings and suggestions<a class="anchor" aria-label="anchor" href="#add-greetings-and-suggestions"></a>
 </h3>
 <div class="section level4">
 <h4 id="on-startup">On startup<a class="anchor" aria-label="anchor" href="#on-startup"></a>
 </h4>
-<p>You can specify messages to show when the chat first loads by using
-<code><a href="../reference/chat_ui.html">chat_ui()</a></code>’s <code>messages</code> argument. You can use
-markdown or HTML to format these messages.</p>
+<p>To show a greeting when the chat first loads, set the
+<code>greeting</code> argument of <code><a href="../reference/chat_ui.html">chat_ui()</a></code> or
+<code><a href="../reference/page_chat.html">page_chat()</a></code>. You can format the greeting with markdown or
+HTML.</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/chat_ui.html">chat_ui</a></span><span class="op">(</span></span>
 <span>    id <span class="op">=</span> <span class="st">"chat"</span>,</span>
-<span>    messages <span class="op">=</span> <span class="st">"**Hello!** How can I help you today?"</span></span>
+<span>    greeting <span class="op">=</span> <span class="st">"**Hello!** How can I help you today?"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <div class="figure" style="text-align: center">
 <img src="images/chat-messages.png" class="r-plt" alt="Screenshot of a chatbot with a welcome message." width="100%"><p class="caption">
@@ -307,10 +308,10 @@ Screenshot of a chatbot with a welcome message.
 </div>
 <p>You can also suggest inputs to the user by adding the
 <code>suggestion</code> CSS class to the relevant portions of the
-message. Similarly, use the <code>submit</code> class to make clicking
+greeting. Similarly, use the <code>submit</code> class to make clicking
 on the suggestion submit the input automatically.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">messages</span> <span class="op">&lt;-</span></span>
+<code class="sourceCode R"><span><span class="va">greeting</span> <span class="op">&lt;-</span></span>
 <span>  <span class="st">'</span></span>
 <span><span class="st">  **Hello!** How can I help you today?</span></span>
 <span><span class="st"></span></span>
@@ -323,7 +324,7 @@ on the suggestion submit the input automatically.</p>
 <span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu">bslib</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/bslib/reference/page_fillable.html" class="external-link">page_fillable</a></span><span class="op">(</span></span>
 <span>  <span class="fu"><a href="../reference/chat_ui.html">chat_ui</a></span><span class="op">(</span></span>
 <span>    id <span class="op">=</span> <span class="st">"chat"</span>,</span>
-<span>    messages <span class="op">=</span> <span class="va">messages</span></span>
+<span>    greeting <span class="op">=</span> <span class="va">greeting</span></span>
 <span>  <span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <div class="figure" style="text-align: center">
@@ -339,9 +340,9 @@ chips. Each suggestion accepts an optional <code>title</code> attribute
 becomes the card description. For ordered lists
 (<code>&lt;ol&gt;</code>), the list-item number is included in the
 heading.</p>
-<p>Messages can also contain arbitrary Shiny UI <a href="https://shiny.posit.co/r/components/" class="external-link">components</a>, so you could
-even include something like a <a href="https://shiny.posit.co/r/components/display-messages/tooltips/" class="external-link">tooltip</a>
-to provide additional details on demand.</p>
+<p>Greetings can also contain arbitrary Shiny UI <a href="https://shiny.posit.co/r/components/" class="external-link">components</a>. For example,
+include a <a href="https://shiny.posit.co/r/components/display-messages/tooltips/" class="external-link">tooltip</a>
+to provide more details on demand.</p>
 </div>
 <div class="section level4">
 <h4 id="mid-conversation">Mid-conversation<a class="anchor" aria-label="anchor" href="#mid-conversation"></a>
@@ -388,7 +389,7 @@ can be run without an LLM provider:</p>
 <span></span>
 <span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/page_chat.html">page_chat</a></span><span class="op">(</span></span>
 <span>  <span class="st">"Assistant"</span>,</span>
-<span>  messages <span class="op">=</span> <span class="st">"Welcome! Ask a question to get started."</span>,</span>
+<span>  greeting <span class="op">=</span> <span class="st">"Welcome! Ask a question to get started."</span>,</span>
 <span>  toolbar <span class="op">=</span> <span class="fu">bslib</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/bslib/reference/toolbar.html" class="external-link">toolbar</a></span><span class="op">(</span></span>
 <span>    <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/actionButton.html" class="external-link">actionButton</a></span><span class="op">(</span><span class="st">"show_preview"</span>, <span class="st">"Show preview"</span><span class="op">)</span></span>
 <span>  <span class="op">)</span>,</span>
@@ -468,7 +469,7 @@ top-level content or when you need to compose the chat with an existing
 <code>bslib</code> layout.</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu">bslib</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/bslib/reference/page_fillable.html" class="external-link">page_fillable</a></span><span class="op">(</span></span>
-<span>  <span class="fu"><a href="../reference/chat_ui.html">chat_ui</a></span><span class="op">(</span><span class="st">"chat"</span>, messages <span class="op">=</span> <span class="st">"Welcome!"</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="../reference/chat_ui.html">chat_ui</a></span><span class="op">(</span><span class="st">"chat"</span>, greeting <span class="op">=</span> <span class="st">"Welcome!"</span><span class="op">)</span>,</span>
 <span>  fillable_mobile <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <p>Use <code><a href="https://rstudio.github.io/bslib/reference/toolbar.html" class="external-link">bslib::toolbar()</a></code> to group controls in every
@@ -521,9 +522,7 @@ to create a sidebar page. Then, set the chat and sidebar’s heights to
 <span>  sidebar <span class="op">=</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/sidebar.html" class="external-link">sidebar</a></span><span class="op">(</span></span>
 <span>    <span class="fu"><a href="../reference/chat_ui.html">chat_ui</a></span><span class="op">(</span></span>
 <span>      <span class="st">"chat"</span>,</span>
-<span>      messages <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
-<span>        <span class="st">"Welcome! Here is a &lt;span class='suggestion'&gt;suggestion&lt;/span&gt;."</span></span>
-<span>      <span class="op">)</span>,</span>
+<span>      greeting <span class="op">=</span> <span class="st">"Welcome! Here is a &lt;span class='suggestion'&gt;suggestion&lt;/span&gt;."</span>,</span>
 <span>      height <span class="op">=</span> <span class="st">"100%"</span></span>
 <span>    <span class="op">)</span>,</span>
 <span>    width <span class="op">=</span> <span class="fl">300</span>,</span>
@@ -535,7 +534,7 @@ to create a sidebar page. Then, set the chat and sidebar’s heights to
 <span></span>
 <span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">chat</span> <span class="op">&lt;-</span> <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/chat_openai.html" class="external-link">chat_openai</a></span><span class="op">(</span><span class="op">)</span></span>
-<span>  </span>
+<span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent</a></span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span>, <span class="op">{</span></span>
 <span>    <span class="va">stream</span> <span class="op">&lt;-</span> <span class="va">chat</span><span class="op">$</span><span class="fu">stream_async</span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span><span class="op">)</span></span>
 <span>    <span class="fu"><a href="../reference/chat_append.html">chat_append</a></span><span class="op">(</span><span class="st">"chat"</span>, <span class="va">stream</span><span class="op">)</span></span>
@@ -573,7 +572,7 @@ to make the chat full-screen when embedded inside a larger app.</p>
 <span>    <span class="op">)</span>,</span>
 <span>    <span class="fu"><a href="../reference/chat_ui.html">chat_ui</a></span><span class="op">(</span></span>
 <span>      id <span class="op">=</span> <span class="st">"chat"</span>,</span>
-<span>      messages <span class="op">=</span> <span class="st">"Hello! How can I help you today?"</span></span>
+<span>      greeting <span class="op">=</span> <span class="st">"Hello! How can I help you today?"</span></span>
 <span>    <span class="op">)</span></span>
 <span>  <span class="op">)</span>,</span>
 <span>  fillable_mobile <span class="op">=</span> <span class="cn">TRUE</span></span>
@@ -581,7 +580,7 @@ to make the chat full-screen when embedded inside a larger app.</p>
 <span></span>
 <span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">chat</span> <span class="op">&lt;-</span> <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/chat_openai.html" class="external-link">chat_openai</a></span><span class="op">(</span><span class="op">)</span></span>
-<span>  </span>
+<span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent</a></span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span>, <span class="op">{</span></span>
 <span>    <span class="va">stream</span> <span class="op">&lt;-</span> <span class="va">chat</span><span class="op">$</span><span class="fu">stream_async</span><span class="op">(</span><span class="va">input</span><span class="op">$</span><span class="va">chat_user_input</span><span class="op">)</span></span>
 <span>    <span class="fu"><a href="../reference/chat_append.html">chat_append</a></span><span class="op">(</span><span class="st">"chat"</span>, <span class="va">stream</span><span class="op">)</span></span>

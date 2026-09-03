@@ -108,8 +108,11 @@ enter new messages.</p>
 
 
 <dt id="arg-messages">messages<a class="anchor" aria-label="anchor" href="#arg-messages"></a></dt>
-<dd><p>A list of messages to prepopulate the chat with. Each message
-can be one of the following:</p><ul><li><p>A string, which is interpreted as markdown and rendered to HTML on the
+<dd><p>Deprecated. A list of messages to prepopulate the chat with.
+Startup messages can't be recorded by the conversation-history feature.
+Use <code>greeting</code> for a startup message, <code><a href="chat_append.html">chat_append()</a></code> to replay messages
+from the server, or set <code>history = FALSE</code> in <code><a href="chat_app.html">chat_server()</a></code> if you're
+managing conversation state yourself. Each message can be one of the following:</p><ul><li><p>A string, which is interpreted as markdown and rendered to HTML on the
 client.</p><ul><li><p>To prevent interpreting as markdown, mark the string as
 <code><a href="https://rstudio.github.io/htmltools/reference/HTML.html" class="external-link">htmltools::HTML()</a></code>.</p></li>
 </ul></li>

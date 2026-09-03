@@ -84,7 +84,7 @@ ui <- bslib::page_fluid(
 
 server <- function(input, output, session) {
   chat <- ellmer::chat_openai()
-  
+
   observeEvent(input$chat_user_input, {
     stream <- chat$stream_async(input$chat_user_input)
     chat_append("chat", stream)
@@ -119,7 +119,7 @@ ui <- bslib::page_fluid(
 server <- function(input, output, session) {
   # Initialize a chat with your chosen model provider
   chat <- ellmer::chat_openai(system_prompt = "You are a helpful assistant.")
-  
+
   # Listen for user input and communicate with the model
   observeEvent(input$chat_user_input, {
     stream <- chat$stream_async(input$chat_user_input)
@@ -176,20 +176,22 @@ vignette. Generally, we recommend writing the system prompt in a
 separate markdown file, but if your prompt is short you can also supply
 it directly as a string to the `system_prompt` argument.
 
-### Add messages and suggestions
+### Add greetings and suggestions
 
 #### On startup
 
-You can specify messages to show when the chat first loads by using
-[`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)’s
-`messages` argument. You can use markdown or HTML to format these
-messages.
+To show a greeting when the chat first loads, set the `greeting`
+argument of
+[`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+or
+[`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md).
+You can format the greeting with markdown or HTML.
 
 ``` r
 
 chat_ui(
     id = "chat",
-    messages = "**Hello!** How can I help you today?"
+    greeting = "**Hello!** How can I help you today?"
 )
 ```
 
@@ -199,13 +201,13 @@ message.](images/chat-messages.png)
 Screenshot of a chatbot with a welcome message.
 
 You can also suggest inputs to the user by adding the `suggestion` CSS
-class to the relevant portions of the message. Similarly, use the
+class to the relevant portions of the greeting. Similarly, use the
 `submit` class to make clicking on the suggestion submit the input
 automatically.
 
 ``` r
 
-messages <-
+greeting <-
   '
   **Hello!** How can I help you today?
 
@@ -218,7 +220,7 @@ messages <-
 ui <- bslib::page_fillable(
   chat_ui(
     id = "chat",
-    messages = messages
+    greeting = greeting
   )
 )
 ```
@@ -235,11 +237,11 @@ cards instead of inline chips. Each suggestion accepts an optional
 suggestion’s body becomes the card description. For ordered lists
 (`<ol>`), the list-item number is included in the heading.
 
-Messages can also contain arbitrary Shiny UI
-[components](https://shiny.posit.co/r/components/), so you could even
-include something like a
+Greetings can also contain arbitrary Shiny UI
+[components](https://shiny.posit.co/r/components/). For example, include
+a
 [tooltip](https://shiny.posit.co/r/components/display-messages/tooltips/)
-to provide additional details on demand.
+to provide more details on demand.
 
 #### Mid-conversation
 
@@ -285,7 +287,7 @@ artifact_content <- function(label) {
 
 ui <- page_chat(
   "Assistant",
-  messages = "Welcome! Ask a question to get started.",
+  greeting = "Welcome! Ask a question to get started.",
   toolbar = bslib::toolbar(
     actionButton("show_preview", "Show preview")
   ),
@@ -381,7 +383,7 @@ top-level content or when you need to compose the chat with an existing
 ``` r
 
 ui <- bslib::page_fillable(
-  chat_ui("chat", messages = "Welcome!"),
+  chat_ui("chat", greeting = "Welcome!"),
   fillable_mobile = TRUE
 )
 ```
@@ -450,9 +452,7 @@ ui <- bslib::page_sidebar(
   sidebar = sidebar(
     chat_ui(
       "chat",
-      messages = list(
-        "Welcome! Here is a <span class='suggestion'>suggestion</span>."
-      ),
+      greeting = "Welcome! Here is a <span class='suggestion'>suggestion</span>.",
       height = "100%"
     ),
     width = 300,
@@ -464,7 +464,7 @@ ui <- bslib::page_sidebar(
 
 server <- function(input, output, session) {
   chat <- ellmer::chat_openai()
-  
+
   observeEvent(input$chat_user_input, {
     stream <- chat$stream_async(input$chat_user_input)
     chat_append("chat", stream)
@@ -506,7 +506,7 @@ ui <- page_fillable(
     ),
     chat_ui(
       id = "chat",
-      messages = "Hello! How can I help you today?"
+      greeting = "Hello! How can I help you today?"
     )
   ),
   fillable_mobile = TRUE
@@ -514,7 +514,7 @@ ui <- page_fillable(
 
 server <- function(input, output, session) {
   chat <- ellmer::chat_openai()
-  
+
   observeEvent(input$chat_user_input, {
     stream <- chat$stream_async(input$chat_user_input)
     chat_append("chat", stream)
