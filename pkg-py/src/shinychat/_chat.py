@@ -115,8 +115,6 @@ __all__ = (
 
 # TODO: UserInput might need to be a list of dicts if we want to support multiple
 # user input content types
-TransformUserInput = Callable[[str], Union[str, None]]
-TransformUserInputAsync = Callable[[str], Awaitable[Union[str, None]]]
 TransformAssistantResponse = Callable[[str], Union[str, HTML, None]]
 TransformAssistantResponseAsync = Callable[
     [str], Awaitable[Union[str, HTML, None]]
@@ -150,10 +148,10 @@ UserSubmitFunction = Union[
     UserSubmitFunction1,
     UserSubmitFunction2,
 ]
-SubmitContents = list[Any]
-SubmitCallback = Callable[
-    [SubmitContents],
-    Union[SubmitContents, None, Awaitable[Union[SubmitContents, None]]],
+UserInputContents = list[Any]
+TransformUserInputFn = Callable[
+    [UserInputContents],
+    Union[UserInputContents, None, Awaitable[Union[UserInputContents, None]]],
 ]
 
 
@@ -337,7 +335,6 @@ class Chat:
         self.user_input_id = ResolvedId(f"{self.id}_user_input")
         self.messages_input_id = ResolvedId(f"{self.id}_messages")
         self._slash_command_id = ResolvedId(f"{self.id}_slash_command")
-        self._transform_user: TransformUserInputAsync | None = None
         self._transform_assistant: (
             TransformAssistantResponseChunkAsync | None
         ) = None
@@ -365,7 +362,7 @@ class Chat:
 
         # Keep track of effects so we can destroy them when the chat is destroyed
         self._effects: list["Effect_"] = []
-        self._submit_callbacks: list[SubmitCallback] = []
+        self._transform_user_input_fns: list[TransformUserInputFn] = []
         history_config = (
             history if isinstance(history, HistoryOptions) else None
         )
@@ -524,8 +521,11 @@ class Chat:
             async def _on_user_submit(
                 user_input: str, attachments: list[Attachment]
             ) -> None:
-                contents = await self._run_submit_callbacks(
-                    [user_input, *[attachment_to_content(a) for a in attachments]]
+                contents = await self._run_transform_user_input(
+                    [
+                        user_input,
+                        *[attachment_to_content(a) for a in attachments],
+                    ]
                 )
 
                 # Resolve the ID before model work begins: later history
@@ -678,39 +678,45 @@ class Chat:
 
         return create_effect(fn)
 
-    def on_user_input(self, fn: SubmitCallback) -> SubmitCallback:
+    def transform_user_input(
+        self, fn: TransformUserInputFn
+    ) -> TransformUserInputFn:
         """
-        Add a callback that changes the contents sent to a chat client.
+        Add a function that transforms the contents sent to a chat client.
 
-        The callback receives a list of arguments for the client's ``stream_async()``
+        The function receives a list of arguments for the client's ``stream_async()``
         method and returns the list that the client receives. The list starts with the
-        submitted text. chatlas content objects converted from attachments follow it.
+        submitted text; chatlas content objects converted from attachments follow it.
         Add per-message context before the submitted contents. The chat UI and
         :meth:`user_input` continue to show the user's original message.
 
         This method only affects automatic client handling from ``Chat(client=...)``.
-        Callbacks run in registration order. Register callbacks before a user submits
-        a message::
+        It does not apply to slash commands: a command's handler owns the
+        transformation for its submissions. Transforms run in registration order.
+        Register transforms before a user submits a message::
 
-            @chat.on_user_input
+            @chat.transform_user_input
             def add_context(contents):
                 context = retrieve_context(contents)
                 return [context, *contents]
+
+        A function that returns ``None`` is skipped with a warning; return the
+        modified contents instead.
         """
-        self._submit_callbacks.append(fn)
+        self._transform_user_input_fns.append(fn)
         return fn
 
-    async def _run_submit_callbacks(
-        self, contents: SubmitContents
-    ) -> SubmitContents:
-        for fn in self._submit_callbacks:
+    async def _run_transform_user_input(
+        self, contents: UserInputContents
+    ) -> UserInputContents:
+        for fn in self._transform_user_input_fns:
             result = cast(
-                SubmitContents | None, await _utils.wrap_async(fn)(contents)
+                UserInputContents | None, await _utils.wrap_async(fn)(contents)
             )
             if result is None:
                 warnings.warn(
-                    "An `on_user_input` callback returned None; contents are unchanged. "
-                    "Did you forget to return the modified contents?",
+                    "A `transform_user_input` function returned None; contents are "
+                    "unchanged. Did you forget to return the modified contents?",
                     stacklevel=2,
                 )
                 continue
@@ -1615,13 +1621,6 @@ class Chat:
             )
             return
         await self._send_append_message(stored)
-
-    def transform_user_input(self, *args: object, **kwargs: object) -> object:
-        raise TypeError(
-            "`.transform_user_input()` has been removed. "
-            "Instead, transform user input manually before passing it to your "
-            "LLM provider (e.g., chatlas, LangChain)."
-        )
 
     @overload
     def transform_assistant_response(

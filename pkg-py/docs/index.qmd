@@ -70,25 +70,27 @@ The `chat.client` property provides a `.set()` method for swapping models mid-se
 
 ## Per-message context
 
-Use `@chat.on_user_input` with `Chat(client=...)` when the model needs extra
-context for each message. This works well for retrieval-augmented generation
-and apps where the model acts on the current document or dashboard state.
+Use `@chat.transform_user_input` with `Chat(client=...)` when the model needs
+extra context for each message. This works well for retrieval-augmented
+generation and apps where the model acts on the current document or dashboard
+state.
 
-The callback receives the arguments that shinychat passes to
+The function receives the arguments that shinychat passes to
 `client.stream_async()`. Return the arguments that the client should receive.
 Add context before the submitted contents so the model receives both. The chat
 UI and `chat.user_input()` still show the message that the user submitted.
 
 ```python
-@chat.on_user_input
+@chat.transform_user_input
 def add_context(contents):
     context = retrieve_context(contents)
     return [context, *contents]
 ```
 
 The list starts with the submitted text. Any attachment content follows it.
-You can register more than one callback. shinychat runs them in registration
-order.
+You can register more than one function. shinychat runs them in registration
+order. Slash commands don't go through `transform_user_input()`: a command's
+handler owns the transformation for its submissions.
 
 ## Full-page chat
 

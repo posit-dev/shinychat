@@ -16,7 +16,6 @@ from shinychat import Chat
 from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
     ChatMessage,
-    ChatMessageDict,
     Role,
     StoredMessage,
     StoredSegment,
@@ -105,14 +104,6 @@ def test_tokenizer_raises():
     with session_context(test_session):
         with pytest.raises(TypeError, match="tokenizer.*removed"):
             Chat(id="chat", tokenizer=object())  # type: ignore[arg-type]
-
-
-def test_transform_user_input_raises():
-    with session_context(test_session):
-        chat = Chat(id="chat")
-
-        with pytest.raises(TypeError, match="transform_user_input.*removed"):
-            chat.transform_user_input(lambda x: x)
 
 
 def test_stream_replace_discards_stale_html_dependencies():
@@ -977,9 +968,7 @@ def test_message_stream_context_flushes_queued_appends():
             "type": "message",
             "message": {
                 "role": "assistant",
-                "segments": [
-                    {"content": "queued", "content_type": "markdown"}
-                ],
+                "segments": [{"content": "queued", "content_type": "markdown"}],
             },
         }
 
@@ -1401,7 +1390,7 @@ def test_messages_surfaces_attachments():
 
         # First message: assistant with attachment. No `format=` was passed, so
         # messages() returns ChatMessageDict entries.
-        att_msg = cast(ChatMessageDict, msgs[0])
+        att_msg = msgs[0]
         assert "attachments" in att_msg
         atts = att_msg["attachments"]
         assert len(atts) == 1
