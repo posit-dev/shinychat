@@ -215,6 +215,7 @@ async def test_v2_put_failure_keeps_previous_document(
         await store.put(part(scope="alice"), rec)
 
     assert (conv_dir / "record.json").read_bytes() == before
+    assert not (conv_dir / ".record.json.tmp").exists()
     monkeypatch.setattr("shinychat._history_store.os.replace", original_replace)
     await store.put(part(scope="alice"), rec)
 
