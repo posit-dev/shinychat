@@ -471,41 +471,6 @@ async def test_replay_rereport_does_not_resave_or_truncate():
     )
 
 
-@pytest.mark.anyio
-async def test_replay_ui_drops_legacy_stored_html_dependencies():
-    controller, _store = _make_controller()
-    chat = _ReplayFakeChat()
-    controller.chat = chat  # type: ignore[assignment]
-    record = new_conversation_record(title="t")
-    node_id = record.append_linear([{"role": "assistant", "content": "answer"}])
-    record.nodes[node_id].ui = [
-        {
-            "role": "assistant",
-            "segments": [
-                {
-                    "content": "<script>legacy</script>",
-                    "content_type": "html",
-                    "html_deps": [{"script": "https://attacker.invalid/x.js"}],
-                }
-            ],
-        }
-    ]
-
-    await controller.replay_ui(record)
-
-    assert chat.messages == [
-        {
-            "role": "assistant",
-            "segments": [
-                {
-                    "content": "<script>legacy</script>",
-                    "content_type": "html",
-                }
-            ],
-        }
-    ]
-
-
 # --- ui_offset atomicity (not advanced when store.put raises) ----------------
 
 

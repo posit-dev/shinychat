@@ -1108,10 +1108,7 @@ restore_history_message <- function(chat_id, message, session) {
   send_chat_action(
     chat_id,
     action = action,
-    # Stored UI from the retired browser-snapshot protocol may contain
-    # browser-supplied dependency URLs. Keep the rendered content, but do not
-    # replay those dependencies.
-    html_deps = NULL,
+    html_deps = message$htmlDeps,
     session = session
   )
 }
