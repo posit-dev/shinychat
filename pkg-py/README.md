@@ -29,12 +29,10 @@ from shinychat.express import Chat
 # Set some Shiny page options
 ui.page_opts(title="Hello Chat")
 
-# Create a chat component, with an initial message
+# Create a chat component, with an initial greeting
 chat = Chat(
     id="chat",
-    messages=[
-        {"content": "Hello! How can I help you today?", "role": "assistant"},
-    ],
+    greeting="Hello! How can I help you today?",
 )
 
 # Display the chat

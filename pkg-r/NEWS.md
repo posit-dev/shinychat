@@ -55,6 +55,11 @@
 
 * The `last_input` reactive returned by `chat_server()` now mirrors the shape of `input$<id>_user_input`: a string when attachments are disabled, and a list of ellmer `Content` objects when enabled.
 
+* The `messages` parameter is deprecated in favor of the conversation-history
+  feature. `chat_app(messages = ...)` now errors when history is enabled
+  (the default); use `greeting` for a startup message, `chat_append()` to
+  replay messages, or `history = FALSE` if you manage state yourself.
+
 ## Bug fixes
 
 * A response that fails before it streams anything is now reported in the chat instead of leaving a loading indicator that never resolves and a locked composer. The stream is consumed inside a coroutine (`chat_append_stream_impl()`) ahead of its first `await`, so a failure there was raised synchronously, skipped the error handling in `chat_append_stream()` entirely, and ended up in the `chat_server()` stream task where nothing read it. That is the shape of every turn a provider rejects outright -- an exhausted quota, an over-long context, a dropped connection. The `chat_server()` return also gained `last_error`, a reactive holding the condition from the most recent failed response, since both a finished and a failed response report `"idle"` in `status`. (#304)

@@ -283,7 +283,12 @@ class Chat:
         client with empty turns is passed so the greeting can be LLM-generated
         without polluting conversation history.
     messages
-        Deprecated. Use `chat.ui(messages=...)` instead.
+        Deprecated. When non-empty startup messages are provided, they can't be
+        recorded by the conversation-history feature, so ``messages`` requires
+        ``history=False``. Use the ``greeting`` parameter for a startup
+        message, use ``.append_message()`` to replay messages from the server, or
+        set ``history=False`` if you're managing conversation state
+        yourself.
     on_error
         How to handle errors that occur in response to user input. When `"unhandled"`,
         the app will stop running when an error occurs. Otherwise, a notification
@@ -318,8 +323,18 @@ class Chat:
             raise TypeError("`id` must be a string.")
 
         if messages:
+            if history is not False:
+                raise ValueError(
+                    "`Chat(messages=...)` requires `history=False`: startup "
+                    "messages can't be recorded by the conversation-history "
+                    "feature. Use the `greeting` parameter for a startup "
+                    "message, use `.append_message()` to replay messages from the "
+                    "server, or set `history=False` if you're managing "
+                    "conversation state yourself."
+                )
             warn_deprecated(
-                "`Chat(messages=...)` is deprecated. Use `.ui(messages=...)` instead."
+                "`Chat(messages=...)` is deprecated and will be removed in a "
+                "future release. Use `.append_message()` instead."
             )
 
         if not isinstance(tokenizer, DEPRECATED_TYPE):
@@ -2311,10 +2326,7 @@ class ChatExpress(Chat):
         Parameters
         ----------
         messages
-            A sequence of messages to display in the chat. Each message can be either a
-            string or a dictionary with `content` and `role` keys. The `content` key
-            should contain the message text, and the `role` key can be "assistant" or
-            "user".
+            Deprecated.
         greeting
             An optional greeting to display at the top of the chat before any conversation
             messages. Can be a markdown string or a :func:`~shinychat.chat_greeting`
@@ -2582,8 +2594,14 @@ def chat_ui(
     id
         A unique identifier for the chat UI.
     messages
-        A sequence of messages to display in the chat. A given message can be one of the
-        following:
+        Deprecated. Non-empty startup messages can't be recorded by the
+        conversation-history feature. Use ``greeting`` for a startup message,
+        use ``.append_message()`` to replay messages from the server, or set
+        ``history=False`` on the server-side :class:`~shinychat.Chat` if
+        you're managing conversation state yourself.
+
+        A sequence of messages to display in the chat. A given message can be
+        one of the following:
 
         * A string, which is interpreted as markdown and rendered to HTML on the client.
             * To prevent interpreting as markdown, mark the string as
@@ -2737,9 +2755,20 @@ def chat_ui(
     kwargs
         Additional attributes for the chat container element.
     """
+    from shiny._deprecated import warn_deprecated
     from shiny.module import resolve_id
     from shiny.ui.css import as_css_unit
     from shiny.ui.fill import as_fill_item, as_fillable_container
+
+    if messages:
+        warn_deprecated(
+            "`chat_ui(messages=...)` is deprecated. Startup messages can't "
+            "be recorded by the conversation-history feature. Use "
+            "`greeting=` for a startup message, `Chat.append_message()` to replay "
+            "messages from the server, or set `history=False` on "
+            "the server-side `Chat` if you're managing conversation state "
+            "yourself."
+        )
 
     id = resolve_id(id)
 

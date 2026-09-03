@@ -30,8 +30,11 @@ chat_ui(
 
 \item{...}{Extra HTML attributes to include on the chat element}
 
-\item{messages}{A list of messages to prepopulate the chat with. Each message
-can be one of the following:
+\item{messages}{Deprecated. A list of messages to prepopulate the chat with.
+Startup messages can't be recorded by the conversation-history feature.
+Use \code{greeting} for a startup message, \code{chat_append()} to replay messages
+from the server, or set \code{history = FALSE} in \code{\link[=chat_server]{chat_server()}} if you're
+managing conversation state yourself. Each message can be one of the following:
 \itemize{
 \item A string, which is interpreted as markdown and rendered to HTML on the
 client.

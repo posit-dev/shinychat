@@ -332,8 +332,11 @@ chat_greeting <- function(
 #'
 #' @param id The ID of the chat element
 #' @param ... Extra HTML attributes to include on the chat element
-#' @param messages A list of messages to prepopulate the chat with. Each message
-#'   can be one of the following:
+#' @param messages Deprecated. A list of messages to prepopulate the chat with.
+#'   Startup messages can't be recorded by the conversation-history feature.
+#'   Use `greeting` for a startup message, `chat_append()` to replay messages
+#'   from the server, or set `history = FALSE` in [chat_server()] if you're
+#'   managing conversation state yourself. Each message can be one of the following:
 #'
 #'   * A string, which is interpreted as markdown and rendered to HTML on the
 #'     client.
@@ -464,6 +467,16 @@ chat_ui <- function(
 ) {
   submit_key <- rlang::arg_match(submit_key)
   tool_grouping <- rlang::arg_match(tool_grouping)
+  if (!is.null(messages)) {
+    lifecycle::deprecate_warn(
+      "0.5.0",
+      "chat_ui(messages = )",
+      details = c(
+        "Startup messages can't be recorded by the conversation-history feature.",
+        "Use `greeting` for a startup message, `chat_append()` to replay messages from the server, or set `history = FALSE` in `chat_server()` if you're managing conversation state yourself."
+      )
+    )
+  }
   chat_validate_boolean(show_history, "show_history")
   drawer <- normalize_chat_drawer(drawer)
   # `NULL` (the default) means no assistant icon; `TRUE` opts back into the

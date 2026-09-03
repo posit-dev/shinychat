@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
-    Iterable,
     Literal,
     Optional,
     Sequence,
@@ -28,7 +27,7 @@ if TYPE_CHECKING:
     from shiny.ui._navs import NavMenu, NavPanel
     from shiny.ui.css import CssUnit
 
-    from ._chat_types import ChatGreeting, ChatMessage, ChatMessageDict
+    from ._chat_types import ChatGreeting
 
 __all__ = (
     "ChatDrawer",
@@ -91,9 +90,6 @@ def page_chat(
     window_title: str | None = None,
     lang: str | None = None,
     theme: str | Path | Theme | ThemeProvider | None = None,
-    messages: Optional[
-        Iterable[str | TagChild | "ChatMessageDict" | "ChatMessage" | Any]
-    ] = None,
     greeting: Optional[Union[str, HTML, Tag, TagList, "ChatGreeting"]] = None,
     placeholder: str = "Enter a message...",
     width: "CssUnit" = "min(clamp(680px, 50vw, 760px), 100%)",
@@ -175,8 +171,6 @@ def page_chat(
         :func:`~shinychat.page_chat_theme` layers page-chat surface tokens over
         Shiny's ``"shiny"`` preset. Pass a :class:`shiny.ui.Theme` directly to
         use another preset or a completely custom theme.
-    messages
-        Initial chat messages. See :func:`~shinychat.chat_ui`.
     greeting
         Optional initial chat greeting. See :func:`~shinychat.chat_greeting`.
     placeholder
@@ -241,7 +235,6 @@ def page_chat(
     chat_root = _create_page_chat_root(
         id=id,
         drawer=drawer,
-        messages=messages,
         greeting=greeting,
         placeholder=placeholder,
         width=width,
@@ -1085,9 +1078,6 @@ def _create_page_chat_root(
     *,
     id: str = "chat",
     drawer: bool | ChatDrawer = True,
-    messages: Optional[
-        Iterable[str | TagChild | "ChatMessageDict" | "ChatMessage" | Any]
-    ] = None,
     greeting: Optional[Union[str, HTML, Tag, TagList, "ChatGreeting"]] = None,
     placeholder: str = "Enter a message...",
     width: "CssUnit" = "min(clamp(680px, 50vw, 760px), 100%)",
@@ -1105,6 +1095,12 @@ def _create_page_chat_root(
         raise TypeError(f"`id` must be a string, not {type(id).__name__}.")
     if not id.strip():
         raise ValueError("`id` must not be an empty string.")
+    if "messages" in kwargs:
+        raise TypeError(
+            "`page_chat()` does not support `messages`; use `greeting=` for "
+            "a startup message or `Chat.append_message()` to replay messages "
+            "from the server."
+        )
 
     owned_args = {"height", "fill", "show_history"}.intersection(kwargs)
     if owned_args:
@@ -1113,7 +1109,6 @@ def _create_page_chat_root(
 
     return chat_ui(
         id,
-        messages=messages,
         greeting=greeting,
         placeholder=placeholder,
         width=width,
