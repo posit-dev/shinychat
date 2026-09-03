@@ -11,6 +11,7 @@ import { parseMarkdown, parseHtml, hastToReact } from "./markdownToReact"
 import { hideTrailingPartialAsideTag } from "./hideTrailingPartialTag"
 import {
   markdownProcessor,
+  trustedMarkdownProcessor,
   htmlProcessor,
   userMarkdownProcessor,
 } from "./processors"
@@ -38,6 +39,7 @@ export interface MarkdownContentProps {
   contentType: ContentType
   role?: "user" | "assistant"
   streaming?: boolean
+  allowRawHtmlIslands?: boolean
   tagToComponentMap?: Record<string, ComponentType<unknown>>
   prefix?: ReactNode
 }
@@ -48,6 +50,7 @@ export function MarkdownContent({
   contentType,
   role,
   streaming = false,
+  allowRawHtmlIslands = false,
   tagToComponentMap,
   prefix,
 }: MarkdownContentProps): ReactElement {
@@ -58,7 +61,9 @@ export function MarkdownContent({
     ? htmlProcessor
     : isUser
       ? userMarkdownProcessor
-      : markdownProcessor
+      : allowRawHtmlIslands
+        ? trustedMarkdownProcessor
+        : markdownProcessor
   const resolvedTagToComponentMap = useMemo(
     () =>
       isUser

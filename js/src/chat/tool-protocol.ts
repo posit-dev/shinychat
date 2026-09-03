@@ -4,13 +4,14 @@ import { codeRanges } from "./markdown-code-ranges"
 const TOOL_TAG_RE = /<shiny-tool-(request|result)\b/g
 export const TOOL_MARKER = "<shiny-tool-"
 
-// The content types whose text is server-authored markup worth scanning for
-// tool elements. "text" means display literally, so tool markup in it is a
-// sample rather than a call.
-const ROUTABLE_CONTENT_TYPES: ReadonlySet<ContentType> = new Set([
-  "markdown",
-  "html",
-])
+// Security invariant: only html-typed blocks may spawn tool cards. Tool
+// markup is always server-authored (Python/R build it as Tag objects, which
+// the servers label content_type="html"), while model-authored prose arrives
+// as markdown-typed strings. Routing tool elements out of markdown would let
+// a model forge <shiny-tool-result value-type="html"> and reach innerHTML
+// (XSS), so "markdown" must never be re-added here. "text" means display
+// literally, so tool markup in it is a sample rather than a call.
+const ROUTABLE_CONTENT_TYPES: ReadonlySet<ContentType> = new Set(["html"])
 
 export function isRoutableContentType(contentType: ContentType): boolean {
   return ROUTABLE_CONTENT_TYPES.has(contentType)

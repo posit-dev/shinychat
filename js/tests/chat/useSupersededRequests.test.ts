@@ -15,7 +15,7 @@ function message(content: string): ChatMessageData {
     content,
     streaming: false,
     blocks: routeToolBlocks(
-      [{ type: "content", content, contentType: "markdown" }],
+      [{ type: "content", content, contentType: "html" }],
       "tool",
       "assistant",
     ),

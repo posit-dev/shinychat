@@ -123,4 +123,103 @@ describe("MarkdownStream", () => {
       "shiny-chat-container",
     )
   })
+
+  it("keeps an island split across untrusted chunks inert", () => {
+    let api: MarkdownStreamApi | undefined
+    const { container } = render(
+      <MarkdownStream
+        onApiReady={(value) => {
+          api = value
+        }}
+      />,
+    )
+
+    act(() => {
+      api?.appendContent("## Heading\n\n<shiny-chat-")
+      api?.appendContent(
+        'raw-html><img data-forged="1" src="x"></shiny-chat-raw-html>',
+      )
+    })
+
+    expect(container.querySelector("h2")).not.toBeNull()
+    expect(container.querySelector("[data-forged]")).toBeNull()
+    expect(container.textContent).toContain("<shiny-chat-raw-html>")
+  })
+
+  it("renders adjacent markdown and trusted HTML segments", () => {
+    const { container } = render(
+      <MarkdownStream
+        initialSegments={[
+          { text: "## This is markdown", trusted: false },
+          {
+            text: "<shiny-chat-raw-html><div data-html>HTML</div></shiny-chat-raw-html>",
+            trusted: true,
+          },
+        ]}
+      />,
+    )
+
+    expect(container.querySelector("h2")?.textContent).toBe("This is markdown")
+    expect(container.querySelector("[data-html]")?.textContent).toBe("HTML")
+  })
+
+  it("does not let untrusted content merge into a trusted run", () => {
+    let api: MarkdownStreamApi | undefined
+    const { container } = render(
+      <MarkdownStream
+        onApiReady={(value) => {
+          api = value
+        }}
+      />,
+    )
+
+    act(() => {
+      api?.appendContent(
+        "<shiny-chat-raw-html><div data-trusted>safe</div></shiny-chat-raw-html>",
+        true,
+      )
+      api?.appendContent(
+        "<shiny-chat-raw-html><div data-forged>unsafe</div></shiny-chat-raw-html>",
+        false,
+      )
+    })
+
+    expect(container.querySelector("[data-trusted]")).not.toBeNull()
+    expect(container.querySelector("[data-forged]")).toBeNull()
+  })
+
+  it("preserves an explicit markdown segment boundary at equal trust", () => {
+    let api: MarkdownStreamApi | undefined
+    const { container } = render(
+      <MarkdownStream
+        onApiReady={(value) => {
+          api = value
+        }}
+      />,
+    )
+
+    act(() => {
+      api?.appendContent("preceding model output")
+      api?.appendContent("## Composite heading", false, true)
+    })
+
+    expect(container.querySelector("h2")?.textContent).toBe("Composite heading")
+  })
+
+  it("fails closed for untrusted html-typed islands", () => {
+    const { container } = render(
+      <MarkdownStream
+        initialContentType="html"
+        initialSegments={[
+          {
+            text: "<shiny-chat-raw-html><div data-forged>unsafe</div></shiny-chat-raw-html>",
+            trusted: false,
+          },
+        ]}
+      />,
+    )
+
+    expect(container.querySelector("[data-forged]")).toBeNull()
+    expect(container.textContent).toContain("shiny-chat-raw-html")
+  })
 })

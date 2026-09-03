@@ -5,24 +5,44 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  type ComponentType,
 } from "react"
 import { MarkdownContent } from "../markdown/MarkdownContent"
+import { EscapedIsland } from "../markdown/EscapedIsland"
 import { useAutoScroll, findScrollableParent } from "../markdown/useAutoScroll"
 import type { ContentType } from "../transport/types"
 
 const CHAT_CONTAINER_TAG = "shiny-chat-container"
 
+export type ContentSegment = {
+  text: string
+  trusted: boolean
+}
+
+// This is the only island escape on untrusted `contentType="html"` segments;
+// the processor-level disguise/escape pair applies only to Markdown.
+const escapedIslandComponents: Record<string, ComponentType<unknown>> = {
+  "shiny-chat-raw-html": EscapedIsland,
+  "shinychat-raw-html": EscapedIsland,
+}
+
 export interface MarkdownStreamProps {
   initialContent?: string
+  initialSegments?: ContentSegment[]
   initialContentType?: ContentType
   initialStreaming?: boolean
+  initialTrusted?: boolean
   autoScroll?: boolean
   onApiReady?: (api: MarkdownStreamApi) => void
 }
 
 export type MarkdownStreamApi = {
-  appendContent: (chunk: string) => void
-  replaceContent: (content: string) => void
+  appendContent: (
+    chunk: string,
+    trusted?: boolean,
+    startSegment?: boolean,
+  ) => void
+  replaceContent: (content: string, trusted?: boolean) => void
   setStreaming: (streaming: boolean) => void
   setContentType: (contentType: ContentType) => void
 }
@@ -30,12 +50,16 @@ export type MarkdownStreamApi = {
 /** Standalone component for the <shiny-markdown-stream> custom element. */
 export function MarkdownStream({
   initialContent = "",
+  initialSegments,
   initialContentType = "markdown",
   initialStreaming = false,
+  initialTrusted = false,
   autoScroll = false,
   onApiReady,
 }: MarkdownStreamProps) {
-  const [content, setContent] = useState(initialContent)
+  const [segments, setSegments] = useState<ContentSegment[]>(
+    initialSegments ?? [{ text: initialContent, trusted: initialTrusted }],
+  )
   const [contentType, setContentType] =
     useState<ContentType>(initialContentType)
   const [streaming, setStreaming] = useState(initialStreaming)
@@ -47,7 +71,7 @@ export function MarkdownStream({
   // DOM walk on mount and wire the callback ref to the found element.
   const { containerRef, scrollToBottom, repinIfAtBottom } = useAutoScroll({
     streaming: autoScroll && streaming,
-    contentDependency: content,
+    contentDependency: segments,
   })
 
   useLayoutEffect(() => {
@@ -67,7 +91,7 @@ export function MarkdownStream({
       containerRef(scrollable)
       scrollParentRef.current = scrollable
     }
-  }, [autoScroll, content, containerRef])
+  }, [autoScroll, segments, containerRef])
 
   useEffect(() => {
     return () => {
@@ -85,18 +109,24 @@ export function MarkdownStream({
   }, [streaming, autoScroll, scrollToBottom])
 
   const appendContent = useCallback(
-    (chunk: string) => {
+    (chunk: string, trusted = false, startSegment = false) => {
       // Settle pinnedness here, before React grows the DOM: at this point
       // "at the bottom" is unambiguous. Leaving it to the scroll handler alone
       // loses the race whenever the scroll event lands after the growth.
       repinIfAtBottom()
-      setContent((prev) => prev + chunk)
+      setSegments((prev) => {
+        const last = prev[prev.length - 1]
+        if (!startSegment && last && last.trusted === trusted) {
+          return [...prev.slice(0, -1), { ...last, text: last.text + chunk }]
+        }
+        return [...prev, { text: chunk, trusted }]
+      })
     },
     [repinIfAtBottom],
   )
 
-  const replaceContent = useCallback((newContent: string) => {
-    setContent(newContent)
+  const replaceContent = useCallback((newContent: string, trusted = false) => {
+    setSegments([{ text: newContent, trusted }])
   }, [])
 
   const api = useMemo(
@@ -115,11 +145,18 @@ export function MarkdownStream({
 
   return (
     <div ref={innerRef}>
-      <MarkdownContent
-        content={content}
-        contentType={contentType}
-        streaming={streaming}
-      />
+      {segments.map((segment, index) => (
+        <MarkdownContent
+          key={index}
+          content={segment.text}
+          contentType={contentType}
+          streaming={streaming && index === segments.length - 1}
+          allowRawHtmlIslands={segment.trusted}
+          tagToComponentMap={
+            segment.trusted ? undefined : escapedIslandComponents
+          }
+        />
+      ))}
     </div>
   )
 }
