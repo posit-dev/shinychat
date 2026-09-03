@@ -27,8 +27,8 @@ the client.
 \item A UI element.
 \itemize{
 \item This includes \code{\link[htmltools:tagList]{htmltools::tagList()}}, which takes UI elements
-(including strings) as children. tagList content is treated as HTML:
-strings inside it are literal text (HTML-escaped), not markdown. Use
+(including strings) as children. Strings inside a tagList are
+literal text (HTML-escaped), not markdown. Use
 \code{\link[htmltools:HTML]{htmltools::HTML()}} for trusted raw HTML strings.
 }
 }}

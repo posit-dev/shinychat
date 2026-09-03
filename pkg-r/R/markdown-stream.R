@@ -129,13 +129,13 @@ output_markdown_stream <- function(
 #' [coro::async_generator()]), a string promise (e.g., [promises::promise()]),
 #' or a string promise generator.
 #'
-#'   An item may also be an already-structured content block (a
-#'   `shinychat_block` such as a `web_search`/`web_search_results`/`web_fetch`
+#'   An item may also be a structured content block (a
+#'   `shinychat_block` such as a `web_search`, `web_search_results`, or `web_fetch`
 #'   block of the kind ellmer content normalization produces for
 #'   [chat_append()]). Each block is sent as one complete, append-only
-#'   structured block message; the client validates, groups, and renders it.
-#'   Only the block types the stream client supports are accepted —
-#'   `html_block` and the `web_*` family; any other block type (e.g. a tool
+#'   structured block message. The client validates, groups, and renders it.
+#'   Only the block types the stream client supports are accepted.
+#'   `html_block` and the `web_*` family. Any other block type (e.g. a tool
 #'   block, which the client would drop with a warning) raises an error.
 #' @param operation The operation to perform on the markdown stream. The default,
 #' `"replace"`, will replace the current content with the new content stream.
@@ -145,7 +145,7 @@ output_markdown_stream <- function(
 #' @param session The Shiny session object.
 #'
 #' @return A promise that resolves to the accumulated stream content as a
-#'   single string (structured blocks contribute nothing to the string).
+#'   single string. Structured blocks contribute nothing to the string.
 #'
 #' @export
 #' @examplesIf interactive()

@@ -9,8 +9,8 @@ new_island_item <- function(children) {
 
 #' Split tag content around elements with data-shinychat-react
 #'
-#' Elements WITH the attribute are emitted bare (as tags). Consecutive
-#' elements WITHOUT the attribute are grouped into typed `shinychat_island`
+#' Elements with the attribute are emitted bare as tags. Consecutive
+#' elements without the attribute are grouped into `shinychat_island`
 #' items (see `new_island_item()`).
 #'
 #' @param content A tag, tagList, or other HTML content.
@@ -54,8 +54,7 @@ split_html_islands <- function(content) {
 }
 
 # One derived piece of trusted content: an island payload (becomes a
-# structured `html_block`) or a residual string run. Mirrors Python's
-# IslandBlockPart/IslandResidualPart.
+# structured `html_block`) or a residual string run.
 new_island_block_part <- function(html, deps) {
   structure(
     list(html = html, deps = deps),
@@ -72,15 +71,18 @@ new_island_residual_part <- function(html, deps) {
 
 #' Walk split_html_islands() output into rendered parts
 #'
-#' Island items (`shinychat_island`) become block parts (rendered children
-#' HTML + dependency objects); bare `data-shinychat-react` elements become
-#' residual string runs (rendered bare, surrounded by blank lines so the
-#' markdown parser treats block-level custom elements correctly, adjacent
-#' runs coalesced).
+#' Plain strings are not accepted. They are markdown and must be handled
+#' by the caller. The function raises an error for them.
 #'
-#' This is the single derivation shared by Chat (message content) and the
-#' markdown stream so trusted non-string content becomes `html_block`
-#' envelopes identically everywhere. Mirrors Python's `derive_island_parts()`.
+#' Island items (`shinychat_island`) become block parts (rendered children
+#' HTML and dependency objects). Bare `data-shinychat-react` elements
+#' become residual string runs, rendered bare and surrounded by blank
+#' lines so the markdown parser treats block-level custom elements
+#' correctly. Adjacent runs coalesce.
+#'
+#' Chat (message content) and the markdown stream share this one
+#' derivation so trusted non-string content becomes `html_block`
+#' envelopes identically everywhere.
 #'
 #' @param content A tag, tagList, or other HTML content.
 #' @return A list of parts (`shinychat_island_block_part` or
@@ -128,14 +130,14 @@ derive_island_parts <- function(content) {
 #' Render trusted content to a single HTML string via the island derivation
 #'
 #' For wire surfaces that cannot carry structured blocks (the greeting
-#' payload, drawer content, static <shiny-chat-message> tags): island parts
-#' contribute their rendered HTML directly and bare React elements
-#' contribute their blank-line-wrapped residual runs. The whole string is
-#' server-authored and travels with content_type "html".
+#' payload, drawer content, static <shiny-chat-message> tags). Island
+#' parts contribute their rendered HTML directly. Bare React elements
+#' contribute their blank-line-wrapped residual runs. The whole string
+#' is server-authored and travels with content_type "html".
 #'
 #' The payload is a single string rendered via innerHTML, so bare strings
-#' are HTML-escaped. Mixed markdown+UI content needs a segments channel
-#' (follow-up: shinychat#2dzc).
+#' are HTML-escaped. Mixed markdown and UI content needs a segments
+#' channel (follow-up: shinychat#2dzc).
 #'
 #' @param content A tag, tagList, or other HTML content.
 #' @return A list with `html` (character string) and `deps` (raw
@@ -158,7 +160,7 @@ render_island_string <- function(content) {
   list(html = html, deps = deps %||% list())
 }
 
-#' Split mixed content into ordered provenance runs
+#' Split mixed content into trusted and untrusted runs
 #'
 #' Plain character values may contain model output and are untrusted.
 #' HTML()-marked strings and tags are server-authored UI and trusted.
