@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 from datetime import timedelta
 from pathlib import Path
@@ -203,10 +204,11 @@ async def test_v2_put_failure_keeps_previous_document(
     )
     before = (conv_dir / "record.json").read_bytes()
     rec.nodes["exchange-1"].status = "ok"
-    original_replace = history_store_module.os.replace
+    original_replace = os.replace
 
     monkeypatch.setattr(
-        "shinychat._history_store.os.replace",
+        os,
+        "replace",
         lambda *args: (_ for _ in ()).throw(
             OSError("injected replace failure")
         ),
@@ -216,7 +218,7 @@ async def test_v2_put_failure_keeps_previous_document(
 
     assert (conv_dir / "record.json").read_bytes() == before
     assert not (conv_dir / ".record.json.tmp").exists()
-    monkeypatch.setattr("shinychat._history_store.os.replace", original_replace)
+    monkeypatch.setattr(os, "replace", original_replace)
     await store.put(part(scope="alice"), rec)
 
     reloaded = await FileConversationStore(tmp_path).get(
