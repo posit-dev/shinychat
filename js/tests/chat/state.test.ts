@@ -5,7 +5,6 @@ import {
   initialState,
   routeToolBlocks,
   supersededRequestIds,
-  buildMessagesSnapshot,
   type ChatState,
   type ChatMessageData,
   type GreetingData,
@@ -2832,50 +2831,5 @@ describe("html_deps retention", () => {
     s = chatReducer(s, { type: "chunk_end" })
     const last = s.messages[s.messages.length - 1]!
     expect(last.htmlDeps).toEqual([dep])
-  })
-})
-
-describe("buildMessagesSnapshot", () => {
-  it("maps settled messages to wire segments and excludes placeholders/streaming", () => {
-    let s = chatReducer(initialState, {
-      type: "message",
-      message: {
-        role: "user",
-        segments: [{ content: "hello", content_type: "markdown" }],
-      },
-    })
-    // a streaming message must NOT appear
-    s = chatReducer(s, {
-      type: "chunk_start",
-      message: { role: "assistant", segments: [] },
-    })
-    const snap = buildMessagesSnapshot(s)
-    expect(snap).toEqual([
-      {
-        role: "user",
-        segments: [{ content: "hello", content_type: "markdown" }],
-      },
-    ])
-  })
-
-  it("emits thinking blocks with content_type 'thinking' and carries htmlDeps", () => {
-    const dep: HtmlDep = { name: "w", version: "1" }
-    const s = chatReducer(initialState, {
-      type: "message",
-      message: {
-        role: "assistant",
-        segments: [
-          { content: "reasoning", content_type: "thinking" },
-          { content: "answer", content_type: "markdown" },
-        ],
-      },
-      html_deps: [dep],
-    })
-    const snap = buildMessagesSnapshot(s)
-    expect(snap[0]!.segments).toEqual([
-      { content: "reasoning", content_type: "thinking" },
-      { content: "answer", content_type: "markdown" },
-    ])
-    expect(snap[0]!.htmlDeps).toEqual([dep])
   })
 })

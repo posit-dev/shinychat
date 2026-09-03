@@ -55,8 +55,6 @@
 
 * The `last_input` reactive returned by `chat_server()` now mirrors the shape of `input$<id>_user_input`: a string when attachments are disabled, and a list of ellmer `Content` objects when enabled.
 
-* `input$<id>_user_input` is now a persistent regular input rather than an event input, so it retains its last submitted value between submissions instead of resetting to `NULL`. This lets it co-batch with the client's message snapshot in a single reactive flush. It remains excluded from bookmarks.
-
 * The `messages` parameter is deprecated in favor of the conversation-history
   feature. `chat_app(messages = ...)` now errors when history is enabled
   (the default); use `greeting` for a startup message, `chat_append()` to

@@ -60,6 +60,7 @@ from ._chat_segments import (
     has_mixed_content_types,
     segments_content,
     segments_deps,
+    serialize_segments,
 )
 from ._chat_types import (
     ChatAction,
@@ -345,7 +346,6 @@ class Chat:
 
         self.id = resolve_id(id)
         self.user_input_id = ResolvedId(f"{self.id}_user_input")
-        self.messages_input_id = ResolvedId(f"{self.id}_messages")
         self._slash_command_id = ResolvedId(f"{self.id}_slash_command")
         self._transform_user: TransformUserInputAsync | None = None
         self._transform_assistant: (
@@ -389,6 +389,10 @@ class Chat:
         from shiny.session import session_context
 
         with session_context(self._session):
+            self._messages: reactive.Value[tuple[StoredMessage, ...]] = (
+                reactive.Value(())
+            )
+
             # `None` until the first registration, which lets us skip the
             # redundant initial sync (the client already initializes to `[]`).
             # An empty dict, by contrast, is sent so that removing the last
@@ -436,7 +440,7 @@ class Chat:
                         role="user",
                         attachments=attachments,
                     )
-                    self._latest_user_input.set(self._as_stored_message(msg))
+                    self._store_message(msg)
                 except Exception as e:
                     await self._raise_exception(e)
 
@@ -462,7 +466,7 @@ class Chat:
                 if echo:
                     full_text = f"/{command} {user_text}".rstrip()
                     msg = ChatMessage(content=full_text, role="user")
-                    self._latest_user_input.set(self._as_stored_message(msg))
+                    self._store_message(msg)
                 cmds = self._slash_commands()
                 reg = cmds.get(command) if cmds else None
                 try:
@@ -863,14 +867,6 @@ class Chat:
 
         Note
         ----
-        This reflects the messages the browser has rendered and reported back,
-        so it is *eventually* consistent: it returns an empty tuple until the
-        client's first report, and a message passed to
-        :meth:`~shinychat.Chat.append_message` does not appear here until the
-        browser has rendered it and echoed its snapshot to the server. Read it
-        reactively (e.g. in an `.on_user_submit()` callback) rather than
-        expecting it to update synchronously right after appending.
-
         Returns
         -------
         tuple[ChatMessageDict, ...]
@@ -893,7 +889,7 @@ class Chat:
                 "Use your LLM provider (e.g., chatlas, LangChain) to manage conversation context instead."
             )
 
-        messages = self._reported_messages()
+        messages = self._messages()
 
         res: list[ChatMessageDict] = []
         for m in messages:
@@ -905,18 +901,6 @@ class Chat:
             res.append(chat_msg)
 
         return tuple(res)
-
-    def _reported_messages(self) -> tuple[StoredMessage, ...]:
-        # Client-authoritative UI state: the React client reports its settled-
-        # message snapshot as the `${id}_messages` input (see _input_handler.py).
-        # Returns () before the client has reported anything.
-        from shiny.types import SilentException
-
-        try:
-            val = self._session.input[self.messages_input_id]()
-        except SilentException:
-            return ()
-        return tuple(val) if val else ()
 
     async def append_message(
         self,
@@ -1063,6 +1047,7 @@ class Chat:
         msg = await self._transform_message(msg)
         if msg is None:
             return
+        self._store_message(msg)
         await self._send_append_message(
             message=msg,
             chunk=False,
@@ -1237,6 +1222,14 @@ class Chat:
                     # deps belong on segments[0].
                     if serialized_deps and msg.segments:
                         msg.segments[0].html_deps = serialized_deps
+                    self._store_message(msg)
+            elif chunk == "end":
+                text_segs = serialize_segments(
+                    self._current_stream_segments, self._serialize_html_deps
+                )
+                self._store_message(
+                    StoredMessage(role=msg.role, segments=text_segs),
+                )
 
             # Send the message to the client
             await self._send_append_message(
@@ -1549,7 +1542,7 @@ class Chat:
         from shiny import reactive
 
         with reactive.isolate():
-            messages = self._reported_messages()
+            messages = self._messages()
 
         dumps: list[dict[str, Any]] = []
         for m in messages:
@@ -1583,6 +1576,7 @@ class Chat:
                 stacklevel=2,
             )
             return
+        self._store_message(stored)
         await self._send_append_message(stored)
 
     def transform_user_input(self, *args: object, **kwargs: object) -> object:
@@ -1714,6 +1708,19 @@ class Chat:
 
         html_deps = self._serialize_html_deps(message.html_deps)
         return StoredMessage.from_chat_message(message, html_deps=html_deps)
+
+    def _store_message(
+        self,
+        message: StoredMessage | ChatMessage,
+    ) -> None:
+        from shiny import reactive
+
+        stored = self._as_stored_message(message)
+        with reactive.isolate():
+            messages = self._messages()
+        self._messages.set((*messages, stored))
+        if stored.role == "user":
+            self._latest_user_input.set(stored)
 
     def user_input(self) -> "UserInput | None":
         """
@@ -1848,6 +1855,7 @@ class Chat:
             react to the request to generate a new one via
             :meth:`~shinychat.Chat.set_greeting`.
         """
+        self._messages.set(())
         action: ClearAction = {"type": "clear"}
         if greeting:
             self._greeting_content = None
@@ -2148,7 +2156,6 @@ class Chat:
         root_session = session.root_scope()
         for suffix in (
             "_user_input",
-            "_messages",
             "_cancel",
             "_slash_command",
             "_greeting_requested",
@@ -2646,7 +2653,7 @@ def chat_ui(
         container or any ancestor:
 
         * ``--shiny-chat-btn-send-size`` -- button width and height (default ``24px``)
-        * ``--shiny-chat-input-icon-size`` -- icon size, shared with the attach button (default ``18px``)
+        * ``--shiny-chat-input-icon-size`` -- icon size, shared with the attach button (default ``22px``)
         * ``--shiny-chat-btn-send-bg`` -- button background (default: state color)
         * ``--shiny-chat-btn-send-color`` -- icon color (default: ``#fff``)
         * ``--shiny-chat-btn-send-border`` -- button border (default: ``none``)
