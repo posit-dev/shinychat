@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, memo, useCallback } from "react"
 import { useStickToBottom } from "use-stick-to-bottom"
 import type { ThinkingBlock } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
-import { chatTagToComponentMap } from "./chatTagToComponentMap"
+import { untrustedChatTagToComponentMap } from "./chatTagToComponentMap"
 import { useChatStopScroll } from "./context"
 import { useFadingText } from "./useFadingText"
 import { chevronDown } from "../utils/icons"
@@ -190,7 +190,7 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
               contentType="markdown"
               role="assistant"
               streaming={thinking.streaming}
-              tagToComponentMap={chatTagToComponentMap}
+              tagToComponentMap={untrustedChatTagToComponentMap}
             />
           </div>
         </div>

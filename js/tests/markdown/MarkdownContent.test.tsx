@@ -326,4 +326,29 @@ describe("MarkdownContent (pure)", () => {
       container.querySelector(".shiny-chat-suggestion-list-item"),
     ).toBeNull()
   })
+
+  it("renders a model-authored raw-HTML island as literal text", () => {
+    const content =
+      '<shiny-chat-raw-html><img data-forged="1" src="x"></shiny-chat-raw-html>'
+    const { container } = render(
+      <MarkdownContent content={content} contentType="markdown" />,
+    )
+
+    expect(container.querySelector("[data-forged]")).toBeNull()
+    expect(container.textContent).toContain("<shiny-chat-raw-html>")
+  })
+
+  it("allows an explicitly trusted markdown island", () => {
+    const content =
+      '<shiny-chat-raw-html><div data-trusted="1">safe</div></shiny-chat-raw-html>'
+    const { container } = render(
+      <MarkdownContent
+        content={content}
+        contentType="markdown"
+        allowRawHtmlIslands
+      />,
+    )
+
+    expect(container.querySelector("[data-trusted]")).not.toBeNull()
+  })
 })

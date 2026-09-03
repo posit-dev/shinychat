@@ -2785,6 +2785,7 @@ def chat_ui(
                 # render `message.icon` directly (no assistant fallback chain).
                 icon=icon_attr if msg.role != "user" else None,
                 data_role=msg.role,
+                content_type=msg.content_type,
             )
         )
 

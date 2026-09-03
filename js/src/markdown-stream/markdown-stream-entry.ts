@@ -1,6 +1,10 @@
 import { createRoot, type Root } from "react-dom/client"
 import { createElement } from "react"
-import { MarkdownStream, type MarkdownStreamApi } from "./MarkdownStream"
+import {
+  MarkdownStream,
+  type ContentSegment,
+  type MarkdownStreamApi,
+} from "./MarkdownStream"
 import { ShinyLifecycleContext } from "../chat/context"
 import { getShinyTransport } from "../transport/shiny-transport"
 import type { ContentType } from "../transport/types"
@@ -14,6 +18,8 @@ type ContentMessage = {
   content: string
   operation: "append" | "replace"
   html_deps?: HtmlDep[]
+  trusted: boolean
+  segment_start: boolean
 }
 
 type IsStreamingMessage = {
@@ -48,9 +54,11 @@ class MarkdownStreamElement extends HTMLElement {
     this.reactRoot = createRoot(this)
 
     const initialContent = this.getAttribute("content") ?? ""
+    const initialSegments = readInitialSegments(this, initialContent)
     const initialContentType =
       (this.getAttribute("content-type") as ContentType) ?? "markdown"
     const initialStreaming = readBooleanAttr(this, "streaming")
+    const initialTrusted = readBooleanAttr(this, "content-trusted")
     const autoScroll = readBooleanAttr(this, "auto-scroll")
 
     this.reactRoot.render(
@@ -59,8 +67,10 @@ class MarkdownStreamElement extends HTMLElement {
         { value: transport },
         createElement(MarkdownStream, {
           initialContent,
+          initialSegments,
           initialContentType,
           initialStreaming,
+          initialTrusted,
           autoScroll,
           onApiReady: (api: MarkdownStreamApi) => {
             this.api = api
@@ -102,11 +112,42 @@ class MarkdownStreamElement extends HTMLElement {
     }
 
     if (message.operation === "replace") {
-      this.api!.replaceContent(message.content)
+      this.api!.replaceContent(message.content, message.trusted === true)
     } else if (message.operation === "append") {
-      this.api!.appendContent(message.content)
+      this.api!.appendContent(
+        message.content,
+        message.trusted === true,
+        message.segment_start === true,
+      )
     }
   }
+}
+
+function readInitialSegments(
+  el: HTMLElement,
+  fallbackContent: string,
+): ContentSegment[] | undefined {
+  const encoded = el.getAttribute("content-segments")
+  if (encoded === null) return undefined
+
+  try {
+    const value: unknown = JSON.parse(encoded)
+    if (
+      Array.isArray(value) &&
+      value.every(
+        (segment) =>
+          typeof segment === "object" &&
+          segment !== null &&
+          typeof (segment as Record<string, unknown>).text === "string" &&
+          typeof (segment as Record<string, unknown>).trusted === "boolean",
+      )
+    ) {
+      return value as ContentSegment[]
+    }
+  } catch {
+    // Malformed provenance must fail closed.
+  }
+  return [{ text: fallbackContent, trusted: false }]
 }
 
 function attributeToPropertyName(name: string): string {

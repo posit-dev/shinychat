@@ -61,3 +61,31 @@ test_that("empty tagList returns empty list without error", {
   result <- split_html_islands(htmltools::tagList())
   expect_equal(result, list())
 })
+
+test_that("mixed tagList provenance is tracked per leaf", {
+  segments <- split_content_by_trust(
+    htmltools::tagList(
+      "## This is markdown",
+      htmltools::div("This is HTML")
+    )
+  )
+
+  expect_length(segments, 2)
+  expect_false(segments[[1]]$trusted)
+  expect_identical(segments[[1]]$content, "## This is markdown")
+  expect_true(segments[[2]]$trusted)
+})
+
+test_that("HTML-marked strings are trusted independently of plain strings", {
+  segments <- split_content_by_trust(
+    htmltools::tagList(
+      "model text",
+      htmltools::HTML("<strong>server HTML</strong>")
+    )
+  )
+
+  expect_identical(
+    vapply(segments, `[[`, logical(1), "trusted"),
+    c(FALSE, TRUE)
+  )
+})

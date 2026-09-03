@@ -29,6 +29,33 @@ def _has_react_attr(child: TagChild) -> bool:
     return False
 
 
+def split_content_by_trust(
+    content: TagChild | TagList,
+) -> list[tuple[bool, TagChild]]:
+    """
+    Split mixed content into ordered provenance runs.
+
+    Plain strings may contain model output and are untrusted. HTML()-marked
+    strings, Tags, and Tagifiable values are server-authored UI and trusted.
+    """
+    if isinstance(content, (TagList, TagifiedTagList)):
+        children = list(content)
+    else:
+        children = [content]
+
+    def is_trusted(child: TagChild) -> bool:
+        return not isinstance(child, str)
+
+    result: list[tuple[bool, TagChild]] = []
+    for trusted, group_iter in groupby(children, is_trusted):
+        group = list(group_iter)
+        if trusted:
+            result.append((True, TagList(*group)))
+        else:
+            result.append((False, "".join(str(child) for child in group)))
+    return result
+
+
 def split_html_islands(content: TagChild | TagList) -> list[TagChild]:
     """
     Split tag content around elements with data-shinychat-react.

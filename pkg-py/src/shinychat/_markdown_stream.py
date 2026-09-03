@@ -1,10 +1,11 @@
+import json
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, AsyncIterable, Iterable, Literal, Union
 
 from htmltools import RenderedHTML, Tag, TagChild, TagList, css
 
 from ._html_deps_py_shiny import shinychat_dependency
-from ._html_islands import split_html_islands
+from ._html_islands import split_content_by_trust, split_html_islands
 from ._typing_extensions import TypedDict
 
 if TYPE_CHECKING:
@@ -29,6 +30,8 @@ class ContentMessage(TypedDict):
     content: str
     operation: Literal["append", "replace"]
     html_deps: list[dict[str, str]]
+    trusted: bool
+    segment_start: bool
 
 
 class isStreamingMessage(TypedDict):
@@ -138,22 +141,37 @@ class MarkdownStream:
         @reactive.extended_task
         async def _task():
             if clear:
-                await self._send_content_message("", "replace", [])
+                await self._send_content_message(
+                    "",
+                    "replace",
+                    [],
+                    trusted=False,
+                    segment_start=True,
+                )
 
             result = ""
             async with self._streaming_dot():
                 async for x in content:
-                    if isinstance(x, str):
-                        # x is most likely a string, so avoid overhead in that case
-                        ui: RenderedDeps = {"html": x, "deps": []}
-                    else:
-                        split = split_html_islands(x)
-                        ui = self._session._process_ui(TagList(*split))
+                    segments = split_content_by_trust(x)
+                    composite = not isinstance(x, str) or len(segments) > 1
+                    for index, (trusted, segment) in enumerate(segments):
+                        if trusted:
+                            split = split_html_islands(segment)
+                            ui = self._session._process_ui(TagList(*split))
+                        else:
+                            ui: RenderedDeps = {
+                                "html": str(segment),
+                                "deps": [],
+                            }
 
-                    result += ui["html"]
-                    await self._send_content_message(
-                        ui["html"], "append", ui["deps"]
-                    )
+                        result += ui["html"]
+                        await self._send_content_message(
+                            ui["html"],
+                            "append",
+                            ui["deps"],
+                            trusted=trusted,
+                            segment_start=composite or index > 0,
+                        )
 
             return result
 
@@ -234,12 +252,17 @@ class MarkdownStream:
         content: str,
         operation: Literal["append", "replace"],
         html_deps: list[dict[str, str]],
+        *,
+        trusted: bool,
+        segment_start: bool,
     ):
         msg: ContentMessage = {
             "id": self.id,
             "content": content,
             "operation": operation,
             "html_deps": html_deps,
+            "trusted": trusted,
+            "segment_start": segment_start,
         }
         await self._send_custom_message(msg)
 
@@ -359,17 +382,27 @@ def output_markdown_stream(
     from shiny.module import resolve_id
     from shiny.ui.css import as_css_unit
 
-    # `content` is most likely a string, so avoid overhead in that case
-    # (it's also important that we *don't escape HTML* here).
-    if isinstance(content, str):
-        ui = RenderedHTML(html=content, dependencies=[])
-    else:
-        ui = TagList(*split_html_islands(content)).render()
+    rendered_segments: list[dict[str, str | bool]] = []
+    dependencies = []
+    for trusted, segment in split_content_by_trust(content):
+        if trusted:
+            ui = TagList(*split_html_islands(segment)).render()
+        else:
+            ui = RenderedHTML(html=str(segment), dependencies=[])
+        rendered_segments.append({"text": ui["html"], "trusted": trusted})
+        dependencies.extend(ui["dependencies"])
+
+    rendered_content = "".join(
+        str(segment["text"]) for segment in rendered_segments
+    )
+    fallback_trusted = len(rendered_segments) == 1 and bool(
+        rendered_segments[0]["trusted"]
+    )
 
     return Tag(
         "shiny-markdown-stream",
         shinychat_dependency(),
-        ui["dependencies"],
+        dependencies,
         {
             "style": css(
                 width=as_css_unit(width),
@@ -377,8 +410,12 @@ def output_markdown_stream(
                 margin="0 auto",
             ),
             "content-type": content_type,
+            "content-segments": json.dumps(
+                rendered_segments, separators=(",", ":")
+            ),
+            "content-trusted": "true" if fallback_trusted else "false",
             "auto-scroll": "" if auto_scroll else None,
         },
         id=resolve_id(id),
-        content=ui["html"],
+        content=rendered_content,
     )

@@ -9,10 +9,13 @@ import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ThinkingDisplay } from "./ThinkingDisplay"
 import { ToolGroup } from "./ToolGroup"
 import { robot, dots_fade, arrowUp, pencil } from "../utils/icons"
-import { chatTagToComponentMap } from "./chatTagToComponentMap"
+import {
+  chatTagToComponentMap,
+  untrustedChatTagToComponentMap,
+} from "./chatTagToComponentMap"
 import { useSlashCommands, useToolGrouping, useChatToolState } from "./context"
 import { CommandChip } from "./CommandChip"
-import type { SlashCommandDef } from "../transport/types"
+import type { SlashCommandDef, ContentType } from "../transport/types"
 import {
   attachmentBadgeLabel,
   attachmentFamily,
@@ -120,12 +123,23 @@ export const ChatMessage = memo(function ChatMessage({
   )
 
   // Tool UI is never legitimate in a user message, so don't hand the bridges to
-  // one. Defense in depth alongside the router's role gate: the router covers
-  // markdown (it just leaves the tags as text), but an html-typed user block
-  // skips the router's effect entirely and goes through `htmlProcessor` — no
+  // one. Defense in depth alongside the router's role gate: an html-typed user
+  // block skips the router entirely and goes through `htmlProcessor` — no
   // remarkEscapeHtml, no rehypeSanitize — so without this the tags would still
   // resolve to real tool cards. Withholding the map leaves them inert elements.
-  const tagToComponentMap = isUser ? undefined : chatTagToComponentMap
+  //
+  // The same reasoning applies per content type: markdown-typed blocks are
+  // model-authored (untrusted), so they get a map whose tool tags render as
+  // escaped, inert text — closing the fallback path that would otherwise let a
+  // forged <shiny-tool-result value-type="html"> reach innerHTML without ever
+  // being routed. Only html-typed blocks (server-authored) get the real
+  // bridges, as a fallback for tool elements the router left behind.
+  const mapForContentType = (contentType: ContentType) =>
+    isUser
+      ? undefined
+      : contentType === "html"
+        ? chatTagToComponentMap
+        : untrustedChatTagToComponentMap
 
   // Drop running requests whose result has rendered elsewhere in the transcript
   // (the router can only pair the two within one content string), then any group
@@ -458,7 +472,7 @@ export const ChatMessage = memo(function ChatMessage({
           contentType={block.contentType}
           role={message.role}
           streaming={message.streaming && isLast}
-          tagToComponentMap={tagToComponentMap}
+          tagToComponentMap={mapForContentType(block.contentType)}
           prefix={chip}
         />
       )
@@ -471,7 +485,7 @@ export const ChatMessage = memo(function ChatMessage({
         contentType={block.contentType}
         role={message.role}
         streaming={message.streaming && isLast}
-        tagToComponentMap={tagToComponentMap}
+        tagToComponentMap={mapForContentType(block.contentType)}
       />
     )
     if (block.contentType === "text") {
