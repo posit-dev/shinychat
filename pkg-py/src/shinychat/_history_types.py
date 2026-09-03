@@ -539,12 +539,15 @@ class ConversationRecordV2(BaseModel):
 
 
 def new_conversation_record_v2(
-    *, title: str, client_info: dict[str, str]
+    *,
+    title: str,
+    client_info: dict[str, str],
+    id: str | None = None,
 ) -> ConversationRecordV2:
     now = utcnow()
     root_id = "n_0000"
     return ConversationRecordV2(
-        id=new_conversation_id(),
+        id=id or new_conversation_id(),
         title=title,
         created_at=now,
         updated_at=now,
