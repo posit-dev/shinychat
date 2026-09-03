@@ -346,9 +346,9 @@ chat_greeting <- function(
 #' @param ... Extra HTML attributes to include on the chat element
 #' @param messages Deprecated. A list of messages to prepopulate the chat with.
 #'   Startup messages can't be recorded by the conversation-history feature.
-#'   Use `greeting` for a startup message, or set `history = FALSE` in
-#'   [chat_server()] if you're managing conversation state yourself. Each
-#'   message can be one of the following:
+#'   Use `greeting` for a startup message, `chat_append()` to replay messages
+#'   from the server, or set `history = FALSE` in [chat_server()] if you're
+#'   managing conversation state yourself. Each message can be one of the following:
 #'
 #'   * A string, which is interpreted as markdown and rendered to HTML on the
 #'     client.
@@ -485,7 +485,7 @@ chat_ui <- function(
       "chat_ui(messages = )",
       details = c(
         "Startup messages can't be recorded by the conversation-history feature.",
-        "Use `greeting` for a startup message, or set `history = FALSE` in `chat_server()` if you're managing conversation state yourself."
+        "Use `greeting` for a startup message, `chat_append()` to replay messages from the server, or set `history = FALSE` in `chat_server()` if you're managing conversation state yourself."
       )
     )
   }

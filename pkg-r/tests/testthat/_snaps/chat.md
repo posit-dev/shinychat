@@ -17,7 +17,7 @@
       Warning:
       The `messages` argument of `chat_ui()` is deprecated as of shinychat 0.5.0.
       i Startup messages can't be recorded by the conversation-history feature.
-      i Use `greeting` for a startup message, or set `history = FALSE` in `chat_server()` if you're managing conversation state yourself.
+      i Use `greeting` for a startup message, `chat_append()` to replay messages from the server, or set `history = FALSE` in `chat_server()` if you're managing conversation state yourself.
     Output
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill icon-assistant="" id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(clamp(680px, 50vw, 760px), 100%);height:auto;">
         <shiny-chat-messages>
@@ -37,7 +37,7 @@
       Warning:
       The `messages` argument of `chat_ui()` is deprecated as of shinychat 0.5.0.
       i Startup messages can't be recorded by the conversation-history feature.
-      i Use `greeting` for a startup message, or set `history = FALSE` in `chat_server()` if you're managing conversation state yourself.
+      i Use `greeting` for a startup message, `chat_append()` to replay messages from the server, or set `history = FALSE` in `chat_server()` if you're managing conversation state yourself.
     Output
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill icon-assistant="" id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(clamp(680px, 50vw, 760px), 100%);height:auto;">
         <shiny-chat-messages>
@@ -56,7 +56,7 @@
       Warning:
       The `messages` argument of `chat_ui()` is deprecated as of shinychat 0.5.0.
       i Startup messages can't be recorded by the conversation-history feature.
-      i Use `greeting` for a startup message, or set `history = FALSE` in `chat_server()` if you're managing conversation state yourself.
+      i Use `greeting` for a startup message, `chat_append()` to replay messages from the server, or set `history = FALSE` in `chat_server()` if you're managing conversation state yourself.
     Output
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill icon-assistant="" id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(clamp(680px, 50vw, 760px), 100%);height:auto;">
         <shiny-chat-messages>
@@ -76,7 +76,7 @@
       Warning:
       The `messages` argument of `chat_ui()` is deprecated as of shinychat 0.5.0.
       i Startup messages can't be recorded by the conversation-history feature.
-      i Use `greeting` for a startup message, or set `history = FALSE` in `chat_server()` if you're managing conversation state yourself.
+      i Use `greeting` for a startup message, `chat_append()` to replay messages from the server, or set `history = FALSE` in `chat_server()` if you're managing conversation state yourself.
     Output
       $deps
       [{"name":"foo","all_files":true},{"name":"shinychat","script":{"src":"shinychat.js","type":"module"},"stylesheet":"shinychat.css","all_files":true},{"name":"bslib-tag-require","script":"tag-require.js","all_files":true},{"name":"htmltools-fill","stylesheet":"fill.css","all_files":true}] 
@@ -102,7 +102,7 @@
       Warning:
       The `messages` argument of `chat_ui()` is deprecated as of shinychat 0.5.0.
       i Startup messages can't be recorded by the conversation-history feature.
-      i Use `greeting` for a startup message, or set `history = FALSE` in `chat_server()` if you're managing conversation state yourself.
+      i Use `greeting` for a startup message, `chat_append()` to replay messages from the server, or set `history = FALSE` in `chat_server()` if you're managing conversation state yourself.
     Output
       <shiny-chat-container class="html-fill-item html-fill-container" data-require-bs-caller="chat_ui" data-require-bs-version="5" fill icon-assistant="" id="chat" max-attachment-size="31457280" placeholder="Enter a message..." style="--_chat-width:min(clamp(680px, 50vw, 760px), 100%);height:auto;">
         <shiny-chat-messages>
