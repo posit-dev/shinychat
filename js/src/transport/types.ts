@@ -18,7 +18,7 @@ export interface GreetingOptions {
   persistent?: boolean
 }
 
-export type MessagePayloadSegment = {
+export type StringSegment = {
   content: string
   content_type: ContentType
 }
@@ -152,7 +152,7 @@ export type StructuredBlock =
   | HtmlBlock
 
 /** One entry of `MessagePayload.segments`: a string segment or a structured block. */
-export type SegmentPayload = MessagePayloadSegment | StructuredBlock
+export type SegmentPayload = StringSegment | StructuredBlock
 
 export interface SlashCommandDef {
   name: string

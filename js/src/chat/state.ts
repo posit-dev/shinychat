@@ -66,7 +66,7 @@ export interface ThinkingBlock {
   durationMs?: number
   streaming: boolean
 }
-export type MessageBlock =
+export type RenderBlock =
   | ContentBlock
   | ThinkingBlock
   | ToolLoopBlock
@@ -85,7 +85,7 @@ export interface ChatMessageData {
   attachments?: AttachmentPayload[]
   /** Opaque serialized Shiny HTML dependencies received with this message; retained so the client can report them back for persistence/restore. */
   htmlDeps?: HtmlDep[]
-  blocks: MessageBlock[]
+  blocks: RenderBlock[]
   /** Tracks whether streaming content is inside an unclosed <thinking> tag */
   insideThinkingTag?: boolean
   /** Buffers partial tag text at chunk boundaries (e.g. "<thi" or "</thin") */
@@ -239,7 +239,7 @@ export function messagePayloadToData(
   msg: MessagePayload,
   grouping: ToolGrouping = "tool",
 ): ChatMessageData {
-  let rawBlocks: MessageBlock[] = []
+  let rawBlocks: RenderBlock[] = []
   let htmlDeps: HtmlDep[] | undefined
   for (const seg of msg.segments) {
     if (isStructuredSegment(seg)) {
@@ -348,7 +348,7 @@ const THINKING_TAG_RE = /<thinking>\n?([\s\S]*?)\n?<\/thinking>\n*/g
 export function splitThinkingBlocks(
   content: string,
   contentType: ContentType,
-): MessageBlock[] {
+): RenderBlock[] {
   if (contentType === "thinking") {
     return [{ type: "thinking", content, streaming: false }]
   }
@@ -361,7 +361,7 @@ export function splitThinkingBlocks(
 
   const isInsideFence = codeRanges(content)
 
-  const blocks: MessageBlock[] = []
+  const blocks: RenderBlock[] = []
   let lastIndex = 0
 
   for (const match of content.matchAll(THINKING_TAG_RE)) {
@@ -390,7 +390,7 @@ export function splitThinkingBlocks(
   return blocks
 }
 
-export function contentFromBlocks(blocks: MessageBlock[]): string {
+export function contentFromBlocks(blocks: RenderBlock[]): string {
   return blocks
     .filter((b): b is ContentBlock => b.type === "content")
     .map((b) => b.content)
@@ -436,7 +436,7 @@ function buildFenceCloseRe(marker: string): RegExp {
 
 // Returns true if the last content block ends with a newline, or if blocks is empty / ends with
 // a thinking block (both are structural boundaries equivalent to a newline).
-function lastContentEndsWithNewline(blocks: MessageBlock[]): boolean {
+function lastContentEndsWithNewline(blocks: RenderBlock[]): boolean {
   if (blocks.length === 0) return true
   const last = blocks[blocks.length - 1]!
   // thinking/web_activity/html_block blocks are structural boundaries,
@@ -1396,7 +1396,7 @@ export type SnapshotMessage = {
   htmlDeps?: HtmlDep[]
 }
 
-function blockToSegment(block: MessageBlock): SnapshotSegment {
+function blockToSegment(block: RenderBlock): SnapshotSegment {
   if (block.type === "thinking") {
     return { content: block.content, content_type: "thinking" }
   }
@@ -1437,7 +1437,7 @@ function finalizeMessage(
   msg: ChatMessageData,
   grouping: ToolGrouping = "tool",
 ): ChatMessageData {
-  const rebuilt: MessageBlock[] = []
+  const rebuilt: RenderBlock[] = []
   for (const block of msg.blocks) {
     if (block.type === "thinking" && block.streaming) {
       rebuilt.push({

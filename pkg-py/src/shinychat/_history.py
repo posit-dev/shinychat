@@ -20,10 +20,8 @@ from ._history_client import (
     TurnsAdapter,
     as_turns_adapter,
     normalize_turn_group,
+    turn_dict_effective_role,
     turn_fallback_markdown,
-)
-from ._history_client import (
-    _is_tool_result_turn as _is_tool_result_turn_dict,
 )
 from ._history_store import (
     ConversationPartition,
@@ -218,13 +216,7 @@ def derive_node_ui(
         return [derived]
     if turns:
         last = turns[-1]
-        role = (
-            "assistant"
-            if _is_tool_result_turn_dict(last)
-            else last.get("role", "assistant")
-        )
-        if role not in ("user", "assistant", "system"):
-            role = "assistant"
+        role = turn_dict_effective_role(last)
         content = turn_fallback_markdown(last)
     else:
         role, content = "assistant", ""

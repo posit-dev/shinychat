@@ -569,18 +569,12 @@ def tool_request_message(
     request: Optional[ToolRequestComponent],
 ) -> ChatMessage:
     """Wrap a tool-request card in a message that carries a structured block."""
-    if isinstance(request, ToolRequestComponent):
-        # The tagify code is retained for the none display override.
-        # Unlike results, requests get a plain ChatMessage: the
-        # ShinyToolCardMessage marker exists for the result custom-wrap
-        # postprocessing, which requests skip.
-        block, deps = tool_request_block(request)
-        msg = ChatMessage(content="", blocks=[block])
-        msg.html_deps = deps + msg.html_deps
-        return msg
-    # None is the "none" display override; an empty TagList is the spelling
-    # that compiles to a zero-segment message.
-    return ChatMessage(content=TagList())
+    if request is None:
+        return ChatMessage(content=TagList())
+    block, deps = tool_request_block(request)
+    msg = ChatMessage(content="", blocks=[block])
+    msg.html_deps = deps + msg.html_deps
+    return msg
 
 
 def tool_result_block(
@@ -650,16 +644,12 @@ def tool_result_message(
     result: Optional[ToolResultComponent],
 ) -> ChatMessage:
     """Wrap shinychat's rich tool card in a marker message."""
-    if isinstance(result, ToolResultComponent):
-        # The default rich path emits the structured `tool_result` envelope.
-        # The tagify code is retained for the none display override.
-        block, deps = tool_result_block(result)
-        msg = ShinyToolCardMessage(content="", blocks=[block])
-        msg.html_deps = deps + msg.html_deps
-        return msg
-    # None is the "none" display override; an empty TagList is the spelling
-    # that compiles to a zero-segment message.
-    return ChatMessage(content=TagList())
+    if result is None:
+        return ChatMessage(content=TagList())
+    block, deps = tool_result_block(result)
+    msg = ShinyToolCardMessage(content="", blocks=[block])
+    msg.html_deps = deps + msg.html_deps
+    return msg
 
 
 def wrap_custom_tool_result(

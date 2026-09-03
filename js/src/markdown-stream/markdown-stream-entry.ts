@@ -139,7 +139,9 @@ class MarkdownStreamElement extends HTMLElement {
 }
 
 /** Validate and convert a structured block to the form the stream API accepts. */
-function asStreamBlock(block: StructuredBlock): StreamBlock | null {
+// Exported for tests: the stream-block allowlist test pins the exact set of
+// types this function accepts.
+export function asStreamBlock(block: StructuredBlock): StreamBlock | null {
   if (isWebActivityWireBlock(block)) {
     return asWebActivityWireBlock(block)
   }

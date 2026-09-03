@@ -4,7 +4,7 @@ import {
   deriveToolGroupIdentity,
   type ChatMessageData,
   type ContentBlock,
-  type MessageBlock,
+  type RenderBlock,
 } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { ThinkingDisplay } from "./ThinkingDisplay"
@@ -147,7 +147,7 @@ export const ChatMessage = memo(function ChatMessage({
   // a call rederives its whole identity (title, segments, icon, count) from the
   // survivors so the row describes what it renders.
   const visibleBlocks = useMemo(() => {
-    const out: { block: MessageBlock; index: number }[] = []
+    const out: { block: RenderBlock; index: number }[] = []
     blocks.forEach((block, index) => {
       if (block.type !== "tool_loop") {
         out.push({ block, index })
@@ -429,7 +429,7 @@ export const ChatMessage = memo(function ChatMessage({
   // (e.g. malformed server-provided tool metadata) degrades to an inline
   // notice instead of taking the whole message down with it.
   const renderMessageBlock = (
-    block: MessageBlock,
+    block: RenderBlock,
     i: number,
   ): React.ReactNode => {
     if (block.type === "thinking") {

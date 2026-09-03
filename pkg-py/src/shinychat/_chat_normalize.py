@@ -457,10 +457,7 @@ try:
             for idx, block_deps in item._block_html_deps.items():
                 block_dep_objs[offset + idx] = block_deps
             if item.content:
-                if parts and isinstance(parts[-1], str):
-                    parts[-1] += item.content
-                else:
-                    parts.append(item.content)
+                parts.append(item.content)
             parts.extend(item.blocks)
         if all(isinstance(x, ContentToolResult) for x in message.contents):
             role = "assistant"

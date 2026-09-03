@@ -169,6 +169,52 @@ def html_block(
     return block
 
 
+def content_to_segments(
+    content: TagChild, content_type: ContentType | None
+) -> tuple[
+    list[ContentSegment | StructuredBlock],
+    ContentType,
+    list[HTMLDependency],
+    dict[int, list[HTMLDependency]],
+]:
+    # TagList/tag content is an HTML container: bare strings inside it are
+    # escaped text nodes (via TagList().render()), NOT markdown. To mix
+    # markdown and UI in one message, use `parts`.
+    # The shared derive_island_parts() partition turns non-React runs into
+    # html_block structured blocks; bare React elements are rendered and
+    # concatenated as residual string segments.
+    island_parts = derive_island_parts(content)
+    resolved_type: ContentType = (
+        content_type
+        if content_type is not None
+        else ("html" if island_parts else "markdown")
+    )
+    deps: list[HTMLDependency] = []
+    block_html_deps: dict[int, list[HTMLDependency]] = {}
+    segments: list[ContentSegment | StructuredBlock] = []
+    block_idx = 0
+    for part in island_parts:
+        deps.extend(part.deps)
+        if isinstance(part, IslandBlockPart):
+            segments.append(
+                html_block(
+                    part.html,
+                    [d.as_dict() for d in part.deps] if part.deps else None,
+                )
+            )
+            if part.deps:
+                # The raw as_dict() copy on the block is the no-session
+                # fallback; the send path overwrites it with session-processed
+                # deps.
+                block_html_deps[block_idx] = part.deps
+            block_idx += 1
+        else:
+            segments.append(
+                ContentSegment(content=part.html, content_type=resolved_type)
+            )
+    return segments, resolved_type, deps, block_html_deps
+
+
 # The union of typed blocks carried in `MessagePayload.segments` (outside a
 # stream) or via a `block_insert` action (mid-stream).
 StructuredBlock = Union[
@@ -193,18 +239,18 @@ StreamBlock = Union[
 
 # One entry of `MessagePayload.segments`: a string segment or a structured
 # block (discriminated by the presence of `type`).
-MessagePayloadSegment = Union[StringSegment, StructuredBlock]
+SegmentPayload = Union[StringSegment, StructuredBlock]
 
 
 def is_structured_segment(
-    seg: MessagePayloadSegment,
+    seg: SegmentPayload,
 ) -> TypeGuard[StructuredBlock]:
     return isinstance(seg, dict) and "type" in seg
 
 
 class MessagePayload(TypedDict):
     role: Literal["user", "assistant"]
-    segments: list[MessagePayloadSegment]
+    segments: list[SegmentPayload]
     attachments: NotRequired[list[dict[str, Any]]]
     id: NotRequired[str]
     icon: NotRequired[str]
@@ -496,43 +542,10 @@ class ChatMessage:
                 *supplied_blocks,
             ]
         else:
-            # TagList/tag content is an HTML container: bare strings inside
-            # it are escaped text nodes (via TagList().render()), NOT
-            # markdown. To mix markdown and UI in one message, use `parts`.
-            # The shared derive_island_parts() partition turns non-React runs
-            # into html_block structured blocks; bare React elements are
-            # rendered and concatenated as residual string segments.
-            island_parts = derive_island_parts(content)
-            resolved_type = (
-                content_type
-                if content_type is not None
-                else ("html" if island_parts else "markdown")
+            segments, resolved_type, deps, block_html_deps = (
+                content_to_segments(content, content_type)
             )
-            segments = []
-            block_idx = 0
-            for part in island_parts:
-                deps.extend(part.deps)
-                if isinstance(part, IslandBlockPart):
-                    segments.append(
-                        html_block(
-                            part.html,
-                            [d.as_dict() for d in part.deps]
-                            if part.deps
-                            else None,
-                        )
-                    )
-                    if part.deps:
-                        # The raw as_dict() copy on the block is the
-                        # no-session fallback; the send path overwrites it
-                        # with session-processed deps.
-                        self._block_html_deps[block_idx] = part.deps
-                    block_idx += 1
-                else:
-                    segments.append(
-                        ContentSegment(
-                            content=part.html, content_type=resolved_type
-                        )
-                    )
+            self._block_html_deps.update(block_html_deps)
             # Supplied blocks trail the content-derived segments, preserving
             # prior flat-layout semantics.
             segments.extend(supplied_blocks)
@@ -790,8 +803,8 @@ class StoredMessage(BaseModel):
                 deps.extend(s.html_deps)
         return deps or None
 
-    def wire_segments(self) -> list[MessagePayloadSegment]:
-        segments: list[MessagePayloadSegment] = [
+    def wire_segments(self) -> list[SegmentPayload]:
+        segments: list[SegmentPayload] = [
             {"content": s.content, "content_type": s.content_type}
             for s in self.segments
         ]
@@ -803,7 +816,7 @@ class StoredMessage(BaseModel):
             return segments
         # Multi-part layout: re-interleave each block at its recorded
         # position so the wire order matches the source content order.
-        out: list[MessagePayloadSegment] = []
+        out: list[SegmentPayload] = []
         positioned = list(zip(self.block_positions, self.blocks))
         bi = 0
         for i, seg in enumerate(segments):
@@ -923,12 +936,12 @@ def initial_message_payload(
     present.
     """
     stored = StoredMessage.from_chat_message(message)
-    segments: list[MessagePayloadSegment] = []
+    segments: list[SegmentPayload] = []
     for seg in stored.wire_segments():
         stripped = seg
         if is_structured_segment(stripped) and "html_deps" in stripped:
             stripped = cast(
-                MessagePayloadSegment,
+                SegmentPayload,
                 {k: v for k, v in stripped.items() if k != "html_deps"},
             )
         segments.append(stripped)

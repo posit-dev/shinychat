@@ -20,7 +20,7 @@ class TurnDict(TypedDict):
     generic dicts). Extra keys are allowed at runtime.
     """
 
-    role: str
+    role: NotRequired[str]
     contents: NotRequired[list[Any]]
     content: NotRequired[Any]
 
@@ -84,7 +84,7 @@ class TurnsAdapter:
         return {"provider": provider.name, "model": provider.model}
 
 
-def _is_tool_result_turn(turn: TurnDict) -> bool:
+def is_tool_result_turn(turn: TurnDict) -> bool:
     contents = turn.get("contents")
     return (
         turn.get("role") == "user"
@@ -104,7 +104,7 @@ def _group_chatlas_turns(
     i = 0
     while i < len(turns):
         t = turns[i]
-        if _is_tool_result_turn(t):
+        if is_tool_result_turn(t):
             if groups:
                 groups[-1].append(t)
             else:
@@ -118,7 +118,7 @@ def _group_chatlas_turns(
             i += 1
             while i < len(turns):
                 nt = turns[i]
-                if _is_tool_result_turn(nt) or nt.get("role") == "assistant":
+                if is_tool_result_turn(nt) or nt.get("role") == "assistant":
                     group.append(nt)
                     i += 1
                 else:
@@ -159,12 +159,12 @@ def turn_fallback_markdown(turn: TurnDict) -> str:
     return str(turn.get("content", ""))
 
 
-def _turn_dict_effective_role(turn: TurnDict) -> Role:
+def turn_dict_effective_role(turn: TurnDict) -> Role:
     """The UI role of a serialized turn dict.
 
     A user-role turn that carries only tool results displays as assistant.
     """
-    if _is_tool_result_turn(turn):
+    if is_tool_result_turn(turn):
         return "assistant"
     role = turn.get("role")
     return role if role in ("user", "assistant", "system") else "assistant"
@@ -179,7 +179,7 @@ def _turn_group_text_fallback(group: list[TurnDict]) -> ChatMessage:
     last = group[-1]
     return ChatMessage(
         content=turn_fallback_markdown(last),
-        role=_turn_dict_effective_role(last),
+        role=turn_dict_effective_role(last),
     )
 
 
@@ -223,5 +223,5 @@ def normalize_turn_group(group: list[TurnDict]) -> ChatMessage | None:
     if not content:
         return None
     return ChatMessage(
-        content=content, role=_turn_dict_effective_role(group[0])
+        content=content, role=turn_dict_effective_role(group[0])
     )

@@ -506,3 +506,22 @@ test_that("bookmark-on-response preserves the stream result value", {
   expect_true(bookmarked)
   expect_match(value, "hello", fixed = TRUE)
 })
+
+# Pin the exact set of structured block types accepted in a markdown stream.
+# If you are adding a block type, you MUST update all three allowlists in sync:
+#   1. `STREAM_BLOCK_TYPES` in pkg-r/R/markdown-stream.R
+#   2. `_STREAM_BLOCK_TYPES` in pkg-py/src/shinychat/_markdown_stream.py
+#   3. `asStreamBlock` in js/src/markdown-stream/markdown-stream-entry.ts
+test_that("stream block type allowlist matches the pinned set", {
+  expect_setequal(
+    STREAM_BLOCK_TYPES,
+    c(
+      "html_block",
+      "web_search",
+      "web_search_results",
+      "web_search_citations",
+      "web_fetch"
+    )
+  )
+  expect_length(STREAM_BLOCK_TYPES, 5)
+})

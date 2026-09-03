@@ -4,7 +4,7 @@ import {
   isWhitespaceContentBlock,
   type WebActivityBlock,
 } from "../../src/chat/web-activity-model"
-import type { ContentBlock, MessageBlock } from "../../src/chat/state"
+import type { ContentBlock, RenderBlock } from "../../src/chat/state"
 import type {
   WebFetchBlock,
   WebSearchBlock,
@@ -56,9 +56,9 @@ function activityOf(blocks: unknown[]): WebActivityBlock {
   return activity as WebActivityBlock
 }
 
-describe("appendWebActivityBlock over Chat MessageBlock lists", () => {
+describe("appendWebActivityBlock over Chat RenderBlock lists", () => {
   it("groups a search/results/fetch burst into one trailing activity", () => {
-    let blocks: MessageBlock[] = [contentBlock("Before the burst. ")]
+    let blocks: RenderBlock[] = [contentBlock("Before the burst. ")]
     blocks = appendWebActivityBlock(
       blocks,
       webSearchBlock(),
@@ -91,7 +91,7 @@ describe("appendWebActivityBlock over Chat MessageBlock lists", () => {
   })
 
   it("drops a whitespace-only separator between carriers", () => {
-    let blocks: MessageBlock[] = [contentBlock(" \n")]
+    let blocks: RenderBlock[] = [contentBlock(" \n")]
     blocks = appendWebActivityBlock(
       blocks,
       webSearchBlock(),
@@ -109,7 +109,7 @@ describe("appendWebActivityBlock over Chat MessageBlock lists", () => {
   })
 
   it("ends the run when prose intervenes", () => {
-    let blocks: MessageBlock[] = []
+    let blocks: RenderBlock[] = []
     blocks = appendWebActivityBlock(
       blocks,
       webSearchBlock(),
@@ -132,7 +132,7 @@ describe("appendWebActivityBlock over Chat MessageBlock lists", () => {
 
 describe("web_search_citations blocks", () => {
   it("merges sources into the most recent search, backfilling titles by URL", () => {
-    let blocks: MessageBlock[] = []
+    let blocks: RenderBlock[] = []
     blocks = appendWebActivityBlock(
       blocks,
       webSearchBlock(),
@@ -165,7 +165,7 @@ describe("web_search_citations blocks", () => {
   })
 
   it("reaches back across prose to the most recent activity's search", () => {
-    let blocks: MessageBlock[] = []
+    let blocks: RenderBlock[] = []
     blocks = appendWebActivityBlock(
       blocks,
       { ...webSearchBlock(), query: "first" },
@@ -199,7 +199,7 @@ describe("web_search_citations blocks", () => {
   })
 
   it("leaves the list untouched when no search exists", () => {
-    const blocks: MessageBlock[] = [contentBlock("just text")]
+    const blocks: RenderBlock[] = [contentBlock("just text")]
     const out = appendWebActivityBlock(
       blocks,
       webSearchCitationsBlock([{ url: "https://a.com" }]),
@@ -209,7 +209,7 @@ describe("web_search_citations blocks", () => {
   })
 
   it("does not break the adjacency run for a following web block", () => {
-    let blocks: MessageBlock[] = []
+    let blocks: RenderBlock[] = []
     blocks = appendWebActivityBlock(
       blocks,
       webSearchBlock(),
@@ -236,7 +236,7 @@ describe("web_search_citations blocks", () => {
 
 describe("web_search_results pairing", () => {
   it("attaches results to the search named by search_id", () => {
-    let blocks: MessageBlock[] = []
+    let blocks: RenderBlock[] = []
     blocks = appendWebActivityBlock(
       blocks,
       { ...webSearchBlock(), id: "search-a", query: "query A" },
@@ -261,7 +261,7 @@ describe("web_search_results pairing", () => {
   })
 
   it("never falls back to FIFO when a search_id goes unmatched", () => {
-    let blocks: MessageBlock[] = []
+    let blocks: RenderBlock[] = []
     blocks = appendWebActivityBlock(
       blocks,
       { ...webSearchBlock(), id: "search-a", query: "query A" },

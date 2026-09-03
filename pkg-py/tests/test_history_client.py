@@ -41,7 +41,7 @@ def test_chatlas_adapter_round_trip():
     )
     adapter = as_turns_adapter(client)
     dumped = adapter.get_turns_json()
-    assert [d["role"] for d in dumped] == ["user", "assistant"]
+    assert [d.get("role") for d in dumped] == ["user", "assistant"]
     adapter.set_turns_json([])
     assert client.get_turns() == []
     adapter.set_turns_json(dumped)
@@ -138,8 +138,8 @@ def test_grouped_no_tools_chatlas():
     adapter = as_turns_adapter(client)
     groups = adapter.get_turns_grouped()
     assert len(groups) == 2
-    assert groups[0][0]["role"] == "user"
-    assert groups[1][0]["role"] == "assistant"
+    assert groups[0][0].get("role") == "user"
+    assert groups[1][0].get("role") == "assistant"
     # Each group is a single turn
     assert len(groups[0]) == 1
     assert len(groups[1]) == 1
@@ -178,12 +178,12 @@ def test_grouped_single_tool_call_chatlas():
     assert len(groups) == 2, "4 turns should produce 2 groups"
     # First group: the real user turn
     assert len(groups[0]) == 1
-    assert groups[0][0]["role"] == "user"
+    assert groups[0][0].get("role") == "user"
     # Second group: the 3 tool-exchange turns
     assert len(groups[1]) == 3
-    assert groups[1][0]["role"] == "assistant"  # tool request
-    assert groups[1][1]["role"] == "user"  # tool result
-    assert groups[1][2]["role"] == "assistant"  # final text
+    assert groups[1][0].get("role") == "assistant"  # tool request
+    assert groups[1][1].get("role") == "user"  # tool result
+    assert groups[1][2].get("role") == "assistant"  # final text
 
     # Flattened groups must equal the original turns (for API restoration)
     flat = [t for g in groups for t in g]

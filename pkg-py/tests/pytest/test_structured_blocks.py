@@ -24,6 +24,7 @@ from chatlas.types import (
     ContentToolResult,
     ToolInfo,
 )
+from shinychat._chat_normalize import normalize_message
 from shinychat._chat_types import (
     StoredMessage,
     StoredSegment,
@@ -204,7 +205,9 @@ async def test_stream_turn_interleaves_actions_in_order() -> None:
 
 
 @pytest.mark.anyio
-async def test_send_message_parts_replace_wipes_before_reemitting() -> None:
+async def test_send_wire_segment_actions_replace_wipes_before_reemitting() -> (
+    None
+):
     """A block-carrying message sent with operation="replace" must emit a
     leading empty replace chunk (the wipe) before any part, then emit every
     part as an append.
@@ -451,3 +454,15 @@ async def test_stream_blockless_homogeneous_sends_one_chunk_per_segment() -> (
     assert types == ["chunk", "chunk"]
     assert [a["content"] for a in sent] == ["Hello ", "world"]
     assert [a["content_type"] for a in sent] == ["markdown", "markdown"]
+
+
+def test_turn_multiple_strings_join_with_paragraph_break():
+    # Adjacent string items in a merged `Turn` must join with a paragraph
+    # break, matching `merge_ellmer_turn_group()` in R; the join happens in
+    # `_parts_to_segments()`, not in the Turn merge itself.
+    turn = Turn(role="assistant", contents=["Hello", "world", "again"])
+    msg = normalize_message(turn)
+    assert msg.content == "Hello\n\nworld\n\nagain"
+    assert [s.content for s in msg.segments if not isinstance(s, dict)] == [
+        "Hello\n\nworld\n\nagain"
+    ]

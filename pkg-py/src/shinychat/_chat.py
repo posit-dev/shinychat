@@ -1213,7 +1213,6 @@ class Chat:
 
         if operation == "replace":
             msg.content = stream_content
-            msg.parts = None
 
         try:
             if self._needs_transform(msg):

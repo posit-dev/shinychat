@@ -471,3 +471,24 @@ def test_output_single_react_element_keeps_trusted_fallback():
     assert len(segments) == 1
     assert segments[0]["trusted"] is True
     assert el.attrs["content-trusted"] == "true"
+
+
+def test_stream_block_types_allowlist_pin():
+    """Pin the exact set of structured block types accepted in a markdown
+    stream.
+
+    If you are adding a block type, you MUST update all three allowlists
+    in sync:
+      1. `_STREAM_BLOCK_TYPES` in pkg-py/src/shinychat/_markdown_stream.py
+      2. `STREAM_BLOCK_TYPES` in pkg-r/R/markdown-stream.R
+      3. `asStreamBlock` in js/src/markdown-stream/markdown-stream-entry.ts
+    """
+    from shinychat._markdown_stream import _STREAM_BLOCK_TYPES
+
+    assert _STREAM_BLOCK_TYPES == {
+        "html_block",
+        "web_search",
+        "web_search_results",
+        "web_search_citations",
+        "web_fetch",
+    }

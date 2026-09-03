@@ -4,7 +4,7 @@ import type {
   ToolRequestBlock,
   ToolResultBlock,
 } from "../transport/types"
-import type { ChatMessageData, MessageBlock } from "./state"
+import type { ChatMessageData, RenderBlock } from "./state"
 import { uuid } from "../utils/uuid"
 
 /** How a loop's tool calls are aggregated in the condensed view. */
@@ -340,10 +340,10 @@ export function appendCallToToolLoop(
  * between carriers.
  */
 export function appendToolLoopBlock(
-  blocks: MessageBlock[],
+  blocks: RenderBlock[],
   loop: ToolLoopBlock,
   grouping: ToolGrouping,
-): MessageBlock[] {
+): RenderBlock[] {
   const out = [...blocks]
   let tail = out[out.length - 1]
   if (tail?.type === "content" && tail.content.trim() === "") {

@@ -898,8 +898,8 @@ def test_chat_message_segments_pin_mixed_react_interleave():
 
 
 def test_chat_message_content_setter_collapses_to_flat_layout():
-    """The streaming replace path (content= then parts=None) collapses an
-    interleaved message to one string segment with blocks trailing."""
+    """The streaming replace path (content=) collapses an interleaved
+    message to one string segment with blocks trailing."""
     from shinychat._chat_types import ChatMessage, ContentSegment, StoredMessage
 
     react_el = Tag(
@@ -908,7 +908,6 @@ def test_chat_message_content_setter_collapses_to_flat_layout():
     m = ChatMessage(content=TagList(div("before"), react_el, div("after")))
 
     m.content = "replaced"
-    m.parts = None
 
     assert isinstance(m.segments[0], ContentSegment)
     assert m.content == "replaced"
@@ -926,8 +925,8 @@ def test_chat_message_content_setter_collapses_to_flat_layout():
 
 
 def test_turn_normalization_round_trips_through_parts():
-    """A text-only Turn merges into a single flat markdown segment, as
-    before the segments-native refactor."""
+    """A text-only Turn merges into a single flat markdown segment, with
+    adjacent texts joined by a paragraph break (the markdown-seam contract)."""
     from chatlas import Turn
     from chatlas._content import ContentText
     from shinychat import _chat_normalize
@@ -938,14 +937,14 @@ def test_turn_normalization_round_trips_through_parts():
     )
     m = _chat_normalize.message_content(turn)
 
-    assert m.content == "ab"
+    assert m.content == "a\n\nb"
     assert m.content_type == "markdown"
     assert m.parts is None
     assert m.blocks == []
 
     stored = StoredMessage.from_chat_message(m)
     wire = stored.wire_segments()
-    assert wire == [{"content": "ab", "content_type": "markdown"}]
+    assert wire == [{"content": "a\n\nb", "content_type": "markdown"}]
 
 
 def test_chat_message_parts_coalesce_with_paragraph_break():

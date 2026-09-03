@@ -624,3 +624,84 @@ describe("MarkdownStreamElement — structured block messages", () => {
     }
   })
 })
+
+describe("MarkdownStreamElement — stream block allowlist pin", () => {
+  it("accepts exactly the pinned set of stream block types", async () => {
+    // This test pins the exact set of structured block types allowed in a
+    // markdown stream. If you are adding a block type, you MUST update all
+    // three allowlists in sync:
+    //   1. `asStreamBlock` in js/src/markdown-stream/markdown-stream-entry.ts
+    //   2. `_STREAM_BLOCK_TYPES` in
+    //      pkg-py/src/shinychat/_markdown_stream.py
+    //   3. `STREAM_BLOCK_TYPES` in pkg-r/R/markdown-stream.R
+    const { asStreamBlock } = await import(
+      "../../src/markdown-stream/markdown-stream-entry"
+    )
+    // Minimal *valid* wire block for each pinned type, so acceptance (not
+    // just recognition) is what's asserted.
+    const validWireBlock = (type: string): StructuredBlock => {
+      switch (type) {
+        case "html_block":
+          return {
+            type,
+            version: 1,
+            content: "<div>ok</div>",
+          } as unknown as StructuredBlock
+        case "web_search":
+          return { type, version: 1, query: "q" } as unknown as StructuredBlock
+        case "web_search_results":
+        case "web_search_citations":
+          return {
+            type,
+            version: 1,
+            sources: [{ url: "https://example.com" }],
+          } as unknown as StructuredBlock
+        case "web_fetch":
+          return {
+            type,
+            version: 1,
+            url: "https://example.com",
+          } as unknown as StructuredBlock
+        default:
+          throw new Error(`no fixture for ${type}`)
+      }
+    }
+    const expected = [
+      "html_block",
+      "web_search",
+      "web_search_results",
+      "web_search_citations",
+      "web_fetch",
+    ]
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      // Every type in the pinned set must be accepted, with no warning.
+      for (const type of expected) {
+        const block = asStreamBlock(validWireBlock(type))
+        expect(block).not.toBeNull()
+        expect(warn).not.toHaveBeenCalled()
+      }
+
+      // Anything outside the set must be rejected as unsupported.
+      for (const type of [
+        "tool_request",
+        "tool_result",
+        "",
+        "html",
+        "web_search_typo",
+      ]) {
+        const block = asStreamBlock({ type } as unknown as StructuredBlock)
+        expect(block).toBeNull()
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "Ignoring unsupported structured block in a markdown stream",
+          ),
+        )
+        warn.mockClear()
+      }
+    } finally {
+      warn.mockRestore()
+    }
+  })
+})

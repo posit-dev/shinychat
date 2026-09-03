@@ -6,7 +6,7 @@ import type {
   WebSearchResultsBlock,
   WebSearchSource,
 } from "../transport/types"
-import type { MessageBlock } from "./state"
+import type { RenderBlock } from "./state"
 
 /** The wire blocks that make up a web-activity burst. */
 export type WebActivityWireBlock =
@@ -211,7 +211,7 @@ function isWebActivityBlock(block: unknown): block is WebActivityBlock {
 
 /** Whitespace-only content block between web_* carriers is part of the run. */
 export function isWhitespaceContentBlock(
-  block: MessageBlock | WebActivityBlock,
+  block: RenderBlock | WebActivityBlock,
 ): boolean {
   return block.type === "content" && block.content.trim() === ""
 }
@@ -222,7 +222,7 @@ export function isWhitespaceContentBlock(
  * (dropped; any other block ends the run). A citations block is the
  * exception: it renders nothing and instead updates the most recent search
  * item wherever it sits, so it neither joins nor breaks the adjacency run.
- * Generic over the list's entry shape so Chat (MessageBlock[]) and
+ * Generic over the list's entry shape so Chat (RenderBlock[]) and
  * MarkdownStream (StreamSegment[]) share one implementation.
  */
 export function appendWebActivityBlock<T>(
