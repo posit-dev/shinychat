@@ -678,7 +678,7 @@ class Chat:
 
         return create_effect(fn)
 
-    def on_submit(self, fn: SubmitCallback) -> SubmitCallback:
+    def on_user_input(self, fn: SubmitCallback) -> SubmitCallback:
         """
         Add a callback that changes the contents sent to a chat client.
 
@@ -692,7 +692,7 @@ class Chat:
         Callbacks run in registration order. Register callbacks before a user submits
         a message::
 
-            @chat.on_submit
+            @chat.on_user_input
             def add_context(contents):
                 context = retrieve_context(contents)
                 return [context, *contents]
@@ -709,7 +709,7 @@ class Chat:
             )
             if result is None:
                 warnings.warn(
-                    "An `on_submit` callback returned None; contents are unchanged. "
+                    "An `on_user_input` callback returned None; contents are unchanged. "
                     "Did you forget to return the modified contents?",
                     stacklevel=2,
                 )

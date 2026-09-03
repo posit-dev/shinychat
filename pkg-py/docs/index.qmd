@@ -70,7 +70,7 @@ The `chat.client` property provides a `.set()` method for swapping models mid-se
 
 ## Per-message context
 
-Use `@chat.on_submit` with `Chat(client=...)` when the model needs extra
+Use `@chat.on_user_input` with `Chat(client=...)` when the model needs extra
 context for each message. This works well for retrieval-augmented generation
 and apps where the model acts on the current document or dashboard state.
 
@@ -80,7 +80,7 @@ Add context before the submitted contents so the model receives both. The chat
 UI and `chat.user_input()` still show the message that the user submitted.
 
 ```python
-@chat.on_submit
+@chat.on_user_input
 def add_context(contents):
     context = retrieve_context(contents)
     return [context, *contents]

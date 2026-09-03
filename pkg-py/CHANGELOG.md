@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New features
 
-* `Chat.on_submit` lets an app add per-message context before content reaches
+* `Chat.on_user_input` lets an app add per-message context before content reaches
   the chat client. The callback receives the submitted contents and returns
   the contents to send. The chat UI and `Chat.user_input()` continue to show
   the user's original message. (#376)

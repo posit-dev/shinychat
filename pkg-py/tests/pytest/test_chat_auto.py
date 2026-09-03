@@ -139,26 +139,26 @@ def test_client_value_returns_raw_client():
     assert chat.client.value is mock
 
 
-def test_on_submit_registers_callback():
+def test_on_user_input_registers_callback():
     with session_context(test_session):
-        chat = Chat("test_on_submit")
+        chat = Chat("test_on_user_input")
 
     def add_context(contents: list[Any]) -> list[Any]:
         return ["context", *contents]
 
-    assert chat.on_submit(add_context) is add_context
+    assert chat.on_user_input(add_context) is add_context
     assert chat._submit_callbacks == [add_context]
 
 
-def test_on_submit_callbacks_transform_contents_in_order():
+def test_on_user_input_callbacks_transform_contents_in_order():
     with session_context(test_session):
-        chat = Chat("test_on_submit_order")
+        chat = Chat("test_on_user_input_order")
 
-    @chat.on_submit
+    @chat.on_user_input
     def add_context(contents: list[Any]) -> list[Any]:
         return ["context", *contents]
 
-    @chat.on_submit
+    @chat.on_user_input
     async def add_instruction(contents: list[Any]) -> list[Any]:
         return [*contents, "instruction"]
 
@@ -172,16 +172,16 @@ def test_on_submit_callbacks_transform_contents_in_order():
     _run_async(run)
 
 
-def test_on_submit_keeps_contents_when_callback_returns_none():
+def test_on_user_input_keeps_contents_when_callback_returns_none():
     with session_context(test_session):
-        chat = Chat("test_on_submit_none")
+        chat = Chat("test_on_user_input_none")
 
-    @chat.on_submit
+    @chat.on_user_input
     def forget_to_return(contents: list[Any]) -> None:
         pass
 
     async def run() -> None:
-        with pytest.warns(UserWarning, match="on_submit.*returned None"):
+        with pytest.warns(UserWarning, match="on_user_input.*returned None"):
             assert await chat._run_submit_callbacks(["question"]) == ["question"]
 
     _run_async(run)
