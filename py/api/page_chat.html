@@ -74,7 +74,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-dbde6ece91fc58bf30abbd8587d2285d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-cac4a3d5051da6976dd05079dd1b4868.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-70cfb157fcbe549d4f738cd8299935aa.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -450,17 +450,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    window_title<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    lang<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    theme<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    messages<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    greeting<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    placeholder<span class="op">=</span><span class="st">'Enter a message...'</span>,</span>
-<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    width<span class="op">=</span><span class="st">'min(clamp(680px, 50vw, 760px), 100%)'</span>,</span>
-<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    icon_assistant<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    icon_send<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    enable_cancel<span class="op">=</span>MISSING,</span>
-<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>    allow_attachments<span class="op">=</span>MISSING,</span>
-<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    footer<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
-<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    greeting<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    placeholder<span class="op">=</span><span class="st">'Enter a message...'</span>,</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    width<span class="op">=</span><span class="st">'min(clamp(680px, 50vw, 760px), 100%)'</span>,</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    icon_assistant<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    icon_send<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    enable_cancel<span class="op">=</span>MISSING,</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    allow_attachments<span class="op">=</span>MISSING,</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>    footer<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Create a full-window page containing one persistent chat interface.</p>
 <p>The chat is the home page and remains mounted while users visit secondary pages. <code>page_chat()</code> owns the document shell, responsive navigation, sidebars, and full-height chat layout. Use :func:<code>~shinychat.chat_ui</code> instead when chat should be embedded in another page layout.</p>
 <section id="parameters" class="level2 doc-section doc-section-parameters">
@@ -554,60 +553,54 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><code>None</code></td>
 </tr>
 <tr class="even">
-<td>messages</td>
-<td><a href="`typing.Optional`">Optional</a>[<a href="`typing.Iterable`">Iterable</a>[<a href="`str`">str</a> | <a href="`htmltools.TagChild`">TagChild</a> | 'ChatMessageDict' | 'ChatMessage' | <a href="`typing.Any`">Any</a>]]</td>
-<td>Initial chat messages. See :func:<code>~shinychat.chat_ui</code>.</td>
-<td><code>None</code></td>
-</tr>
-<tr class="odd">
 <td>greeting</td>
 <td><a href="`typing.Optional`">Optional</a>[<a href="`typing.Union`">Union</a>[<a href="`str`">str</a>, <a href="`htmltools.HTML`">HTML</a>, <a href="`htmltools.Tag`">Tag</a>, <a href="`htmltools.TagList`">TagList</a>, 'ChatGreeting']]</td>
 <td>Optional initial chat greeting. See :func:<code>~shinychat.chat_greeting</code>.</td>
 <td><code>None</code></td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>placeholder</td>
 <td><a href="`str`">str</a></td>
 <td>Placeholder text for the chat input.</td>
 <td><code>'Enter a message...'</code></td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>width</td>
 <td>'CssUnit'</td>
 <td>Maximum width of the chat content.</td>
 <td><code>'min(clamp(680px, 50vw, 760px), 100%)'</code></td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>icon_assistant</td>
 <td><a href="`typing.Optional`">Optional</a>[<a href="`htmltools.HTML`">HTML</a> | <a href="`htmltools.Tag`">Tag</a> | <a href="`htmltools.TagList`">TagList</a> | <a href="`bool`">bool</a>]</td>
 <td>Default icon for assistant messages. <code>None</code> (the default) or <code>False</code> omits it; <code>True</code> uses the built-in robot icon.</td>
 <td><code>None</code></td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>icon_send</td>
 <td><a href="`typing.Optional`">Optional</a>[<a href="`htmltools.HTML`">HTML</a> | <a href="`htmltools.Tag`">Tag</a> | <a href="`htmltools.TagList`">TagList</a> | <a href="`bool`">bool</a>]</td>
 <td>The icon to use for the chat input’s ready-state submit button. <code>None</code> (the default) or <code>False</code> uses the default arrow icon.</td>
 <td><code>None</code></td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>enable_cancel</td>
 <td>'bool | MISSING_TYPE'</td>
 <td>Whether to show the streaming cancel control. When omitted, a chat constructed with <code>client=</code> enables it automatically.</td>
 <td><code>MISSING</code></td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>allow_attachments</td>
 <td>'bool | list[str] | MISSING_TYPE'</td>
 <td>Whether to allow attachments, or a list of accepted MIME types. When omitted, a chat constructed with <code>client=</code> enables them automatically.</td>
 <td><code>MISSING</code></td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>footer</td>
 <td><a href="`typing.Optional`">Optional</a>[<a href="`htmltools.TagChild`">TagChild</a>]</td>
 <td>Optional HTML content in a bottom-pinned, full-width chat region.</td>
 <td><code>None</code></td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>**kwargs</td>
 <td><a href="`typing.Any`">Any</a></td>
 <td>Additional :func:<code>~shinychat.chat_ui</code> options and HTML attributes. <code>page_chat()</code> owns <code>height</code>, <code>fill</code>, and <code>show_history</code>; these arguments cannot be overridden.</td>

@@ -74,7 +74,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-dbde6ece91fc58bf30abbd8587d2285d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-cac4a3d5051da6976dd05079dd1b4868.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-70cfb157fcbe549d4f738cd8299935aa.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -536,7 +536,7 @@ to indicate what you're currently reasoning about. For example:
 <tr class="odd">
 <td>messages</td>
 <td><a href="`typing.Sequence`">Sequence</a>[<a href="`typing.Any`">Any</a>]</td>
-<td>Deprecated. Use <code>chat.ui(messages=...)</code> instead.</td>
+<td>Deprecated. When non-empty startup messages are provided, they can’t be recorded by the conversation-history feature, so <code>messages</code> requires <code>history=False</code>. Use the <code>greeting</code> parameter for a startup message, use <code>.append_message()</code> to replay messages from the server, or set <code>history=False</code> if you’re managing conversation state yourself.</td>
 <td><code>()</code></td>
 </tr>
 <tr class="even">
