@@ -952,9 +952,6 @@ class ChatHistory:
 
         ids = HistoryInputIds.for_chat(chat.id)
         root_session.bookmark.exclude.extend(ids.all_ids())
-        # `messages_input_id` carries StoredMessage (Pydantic) objects, which
-        # aren't JSON-serializable for Shiny's bookmark input.json.
-        root_session.bookmark.exclude.append(chat.messages_input_id)
 
         adapter = as_turns_adapter(chat_client)
         resolved_store = resolve_store(self._store)

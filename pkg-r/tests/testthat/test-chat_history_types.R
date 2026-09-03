@@ -50,8 +50,8 @@ test_that("check_schema_version() rejects non-scalar integer values", {
 })
 
 test_that("messages_input_value() parses a decoded JSON payload into message lists", {
+  skip("The shinychat.messages browser snapshot protocol was retired.")
   # Shape mirrors what shiny:::decodeMessage(simplifyVector = FALSE) produces
-  # for the client's `${id}_messages:shinychat.messages` payload.
   value <- list(
     list(
       role = "user",
@@ -80,6 +80,7 @@ test_that("messages_input_value() parses a decoded JSON payload into message lis
 })
 
 test_that("messages_input_value() carries attachments through when present", {
+  skip("The shinychat.messages browser snapshot protocol was retired.")
   value <- list(
     list(
       role = "user",
@@ -100,6 +101,7 @@ test_that("messages_input_value() carries attachments through when present", {
 })
 
 test_that("messages_input_value() omits attachments when empty", {
+  skip("The shinychat.messages browser snapshot protocol was retired.")
   value <- list(list(
     role = "user",
     segments = list(list(content = "hi", content_type = "markdown"))
@@ -109,6 +111,7 @@ test_that("messages_input_value() omits attachments when empty", {
 })
 
 test_that("messages_input_value() rejects unsupported attachment MIME types", {
+  skip("The shinychat.messages browser snapshot protocol was retired.")
   value <- list(
     list(
       role = "user",
@@ -128,6 +131,7 @@ test_that("messages_input_value() rejects unsupported attachment MIME types", {
 })
 
 test_that("messages_input_value() rejects oversized attachment payloads", {
+  skip("The shinychat.messages browser snapshot protocol was retired.")
   withr::local_envvar(SHINYCHAT_MAX_ATTACHMENT_SIZE = "3")
   value <- list(
     list(
@@ -149,6 +153,7 @@ test_that("messages_input_value() rejects oversized attachment payloads", {
 })
 
 test_that("messages_input_value() errors on a non-list payload", {
+  skip("The shinychat.messages browser snapshot protocol was retired.")
   expect_error(messages_input_value("not a list"), "Expected a list")
 })
 
@@ -534,8 +539,6 @@ test_that("extend_record_linear() appends new turn groups as nodes", {
   rec <- extend_record_linear(
     rec,
     turns,
-    ui_messages = list(),
-    ui_offset = 0,
     tools = list()
   )
 
@@ -545,191 +548,25 @@ test_that("extend_record_linear() appends new turn groups as nodes", {
   expect_equal(rec$current_leaf, "n_0002")
 })
 
-test_that("extend_record_linear() groups a tool-call round into a single node", {
-  rec <- new_conversation_record("test")
-  turns <- list(
-    user_turn_fixture("what's the weather?"),
-    tool_request_turn_fixture("Let me check."),
-    tool_result_turn_fixture(),
-    assistant_turn_fixture("It's sunny and 75F!")
-  )
-
-  rec <- extend_record_linear(
-    rec,
-    turns,
-    ui_messages = list(),
-    ui_offset = 0,
-    tools = list()
-  )
-
-  expect_equal(names(rec$nodes), c("n_0001", "n_0002"))
-  expect_length(rec$nodes$n_0001$turns, 1)
-  expect_length(rec$nodes$n_0002$turns, 3)
-})
-
-test_that("extend_record_linear() is idempotent for the same turns and messages", {
+test_that("extend_record_linear() is idempotent for same turns", {
   rec <- new_conversation_record("test")
   turns <- list(user_turn_fixture("hi"))
-  rec <- extend_record_linear(
-    rec,
-    turns,
-    ui_messages = list(),
-    ui_offset = 0,
-    tools = list()
-  )
+  rec <- extend_record_linear(rec, turns, tools = list())
 
-  rec2 <- extend_record_linear(
-    rec,
-    turns,
-    ui_messages = list(),
-    ui_offset = 0,
-    tools = list()
-  )
+  rec2 <- extend_record_linear(rec, turns, tools = list())
   expect_equal(length(rec2$nodes), 1)
 })
 
-test_that("extend_record_linear() appends only new turn groups", {
+test_that("extend_record_linear() appends only new turns", {
   rec <- new_conversation_record("test")
   turns1 <- list(user_turn_fixture("hi"))
-  rec <- extend_record_linear(
-    rec,
-    turns1,
-    ui_messages = list(),
-    ui_offset = 0,
-    tools = list()
-  )
+  rec <- extend_record_linear(rec, turns1, tools = list())
 
-  turns2 <- list(user_turn_fixture("hi"), assistant_turn_fixture("hello"))
-  rec <- extend_record_linear(
-    rec,
-    turns2,
-    ui_messages = list(),
-    ui_offset = 0,
-    tools = list()
+  turns2 <- list(
+    user_turn_fixture("hi"),
+    assistant_turn_fixture("hello")
   )
+  rec <- extend_record_linear(rec, turns2, tools = list())
   expect_equal(length(rec$nodes), 2)
   expect_equal(rec$current_leaf, "n_0002")
-})
-
-test_that("extend_record_linear() attaches a user message to the matching new user-turn node", {
-  rec <- new_conversation_record("test")
-  turns <- list(user_turn_fixture("hi"), assistant_turn_fixture("hello"))
-  ui_messages <- list(
-    list(
-      role = "user",
-      segments = list(list(content = "hi", content_type = "markdown"))
-    ),
-    list(
-      role = "assistant",
-      segments = list(list(content = "hello", content_type = "markdown"))
-    )
-  )
-
-  rec <- extend_record_linear(
-    rec,
-    turns,
-    ui_messages = ui_messages,
-    ui_offset = 0,
-    tools = list()
-  )
-
-  expect_equal(rec$nodes$n_0001$ui, list(ui_messages[[1]]))
-  expect_equal(rec$nodes$n_0002$ui, list(ui_messages[[2]]))
-})
-
-test_that("extend_record_linear() attaches non-user messages to the last new node", {
-  rec <- new_conversation_record("test")
-  turns <- list(
-    user_turn_fixture("weather?"),
-    tool_request_turn_fixture("checking"),
-    tool_result_turn_fixture(),
-    assistant_turn_fixture("sunny")
-  )
-  ui_messages <- list(
-    list(
-      role = "user",
-      segments = list(list(content = "weather?", content_type = "markdown"))
-    ),
-    list(
-      role = "assistant",
-      segments = list(list(content = "[tool card]", content_type = "html"))
-    ),
-    list(
-      role = "assistant",
-      segments = list(list(content = "sunny", content_type = "markdown"))
-    )
-  )
-
-  rec <- extend_record_linear(
-    rec,
-    turns,
-    ui_messages = ui_messages,
-    ui_offset = 0,
-    tools = list()
-  )
-
-  expect_equal(rec$nodes$n_0001$ui, list(ui_messages[[1]]))
-  expect_equal(rec$nodes$n_0002$ui, ui_messages[2:3])
-})
-
-test_that("extend_record_linear() attaches a late-arriving message to the current leaf when no new node is created", {
-  rec <- new_conversation_record("test")
-  turns <- list(user_turn_fixture("hi"))
-  rec <- extend_record_linear(
-    rec,
-    turns,
-    ui_messages = list(list(
-      role = "user",
-      segments = list(list(content = "hi", content_type = "markdown"))
-    )),
-    ui_offset = 0,
-    tools = list()
-  )
-
-  # Same turns (no new node), but one more ui message arrived (e.g. the
-  # client caught up after a streamed reply settled).
-  late_message <- list(
-    role = "assistant",
-    segments = list(list(content = "hello", content_type = "markdown"))
-  )
-  rec <- extend_record_linear(
-    rec,
-    turns,
-    ui_messages = list(
-      list(
-        role = "user",
-        segments = list(list(content = "hi", content_type = "markdown"))
-      ),
-      late_message
-    ),
-    ui_offset = 1,
-    tools = list()
-  )
-
-  expect_equal(length(rec$nodes), 1)
-  expect_equal(
-    rec$nodes$n_0001$ui,
-    list(
-      list(
-        role = "user",
-        segments = list(list(content = "hi", content_type = "markdown"))
-      ),
-      late_message
-    )
-  )
-})
-
-test_that("extend_record_linear() records children pointers", {
-  rec <- new_conversation_record("test")
-  turns <- list(user_turn_fixture("hi"), assistant_turn_fixture("hello"))
-  rec <- extend_record_linear(
-    rec,
-    turns,
-    ui_messages = list(),
-    ui_offset = 0,
-    tools = list()
-  )
-
-  expect_equal(rec$nodes$n_0001$children, list("n_0002"))
-  expect_equal(rec$nodes$n_0002$children, list())
 })

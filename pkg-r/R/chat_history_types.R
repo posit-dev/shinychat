@@ -1,28 +1,3 @@
-messages_input_value <- function(value) {
-  if (!is.list(value)) {
-    rlang::abort(paste0(
-      "Expected a list from shinychat.messages, got ",
-      class(value)[1]
-    ))
-  }
-  lapply(value, function(m) {
-    message <- list(
-      role = m$role,
-      segments = lapply(m$segments, function(s) {
-        list(content = s$content, content_type = s$content_type)
-      })
-    )
-    if (!is.null(m$htmlDeps)) {
-      message$htmlDeps <- m$htmlDeps
-    }
-    if (!is.null(m$attachments) && length(m$attachments) > 0) {
-      validate_attachments(m$attachments)
-      message$attachments <- m$attachments
-    }
-    message
-  })
-}
-
 int_to_hex <- function(n, width = 13L) {
   hex_chars <- c(0:9, letters[1:6])
   digits <- character(0)
@@ -272,8 +247,6 @@ record_node_id_for_message_index <- function(record, index) {
 extend_record_linear <- function(
   record,
   recorded_turns,
-  ui_messages,
-  ui_offset,
   tools
 ) {
   existing_turn_count <- record_turn_count(record)
@@ -318,35 +291,6 @@ extend_record_linear <- function(
     }
     record <- record_set_current_leaf(record, node_id)
     new_node_ids <- c(new_node_ids, node_id)
-  }
-
-  user_node_ids <- new_node_ids[
-    vapply(
-      seq_along(live_groups),
-      function(i) {
-        identical(ellmer_turn_effective_role(live_groups[[i]][[1]]), "user")
-      },
-      logical(1)
-    )
-  ]
-
-  fallback <- if (length(new_node_ids) > 0) {
-    new_node_ids[length(new_node_ids)]
-  } else {
-    record$current_leaf
-  }
-
-  if (!is.null(fallback)) {
-    new_messages <- ui_messages[seq_along(ui_messages) > ui_offset]
-    for (message in new_messages) {
-      if (identical(message$role, "user") && length(user_node_ids) > 0) {
-        target <- user_node_ids[[1]]
-        user_node_ids <- user_node_ids[-1]
-      } else {
-        target <- fallback
-      }
-      record$nodes[[target]]$ui <- c(record$nodes[[target]]$ui, list(message))
-    }
   }
 
   record$updated_at <- utcnow_iso()
