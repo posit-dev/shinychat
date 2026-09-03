@@ -506,11 +506,10 @@ def _is_tool_result(value: object) -> TypeGuard["ContentToolResult"]:
 
 
 def _part_text(p: "str | StructuredBlock") -> str:
-    """Extract renderable text from a single ``parts`` entry.
+    """Extract text from one ``parts`` entry.
 
-    String runs contribute themselves; ``html_block`` blocks contribute
-    their ``content``; all other structured blocks contribute nothing
-    (they are opaque to the text channel).
+    Strings contribute themselves. ``html_block`` blocks contribute
+    their ``content``. Other structured blocks contribute nothing.
     """
     if isinstance(p, str):
         return p
@@ -520,10 +519,10 @@ def _part_text(p: "str | StructuredBlock") -> str:
 
 
 def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
-    """Emit a custom tool-result as a structured ``tool_result`` block.
+    """Emit a custom tool result as a structured ``tool_result`` block.
 
-    The author's custom UI is carried as the block's ``value`` (with
-    ``custom_display: True``) so the JS client pairs it with the pending
+    The author's custom UI is the block's ``value`` with
+    ``custom_display: True``, so the client pairs it with the pending
     ``tool_request`` row.
     """
     if not _is_tool_result(message):

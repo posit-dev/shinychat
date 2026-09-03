@@ -533,10 +533,10 @@ def tool_result_contents(
 def tool_request_block(
     component: ToolRequestComponent,
 ) -> "tuple[ToolRequestBlock, list[HTMLDependency]]":
-    """Build the structured `tool_request` wire block from a card component.
+    """Build a ``tool_request`` wire block from a card component.
 
-    Mirrors ``ToolRequestComponent.tagify()``'s rendering but produces the
-    typed envelope instead of markup.
+    Produces the typed block instead of the markup that
+    ``ToolRequestComponent.tagify()`` renders.
     """
     deps: list[HTMLDependency] = []
 
@@ -568,7 +568,7 @@ def tool_request_block(
 def tool_request_message(
     request: Optional[ToolRequestComponent],
 ) -> ChatMessage:
-    """Wrap shinychat's rich tool-request card in a block-carrying message."""
+    """Wrap a tool-request card in a message that carries a structured block."""
     if isinstance(request, ToolRequestComponent):
         # The tagify code is retained for the none display override.
         # Unlike results, requests get a plain ChatMessage: the
@@ -586,10 +586,10 @@ def tool_request_message(
 def tool_result_block(
     component: ToolResultComponent,
 ) -> "tuple[ToolResultBlock, list[HTMLDependency]]":
-    """Build the structured `tool_result` wire block from a card component.
+    """Build a ``tool_result`` wire block from a card component.
 
-    Mirrors ``ToolResultComponent.tagify()``'s rendering but produces the
-    typed envelope instead of markup.
+    Produces the typed block instead of the markup that
+    ``ToolResultComponent.tagify()`` renders.
     """
     deps: list[HTMLDependency] = []
 

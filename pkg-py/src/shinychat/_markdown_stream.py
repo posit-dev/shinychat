@@ -237,13 +237,12 @@ class MarkdownStream:
         return _task
 
     async def _send_trusted_segment(self, segment: TagChild) -> str:
-        """Send one trusted content segment as island parts; return its HTML.
+        """Send one trusted content segment as island parts. Return its HTML.
 
-        Trusted content walks the shared island derivation: non-React runs
-        ship as structured html_block messages; bare data-shinychat-react
-        elements stay trusted residual string segments. The run's deps are
-        aggregated onto the first outbound envelope so every dep loads before
-        any part mounts.
+        Non-React runs ship as ``html_block`` messages. Bare
+        ``data-shinychat-react`` elements stay as trusted residual string
+        segments. The run's deps are aggregated onto the first outbound
+        envelope so every dep loads before any part mounts.
         """
         parts = list(derive_island_parts(segment))
         run_deps = (
@@ -352,11 +351,11 @@ class MarkdownStream:
     async def _send_block_message(
         self, block: StreamBlock, html_deps: list[dict[str, Any]]
     ):
-        """Send one complete structured block (content XOR block).
+        """Send one structured block.
 
-        The block's own `html_deps` carry its dependencies for its mount
-        gate; the envelope's `html_deps` carry the aggregated deps of the
-        block's whole trusted run (empty for later parts).
+        The block's own ``html_deps`` carry its dependencies for its mount
+        gate. The envelope's ``html_deps`` carry the aggregated deps of the
+        block's whole trusted run, empty for later parts.
         """
         msg: ContentMessage = {
             "id": self.id,

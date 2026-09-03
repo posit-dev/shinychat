@@ -30,10 +30,10 @@ def render_htmltools(value: object) -> RenderedHTML:
 
 
 def serialize_htmltools(value: object | None) -> Optional[SerializedHTML]:
-    """Convert an htmltools node to shinychat's current JSON wire format.
+    """Convert an htmltools node to shinychat's JSON wire format.
 
-    ``None`` passes through unchanged so callers can forward optional fields
-    (e.g. pydantic ``field_serializer`` hooks) without a separate guard.
+    ``None`` passes through unchanged so callers can forward optional
+    fields without a separate guard.
     """
     if value is None:
         return None

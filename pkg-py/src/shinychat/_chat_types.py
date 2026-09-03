@@ -42,11 +42,10 @@ class StringSegment(TypedDict):
 
 
 class ToolRequestBlock(TypedDict):
-    """
-    A typed, server-authored tool request envelope (mirrors `ToolRequestBlock`
-    in `js/src/transport/types.ts`). The envelope, not markup scanned from the
-    text channel, is the trust signal. The client derives a `running` call from
-    an unpaired request.
+    """A tool call request from the server.
+
+    The client shows a ``running`` call when a request has no matching
+    result.
     """
 
     type: Literal["tool_request"]
@@ -61,10 +60,9 @@ class ToolRequestBlock(TypedDict):
 
 
 class ToolResultBlock(TypedDict):
-    """
-    A typed, server-authored tool result envelope (mirrors `ToolResultBlock`
-    in `js/src/transport/types.ts`). The envelope, not markup scanned from the
-    text channel, is the trust signal.
+    """The result of a completed tool call.
+
+    Paired with a preceding ``tool_request`` by ``request_id``.
     """
 
     type: Literal["tool_result"]
@@ -92,10 +90,10 @@ class ToolResultBlock(TypedDict):
 
 
 class WebSearchSource(TypedDict):
-    """
-    One source in a `web_search_results` block (mirrors `WebSearchSource` in
-    `js/src/transport/types.ts`). `url` is required; `title`/`domain` are
-    display hints.
+    """One source in a ``web_search_results`` block.
+
+    ``url`` is required. ``title`` and ``domain`` are optional display
+    hints.
     """
 
     url: str
@@ -104,11 +102,10 @@ class WebSearchSource(TypedDict):
 
 
 class WebSearchBlock(TypedDict):
-    """
-    A typed, server-authored web-search envelope (mirrors `WebSearchBlock` in
-    `js/src/transport/types.ts`). The envelope, not markup scanned from the
-    text channel, is the trust signal. Consecutive web_* blocks group
-    client-side into one `web_activity` block on arrival.
+    """A web search query.
+
+    Consecutive ``web_*`` blocks group into one ``web_activity`` block on
+    the client.
     """
 
     type: Literal["web_search"]
@@ -119,10 +116,7 @@ class WebSearchBlock(TypedDict):
 
 
 class WebSearchResultsBlock(TypedDict):
-    """
-    The results paired with a preceding `web_search` (mirrors
-    `WebSearchResultsBlock` in `js/src/transport/types.ts`).
-    """
+    """Results for a preceding ``web_search`` block."""
 
     type: Literal["web_search_results"]
     version: Literal[1]
@@ -132,12 +126,11 @@ class WebSearchResultsBlock(TypedDict):
 
 
 class WebSearchCitationsBlock(TypedDict):
-    """
-    Answer citations for the most recent `web_search` (mirrors
-    `WebSearchCitationsBlock` in `js/src/transport/types.ts`). A pure data
-    carrier: the client merges `sources` into that search and renders
-    nothing for the block itself. Shown only while no provider results
-    attach to the search.
+    """Citations for the most recent ``web_search`` block.
+
+    The client merges ``sources`` into the search and renders nothing for
+    the block itself. Citations appear only while no provider results are
+    attached.
     """
 
     type: Literal["web_search_citations"]
@@ -146,10 +139,7 @@ class WebSearchCitationsBlock(TypedDict):
 
 
 class WebFetchBlock(TypedDict):
-    """
-    A typed, server-authored web-fetch envelope (mirrors `WebFetchBlock` in
-    `js/src/transport/types.ts`).
-    """
+    """A fetched URL from a web search session."""
 
     type: Literal["web_fetch"]
     version: Literal[1]
@@ -158,12 +148,10 @@ class WebFetchBlock(TypedDict):
 
 
 class HtmlBlock(TypedDict):
-    """
-    A typed, server-authored raw-HTML island (mirrors `HtmlBlock` in
-    `js/src/transport/types.ts`). The envelope, not markup scanned from the
-    text channel, is the trust signal: `content` renders through the shared
-    RawHTML sink. The block is opaque to the thinking-tag/fence state machine,
-    which operates only on string content.
+    """Trusted HTML rendered through the RawHTML sink.
+
+    The thinking-tag and fence state machine operates only on string
+    content, so this block passes through untouched.
     """
 
     type: Literal["html_block"]
@@ -193,10 +181,8 @@ StructuredBlock = Union[
     HtmlBlock,
 ]
 
-# The subset of structured blocks the markdown-stream wire supports (mirrors
-# `StreamBlock`/`asStreamBlock` in
-# `js/src/markdown-stream/markdown-stream-entry.ts`): `html_block` and the
-# web_* family. Tool blocks are out of scope for streams.
+# Structured blocks the markdown-stream wire supports: `html_block` and
+# the web_* family. Tool blocks are out of scope for streams.
 StreamBlock = Union[
     WebSearchBlock,
     WebSearchResultsBlock,
@@ -246,9 +232,9 @@ class ChunkEndAction(TypedDict):
 
 
 class BlockInsertAction(TypedDict):
-    """
-    Delivers one complete structured block while a message stream is in
-    flight. The client appends it to the in-flight message's block list.
+    """Delivers one structured block while a message streams.
+
+    The client appends it to the in-flight message's block list.
     """
 
     type: Literal["block_insert"]
@@ -415,14 +401,47 @@ class ChatMessageDict(TypedDict):
 
 
 class ChatMessage:
-    """A chat message whose content is a single ordered segment list.
+    """A chat message with ordered content segments.
 
-    ``segments`` (string :class:`ContentSegment`s interleaved with structured
-    blocks) is the one internal content representation — the same shape as
-    the wire and :class:`StoredMessage`. ``content``, ``blocks``, and
-    ``parts`` are derived views; the constructor's input spellings compile to
-    segments once and are mutually exclusive (``parts=`` raises when combined
-    with ``blocks=`` or non-empty ``content``).
+    The message stores its content as ``segments``: string segments
+    interleaved with structured blocks. This is the same shape the wire
+    format and :class:`StoredMessage` use. The ``content``, ``blocks``,
+    and ``parts`` properties are read-only views over those segments.
+
+    Pass ``content`` for a simple string or HTML tag, ``parts`` to
+    interleave strings and blocks in one message, or ``blocks`` to attach
+    structured blocks after a string. These three inputs are mutually
+    exclusive: ``parts`` raises when combined with ``blocks`` or
+    non-empty ``content``.
+
+    Parameters
+    ----------
+    content
+        The message content. A plain string is markdown. An htmltools
+        tag, :class:`~htmltools.TagList`, or :class:`~htmltools.HTML` is
+        trusted HTML. Tag content is an HTML container: bare strings
+        inside it are escaped text, not markdown. To mix markdown and
+        HTML in one message, use ``parts`` instead.
+    role
+        The message role. One of ``"assistant"``, ``"user"``, or
+        ``"system"``. Defaults to ``"assistant"``.
+    content_type
+        The content type for string segments. One of ``"markdown"``,
+        ``"html"``, ``"text"``, or ``"thinking"``. When ``content`` is a
+        string, defaults to ``"markdown"``. When ``content`` is a tag or
+        TagList, defaults to ``"html"``. When ``parts`` is passed,
+        applies to every string part in the list.
+    attachments
+        Files attached to the message. Each item is an
+        :class:`~shinychat.Attachment` or a dict that validates as one.
+    blocks
+        Structured blocks to append after the content. Cannot be
+        combined with ``parts``.
+    parts
+        An ordered list of bare strings and structured blocks. Strings
+        become segments stamped with ``content_type``. Blocks pass
+        through in order. Cannot be combined with ``blocks`` or
+        non-empty ``content``.
     """
 
     def __init__(
@@ -439,14 +458,13 @@ class ChatMessage:
             Attachment.model_validate(a) if isinstance(a, dict) else a
             for a in (attachments or [])
         ]
-        # Parallel to the block entries of `segments`: raw HTMLDependency
-        # objects per block index. ChatMessage has no session at construction
-        # time, so dep objects are stashed here for session-processing at
-        # send/persist time.
+        # Raw HTMLDependency objects per block index, parallel to the block
+        # entries of `segments`. No session at construction time, so deps are
+        # stashed here for session-processing at send/persist time.
         self._block_html_deps: dict[int, list[HTMLDependency]] = {}
 
-        # Server-authored structured blocks; they travel as typed
-        # segments/`block_insert` actions, never as markup in `content`.
+        # Structured blocks travel as typed segments or `block_insert`
+        # actions, never as markup in `content`.
         supplied_blocks: list[StructuredBlock] = list(blocks) if blocks else []
 
         resolved_type: ContentType
@@ -549,7 +567,7 @@ class ChatMessage:
 
     @property
     def content(self) -> str:
-        """The message's string content: its string segments, joined."""
+        """The string content of the message, joined from its string segments."""
         return "".join(
             s.content for s in self.segments if isinstance(s, ContentSegment)
         )
@@ -565,14 +583,15 @@ class ChatMessage:
 
     @property
     def blocks(self) -> list[StructuredBlock]:
-        """The message's structured blocks, in content order."""
+        """The structured blocks in the message, in content order."""
         return [s for s in self.segments if isinstance(s, dict)]
 
     @property
     def parts(self) -> list[str | StructuredBlock] | None:
-        """The ordered segment list in the ``parts`` input spelling (bare
-        strings interleaved with blocks), or None when the message holds at
-        most one segment (flat layout)."""
+        """The segment list as bare strings interleaved with blocks.
+
+        ``None`` when the message has at most one segment.
+        """
         if len(self.segments) <= 1:
             return None
         return [
@@ -628,10 +647,9 @@ class ChatGreeting:
         deps: list[HTMLDependency] = []
         content_type: ContentType = "markdown"
         if not isinstance(content, str):
-            # The greeting wire payload is a single string with no blocks
-            # channel, so trusted tag content renders as one HTML string via
-            # TagList().render(), which escapes bare strings (safe under the
-            # client's innerHTML). Mixed markdown+UI greetings need a
+            # The greeting payload is a single string with no blocks channel.
+            # TagList().render() escapes bare strings (safe under the
+            # client's innerHTML). Mixed markdown and UI greetings need a
             # segments channel (follow-up: shinychat#2dzc).
             ui = TagList(content).render()
             content, ui_deps = ui["html"], ui["dependencies"]
@@ -844,10 +862,8 @@ def serialize_html_deps(
 ) -> list[SerializedDep] | None:
     """Serialize HTML dependencies through the session's ``_process_ui``.
 
-    Session processing registers web-dependency routes and applies
-    ``lib_prefix``; without a session there is nothing to serialize against,
-    so ``None`` is returned (callers then keep any raw ``as_dict()`` fallback
-    already present).
+    Returns ``None`` when there is no session. Callers then keep any raw
+    ``as_dict()`` fallback already present on the block.
     """
     if not deps:
         return None
@@ -863,8 +879,8 @@ def _assemble_stored_message(
 ) -> StoredMessage:
     """Assemble a :class:`StoredMessage`, session-processing html deps.
 
-    Each block's raw ``as_dict()`` ``html_deps`` fallback is overwritten
-    with the session-processed form (see :func:`serialize_html_deps`).
+    Overwrites each block's raw ``as_dict()`` ``html_deps`` with the
+    session-processed form (see :func:`serialize_html_deps`).
     """
     html_deps = serialize_deps(message.html_deps)
     stored = StoredMessage.from_chat_message(message, html_deps=html_deps)
@@ -885,7 +901,7 @@ def as_stored_message(
 ) -> StoredMessage:
     """Assemble a :class:`StoredMessage` from a :class:`ChatMessage`.
 
-    Message-level and per-block html deps are session-processed through
+    Session-processes message-level and per-block html deps through
     ``session._process_ui``.
     """
     return _assemble_stored_message(
@@ -898,14 +914,13 @@ def initial_message_payload(
 ) -> "tuple[dict[str, Any], list[HTMLDependency]]":
     """Build the ``data-initial-messages`` JSON entry for one message.
 
-    Session-free complement to :func:`as_stored_message` for
-    ``chat_ui(messages=)`` initial messages: no session may exist at UI
-    render time, so the payload omits every ``html_deps`` field and the raw
-    :class:`~htmltools.HTMLDependency` objects are returned separately for
-    the caller to attach to the container tag.
+    No session exists at UI render time, so the payload omits every
+    ``html_deps`` field. The raw :class:`~htmltools.HTMLDependency` objects
+    are returned separately for the caller to attach to the container tag.
 
-    The entry shape mirrors the ``message`` wire action's payload:
-    ``{"role": ..., "segments": [...]}``, plus ``attachments`` when present.
+    The entry shape matches the ``message`` wire action's payload:
+    ``{"role": ..., "segments": [...]}``, plus ``attachments`` when
+    present.
     """
     stored = StoredMessage.from_chat_message(message)
     segments: list[MessagePayloadSegment] = []

@@ -11,15 +11,13 @@ from ._typing_extensions import NotRequired, TypedDict
 
 
 class TurnDict(TypedDict):
-    """JSON-serialized chat turn dict.
+    """A JSON-serialized chat turn dict.
 
-    Mirrors the shape of ``chatlas.Turn.model_dump(mode="json")`` and the
-    plain dicts non-chatlas clients return from ``get_turns()``. The keys
-    this codebase reads are ``role`` (a string), ``contents`` (chatlas
-    content-item dicts), and ``content`` (plain-text content on generic
-    dicts). Extra keys are permitted at runtime: chatlas turns carry
-    additional fields (e.g. ``turn_id``, ``chat_id``), and non-chatlas
-    clients return arbitrary dicts.
+    Matches the shape of ``chatlas.Turn.model_dump(mode="json")`` and the
+    plain dicts that non-chatlas clients return from ``get_turns()``. The
+    keys this codebase reads are ``role`` (a string), ``contents``
+    (chatlas content-item dicts), and ``content`` (plain-text content on
+    generic dicts). Extra keys are allowed at runtime.
     """
 
     role: str
@@ -162,10 +160,9 @@ def turn_fallback_markdown(turn: TurnDict) -> str:
 
 
 def _turn_dict_effective_role(turn: TurnDict) -> Role:
-    """Effective UI role of a serialized turn dict.
+    """The UI role of a serialized turn dict.
 
-    A user-role turn carrying only tool results displays as assistant
-    (mirrors R's ``ellmer_turn_effective_role()``).
+    A user-role turn that carries only tool results displays as assistant.
     """
     if _is_tool_result_turn(turn):
         return "assistant"
@@ -174,10 +171,10 @@ def _turn_dict_effective_role(turn: TurnDict) -> Role:
 
 
 def _turn_group_text_fallback(group: list[TurnDict]) -> ChatMessage:
-    """Text-only message for a turn group that can't be normalized.
+    """A text-only message for a turn group that cannot be normalized.
 
-    Degrades the group's last turn to plain text so replay stays alive
-    instead of dropping the exchange.
+    Falls back to the group's last turn as plain text so replay stays
+    alive instead of dropping the exchange.
     """
     last = group[-1]
     return ChatMessage(
@@ -189,13 +186,11 @@ def _turn_group_text_fallback(group: list[TurnDict]) -> ChatMessage:
 def normalize_turn_group(group: list[TurnDict]) -> ChatMessage | None:
     """Merge one history turn group into a single :class:`ChatMessage`.
 
-    chatlas-shaped groups are validated back into ``chatlas.Turn`` objects,
-    merged, and run through ``normalize_message`` so structured blocks,
-    ``parts`` interleaving, and per-block deps are reconstructed. Generic
-    dict turns normalize as plain markdown.
-
-    Returns ``None`` when the group normalizes to nothing displayable
-    (mirrors R's ``merge_ellmer_turn_group`` returning ``NULL``).
+    chatlas groups are validated back into ``chatlas.Turn`` objects, merged,
+    and run through ``normalize_message`` so structured blocks, ``parts``
+    interleaving, and per-block deps are reconstructed. Generic dict turns
+    normalize as plain markdown. Returns ``None`` when the group has
+    nothing to display.
     """
     if not group:
         return None

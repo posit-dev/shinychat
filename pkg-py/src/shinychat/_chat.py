@@ -1559,13 +1559,14 @@ class Chat:
         message: StoredMessage,
         operation: Literal["append", "replace"],
     ) -> None:
-        """Emit a blockless message's string segments as one `chunk` action
-        per segment, each carrying its own content_type. Used when the
-        segments span mixed content types (e.g. markdown + html) — collapsing
-        them into a single chunk would stamp the whole concatenation with one
-        type, sending markdown as html (unescaped injection) or html as
-        markdown (broken rendering). The homogeneous case is handled by the
-        caller's single-chunk collapse."""
+        """Send a blockless message's string segments as one ``chunk`` action
+        per segment, each with its own content_type.
+
+        Used when segments span mixed content types. Collapsing them into
+        one chunk would stamp the whole concatenation with one type,
+        sending markdown as html (unescaped injection) or html as markdown
+        (broken rendering). The caller collapses the homogeneous case into
+        a single chunk."""
         for seg in message.segments:
             if not seg.content:
                 continue
@@ -1578,7 +1579,7 @@ class Chat:
             await self._send_action(chunk_action, message.html_deps)
 
     async def _send_block_inserts(self, message: StoredMessage) -> None:
-        """Emit one `block_insert` action per structured block in the message."""
+        """Send one ``block_insert`` action per structured block in the message."""
         for block in message.blocks:
             action: ChatAction = {"type": "block_insert", "block": block}
             await self._send_action(action, message.html_deps)
@@ -1588,9 +1589,10 @@ class Chat:
         message: StoredMessage,
         operation: Literal["append", "replace"],
     ) -> None:
-        """Emit a block-carrying message's wire segments as ordered actions:
-        string segments as `chunk` actions, structured blocks as
-        `block_insert` actions. Under replace semantics a replace chunk
+        """Send a block-carrying message's wire segments as ordered actions.
+
+        String segments go as ``chunk`` actions, structured blocks as
+        ``block_insert`` actions. Under replace semantics, a replace chunk
         supersedes the whole in-flight message, so a leading empty replace
         chunk (the wipe) is sent before all parts are emitted as appends."""
         if operation == "replace":
@@ -1668,7 +1670,7 @@ class Chat:
         Each turn group is merged and run through ``normalize_message``, so
         structured blocks are reconstructed from the turns rather than
         re-parsed from persisted UI markup. ``transform_assistant_response``
-        does not re-apply on restore.
+        does not run on restore.
         """
         for group in adapter.get_turns_grouped():
             msg = normalize_turn_group(group)

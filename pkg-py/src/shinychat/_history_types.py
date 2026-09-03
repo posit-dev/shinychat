@@ -32,11 +32,11 @@ class AttachmentDict(TypedDict):
 
 
 class StoredUiMessage(TypedDict):
-    """Serialized :class:`StoredMessage` persisted in a node's ``ui`` list.
+    """A serialized :class:`StoredMessage` persisted in a node's ``ui`` list.
 
-    Mirrors ``StoredMessage.model_dump(exclude_none=True)`` plus the
-    structured-format ``version`` marker. ``_stored_ui_dict`` drops empty
-    ``attachments``/``blocks``, so those are ``NotRequired``.
+    Matches ``StoredMessage.model_dump(exclude_none=True)`` plus the
+    ``version`` marker. Empty ``attachments`` and ``blocks`` are dropped,
+    so those fields are ``NotRequired``.
     """
 
     role: Role
@@ -97,18 +97,18 @@ class ConversationNode(BaseModel):
 MIN_SCHEMA_VERSION = 1
 MAX_SCHEMA_VERSION = 1
 
-# Version marker on stored UI message dicts. The marker's presence — not its
-# value — is what counts: old/absent markers are discarded and re-derived
+# Version marker on stored UI message dicts. The marker's presence, not its
+# value, is what counts. Old or absent markers are discarded and re-derived
 # from turns at replay time.
 STORED_UI_VERSION = 1
 
 
 def is_stored_ui_versioned(ui: list[dict[str, Any]] | None) -> bool:
-    """Whether a node's stored UI carries the structured-format marker.
+    """Whether a node's stored UI carries the version marker.
 
-    Checks the first message only: derived (versioned) messages always lead a
-    node's UI list; any unversioned entries after them are out-of-band
-    client-snapshot messages preserved from the save-time snapshot.
+    Checks the first message only. Derived messages always lead a node's
+    UI list. Unversioned entries after them are client-snapshot messages
+    preserved from the save-time snapshot.
     """
     if not ui:
         return False

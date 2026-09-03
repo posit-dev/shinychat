@@ -169,10 +169,10 @@ class HistoryOptions:
 
 
 def _stored_ui_dict(stored: StoredMessage) -> StoredUiMessage:
-    """Serialize a StoredMessage for persistence in a node's `ui` list.
+    """Serialize a StoredMessage for persistence in a node's ``ui`` list.
 
-    Adds the structured-format version marker and drops empty
-    `attachments`/`blocks` so text-only messages keep their previous shape.
+    Adds the version marker and drops empty ``attachments`` and ``blocks``
+    so text-only messages keep their previous shape.
     """
     d = stored.model_dump(exclude_none=True)
     if not d.get("attachments"):
@@ -187,12 +187,11 @@ def derive_stored_ui_message(
     group: list[TurnDict],
     session: Session | None = None,
 ) -> StoredUiMessage | None:
-    """Derive one stored UI message dict from a turn group.
+    """Derive one stored UI message from a turn group.
 
-    The group is merged and normalized server-side via
-    ``normalize_turn_group``, so the resulting dict carries structured
-    ``blocks`` and ``block_positions``. Returns ``None`` when the group has
-    nothing displayable.
+    The group is merged and normalized through ``normalize_turn_group``,
+    so the result carries structured ``blocks`` and ``block_positions``.
+    Returns ``None`` when the group has nothing to display.
     """
     msg = normalize_turn_group(group)
     if msg is None:
@@ -204,13 +203,13 @@ def derive_node_ui(
     turns: list[TurnDict],
     session: Session | None = None,
 ) -> list[StoredUiMessage]:
-    """Re-derive a node's stored UI from its stored turns.
+    """Re-derive a node's stored UI from its turns.
 
-    Used at replay time when the node's stored UI is missing or predates the
-    structured format (no version marker): old persisted UI is discarded,
-    never re-parsed. A node holds exactly one turn group by construction,
-    so this derives at most one message. Falls back to a text-only message
-    only when the turns are missing or normalize to nothing.
+    Called at replay time when the stored UI is missing or predates the
+    structured format (no version marker). Old persisted UI is discarded,
+    never re-parsed. A node holds one turn group, so this derives at most
+    one message. Falls back to a text-only message when the turns are
+    missing or normalize to nothing.
     """
     derived = (
         derive_stored_ui_message(turns, session=session) if turns else None
