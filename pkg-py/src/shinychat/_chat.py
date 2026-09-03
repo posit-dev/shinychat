@@ -285,7 +285,7 @@ class Chat:
         Deprecated. Startup messages can't be recorded by the
         conversation-history feature, so ``messages`` requires
         ``history=False``. Use the ``greeting`` parameter for a startup
-        message, use ``.append()`` to replay messages from the server, or
+        message, use ``.append_message()`` to replay messages from the server, or
         set ``history=False`` if you're managing conversation state
         yourself.
     on_error
@@ -327,13 +327,13 @@ class Chat:
                     "`Chat(messages=...)` requires `history=False`: startup "
                     "messages can't be recorded by the conversation-history "
                     "feature. Use the `greeting` parameter for a startup "
-                    "message, use `.append()` to replay messages from the "
+                    "message, use `.append_message()` to replay messages from the "
                     "server, or set `history=False` if you're managing "
                     "conversation state yourself."
                 )
             warn_deprecated(
                 "`Chat(messages=...)` is deprecated and will be removed in a "
-                "future release."
+                "future release. Use `.append_message()` instead."
             )
 
         if not isinstance(tokenizer, DEPRECATED_TYPE):
@@ -2319,16 +2319,8 @@ class ChatExpress(Chat):
         Parameters
         ----------
         messages
-        Deprecated. Startup messages can't be recorded by the
-        conversation-history feature. Use ``greeting`` for a startup
-        message, ``.append()`` to replay messages from the server, or set
-        ``history=False`` on the ``Chat`` if you're managing conversation
-        state yourself.
-
-        A sequence of messages to display in the chat. Each message can be
-            either a string or a dictionary with `content` and `role` keys. The
-            `content` key should contain the message text, and the `role` key
-            can be "assistant" or "user".
+            Deprecated. Startup messages can't be recorded by the
+            conversation-history feature.
         greeting
             An optional greeting to display at the top of the chat before any conversation
             messages. Can be a markdown string or a :func:`~shinychat.chat_greeting`
@@ -2598,9 +2590,9 @@ def chat_ui(
     messages
         Deprecated. Startup messages can't be recorded by the
         conversation-history feature. Use ``greeting`` for a startup message,
-        or set ``history=False`` on the server-side
-        :class:`~shinychat.Chat` if you're managing conversation state
-        yourself.
+        use ``.append_message()`` to replay messages from the server, or set
+        ``history=False`` on the server-side :class:`~shinychat.Chat` if
+        you're managing conversation state yourself.
 
         A sequence of messages to display in the chat. A given message can be
         one of the following:
@@ -2766,7 +2758,7 @@ def chat_ui(
         warn_deprecated(
             "`chat_ui(messages=...)` is deprecated. Startup messages can't "
             "be recorded by the conversation-history feature. Use "
-            "`greeting=` for a startup message, `Chat.append()` to replay "
+            "`greeting=` for a startup message, `Chat.append_message()` to replay "
             "messages from the server, or set `history=False` on "
             "the server-side `Chat` if you're managing conversation state "
             "yourself."
