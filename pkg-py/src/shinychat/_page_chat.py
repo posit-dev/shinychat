@@ -176,7 +176,8 @@ def page_chat(
         Shiny's ``"shiny"`` preset. Pass a :class:`shiny.ui.Theme` directly to
         use another preset or a completely custom theme.
     messages
-        Initial chat messages. See :func:`~shinychat.chat_ui`.
+        Deprecated. Startup messages can't be recorded by the
+        conversation-history feature. See :func:`~shinychat.chat_ui`.
     greeting
         Optional initial chat greeting. See :func:`~shinychat.chat_greeting`.
     placeholder
