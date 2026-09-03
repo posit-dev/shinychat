@@ -353,6 +353,83 @@ test_that("chat_server handles string user_input values", {
   )
 })
 
+test_that("chat_server on_submit transforms only outbound contents", {
+  local_mocked_bindings(
+    chat_restore = function(...) function() invisible(NULL),
+    chat_append = function(...) invisible(NULL),
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  args_seen <- NULL
+  last_input <- NULL
+  client <- structure(
+    list(
+      stream_async = function(...) {
+        args_seen <<- rlang::list2(...)
+        NULL
+      },
+      last_turn = function() NULL
+    ),
+    class = "Chat"
+  )
+
+  shiny::testServer(
+    function(input, output, session) {
+      mod <- chat_server("chat", client, history = FALSE, session = session)
+      mod$on_submit(function(contents) c("Retrieved context", contents))
+      mod$on_submit(function(contents) c(contents, "Additional instruction"))
+      last_input <<- mod$last_input
+    },
+    {
+      session$setInputs(chat_user_input = "hello")
+      expect_identical(
+        unlist(args_seen[1:3], use.names = FALSE),
+        c("Retrieved context", "hello", "Additional instruction")
+      )
+      expect_identical(shiny::isolate(last_input()), "hello")
+      later::run_now(0.05)
+      session$flushReact()
+    }
+  )
+})
+
+test_that("chat_server on_submit keeps contents when a callback returns NULL", {
+  local_mocked_bindings(
+    chat_restore = function(...) function() invisible(NULL),
+    chat_append = function(...) invisible(NULL),
+    send_chat_action = function(...) invisible(NULL)
+  )
+
+  args_seen <- NULL
+  client <- structure(
+    list(
+      stream_async = function(...) {
+        args_seen <<- rlang::list2(...)
+        NULL
+      },
+      last_turn = function() NULL
+    ),
+    class = "Chat"
+  )
+
+  shiny::testServer(
+    function(input, output, session) {
+      mod <- chat_server("chat", client, history = FALSE, session = session)
+      callback <- function(contents) NULL
+      expect_identical(mod$on_submit(callback), callback)
+    },
+    {
+      expect_warning(
+        session$setInputs(chat_user_input = "hello"),
+        "on_submit.*returned NULL"
+      )
+      expect_identical(args_seen[[1]], "hello")
+      later::run_now(0.05)
+      session$flushReact()
+    }
+  )
+})
+
 test_that("chat_server warns when bookmark_on_input is used", {
   local_mocked_bindings(
     chat_restore = function(...) invisible(NULL),

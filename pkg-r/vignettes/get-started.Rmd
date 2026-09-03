@@ -459,6 +459,34 @@ shinyApp(ui, server)
 knitr::include_graphics("images/chat-card.png")
 ```
 
+## Add context to a message
+
+Use `chat$on_submit()` when the model needs extra context for each message.
+This works well for retrieval-augmented generation and apps where the model
+acts on the current document or dashboard state.
+
+The callback receives the submitted contents and must return the contents that
+the chat client sends to the model. Add context before the submitted contents
+so the model receives both. The chat UI and `chat$last_input()` still show the
+message that the user submitted.
+
+```r
+server <- function(input, output, session) {
+  client <- ellmer::chat_openai()
+  chat <- chat_server("chat", client)
+
+  chat$on_submit(function(contents) {
+    context <- retrieve_context(contents)
+    c(list(context), contents)
+  })
+}
+```
+
+`contents` has the same shape as `input$chat_user_input`: a string when
+attachments are disabled, or a list of ellmer content objects when attachments
+are enabled. You can register more than one callback. shinychat runs callbacks
+in the order that you register them.
+
 ## Slash commands
 
 Slash commands give users discoverable shortcuts — like `/search`, `/clear`, or `/help` — that run a handler you define on the server. Register commands on the object returned by `chat_server()`, using its `slash_command()` method. When a user runs a command, its handler fires instead of the text being sent to the model, and what happens next is entirely up to the handler.

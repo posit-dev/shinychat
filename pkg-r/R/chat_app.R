@@ -94,6 +94,11 @@
 #'       when attachments are disabled, a list of ellmer `Content` objects when
 #'       enabled).
 #'     * `last_turn`: A reactive value containing the last assistant turn.
+#'     * `on_submit(fn)`: Add a callback that changes the contents sent to the
+#'       chat client. `fn` receives the submitted contents and must return the
+#'       contents to send. Use it to add per-message context without changing
+#'       the message in the chat UI or `last_input`. Callbacks run in
+#'       registration order.
 #'     * `update_user_input()`: A function to update the chat input or submit a
 #'       new user input. Takes the same arguments as [update_chat_user_input()],
 #'       except for `id` and `session`, which are supplied automatically.
@@ -473,6 +478,7 @@ chat_server <- function(
     }
   )
 
+  on_submit_fns <- list()
   saved_on_save_fns <- list()
   saved_on_restore_fns <- list()
 
@@ -598,6 +604,10 @@ chat_server <- function(
     {
       user_input <- session$input[[paste0(id, "_user_input")]]
       last_input(user_input)
+      contents <- user_input
+      for (fn in on_submit_fns) {
+        contents <- call_on_submit(fn, contents)
+      }
 
       # Resolve the active conversation ID before model work begins and set
       # it on the client as a scalar: later history switches, new-chat
@@ -630,7 +640,7 @@ chat_server <- function(
       append_stream_task$invoke(
         client,
         id,
-        user_input,
+        contents,
         controller = ctrl
       )
     }
@@ -952,6 +962,10 @@ chat_server <- function(
   ret$set_greeting <- set_greeting_mod
   ret$set_client <- set_client
   ret$slash_command <- slash_command_method
+  ret$on_submit <- function(fn) {
+    on_submit_fns <<- c(on_submit_fns, list(fn))
+    invisible(fn)
+  }
 
   hist_env <- new.env(parent = emptyenv())
 
@@ -1003,6 +1017,17 @@ chat_server <- function(
 
   lockEnvironment(ret)
   ret
+}
+
+call_on_submit <- function(fn, contents) {
+  result <- fn(contents)
+  if (is.null(result)) {
+    rlang::warn(
+      "An `on_submit` callback returned NULL; contents are unchanged. Did you forget to return the modified contents?"
+    )
+    return(contents)
+  }
+  result
 }
 
 #' @describeIn chat_mod_ui A Shiny module server for chat (deprecated). Use [chat_server()] instead.
