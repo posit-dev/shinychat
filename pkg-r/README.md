@@ -36,7 +36,7 @@ library(shinychat)
 ui <- page_chat(
   "Assistant",
   id = "chat",
-  messages = "**Hello!** How can I help you today?"
+  greeting = "**Hello!** How can I help you today?"
 )
 
 server <- function(input, output, session) {
