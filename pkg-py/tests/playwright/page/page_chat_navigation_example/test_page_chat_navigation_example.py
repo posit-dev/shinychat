@@ -125,6 +125,7 @@ def test_navigation_example_mobile_drawer_trigger_does_not_overlay_messages(
     assert greeting_box["y"] >= trigger_box["y"] + trigger_box["height"]
 
     chat.set_user_input("hi there")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
     chat.expect_latest_message("Sonnet [med] replied to your message: hi there")
 
