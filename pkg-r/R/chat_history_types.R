@@ -145,15 +145,6 @@ record_turn_count <- function(record) {
   sum(vapply(ids, function(id) length(record$nodes[[id]]$turns), integer(1)))
 }
 
-record_ui_count <- function(record) {
-  ids <- record_path_node_ids(record)
-  sum(vapply(
-    ids,
-    function(id) length(record$nodes[[id]]$ui),
-    integer(1)
-  ))
-}
-
 record_children_of <- function(record, node_id) {
   if (is.null(node_id)) {
     roots <- names(record$nodes)[
@@ -221,10 +212,10 @@ record_path_sibling_metadata <- function(record) {
   result
 }
 
-# Client-facing message count for a node. Mirrors replay_ui()'s NULL-ui
-# fallback: a missing/empty `ui` still renders one fabricated message, so index
-# math (record_node_id_for_message_index, send_sibling_metadata) stays aligned
-# with what the client reports.
+# Rendered message count for a node. Mirrors replay_ui()'s NULL-ui fallback: a
+# missing/empty `ui` still renders one fabricated message, so index math
+# (record_node_id_for_message_index, send_sibling_metadata) stays aligned with
+# the restored UI.
 record_ui_message_count <- function(node) {
   if (length(node$ui) > 0) length(node$ui) else 1L
 }

@@ -55,7 +55,9 @@
 
 * The `last_input` reactive returned by `chat_server()` now mirrors the shape of `input$<id>_user_input`: a string when attachments are disabled, and a list of ellmer `Content` objects when enabled.
 
-* `input$<id>_user_input` is now a persistent regular input rather than an event input, so it retains its last submitted value between submissions instead of resetting to `NULL`. This lets it co-batch with the client's message snapshot in a single reactive flush. It remains excluded from bookmarks.
+* `input$<id>_user_input` is now a persistent regular input rather than an event input, so it retains its last submitted value between submissions instead of resetting to `NULL`. This supports sequence-nonce deduplication across submissions. It remains excluded from bookmarks.
+
+* Reverted the browser-owned chat message state introduced during development of #272. Chat messages are again kept on the server, and the internal `input$<id>_messages` input has been removed.
 
 ## Bug fixes
 

@@ -821,8 +821,6 @@ test_that("set_client() seeds ui_offset from the restored record so a post-swap 
       conversation_partition(session$ns("chat"), "testuser"),
       ctrl$record$id
     )
-    expect_equal(record_ui_count(reloaded), 3)
-
     ui_texts <- unlist(
       lapply(
         record_path_node_ids(reloaded),
@@ -835,6 +833,7 @@ test_that("set_client() seeds ui_offset from the restored record so a post-swap 
         }
       )
     )
+    expect_length(ui_texts, 3)
     expect_equal(ui_texts, c("hi", "hello", "again"))
   })
 })
