@@ -150,6 +150,11 @@ UserSubmitFunction = Union[
     UserSubmitFunction1,
     UserSubmitFunction2,
 ]
+SubmitContents = list[Any]
+SubmitCallback = Callable[
+    [SubmitContents],
+    Union[SubmitContents, None, Awaitable[Union[SubmitContents, None]]],
+]
 
 
 @dataclass(frozen=True)
@@ -360,6 +365,7 @@ class Chat:
 
         # Keep track of effects so we can destroy them when the chat is destroyed
         self._effects: list["Effect_"] = []
+        self._submit_callbacks: list[SubmitCallback] = []
         history_config = (
             history if isinstance(history, HistoryOptions) else None
         )
@@ -518,7 +524,9 @@ class Chat:
             async def _on_user_submit(
                 user_input: str, attachments: list[Attachment]
             ) -> None:
-                contents = [attachment_to_content(a) for a in attachments]
+                contents = await self._run_submit_callbacks(
+                    [user_input, *[attachment_to_content(a) for a in attachments]]
+                )
 
                 # Resolve the ID before model work begins: later history
                 # switches, new-chat actions, or client swaps must not
@@ -538,7 +546,6 @@ class Chat:
                     client.conversation_id = conversation_id
 
                 response = await chat_client.value.stream_async(
-                    user_input,
                     *contents,
                     content="all",
                     controller=controller,
@@ -668,8 +675,47 @@ class Chat:
 
         if fn is None:
             return create_effect
-        else:
-            return create_effect(fn)
+
+        return create_effect(fn)
+
+    def on_submit(self, fn: SubmitCallback) -> SubmitCallback:
+        """
+        Add a callback that changes the contents sent to a chat client.
+
+        The callback receives a list of arguments for the client's ``stream_async()``
+        method and returns the list that the client receives. The list starts with the
+        submitted text. chatlas content objects converted from attachments follow it.
+        Add per-message context before the submitted contents. The chat UI and
+        :meth:`user_input` continue to show the user's original message.
+
+        This method only affects automatic client handling from ``Chat(client=...)``.
+        Callbacks run in registration order. Register callbacks before a user submits
+        a message::
+
+            @chat.on_submit
+            def add_context(contents):
+                context = retrieve_context(contents)
+                return [context, *contents]
+        """
+        self._submit_callbacks.append(fn)
+        return fn
+
+    async def _run_submit_callbacks(
+        self, contents: SubmitContents
+    ) -> SubmitContents:
+        for fn in self._submit_callbacks:
+            result = cast(
+                SubmitContents | None, await _utils.wrap_async(fn)(contents)
+            )
+            if result is None:
+                warnings.warn(
+                    "An `on_submit` callback returned None; contents are unchanged. "
+                    "Did you forget to return the modified contents?",
+                    stacklevel=2,
+                )
+                continue
+            contents = result
+        return contents
 
     @overload
     def slash_command(

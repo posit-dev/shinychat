@@ -139,6 +139,54 @@ def test_client_value_returns_raw_client():
     assert chat.client.value is mock
 
 
+def test_on_submit_registers_callback():
+    with session_context(test_session):
+        chat = Chat("test_on_submit")
+
+    def add_context(contents: list[Any]) -> list[Any]:
+        return ["context", *contents]
+
+    assert chat.on_submit(add_context) is add_context
+    assert chat._submit_callbacks == [add_context]
+
+
+def test_on_submit_callbacks_transform_contents_in_order():
+    with session_context(test_session):
+        chat = Chat("test_on_submit_order")
+
+    @chat.on_submit
+    def add_context(contents: list[Any]) -> list[Any]:
+        return ["context", *contents]
+
+    @chat.on_submit
+    async def add_instruction(contents: list[Any]) -> list[Any]:
+        return [*contents, "instruction"]
+
+    async def run() -> None:
+        assert await chat._run_submit_callbacks(["question"]) == [
+            "context",
+            "question",
+            "instruction",
+        ]
+
+    _run_async(run)
+
+
+def test_on_submit_keeps_contents_when_callback_returns_none():
+    with session_context(test_session):
+        chat = Chat("test_on_submit_none")
+
+    @chat.on_submit
+    def forget_to_return(contents: list[Any]) -> None:
+        pass
+
+    async def run() -> None:
+        with pytest.warns(UserWarning, match="on_submit.*returned None"):
+            assert await chat._run_submit_callbacks(["question"]) == ["question"]
+
+    _run_async(run)
+
+
 # ---------------------------------------------------------------------------
 # ChatClient._swap_client — sync / no-sync
 # ---------------------------------------------------------------------------
