@@ -219,6 +219,7 @@ def test_path_follows_current_leaf_not_all_nodes():
 def test_json_round_trip():
     rec = new_conversation_record(title="t")
     rec.append_linear(turn("user", "hi"))
+    rec.append_linear(turn("assistant", "hello"))
     rec2 = ConversationRecord.model_validate_json(rec.model_dump_json())
     assert rec2 == rec
 
@@ -285,15 +286,6 @@ def test_append_linear_populates_children():
     assert rec.nodes[n3].children == []
 
 
-def test_next_node_seq_increments():
-    rec = new_conversation_record(title="t")
-    assert rec.next_node_seq == 1
-    rec.append_linear(turn("user", "hi"))
-    assert rec.next_node_seq == 2
-    rec.append_linear(turn("assistant", "hello"))
-    assert rec.next_node_seq == 3
-
-
 def test_next_node_seq_never_reuses_ids():
     rec = new_conversation_record(title="t")
     n1 = rec.append_linear(turn("user", "hi"))
@@ -308,30 +300,11 @@ def test_next_node_seq_never_reuses_ids():
     assert rec.next_node_seq == 4
 
 
-def test_children_round_trip_json():
-    rec = new_conversation_record(title="t")
-    rec.append_linear(turn("user", "hi"))
-    rec.append_linear(turn("assistant", "hello"))
-    rec2 = ConversationRecord.model_validate_json(rec.model_dump_json())
-    for nid in rec.nodes:
-        assert rec2.nodes[nid].children == rec.nodes[nid].children
-    assert rec2.next_node_seq == rec.next_node_seq
-
-
 def msg(role: str) -> dict[str, object]:
     return {
         "role": role,
         "segments": [{"content": role, "content_type": "markdown"}],
     }
-
-
-def test_children_of_returns_direct_children_sorted():
-    rec = new_conversation_record(title="t")
-    n1 = rec.append_linear(turn("user", "hi"))
-    n2 = rec.append_linear(turn("assistant", "hey"))
-    assert rec.children_of(None) == [n1]
-    assert rec.children_of(n1) == [n2]
-    assert rec.children_of(n2) == []
 
 
 def test_children_of_with_branch():

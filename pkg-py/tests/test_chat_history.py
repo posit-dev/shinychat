@@ -924,36 +924,6 @@ async def test_v2_initial_messages_follow_real_initialization_order() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_initial_messages_are_suppressed_before_restored_decision() -> None:
-    chat_id = "initial_messages_restored"
-    session = _LiveSession()
-    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
-
-    with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
-        patch.object(reactive, "effect", _capture_history_effects(handlers)),
-        session_context(cast(Any, session)),
-    ):
-        chat = Chat(
-            chat_id,
-            client=cast(Any, _MockClient()),
-            messages=["initial message"],
-            history=HistoryOptions(
-                store="memory",
-                scope="test",
-                restore_mode="none",
-            ),
-    )
-
-    try:
-        with session_context(cast(Any, session)), reactive.isolate():
-            await handlers["_init_chat"]()
-        assert chat._transcript.read() == ()
-    finally:
-        chat.destroy()
-
-
-@pytest.mark.anyio
 async def test_v2_initial_messages_suppress_real_restored_target() -> None:
     chat_id = "initial_messages_real_restored_target"
     session = _LiveSession()

@@ -685,7 +685,7 @@ async def test_get_missing_returns_none(store: FileConversationStore):
 
 
 @pytest.mark.anyio
-async def test_list_is_meta_only_newest_first(store: FileConversationStore):
+async def test_list_returns_metadata_newest_first(store: FileConversationStore):
     a = new_conversation_record(title="older")
     b = new_conversation_record(title="newer")
     await store.put(part(scope="alice"), a)

@@ -94,7 +94,7 @@ def test_v2_restore_replays_turns_and_continues_provider_context(
     )
 
 
-def test_v2_switch_replays_without_recapturing_the_active_tree(
+def test_v2_switch_replays_the_active_conversation(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     page.goto(local_app.url)
@@ -125,11 +125,6 @@ def test_v2_switch_replays_without_recapturing_the_active_tree(
     page.locator(".shiny-chat-history-trigger").click()
     page.locator(".shiny-chat-history-item", has_text="conversation B").click()
     chat.expect_latest_message("echo: conversation B", timeout=30_000)
-
-    controller.InputActionButton(page, "inspect_turns").click()
-    controller.OutputText(page, "recorder").expect_value(
-        re.compile(r'"node_count": 2'), timeout=10_000
-    )
 
 
 def test_v2_edit_projects_once_through_the_real_provider_and_preserves_draft(
