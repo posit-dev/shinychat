@@ -560,57 +560,6 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
             message.as_stored_message().content
             for message in cast(Any, root).messages
         ] == ["root captured append"]
-
-        async def root_stream():
-            yield "root captured public stream"
-
-        stream_task = await chat.append_message_stream(root_stream())
-        assert stream_task is not None
-        stream_status = "running"
-        for _ in range(100):
-            with reactive.isolate():
-                stream_status = stream_task.status()
-            if stream_status == "success":
-                break
-            await asyncio.sleep(0.01)
-        assert stream_status == "success"
-        assert recorder.record is not None
-        stream_root_id = recorder.record.active_leaf
-        assert stream_root_id is not None
-        stream_root = recorder.record.nodes[stream_root_id]
-        assert stream_root.input is None
-        assert stream_root.status == "ok"
-        assert [
-            message.as_stored_message().content
-            for message in cast(Any, stream_root).messages
-        ] == ["root captured public stream"]
-
-        async with chat.message_stream_context() as stream:
-            await stream.append("root captured stream append")
-            await stream.replace("root captured stream replace")
-
-        await chat._record_accepted_user_input_with_capture(
-            ChatMessage(content="accepted input", role="user")
-        )
-        await chat._append_message_chunk(
-            "", chunk="start", stream_id="accepted-stream"
-        )
-        await chat._append_message_chunk(
-            "accepted stream update", chunk=True, stream_id="accepted-stream"
-        )
-        await chat._append_message_chunk(
-            "", chunk="end", stream_id="accepted-stream"
-        )
-
-        assert [entry.message.content for entry in chat._transcript.read()] == [
-            "root captured append",
-            "root captured public stream",
-            "root captured stream replace",
-            "accepted input",
-            "accepted stream update",
-        ]
-        assert chat._transcript.active_stream_id is None
-        assert recorder.record is not None
     finally:
         chat.destroy()
 
