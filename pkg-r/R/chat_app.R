@@ -177,7 +177,7 @@ chat_app <- function(
   check_ellmer_chat(client)
   dots <- rlang::dots_list(...)
   check_chat_app_dots(dots)
-  if (!isFALSE(history) && "messages" %in% rlang::names2(dots)) {
+  if (!isFALSE(history) && !is.null(dots$messages)) {
     cli::cli_abort(c(
       "{.code chat_app(messages = ...)} requires {.code history = FALSE}: startup messages can't be recorded by the conversation-history feature.",
       "Use the {.arg greeting} argument for a startup message, or set {.code history = FALSE} if you're managing conversation state yourself."

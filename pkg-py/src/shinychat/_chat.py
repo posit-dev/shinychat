@@ -282,8 +282,8 @@ class Chat:
         client with empty turns is passed so the greeting can be LLM-generated
         without polluting conversation history.
     messages
-        Deprecated. Startup messages can't be recorded by the
-        conversation-history feature, so ``messages`` requires
+        Deprecated. When non-empty startup messages are provided, they can't be
+        recorded by the conversation-history feature, so ``messages`` requires
         ``history=False``. Use the ``greeting`` parameter for a startup
         message, use ``.append_message()`` to replay messages from the server, or
         set ``history=False`` if you're managing conversation state
@@ -2587,7 +2587,7 @@ def chat_ui(
     id
         A unique identifier for the chat UI.
     messages
-        Deprecated. Startup messages can't be recorded by the
+        Deprecated. Non-empty startup messages can't be recorded by the
         conversation-history feature. Use ``greeting`` for a startup message,
         use ``.append_message()`` to replay messages from the server, or set
         ``history=False`` on the server-side :class:`~shinychat.Chat` if

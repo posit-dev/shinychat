@@ -12,6 +12,7 @@ test_that("chat_app() rejects startup messages while history is enabled", {
     error = TRUE,
     chat_app(client, messages = list("Hi!"))
   )
+  expect_no_error(chat_app(client, messages = NULL))
   expect_no_error(suppressWarnings(
     chat_app(client, messages = list("Hi!"), history = FALSE)
   ))
