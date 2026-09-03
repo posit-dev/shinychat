@@ -353,7 +353,7 @@ still works – it just won't have sub-section headings.
 
 The send button is a filled circle (24px by default) whose background
 color reflects the current state (primary when ready, gray when
-empty/disabled, danger when cancelling) with a white icon (18px by
+empty/disabled, danger when cancelling) with a white icon (22px by
 default) centered inside. The `icon_send` parameter swaps the
 ready-state icon without changing the button's surface.
 
@@ -413,7 +413,7 @@ variable resolves on the button itself:
   `24px`)
 
 - `--shiny-chat-input-icon-size` — Icon size, shared with the attach
-  button (default `18px`)
+  button (default `22px`)
 
 - `--shiny-chat-btn-send-bg` — Button background (default: state color)
 
