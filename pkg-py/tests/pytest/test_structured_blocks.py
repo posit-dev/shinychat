@@ -234,7 +234,7 @@ async def test_send_message_parts_replace_wipes_before_reemitting() -> None:
     with session_context(ExpressStubSession()):
         chat = Chat(id="chat")
         chat._send_action = capture_action  # type: ignore[method-assign]
-        await chat._send_message_parts(stored, "replace")
+        await chat._send_wire_segment_actions(stored, "replace")
 
     types = [a["type"] for a in sent]
     assert types == ["chunk", "chunk", "block_insert", "chunk"]
@@ -250,7 +250,9 @@ async def test_send_message_parts_replace_wipes_before_reemitting() -> None:
 
 
 @pytest.mark.anyio
-async def test_send_message_parts_replace_blocks_only_still_wipes() -> None:
+async def test_send_wire_segment_actions_replace_blocks_only_still_wipes() -> (
+    None
+):
     """A blocks-only replace has no string part to carry operation="replace";
     the leading wipe is what actually replaces the in-flight message."""
     from shiny.express._stub_session import ExpressStubSession
@@ -271,7 +273,7 @@ async def test_send_message_parts_replace_blocks_only_still_wipes() -> None:
     with session_context(ExpressStubSession()):
         chat = Chat(id="chat")
         chat._send_action = capture_action  # type: ignore[method-assign]
-        await chat._send_message_parts(stored, "replace")
+        await chat._send_wire_segment_actions(stored, "replace")
 
     types = [a["type"] for a in sent]
     assert types == ["chunk", "block_insert"]
@@ -417,10 +419,12 @@ async def test_stream_end_blockless_mixed_types_emits_per_segment_chunks() -> (
 
 
 @pytest.mark.anyio
-async def test_stream_blockless_homogeneous_collapses_to_one_chunk() -> None:
-    """A blockless message with homogeneous (all-markdown) segments must still
-    collapse into a single chunk — the per-segment path is only for mixed
-    types."""
+async def test_stream_blockless_homogeneous_sends_one_chunk_per_segment() -> (
+    None
+):
+    """A blockless message with homogeneous (all-markdown) segments goes out
+    as one chunk per segment; the client appends them in order, equivalent
+    to a single collapsed chunk (R parity: send_wire_segment_actions())."""
     from shiny.express._stub_session import ExpressStubSession
     from shiny.session import session_context
     from shinychat import Chat
@@ -444,6 +448,6 @@ async def test_stream_blockless_homogeneous_collapses_to_one_chunk() -> None:
         await chat._send_append_message(stored, chunk=True)
 
     types = [a["type"] for a in sent]
-    assert types == ["chunk"]
-    assert sent[0]["content"] == "Hello world"
-    assert sent[0]["content_type"] == "markdown"
+    assert types == ["chunk", "chunk"]
+    assert [a["content"] for a in sent] == ["Hello ", "world"]
+    assert [a["content_type"] for a in sent] == ["markdown", "markdown"]

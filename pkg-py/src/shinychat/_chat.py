@@ -1497,17 +1497,6 @@ class Chat:
         if message.role == "system":
             return
 
-        # Bare segment content (no <thinking> wrapping): on the wire, thinking
-        # travels as raw text paired with content_type="thinking", and the
-        # client builds the thinking block from that type. StoredMessage.content
-        # is the flat-string form that re-wraps thinking in tags instead.
-        content = "".join(s.content for s in message.segments)
-        content_type = (
-            message.segments[-1].content_type
-            if message.segments
-            else "markdown"
-        )
-
         msg_payload: MessagePayload = {
             "role": message.role,
             "segments": message.wire_segments(),
@@ -1524,59 +1513,13 @@ class Chat:
             action: ChatAction = {"type": "chunk_start", "message": msg_payload}
             await self._send_action(action, message.html_deps)
         elif chunk == "end":
-            if message.blocks:
-                await self._send_message_parts(message, operation)
-            elif has_mixed_content_types(message.segments):
-                await self._send_blockless_chunks(message, operation)
-            elif content:
-                chunk_action: ChatAction = {
-                    "type": "chunk",
-                    "content": content,
-                    "operation": operation,
-                    "content_type": content_type,
-                }
-                await self._send_action(chunk_action, message.html_deps)
+            await self._send_wire_segment_actions(message, operation)
             await self._send_action({"type": "chunk_end"})
         elif chunk is True:
-            if message.blocks:
-                await self._send_message_parts(message, operation)
-            elif has_mixed_content_types(message.segments):
-                await self._send_blockless_chunks(message, operation)
-            else:
-                chunk_action = {
-                    "type": "chunk",
-                    "content": content,
-                    "operation": operation,
-                    "content_type": content_type,
-                }
-                await self._send_action(chunk_action, message.html_deps)
+            await self._send_wire_segment_actions(message, operation)
         else:
             action = {"type": "message", "message": msg_payload}
             await self._send_action(action, message.html_deps)
-
-    async def _send_blockless_chunks(
-        self,
-        message: StoredMessage,
-        operation: Literal["append", "replace"],
-    ) -> None:
-        """Send a blockless message's string segments as one ``chunk`` action
-        per segment, each with its own content_type.
-
-        Used when segments span mixed content types. Collapsing them into
-        one chunk would stamp the whole concatenation with one type,
-        sending markdown as html (unescaped injection) or html as markdown
-        (broken rendering). The caller collapses the homogeneous case into
-        a single chunk."""
-        for seg in message.segments:
-            if not seg.content:
-                continue
-            chunk_action: ChatAction = {
-                "type": "chunk",
-                "content": seg.content,
-                "operation": operation,
-                "content_type": seg.content_type,
-            }
-            await self._send_action(chunk_action, message.html_deps)
 
     async def _send_block_inserts(self, message: StoredMessage) -> None:
         """Send one ``block_insert`` action per structured block in the message."""
@@ -1584,17 +1527,21 @@ class Chat:
             action: ChatAction = {"type": "block_insert", "block": block}
             await self._send_action(action, message.html_deps)
 
-    async def _send_message_parts(
+    async def _send_wire_segment_actions(
         self,
         message: StoredMessage,
         operation: Literal["append", "replace"],
     ) -> None:
-        """Send a block-carrying message's wire segments as ordered actions.
+        """Send a message's wire segments as ordered actions.
 
         String segments go as ``chunk`` actions, structured blocks as
-        ``block_insert`` actions. Under replace semantics, a replace chunk
-        supersedes the whole in-flight message, so a leading empty replace
-        chunk (the wipe) is sent before all parts are emitted as appends."""
+        ``block_insert`` actions. Segments are never collapsed into one
+        chunk: mixed content types must keep per-segment types, since one
+        chunk would stamp the whole concatenation with a single type.
+
+        Under replace semantics, a replace chunk supersedes the whole
+        in-flight message, so a leading empty replace chunk (the wipe) is
+        sent before all segments are emitted as appends."""
         if operation == "replace":
             wipe_action: ChatAction = {
                 "type": "chunk",

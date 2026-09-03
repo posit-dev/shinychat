@@ -155,9 +155,10 @@ def test_stream_replace_discards_stale_html_dependencies():
 
         run_async(_exercise_stream)
 
-        # The `chunk="end", operation="replace"` send is the "chunk" action
-        # carrying the replaced content; find it and confirm the stale
-        # dependency from the earlier chunk didn't survive the replace.
+        # The `chunk="end", operation="replace"` send is a leading empty
+        # replace chunk (the wipe) followed by the replacement content as an
+        # append; confirm the stale dependency from the earlier chunk didn't
+        # survive the replace.
         replace_sends = [
             s
             for s in sent
@@ -165,7 +166,10 @@ def test_stream_replace_discards_stale_html_dependencies():
             and s["action"]["operation"] == "replace"
         ]
         assert len(replace_sends) == 1
-        final_send = replace_sends[0]
+        assert replace_sends[0]["action"]["content"] == ""
+        final_send = sent[sent.index(replace_sends[0]) + 1]
+        assert final_send["action"]["type"] == "chunk"
+        assert final_send["action"]["operation"] == "append"
         assert final_send["action"]["content"] == "final"
         dep_names = [d["name"] for d in (final_send["deps"] or [])]
         assert "custom-styled-card" not in dep_names
@@ -985,9 +989,7 @@ def test_message_stream_context_flushes_queued_appends():
             "type": "message",
             "message": {
                 "role": "assistant",
-                "segments": [
-                    {"content": "queued", "content_type": "markdown"}
-                ],
+                "segments": [{"content": "queued", "content_type": "markdown"}],
             },
         }
 
