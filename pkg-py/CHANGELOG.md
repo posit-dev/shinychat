@@ -34,11 +34,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * The CSS classes used by the external-link dialog, thinking display, and tool-result images/PDFs now use the `.shiny-chat-*` prefix instead of `.shinychat-*`. The thinking display's custom properties and animation names have likewise changed from `--shinychat-thinking-*` / `shinychat-thinking-*` to `--shiny-chat-thinking-*` / `shiny-chat-thinking-*`. Update any custom CSS that targets these identifiers. (#285, #286)
 
-* Chat message state is again stored on the server. `chat.messages()` now updates when the server receives a user submission, appends a message, or completes a stream, rather than after the browser reports a rendered message snapshot. (#272)
+* The record of displayed messages is now sourced from the browser rather than a server-side accumulator. As a consequence, `chat.messages()` is *eventually* consistent: it returns an empty tuple until the client's first report, and a message passed to `chat.append_message()` does not appear there until the browser has rendered it and reported back. Read it reactively rather than expecting a synchronous update immediately after appending. (#272)
+
+    * The user-submission input (`input[f"{id}_user_input"]`) is now a persistent regular input rather than an event-priority one, so it retains its last value between submissions. This lets it co-batch with the message snapshot in a single reactive flush. It remains excluded from bookmarks. (#272)
 
 * A tool's definition `title` (from its annotations) and its result `title` (from `ToolResultDisplay`) are now shown as-is, without any client-side tense conjugation. The definition title is shown while the call is running and labels multi-call groups. For a single-call row, the result title (if provided) replaces it when the result arrives; in a multi-call group, a distinct result title can identify that call in the expanded list. The old `"Running {title}"` / `"{title} failed"` client-side title template has been removed. If a tool's title reads oddly while running now that the automatic "Running " prefix is gone, write an explicit present-tense definition title (e.g. "Running R code") and, optionally, a past-tense result title (e.g. "Ran R code"). Failures are shown via a separate status cue (a "failed"/"N failed" note and icon) rather than appended to the title.
 
 ### Bug fixes
+
+* Reverted the browser-owned chat message protocol from #272. Chat message state is again stored on the server, and `chat.messages()` updates when the server receives a user submission, appends a message, or completes a stream.
 
 * Attachment data URLs must now use the declared MIME type and a valid base64 header. PDF previews are also restricted to PDF content and rendered in a sandboxed iframe, preventing mismatched attachment data from being interpreted as active HTML. (#325)
 
