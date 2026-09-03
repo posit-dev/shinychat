@@ -525,6 +525,8 @@ chat_server <- function(
     # Preserve the active conversation across the controller replacement.
     # A completed response has already created a record, while an in-progress
     # draft has only an allocated ID.
+    # This swap-time record preservation is new: saves moved back to stream
+    # completion, so a completed response is live when the controller swaps.
     old_ctrl <- get_session_chat_bookmark_info(
       session,
       paste0(id, ".history-controller")

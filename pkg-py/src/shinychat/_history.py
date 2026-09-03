@@ -581,7 +581,21 @@ class HistoryController:
                 }
             ]
             for message_dict in stored:
-                await self.chat._restore_bookmark_message(message_dict)
+                # Records written while #272 was active could contain
+                # browser-supplied dependency URLs. Keep their rendered
+                # content for compatibility, but never replay those URLs.
+                safe_message = {
+                    **message_dict,
+                    "segments": [
+                        {
+                            key: value
+                            for key, value in segment.items()
+                            if key != "html_deps"
+                        }
+                        for segment in message_dict.get("segments", [])
+                    ],
+                }
+                await self.chat._restore_bookmark_message(safe_message)
                 restored_count += 1
         # ui_offset must reflect the messages the client will report for the
         # restored conversation. `_messages_for_bookmark()` reads the async
