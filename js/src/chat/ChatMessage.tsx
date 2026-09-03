@@ -67,6 +67,7 @@ interface ChatMessageProps {
     attachments: AttachmentPayload[],
   ) => void
   onNavigate?: (index: number, direction: "prev" | "next") => void
+  onRetry?: (index: number) => void
   siblingNavigationPending?: boolean
   disabled?: boolean
   inputId?: string
@@ -85,6 +86,7 @@ export const ChatMessage = memo(function ChatMessage({
   iconAssistant,
   onEdit,
   onNavigate,
+  onRetry,
   siblingNavigationPending = false,
   disabled,
   inputId,
@@ -619,8 +621,16 @@ export const ChatMessage = memo(function ChatMessage({
       {isUser &&
         !isEditing &&
         ((onEdit && !disabled) ||
-          (message.siblings && message.siblings.total > 1)) && (
-          <div className="shiny-chat-message-footer">
+          (message.siblings && message.siblings.total > 1) ||
+          (message.exchange?.retryable && onRetry)) && (
+          <div
+            className={`shiny-chat-message-footer${
+              message.exchange?.status === "error" &&
+              message.exchange.error_message
+                ? " shiny-chat-message-footer-error"
+                : ""
+            }`}
+          >
             {message.siblings && message.siblings.total > 1 && (
               <div className="shiny-chat-sibling-nav">
                 <button
@@ -665,6 +675,24 @@ export const ChatMessage = memo(function ChatMessage({
                 dangerouslySetInnerHTML={{ __html: pencil }}
               />
             )}
+            {message.exchange?.retryable && onRetry && (
+              <button
+                type="button"
+                className="shiny-chat-retry-btn"
+                disabled={disabled}
+                onClick={() => onRetry(index)}
+                aria-label="Retry message"
+                title="Retry message"
+              >
+                Retry
+              </button>
+            )}
+            {message.exchange?.status === "error" &&
+              message.exchange.error_message && (
+                <span className="shiny-chat-retry-error">
+                  {message.exchange.error_message}
+                </span>
+              )}
           </div>
         )}
       {lightboxPortal}

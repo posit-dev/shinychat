@@ -20,12 +20,14 @@ def test_validate_chat_transform_assistant(
 
     user_msg = "hello"
     chat.set_user_input(user_msg)
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
     code = chat.loc_latest_message.locator("code")
     expect(code).to_have_text("hello", timeout=30 * 1000)
 
     user_msg2 = "return HTML"
     chat.set_user_input(user_msg2)
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
     bold = chat.loc_latest_message.locator("b")
     expect(bold).to_have_text("Transformed response")

@@ -18,6 +18,7 @@ def test_identical_resubmission_refires_on_user_submit(
 
     for _ in range(2):
         chat.set_user_input("same")
+        expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
         chat.send_user_input(method="enter")
         page.wait_for_timeout(500)
 

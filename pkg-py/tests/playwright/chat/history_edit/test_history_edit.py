@@ -18,10 +18,12 @@ def test_edit_creates_branch_and_regenerates(
 
     # Send two messages
     chat.set_user_input("hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("Echo: hello", timeout=10_000)
 
     chat.set_user_input("world")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("Echo: world", timeout=10_000)
 
@@ -63,10 +65,12 @@ def test_sibling_navigation_switches_branch(
 
     # Send two messages
     chat.set_user_input("hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("Echo: hello", timeout=10_000)
 
     chat.set_user_input("world")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("Echo: world", timeout=10_000)
 
@@ -114,6 +118,7 @@ def test_edit_button_reachable_via_keyboard_without_hover(
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     chat.set_user_input("hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("Echo: hello", timeout=10_000)
 
@@ -150,6 +155,7 @@ def test_edit_button_revealed_via_long_press_on_touch(
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     chat.set_user_input("hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("Echo: hello", timeout=10_000)
 
@@ -206,10 +212,12 @@ def test_only_one_edit_box_open_at_a_time(
 
     # Send two messages
     chat.set_user_input("hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("Echo: hello", timeout=10_000)
 
     chat.set_user_input("world")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("Echo: world", timeout=10_000)
 
@@ -255,6 +263,7 @@ def test_edit_add_and_remove_attachment_resends_with_final_set(
     page.set_input_files("input[type=file]", str(HERE / "one_px.png"))
     expect(page.locator(".shiny-chat-input-thumbnail img")).to_have_count(1)
     chat.set_user_input("hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("Echo: hello", timeout=10_000)
 
@@ -305,6 +314,7 @@ def test_editing_a_scrolled_out_message_autoscrolls_to_new_response(
     # Send enough messages that the small viewport overflows.
     for i in range(6):
         chat.set_user_input(f"message {i}")
+        expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
         chat.send_user_input(method="enter")
         chat.expect_latest_message(f"Echo: message {i}", timeout=10_000)
 
@@ -360,10 +370,12 @@ def test_sibling_navigation_preserves_manual_scroll_position(
     # Filler messages so the container overflows.
     for i in range(6):
         chat.set_user_input(f"filler {i}")
+        expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
         chat.send_user_input(method="enter")
         chat.expect_latest_message(f"Echo: filler {i}", timeout=10_000)
 
     chat.set_user_input("hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("Echo: hello", timeout=10_000)
 
@@ -424,6 +436,7 @@ def test_sibling_metadata_refresh_does_not_override_manual_scroll(
 
     for i in range(6):
         chat.set_user_input(f"filler {i}")
+        expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
         chat.send_user_input(method="enter")
         chat.expect_latest_message(f"Echo: filler {i}", timeout=10_000)
 

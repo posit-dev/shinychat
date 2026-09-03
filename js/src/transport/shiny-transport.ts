@@ -7,7 +7,6 @@ import {
   type UserInputValue,
 } from "./types"
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
-import type { SnapshotMessage } from "../chat/state"
 import type { AttachmentPayload } from "../chat/attachments"
 
 // Window-global singleton to ensure only one shinyChatMessage handler is
@@ -92,13 +91,13 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     const composite =
       typeof value === "string" ? { text: value, attachments: [] } : value
     this.inputSeq += 1
-    // Regular priority so it co-batches with a same-tick messages snapshot.
     // The seq nonce bypasses client-side no-resend dedup so identical
     // resubmissions still fire the server-side reactive.
-    window.Shiny.setInputValue(`${id}:shinychat.userInput`, {
-      ...composite,
-      seq: this.inputSeq,
-    })
+    window.Shiny.setInputValue(
+      `${id}:shinychat.userInput`,
+      { ...composite, seq: this.inputSeq },
+      { priority: "event" },
+    )
   }
 
   sendCancel(id: string): void {
@@ -120,13 +119,6 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     )
   }
 
-  sendMessagesSnapshot(id: string, snapshot: SnapshotMessage[]): void {
-    if (!window.Shiny?.setInputValue) return
-    // Regular priority (NOT event) so it co-batches in one flush with a
-    // same-tick sendInput. See design doc "Ordering guarantee".
-    window.Shiny.setInputValue(`${id}_messages:shinychat.messages`, snapshot)
-  }
-
   sendHistorySelect(id: string, convId: string): void {
     if (!window.Shiny?.setInputValue) return
     window.Shiny.setInputValue(
@@ -136,11 +128,13 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     )
   }
 
-  sendHistoryNew(id: string): void {
+  sendHistoryNew(id: string, requestId?: string): void {
     if (!window.Shiny?.setInputValue) return
-    window.Shiny.setInputValue(`${id}_history_new`, Date.now(), {
-      priority: "event",
-    })
+    window.Shiny.setInputValue(
+      `${id}_history_new`,
+      requestId === undefined ? Date.now() : { requestId, ts: Date.now() },
+      { priority: "event" },
+    )
   }
 
   sendHistoryRename(id: string, convId: string, title: string): void {
@@ -152,11 +146,15 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     )
   }
 
-  sendHistoryDelete(id: string, convId: string): void {
+  sendHistoryDelete(id: string, convId: string, requestId?: string): void {
     if (!window.Shiny?.setInputValue) return
     window.Shiny.setInputValue(
       `${id}_history_delete`,
-      { id: convId, ts: Date.now() },
+      {
+        id: convId,
+        ...(requestId === undefined ? {} : { requestId }),
+        ts: Date.now(),
+      },
       { priority: "event" },
     )
   }
@@ -166,11 +164,13 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     index: number,
     content: string,
     attachments: AttachmentPayload[] = [],
+    requestId?: string,
   ): void {
     window.Shiny?.setInputValue?.(`${id}_message_edit`, {
       index,
       content,
       attachments,
+      ...(requestId === undefined ? {} : { requestId }),
       ts: Date.now(),
     })
   }
@@ -179,10 +179,26 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     id: string,
     index: number,
     direction: "prev" | "next",
+    requestId?: string,
   ): void {
     window.Shiny?.setInputValue?.(`${id}_message_navigate`, {
       index,
       direction,
+      ...(requestId === undefined ? {} : { requestId }),
+      ts: Date.now(),
+    })
+  }
+
+  sendMessageResubmit(
+    id: string,
+    index: number,
+    kind: "retry" | "regenerate",
+    requestId: string,
+  ): void {
+    window.Shiny?.setInputValue?.(`${id}_message_resubmit`, {
+      index,
+      kind,
+      requestId,
       ts: Date.now(),
     })
   }

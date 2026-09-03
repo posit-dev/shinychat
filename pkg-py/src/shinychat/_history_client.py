@@ -1,9 +1,36 @@
 from __future__ import annotations
 
+from collections import deque
+from collections.abc import Mapping, Sequence, Set
 from typing import Any, Protocol, runtime_checkable
 
 from ._chat_bookmark import is_chatlas_chat_client, serialize_chatlas_turn
 from ._chat_client import ChatClient
+
+
+def _validate_mapping_keys(value: Any) -> None:
+    if isinstance(value, Mapping):
+        for key, nested in value.items():
+            if not isinstance(key, str):
+                raise ValueError(
+                    "Non-string mapping key in turn data; "
+                    "JSON object keys must already be strings."
+                )
+            _validate_mapping_keys(nested)
+    elif isinstance(value, (str, bytes)):
+        return
+    elif isinstance(value, (Sequence, Set, deque)):
+        for nested in value:
+            _validate_mapping_keys(nested)
+
+
+def _serialize_model_turn(turn: Any) -> dict[str, Any]:
+    try:
+        python_dump = turn.model_dump(mode="python")
+    except TypeError:
+        return turn.model_dump(mode="json")
+    _validate_mapping_keys(python_dump)
+    return turn.model_dump(mode="json")
 
 
 @runtime_checkable
@@ -32,12 +59,28 @@ class TurnsAdapter:
             return self._client.value
         return self._client
 
-    def get_turns_json(self) -> list[dict[str, Any]]:
+    def get_turns_json(
+        self, *, include_system_prompt: bool = False
+    ) -> list[dict[str, Any]]:
         raw = self._turns_client()
-        turns = raw.get_turns()
         if is_chatlas_chat_client(raw):
-            return [serialize_chatlas_turn(t) for t in turns]
-        return list(turns)
+            turns = raw.get_turns(include_system_prompt=include_system_prompt)
+            serialized: list[dict[str, Any]] = []
+            for turn in turns:
+                _validate_mapping_keys(turn.model_dump(mode="python"))
+                serialized.append(serialize_chatlas_turn(turn))
+            return serialized
+        turns = raw.get_turns()
+        serialized: list[dict[str, Any]] = []
+        for turn in turns:
+            if hasattr(turn, "model_dump"):
+                serialized.append(_serialize_model_turn(turn))
+            else:
+                serialized.append(turn)
+        return serialized
+
+    def is_chatlas(self) -> bool:
+        return is_chatlas_chat_client(self._turns_client())
 
     def get_turns_grouped(self) -> list[list[dict[str, Any]]]:
         turns = self.get_turns_json()

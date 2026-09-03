@@ -1,0 +1,180 @@
+{
+  "schema_version": 2,
+  "id": "c_9f2e",
+  "title": "Quarterly report help",
+  "title_source": null,
+  "response_count": 0,
+  "created_at": "2026-01-01T00:00:00+00:00",
+  "updated_at": "2026-01-01T00:00:00+00:00",
+  "client_info": {
+    "provider": "chatlas"
+  },
+  "nodes": {
+    "x_00": {
+      "parent_id": null,
+      "children": [
+        "x_01"
+      ],
+      "selected_child": "x_01",
+      "created_at": "2026-01-01T00:00:00+00:00",
+      "status": "ok",
+      "input": null,
+      "messages": [],
+      "state": {
+        "shinychat:turns": {
+          "kind": "chatlas",
+          "version": 1,
+          "mode": "snapshot",
+          "data": [
+            "<system turn>"
+          ]
+        }
+      },
+      "error": null
+    },
+    "x_01": {
+      "parent_id": "x_00",
+      "children": [
+        "x_02",
+        "x_03"
+      ],
+      "selected_child": "x_03",
+      "created_at": "2026-01-01T00:00:00+00:00",
+      "status": "ok",
+      "input": {
+        "role": "user",
+        "segments": [
+          {
+            "content": "Summarize the attached CSV",
+            "content_type": "markdown"
+          }
+        ],
+        "attachments": []
+      },
+      "messages": [
+        {
+          "role": "assistant",
+          "segments": [
+            {
+              "content": "...",
+              "content_type": "thinking"
+            },
+            {
+              "content": "Here are the highlights...",
+              "content_type": "markdown"
+            }
+          ],
+          "icon": "bot",
+          "attachments": []
+        }
+      ],
+      "state": {
+        "shinychat:turns": {
+          "kind": "chatlas",
+          "version": 1,
+          "mode": "delta",
+          "data": [
+            "<user turn>",
+            "<assistant turn w/ tool request>",
+            "<tool-result turn>",
+            "<assistant turn>"
+          ]
+        }
+      },
+      "error": null
+    },
+    "x_02": {
+      "parent_id": "x_01",
+      "children": [],
+      "selected_child": null,
+      "created_at": "2026-01-01T00:00:00+00:00",
+      "status": "error",
+      "input": {
+        "role": "user",
+        "segments": [
+          {
+            "content": "Now plot revenue by month",
+            "content_type": "markdown"
+          }
+        ],
+        "attachments": []
+      },
+      "messages": [],
+      "state": {},
+      "error": {
+        "message": "Provider timeout"
+      }
+    },
+    "x_03": {
+      "parent_id": "x_01",
+      "children": [
+        "x_04"
+      ],
+      "selected_child": "x_04",
+      "created_at": "2026-01-01T00:00:00+00:00",
+      "status": "ok",
+      "input": {
+        "role": "user",
+        "segments": [
+          {
+            "content": "Now plot revenue by month",
+            "content_type": "markdown"
+          }
+        ],
+        "attachments": []
+      },
+      "messages": [
+        {
+          "role": "assistant",
+          "segments": [
+            {
+              "content": "The monthly plot is ready.",
+              "content_type": "markdown"
+            }
+          ],
+          "icon": null,
+          "attachments": []
+        }
+      ],
+      "state": {
+        "shinychat:turns": {
+          "kind": "chatlas",
+          "version": 1,
+          "mode": "delta",
+          "data": [
+            "<user turn>",
+            "<assistant turn>"
+          ]
+        }
+      },
+      "error": null
+    },
+    "x_04": {
+      "parent_id": "x_03",
+      "children": [],
+      "selected_child": null,
+      "created_at": "2026-01-01T00:00:00+00:00",
+      "status": "ok",
+      "input": null,
+      "messages": [
+        {
+          "role": "assistant",
+          "segments": [
+            {
+              "content": "Reminder: export closes Friday",
+              "content_type": "markdown"
+            }
+          ],
+          "icon": null,
+          "attachments": []
+        }
+      ],
+      "state": {},
+      "error": null
+    }
+  },
+  "next_node_seq": 5,
+  "active_leaf": "x_04",
+  "values": {},
+  "bookmark_state_id": null
+}

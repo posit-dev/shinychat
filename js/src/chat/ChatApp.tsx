@@ -6,6 +6,7 @@ import {
   useMemo,
   useState,
   useCallback,
+  useSyncExternalStore,
 } from "react"
 import {
   ShinyLifecycleContext,
@@ -23,7 +24,6 @@ import {
   routeToolBlocks,
   splitThinkingBlocks,
   contentFromBlocks,
-  buildMessagesSnapshot,
   type ChatMessageData,
   type ChatToolState,
   type ChatDrawerState,
@@ -32,7 +32,11 @@ import {
 } from "./state"
 import { useSupersededRequests } from "./useSupersededRequests"
 import { ChatContainer, type ChatContainerHandle } from "./ChatContainer"
-import { acquireHistoryStore, getHistoryStore } from "./historyStore"
+import {
+  acquireHistoryStore,
+  getHistoryStore,
+  isHistorySubmissionBlocked,
+} from "./historyStore"
 import type {
   ChatTransport,
   ShinyLifecycle,
@@ -167,31 +171,21 @@ export function ChatApp({
     dispatch({ type: "SET_TOOL_GROUPING", grouping: resolvedToolGrouping })
   }, [resolvedToolGrouping])
 
-  const stateRef = useRef(state)
-  stateRef.current = state
   const historyStore = useMemo(() => getHistoryStore(elementId), [elementId])
+  const historySnapshot = useSyncExternalStore(
+    historyStore.subscribe,
+    historyStore.getSnapshot,
+    historyStore.getSnapshot,
+  )
+  const submissionBlocked = isHistorySubmissionBlocked(historySnapshot)
 
   useEffect(() => {
     return acquireHistoryStore(elementId, transport).release
   }, [elementId, historyStore, transport])
 
-  const reportSnapshot = useCallback(() => {
-    // Reports the entire settled transcript (all messages plus retained
-    // htmlDeps) on every change, so a session sends ~O(n^2) bytes over its
-    // lifetime. Fine for typical conversations; if very long transcripts
-    // become common, revisit with a delta/append protocol.
-    transport.sendMessagesSnapshot(
-      elementId,
-      buildMessagesSnapshot(stateRef.current),
-    )
-  }, [transport, elementId])
-
-  useEffect(() => {
-    reportSnapshot()
-  }, [state.messages, reportSnapshot])
-
   const submitUserInput = useCallback(
-    (content: string, attachments: AttachmentPayload[]) => {
+    (content: string, attachments: AttachmentPayload[]): boolean => {
+      if (isHistorySubmissionBlocked(historyStore.getSnapshot())) return false
       // Optimistic UI update (adds user message + loading placeholder).
       dispatch({
         type: "INPUT_SENT",
@@ -199,29 +193,13 @@ export function ChatApp({
         role: "user",
         ...(attachments.length > 0 ? { attachments } : {}),
       })
-      // Build the snapshot from CURRENT settled state, then append the just-
-      // submitted user turn. Co-send userInput + snapshot in the SAME tick so
-      // Shiny batches them into one flush (server sees the turn in
-      // on_user_submit).
-      const snapshot = buildMessagesSnapshot(stateRef.current)
-      snapshot.push({
-        role: "user",
-        segments: [{ content, content_type: "markdown" }],
-        ...(attachments.length > 0 ? { attachments } : {}),
-      })
-      const uploadOn = stateRef.current.enableUpload
       transport.sendInput(
         inputId,
-        uploadOn ? { text: content, attachments } : content,
+        state.enableUpload ? { text: content, attachments } : content,
       )
-      // The INPUT_SENT dispatch above also mutates state.messages, so the
-      // reportSnapshot effect fires a second, near-identical snapshot on the
-      // next render. That's intentional: this manual send is the one that
-      // co-batches with userInput in the current flush, and the server's
-      // save is idempotent, so the follow-up snapshot is a harmless no-op.
-      transport.sendMessagesSnapshot(elementId, snapshot)
+      return true
     },
-    [dispatch, transport, inputId, elementId],
+    [dispatch, historyStore, transport, inputId, state.enableUpload],
   )
 
   const containerRef = useRef<ChatContainerHandle>(null)
@@ -264,6 +242,7 @@ export function ChatApp({
           enabled: action.enabled,
           conversations: action.conversations,
           activeId: action.active_id,
+          transitionProtocol: action.transition_protocol,
         })
         dispatch({
           type: "greeting_settle",
@@ -272,17 +251,61 @@ export function ChatApp({
         if (action.enabled) {
           setCurrentConversationId(elementId, action.active_id)
         }
-        if (siblingNavigationPendingRef.current) {
+        if (
+          siblingNavigationPendingRef.current &&
+          historyStore.getSnapshot().historyTransitionPending === null
+        ) {
           siblingNavigationPendingRef.current = false
           setSiblingNavigationPending(false)
           containerRef.current?.endSiblingNavigation()
         }
         return
       }
+      if (action.type === "history_transition_complete") {
+        if (historyStore.completeHistoryTransition(action.requestId)) {
+          if (siblingNavigationPendingRef.current) {
+            siblingNavigationPendingRef.current = false
+            setSiblingNavigationPending(false)
+            containerRef.current?.endSiblingNavigation()
+          }
+        }
+        return
+      }
+      if (action.type === "history_edit_projection") {
+        if (!historyStore.acceptEditProjection(action.requestId)) return
+        dispatch({ type: "TRUNCATE_MESSAGES", index: action.index })
+        dispatch({
+          type: "INPUT_SENT",
+          content: action.content,
+          role: "user",
+          ...(action.attachments.length > 0
+            ? { attachments: action.attachments }
+            : {}),
+        })
+        transport.sendInput(
+          inputId,
+          state.enableUpload || action.attachments.length > 0
+            ? { text: action.content, attachments: action.attachments }
+            : action.content,
+        )
+        return
+      }
+      if (action.type === "history_accepted_input_projection") {
+        dispatch({ type: "TRUNCATE_MESSAGES", index: action.index })
+        dispatch({
+          type: "INPUT_SENT",
+          content: action.content,
+          role: "user",
+          ...(action.attachments.length > 0
+            ? { attachments: action.attachments }
+            : {}),
+        })
+        return
+      }
       dispatch(action)
     })
     return unsubscribe
-  }, [transport, elementId, historyStore])
+  }, [transport, elementId, historyStore, inputId, state.enableUpload])
 
   // State-driven `<inputId>_greeting_requested` input.
   //
@@ -375,26 +398,75 @@ export function ChatApp({
   }, [greetingIsDismissed, elementId])
 
   useLayoutEffect(() => {
-    historyStore.setBusy(state.streamingMessage !== null)
-  }, [historyStore, state.streamingMessage])
+    historyStore.setBusy(
+      state.streamingMessage !== null ||
+        (historySnapshot.transitionProtocol === "completion-v2" &&
+          state.inputDisabled),
+    )
+  }, [
+    historyStore,
+    historySnapshot.transitionProtocol,
+    state.inputDisabled,
+    state.streamingMessage,
+  ])
 
   const handleEdit = useCallback(
     (index: number, content: string, attachments: AttachmentPayload[]) => {
-      transport.sendMessageEdit(elementId, index, content, attachments)
+      if (
+        isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
+        historyStore.isMutationBlocked()
+      )
+        return
+      const requestId = historyStore.beginEditTransition()
+      if (requestId === null) {
+        transport.sendMessageEdit(elementId, index, content, attachments)
+      } else {
+        transport.sendMessageEdit(
+          elementId,
+          index,
+          content,
+          attachments,
+          requestId,
+        )
+      }
     },
-    [transport, elementId],
+    [transport, elementId, historyStore],
   )
 
   const handleNavigate = useCallback(
     (index: number, direction: "prev" | "next") => {
-      if (siblingNavigationPendingRef.current) return
+      if (
+        siblingNavigationPendingRef.current ||
+        isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
+        historyStore.isMutationBlocked()
+      )
+        return
 
+      const requestId = historyStore.beginNavigationTransition()
       siblingNavigationPendingRef.current = true
       setSiblingNavigationPending(true)
       containerRef.current?.beginSiblingNavigation()
-      transport.sendMessageNavigate(elementId, index, direction)
+      if (requestId === null) {
+        transport.sendMessageNavigate(elementId, index, direction)
+      } else {
+        transport.sendMessageNavigate(elementId, index, direction, requestId)
+      }
     },
-    [transport, elementId],
+    [transport, elementId, historyStore],
+  )
+
+  const handleRetry = useCallback(
+    (index: number) => {
+      if (
+        isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
+        historyStore.isMutationBlocked()
+      )
+        return
+      const requestId = historyStore.beginEditTransition()
+      if (requestId === null) return
+      transport.sendMessageResubmit(elementId, index, "retry", requestId)
+    },
+    [transport, elementId, historyStore],
   )
 
   const supersededRequests = useSupersededRequests(
@@ -419,6 +491,7 @@ export function ChatApp({
                   messages={state.messages}
                   streamingMessage={state.streamingMessage}
                   inputDisabled={state.inputDisabled}
+                  submissionBlocked={submissionBlocked}
                   inputPlaceholder={state.inputPlaceholder}
                   iconAssistant={iconAssistant}
                   iconSend={iconSend}
@@ -440,6 +513,7 @@ export function ChatApp({
                   historyStore={historyStore}
                   onEdit={handleEdit}
                   onNavigate={handleNavigate}
+                  onRetry={handleRetry}
                   siblingNavigationPending={siblingNavigationPending}
                   showHistory={showHistory}
                   drawer={state.drawer}

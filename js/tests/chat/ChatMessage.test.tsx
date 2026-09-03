@@ -639,6 +639,224 @@ describe("ChatMessage attachments", () => {
   })
 })
 
+describe("ChatMessage retry", () => {
+  const errorMessages = [
+    "The response could not be completed.",
+    "The response stream could not be started.",
+    "The response stream could not be completed.",
+  ]
+
+  it("offers a keyboard-accessible retry only for eligible restored exchanges", () => {
+    const onRetry = vi.fn()
+    render(
+      <ChatMessage
+        index={3}
+        message={userMessage({
+          exchange: { status: "error", retryable: true },
+        })}
+        onRetry={onRetry}
+      />,
+    )
+
+    const retry = screen.getByRole("button", { name: "Retry message" })
+    expect(retry).toHaveAttribute("title", "Retry message")
+    fireEvent.click(retry)
+    expect(onRetry).toHaveBeenCalledWith(3)
+  })
+
+  it.each(errorMessages)(
+    "shows the projected error detail as text: %s",
+    (errorMessage) => {
+      render(
+        <ChatMessage
+          index={0}
+          message={userMessage({
+            exchange: {
+              status: "error",
+              retryable: true,
+              error_message: errorMessage,
+            },
+          })}
+          onRetry={vi.fn()}
+        />,
+      )
+
+      expect(screen.getByText(errorMessage)).toBeTruthy()
+      expect(screen.getByRole("button", { name: "Retry message" })).toBeTruthy()
+    },
+  )
+
+  it("keeps projected error detail beside retry when a partial assistant is present", () => {
+    const onRetry = vi.fn()
+    const errorMessage =
+      "catalogue-entry-" +
+      "a".repeat(180) +
+      "-The response stream could not be completed."
+    const { container } = render(
+      <>
+        <ChatMessage
+          index={0}
+          message={userMessage({
+            exchange: {
+              status: "error",
+              retryable: true,
+              error_message: errorMessage,
+            },
+          })}
+          onRetry={onRetry}
+        />
+        <ChatMessage
+          index={1}
+          message={{
+            ...userMessage({
+              id: "assistant-1",
+              content: "Partial answer",
+              blocks: [
+                {
+                  type: "content",
+                  content: "Partial answer",
+                  contentType: "markdown",
+                },
+              ],
+            }),
+            role: "assistant",
+            streaming: true,
+          }}
+        />
+      </>,
+    )
+
+    const footer = container.querySelector(".shiny-chat-message-footer")!
+    const error = container.querySelector(".shiny-chat-retry-error")!
+    const retry = screen.getByRole("button", { name: "Retry message" })
+    expect(footer).toHaveClass("shiny-chat-message-footer-error")
+    expect(error).toHaveTextContent(errorMessage)
+    expect(error.parentElement).toBe(footer)
+    expect(retry.parentElement).toBe(footer)
+    expect(footer.className).toContain("shiny-chat-message-footer")
+    expect(container.querySelector(".shiny-chat-sibling-nav")).toBeNull()
+    expect(screen.getByText("Partial answer")).toBeTruthy()
+    fireEvent.click(retry)
+    expect(onRetry).toHaveBeenCalledWith(0)
+  })
+
+  it("keeps sibling navigation and edit controls actionable in an error footer", () => {
+    const onEdit = vi.fn()
+    const onNavigate = vi.fn()
+    const onRetry = vi.fn()
+    const onStartEdit = vi.fn()
+    const errorMessage = "The response stream could not be completed."
+    const { container } = render(
+      <ChatMessage
+        index={2}
+        message={userMessage({
+          siblings: { index: 1, total: 3 },
+          exchange: {
+            status: "error",
+            retryable: true,
+            error_message: errorMessage,
+          },
+        })}
+        onEdit={onEdit}
+        onNavigate={onNavigate}
+        onRetry={onRetry}
+        onStartEdit={onStartEdit}
+      />,
+    )
+
+    const footer = container.querySelector(".shiny-chat-message-footer-error")!
+    const siblingNav = footer.querySelector(".shiny-chat-sibling-nav")!
+    const edit = screen.getByRole("button", { name: "Edit message" })
+    const retry = screen.getByRole("button", { name: "Retry message" })
+    const error = screen.getByText(errorMessage)
+    expect(siblingNav.parentElement).toBe(footer)
+    expect(edit.parentElement).toBe(footer)
+    expect(retry.parentElement).toBe(footer)
+    expect(error.parentElement).toBe(footer)
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous version" }))
+    fireEvent.click(screen.getByRole("button", { name: "Next version" }))
+    fireEvent.click(edit)
+    fireEvent.click(retry)
+    expect(onNavigate).toHaveBeenNthCalledWith(1, 2, "prev")
+    expect(onNavigate).toHaveBeenNthCalledWith(2, 2, "next")
+    expect(onStartEdit).toHaveBeenCalledWith("m1")
+    expect(onRetry).toHaveBeenCalledWith(2)
+  })
+
+  it.each(["pending", "ok", "cancelled"] as const)(
+    "does not show error detail for %s exchanges",
+    (status) => {
+      render(
+        <ChatMessage
+          index={0}
+          message={userMessage({
+            exchange: {
+              status,
+              retryable: status !== "ok",
+              error_message: "The response could not be completed.",
+            },
+          })}
+          onRetry={vi.fn()}
+        />,
+      )
+
+      expect(
+        screen.queryByText("The response could not be completed."),
+      ).toBeNull()
+    },
+  )
+
+  it("does not show detail for an error exchange without a projected message", () => {
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          exchange: { status: "error", retryable: true },
+        })}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.queryByText("The response could not be completed."),
+    ).toBeNull()
+  })
+
+  it("renders markup-like projected error detail as plain text", () => {
+    const errorMessage = "<script>alert('xss')</script>"
+    const { container } = render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          exchange: {
+            status: "error",
+            retryable: true,
+            error_message: errorMessage,
+          },
+        })}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(errorMessage)).toBeTruthy()
+    expect(container.querySelector("script")).toBeNull()
+  })
+
+  it("does not expose a retry for completed exchanges", () => {
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          exchange: { status: "ok", retryable: false },
+        })}
+        onRetry={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
+  })
+})
+
 describe("ChatMessage streaming tool routing", () => {
   const typed =
     '<shiny-tool-result data-shinychat-react request-id="req-1" tool-name="get_weather" status="success" value="Sunny" value-type="text"></shiny-tool-result>'

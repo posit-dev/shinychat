@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import shinychat._history_store as history_store_module
 from htmltools import HTMLDependency, tags
+from shinychat._chat_types import StoredMessage, StoredSegment
 from shinychat._history_client import as_turns_adapter
 from shinychat._history_store import (
     ConversationPartition,
@@ -21,9 +23,12 @@ from shinychat._history_store import (
 )
 from shinychat._history_types import (
     MAX_SCHEMA_VERSION,
+    CapturedMessage,
     ConversationRecord,
+    ConversationRecordV2,
     UnsupportedSchemaVersionError,
     new_conversation_record,
+    new_conversation_record_v2,
 )
 
 
@@ -46,6 +51,11 @@ STORE_MATRIX = {
     case["name"]: case
     for case in json.loads(STORE_MATRIX_PATH.read_text(encoding="utf-8"))
 }
+WORKED_EXAMPLE_PATH = (
+    Path(__file__).resolve().parent
+    / "fixtures"
+    / "history-v2-worked-example.json"
+)
 
 
 def _conv_dir(tmp_path: Path, rec: ConversationRecord) -> Path:
@@ -58,6 +68,10 @@ def _file_snapshot(path: Path) -> dict[str, bytes]:
         for file in path.iterdir()
         if file.is_file()
     }
+
+
+class _ConversationRecordV2Subclass(ConversationRecordV2):
+    pass
 
 
 @pytest.mark.anyio
@@ -85,6 +99,192 @@ async def test_put_get_round_trip(store: FileConversationStore):
         assert got.nodes[nid].children == rec.nodes[nid].children
         assert got.nodes[nid].parent == rec.nodes[nid].parent
         assert got.nodes[nid].ui == rec.nodes[nid].ui
+
+
+@pytest.mark.anyio
+async def test_v2_put_get_round_trip_uses_one_atomic_document(
+    store: FileConversationStore, tmp_path: Path
+):
+    input_message = StoredMessage(
+        role="user",
+        segments=[StoredSegment(content="hello", content_type="markdown")],
+    )
+    response = StoredMessage(
+        role="assistant",
+        segments=[StoredSegment(content="hi", content_type="markdown")],
+    )
+    rec = new_conversation_record_v2(
+        title="hello",
+        client_info={"kind": "test"},
+    )
+    rec.open_exchange("exchange-1", input_message)
+    rec.append_message(
+        "exchange-1",
+        CapturedMessage.from_stored_message(response, icon=None),
+    )
+
+    await store.put(part(scope="alice"), rec)
+    got = await FileConversationStore(dir=tmp_path).get(
+        part(scope="alice"), rec.id
+    )
+
+    assert got == rec
+    conv_dir = (
+        tmp_path / sanitize_scope("chat") / sanitize_scope("alice") / rec.id
+    )
+    assert {path.name for path in conv_dir.iterdir()} == {"record.json"}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("backend", ["memory", "file"])
+async def test_v2_worked_example_round_trips_through_each_store(
+    backend: str, tmp_path: Path
+):
+    raw = json.loads(WORKED_EXAMPLE_PATH.read_text(encoding="utf-8"))
+    record = ConversationRecordV2.model_validate(raw)
+    partition = part(scope="worked-example")
+    store = (
+        InMemoryConversationStore()
+        if backend == "memory"
+        else FileConversationStore(dir=tmp_path)
+    )
+
+    await store.put(partition, record)
+    reader = (
+        store
+        if backend == "memory"
+        else FileConversationStore(dir=tmp_path)
+    )
+    loaded = await reader.get(partition, record.id)
+
+    assert isinstance(loaded, ConversationRecordV2)
+    assert loaded == record
+    assert loaded.path_node_ids() == ["x_00", "x_01", "x_03", "x_04"]
+    path_inputs = [
+        loaded.nodes[node_id].input
+        for node_id in loaded.path_node_ids()
+        if loaded.nodes[node_id].input is not None
+    ]
+    assert all(message is not None for message in path_inputs)
+    assert [message.content for message in path_inputs if message is not None] == [
+        "Summarize the attached CSV",
+        "Now plot revenue by month",
+    ]
+    assert [
+        message.as_stored_message().content
+        for node_id in loaded.path_node_ids()
+        for message in loaded.nodes[node_id].messages
+        if message.role == "user"
+    ] == []
+    assert loaded.nodes["x_02"].status == "error"
+    assert loaded.nodes["x_02"].error is not None
+    assert loaded.nodes["x_02"].error.message == "Provider timeout"
+    assert loaded.nodes["x_04"].input is None
+
+
+@pytest.mark.anyio
+async def test_v2_put_failure_keeps_previous_document(
+    store: FileConversationStore,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    input_message = StoredMessage(
+        role="user",
+        segments=[StoredSegment(content="hello", content_type="markdown")],
+    )
+    rec = new_conversation_record_v2(
+        title="hello",
+        client_info={"kind": "test"},
+    )
+    rec.open_exchange("exchange-1", input_message)
+    await store.put(part(scope="alice"), rec)
+
+    conv_dir = (
+        tmp_path / sanitize_scope("chat") / sanitize_scope("alice") / rec.id
+    )
+    before = (conv_dir / "record.json").read_bytes()
+    rec.nodes["exchange-1"].status = "ok"
+    original_replace = os.replace
+
+    monkeypatch.setattr(
+        os,
+        "replace",
+        lambda *args: (_ for _ in ()).throw(
+            OSError("injected replace failure")
+        ),
+    )
+    with pytest.raises(OSError, match="injected replace failure"):
+        await store.put(part(scope="alice"), rec)
+
+    assert (conv_dir / "record.json").read_bytes() == before
+    assert not (conv_dir / ".record.json.tmp").exists()
+    monkeypatch.setattr(os, "replace", original_replace)
+    await store.put(part(scope="alice"), rec)
+
+    reloaded = await FileConversationStore(tmp_path).get(
+        part(scope="alice"), rec.id
+    )
+    assert reloaded is not None
+    assert reloaded.nodes["exchange-1"].status == "ok"
+
+
+@pytest.mark.anyio
+async def test_v2_never_overwrites_a_v1_record(store: FileConversationStore):
+    v1 = new_conversation_record(title="v1")
+    await store.put(part(scope="alice"), v1)
+    v2 = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    v2.id = v1.id
+
+    with pytest.raises(ValueError, match="different schema version"):
+        await store.put(part(scope="alice"), v2)
+
+
+@pytest.mark.anyio
+async def test_file_store_rejects_a_v1_model_labeled_as_v2(
+    store: FileConversationStore,
+):
+    record = new_conversation_record(title="v1")
+    cast(Any, record).schema_version = 2
+
+    with pytest.raises(ValueError, match="model does not match"):
+        await store.put(part(scope="alice"), record)
+
+
+@pytest.mark.anyio
+async def test_memory_store_never_overwrites_a_v1_record_with_v2():
+    store = InMemoryConversationStore()
+    v1 = new_conversation_record(title="v1")
+    await store.put(part(scope="alice"), v1)
+    v2 = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    v2.id = v1.id
+
+    with pytest.raises(ValueError, match="different schema version"):
+        await store.put(part(scope="alice"), v2)
+
+
+@pytest.mark.anyio
+async def test_memory_store_allows_same_schema_record_subclass_overwrite():
+    store = InMemoryConversationStore()
+    record = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    await store.put(part(scope="alice"), record)
+    replacement = _ConversationRecordV2Subclass.model_validate(record.model_dump())
+
+    await store.put(part(scope="alice"), replacement)
+
+    assert await store.get(part(scope="alice"), record.id) is replacement
+
+
+@pytest.mark.anyio
+async def test_memory_store_rejects_a_mutated_resident_v1_record():
+    store = InMemoryConversationStore()
+    v1 = new_conversation_record(title="v1")
+    await store.put(part(scope="alice"), v1)
+    cast(Any, v1).schema_version = 2
+    v2 = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    v2.id = v1.id
+
+    with pytest.raises(ValueError, match="model does not match"):
+        await store.put(part(scope="alice"), v2)
 
 
 @pytest.mark.anyio
@@ -354,6 +554,22 @@ async def test_store_fixture_matrix_doubles_round_trip(
 
 
 @pytest.mark.anyio
+async def test_store_fixture_matrix_unreplayable_turn_value_persists(
+    store: FileConversationStore,
+    tmp_path: Path,
+):
+    value = STORE_MATRIX["unreplayable_turn_value"]["value"]
+    rec = new_conversation_record(title="opaque turn")
+    rec.append_linear([{"role": "assistant", "value": value}])
+
+    await store.put(part(), rec)
+
+    got = await FileConversationStore(dir=tmp_path).get(part(), rec.id)
+    assert got is not None
+    assert got.path_turns() == [{"role": "assistant", "value": value}]
+
+
+@pytest.mark.anyio
 async def test_store_fixture_matrix_malformed_jsonl_line_warns(
     store: FileConversationStore,
     tmp_path: Path,
@@ -482,7 +698,7 @@ async def test_get_missing_returns_none(store: FileConversationStore):
 
 
 @pytest.mark.anyio
-async def test_list_is_meta_only_newest_first(store: FileConversationStore):
+async def test_list_returns_metadata_newest_first(store: FileConversationStore):
     a = new_conversation_record(title="older")
     b = new_conversation_record(title="newer")
     await store.put(part(scope="alice"), a)
@@ -587,19 +803,6 @@ def test_sanitize_scope_is_filesystem_safe_and_stable():
     assert sanitize_scope("alice") != sanitize_scope("bob")
 
 
-@pytest.mark.anyio
-async def test_put_is_atomic_no_partial_files(
-    store: FileConversationStore, tmp_path: Path
-):
-    rec = new_conversation_record(title="t")
-    await store.put(part(scope="alice"), rec)
-    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
-    conv_dir = scope_dir / rec.id
-    assert conv_dir.is_dir()
-    files = {f.name for f in conv_dir.iterdir()}
-    assert files == {"record.json", "turns.jsonl", "ui.jsonl"}
-
-
 def test_safe_conv_path_rejects_traversal(tmp_path: Path):
     with pytest.raises(ValueError, match="Invalid conversation id"):
         safe_conv_path(tmp_path, "../escape")
@@ -633,18 +836,6 @@ async def test_delete_with_traversal_id_raises(store: FileConversationStore):
 
 
 @pytest.mark.anyio
-async def test_list_populates_cache(store: FileConversationStore):
-    rec = new_conversation_record(title="cached")
-    await store.put(part(scope="alice"), rec)
-    assert (
-        part(scope="alice") not in store._meta_cache
-    )  # put to cold scope: no cache
-    await store.list(part(scope="alice"))
-    assert part(scope="alice") in store._meta_cache
-    assert store._meta_cache[part(scope="alice")][0].id == rec.id
-
-
-@pytest.mark.anyio
 async def test_list_returns_from_cache_without_disk_read(
     store: FileConversationStore, tmp_path: Path
 ):
@@ -670,7 +861,6 @@ async def test_get_missing_after_cached_list_invalidates_cache(
     rec = new_conversation_record(title="t")
     await store.put(part(scope="alice"), rec)
     await store.list(part(scope="alice"))  # warms cache
-    assert part(scope="alice") in store._meta_cache
 
     # Simulate another worker deleting the conversation directly on disk
     scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
@@ -680,7 +870,6 @@ async def test_get_missing_after_cached_list_invalidates_cache(
 
     got = await store.get(part(scope="alice"), rec.id)
     assert got is None
-    assert part(scope="alice") not in store._meta_cache
 
     metas = await store.list(part(scope="alice"))
     assert metas == []
@@ -695,17 +884,8 @@ async def test_put_updates_warm_cache(store: FileConversationStore):
     b = new_conversation_record(title="second")
     await store.put(part(scope="alice"), b)
 
-    cached = store._meta_cache[part(scope="alice")]
-    assert {m.id for m in cached} == {a.id, b.id}
-
-
-@pytest.mark.anyio
-async def test_put_does_not_create_cache_for_cold_scope(
-    store: FileConversationStore,
-):
-    rec = new_conversation_record(title="cold")
-    await store.put(part(scope="alice"), rec)
-    assert part(scope="alice") not in store._meta_cache
+    metas = await store.list(part(scope="alice"))
+    assert {meta.id for meta in metas} == {a.id, b.id}
 
 
 @pytest.mark.anyio
@@ -715,7 +895,7 @@ async def test_delete_updates_warm_cache(store: FileConversationStore):
     await store.list(part(scope="alice"))  # warm
     await store.delete(part(scope="alice"), rec.id)
 
-    assert store._meta_cache[part(scope="alice")] == []
+    assert await store.list(part(scope="alice")) == []
 
 
 @pytest.mark.anyio
@@ -724,7 +904,9 @@ async def test_list_returns_independent_copy(store: FileConversationStore):
     await store.put(part(scope="alice"), rec)
     result = await store.list(part(scope="alice"))
     result.clear()
-    assert len(store._meta_cache[part(scope="alice")]) == 1
+    assert [meta.id for meta in await store.list(part(scope="alice"))] == [
+        rec.id
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -806,7 +988,7 @@ async def test_put_rejects_unsupported_schema_version_into_empty_store(
     tmp_path: Path,
 ):
     rec = new_conversation_record(title="t")
-    rec.schema_version = MAX_SCHEMA_VERSION + 1
+    cast(Any, rec).schema_version = MAX_SCHEMA_VERSION + 1
 
     with pytest.raises(UnsupportedSchemaVersionError):
         await store.put(part(scope="alice"), rec)
@@ -847,7 +1029,7 @@ async def test_memory_put_rejects_unsupported_schema_version(
     mem_store: InMemoryConversationStore,
 ):
     rec = new_conversation_record(title="t")
-    rec.schema_version = MAX_SCHEMA_VERSION + 1
+    cast(Any, rec).schema_version = MAX_SCHEMA_VERSION + 1
 
     with pytest.raises(UnsupportedSchemaVersionError):
         await mem_store.put(part(scope="alice"), rec)
@@ -963,28 +1145,6 @@ async def test_memory_search(mem_store: InMemoryConversationStore):
 
 
 @pytest.mark.anyio
-async def test_memory_list_does_not_reserialize_on_repeat_calls(
-    mem_store: InMemoryConversationStore, monkeypatch: pytest.MonkeyPatch
-):
-    rec = new_conversation_record(title="t")
-    await mem_store.put(part(scope="alice"), rec)
-    await mem_store.list(part(scope="alice"))  # warm cache
-
-    call_count = 0
-    original = ConversationRecord.model_dump_json
-
-    def counting(self: ConversationRecord, *args: Any, **kwargs: Any) -> str:
-        nonlocal call_count
-        call_count += 1
-        return original(self, *args, **kwargs)
-
-    monkeypatch.setattr(ConversationRecord, "model_dump_json", counting)
-    await mem_store.list(part(scope="alice"))
-    await mem_store.list(part(scope="alice"))
-    assert call_count == 0
-
-
-@pytest.mark.anyio
 async def test_memory_put_updates_warm_cache(
     mem_store: InMemoryConversationStore,
 ):
@@ -995,17 +1155,8 @@ async def test_memory_put_updates_warm_cache(
     b = new_conversation_record(title="second")
     await mem_store.put(part(scope="alice"), b)
 
-    cached = mem_store._meta_cache[part(scope="alice")]
-    assert {m.id for m in cached} == {a.id, b.id}
-
-
-@pytest.mark.anyio
-async def test_memory_put_does_not_create_cache_for_cold_scope(
-    mem_store: InMemoryConversationStore,
-):
-    rec = new_conversation_record(title="cold")
-    await mem_store.put(part(scope="alice"), rec)
-    assert part(scope="alice") not in mem_store._meta_cache
+    metas = await mem_store.list(part(scope="alice"))
+    assert {meta.id for meta in metas} == {a.id, b.id}
 
 
 @pytest.mark.anyio
@@ -1017,7 +1168,7 @@ async def test_memory_delete_updates_warm_cache(
     await mem_store.list(part(scope="alice"))  # warm
     await mem_store.delete(part(scope="alice"), rec.id)
 
-    assert mem_store._meta_cache[part(scope="alice")] == []
+    assert await mem_store.list(part(scope="alice")) == []
 
 
 # ---------------------------------------------------------------------------

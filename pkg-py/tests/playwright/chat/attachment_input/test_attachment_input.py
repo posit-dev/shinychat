@@ -30,6 +30,7 @@ def test_pdf_attachment_forwards_to_handler(
     expect(chip).to_contain_text("sample.pdf")
 
     chat.set_user_input("summarize this")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
 
     # Server handler received exactly one PDF attachment with its filename.

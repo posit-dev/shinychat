@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import pytest
@@ -128,6 +129,13 @@ class StubChat:
 
     def _messages_for_bookmark(self) -> list[dict[str, Any]]:
         return self.messages
+
+    def _messages_for_history(self) -> list[dict[str, Any]]:
+        return self.messages
+
+    @asynccontextmanager
+    async def _destructive_history_mutation(self, *, block_input: bool = False):
+        yield
 
     async def clear_messages(self, *, greeting: bool = False) -> None:
         self.messages.clear()

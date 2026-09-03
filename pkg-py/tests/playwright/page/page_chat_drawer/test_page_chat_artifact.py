@@ -835,6 +835,7 @@ def test_compact_drawer_trigger_does_not_overlay_messages(
         "padding-top", "0px"
     )
     chat.set_user_input("hi there")
+    expect(chat.loc_input_button).to_be_enabled(timeout=TIMEOUT)
     chat.send_user_input()
     chat.expect_latest_message("echo: hi there", timeout=TIMEOUT)
 

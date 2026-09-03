@@ -1,4 +1,12 @@
 import type { ConversationMeta, ChatTransport } from "../transport/types"
+import { uuid } from "../utils/uuid"
+
+type TransitionProtocol = "completion-v1" | "completion-v2"
+
+const completionTransitionProtocols: readonly TransitionProtocol[] = [
+  "completion-v1",
+  "completion-v2",
+]
 
 export interface HistorySnapshot {
   initialized: boolean
@@ -7,6 +15,8 @@ export interface HistorySnapshot {
   activeId: string | null
   busy: boolean
   connected: boolean
+  transitionProtocol: TransitionProtocol | null
+  historyTransitionPending: string | null
 }
 
 export interface HistoryActions {
@@ -23,6 +33,8 @@ const initialSnapshot: HistorySnapshot = Object.freeze({
   activeId: null,
   busy: false,
   connected: false,
+  transitionProtocol: null,
+  historyTransitionPending: null,
 })
 
 type Listener = () => void
@@ -37,27 +49,40 @@ export class HistoryStore {
   readonly actions: HistoryActions = {
     select: (conversationId) => {
       const transport = this.activeTransport()
-      if (transport && !this.snapshot.busy) {
+      if (transport && !this.isMutationBlocked()) {
         transport.sendHistorySelect(this.elementId, conversationId)
       }
     },
     create: () => {
       const transport = this.activeTransport()
-      if (transport && !this.snapshot.busy) {
+      if (!transport || this.isMutationBlocked()) return
+      const requestId =
+        this.snapshot.activeId === null || !this.supportsCompletionProtocol()
+          ? undefined
+          : this.beginTransition()
+      if (requestId === undefined) {
         transport.sendHistoryNew(this.elementId)
+      } else {
+        transport.sendHistoryNew(this.elementId, requestId)
       }
     },
     rename: (conversationId, title) => {
-      this.activeTransport()?.sendHistoryRename(
-        this.elementId,
-        conversationId,
-        title,
-      )
+      const transport = this.activeTransport()
+      if (!transport || this.isMutationBlocked()) return
+      transport.sendHistoryRename(this.elementId, conversationId, title)
     },
     delete: (conversationId) => {
       const transport = this.activeTransport()
-      if (transport && !this.snapshot.busy) {
+      if (!transport || this.isMutationBlocked()) return
+      const requestId =
+        conversationId === this.snapshot.activeId &&
+        this.supportsCompletionProtocol()
+          ? this.beginTransition()
+          : undefined
+      if (requestId === undefined) {
         transport.sendHistoryDelete(this.elementId, conversationId)
+      } else {
+        transport.sendHistoryDelete(this.elementId, conversationId, requestId)
       }
     },
   }
@@ -78,14 +103,25 @@ export class HistoryStore {
     this.publish({ ...this.snapshot, connected: transport !== null })
   }
 
+  seedCompletionV2TransitionProtocol(): void {
+    if (this.snapshot.initialized || this.snapshot.transitionProtocol !== null)
+      return
+    this.publish({
+      ...this.snapshot,
+      transitionProtocol: "completion-v2",
+    })
+  }
+
   updateHistory({
     enabled,
     conversations,
     activeId,
+    transitionProtocol,
   }: {
     enabled: boolean
     conversations: ConversationMeta[]
     activeId: string | null
+    transitionProtocol?: string
   }): void {
     const nextConversations = conversationsEqual(
       this.snapshot.conversations,
@@ -96,6 +132,9 @@ export class HistoryStore {
           conversations.map((conversation) => ({ ...conversation })),
         )
 
+    const normalizedProtocol = normalizeTransitionProtocol(transitionProtocol)
+    const protocolChanged =
+      normalizedProtocol !== this.snapshot.transitionProtocol
     this.publish({
       initialized: true,
       enabled,
@@ -103,11 +142,46 @@ export class HistoryStore {
       activeId,
       busy: this.snapshot.busy,
       connected: this.snapshot.connected,
+      transitionProtocol: normalizedProtocol,
+      historyTransitionPending: !protocolChanged
+        ? this.snapshot.historyTransitionPending
+        : null,
     })
   }
 
   setBusy(busy: boolean): void {
     this.publish({ ...this.snapshot, busy })
+  }
+
+  beginEditTransition(): string | null {
+    if (!this.supportsEditProjectionProtocol() || this.isMutationBlocked())
+      return null
+    return this.beginTransition()
+  }
+
+  beginNavigationTransition(): string | null {
+    if (!this.supportsEditProjectionProtocol() || this.isMutationBlocked())
+      return null
+    return this.beginTransition()
+  }
+
+  acceptEditProjection(requestId: string): boolean {
+    if (this.snapshot.historyTransitionPending !== requestId) return false
+    // Projection installs the ordinary input/loading state immediately after
+    // this call. Mark history busy first so no mutation can slip between the
+    // matching wire action and React's state commit.
+    this.setBusy(true)
+    return true
+  }
+
+  isMutationBlocked(): boolean {
+    return this.snapshot.busy || this.hasPendingTransition()
+  }
+
+  completeHistoryTransition(requestId: string): boolean {
+    if (this.snapshot.historyTransitionPending !== requestId) return false
+    this.publish({ ...this.snapshot, historyTransitionPending: null })
+    return true
   }
 
   get listenerCount(): number {
@@ -116,6 +190,24 @@ export class HistoryStore {
 
   private activeTransport(): ChatTransport | null {
     return this.snapshot.connected ? this.transport : null
+  }
+
+  private hasPendingTransition(): boolean {
+    return this.snapshot.historyTransitionPending !== null
+  }
+
+  private supportsCompletionProtocol(): boolean {
+    return this.snapshot.transitionProtocol !== null
+  }
+
+  private supportsEditProjectionProtocol(): boolean {
+    return this.snapshot.transitionProtocol === "completion-v2"
+  }
+
+  private beginTransition(): string {
+    const requestId = uuid()
+    this.publish({ ...this.snapshot, historyTransitionPending: requestId })
+    return requestId
   }
 
   private publish(next: HistorySnapshot): void {
@@ -255,10 +347,27 @@ function snapshotsEqual(a: HistorySnapshot, b: HistorySnapshot): boolean {
     a.conversations === b.conversations &&
     a.activeId === b.activeId &&
     a.busy === b.busy &&
-    a.connected === b.connected
+    a.connected === b.connected &&
+    a.transitionProtocol === b.transitionProtocol &&
+    a.historyTransitionPending === b.historyTransitionPending
   )
+}
+
+function normalizeTransitionProtocol(
+  protocol: string | undefined,
+): TransitionProtocol | null {
+  return completionTransitionProtocols.includes(protocol as TransitionProtocol)
+    ? (protocol as TransitionProtocol)
+    : null
 }
 
 export function resetHistoryStoreRegistryForTests(): void {
   registry.clear()
+}
+
+export function isHistorySubmissionBlocked(snapshot: HistorySnapshot): boolean {
+  return (
+    snapshot.historyTransitionPending !== null ||
+    (snapshot.transitionProtocol === "completion-v2" && !snapshot.initialized)
+  )
 }

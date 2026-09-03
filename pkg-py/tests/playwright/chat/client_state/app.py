@@ -1,10 +1,8 @@
 from shiny import App, Inputs, Outputs, Session, reactive, render, ui
 from shinychat import Chat, chat_ui
 
-# Regression test app for client-authoritative UI state: `.messages()` must
-# read the client-reported snapshot, which is co-sent synchronously with the
-# user's submission. So inside `on_user_submit`, `.messages()` should already
-# include the just-submitted user turn.
+# Regression test app for server-owned UI state. Inside `on_user_submit`,
+# `.messages()` already includes the accepted user turn.
 
 app_ui = ui.page_fluid(
     chat_ui("chat"),

@@ -1,12 +1,16 @@
 import pytest
 from _history_test_helpers import branch_from
+from shinychat._chat_types import StoredMessage, StoredSegment
 from shinychat._history_types import (
+    CapturedMessage,
     ConversationMeta,
     ConversationNode,
     ConversationRecord,
+    ConversationRecordV2,
     UnsupportedSchemaVersionError,
     check_schema_version,
     new_conversation_record,
+    new_conversation_record_v2,
 )
 
 
@@ -24,6 +28,162 @@ def test_new_record_is_empty_draft():
     assert rec.title == "hello world"
     assert rec.title_source is None
     assert rec.response_count == 0
+
+
+def test_v2_record_tracks_an_exchange_path_with_captured_messages():
+    input_message = StoredMessage(
+        role="user",
+        segments=[StoredSegment(content="hello", content_type="markdown")],
+    )
+    response = StoredMessage(
+        role="assistant",
+        segments=[StoredSegment(content="hi", content_type="markdown")],
+    )
+    rec = new_conversation_record_v2(
+        title="hello",
+        client_info={"kind": "test"},
+    )
+
+    rec.open_exchange("exchange-1", input_message)
+    rec.append_message(
+        "exchange-1",
+        CapturedMessage.from_stored_message(response, icon="bot"),
+    )
+
+    assert isinstance(rec, ConversationRecordV2)
+    assert rec.schema_version == 2
+    assert rec.path_node_ids() == ["n_0000", "exchange-1"]
+    node = rec.nodes["exchange-1"]
+    assert node.status == "ok"
+    assert node.input == input_message
+    assert node.messages[0].as_stored_message() == response
+    assert node.messages[0].icon == "bot"
+
+
+def _v2_user_message(content: str) -> StoredMessage:
+    return StoredMessage(
+        role="user",
+        segments=[StoredSegment(content=content, content_type="markdown")],
+    )
+
+
+def test_v2_graph_primitives_track_children_siblings_and_selected_path():
+    rec = new_conversation_record_v2(
+        title="hello",
+        id="c_v2",
+        client_info={"kind": "test"},
+    )
+    first = "exchange-1"
+    second = "exchange-2"
+    rec.open_exchange(first, _v2_user_message("first"))
+    rec.set_active_leaf("n_0000")
+    rec.open_exchange(second, _v2_user_message("second"))
+
+    assert rec.children_of(None) == ["n_0000"]
+    assert rec.children_of("n_0000") == [first, second]
+    assert rec.siblings_of(first) == [first, second]
+    assert rec.siblings_of(second) == [first, second]
+
+    rec.set_active_leaf(first)
+    assert rec.active_leaf == first
+    assert rec.nodes["n_0000"].selected_child == first
+    assert rec.nodes[first].selected_child is None
+
+
+def test_v2_set_active_leaf_validates_before_mutating():
+    rec = new_conversation_record_v2(
+        title="hello",
+        id="c_v2",
+        client_info={"kind": "test"},
+    )
+    rec.open_exchange("exchange-1", _v2_user_message("first"))
+    before = rec.model_dump()
+
+    with pytest.raises(ValueError, match="Unknown exchange id"):
+        rec.set_active_leaf("missing")
+
+    assert rec.model_dump() == before
+
+
+def test_v2_subtree_leaf_remembers_child_then_falls_back_to_newest():
+    rec = new_conversation_record_v2(
+        title="hello",
+        id="c_v2",
+        client_info={"kind": "test"},
+    )
+    first = "exchange-1"
+    second = "exchange-2"
+    first_leaf = "exchange-1-leaf"
+    second_leaf = "exchange-2-leaf"
+    rec.open_exchange(first, _v2_user_message("first"))
+    rec.set_active_leaf("n_0000")
+    rec.open_exchange(second, _v2_user_message("second"))
+    rec.set_active_leaf(first)
+    rec.open_exchange(first_leaf, _v2_user_message("first leaf"))
+    rec.set_active_leaf(second)
+    rec.open_exchange(second_leaf, _v2_user_message("second leaf"))
+
+    rec.nodes["n_0000"].selected_child = first
+    assert rec.subtree_leaf("n_0000") == first_leaf
+
+    rec.nodes["n_0000"].selected_child = None
+    assert rec.subtree_leaf("n_0000") == second_leaf
+
+
+def test_v2_path_sibling_metadata_tracks_the_selected_exchange():
+    rec = new_conversation_record_v2(
+        title="hello",
+        id="c_v2",
+        client_info={"kind": "test"},
+    )
+    first = "exchange-1"
+    original = "exchange-2-original"
+    replacement = "exchange-2-replacement"
+    rec.open_exchange(first, _v2_user_message("first"))
+    rec.open_exchange(original, _v2_user_message("original"))
+    rec.set_active_leaf(first)
+    rec.open_exchange(replacement, _v2_user_message("replacement"))
+
+    assert rec.path_sibling_metadata() == {replacement: (1, 2)}
+
+    rec.set_active_leaf(original)
+    assert rec.path_sibling_metadata() == {original: (0, 2)}
+
+
+def test_v2_user_message_projection_skips_inputless_path_nodes():
+    rec = new_conversation_record_v2(
+        title="hello",
+        id="c_v2",
+        client_info={"kind": "test"},
+    )
+    first = "exchange-1"
+    second = "exchange-2"
+    rec.open_inputless_exchange()
+    rec.open_exchange(first, _v2_user_message("first"))
+    inputless = rec.open_inputless_exchange()
+    response = StoredMessage(
+        role="assistant",
+        segments=[StoredSegment(content="response", content_type="markdown")],
+    )
+    rec.append_message(
+        inputless, CapturedMessage.from_stored_message(response, icon=None)
+    )
+    rec.append_message(
+        first, CapturedMessage.from_stored_message(response, icon=None)
+    )
+    rec.append_message(
+        first, CapturedMessage.from_stored_message(response, icon=None)
+    )
+    rec.open_exchange(second, _v2_user_message("second"))
+
+    assert rec.exchange_id_for_user_message_index(0) == first
+    assert rec.exchange_id_for_user_message_index(4) == second
+    with pytest.raises(IndexError):
+        rec.exchange_id_for_user_message_index(1)
+    with pytest.raises(IndexError):
+        rec.exchange_id_for_user_message_index(5)
+    with pytest.raises(IndexError):
+        rec.exchange_id_for_user_message_index(-1)
 
 
 @pytest.mark.parametrize("version", [True, 1.0, "1", [], [1], float("nan")])
@@ -59,6 +219,7 @@ def test_path_follows_current_leaf_not_all_nodes():
 def test_json_round_trip():
     rec = new_conversation_record(title="t")
     rec.append_linear(turn("user", "hi"))
+    rec.append_linear(turn("assistant", "hello"))
     rec2 = ConversationRecord.model_validate_json(rec.model_dump_json())
     assert rec2 == rec
 
@@ -125,15 +286,6 @@ def test_append_linear_populates_children():
     assert rec.nodes[n3].children == []
 
 
-def test_next_node_seq_increments():
-    rec = new_conversation_record(title="t")
-    assert rec.next_node_seq == 1
-    rec.append_linear(turn("user", "hi"))
-    assert rec.next_node_seq == 2
-    rec.append_linear(turn("assistant", "hello"))
-    assert rec.next_node_seq == 3
-
-
 def test_next_node_seq_never_reuses_ids():
     rec = new_conversation_record(title="t")
     n1 = rec.append_linear(turn("user", "hi"))
@@ -148,30 +300,11 @@ def test_next_node_seq_never_reuses_ids():
     assert rec.next_node_seq == 4
 
 
-def test_children_round_trip_json():
-    rec = new_conversation_record(title="t")
-    rec.append_linear(turn("user", "hi"))
-    rec.append_linear(turn("assistant", "hello"))
-    rec2 = ConversationRecord.model_validate_json(rec.model_dump_json())
-    for nid in rec.nodes:
-        assert rec2.nodes[nid].children == rec.nodes[nid].children
-    assert rec2.next_node_seq == rec.next_node_seq
-
-
 def msg(role: str) -> dict[str, object]:
     return {
         "role": role,
         "segments": [{"content": role, "content_type": "markdown"}],
     }
-
-
-def test_children_of_returns_direct_children_sorted():
-    rec = new_conversation_record(title="t")
-    n1 = rec.append_linear(turn("user", "hi"))
-    n2 = rec.append_linear(turn("assistant", "hey"))
-    assert rec.children_of(None) == [n1]
-    assert rec.children_of(n1) == [n2]
-    assert rec.children_of(n2) == []
 
 
 def test_children_of_with_branch():

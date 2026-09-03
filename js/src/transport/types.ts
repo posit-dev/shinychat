@@ -1,6 +1,5 @@
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 import type { AttachmentPayload } from "../chat/attachments"
-import type { SnapshotMessage } from "../chat/state"
 
 export type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
@@ -124,6 +123,7 @@ export type ChatAction =
       enabled: boolean
       conversations: ConversationMeta[]
       active_id: string | null
+      transition_protocol?: string
     }
   | {
       type: "history_navigate"
@@ -138,6 +138,31 @@ export type ChatAction =
       type: "update_siblings"
       data: Record<number, { index: number; total: number }>
     }
+  | {
+      type: "update_exchange_metadata"
+      data: Record<
+        number,
+        {
+          status: "pending" | "ok" | "error" | "cancelled"
+          retryable: boolean
+          error_message?: string
+        }
+      >
+    }
+  | {
+      type: "history_edit_projection"
+      requestId: string
+      index: number
+      content: string
+      attachments: AttachmentPayload[]
+    }
+  | {
+      type: "history_accepted_input_projection"
+      index: number
+      content: string
+      attachments: AttachmentPayload[]
+    }
+  | { type: "history_transition_complete"; requestId: string }
 
 export type ShinyChatEnvelope = {
   id: string
@@ -185,23 +210,29 @@ export interface ChatTransport {
     userText: string,
     echo: boolean,
   ): void
-  /** Report the client's settled-message snapshot (regular-priority input). */
-  sendMessagesSnapshot(id: string, snapshot: SnapshotMessage[]): void
   onMessage(id: string, callback: (action: ChatAction) => void): () => void
   sendHistorySelect(id: string, convId: string): void
-  sendHistoryNew(id: string): void
+  sendHistoryNew(id: string, requestId?: string): void
   sendHistoryRename(id: string, convId: string, title: string): void
-  sendHistoryDelete(id: string, convId: string): void
+  sendHistoryDelete(id: string, convId: string, requestId?: string): void
   sendMessageEdit(
     id: string,
     index: number,
     content: string,
     attachments?: AttachmentPayload[],
+    requestId?: string,
   ): void
   sendMessageNavigate(
     id: string,
     index: number,
     direction: "prev" | "next",
+    requestId?: string,
+  ): void
+  sendMessageResubmit(
+    id: string,
+    index: number,
+    kind: "retry" | "regenerate",
+    requestId: string,
   ): void
 }
 

@@ -9,6 +9,10 @@ def test_user_input_handler_is_registered():
     assert "shinychat.userInput" in input_handlers
 
 
+def test_messages_input_handler_is_not_registered():
+    assert "shinychat.messages" not in input_handlers
+
+
 def _get_handler() -> Callable[[Any, Any, Any], Any]:
     return cast(
         Callable[[Any, Any, Any], Any], input_handlers["shinychat.userInput"]

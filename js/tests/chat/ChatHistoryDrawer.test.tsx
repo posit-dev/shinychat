@@ -571,7 +571,7 @@ describe("busy state", () => {
     expect(onSelect).not.toHaveBeenCalled()
   })
 
-  it("disables Delete option in actions menu while busy", () => {
+  it("disables the actions menu while busy", () => {
     renderDrawer({ busy: true })
     openDrawer()
     const titleEl = screen.getByText("Today's chat")
@@ -582,25 +582,10 @@ describe("busy state", () => {
     const menuBtn = within(menuTrigger).getByRole("button", {
       name: /conversation actions/i,
     })
+    expect((menuBtn as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(menuBtn)
-    const deleteBtn = within(document.body).getByText("Delete")
-    expect((deleteBtn as HTMLButtonElement).disabled).toBe(true)
-  })
-
-  it("allows Rename while busy (rename is not a destructive action)", () => {
-    renderDrawer({ busy: true })
-    openDrawer()
-    const titleEl = screen.getByText("Today's chat")
-    const row = titleEl.closest(".shiny-chat-history-item") as HTMLElement
-    const menuTrigger = row.querySelector(
-      ".shiny-chat-history-itemmenu",
-    ) as HTMLElement
-    const menuBtn = within(menuTrigger).getByRole("button", {
-      name: /conversation actions/i,
-    })
-    fireEvent.click(menuBtn)
-    const renameBtn = within(document.body).getByText("Rename")
-    expect((renameBtn as HTMLButtonElement).disabled).toBe(false)
+    expect(within(document.body).queryByText("Delete")).toBeNull()
+    expect(within(document.body).queryByText("Rename")).toBeNull()
   })
 
   it("conversation rows' select control is disabled with a title while busy", () => {

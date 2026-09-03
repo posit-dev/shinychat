@@ -36,6 +36,7 @@ def test_history_restore_callbacks_on_reload(
     )
 
     chat.set_user_input("reload test")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: reload test", timeout=30_000)
 

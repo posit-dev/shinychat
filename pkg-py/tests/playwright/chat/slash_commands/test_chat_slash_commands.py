@@ -65,6 +65,7 @@ def test_regular_message_bypasses_slash_commands(
     expect(ctrl.loc).to_be_visible(timeout=30_000)
 
     ctrl.set_user_input("hello there")
+    expect(ctrl.loc_input_button).to_be_enabled(timeout=30_000)
     ctrl.send_user_input()
 
     ctrl.expect_latest_message("Echo: hello there", timeout=10_000)
@@ -105,6 +106,7 @@ def test_unrecognized_slash_sent_as_regular_input(
     expect(ctrl.loc).to_be_visible(timeout=30_000)
 
     ctrl.set_user_input("/unknown hello")
+    expect(ctrl.loc_input_button).to_be_enabled(timeout=30_000)
     ctrl.send_user_input()
 
     # Should fall through to on_user_submit as regular input

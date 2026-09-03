@@ -4,15 +4,21 @@ import asyncio
 import inspect
 import sys
 import threading
+import warnings
+from contextvars import copy_context
 from datetime import datetime
-from typing import Any, cast
+from types import SimpleNamespace
+from typing import Any, Callable, cast
+from unittest.mock import MagicMock
 
 import pytest
-from htmltools import HTMLDependency, TagList, tags
+from htmltools import HTML, HTMLDependency, TagList, tags
 from shiny import Session, reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat
+from shinychat import _history as history_module
+from shinychat._attachments import Attachment
 from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
     ChatMessage,
@@ -20,6 +26,16 @@ from shinychat._chat_types import (
     Role,
     StoredMessage,
     StoredSegment,
+)
+from shinychat._history import HistoryController, HistoryOptions
+from shinychat._history_store import (
+    ConversationPartition,
+    InMemoryConversationStore,
+)
+from shinychat._history_types import (
+    HISTORY_ERROR_STREAM_START,
+    HISTORY_ERROR_STREAM_TERMINAL,
+    new_conversation_record,
 )
 from shinychat._utils_types import MISSING
 
@@ -39,8 +55,8 @@ class _MockSession:
 
         self.input = Inputs({}, ns=ResolvedId)
 
-    def on_ended(self, callback: object) -> None:
-        pass
+    def on_ended(self, callback: object) -> Callable[[], None]:
+        return lambda: None
 
     def on_destroy(self, callback: object) -> None:
         pass
@@ -48,7 +64,58 @@ class _MockSession:
     def _increment_busy_count(self) -> None:
         pass
 
+    def _decrement_busy_count(self) -> None:
+        pass
+
     async def send_custom_message(self, type: str, message: Any) -> None:
+        pass
+
+
+class _BookmarkRecorder:
+    def __init__(self) -> None:
+        self.exclude: list[str] = []
+        self.states: list[dict[str, Any]] = []
+        self._callbacks: list[Any] = []
+
+    def on_bookmark(self, callback: Any) -> Any:
+        self._callbacks.append(callback)
+        return callback
+
+    def on_restore(self, callback: Any) -> Any:
+        return callback
+
+    def on_bookmarked(self, callback: Any) -> Any:
+        return lambda: None
+
+    async def update_query_string(self, url: str) -> None:
+        pass
+
+    async def __call__(self) -> None:
+        state = SimpleNamespace(values={})
+        for callback in self._callbacks:
+            result = callback(state)
+            if inspect.isawaitable(result):
+                await result
+        self.states.append(state.values)
+
+
+class _BookmarkSession(_MockSession):
+    def __init__(self) -> None:
+        super().__init__()
+        self.bookmark = _BookmarkRecorder()
+
+    def is_stub_session(self) -> bool:
+        return False
+
+    def root_scope(self) -> "_BookmarkSession":
+        return self
+
+
+class _BookmarkClient:
+    async def get_state(self) -> dict[str, object]:
+        return {}
+
+    async def set_state(self, state: object) -> None:
         pass
 
 
@@ -69,6 +136,16 @@ def run_async(coro_fn: Any) -> None:
     t.join()
     if exc:
         raise exc[0]
+
+
+def run_async_result(coro_fn: Any) -> Any:
+    result: list[Any] = []
+
+    async def capture() -> None:
+        result.append(await coro_fn())
+
+    run_async(capture)
+    return result[0]
 
 
 def stored_message(content: str, role: Role) -> StoredMessage:
@@ -99,6 +176,1959 @@ def test_messages_token_limits_raises():
 
         with pytest.raises(TypeError, match="token_limits.*removed"):
             chat.messages(token_limits=(100, 0))  # type: ignore[arg-type]
+
+
+def test_transcript_contains_accepted_input_before_submit_callback():
+    session = cast(Session, _MockSession())
+    seen: list[tuple[Any, ...]] = []
+    public_seen: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(session):
+        chat = Chat("accepted_input", history=False)
+
+        @chat.on_user_submit
+        async def _() -> None:
+            seen.append(chat._transcript.read())
+            public_seen.append(chat.messages())
+
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "message from user", "attachments": []}
+        )
+        run_async(reactive.flush)
+
+    assert len(seen) == 1
+    assert [entry.message.content for entry in seen[0]] == ["message from user"]
+    assert chat._transcript.open_exchange_id is not None
+    assert public_seen == [
+        (ChatMessageDict(content="message from user", role="user"),)
+    ]
+
+
+def test_echoed_slash_command_records_once_before_its_callback():
+    session = cast(Session, _MockSession())
+    callback_state: list[tuple[str, list[str], str | None]] = []
+    public_calls: list[str] = []
+    provider_calls: list[str] = []
+
+    with session_context(session):
+        chat = Chat("echoed_slash", history=False)
+
+        @chat.on_user_submit
+        async def _public_handler(text: str) -> None:
+            public_calls.append(text)
+
+        @chat.on_user_submit
+        async def _provider_handler(text: str) -> None:
+            provider_calls.append(text)
+
+        @chat.slash_command("greet", "Greet the user")
+        async def _(user_text: str) -> None:
+            callback_state.append(
+                (
+                    user_text,
+                    [
+                        entry.message.content
+                        for entry in chat._transcript.read()
+                    ],
+                    chat._transcript.open_exchange_id,
+                )
+            )
+
+        cast(Any, session.input[chat._slash_command_id])._set(
+            {"command": "greet", "userText": "world", "echo": True}
+        )
+        run_async(reactive.flush)
+
+        with reactive.isolate():
+            user_input = chat.user_input()
+        assert user_input is not None
+        assert user_input.text == "/greet world"
+        assert public_calls == []
+        assert provider_calls == []
+
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "normal input", "attachments": [], "seq": 1}
+        )
+        run_async(reactive.flush)
+
+        cast(Any, session.input[chat._slash_command_id])._set(
+            {"command": "greet", "userText": "again", "echo": True}
+        )
+        run_async(reactive.flush)
+
+        with reactive.isolate():
+            user_input = chat.user_input()
+        assert user_input is not None
+        assert user_input.text == "/greet again"
+
+    assert [state[0] for state in callback_state] == ["world", "again"]
+    assert callback_state[0][1] == ["/greet world"]
+    assert callback_state[0][2] is not None
+    assert callback_state[1][1] == [
+        "/greet world",
+        "normal input",
+        "/greet again",
+    ]
+    assert callback_state[1][2] is not None
+    assert [entry.message.content for entry in chat._transcript.read()] == [
+        "/greet world",
+        "normal input",
+        "/greet again",
+    ]
+    assert public_calls == ["normal input"]
+    assert provider_calls == ["normal input"]
+
+
+def test_echoed_slash_command_skips_builtin_provider_handler():
+    class _ControllableClient:
+        def __init__(self) -> None:
+            self.stream_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+        async def stream_async(self, *args: Any, **kwargs: Any) -> Any:
+            self.stream_calls.append((args, kwargs))
+
+            async def response():
+                yield "unexpected provider response"
+
+            return response()
+
+    session = cast(Session, _MockSession())
+    client = _ControllableClient()
+    slash_calls: list[str] = []
+    public_calls: list[str] = []
+
+    with session_context(session):
+        chat = Chat(
+            "echoed_slash_builtin_provider",
+            client=cast(Any, client),
+            history=False,
+        )
+        try:
+
+            @chat.on_user_submit
+            async def _public_handler(text: str) -> None:
+                public_calls.append(text)
+
+            @chat.slash_command("greet", "Greet the user")
+            async def _slash_handler(user_text: str) -> None:
+                slash_calls.append(user_text)
+
+            cast(Any, session.input[chat._slash_command_id])._set(
+                {"command": "greet", "userText": "world", "echo": True}
+            )
+            run_async(reactive.flush)
+
+            with reactive.isolate():
+                latest = chat.user_input()
+            assert latest is not None
+            assert latest.text == "/greet world"
+            assert slash_calls == ["world"]
+            assert public_calls == []
+            assert client.stream_calls == []
+
+            cast(Any, session.input[chat.user_input_id])._set(
+                {"text": "ordinary input", "attachments": [], "seq": 1}
+            )
+            run_async(reactive.flush)
+
+            assert len(client.stream_calls) == 1
+            assert client.stream_calls[0][0][0] == "ordinary input"
+            assert public_calls == ["ordinary input"]
+        finally:
+            chat.destroy()
+
+
+def test_echoed_slash_command_capture_error_removes_loading_message():
+    session = cast(Session, _MockSession())
+    actions: list[dict[str, Any]] = []
+    errors: list[BaseException] = []
+
+    with session_context(session):
+        chat = Chat("echoed_slash_capture_error", history=False)
+
+        async def _capture_error(
+            message: ChatMessage, *, dispatch_user_submit: bool = True
+        ) -> None:
+            del message
+            del dispatch_user_submit
+            raise RuntimeError("capture failed")
+
+        async def _capture_action(
+            action: dict[str, Any], _deps: Any = None
+        ) -> None:
+            actions.append(action)
+
+        async def _capture_exception(error: BaseException) -> None:
+            errors.append(error)
+
+        chat._record_accepted_user_input_with_capture = _capture_error
+        chat._raise_exception = _capture_exception  # type: ignore[method-assign]
+        chat._send_action = _capture_action  # type: ignore[method-assign]
+
+        cast(Any, session.input[chat._slash_command_id])._set(
+            {"command": "greet", "userText": "world", "echo": True}
+        )
+        run_async(reactive.flush)
+
+    assert len(errors) == 1
+    assert isinstance(errors[0], RuntimeError)
+    assert str(errors[0]) == "capture failed"
+    assert any(action["type"] == "remove_loading" for action in actions)
+    with reactive.isolate():
+        assert chat.user_input() is None
+        assert chat._normal_user_submission() is None
+
+
+def test_failed_normal_capture_does_not_publish_input():
+    session = cast(Session, _MockSession())
+    errors: list[BaseException] = []
+    public_calls: list[str] = []
+
+    with session_context(session):
+        chat = Chat("failed_normal_capture", history=False)
+
+        async def _fail_capture(
+            exchange_id: str, message: StoredMessage
+        ) -> None:
+            del exchange_id
+            del message
+            raise RuntimeError("capture failed")
+
+        async def _capture_exception(error: BaseException) -> None:
+            errors.append(error)
+
+        chat._transcript.set_capture_callbacks(
+            on_accepted_input=_fail_capture,
+            on_message_committed=None,
+            on_stream_started=None,
+            on_stream_updated=None,
+            on_stream_finished=None,
+        )
+        chat._raise_exception = _capture_exception  # type: ignore[method-assign]
+
+        @chat.on_user_submit
+        async def _public_handler(text: str) -> None:
+            public_calls.append(text)
+
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "failed input", "attachments": [], "seq": 1}
+        )
+        run_async(reactive.flush)
+
+    assert len(errors) == 1
+    assert str(errors[0]) == "capture failed"
+    assert public_calls == []
+    with reactive.isolate():
+        assert chat.user_input() is None
+        assert chat._normal_user_submission() is None
+
+
+def test_side_effect_only_slash_command_preserves_callback_without_echo():
+    session = cast(Session, _MockSession())
+    callback_state: list[tuple[str, tuple[Any, ...], str | None]] = []
+
+    with session_context(session):
+        chat = Chat("side_effect_slash", history=False)
+
+        @chat.slash_command("note", "Record a side effect", echo=False)
+        async def _(user_text: str) -> None:
+            callback_state.append(
+                (
+                    user_text,
+                    chat._transcript.read(),
+                    chat._transcript.open_exchange_id,
+                )
+            )
+
+        cast(Any, session.input[chat._slash_command_id])._set(
+            {"command": "note", "userText": "private", "echo": False}
+        )
+        run_async(reactive.flush)
+
+    assert callback_state == [("private", (), None)]
+    assert chat._transcript.read() == ()
+
+
+def test_normal_submissions_dispatch_their_own_input_and_repeat():
+    session = cast(Session, _MockSession())
+    callback_inputs: list[tuple[str, list[Attachment], str | None]] = []
+    attachment = Attachment.from_data(
+        b"notes", mime="text/plain", name="notes.txt"
+    )
+
+    with session_context(session):
+        chat = Chat("repeated_input", history=False)
+
+        @chat.on_user_submit
+        async def _(text: str, attachments: list[Attachment]) -> None:
+            callback_inputs.append(
+                (text, attachments, chat._transcript.open_exchange_id)
+            )
+
+        for seq in (1, 2, 3):
+            cast(Any, session.input[chat.user_input_id])._set(
+                {
+                    "text": "with attachment" if seq == 1 else "same message",
+                    "attachments": [attachment] if seq == 1 else [],
+                    "seq": seq,
+                }
+            )
+            run_async(reactive.flush)
+
+    assert callback_inputs[0][:2] == ("with attachment", [attachment])
+    assert callback_inputs[0][2] is not None
+    assert [input[0] for input in callback_inputs[1:]] == [
+        "same message",
+        "same message",
+    ]
+    assert callback_inputs[1][2] is not None
+    assert callback_inputs[2][2] is not None
+    assert callback_inputs[1][2] != callback_inputs[2][2]
+    assert [entry.message.content for entry in chat._transcript.read()] == [
+        "with attachment",
+        "same message",
+        "same message",
+    ]
+
+
+def test_accepted_input_records_while_an_older_stream_is_active():
+    session = cast(Session, _MockSession())
+    callback_state: list[tuple[list[str], str | None]] = []
+
+    with session_context(session):
+        chat = Chat("input_during_stream", history=False)
+        chat._record_accepted_user_input(
+            ChatMessage(content="older exchange", role="user")
+        )
+        older_exchange = chat._transcript.open_exchange_id
+        run_async(
+            lambda: chat._append_message_chunk(
+                "", chunk="start", stream_id="older-stream"
+            )
+        )
+
+        @chat.on_user_submit
+        async def _() -> None:
+            callback_state.append(
+                (
+                    [
+                        entry.message.content
+                        for entry in chat._transcript.read()
+                    ],
+                    chat._transcript.open_exchange_id,
+                )
+            )
+
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "next exchange", "attachments": [], "seq": 1}
+        )
+        run_async(reactive.flush)
+
+    assert len(callback_state) == 1
+    assert callback_state[0][0] == [
+        "older exchange",
+        "",
+        "next exchange",
+    ]
+    assert callback_state[0][1] is not None
+    assert callback_state[0][1] != older_exchange
+    assert chat._transcript.active_stream_id == "older-stream"
+
+
+@pytest.mark.anyio
+async def test_builtin_chatlas_handler_rejects_second_lazy_response():
+    chatlas = pytest.importorskip("chatlas")
+
+    session = cast(Session, _MockSession())
+    provider = MagicMock()
+    provider.name = "deterministic"
+    provider.model = "deterministic"
+    first_provider_call = asyncio.Event()
+    release_first_response = asyncio.Event()
+    provider_calls: list[dict[str, Any]] = []
+
+    async def chat_perform_async(**kwargs: Any):
+        provider_calls.append(kwargs)
+        first_provider_call.set()
+
+        async def response():
+            await release_first_response.wait()
+            if False:
+                yield None
+
+        return response()
+
+    provider.chat_perform_async = chat_perform_async
+    errors: list[BaseException] = []
+
+    with session_context(session):
+        client = chatlas.Chat(provider)
+        chat = Chat("builtin_lazy_stream", client=client, history=False)
+
+        async def capture_error(error: BaseException) -> None:
+            errors.append(error)
+
+        chat._raise_exception = capture_error  # type: ignore[method-assign]
+
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "first", "attachments": [], "seq": 1}
+        )
+        await reactive.flush()
+        await asyncio.wait_for(first_provider_call.wait(), timeout=1)
+        with reactive.isolate():
+            first_stream = chat._latest_stream()
+
+        assert chat._transcript.active_stream_id is not None
+        assert len(provider_calls) == 1
+
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "second", "attachments": [], "seq": 2}
+        )
+        await reactive.flush()
+        await asyncio.sleep(0)
+
+        assert [entry.message.content for entry in chat._transcript.read()] == [
+            "first",
+            "",
+            "second",
+        ]
+        assert chat._transcript.active_stream_id is not None
+        assert len(provider_calls) == 1
+        assert all(
+            "second" not in str(turn.model_dump(mode="json"))
+            for turn in client.get_turns()
+        )
+        assert errors
+        assert isinstance(errors[0], RuntimeError)
+        assert "second message stream" in str(errors[0])
+
+        release_first_response.set()
+        first_stream.cancel()
+        await asyncio.sleep(0)
+
+
+def test_transcript_contains_complete_append_immediately_after_send():
+    with session_context(test_session):
+        chat = Chat("complete_append", history=False)
+
+        run_async(lambda: chat.append_message("server message"))
+
+        assert [entry.message.content for entry in chat._transcript.read()] == [
+            "server message"
+        ]
+
+
+def test_transcript_complete_mutations_invalidate_reactive_dependents():
+    with session_context(test_session):
+        chat = Chat("transcript_reactive", history=False)
+        seen: list[list[str]] = []
+
+        @reactive.effect
+        def _():
+            chat._transcript_revision()
+            seen.append(
+                [entry.message.content for entry in chat._transcript.read()]
+            )
+
+        run_async(reactive.flush)
+        run_async(lambda: chat.append_message("server message"))
+        run_async(reactive.flush)
+        run_async(chat.clear_messages)
+        run_async(reactive.flush)
+
+    assert seen == [[], ["server message"], []]
+
+
+def test_messages_reactively_reads_the_transcript_revision():
+    with session_context(test_session):
+        chat = Chat("messages_reactive", history=False)
+        seen: list[tuple[ChatMessageDict, ...]] = []
+
+        @reactive.effect
+        def _():
+            seen.append(chat.messages())
+
+        run_async(reactive.flush)
+        run_async(lambda: chat.append_message("server message"))
+        run_async(reactive.flush)
+
+    assert seen == [
+        (),
+        (ChatMessageDict(content="server message", role="assistant"),),
+    ]
+
+
+def test_response_settlement_runs_after_complete_assistant_append():
+    settled: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_complete", history=False)
+
+        async def on_settled() -> None:
+            settled.append(chat.messages())
+
+        chat._on_response_settled(on_settled)
+        run_async(lambda: chat.append_message("out-of-band response"))
+        assert settled == []
+        run_async(reactive.flush)
+
+    assert settled == [
+        (ChatMessageDict(content="out-of-band response", role="assistant"),)
+    ]
+
+
+def test_v2_terminal_metadata_uses_registered_response_settlement_callback(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class _HistorySession(_MockSession):
+        def __init__(self) -> None:
+            super().__init__()
+            self.bookmark = SimpleNamespace(
+                exclude=[],
+                store="disable",
+                _restore_context=None,
+            )
+            self.sent: list[dict[str, Any]] = []
+
+        def is_stub_session(self) -> bool:
+            return False
+
+        def root_scope(self) -> "_HistorySession":
+            return self
+
+        async def send_custom_message(
+            self, type: str, message: Any
+        ) -> None:
+            self.sent.append(message["action"])
+
+    class _HistoryAdapter:
+        def __init__(self) -> None:
+            self.turns: list[dict[str, str]] = []
+
+        def get_turns(self) -> list[dict[str, str]]:
+            return list(self.turns)
+
+        def set_turns(self, turns: list[dict[str, str]]) -> None:
+            self.turns = list(turns)
+
+        def get_turns_json(
+            self, *, include_system_prompt: bool = False
+        ) -> list[dict[str, str]]:
+            return list(self.turns)
+
+        def set_turns_json(self, turns: list[dict[str, str]]) -> None:
+            self.turns = list(turns)
+
+        def client_info(self) -> dict[str, str]:
+            return {}
+
+    session = _HistorySession()
+    client = _HistoryAdapter()
+
+    async def exercise() -> None:
+        with session_context(cast(Session, session)):
+            chat = Chat(
+                "response_settlement_v2_metadata",
+                client=client,  # type: ignore[arg-type]
+                history=HistoryOptions(
+                    restore_mode="none",
+                    store="memory",
+                    scope="response-settlement",
+                    title=None,
+                ),
+            )
+            try:
+                await reactive.flush()
+                session.sent.clear()
+
+                await chat._record_accepted_user_input_with_capture(
+                    ChatMessage(content="prompt", role="user"),
+                    dispatch_user_submit=False,
+                )
+                session.sent.clear()
+
+                async with chat.message_stream_context() as stream:
+                    await stream.append("partial one")
+                    assert not [
+                        action
+                        for action in session.sent
+                        if action["type"] == "history_update"
+                    ]
+                    await stream.append("partial two")
+                    assert not [
+                        action
+                        for action in session.sent
+                        if action["type"] == "history_update"
+                    ]
+
+                assert not [
+                    action
+                    for action in session.sent
+                    if action["type"] == "history_update"
+                ]
+                await reactive.flush()
+
+                controller = chat.history._controller
+                assert controller is not None
+                recorder = controller._exchange_recorder
+                assert recorder is not None
+                assert recorder.record is not None
+                assert recorder.record.response_count == 1
+            finally:
+                chat.destroy()
+
+    monkeypatch.setattr(history_module, "_EXCHANGE_TREE_HISTORY_V2", True)
+    run_async(exercise)
+
+    history_updates = [
+        action for action in session.sent if action["type"] == "history_update"
+    ]
+    assert len(history_updates) == 1
+
+
+def test_response_settlement_persists_source_response_before_new_chat():
+    settled: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_before_new_chat", history=False)
+
+        async def on_settled() -> None:
+            settled.append(chat.messages())
+
+        chat._on_response_settled(on_settled)
+        run_async(lambda: chat.append_message("source response"))
+        run_async(chat.clear_messages)
+        run_async(reactive.flush)
+
+    assert settled == [
+        (ChatMessageDict(content="source response", role="assistant"),)
+    ]
+    assert chat.messages() == ()
+
+
+def test_response_settlement_auto_bookmarks_source_before_new_chat():
+    session = _BookmarkSession()
+
+    with session_context(cast(Session, session)):
+        chat = Chat("response_settlement_bookmark", history=False)
+        chat.enable_bookmarking(cast(Any, _BookmarkClient()))
+        run_async(lambda: chat.append_message("source response"))
+        run_async(chat.clear_messages)
+        run_async(reactive.flush)
+
+    assert len(session.bookmark.states) == 1
+    assert session.bookmark.states[0]["response_settlement_bookmark--msgs"] == [
+        {
+            "role": "assistant",
+            "segments": [
+                {"content": "source response", "content_type": "markdown"}
+            ],
+        }
+    ]
+
+
+def test_new_chat_drains_response_into_the_original_history_record_once():
+    class _HistoryAdapter:
+        def __init__(self) -> None:
+            self.turns = [
+                {"role": "user", "content": "prompt"},
+                {"role": "assistant", "content": "source response"},
+            ]
+
+        def get_turns_json(self) -> list[dict[str, str]]:
+            return list(self.turns)
+
+        def get_turns_grouped(self) -> list[list[dict[str, str]]]:
+            return [[turn] for turn in self.turns]
+
+        def set_turns_json(self, turns: list[dict[str, str]]) -> None:
+            self.turns = list(turns)
+
+        def client_info(self) -> dict[str, str]:
+            return {}
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_history_new_chat", history=False)
+        store = InMemoryConversationStore()
+        controller = HistoryController(
+            chat=chat,
+            adapter=_HistoryAdapter(),  # type: ignore[arg-type]
+            store=store,
+            title_fn=None,
+            title_enabled=False,
+            client=None,
+        )
+        controller.partition = ConversationPartition(
+            chat_id=chat.id, scope="response-settlement"
+        )
+        chat._on_response_settled(controller.on_response)
+
+        run_async(lambda: chat.append_message("source response"))
+        run_async(controller.new_chat)
+        run_async(reactive.flush)
+
+        partition = controller.partition
+        assert partition is not None
+        records = run_async_result(lambda: store.list(partition))
+        assert len(records) == 1
+        record = run_async_result(lambda: store.get(partition, records[0].id))
+
+    assert record is not None
+    assert record.response_count == 1
+    assert controller.record is None
+    assert chat.messages() == ()
+
+
+def test_cancelled_clear_waits_for_the_same_settlement_before_mutating():
+    class _HistoryAdapter:
+        def __init__(self) -> None:
+            self.turns = [
+                {"role": "user", "content": "prompt"},
+                {"role": "assistant", "content": "source response"},
+            ]
+
+        def get_turns_json(self) -> list[dict[str, str]]:
+            return list(self.turns)
+
+        def get_turns_grouped(self) -> list[list[dict[str, str]]]:
+            return [[turn] for turn in self.turns]
+
+        def set_turns_json(self, turns: list[dict[str, str]]) -> None:
+            self.turns = list(turns)
+
+        def client_info(self) -> dict[str, str]:
+            return {}
+
+    with session_context(test_session):
+        chat = Chat("cancelled_new_chat_settlement", history=False)
+        store = InMemoryConversationStore()
+        adapter = _HistoryAdapter()
+        controller = HistoryController(
+            chat=chat,
+            adapter=adapter,  # type: ignore[arg-type]
+            store=store,
+            title_fn=None,
+            title_enabled=False,
+            client=None,
+        )
+        partition = ConversationPartition(chat_id=chat.id, scope="cancelled")
+        controller.partition = partition
+        active = new_conversation_record(title="active")
+        controller.record = active
+        callback_started = asyncio.Event()
+        release_callback = asyncio.Event()
+        first_consumer_calls: list[str] = []
+        second_consumer_calls: list[str] = []
+
+        async def first_consumer() -> None:
+            first_consumer_calls.append("settled")
+
+        async def save_response() -> None:
+            second_consumer_calls.append("started")
+            callback_started.set()
+            await release_callback.wait()
+            await controller.on_response()
+
+        chat._on_response_settled(first_consumer)
+        chat._on_response_settled(save_response)
+
+        async def _exercise() -> None:
+            await store.put(partition, active)
+            await chat.append_message("source response")
+            clear = asyncio.create_task(chat.clear_messages())
+            await callback_started.wait()
+
+            clear.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await clear
+
+            assert first_consumer_calls == ["settled"]
+            assert second_consumer_calls == ["started"]
+            assert chat.messages() == (
+                ChatMessageDict(content="source response", role="assistant"),
+            )
+            assert controller.record is active
+            assert active.response_count == 0
+            assert len(chat._pending_response_settlements) == 1
+
+            retry = asyncio.create_task(chat.clear_messages())
+            await asyncio.sleep(0)
+            assert second_consumer_calls == ["started"]
+            assert not retry.done()
+            assert chat.messages() == (
+                ChatMessageDict(content="source response", role="assistant"),
+            )
+
+            release_callback.set()
+            await retry
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            run_async(_exercise)
+
+    assert first_consumer_calls == ["settled"]
+    assert second_consumer_calls == ["started"]
+    assert chat.messages() == ()
+    assert controller.record is active
+    assert adapter.turns == [
+        {"role": "user", "content": "prompt"},
+        {"role": "assistant", "content": "source response"},
+    ]
+    assert run_async_result(lambda: store.get(partition, active.id)) is active
+    assert len(run_async_result(lambda: store.list(partition))) == 1
+    assert active.response_count == 1
+    assert not chat._pending_response_settlements
+
+
+def test_cancelled_settlement_waiter_keeps_the_shared_delivery_running():
+    with session_context(test_session):
+        chat = Chat("cancelled_settlement_owner_waiter", history=False)
+        callback_started = asyncio.Event()
+        release_callback = asyncio.Event()
+
+        async def block_settlement() -> None:
+            callback_started.set()
+            await release_callback.wait()
+
+        chat._on_response_settled(block_settlement)
+
+        async def _exercise() -> None:
+            await chat.append_message("source response")
+            flush = asyncio.create_task(reactive.flush())
+            await callback_started.wait()
+
+            waiter = asyncio.create_task(chat._join_response_settlement_pump())
+            await asyncio.sleep(0)
+            flush.cancel()
+
+            with pytest.raises(asyncio.CancelledError):
+                await flush
+            assert len(chat._pending_response_settlements) == 1
+
+            release_callback.set()
+            await waiter
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            run_async(_exercise)
+
+    assert chat.messages() == (
+        ChatMessageDict(content="source response", role="assistant"),
+    )
+    assert not chat._pending_response_settlements
+
+
+def test_cancelled_settlement_does_not_mutate_a_second_destructive_waiter():
+    with session_context(test_session):
+        chat = Chat("cancelled_settlement_second_waiter", history=False)
+        callback_started = asyncio.Event()
+        release_callback = asyncio.Event()
+
+        async def block_settlement() -> None:
+            callback_started.set()
+            await release_callback.wait()
+
+        chat._on_response_settled(block_settlement)
+
+        async def _exercise() -> None:
+            await chat.append_message("source response")
+            flush = asyncio.create_task(reactive.flush())
+            await callback_started.wait()
+
+            first_clear = asyncio.create_task(chat.clear_messages())
+            await asyncio.sleep(0)
+            second_clear = asyncio.create_task(chat.clear_messages())
+            with pytest.raises(
+                RuntimeError,
+                match="another transcript operation is active",
+            ):
+                await second_clear
+
+            waiter = asyncio.create_task(chat._join_response_settlement_pump())
+            await asyncio.sleep(0)
+            assert not waiter.done()
+
+            flush.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await flush
+            first_clear.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await first_clear
+            assert len(chat._pending_response_settlements) == 1
+
+            release_callback.set()
+            await waiter
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            run_async(_exercise)
+
+    assert chat.messages() == (
+        ChatMessageDict(content="source response", role="assistant"),
+    )
+    assert not chat._pending_response_settlements
+
+
+def test_clear_waits_for_an_in_flight_flush_settlement():
+    with session_context(test_session):
+        chat = Chat("settlement_drain_in_flight_flush", history=False)
+        callback_started = asyncio.Event()
+        release_callback = asyncio.Event()
+        settled: list[tuple[ChatMessageDict, ...]] = []
+
+        async def suspend_settlement() -> None:
+            callback_started.set()
+            await release_callback.wait()
+            settled.append(chat.messages())
+
+        chat._on_response_settled(suspend_settlement)
+
+        async def _exercise() -> None:
+            await chat.append_message("source response")
+            flush = asyncio.create_task(reactive.flush())
+            await callback_started.wait()
+            assert len(chat._pending_response_settlements) == 1
+
+            clear = asyncio.create_task(chat.clear_messages())
+            await asyncio.sleep(0)
+            with pytest.raises(
+                RuntimeError,
+                match="Cannot start a message stream while another",
+            ):
+                await chat._append_message_chunk(
+                    "", chunk="start", stream_id="blocked"
+                )
+
+            assert chat.messages() == (
+                ChatMessageDict(content="source response", role="assistant"),
+            )
+            assert not clear.done()
+            assert len(chat._pending_response_settlements) == 1
+            assert chat.messages() == (
+                ChatMessageDict(content="source response", role="assistant"),
+            )
+
+            release_callback.set()
+            await asyncio.gather(flush, clear)
+
+        run_async(_exercise)
+
+    assert chat.messages() == ()
+    assert settled == [
+        (ChatMessageDict(content="source response", role="assistant"),)
+    ]
+
+
+def test_settlement_consumer_cannot_clear_before_later_consumers():
+    rejected: list[str] = []
+    settled: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(test_session):
+        chat = Chat("settlement_reentrant_clear", history=False)
+
+        async def clear_during_settlement() -> None:
+            with pytest.raises(
+                RuntimeError, match="settlement is being delivered"
+            ):
+                await chat.clear_messages()
+            rejected.append("clear")
+
+        async def observe_settlement() -> None:
+            settled.append(chat.messages())
+
+        chat._on_response_settled(clear_during_settlement)
+        chat._on_response_settled(observe_settlement)
+        run_async(lambda: chat.append_message("source response"))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            run_async(reactive.flush)
+
+    assert rejected == ["clear"]
+    assert settled == [
+        (ChatMessageDict(content="source response", role="assistant"),)
+    ]
+    assert chat.messages() == (
+        ChatMessageDict(content="source response", role="assistant"),
+    )
+
+
+def test_settlement_consumer_cannot_clear_a_different_chat_before_later_consumers():
+    rejected: list[str] = []
+    settled: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(test_session):
+        source = Chat("settlement_source", history=False)
+        other = Chat("settlement_other", history=False)
+
+        async def clear_other() -> None:
+            with pytest.raises(
+                RuntimeError, match="settlement is being delivered"
+            ):
+                await other.clear_messages()
+            rejected.append("clear")
+
+        async def observe_source() -> None:
+            settled.append(source.messages())
+
+        source._on_response_settled(clear_other)
+        source._on_response_settled(observe_source)
+        run_async(lambda: other.append_message("other response"))
+        run_async(lambda: source.append_message("source response"))
+        run_async(reactive.flush)
+
+    assert rejected == ["clear"]
+    assert settled == [
+        (ChatMessageDict(content="source response", role="assistant"),)
+    ]
+    assert source.messages() == (
+        ChatMessageDict(content="source response", role="assistant"),
+    )
+    assert other.messages() == (
+        ChatMessageDict(content="other response", role="assistant"),
+    )
+
+
+def test_reciprocal_settlement_mutations_fail_fast_without_deadlocking():
+    rejected: list[str] = []
+
+    with session_context(test_session):
+        chat_a = Chat("reciprocal_settlement_a", history=False)
+        chat_b = Chat("reciprocal_settlement_b", history=False)
+
+        async def clear_b() -> None:
+            with pytest.raises(
+                RuntimeError, match="settlement is being delivered"
+            ):
+                await chat_b.clear_messages()
+            rejected.append("A->B")
+
+        async def clear_a() -> None:
+            with pytest.raises(
+                RuntimeError, match="settlement is being delivered"
+            ):
+                await chat_a.clear_messages()
+            rejected.append("B->A")
+
+        chat_a._on_response_settled(clear_b)
+        chat_b._on_response_settled(clear_a)
+
+        async def settle_both() -> None:
+            await chat_a.append_message("response A")
+            await chat_b.append_message("response B")
+            await asyncio.wait_for(reactive.flush(), timeout=1)
+
+        run_async(settle_both)
+
+    assert rejected == ["A->B", "B->A"]
+    assert chat_a.messages() == (
+        ChatMessageDict(content="response A", role="assistant"),
+    )
+    assert chat_b.messages() == (
+        ChatMessageDict(content="response B", role="assistant"),
+    )
+
+
+def test_settlement_consumer_child_task_can_clear_after_delivery_completes():
+    rejected: list[str] = []
+    settled: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(test_session):
+        chat = Chat("settlement_child_reentrant_clear", history=False)
+        child_task: asyncio.Task[None] | None = None
+        child_rejected = asyncio.Event()
+        release_child = asyncio.Event()
+
+        async def clear_in_child() -> None:
+            with pytest.raises(
+                RuntimeError, match="settlement is being delivered"
+            ):
+                await chat.clear_messages()
+            rejected.append("clear")
+            child_rejected.set()
+            await release_child.wait()
+            await chat.clear_messages()
+
+        async def clear_during_settlement() -> None:
+            nonlocal child_task
+            child_task = copy_context().run(
+                asyncio.create_task, clear_in_child()
+            )
+            await child_rejected.wait()
+
+        async def observe_settlement() -> None:
+            settled.append(chat.messages())
+
+        chat._on_response_settled(clear_during_settlement)
+        chat._on_response_settled(observe_settlement)
+
+        async def flush_response() -> None:
+            await chat.append_message("source response")
+            await asyncio.wait_for(reactive.flush(), timeout=1)
+            assert child_task is not None
+            assert not chat._pending_response_settlements
+            release_child.set()
+            await child_task
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            run_async(flush_response)
+
+    assert rejected == ["clear"]
+    assert settled == [
+        (ChatMessageDict(content="source response", role="assistant"),)
+    ]
+    assert chat.messages() == ()
+
+
+def test_nested_settlement_child_stays_blocked_until_outer_delivery_dequeues():
+    rejected: list[str] = []
+    child_task: asyncio.Task[None] | None = None
+
+    with session_context(test_session):
+        chat_a = Chat("nested_settlement_source", history=False)
+        chat_b = Chat("nested_settlement_target", history=False)
+        b_dequeued = asyncio.Event()
+        child_rejected = asyncio.Event()
+        retry_child = asyncio.Event()
+
+        async def clear_in_child() -> None:
+            await b_dequeued.wait()
+            with pytest.raises(
+                RuntimeError, match="settlement is being delivered"
+            ):
+                await chat_b.clear_messages()
+            rejected.append("while A is pending")
+            child_rejected.set()
+            await retry_child.wait()
+            await chat_b.clear_messages()
+
+        async def settle_b() -> None:
+            nonlocal child_task
+            child_task = copy_context().run(
+                asyncio.create_task, clear_in_child()
+            )
+
+        async def settle_a() -> None:
+            await chat_b.append_message("response B")
+            await chat_b._join_response_settlement_pump()
+            assert not chat_b._pending_response_settlements
+            b_dequeued.set()
+            await child_rejected.wait()
+
+        chat_a._on_response_settled(settle_a)
+        chat_b._on_response_settled(settle_b)
+
+        async def _exercise() -> None:
+            await chat_a.append_message("response A")
+            await asyncio.wait_for(reactive.flush(), timeout=1)
+            assert child_task is not None
+            assert not chat_a._pending_response_settlements
+            retry_child.set()
+            await child_task
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            run_async(_exercise)
+
+    assert rejected == ["while A is pending"]
+    assert chat_a.messages() == (
+        ChatMessageDict(content="response A", role="assistant"),
+    )
+    assert chat_b.messages() == ()
+
+
+def test_independent_task_is_not_blocked_by_another_chat_settlement():
+    with session_context(test_session):
+        chat_a = Chat("independent_settlement_source", history=False)
+        chat_b = Chat("independent_settlement_target", history=False)
+        settlement_started = asyncio.Event()
+        release_settlement = asyncio.Event()
+
+        async def settle_a() -> None:
+            settlement_started.set()
+            await release_settlement.wait()
+
+        chat_a._on_response_settled(settle_a)
+
+        async def _exercise() -> None:
+            await chat_a.append_message("response A")
+            flush = asyncio.create_task(reactive.flush())
+            await settlement_started.wait()
+
+            clear_b = asyncio.create_task(chat_b.clear_messages())
+            await asyncio.wait_for(clear_b, timeout=1)
+
+            release_settlement.set()
+            await asyncio.wait_for(flush, timeout=1)
+
+        run_async(_exercise)
+
+    assert chat_a.messages() == (
+        ChatMessageDict(content="response A", role="assistant"),
+    )
+    assert chat_b.messages() == ()
+
+
+def test_cancelled_response_settlement_consumer_skips_pending_delivery():
+    settled: list[str] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_cancel_pending", history=False)
+
+        async def on_settled() -> None:
+            settled.append("settled")
+
+        cancel = chat._on_response_settled(on_settled)
+        run_async(lambda: chat.append_message("source response"))
+        cancel()
+        run_async(reactive.flush)
+
+    assert settled == []
+
+
+def test_clear_without_a_pending_response_settlement_invokes_no_consumers():
+    settled: list[str] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_isolated_clear", history=False)
+
+        async def on_settled() -> None:
+            settled.append("settled")
+
+        chat._on_response_settled(on_settled)
+        run_async(chat.clear_messages)
+        run_async(reactive.flush)
+
+    assert settled == []
+
+
+def test_clear_drains_each_pending_consumer_despite_consumer_failure():
+    settled: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_clear_consumer_failure", history=False)
+
+        async def broken_callback() -> None:
+            raise RuntimeError("callback failed")
+
+        async def on_settled() -> None:
+            settled.append(chat.messages())
+
+        chat._on_response_settled(broken_callback)
+        chat._on_response_settled(on_settled)
+        run_async(lambda: chat.append_message("source response"))
+        with pytest.warns(UserWarning, match="callback failed"):
+            run_async(chat.clear_messages)
+        run_async(reactive.flush)
+
+    assert settled == [
+        (ChatMessageDict(content="source response", role="assistant"),)
+    ]
+
+
+def test_cancelled_settlement_consumer_does_not_cancel_delivery():
+    settled: list[str] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_cancelled_consumer", history=False)
+
+        async def cancelled_callback() -> None:
+            raise asyncio.CancelledError()
+
+        async def on_settled() -> None:
+            settled.append("settled")
+
+        chat._on_response_settled(cancelled_callback)
+        chat._on_response_settled(on_settled)
+        run_async(lambda: chat.append_message("source response"))
+        with pytest.warns(UserWarning, match="callback failed"):
+            run_async(reactive.flush)
+
+    assert settled == ["settled"]
+    assert not chat._pending_response_settlements
+
+
+def test_consumer_cancellation_does_not_reschedule_shared_delivery():
+    with session_context(test_session):
+        chat = Chat("simultaneous_settlement_cancellation", history=False)
+        owner_task: asyncio.Task[Any] | None = None
+
+        async def cancel_owner_and_consumer() -> None:
+            consumer_task = asyncio.current_task()
+            assert consumer_task is not None
+            consumer_task.cancel()
+            try:
+                await asyncio.sleep(0)
+            except asyncio.CancelledError:
+                assert owner_task is not None
+                asyncio.get_running_loop().call_soon(owner_task.cancel)
+                raise
+
+        cancel_consumer = chat._on_response_settled(cancel_owner_and_consumer)
+
+        async def _exercise() -> None:
+            nonlocal owner_task
+            await chat.append_message("source response")
+            owner_task = asyncio.current_task()
+            await reactive.flush()
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with pytest.raises(asyncio.CancelledError):
+                run_async(_exercise)
+
+        assert not chat._pending_response_settlements
+        cancel_consumer()
+
+    assert chat.messages() == (
+        ChatMessageDict(content="source response", role="assistant"),
+    )
+    assert not chat._pending_response_settlements
+
+
+def test_cancellation_after_consumer_completion_does_not_rerun_settlement():
+    settled: list[str] = []
+
+    with session_context(test_session):
+        chat = Chat("settlement_cancellation_wakeup", history=False)
+        clear: asyncio.Task[None] | None = None
+
+        async def on_settled() -> None:
+            settled.append("settled")
+            assert clear is not None
+            asyncio.get_running_loop().call_soon(clear.cancel)
+
+        chat._on_response_settled(on_settled)
+
+        async def _exercise() -> None:
+            nonlocal clear
+            await chat.append_message("source response")
+            clear = asyncio.create_task(chat.clear_messages())
+            with pytest.raises(asyncio.CancelledError):
+                await clear
+
+            assert settled == ["settled"]
+            assert chat.messages() == (
+                ChatMessageDict(content="source response", role="assistant"),
+            )
+            assert not chat._pending_response_settlements
+
+            await chat.clear_messages()
+
+        run_async(_exercise)
+
+    assert settled == ["settled"]
+    assert chat.messages() == ()
+
+
+def test_history_like_consumer_mutation_before_await_runs_once_after_clear_cancel():
+    mutations: list[str] = []
+
+    with session_context(test_session):
+        chat = Chat("settlement_history_like_mutation", history=False)
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def mutate_then_wait() -> None:
+            mutations.append("saved")
+            started.set()
+            await release.wait()
+
+        chat._on_response_settled(mutate_then_wait)
+
+        async def _exercise() -> None:
+            await chat.append_message("source response")
+            clear = asyncio.create_task(chat.clear_messages())
+            await started.wait()
+
+            clear.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await clear
+            assert mutations == ["saved"]
+
+            release.set()
+            while chat._pending_response_settlements:
+                await asyncio.sleep(0)
+
+            await chat.clear_messages()
+
+        run_async(_exercise)
+
+    assert mutations == ["saved"]
+    assert chat.messages() == ()
+
+
+def test_response_settlement_pump_keeps_queued_flush_behind_blocked_drain():
+    timeline: list[str] = []
+    active_consumer_count = 0
+    max_active_consumer_count = 0
+
+    with session_context(test_session):
+        chat = Chat("settlement_fifo_pump", history=False)
+        history_started = asyncio.Event()
+        release_history = asyncio.Event()
+        history_delivery_count = 0
+
+        async def persist_history() -> None:
+            nonlocal active_consumer_count
+            nonlocal max_active_consumer_count
+            nonlocal history_delivery_count
+            history_delivery_count += 1
+            active_consumer_count += 1
+            max_active_consumer_count = max(
+                max_active_consumer_count, active_consumer_count
+            )
+            timeline.append(f"history-{history_delivery_count}-start")
+            try:
+                if history_delivery_count == 1:
+                    history_started.set()
+                    await release_history.wait()
+            finally:
+                timeline.append(f"history-{history_delivery_count}-end")
+                active_consumer_count -= 1
+
+        async def persist_bookmark() -> None:
+            nonlocal active_consumer_count, max_active_consumer_count
+            active_consumer_count += 1
+            max_active_consumer_count = max(
+                max_active_consumer_count, active_consumer_count
+            )
+            delivery_count = history_delivery_count
+            timeline.append(f"bookmark-{delivery_count}-start")
+            timeline.append(f"bookmark-{delivery_count}-end")
+            active_consumer_count -= 1
+
+        chat._on_response_settled(persist_history)
+        chat._on_response_settled(persist_bookmark)
+
+        async def _exercise() -> None:
+            await chat.append_message("A")
+            clear = asyncio.create_task(chat.clear_messages())
+            await history_started.wait()
+
+            clear.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await clear
+
+            await chat.append_message("B")
+            flush = asyncio.create_task(reactive.flush())
+            await asyncio.sleep(0)
+
+            assert timeline == ["history-1-start"]
+            assert max_active_consumer_count == 1
+
+            release_history.set()
+            await flush
+
+        run_async(_exercise)
+
+    assert timeline == [
+        "history-1-start",
+        "history-1-end",
+        "bookmark-1-start",
+        "bookmark-1-end",
+        "history-2-start",
+        "history-2-end",
+        "bookmark-2-start",
+        "bookmark-2-end",
+    ]
+    assert max_active_consumer_count == 1
+    assert not chat._pending_response_settlements
+
+
+def test_destroy_and_session_end_cancel_response_settlement_pump():
+    class _TeardownSession(_MockSession):
+        def __init__(self) -> None:
+            super().__init__()
+            self.ended_callbacks: list[Callable[[], None]] = []
+
+        def on_ended(self, callback: object) -> Callable[[], None]:
+            callback_fn = cast(Callable[[], None], callback)
+            self.ended_callbacks.append(callback_fn)
+
+            def cancel() -> None:
+                self.ended_callbacks.remove(callback_fn)
+
+            return cancel
+
+        def end(self) -> None:
+            for callback in list(self.ended_callbacks):
+                callback()
+
+    session = _TeardownSession()
+    scheduled: list[str] = []
+    active: list[str] = []
+
+    with session_context(cast(Session, session)):
+        scheduled_chat = Chat("settlement_destroy_scheduled", history=False)
+
+        async def scheduled_consumer() -> None:
+            scheduled.append("settled")
+
+        scheduled_chat._on_response_settled(scheduled_consumer)
+        run_async(lambda: scheduled_chat.append_message("source response"))
+        assert len(scheduled_chat._pending_response_settlements) == 1
+        scheduled_chat.destroy()
+        run_async(reactive.flush)
+        assert scheduled == []
+        assert not scheduled_chat._pending_response_settlements
+        assert scheduled_chat.destroy not in session.ended_callbacks
+
+        active_chat = Chat("settlement_destroy_active", history=False)
+        assert session.ended_callbacks.count(active_chat.destroy) == 1
+        started = asyncio.Event()
+
+        async def active_consumer() -> None:
+            active.append("started")
+            started.set()
+            await asyncio.Event().wait()
+
+        active_chat._on_response_settled(active_consumer)
+
+        async def _exercise() -> None:
+            await active_chat.append_message("A")
+            flush = asyncio.create_task(reactive.flush())
+            await started.wait()
+            await active_chat.append_message("B")
+            assert len(active_chat._pending_response_settlements) == 2
+            runner = active_chat._response_settlement_runner
+            assert runner is not None
+
+            session.end()
+            with pytest.raises(asyncio.CancelledError):
+                await flush
+            assert active_chat.destroy not in session.ended_callbacks
+            assert not active_chat._pending_response_settlements
+            assert runner.cancelled()
+
+        run_async(_exercise)
+
+    assert active == ["started"]
+
+
+def test_clear_drains_all_consumers_when_callback_warning_is_an_error():
+    settled: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_warning_error", history=False)
+
+        async def broken_callback() -> None:
+            raise RuntimeError("callback failed")
+
+        async def on_settled() -> None:
+            settled.append(chat.messages())
+
+        chat._on_response_settled(broken_callback)
+        chat._on_response_settled(on_settled)
+
+        async def end_errored_stream() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="stream"
+            )
+            await chat._append_message_chunk(
+                "",
+                chunk="end",
+                stream_id="stream",
+                status="error",
+                error="response failed",
+            )
+
+        run_async(end_errored_stream)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            run_async(chat.clear_messages)
+        run_async(reactive.flush)
+
+    assert len(settled) == 1
+    assert settled[0][-1].get("status") == "error"
+    assert chat.messages() == ()
+
+
+def test_multiple_complete_responses_in_one_flush_settle_once_each():
+    settled: list[tuple[ChatMessageDict, ...]] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_batched_complete", history=False)
+
+        async def on_settled() -> None:
+            settled.append(chat.messages())
+
+        chat._on_response_settled(on_settled)
+        run_async(lambda: chat.append_message("first response"))
+        run_async(lambda: chat.append_message("second response"))
+        run_async(reactive.flush)
+        run_async(reactive.flush)
+
+    assert settled == [
+        (
+            ChatMessageDict(content="first response", role="assistant"),
+            ChatMessageDict(content="second response", role="assistant"),
+        ),
+        (
+            ChatMessageDict(content="first response", role="assistant"),
+            ChatMessageDict(content="second response", role="assistant"),
+        ),
+    ]
+
+
+def test_response_settlement_ignores_nonterminal_transcript_mutations():
+    settled: list[str] = []
+
+    with session_context(test_session):
+        with pytest.warns(Warning, match="Chat\\(messages"):
+            chat = Chat(
+                "response_settlement_nonterminal",
+                history=False,
+                messages=["initial"],
+            )
+
+        async def on_settled() -> None:
+            settled.append("settled")
+
+        chat._on_response_settled(on_settled)
+        run_async(reactive.flush)
+        run_async(chat.clear_messages)
+        chat._record_accepted_user_input(
+            ChatMessage(content="accepted", role="user")
+        )
+        run_async(
+            lambda: chat._restore_bookmark_message(
+                {
+                    "role": "assistant",
+                    "segments": [
+                        {"content": "restored", "content_type": "markdown"}
+                    ],
+                }
+            )
+        )
+        run_async(
+            lambda: chat._append_message_chunk(
+                "", chunk="start", stream_id="partial"
+            )
+        )
+        run_async(
+            lambda: chat._append_message_chunk(
+                "partial", chunk=True, stream_id="partial"
+            )
+        )
+        run_async(reactive.flush)
+
+    assert settled == []
+
+
+@pytest.mark.parametrize(
+    ("status", "error"),
+    [
+        (None, None),
+        ("error", "response failed"),
+        ("cancelled", None),
+    ],
+)
+def test_response_settlement_runs_once_for_each_stream_terminal_outcome(
+    status: str | None, error: str | None
+):
+    settled: list[str] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_stream", history=False)
+
+        async def on_settled() -> None:
+            settled.append("settled")
+
+        chat._on_response_settled(on_settled)
+
+        async def exercise() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="stream"
+            )
+            await chat._append_message_chunk(
+                "",
+                chunk="end",
+                stream_id="stream",
+                status=cast(Any, status),
+                error=error,
+            )
+
+        run_async(exercise)
+        run_async(reactive.flush)
+
+    assert settled == ["settled"]
+
+
+def test_response_settlement_runs_after_terminal_stream_send_failure():
+    settled: list[str] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_terminal_failure", history=False)
+
+        async def on_settled() -> None:
+            settled.append("settled")
+
+        chat._on_response_settled(on_settled)
+
+        async def fail_chunk_end(action: Any, deps: Any = None) -> None:
+            if action["type"] == "chunk_end":
+                raise RuntimeError("terminal send failed")
+
+        chat._send_action = fail_chunk_end  # type: ignore[method-assign]
+
+        async def stream():
+            yield "partial"
+
+        with pytest.raises(RuntimeError, match="terminal send failed"):
+            run_async(lambda: chat._append_message_stream(stream()))
+        run_async(reactive.flush)
+
+    assert settled == ["settled"]
+    assert chat.messages()[-1].get("status") == "error"
+
+
+def test_old_stream_terminal_settles_after_newer_input():
+    settled: list[tuple[str, ...]] = []
+
+    with session_context(test_session):
+        chat = Chat("response_settlement_old_stream", history=False)
+        chat._record_accepted_user_input(
+            ChatMessage(content="older input", role="user")
+        )
+
+        async def on_settled() -> None:
+            settled.append(
+                tuple(message["content"] for message in chat.messages())
+            )
+
+        chat._on_response_settled(on_settled)
+
+        async def exercise() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="older-stream"
+            )
+            chat._record_accepted_user_input(
+                ChatMessage(content="newer input", role="user")
+            )
+            await chat._append_message_chunk(
+                "",
+                chunk="end",
+                stream_id="older-stream",
+            )
+
+        run_async(exercise)
+        run_async(reactive.flush)
+
+    assert settled == [("older input", "", "newer input")]
+
+
+def test_response_settlement_callback_failure_does_not_mask_stream_outcome():
+    with session_context(test_session):
+        chat = Chat("response_settlement_failure", history=False)
+
+        async def broken_callback() -> None:
+            raise RuntimeError("callback failed")
+
+        chat._on_response_settled(broken_callback)
+
+        async def exercise() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="stream"
+            )
+            await chat._append_message_chunk(
+                "",
+                chunk="end",
+                stream_id="stream",
+                status="error",
+                error="stream failed",
+            )
+
+        run_async(exercise)
+        with pytest.warns(UserWarning, match="callback failed"):
+            run_async(reactive.flush)
+
+    assert chat.messages()[-1].get("status") == "error"
+
+
+def test_transcript_does_not_commit_system_messages_without_wire_send():
+    with session_context(test_session):
+        chat = Chat("system_message", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            await chat.append_message(
+                ChatMessage(content="not displayed", role="system")
+            )
+            await chat._restore_bookmark_message(
+                {
+                    "role": "system",
+                    "segments": [
+                        {
+                            "content": "not restored",
+                            "content_type": "markdown",
+                        }
+                    ],
+                }
+            )
+
+        run_async(_exercise)
+
+        assert sent == []
+        assert chat._transcript.read() == ()
+
+
+def test_transcript_append_send_failure_leaves_owner_unchanged():
+    with session_context(test_session):
+        chat = Chat("append_failure", history=False)
+
+        async def _fail(*args: Any, **kwargs: Any) -> None:
+            raise RuntimeError("send failed")
+
+        chat._send_action = _fail  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="send failed"):
+            run_async(lambda: chat.append_message("discarded"))
+
+        assert chat._transcript.read() == ()
+
+
+def test_transcript_clear_send_failure_leaves_owner_unchanged():
+    with session_context(test_session):
+        chat = Chat("clear_failure", history=False)
+
+        run_async(lambda: chat.append_message("kept"))
+
+        async def _fail(*args: Any, **kwargs: Any) -> None:
+            raise RuntimeError("clear failed")
+
+        chat._send_action = _fail  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="clear failed"):
+            run_async(chat.clear_messages)
+
+        assert [entry.message.content for entry in chat._transcript.read()] == [
+            "kept"
+        ]
+
+
+def test_transcript_captures_complete_message_wire_spec():
+    from shinychat._attachments import Attachment
+
+    with session_context(test_session):
+        chat = Chat("wire_spec", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append({"action": action, "deps": deps})
+
+        async def _transform(content: str, chunk: str, done: bool) -> str:
+            assert chunk == ""
+            assert done
+            return f"{content} transformed"
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transform_assistant = _transform
+        chat._serialize_html_deps = lambda deps: [  # type: ignore[method-assign]
+            {"name": "chart", "metadata": {"version": "1.0"}}
+        ]
+        message = ChatMessage(
+            content="source",
+            role="assistant",
+            attachments=[
+                Attachment.from_data(
+                    b"chart", mime="image/png", name="chart.png"
+                )
+            ],
+        )
+        message.html_deps = [HTMLDependency(name="chart", version="1.0")]
+
+        run_async(
+            lambda: chat.append_message(message, icon=HTML("<i>chart</i>"))
+        )
+
+        entry = chat._transcript.read()[0]
+        assert entry.message.content == "source transformed"
+        assert entry.message.attachments[0].name == "chart.png"
+        assert entry.message.html_deps == [
+            {"name": "chart", "metadata": {"version": "1.0"}}
+        ]
+        assert entry.icon == "<i>chart</i>"
+        assert sent[0]["action"]["message"]["icon"] == "<i>chart</i>"
+
+
+@pytest.mark.parametrize(
+    ("icon", "expected_icon"),
+    [
+        pytest.param(False, "", id="false"),
+        pytest.param(None, None, id="none"),
+        pytest.param(True, None, id="true"),
+        pytest.param(HTML(""), "", id="empty-html"),
+        pytest.param("", "", id="empty-string"),
+        pytest.param(HTML("<i>custom</i>"), "<i>custom</i>", id="custom"),
+    ],
+)
+def test_transcript_complete_append_captures_resolved_icon_wire_spec(
+    icon: Any, expected_icon: str | None
+):
+    with session_context(test_session):
+        chat = Chat("resolved_icon", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        run_async(lambda: chat.append_message("complete message", icon=icon))
+
+    entry = chat._transcript.read()[0]
+    payload = sent[0]["message"]
+    assert entry.icon == expected_icon
+    if expected_icon is None:
+        assert "icon" not in payload
+    else:
+        assert payload["icon"] == expected_icon
+
+
+def test_transcript_entries_are_defensive_for_nested_wire_specs():
+    from shinychat._attachments import Attachment
+
+    with session_context(test_session):
+        chat = Chat("defensive_entry", history=False)
+        chat._serialize_html_deps = lambda deps: [  # type: ignore[method-assign]
+            {"name": "chart", "metadata": {"version": "1.0"}}
+        ]
+        message = ChatMessage(
+            content="source",
+            role="assistant",
+            attachments=[
+                Attachment.from_data(
+                    b"chart", mime="image/png", name="chart.png"
+                )
+            ],
+        )
+        message.html_deps = [HTMLDependency(name="chart", version="1.0")]
+
+        run_async(
+            lambda: chat.append_message(message, icon=HTML("<i>chart</i>"))
+        )
+
+        projection = chat._transcript.read()[0]
+        projection.message.attachments[0].name = "mutated.png"
+        assert projection.message.html_deps is not None
+        metadata = cast(
+            dict[str, str], projection.message.html_deps[0]["metadata"]
+        )
+        metadata["version"] = "mutated"
+        projection.icon = "mutated"
+
+        committed = chat._transcript.read()[0]
+        assert committed.message.attachments[0].name == "chart.png"
+        assert committed.message.html_deps == [
+            {"name": "chart", "metadata": {"version": "1.0"}}
+        ]
+        assert committed.icon == "<i>chart</i>"
 
 
 def test_tokenizer_raises():
@@ -169,6 +2199,10 @@ def test_stream_replace_discards_stale_html_dependencies():
         assert final_send["action"]["content"] == "final"
         dep_names = [d["name"] for d in (final_send["deps"] or [])]
         assert "custom-styled-card" not in dep_names
+        assert [
+            dep["name"]
+            for dep in (chat._transcript.read()[0].message.html_deps or [])
+        ] == ["custom-styled-card"]
 
 
 # ------------------------------------------------------------------------------------
@@ -649,17 +2683,10 @@ def test_bookmark_round_trips_echoed_slash_command():
 
     with session_context(test_session):
         chat = Chat(id="chat")
-        # `_messages_for_bookmark()` reads the client-reported snapshot input,
-        # not the server-side append log, so seed that input directly.
-        reported = (
-            chat._as_stored_message(
-                ChatMessage(content="/greet world", role="user")
-            ),
-            chat._as_stored_message(
-                ChatMessage(content="Hello! You said: world", role="assistant")
-            ),
+        chat._record_accepted_user_input(
+            ChatMessage(content="/greet world", role="user")
         )
-        test_session.input[chat.messages_input_id]._set(reported)
+        run_async(lambda: chat.append_message("Hello! You said: world"))
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
 
@@ -694,9 +2721,7 @@ def test_bookmark_round_trips_echoed_slash_command():
             for message_dict in saved:
                 await restored._restore_bookmark_message(message_dict)
 
-            # `_restore_bookmark_message` re-sends each message to the client
-            # (which re-reports it into the messages snapshot on render); the
-            # server no longer keeps its own append log to read back from.
+            # `_restore_bookmark_message` re-sends each message to the client.
             return [
                 (
                     cast(Role, a["message"]["role"]),
@@ -728,16 +2753,9 @@ def test_bookmark_omits_side_effect_only_slash_command():
     with session_context(test_session):
         chat = Chat(id="chat")
         chat.slash_command("note", "Side-effect only", echo=False)
-        # `_messages_for_bookmark()` reads the client-reported snapshot
-        # input, not the server-side append log, so seed that input
-        # directly with only the explicit message (the echo=False command
-        # reports nothing).
-        reported = (
-            chat._as_stored_message(
-                ChatMessage(content="real message", role="user")
-            ),
+        chat._record_accepted_user_input(
+            ChatMessage(content="real message", role="user")
         )
-        test_session.input[chat.messages_input_id]._set(reported)
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
 
@@ -954,9 +2972,13 @@ def test_stream_thinking_creates_thinking_segment():
         by_content = {a["content"]: a["content_type"] for a in chunk_actions}
         assert by_content["reasoning"] == "thinking"
         assert by_content["answer"] == "markdown"
+        assert [
+            (segment.content, segment.content_type)
+            for segment in chat._transcript.read()[0].message.segments
+        ] == [("reasoning", "thinking"), ("answer", "markdown")]
 
 
-def test_message_stream_context_flushes_queued_appends():
+def test_message_stream_context_rejects_complete_appends():
     with session_context(test_session):
         chat = Chat(id="chat")
         sent: list[dict[str, Any]] = []
@@ -969,19 +2991,913 @@ def test_message_stream_context_flushes_queued_appends():
         async def _exercise() -> None:
             async with chat.message_stream_context() as stream:
                 await stream.append("streamed")
-                await chat.append_message("queued")
+                with pytest.raises(
+                    RuntimeError, match="complete message.*stream is active"
+                ):
+                    await chat.append_message("rejected")
 
         run_async(_exercise)
 
-        assert sent[-1] == {
-            "type": "message",
-            "message": {
-                "role": "assistant",
-                "segments": [
-                    {"content": "queued", "content_type": "markdown"}
-                ],
-            },
-        }
+        assert [entry.message.content for entry in chat._transcript.read()] == [
+            "streamed"
+        ]
+
+
+def test_nested_message_stream_context_restores_outer_checkpoint():
+    with session_context(test_session):
+        chat = Chat(id="nested_stream", history=False)
+
+        async def _exercise() -> None:
+            async with chat.message_stream_context() as outer:
+                await outer.append("prefix")
+                async with chat.message_stream_context() as inner:
+                    await inner.append(" draft")
+                    await inner.replace(" final")
+                await outer.append(" done")
+
+        run_async(_exercise)
+
+    assert [entry.message.content for entry in chat._transcript.read()] == [
+        "prefix final done"
+    ]
+
+
+def test_stream_preserves_sent_partial_on_chunk_failure():
+    with session_context(test_session):
+        chat = Chat(id="partial_error", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+            if action.get("type") == "chunk" and action["content"] == "lost":
+                raise RuntimeError("chunk send failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _stream():
+            yield "kept"
+            yield "lost"
+
+        with pytest.raises(RuntimeError, match="chunk send failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": "chunk send failed"}
+    assert chat.messages() == (
+        {
+            "content": "kept",
+            "role": "assistant",
+            "status": "error",
+            "error": {"message": "chunk send failed"},
+        },
+    )
+    assert sent[-1] == {"type": "chunk_end"}
+
+
+def test_stream_start_send_failure_does_not_commit():
+    with session_context(test_session):
+        chat = Chat(id="start_error", history=False)
+
+        async def _fail(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_start":
+                raise RuntimeError("start send failed")
+
+        chat._send_action = _fail  # type: ignore[method-assign]
+
+        async def _stream():
+            yield "not sent"
+
+        with pytest.raises(RuntimeError, match="start send failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    assert chat._transcript.read() == ()
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_start_persistence_failure_closes_sent_stream():
+    with session_context(test_session):
+        chat = Chat(id="start_persistence_error", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        async def _fail_started(
+            _stream_id: str, _exchange_id: str | None, _entry: Any
+        ) -> None:
+            raise RuntimeError("start persistence failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transcript.set_capture_callbacks(
+            on_accepted_input=None,
+            on_message_committed=None,
+            on_stream_started=_fail_started,
+            on_stream_updated=None,
+            on_stream_finished=None,
+        )
+
+        async def _stream():
+            yield "not reached"
+
+        with pytest.raises(RuntimeError, match="start persistence failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.status == "error"
+    assert entry.error == {"message": HISTORY_ERROR_STREAM_START}
+    assert chat._transcript.active_stream_id is None
+    assert sent[-1] == {"type": "chunk_end"}
+
+
+def test_stream_finish_persistence_failure_preserves_the_callback_error():
+    with session_context(test_session):
+        chat = Chat(id="finish_persistence_error", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        async def _fail_finished(
+            _stream_id: str, _status: str, _error: str | None
+        ) -> None:
+            raise RuntimeError("finish persistence failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transcript.set_capture_callbacks(
+            on_accepted_input=None,
+            on_message_committed=None,
+            on_stream_started=None,
+            on_stream_updated=None,
+            on_stream_finished=_fail_finished,
+        )
+
+        async def _stream():
+            yield "kept"
+
+        with pytest.raises(RuntimeError, match="finish persistence failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    assert chat._transcript.read()[0].message.content == "kept"
+    assert chat._transcript.active_stream_id is None
+    assert [action["type"] for action in sent].count("chunk_end") == 1
+
+
+def test_stream_preserves_sent_partial_when_terminal_send_fails():
+    with session_context(test_session):
+        chat = Chat(id="terminal_error", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("end send failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _stream():
+            yield "kept"
+
+        with pytest.raises(RuntimeError, match="end send failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": HISTORY_ERROR_STREAM_TERMINAL}
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_success_reports_ok_without_error():
+    with session_context(test_session):
+        chat = Chat(id="successful_stream", history=False)
+        finished: list[tuple[str, str | None]] = []
+
+        async def _capture_finished(
+            _stream_id: str, status: str, error: str | None
+        ) -> None:
+            finished.append((status, error))
+
+        chat._transcript.set_capture_callbacks(
+            on_accepted_input=None,
+            on_message_committed=None,
+            on_stream_started=None,
+            on_stream_updated=None,
+            on_stream_finished=_capture_finished,
+        )
+
+        async def _stream():
+            yield "completed"
+
+    run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.error is None
+    assert finished == [("ok", None)]
+
+
+def test_stream_commits_final_transformed_content_before_chunk_end_failure():
+    with session_context(test_session):
+        chat = Chat(id="terminal_transformed_error", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("end send failed")
+
+        async def _transform(content: str, chunk: str, done: bool) -> str:
+            return f"{content} final" if done else content
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transform_assistant = _transform
+
+        async def _stream():
+            yield "partial"
+
+        with pytest.raises(RuntimeError, match="end send failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "partial final"
+    assert entry.status == "error"
+    assert entry.error == {"message": HISTORY_ERROR_STREAM_TERMINAL}
+
+
+def test_stream_transform_error_best_effort_closes_the_wire_and_owner():
+    with session_context(test_session):
+        chat = Chat(id="terminal_transform_error", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        async def _transform(content: str, chunk: str, done: bool) -> str:
+            if done:
+                raise RuntimeError("terminal transform failed")
+            return content
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transform_assistant = _transform
+
+        async def _stream():
+            yield "kept"
+
+        with pytest.raises(RuntimeError, match="terminal transform failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": HISTORY_ERROR_STREAM_TERMINAL}
+    assert chat._transcript.active_stream_id is None
+    assert sent[-1] == {"type": "chunk_end"}
+
+
+def test_stream_generator_error_survives_terminal_cleanup_failure():
+    with session_context(test_session):
+        chat = Chat(id="generator_error_cleanup_failure", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("terminal cleanup failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _stream():
+            yield "kept"
+            raise RuntimeError("generator failed")
+
+        with pytest.raises(RuntimeError, match="generator failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": "generator failed"}
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_generator_empty_error_survives_terminal_cleanup_failure():
+    with session_context(test_session):
+        chat = Chat(id="generator_empty_error_cleanup_failure", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("terminal cleanup failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _stream():
+            yield "kept"
+            raise RuntimeError("")
+
+        with pytest.raises(RuntimeError, match="^$"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": ""}
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_generator_cancellation_survives_terminal_cleanup_failure():
+    with session_context(test_session):
+        chat = Chat(id="generator_cancel_cleanup_failure", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("terminal cleanup failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _stream():
+            yield "kept"
+            raise asyncio.CancelledError()
+
+        with pytest.raises(asyncio.CancelledError):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "cancelled"
+    assert entry.error is None
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_terminal_cancellation_aborts_without_error():
+    with session_context(test_session):
+        chat = Chat(id="stream_terminal_cancelled", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise asyncio.CancelledError()
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _stream():
+            yield "kept"
+
+        with pytest.raises(asyncio.CancelledError):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "cancelled"
+    assert entry.error is None
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_context_error_survives_terminal_cleanup_failure():
+    with session_context(test_session):
+        chat = Chat(id="context_error_cleanup_failure", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("terminal cleanup failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            async with chat.message_stream_context() as stream:
+                await stream.append("kept")
+                raise RuntimeError("body failed")
+
+        with pytest.raises(RuntimeError, match="body failed"):
+            run_async(_exercise)
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": "body failed"}
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_context_empty_error_survives_terminal_cleanup_failure():
+    with session_context(test_session):
+        chat = Chat(id="context_empty_error_cleanup_failure", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("terminal cleanup failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            async with chat.message_stream_context() as stream:
+                await stream.append("kept")
+                raise RuntimeError("")
+
+        with pytest.raises(RuntimeError, match="^$"):
+            run_async(_exercise)
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": ""}
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_context_cancellation_survives_terminal_cleanup_failure():
+    with session_context(test_session):
+        chat = Chat(id="context_cancel_cleanup_failure", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("terminal cleanup failed")
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            async with chat.message_stream_context() as stream:
+                await stream.append("kept")
+                raise asyncio.CancelledError()
+
+        with pytest.raises(asyncio.CancelledError):
+            run_async(_exercise)
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "cancelled"
+    assert entry.error is None
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_context_terminal_cancellation_aborts_without_error():
+    with session_context(test_session):
+        chat = Chat(id="context_terminal_cancelled", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise asyncio.CancelledError()
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            async with chat.message_stream_context() as stream:
+                await stream.append("kept")
+
+        with pytest.raises(asyncio.CancelledError):
+            run_async(_exercise)
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "cancelled"
+    assert entry.error is None
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_final_display_error_best_effort_closes_the_wire_and_owner():
+    with session_context(test_session):
+        chat = Chat(id="terminal_display_error", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+            if (
+                action.get("type") == "chunk"
+                and action["content"] == "kept final"
+            ):
+                raise RuntimeError("terminal display failed")
+
+        async def _transform(content: str, chunk: str, done: bool) -> str:
+            return f"{content} final" if done else content
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transform_assistant = _transform
+
+        async def _stream():
+            yield "kept"
+
+        with pytest.raises(RuntimeError, match="terminal display failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": HISTORY_ERROR_STREAM_TERMINAL}
+    assert chat._transcript.active_stream_id is None
+    assert sent[-1] == {"type": "chunk_end"}
+
+
+def test_stream_suppressed_terminal_transform_closes_and_preserves_content():
+    with session_context(test_session):
+        chat = Chat(id="suppressed_terminal", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        async def _transform(
+            content: str, chunk: str, done: bool
+        ) -> str | None:
+            return None if done else content
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transform_assistant = _transform
+
+        async def _stream():
+            yield "kept"
+
+        run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status is None
+    assert chat._transcript.active_stream_id is None
+    assert sent[-1] == {"type": "chunk_end"}
+
+
+def test_suppressed_chunk_commits_source_without_mutating_display():
+    with session_context(test_session):
+        chat = Chat(id="suppressed_chunk", history=False)
+
+        async def _transform(
+            content: str, chunk: str, done: bool
+        ) -> str | None:
+            return None if chunk == "hidden" else content
+
+        chat._transform_assistant = _transform
+
+        async def _stream():
+            yield "hidden"
+            yield "shown"
+
+        run_async(lambda: chat._append_message_stream(_stream()))
+
+    assert chat._transcript.read()[0].message.content == "hiddenshown"
+
+
+def test_transformed_replacement_keeps_dependencies_from_suppressed_chunks():
+    with session_context(test_session):
+        chat = Chat(id="suppressed_chunk_dependencies", history=False)
+        hidden_dep = HTMLDependency(name="hidden", version="1.0")
+        visible_dep = HTMLDependency(name="visible", version="1.0")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append({"action": action, "deps": deps})
+
+        async def _transform(
+            content: str, chunk: str, done: bool
+        ) -> str | None:
+            return None if chunk == "hidden" else content.upper()
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transform_assistant = _transform
+        chat._serialize_html_deps = lambda deps: (  # type: ignore[method-assign]
+            [{"name": dep.name, "version": str(dep.version)} for dep in deps]
+            if deps
+            else None
+        )
+
+        async def _stream():
+            hidden = ChatMessage(content="hidden", role="assistant")
+            hidden.html_deps = [hidden_dep]
+            yield hidden
+            visible = ChatMessage(content="shown", role="assistant")
+            visible.html_deps = [visible_dep]
+            yield visible
+
+        run_async(lambda: chat._append_message_stream(_stream()))
+
+    expected_deps = [
+        {"name": "hidden", "version": "1.0"},
+        {"name": "visible", "version": "1.0"},
+    ]
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "HIDDENSHOWN"
+    assert entry.message.html_deps == expected_deps
+    visible_chunk = next(
+        item
+        for item in sent
+        if item["action"].get("type") == "chunk"
+        and item["action"]["content"] == "HIDDENSHOWN"
+    )
+    assert visible_chunk["deps"] == expected_deps
+
+
+def test_terminal_transformed_replacement_keeps_suppressed_dependencies():
+    with session_context(test_session):
+        chat = Chat(id="terminal_suppressed_dependencies", history=False)
+        hidden_dep = HTMLDependency(name="hidden", version="1.0")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append({"action": action, "deps": deps})
+
+        async def _transform(
+            content: str, chunk: str, done: bool
+        ) -> str | None:
+            if chunk == "hidden":
+                return None
+            return f"{content} final" if done else content.upper()
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transform_assistant = _transform
+        chat._serialize_html_deps = lambda deps: (  # type: ignore[method-assign]
+            [{"name": dep.name, "version": str(dep.version)} for dep in deps]
+            if deps
+            else None
+        )
+
+        async def _stream():
+            hidden = ChatMessage(content="hidden", role="assistant")
+            hidden.html_deps = [hidden_dep]
+            yield hidden
+
+        run_async(lambda: chat._append_message_stream(_stream()))
+
+    expected_deps = [{"name": "hidden", "version": "1.0"}]
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "hidden final"
+    assert entry.message.html_deps == expected_deps
+    final_chunk = next(
+        item
+        for item in sent
+        if item["action"].get("type") == "chunk"
+        and item["action"]["content"] == "hidden final"
+    )
+    assert final_chunk["deps"] == expected_deps
+
+
+def test_suppressed_terminal_transform_surfaces_end_send_failure():
+    with session_context(test_session):
+        chat = Chat(id="suppressed_terminal_error", history=False)
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            if action.get("type") == "chunk_end":
+                raise RuntimeError("end send failed")
+
+        async def _transform(
+            content: str, chunk: str, done: bool
+        ) -> str | None:
+            return None if done else content
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+        chat._transform_assistant = _transform
+
+        async def _stream():
+            yield "kept"
+
+        with pytest.raises(RuntimeError, match="end send failed"):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "error"
+    assert entry.error == {"message": HISTORY_ERROR_STREAM_TERMINAL}
+    assert chat._transcript.active_stream_id is None
+
+
+def test_stream_cancellation_preserves_sent_partial():
+    with session_context(test_session):
+        chat = Chat(id="partial_cancelled", history=False)
+
+        async def _stream():
+            yield "kept"
+            raise asyncio.CancelledError()
+
+        with pytest.raises(asyncio.CancelledError):
+            run_async(lambda: chat._append_message_stream(_stream()))
+
+    entry = chat._transcript.read()[0]
+    assert entry.message.content == "kept"
+    assert entry.status == "cancelled"
+    assert entry.error is None
+
+
+def test_stream_captures_exchange_before_newer_input():
+    with session_context(test_session):
+        chat = Chat(id="stream_exchange", history=False)
+        chat._record_accepted_user_input(
+            ChatMessage(content="old request", role="user")
+        )
+        old_exchange = chat._transcript.open_exchange_id
+
+        async def _exercise() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="old-stream"
+            )
+            chat._record_accepted_user_input(
+                ChatMessage(content="new request", role="user")
+            )
+            await chat._append_message_chunk(
+                "old response", chunk=True, stream_id="old-stream"
+            )
+            await chat._append_message_chunk(
+                "", chunk="end", stream_id="old-stream"
+            )
+
+        run_async(_exercise)
+
+    stream_entry = chat._transcript.read()[1]
+    assert stream_entry.exchange_id == old_exchange
+    assert chat._transcript.open_exchange_id != old_exchange
+    assert stream_entry.message.content == "old response"
+
+
+def test_complete_append_captures_exchange_before_async_transform():
+    with session_context(test_session):
+        chat = Chat(id="complete_transform_exchange", history=False)
+        chat._record_accepted_user_input(
+            ChatMessage(content="old request", role="user")
+        )
+        old_exchange = chat._transcript.open_exchange_id
+        transform_started = asyncio.Event()
+        release_transform = asyncio.Event()
+
+        async def _transform(content: str, chunk: str, done: bool) -> str:
+            transform_started.set()
+            await release_transform.wait()
+            return content
+
+        chat._transform_assistant = _transform
+
+        async def _exercise() -> None:
+            append = asyncio.create_task(chat.append_message("old response"))
+            await transform_started.wait()
+            chat._record_accepted_user_input(
+                ChatMessage(content="new request", role="user")
+            )
+            release_transform.set()
+            await append
+
+        run_async(_exercise)
+
+    assert chat._transcript.read()[-1].exchange_id == old_exchange
+    assert chat._transcript.open_exchange_id != old_exchange
+
+
+def test_stream_start_captures_exchange_before_async_transform():
+    with session_context(test_session):
+        chat = Chat(id="stream_transform_exchange", history=False)
+        chat._record_accepted_user_input(
+            ChatMessage(content="old request", role="user")
+        )
+        old_exchange = chat._transcript.open_exchange_id
+        transform_started = asyncio.Event()
+        release_transform = asyncio.Event()
+
+        async def _transform(content: str, chunk: str, done: bool) -> str:
+            transform_started.set()
+            await release_transform.wait()
+            return content
+
+        chat._transform_assistant = _transform
+
+        async def _exercise() -> None:
+            start = asyncio.create_task(
+                chat._append_message_chunk(
+                    "", chunk="start", stream_id="old-stream"
+                )
+            )
+            await transform_started.wait()
+            chat._record_accepted_user_input(
+                ChatMessage(content="new request", role="user")
+            )
+            release_transform.set()
+            await start
+            await chat._append_message_chunk(
+                "", chunk="end", stream_id="old-stream"
+            )
+
+        run_async(_exercise)
+
+    assert chat._transcript.read()[-1].exchange_id == old_exchange
+    assert chat._transcript.open_exchange_id != old_exchange
+
+
+def test_complete_append_reserves_admission_before_async_transform():
+    with session_context(test_session):
+        chat = Chat(id="complete_transform_admission", history=False)
+        transform_started = asyncio.Event()
+        release_transform = asyncio.Event()
+
+        async def _transform(content: str, chunk: str, done: bool) -> str:
+            transform_started.set()
+            await release_transform.wait()
+            return content
+
+        chat._transform_assistant = _transform
+
+        async def _exercise() -> None:
+            append = asyncio.create_task(chat.append_message("complete"))
+            await transform_started.wait()
+            with pytest.raises(
+                RuntimeError, match="another transcript operation"
+            ):
+                await chat._append_message_chunk(
+                    "", chunk="start", stream_id="blocked"
+                )
+            release_transform.set()
+            await append
+
+        run_async(_exercise)
+
+    assert [entry.message.content for entry in chat._transcript.read()] == [
+        "complete"
+    ]
+
+
+def test_stream_start_reserves_admission_before_async_transform():
+    with session_context(test_session):
+        chat = Chat(id="stream_transform_admission", history=False)
+        transform_started = asyncio.Event()
+        release_transform = asyncio.Event()
+
+        async def _transform(content: str, chunk: str, done: bool) -> str:
+            transform_started.set()
+            await release_transform.wait()
+            return content
+
+        chat._transform_assistant = _transform
+
+        async def _exercise() -> None:
+            start = asyncio.create_task(
+                chat._append_message_chunk(
+                    "", chunk="start", stream_id="reserved"
+                )
+            )
+            await transform_started.wait()
+            with pytest.raises(
+                RuntimeError, match="another transcript operation"
+            ):
+                await chat.append_message("blocked")
+            release_transform.set()
+            await start
+            await chat._append_message_chunk(
+                "", chunk="end", stream_id="reserved"
+            )
+
+        run_async(_exercise)
+
+    assert [entry.message.content for entry in chat._transcript.read()] == [""]
+
+
+def test_clear_greeting_waits_for_successful_transport():
+    with session_context(test_session):
+        chat = Chat(id="clear_greeting_failure", history=False)
+        chat._greeting_content = "welcome"
+
+        async def _fail(action: Any, deps: Any = None) -> None:
+            raise RuntimeError("clear failed")
+
+        chat._send_action = _fail  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="clear failed"):
+            run_async(lambda: chat.clear_messages(greeting=True))
+
+    assert chat.get_greeting() == "welcome"
+
+
+def test_second_root_stream_is_rejected():
+    with session_context(test_session):
+        chat = Chat(id="second_stream", history=False)
+
+        async def _exercise() -> None:
+            await chat._append_message_chunk("", chunk="start", stream_id="one")
+            with pytest.raises(RuntimeError, match="second message stream"):
+                await chat._append_message_chunk(
+                    "", chunk="start", stream_id="two"
+                )
+            await chat._append_message_chunk("", chunk="end", stream_id="one")
+
+        run_async(_exercise)
+
+
+def test_clear_and_restore_reject_an_active_stream_without_invalidating_it():
+    with session_context(test_session):
+        chat = Chat(id="clear_during_stream", history=False)
+
+        async def _exercise() -> None:
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="stream"
+            )
+            with pytest.raises(RuntimeError, match="clear or restore"):
+                await chat.clear_messages()
+            with pytest.raises(RuntimeError, match="clear or restore"):
+                await chat._restore_bookmark_message(
+                    {
+                        "role": "assistant",
+                        "segments": [
+                            {
+                                "content": "restored",
+                                "content_type": "markdown",
+                            }
+                        ],
+                    }
+                )
+            await chat._append_message_chunk(
+                "still active", chunk=True, stream_id="stream"
+            )
+            await chat._append_message_chunk(
+                "", chunk="end", stream_id="stream"
+            )
+
+        run_async(_exercise)
+
+    assert [entry.message.content for entry in chat._transcript.read()] == [
+        "still active"
+    ]
 
 
 def test_thinking_stream_stores_segment_not_tags():
@@ -1059,19 +3975,18 @@ def test_bookmark_roundtrip_thinking_segment():
             sent.append(action)
 
         chat._send_action = _capture  # type: ignore[method-assign]
-        # `_messages_for_bookmark()` reads the client-reported snapshot
-        # input, not the server-side append log, so seed that input
-        # directly.
-        reported = (
-            StoredMessage(
-                role="assistant",
-                segments=[
-                    StoredSegment(content="reasoning", content_type="thinking"),
-                    StoredSegment(content="answer", content_type="markdown"),
-                ],
-            ),
+        stored = StoredMessage(
+            role="assistant",
+            segments=[
+                StoredSegment(content="reasoning", content_type="thinking"),
+                StoredSegment(content="answer", content_type="markdown"),
+            ],
         )
-        test_session.input[chat.messages_input_id]._set(reported)
+        run_async(
+            lambda: chat._restore_bookmark_message(
+                stored.model_dump(exclude_none=True)
+            )
+        )
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
         assert saved[0]["segments"][0]["content_type"] == "thinking"
@@ -1369,15 +4284,13 @@ def test_wire_segments_excludes_attachments():
 def test_messages_surfaces_attachments():
     from shiny import reactive
     from shinychat._attachments import Attachment
-    from shinychat._chat_types import ChatMessage, StoredMessage
+    from shinychat._chat_types import ChatMessage
 
     with session_context(test_session):
         chat = Chat(id="chat")
 
-        # `.messages()` reads the client-reported snapshot input, not the
-        # server-side append log, so seed that input directly.
-        reported = (
-            StoredMessage.from_chat_message(
+        run_async(
+            lambda: chat.append_message(
                 ChatMessage(
                     "see attached",
                     role="assistant",
@@ -1387,14 +4300,9 @@ def test_messages_surfaces_attachments():
                         ),
                     ],
                 )
-            ),
-            StoredMessage.from_chat_message(
-                ChatMessage("plain text", role="assistant")
-            ),
+            )
         )
-        # Input values are read-only from application code; `_set()` is the
-        # same mechanism Shiny itself uses to deliver client-reported values.
-        test_session.input[chat.messages_input_id]._set(reported)
+        run_async(lambda: chat.append_message(ChatMessage("plain text")))
 
         with reactive.isolate():
             msgs = chat.messages()

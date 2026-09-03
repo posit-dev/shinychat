@@ -35,7 +35,7 @@ export const ChatDispatchContext = createContext<Dispatch<AnyAction> | null>(
 export type SubmitUserInput = (
   content: string,
   attachments: AttachmentPayload[],
-) => void
+) => boolean
 
 export const ChatSubmitContext = createContext<SubmitUserInput | null>(null)
 

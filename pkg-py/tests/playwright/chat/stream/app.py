@@ -9,29 +9,18 @@ chat = Chat(id="chat")
 chat.ui()
 
 
-@reactive.effect
-async def _():
-    await chat.append_message_stream(("FIRST ", "FIRST ", "FIRST"))
+async def stream(*chunks: str):
+    for chunk in chunks:
+        yield chunk
 
 
 @reactive.effect
 async def _():
+    await chat._append_message_stream(stream("FIRST ", "FIRST ", "FIRST"))
     await chat.append_message("SECOND SECOND SECOND")
-
-
-@reactive.effect
-async def _():
-    await chat.append_message_stream(("THIRD ", "THIRD ", "THIRD"))
-
-
-@reactive.effect
-async def _():
+    await chat._append_message_stream(stream("THIRD ", "THIRD ", "THIRD"))
     await chat.append_message("FOURTH FOURTH FOURTH")
-
-
-@reactive.effect
-async def _():
-    await chat.append_message_stream(("FIFTH ", "FIFTH ", "FIFTH"))
+    await chat._append_message_stream(stream("FIFTH ", "FIFTH ", "FIFTH"))
 
 
 "Message state:"

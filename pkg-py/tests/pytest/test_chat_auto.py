@@ -344,6 +344,12 @@ def test_chat_ui_enable_cancel_unset_omits_attribute():
     assert "enable-cancel" not in html
 
 
+def test_chat_ui_seeds_completion_v2_history_transition_protocol():
+    html = chat_ui("myid").get_html_string()
+    attr = 'data-shinychat-history-transition-protocol="completion-v2"'
+    assert html.count(attr) == 1
+
+
 def test_chat_ui_aside_favicon_env_unset_omits_attribute(
     monkeypatch: pytest.MonkeyPatch,
 ):

@@ -27,8 +27,9 @@ export const FakeTiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
           setValue(newValue)
           onHasTextChange(newValue.trim().length > 0)
           if (options.submit) {
-            onSubmit(newValue)
+            return onSubmit(newValue)
           }
+          return true
         },
         focus() {},
         serializeEditor() {

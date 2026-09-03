@@ -26,6 +26,7 @@ def test_bookmark_restore_renders_user_attachment(
     page.set_input_files("input[type=file]", str(HERE / "one_px.png"))
     expect(page.locator(".shiny-chat-input-thumbnail img")).to_have_count(1)
     chat.set_user_input("look at this")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("Got 1 attachment(s).", timeout=10_000)
 

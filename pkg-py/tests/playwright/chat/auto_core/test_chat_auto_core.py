@@ -31,6 +31,7 @@ def test_sending_message_gets_response(
 
     user_message = "Hello there"
     chat.set_user_input(user_message)
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message(f"You said: {user_message}", timeout=30_000)
 
@@ -44,6 +45,7 @@ def test_messages_state_updated_after_exchange(
 
     user_message = "Hello"
     chat.set_user_input(user_message)
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message(f"You said: {user_message}", timeout=30_000)
 

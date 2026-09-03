@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
-import { render, screen, act, fireEvent } from "@testing-library/react"
+import { render, screen, act, fireEvent, waitFor } from "@testing-library/react"
 import { StrictMode } from "react"
 import { ChatApp } from "../../src/chat/ChatApp"
+import { getHistoryStore } from "../../src/chat/historyStore"
+import type { ChatMessageData } from "../../src/chat/state"
 import {
   createMockTransport,
   createMockShinyLifecycle,
@@ -14,6 +16,25 @@ import {
 vi.mock("../../src/chat/TiptapInput", async () => {
   const { FakeTiptapInput } = await import("../helpers/fakeTiptapInput")
   return { TiptapInput: FakeTiptapInput }
+})
+
+vi.mock("../../src/chat/attachments", async (orig) => {
+  const actual = await orig<typeof import("../../src/chat/attachments")>()
+  return {
+    ...actual,
+    processFile: vi.fn(async (file: File) => ({
+      file: {
+        id: `att-${file.name}`,
+        type: file.type,
+        family: actual.attachmentFamily(file.type) ?? "document",
+        dataUrl: `data:${file.type};base64,FAKE`,
+        name: file.name,
+        size: file.size,
+      },
+      wasDownscaled: false,
+      wasConverted: false,
+    })),
+  }
 })
 
 beforeEach(() => {
@@ -286,7 +307,11 @@ describe("ChatApp integration: full message flow", () => {
 })
 
 describe("ChatApp integration: editable messages gated by history state", () => {
-  function renderChatApp(transport: ReturnType<typeof createMockTransport>) {
+  function renderChatApp(
+    transport: ReturnType<typeof createMockTransport>,
+    enableUpload?: boolean,
+    initialMessages?: ChatMessageData[],
+  ) {
     return render(
       <ChatApp
         transport={transport}
@@ -296,9 +321,74 @@ describe("ChatApp integration: editable messages gated by history state", () => 
         uploadAccept={["image/png"]}
         maxUploadSize={30000000}
         placeholder="Type..."
+        enableUpload={enableUpload}
+        initialMessages={initialMessages}
       />,
     )
   }
+
+  it("rechecks history admission before an imperative input dispatches", async () => {
+    const transport = createMockTransport()
+    const { container } = render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={createMockShinyLifecycle()}
+        elementId="direct-submit-recheck"
+        inputId="direct-submit-input"
+        uploadAccept={["image/png"]}
+        maxUploadSize={30000000}
+        placeholder="Type..."
+        enableUpload
+      />,
+    )
+
+    const draft = container.querySelector(
+      ".shiny-chat-composer textarea",
+    ) as HTMLTextAreaElement
+    fireEvent.change(draft, { target: { value: "preserved draft" } })
+    const fileInput = container.querySelector(
+      ".shiny-chat-composer input[type=file]",
+    ) as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(fileInput, {
+        target: {
+          files: [new File(["draft"], "draft.png", { type: "image/png" })],
+        },
+      })
+    })
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll(
+          ".shiny-chat-composer .shiny-chat-input-thumbnail",
+        ),
+      ).toHaveLength(1)
+    })
+    expect(
+      screen.getByRole("button", { name: "Send message" }),
+    ).not.toBeDisabled()
+
+    const historyStore = getHistoryStore("direct-submit-recheck")
+    await act(async () => {
+      historyStore.seedCompletionV2TransitionProtocol()
+      transport.fire("direct-submit-recheck", {
+        type: "update_input",
+        value: "blocked server submission",
+        submit: true,
+      })
+    })
+
+    expect(transport.sendInput).not.toHaveBeenCalled()
+    expect(screen.queryByText("blocked server submission")).toBeNull()
+    expect(draft).toHaveValue("preserved draft")
+    expect(
+      container.querySelectorAll(
+        ".shiny-chat-composer .shiny-chat-input-thumbnail",
+      ),
+    ).toHaveLength(1)
+    expect(container.querySelectorAll(".shiny-chat-user-message")).toHaveLength(
+      0,
+    )
+  })
 
   it("does not render the edit button on a user message when history was never enabled", async () => {
     const transport = createMockTransport()
@@ -358,6 +448,614 @@ describe("ChatApp integration: editable messages gated by history state", () => 
       [],
     )
   })
+
+  it("projects a matching v2 edit through normal input without consuming the composer draft", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    const { container } = renderChatApp(transport)
+    const draftFile = new File(["draft"], "draft.png", { type: "image/png" })
+    const replacementAttachments = [
+      {
+        mime: "image/png" as const,
+        data_url: "data:image/png;base64,REPLACEMENT",
+        name: "replacement.png",
+        size: 3,
+      },
+    ]
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+        transition_protocol: "completion-v2",
+      })
+      transport.fire("test-chat", {
+        type: "update_upload",
+        enable_upload: true,
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "prefix", content_type: "markdown" }],
+        },
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [{ content: "custom prefix", content_type: "html" }],
+        },
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "replace me", content_type: "markdown" }],
+        },
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [{ content: "abandoned reply", content_type: "markdown" }],
+        },
+      })
+      transport.fire("test-chat", {
+        type: "update_siblings",
+        data: { 2: { index: 0, total: 2 } },
+      })
+    })
+
+    const composer = container.querySelector(
+      ".shiny-chat-composer textarea",
+    ) as HTMLTextAreaElement
+    fireEvent.change(composer, { target: { value: "preserved draft" } })
+    const composerFileInput = container.querySelector(
+      ".shiny-chat-composer input[type=file]",
+    ) as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(composerFileInput, { target: { files: [draftFile] } })
+    })
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll(
+          ".shiny-chat-composer .shiny-chat-input-thumbnail",
+        ),
+      ).toHaveLength(1)
+    })
+
+    const targetUser = screen
+      .getByText("replace me")
+      .closest(".shiny-chat-user-message") as HTMLElement
+    fireEvent.click(
+      targetUser.querySelector(".shiny-chat-edit-btn") as HTMLElement,
+    )
+    const editInput = targetUser.querySelector(
+      ".shiny-chat-edit-box textarea",
+    ) as HTMLTextAreaElement
+    fireEvent.change(editInput, { target: { value: "replacement" } })
+    fireEvent.click(
+      targetUser.querySelector(".shiny-chat-btn-send") as HTMLElement,
+    )
+
+    const requestId = vi.mocked(transport.sendMessageEdit).mock.calls[0]?.[4]
+    expect(requestId).toEqual(expect.any(String))
+    expect(
+      screen.getByRole("button", { name: /send message/i }),
+    ).toHaveProperty("disabled", true)
+    expect(
+      screen.getByRole("button", { name: /next version/i }),
+    ).toHaveProperty("disabled", true)
+    fireEvent.click(
+      screen.getByRole("button", { name: /conversation history/i }),
+    )
+    expect(
+      screen.getByRole("button", { name: /new conversation/i }),
+    ).toHaveProperty("disabled", true)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_edit_projection",
+        requestId: "stale",
+        index: 2,
+        content: "stale replacement",
+        attachments: [],
+      })
+    })
+    expect(transport.sendInput).not.toHaveBeenCalled()
+    expect(screen.getByText("replace me")).toBeTruthy()
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_edit_projection",
+        requestId: requestId as string,
+        index: 2,
+        content: "replacement",
+        attachments: replacementAttachments,
+      })
+      transport.fire("test-chat", {
+        type: "history_transition_complete",
+        requestId: requestId as string,
+      })
+    })
+
+    expect(transport.sendInput).toHaveBeenCalledTimes(1)
+    expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+      text: "replacement",
+      attachments: replacementAttachments,
+    })
+    expect(screen.getByRole("button", { name: "Loading" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    )
+    expect(screen.getByText("custom prefix")).toBeTruthy()
+    expect(screen.queryByText("replace me")).toBeNull()
+    expect(screen.queryByText("abandoned reply")).toBeNull()
+    const projectedUserMessages = container.querySelectorAll(
+      ".shiny-chat-user-message",
+    )
+    expect(
+      projectedUserMessages[projectedUserMessages.length - 1],
+    ).toHaveTextContent("replacement")
+    expect(
+      container.querySelector(".shiny-chat-composer textarea"),
+    ).toHaveValue("preserved draft")
+    expect(
+      container.querySelectorAll(
+        ".shiny-chat-composer .shiny-chat-input-thumbnail",
+      ),
+    ).toHaveLength(1)
+  })
+
+  it("clears a downgraded v2 edit transition and ignores its stale projection", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    const { container } = renderChatApp(transport)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+        transition_protocol: "completion-v2",
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "replace me", content_type: "markdown" }],
+        },
+      })
+    })
+
+    const targetUser = screen
+      .getByText("replace me")
+      .closest(".shiny-chat-user-message") as HTMLElement
+    fireEvent.click(
+      targetUser.querySelector(".shiny-chat-edit-btn") as HTMLElement,
+    )
+    const editInput = targetUser.querySelector(
+      ".shiny-chat-edit-box textarea",
+    ) as HTMLTextAreaElement
+    fireEvent.change(editInput, { target: { value: "v2 replacement" } })
+    fireEvent.click(
+      targetUser.querySelector(".shiny-chat-btn-send") as HTMLElement,
+    )
+
+    const requestId = vi.mocked(transport.sendMessageEdit).mock.calls[0]?.[4]
+    expect(requestId).toEqual(expect.any(String))
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+        transition_protocol: "completion-v1",
+      })
+      transport.fire("test-chat", {
+        type: "history_edit_projection",
+        requestId: requestId as string,
+        index: 0,
+        content: "stale replacement",
+        attachments: [],
+      })
+    })
+
+    expect(transport.sendInput).not.toHaveBeenCalled()
+    expect(screen.getByText("replace me")).toBeTruthy()
+
+    // The marker was cleared with the capability change, so the v1 edit path
+    // is immediately usable and must not carry the obsolete request ID.
+    fireEvent.click(
+      targetUser.querySelector(".shiny-chat-edit-btn") as HTMLElement,
+    )
+    const legacyEditInput = targetUser.querySelector(
+      ".shiny-chat-edit-box textarea",
+    ) as HTMLTextAreaElement
+    fireEvent.change(legacyEditInput, {
+      target: { value: "v1 replacement" },
+    })
+    fireEvent.click(
+      targetUser.querySelector(".shiny-chat-btn-send") as HTMLElement,
+    )
+    expect(transport.sendMessageEdit).toHaveBeenLastCalledWith(
+      "test-chat",
+      0,
+      "v1 replacement",
+      [],
+    )
+  })
+
+  it("sends projected attachments when composer uploads are disabled", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    const { container } = renderChatApp(transport, false)
+    const replacementAttachments = [
+      {
+        mime: "image/png" as const,
+        data_url: "data:image/png;base64,REPLACEMENT",
+        name: "replacement.png",
+        size: 3,
+      },
+    ]
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+        transition_protocol: "completion-v2",
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "replace me", content_type: "markdown" }],
+        },
+      })
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: /edit message/i }))
+    const editInput = container.querySelector(
+      ".shiny-chat-edit-box textarea",
+    ) as HTMLTextAreaElement
+    fireEvent.change(editInput, { target: { value: "replacement" } })
+    fireEvent.click(
+      container.querySelector(".shiny-chat-btn-send") as HTMLElement,
+    )
+
+    const requestId = vi.mocked(transport.sendMessageEdit).mock.calls[0]?.[4]
+    expect(requestId).toEqual(expect.any(String))
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_edit_projection",
+        requestId: "stale",
+        index: 0,
+        content: "stale replacement",
+        attachments: replacementAttachments,
+      })
+    })
+    expect(transport.sendInput).not.toHaveBeenCalled()
+    expect(screen.getByText("replace me")).toBeTruthy()
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_edit_projection",
+        requestId: requestId as string,
+        index: 0,
+        content: "replacement",
+        attachments: replacementAttachments,
+      })
+    })
+
+    expect(transport.sendInput).toHaveBeenCalledTimes(1)
+    expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+      text: "replacement",
+      attachments: replacementAttachments,
+    })
+  })
+
+  it("renders a server-accepted resubmit input without sending it again", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    renderChatApp(transport)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+        transition_protocol: "completion-v2",
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "replace me", content_type: "markdown" }],
+        },
+      })
+      transport.fire("test-chat", {
+        type: "history_accepted_input_projection",
+        index: 0,
+        content: "server accepted",
+        attachments: [],
+      })
+    })
+
+    expect(transport.sendInput).not.toHaveBeenCalled()
+    expect(screen.getByText("server accepted")).toBeTruthy()
+    expect(screen.queryByText("replace me")).toBeNull()
+  })
+
+  it("sends an eligible restored retry through the v2 transition transport", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    renderChatApp(transport)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+        transition_protocol: "completion-v2",
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "retry me", content_type: "markdown" }],
+        },
+      })
+      transport.fire("test-chat", {
+        type: "update_exchange_metadata",
+        data: {
+          0: {
+            status: "error",
+            retryable: true,
+            error_message: "The response stream could not be started.",
+          },
+        },
+      })
+    })
+
+    expect(
+      screen.getByText("The response stream could not be started."),
+    ).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }))
+    expect(transport.sendMessageResubmit).toHaveBeenCalledWith(
+      "test-chat",
+      0,
+      "retry",
+      expect.any(String),
+    )
+    expect(
+      screen.getByRole("button", { name: /send message/i }),
+    ).toHaveProperty("disabled", true)
+  })
+
+  it("blocks restored retry, edit, and sibling navigation until completion-v2 initializes", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    const historyStore = getHistoryStore("test-chat")
+    historyStore.seedCompletionV2TransitionProtocol()
+    renderChatApp(transport, false, [
+      {
+        id: "restored-user",
+        role: "user",
+        content: "restored message",
+        streaming: false,
+        blocks: [
+          {
+            type: "content",
+            content: "restored message",
+            contentType: "markdown",
+          },
+        ],
+        siblings: { index: 0, total: 2 },
+        exchange: {
+          status: "error",
+          retryable: true,
+          error_message: "Restored error",
+        },
+      },
+    ])
+
+    await waitFor(() => {
+      expect(screen.getByText("restored message")).toBeTruthy()
+      expect(screen.getByText("Restored error")).toBeTruthy()
+    })
+    expect(screen.getByRole("button", { name: "Next version" })).toHaveProperty(
+      "disabled",
+      true,
+    )
+    expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+    expect(transport.sendMessageNavigate).not.toHaveBeenCalled()
+    expect(transport.sendMessageResubmit).not.toHaveBeenCalled()
+    expect(transport.sendMessageEdit).not.toHaveBeenCalled()
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+        transition_protocol: "completion-v2",
+      })
+    })
+
+    expect(screen.getByRole("button", { name: "Next version" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Retry message" })).toBeEnabled()
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }))
+    const resubmitRequestId = vi.mocked(transport.sendMessageResubmit).mock
+      .calls[0]?.[3]
+    expect(resubmitRequestId).toEqual(expect.any(String))
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_transition_complete",
+        requestId: resubmitRequestId as string,
+      })
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit message" }))
+    const editInput = screen.getByPlaceholderText("Edit message")
+    expect(editInput).toHaveAccessibleName("Chat message")
+    fireEvent.change(editInput, {
+      target: { value: "edited restored message" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Save and resend" }))
+    expect(transport.sendMessageEdit).toHaveBeenCalledWith(
+      "test-chat",
+      0,
+      "edited restored message",
+      [],
+      expect.any(String),
+    )
+    const editRequestId = vi.mocked(transport.sendMessageEdit).mock
+      .calls[0]?.[4]
+    expect(editRequestId).toEqual(expect.any(String))
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_transition_complete",
+        requestId: editRequestId as string,
+      })
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Next version" }))
+    expect(transport.sendMessageNavigate).toHaveBeenCalledWith(
+      "test-chat",
+      0,
+      "next",
+      expect.any(String),
+    )
+  })
+
+  it.each([
+    ["Python v1", "completion-v1"],
+    ["R", undefined],
+  ])(
+    "keeps %s history mutations available while ordinary input is pending",
+    async (_runtime, transitionProtocol) => {
+      mockMatchMedia(false)
+      const transport = createMockTransport()
+      const { container } = renderChatApp(transport)
+      const conversations = [
+        {
+          id: "legacy",
+          title: "Legacy conversation",
+          created_at: "2026-09-01T00:00:00.000Z",
+          updated_at: "2026-09-01T00:00:00.000Z",
+        },
+      ]
+
+      await act(async () => {
+        transport.fire("test-chat", {
+          type: "history_update",
+          enabled: true,
+          conversations,
+          active_id: null,
+          ...(transitionProtocol === undefined
+            ? {}
+            : { transition_protocol: transitionProtocol }),
+        })
+        transport.fire("test-chat", {
+          type: "message",
+          message: {
+            role: "user",
+            segments: [{ content: "legacy target", content_type: "markdown" }],
+          },
+        })
+        transport.fire("test-chat", {
+          type: "update_siblings",
+          data: { 0: { index: 0, total: 2 } },
+        })
+      })
+
+      const composer = container.querySelector(
+        ".shiny-chat-composer textarea",
+      ) as HTMLTextAreaElement
+      fireEvent.change(composer, { target: { value: "ordinary input" } })
+      fireEvent.click(
+        container.querySelector(
+          ".shiny-chat-composer .shiny-chat-btn-send",
+        ) as HTMLElement,
+      )
+      expect(transport.sendInput).toHaveBeenCalledWith(
+        "test-input",
+        "ordinary input",
+      )
+
+      const targetUser = screen
+        .getByText("legacy target")
+        .closest(".shiny-chat-user-message") as HTMLElement
+      fireEvent.click(
+        targetUser.querySelector(".shiny-chat-edit-btn") as HTMLElement,
+      )
+      const editInput = targetUser.querySelector(
+        ".shiny-chat-edit-box textarea",
+      ) as HTMLTextAreaElement
+      fireEvent.change(editInput, { target: { value: "legacy edit" } })
+      fireEvent.click(
+        targetUser.querySelector(".shiny-chat-btn-send") as HTMLElement,
+      )
+      expect(transport.sendMessageEdit).toHaveBeenCalledWith(
+        "test-chat",
+        0,
+        "legacy edit",
+        [],
+      )
+
+      const nextVersion = screen.getByRole("button", {
+        name: "Next version",
+      })
+      expect(nextVersion).toBeEnabled()
+      fireEvent.click(nextVersion)
+      expect(transport.sendMessageNavigate).toHaveBeenCalledWith(
+        "test-chat",
+        0,
+        "next",
+      )
+
+      fireEvent.click(
+        screen.getByRole("button", { name: /conversation history/i }),
+      )
+      const newConversation = screen.getByRole("button", {
+        name: /new conversation/i,
+      })
+      expect(newConversation).toBeEnabled()
+      fireEvent.click(newConversation)
+      expect(transport.sendHistoryNew).toHaveBeenCalledWith("test-chat")
+
+      fireEvent.click(
+        screen.getByRole("button", { name: /conversation history/i }),
+      )
+      fireEvent.click(
+        container.querySelector(
+          ".shiny-chat-history-itemmenu button",
+        ) as HTMLElement,
+      )
+      fireEvent.click(screen.getByText("Rename"))
+      const rename = screen.getByDisplayValue(
+        "Legacy conversation",
+      ) as HTMLInputElement
+      fireEvent.change(rename, { target: { value: "Renamed legacy" } })
+      fireEvent.keyDown(rename, { key: "Enter" })
+      expect(transport.sendHistoryRename).toHaveBeenCalledWith(
+        "test-chat",
+        "legacy",
+        "Renamed legacy",
+      )
+    },
+  )
 
   it("routes drawer actions through the history store and disables them while streaming", async () => {
     mockMatchMedia(false)
@@ -467,6 +1165,98 @@ describe("ChatApp integration: editable messages gated by history state", () => 
       0,
       "next",
     )
+  })
+
+  it("uses the v2 transition marker for sibling navigation without consuming the composer", async () => {
+    mockMatchMedia(false)
+    const transport = createMockTransport()
+    const { container } = renderChatApp(transport, true)
+    const draftFile = new File(["draft"], "draft.png", { type: "image/png" })
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+        transition_protocol: "completion-v2",
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "user",
+          segments: [{ content: "replace me", content_type: "markdown" }],
+        },
+      })
+      transport.fire("test-chat", {
+        type: "update_siblings",
+        data: { 0: { index: 0, total: 2 } },
+      })
+    })
+
+    const composer = container.querySelector(
+      ".shiny-chat-composer textarea",
+    ) as HTMLTextAreaElement
+    fireEvent.change(composer, { target: { value: "preserved draft" } })
+    const composerFileInput = container.querySelector(
+      ".shiny-chat-composer input[type=file]",
+    ) as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(composerFileInput, { target: { files: [draftFile] } })
+    })
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll(
+          ".shiny-chat-composer .shiny-chat-input-thumbnail",
+        ),
+      ).toHaveLength(1)
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: /next version/i }))
+
+    const navigationCalls = vi.mocked(transport.sendMessageNavigate).mock.calls
+    const requestId = navigationCalls[0]?.[3]
+    expect(requestId).toEqual(expect.any(String))
+    expect(
+      screen.getByRole("button", { name: /send message/i }),
+    ).toHaveProperty("disabled", true)
+    expect(
+      screen.getByRole("button", { name: /next version/i }),
+    ).toHaveProperty("disabled", true)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+        transition_protocol: "completion-v2",
+      })
+      transport.fire("test-chat", {
+        type: "history_transition_complete",
+        requestId: "stale",
+      })
+    })
+    expect(
+      screen.getByRole("button", { name: /send message/i }),
+    ).toHaveProperty("disabled", true)
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "history_transition_complete",
+        requestId: requestId as string,
+      })
+    })
+
+    expect(
+      screen.getByRole("button", { name: /send message/i }),
+    ).toHaveProperty("disabled", false)
+    expect(composer).toHaveValue("preserved draft")
+    expect(
+      container.querySelectorAll(
+        ".shiny-chat-composer .shiny-chat-input-thumbnail",
+      ),
+    ).toHaveLength(1)
   })
 
   it("disables sibling navigation until the server acknowledges it", async () => {

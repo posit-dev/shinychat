@@ -29,11 +29,10 @@ def wait_for_save_count_to_settle(page: Page) -> str:
     """
     Wait until `save_count` stops changing, then return its final value.
 
-    Each turn in this app appends a message twice (the non-streamed rich-UI
-    card, then the streamed echo reply), and each client re-report of its
-    message snapshot fires a save -- so the exact count after a turn isn't a
-    fixed, predictable number. This just needs a reliable "the save(s)
-    landed" sync point before switching conversations, not an exact count.
+    Each turn in this app appends a message twice: the non-streamed rich-UI
+    card and the streamed echo reply. Both response lifecycles settle
+    independently, so the exact count after a turn is not fixed. This only
+    needs a reliable sync point before switching conversations.
     """
     loc = page.locator("pre#save_count.shiny-text-output")
     last = loc.inner_text()
@@ -49,29 +48,17 @@ def test_new_turn_ui_survives_second_restore(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     """
-    Regression test for a stale `ui_offset` after `replay_ui`.
-
-    `replay_ui` used to seed `self.ui_offset` from
-    `len(self.chat._messages_for_bookmark())`, which reads the
-    client-reported `${id}_messages` input -- an async, browser-driven
-    snapshot that (immediately after the synchronous restore loop) still
-    reflects the *previous* conversation, not the one just restored. That
-    stale offset makes `extend_record_linear` re-slice UI messages from index
-    0 instead of from the true restore point, so the next turn's node (and
-    all subsequent nodes) end up re-absorbing every earlier message on top of
-    their own: `node.ui` for the new turn is polluted with duplicated copies
-    of prior turns' messages (including a prior turn's plain user message
-    misattached into what should be a purely-assistant node), rather than
-    holding just that turn's own UI.
+    Regression test for server-owned transcript reconstruction after
+    `replay_ui`. A response after a switch must replace the active path's UI
+    from the server transcript, so it cannot duplicate restored messages or
+    lose the rich content of the new turn.
 
     Sequence:
       1. Conversation A: submit "q1" -> rich reply with marker #1. Wait for
          save.
       2. Start a new conversation (A's messages leave the DOM).
-      3. Switch back to A (first restore -- this is where `ui_offset` goes
-         stale under the bug).
-      4. Submit "q2" in A -> rich reply with marker #2. Under the bug, this
-         turn's saved node also re-absorbs q1's already-persisted messages.
+      3. Switch back to A.
+      4. Submit "q2" in A -> rich reply with marker #2.
       5. Switch away and back to A again (second restore).
       6. Assert the restored transcript has exactly the 6 expected messages
          (q1, marker #1, echo q1, q2, marker #2, echo q2) with no duplicates
@@ -92,6 +79,7 @@ def test_new_turn_ui_survives_second_restore(
 
     # --- Conversation A, turn 1: rich reply with marker #1. ---
     chat.set_user_input("q1")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: q1", timeout=30_000)
     card_q1 = page.locator(
@@ -104,15 +92,14 @@ def test_new_turn_ui_survives_second_restore(
     start_new_conversation(page)
     expect(page.locator(".ui-offset-marker-card")).to_have_count(0)
 
-    # --- Switch back to A: first restore. This is where `ui_offset` would
-    # go stale under the bug. ---
+    # --- Switch back to A for the first restore. ---
     switch_to_conversation(page, "q1")
     chat.expect_latest_message("echo: q1", timeout=30_000)
     expect(card_q1).to_have_count(1, timeout=10_000)
 
-    # --- Conversation A, turn 2: rich reply with marker #2. Under the bug,
-    # this turn's saved node re-absorbs q1's already-persisted messages. ---
+    # --- Conversation A, turn 2: rich reply with marker #2. ---
     chat.set_user_input("q2")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: q2", timeout=30_000)
     card_q2 = page.locator(
