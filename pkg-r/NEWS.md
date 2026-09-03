@@ -2,10 +2,10 @@
 
 ## New features and improvements
 
-* `chat_server()` now returns `on_user_input()`, which lets an app add per-message
-  context before content reaches the chat client. The callback receives the
-  submitted contents and returns the contents to send. The chat UI and
-  `last_input()` continue to show the user's original message. (#376)
+* `chat_server()` now returns `transform_user_input()`, which lets an app add
+  per-message context before content reaches the chat client. The callback
+  receives the submitted contents and returns the contents to send. The chat
+  UI and `last_input()` continue to show the user's original message. (#376)
 
 * `chat_ui()` now uses a wider default content width on large displays while
   preserving its existing width on smaller windows. (#364)

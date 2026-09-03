@@ -94,11 +94,12 @@
 #'       when attachments are disabled, a list of ellmer `Content` objects when
 #'       enabled).
 #'     * `last_turn`: A reactive value containing the last assistant turn.
-#'     * `on_user_input(fn)`: Add a callback that changes the contents sent to the
-#'       chat client. `fn` receives the submitted contents and must return the
-#'       contents to send. Use it to add per-message context without changing
-#'       the message in the chat UI or `last_input`. Callbacks run in
-#'       registration order.
+#'     * `transform_user_input(fn)`: Add a callback that changes the contents
+#'       sent to the chat client. `fn` receives the submitted contents and must
+#'       return the contents to send. Use it to add per-message context without
+#'       changing the message in the chat UI or `last_input`. Callbacks run in
+#'       registration order. Slash commands are not transformed: the command's
+#'       handler owns the transformation for its submissions.
 #'     * `update_user_input()`: A function to update the chat input or submit a
 #'       new user input. Takes the same arguments as [update_chat_user_input()],
 #'       except for `id` and `session`, which are supplied automatically.
@@ -159,7 +160,9 @@
 #'       the `shiny:chat-slash-command` DOM event. A handler that takes one
 #'       argument receives a [ContentSlashCommand] object (not a plain string).
 #'       See [ContentSlashCommand] for details on how to use this object to
-#'       preserve the original command text across bookmarks. `echo` controls
+#'       preserve the original command text across bookmarks. Slash command
+#'       submissions are not sent through `transform_user_input()`: the handler
+#'       owns the transformation for its command. `echo` controls
 #'       whether invoking the command is echoed as a user message and awaits a
 #'       response; it defaults to `TRUE` when a handler is given and `FALSE`
 #'       otherwise (set `echo = FALSE` for a handler that only performs side
@@ -478,7 +481,7 @@ chat_server <- function(
     }
   )
 
-  on_user_input_fns <- list()
+  transform_user_input_fns <- list()
   saved_on_save_fns <- list()
   saved_on_restore_fns <- list()
 
@@ -605,8 +608,8 @@ chat_server <- function(
       user_input <- session$input[[paste0(id, "_user_input")]]
       last_input(user_input)
       contents <- user_input
-      for (fn in on_user_input_fns) {
-        contents <- call_on_user_input(fn, contents)
+      for (fn in transform_user_input_fns) {
+        contents <- call_transform_user_input(fn, contents)
       }
 
       # Resolve the active conversation ID before model work begins and set
@@ -962,8 +965,8 @@ chat_server <- function(
   ret$set_greeting <- set_greeting_mod
   ret$set_client <- set_client
   ret$slash_command <- slash_command_method
-  ret$on_user_input <- function(fn) {
-    on_user_input_fns <<- c(on_user_input_fns, list(fn))
+  ret$transform_user_input <- function(fn) {
+    transform_user_input_fns <<- c(transform_user_input_fns, list(fn))
     invisible(fn)
   }
 
@@ -1019,11 +1022,11 @@ chat_server <- function(
   ret
 }
 
-call_on_user_input <- function(fn, contents) {
+call_transform_user_input <- function(fn, contents) {
   result <- fn(contents)
   if (is.null(result)) {
     rlang::warn(
-      "An `on_user_input` callback returned NULL; contents are unchanged. Did you forget to return the modified contents?"
+      "A `transform_user_input` function returned NULL; contents are unchanged. Did you forget to return the modified contents?"
     )
     return(contents)
   }
