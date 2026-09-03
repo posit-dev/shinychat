@@ -168,20 +168,6 @@ Drilling into that call opens a card containing the request and
 result:</p>
 <shiny-tool-result request-id="tool_call_002" tool-name="get_weather_forecast" request-call="get_weather_forecast(lat = 40.7128, lon = -74.006)" status="success" show-request value='[
   {
-    "time": "2026-09-03 13:00:00 EDT",
-    "temp": 74,
-    "dewpoint": 19.4444,
-    "humidity": 79,
-    "p_rain": 0,
-    "wind_speed": 1,
-    "wind_dir": "SE",
-    "skies": "Mostly Cloudy",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
     "time": "2026-09-03 14:00:00 EDT",
     "temp": 76,
     "dewpoint": 21.6667,
@@ -382,20 +368,6 @@ in the activity row and its drill-down card.</p>
 replacement, and it uses the same icon:</p>
 <shiny-tool-result request-id="tool_call_004" tool-name="get_weather_forecast" request-call="get_weather_forecast(lat = 42.3601, lon = -71.0589)" status="success" tool-title="Getting weather forecast" icon='&lt;svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="bi bi-cloud-sun " style="height:1em;width:1em;fill:currentColor;vertical-align:-0.125em;" aria-hidden="true" role="img" &gt;&lt;path d="M7 8a3.5 3.5 0 0 1 3.5 3.555.5.5 0 0 0 .624.492A1.503 1.503 0 0 1 13 13.5a1.5 1.5 0 0 1-1.5 1.5H3a2 2 0 1 1 .1-3.998.5.5 0 0 0 .51-.375A3.502 3.502 0 0 1 7 8zm4.473 3a4.5 4.5 0 0 0-8.72-.99A3 3 0 0 0 3 16h8.5a2.5 2.5 0 0 0 0-5h-.027z"&gt;&lt;/path&gt;
 &lt;path d="M10.5 1.5a.5.5 0 0 0-1 0v1a.5.5 0 0 0 1 0v-1zm3.743 1.964a.5.5 0 1 0-.707-.707l-.708.707a.5.5 0 0 0 .708.708l.707-.708zm-7.779-.707a.5.5 0 0 0-.707.707l.707.708a.5.5 0 1 0 .708-.708l-.708-.707zm1.734 3.374a2 2 0 1 1 3.296 2.198c.199.281.372.582.516.898a3 3 0 1 0-4.84-3.225c.352.011.696.055 1.028.129zm4.484 4.074c.6.215 1.125.59 1.522 1.072a.5.5 0 0 0 .039-.742l-.707-.707a.5.5 0 0 0-.854.377zM14.5 6.5a.5.5 0 0 0 0 1h1a.5.5 0 0 0 0-1h-1z"&gt;&lt;/path&gt;&lt;/svg&gt;' show-request value='[
-  {
-    "time": "2026-09-03 13:00:00 EDT",
-    "temp": 74,
-    "dewpoint": 19.4444,
-    "humidity": 79,
-    "p_rain": 0,
-    "wind_speed": 1,
-    "wind_dir": "SE",
-    "skies": "Mostly Cloudy",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
   {
     "time": "2026-09-03 14:00:00 EDT",
     "temp": 76,
@@ -638,21 +610,7 @@ then gives the settled call a past-tense title and icon based on the
 forecast. Its <code>label</code> identifies the location in a group of
 calls, and its <code>value_preview</code> reports the result size
 without opening the drill-down card:</p>
-<shiny-tool-result request-id="tool_call_005" tool-name="get_weather_forecast" request-call='get_weather_forecast(lat = 42.3601, lon = -71.0589, location_name = "Boston, MA")' status="success" tool-title="Got weather forecast for Boston, MA" icon='&lt;svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="bi bi-sun-fill " style="height:1em;width:1em;fill:currentColor;vertical-align:-0.125em;" aria-hidden="true" role="img" &gt;&lt;path d="M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM8 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0zm0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13zm8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5zM3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8zm10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.415a.5.5 0 1 1-.707-.708l1.414-1.414a.5.5 0 0 1 .707 0zm-9.193 9.193a.5.5 0 0 1 0 .707L3.05 13.657a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0zm9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707zM4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 1 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .708z"&gt;&lt;/path&gt;&lt;/svg&gt;' show-request label="Boston, MA" value-preview="11 hourly readings" value='[
-  {
-    "time": "2026-09-03 13:00:00 EDT",
-    "temp": 74,
-    "dewpoint": 19.4444,
-    "humidity": 79,
-    "p_rain": 0,
-    "wind_speed": 1,
-    "wind_dir": "SE",
-    "skies": "Mostly Cloudy",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
+<shiny-tool-result request-id="tool_call_005" tool-name="get_weather_forecast" request-call='get_weather_forecast(lat = 42.3601, lon = -71.0589, location_name = "Boston, MA")' status="success" tool-title="Got weather forecast for Boston, MA" icon='&lt;svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="bi bi-sun-fill " style="height:1em;width:1em;fill:currentColor;vertical-align:-0.125em;" aria-hidden="true" role="img" &gt;&lt;path d="M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM8 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0zm0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13zm8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5zM3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8zm10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.415a.5.5 0 1 1-.707-.708l1.414-1.414a.5.5 0 0 1 .707 0zm-9.193 9.193a.5.5 0 0 1 0 .707L3.05 13.657a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0zm9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707zM4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 1 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .708z"&gt;&lt;/path&gt;&lt;/svg&gt;' show-request label="Boston, MA" value-preview="10 hourly readings" value='[
   {
     "time": "2026-09-03 14:00:00 EDT",
     "temp": 76,
@@ -956,7 +914,7 @@ result into Shiny Chat’s frame. Omit it, or use the default
 <code>"default"</code>, to retain the existing drill-down
 presentation.</p>
 <shiny-tool-result request-id="tool_call_007" tool-name="get_weather_forecast" request-call='get_weather_forecast(lat = 42.3601, lon = -71.0589, location_name = "Boston, MA")' status="success" tool-title="Got weather forecast for Boston, MA" icon='&lt;svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="bi bi-cloud-sun " style="height:1em;width:1em;fill:currentColor;vertical-align:-0.125em;" aria-hidden="true" role="img" &gt;&lt;path d="M7 8a3.5 3.5 0 0 1 3.5 3.555.5.5 0 0 0 .624.492A1.503 1.503 0 0 1 13 13.5a1.5 1.5 0 0 1-1.5 1.5H3a2 2 0 1 1 .1-3.998.5.5 0 0 0 .51-.375A3.502 3.502 0 0 1 7 8zm4.473 3a4.5 4.5 0 0 0-8.72-.99A3 3 0 0 0 3 16h8.5a2.5 2.5 0 0 0 0-5h-.027z"&gt;&lt;/path&gt;
-&lt;path d="M10.5 1.5a.5.5 0 0 0-1 0v1a.5.5 0 0 0 1 0v-1zm3.743 1.964a.5.5 0 1 0-.707-.707l-.708.707a.5.5 0 0 0 .708.708l.707-.708zm-7.779-.707a.5.5 0 0 0-.707.707l.707.708a.5.5 0 1 0 .708-.708l-.708-.707zm1.734 3.374a2 2 0 1 1 3.296 2.198c.199.281.372.582.516.898a3 3 0 1 0-4.84-3.225c.352.011.696.055 1.028.129zm4.484 4.074c.6.215 1.125.59 1.522 1.072a.5.5 0 0 0 .039-.742l-.707-.707a.5.5 0 0 0-.854.377zM14.5 6.5a.5.5 0 0 0 0 1h1a.5.5 0 0 0 0-1h-1z"&gt;&lt;/path&gt;&lt;/svg&gt;' expanded full-screen open-style="framed" footer="&lt;small&gt;Forecast data from weather.gov&lt;/small&gt;" label="Boston, MA" value-preview="11 hourly readings" value="&lt;div id=&quot;efoodfieex&quot; style=&quot;padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;&quot;&gt;
+&lt;path d="M10.5 1.5a.5.5 0 0 0-1 0v1a.5.5 0 0 0 1 0v-1zm3.743 1.964a.5.5 0 1 0-.707-.707l-.708.707a.5.5 0 0 0 .708.708l.707-.708zm-7.779-.707a.5.5 0 0 0-.707.707l.707.708a.5.5 0 1 0 .708-.708l-.708-.707zm1.734 3.374a2 2 0 1 1 3.296 2.198c.199.281.372.582.516.898a3 3 0 1 0-4.84-3.225c.352.011.696.055 1.028.129zm4.484 4.074c.6.215 1.125.59 1.522 1.072a.5.5 0 0 0 .039-.742l-.707-.707a.5.5 0 0 0-.854.377zM14.5 6.5a.5.5 0 0 0 0 1h1a.5.5 0 0 0 0-1h-1z"&gt;&lt;/path&gt;&lt;/svg&gt;' expanded full-screen open-style="framed" footer="&lt;small&gt;Forecast data from weather.gov&lt;/small&gt;" label="Boston, MA" value-preview="10 hourly readings" value="&lt;div id=&quot;efoodfieex&quot; style=&quot;padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;&quot;&gt;
   
   &lt;table class=&quot;gt_table&quot; data-quarto-disable-processing=&quot;false&quot; data-quarto-bootstrap=&quot;false&quot; style=&quot;-webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji'; display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3;&quot; bgcolor=&quot;#FFFFFF&quot;&gt;
   &lt;thead style=&quot;border-style: none;&quot;&gt;
@@ -973,15 +931,6 @@ presentation.</p>
     &lt;/tr&gt;
   &lt;/thead&gt;
   &lt;tbody class=&quot;gt_table_body&quot; style=&quot;border-style: none; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3;&quot;&gt;
-    &lt;tr style=&quot;border-style: none;&quot;&gt;&lt;td headers=&quot;time&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;2026-09-03 13:00:00 EDT&lt;/td&gt;
-&lt;td headers=&quot;temp&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;74&lt;/td&gt;
-&lt;td headers=&quot;dewpoint&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;19.44444&lt;/td&gt;
-&lt;td headers=&quot;humidity&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;79&lt;/td&gt;
-&lt;td headers=&quot;p_rain&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;0&lt;/td&gt;
-&lt;td headers=&quot;wind_speed&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;1&lt;/td&gt;
-&lt;td headers=&quot;wind_dir&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;SE&lt;/td&gt;
-&lt;td headers=&quot;skies&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;Mostly Cloudy&lt;/td&gt;
-&lt;td headers=&quot;geometry&quot; class=&quot;gt_row gt_center&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: center;&quot; valign=&quot;middle&quot; align=&quot;center&quot;&gt;c(-71.0589, 42.3601)&lt;/td&gt;&lt;/tr&gt;
     &lt;tr style=&quot;border-style: none;&quot;&gt;&lt;td headers=&quot;time&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;2026-09-03 14:00:00 EDT&lt;/td&gt;
 &lt;td headers=&quot;temp&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;76&lt;/td&gt;
 &lt;td headers=&quot;dewpoint&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;21.66667&lt;/td&gt;
@@ -1128,7 +1077,7 @@ markdown to summarize the forecast in a few sentences.</p>
 <span>  <span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <shiny-tool-result request-id="tool_call_008" tool-name="get_weather_forecast" request-call='get_weather_forecast(lat = 42.3601, lon = -71.0589, location_name = "Boston, MA")' status="success" tool-title="Got weather forecast for Boston, MA" icon='&lt;svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="bi bi-cloud-sun " style="height:1em;width:1em;fill:currentColor;vertical-align:-0.125em;" aria-hidden="true" role="img" &gt;&lt;path d="M7 8a3.5 3.5 0 0 1 3.5 3.555.5.5 0 0 0 .624.492A1.503 1.503 0 0 1 13 13.5a1.5 1.5 0 0 1-1.5 1.5H3a2 2 0 1 1 .1-3.998.5.5 0 0 0 .51-.375A3.502 3.502 0 0 1 7 8zm4.473 3a4.5 4.5 0 0 0-8.72-.99A3 3 0 0 0 3 16h8.5a2.5 2.5 0 0 0 0-5h-.027z"&gt;&lt;/path&gt;
-&lt;path d="M10.5 1.5a.5.5 0 0 0-1 0v1a.5.5 0 0 0 1 0v-1zm3.743 1.964a.5.5 0 1 0-.707-.707l-.708.707a.5.5 0 0 0 .708.708l.707-.708zm-7.779-.707a.5.5 0 0 0-.707.707l.707.708a.5.5 0 1 0 .708-.708l-.708-.707zm1.734 3.374a2 2 0 1 1 3.296 2.198c.199.281.372.582.516.898a3 3 0 1 0-4.84-3.225c.352.011.696.055 1.028.129zm4.484 4.074c.6.215 1.125.59 1.522 1.072a.5.5 0 0 0 .039-.742l-.707-.707a.5.5 0 0 0-.854.377zM14.5 6.5a.5.5 0 0 0 0 1h1a.5.5 0 0 0 0-1h-1z"&gt;&lt;/path&gt;&lt;/svg&gt;' show-request value="In **Boston, MA**, it's currently 74°F with _mostly cloudy_ skies. Today's high will be 76°F and the low will be 68°F. Humidity is around 87.7%. Look for **patchy fog** skies throughout the day." value-type="markdown" data-shinychat-react></shiny-tool-result>
+&lt;path d="M10.5 1.5a.5.5 0 0 0-1 0v1a.5.5 0 0 0 1 0v-1zm3.743 1.964a.5.5 0 1 0-.707-.707l-.708.707a.5.5 0 0 0 .708.708l.707-.708zm-7.779-.707a.5.5 0 0 0-.707.707l.707.708a.5.5 0 1 0 .708-.708l-.708-.707zm1.734 3.374a2 2 0 1 1 3.296 2.198c.199.281.372.582.516.898a3 3 0 1 0-4.84-3.225c.352.011.696.055 1.028.129zm4.484 4.074c.6.215 1.125.59 1.522 1.072a.5.5 0 0 0 .039-.742l-.707-.707a.5.5 0 0 0-.854.377zM14.5 6.5a.5.5 0 0 0 0 1h1a.5.5 0 0 0 0-1h-1z"&gt;&lt;/path&gt;&lt;/svg&gt;' show-request value="In **Boston, MA**, it's currently 76°F with _slight chance rain showers_ skies. Today's high will be 76°F and the low will be 68°F. Humidity is around 88.6%. Look for **patchy fog** skies throughout the day." value-type="markdown" data-shinychat-react></shiny-tool-result>
 </div>
 </div>
 <div class="section level3">
