@@ -43,7 +43,9 @@ Suggests:
     shinytest2,
     testthat (>= 3.0.0),
     withr
-VignetteBuilder: knitr, rmarkdown
+VignetteBuilder: 
+    knitr,
+    rmarkdown
 Config/Needs/website: tidyverse/tidytemplate, rmarkdown, weathR, gt, glue,
     bsicons
 Config/roxygen2/version: 8.1.0
