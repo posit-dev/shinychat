@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New features
 
+* `Chat.transform_user_input()` lets an app add per-message context before content reaches the chat client. The function receives the submitted contents (the arguments for the client's `stream_async()` method) and returns the contents to send, and can be used as a direct decorator or called with arguments. The chat UI and `Chat.user_input()` continue to show the user's original message. (#376)
+
 * You can now edit and resend a message after sending it. Editing forks the conversation from that point — the original branch is kept as a sibling, and `‹ 1 / 2 ›` controls let you switch between versions at any time, including after reloading the page or returning from the history drawer. Requires history to be enabled (the default when using `client=`). (#269)
 
 * Conversation history gained a stable, reactive conversation ID via `chat.history.conversation_id()` (also emitted on OpenTelemetry spans as `gen_ai.conversation.id`, so telemetry can group model work by conversation) and a programmatic `chat.history.save()` for saving the active conversation on demand. (#307, #328)

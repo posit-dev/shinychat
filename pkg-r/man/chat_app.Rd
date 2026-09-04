@@ -78,6 +78,18 @@ returns an environment containing:
 when attachments are disabled, a list of ellmer \code{Content} objects when
 enabled).
 \item \code{last_turn}: A reactive value containing the last assistant turn.
+\item \code{transform_user_input(fn)}: Add a callback that changes the contents
+sent to the chat client. \code{fn} receives the submitted contents and must
+return the contents to send. Use it to add per-message context without
+changing the message in the chat UI or \code{last_input}. Callbacks run in
+registration order. Slash commands are not transformed: the command's
+handler owns the transformation for its submissions.
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{chat$transform_user_input(function(contents) \{
+  context <- retrieve_context(contents)
+  c(list(context), contents)
+\})
+}\if{html}{\out{</div>}}
 \item \code{update_user_input()}: A function to update the chat input or submit a
 new user input. Takes the same arguments as \code{\link[=update_chat_user_input]{update_chat_user_input()}},
 except for \code{id} and \code{session}, which are supplied automatically.
@@ -138,7 +150,9 @@ argument), or \code{NULL} for a client-side command handled in JavaScript via
 the \code{shiny:chat-slash-command} DOM event. A handler that takes one
 argument receives a \link{ContentSlashCommand} object (not a plain string).
 See \link{ContentSlashCommand} for details on how to use this object to
-preserve the original command text across bookmarks. \code{echo} controls
+preserve the original command text across bookmarks. Slash command
+submissions are not sent through \code{transform_user_input()}: the handler
+owns the transformation for its command. \code{echo} controls
 whether invoking the command is echoed as a user message and awaits a
 response; it defaults to \code{TRUE} when a handler is given and \code{FALSE}
 otherwise (set \code{echo = FALSE} for a handler that only performs side

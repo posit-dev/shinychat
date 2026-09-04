@@ -13,6 +13,8 @@
 
 ## New features and improvements
 
+* `chat_server()` now returns `transform_user_input()`, which lets an app add per-message context before content reaches the chat client. The callback receives the submitted contents and returns the contents to send, while the chat UI and `last_input()` continue to show the user's original message. (#376)
+
 * `chat_server()` gets multi-conversation history automatically: a drawer for starting new chats and returning to previous ones, with LLM-generated titles, search, rename, and delete. Conversations are persisted per-user (or a custom scope) via a pluggable store (the default `FileConversationStore` works out of the box, including on Posit Connect). Customize with `history = history_options(...)` — e.g. how the active conversation is restored across reloads (browser storage, URL, or Shiny bookmarking) and callbacks to keep app state synced to it — or opt out with `history = FALSE`. The history object also offers programmatic control, including a reactive conversation ID and an explicit `save()` method. For apps that can't use `chat_server()`, wire it up manually with `chat_enable_history()`. (#266, #307, #328)
 
 * You can now edit and resend a message after sending it. Editing forks the conversation from that point — the original branch is kept as a sibling, and `‹ 1 / 2 ›` controls let you switch between versions at any time, including after reloading the page or returning from the history drawer. Requires history to be enabled (the default with `chat_server()`). (#269)

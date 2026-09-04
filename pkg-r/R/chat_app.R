@@ -90,6 +90,19 @@
 #'       when attachments are disabled, a list of ellmer `Content` objects when
 #'       enabled).
 #'     * `last_turn`: A reactive value containing the last assistant turn.
+#'     * `transform_user_input(fn)`: Add a callback that changes the contents
+#'       sent to the chat client. `fn` receives the submitted contents and must
+#'       return the contents to send. Use it to add per-message context without
+#'       changing the message in the chat UI or `last_input`. Callbacks run in
+#'       registration order. Slash commands are not transformed: the command's
+#'       handler owns the transformation for its submissions.
+#'
+#'       ```r
+#'       chat$transform_user_input(function(contents) {
+#'         context <- retrieve_context(contents)
+#'         c(list(context), contents)
+#'       })
+#'       ```
 #'     * `update_user_input()`: A function to update the chat input or submit a
 #'       new user input. Takes the same arguments as [update_chat_user_input()],
 #'       except for `id` and `session`, which are supplied automatically.
@@ -150,7 +163,9 @@
 #'       the `shiny:chat-slash-command` DOM event. A handler that takes one
 #'       argument receives a [ContentSlashCommand] object (not a plain string).
 #'       See [ContentSlashCommand] for details on how to use this object to
-#'       preserve the original command text across bookmarks. `echo` controls
+#'       preserve the original command text across bookmarks. Slash command
+#'       submissions are not sent through `transform_user_input()`: the handler
+#'       owns the transformation for its command. `echo` controls
 #'       whether invoking the command is echoed as a user message and awaits a
 #'       response; it defaults to `TRUE` when a handler is given and `FALSE`
 #'       otherwise (set `echo = FALSE` for a handler that only performs side
@@ -475,6 +490,7 @@ chat_server <- function(
     }
   )
 
+  transform_user_input_fns <- list()
   saved_on_save_fns <- list()
   saved_on_restore_fns <- list()
 
@@ -604,6 +620,10 @@ chat_server <- function(
     {
       user_input <- session$input[[paste0(id, "_user_input")]]
       last_input(user_input)
+      contents <- user_input
+      for (fn in transform_user_input_fns) {
+        contents <- call_transform_user_input(fn, contents)
+      }
 
       # Resolve the active conversation ID before model work begins and set
       # it on the client as a scalar: later history switches, new-chat
@@ -636,7 +656,7 @@ chat_server <- function(
       append_stream_task$invoke(
         client,
         id,
-        user_input,
+        contents,
         controller = ctrl
       )
     }
@@ -958,6 +978,10 @@ chat_server <- function(
   ret$set_greeting <- set_greeting_mod
   ret$set_client <- set_client
   ret$slash_command <- slash_command_method
+  ret$transform_user_input <- function(fn) {
+    transform_user_input_fns <<- c(transform_user_input_fns, list(fn))
+    invisible(fn)
+  }
 
   hist_env <- new.env(parent = emptyenv())
 
@@ -1009,6 +1033,17 @@ chat_server <- function(
 
   lockEnvironment(ret)
   ret
+}
+
+call_transform_user_input <- function(fn, contents) {
+  result <- fn(contents)
+  if (is.null(result)) {
+    rlang::warn(
+      "A `transform_user_input` function returned NULL; contents are unchanged. Did you forget to return the modified contents?"
+    )
+    return(contents)
+  }
+  result
 }
 
 #' @describeIn chat_mod_ui A Shiny module server for chat (deprecated). Use [chat_server()] instead.
