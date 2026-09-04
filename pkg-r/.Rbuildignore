@@ -16,3 +16,4 @@
 ^vignettes/articles$
 ^vignettes/scripts$
 ^inst/lib/shiny/.*\.map$
+^\.shinychat$

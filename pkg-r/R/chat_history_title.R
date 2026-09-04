@@ -51,7 +51,7 @@ generate_title <- function(title_fn, client, recorded_turns) {
       tryCatch(titler$set_tools(list()), error = function(e) NULL)
       titler$set_system_prompt(TITLE_SYSTEM_PROMPT)
 
-      excerpt_turns <- head(recorded_turns, 2)
+      excerpt_turns <- utils::head(recorded_turns, 2)
       excerpt <- vapply(
         excerpt_turns,
         function(t) {
