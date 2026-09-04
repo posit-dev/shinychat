@@ -66,13 +66,20 @@ chat_ui(
 
     - This includes
       [`htmltools::tagList()`](https://rstudio.github.io/htmltools/reference/tagList.html),
-      which take UI elements (including strings) as children. In this
-      case, strings are still interpreted as markdown as long as they're
-      not inside HTML.
+      which takes UI elements (including strings) as children. Strings
+      inside a tagList are literal text (HTML-escaped), not markdown.
+      Use
+      [`htmltools::HTML()`](https://rstudio.github.io/htmltools/reference/HTML.html)
+      for trusted raw HTML strings.
 
   - A named list of `content` and `role`. The `content` can contain
     content as described above, and the `role` can be "assistant" or
     "user".
+
+  - Advanced: a [`list()`](https://rdrr.io/r/base/list.html) mixing bare
+    strings and UI elements interleaves markdown and HTML in one
+    message, in order. This API is provisional and may change in a
+    future release.
 
 - greeting:
 

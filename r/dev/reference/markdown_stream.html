@@ -86,7 +86,15 @@ content are generated over time.</p>
 <dt id="arg-content-stream">content_stream<a class="anchor" aria-label="anchor" href="#arg-content-stream"></a></dt>
 <dd><p>A string generator (e.g., <code><a href="https://coro.r-lib.org/reference/generator.html" class="external-link">coro::generator()</a></code> or
 <code><a href="https://coro.r-lib.org/reference/async_generator.html" class="external-link">coro::async_generator()</a></code>), a string promise (e.g., <code><a href="https://rstudio.github.io/promises/reference/promise.html" class="external-link">promises::promise()</a></code>),
-or a string promise generator.</p></dd>
+or a string promise generator.</p>
+<p>An item may also be a structured content block (a
+<code>shinychat_block</code> such as a <code>web_search</code>, <code>web_search_results</code>, or <code>web_fetch</code>
+block of the kind ellmer content normalization produces for
+<code><a href="chat_append.html">chat_append()</a></code>). Each block is sent as one complete, append-only
+structured block message. The client validates, groups, and renders it.
+Only the block types the stream client supports are accepted.
+<code>html_block</code> and the <code>web_*</code> family. Any other block type (e.g. a tool
+block, which the client would drop with a warning) raises an error.</p></dd>
 
 
 <dt id="arg-operation">operation<a class="anchor" aria-label="anchor" href="#arg-operation"></a></dt>
@@ -100,6 +108,11 @@ existing content.</p></dd>
 <dd><p>The Shiny session object.</p></dd>
 
 </dl></div>
+    <div class="section level2">
+    <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
+    <p>A promise that resolves to the accumulated stream content as a
+single string. Structured blocks contribute nothing to the string.</p>
+    </div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>

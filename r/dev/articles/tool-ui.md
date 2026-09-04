@@ -587,8 +587,8 @@ These options apply to the drill-down card beneath the activity row:
 
   This is most useful when you’ve [customized the drill-down
   content](#rich-content-in-the-drill-down-card) to include an
-  `{htmlwidget}` or other rich content that users should see
-  immediately.
+  [htmlwidgets](https://github.com/ramnathv/htmlwidgets) or other rich
+  content that users should see immediately.
 
 - **`full_screen = TRUE`**: Add a fullscreen toggle button to the
   drill-down card.

@@ -33,6 +33,16 @@ markdown_stream(
   [`promises::promise()`](https://rstudio.github.io/promises/reference/promise.html)),
   or a string promise generator.
 
+  An item may also be a structured content block (a `shinychat_block`
+  such as a `web_search`, `web_search_results`, or `web_fetch` block of
+  the kind ellmer content normalization produces for
+  [`chat_append()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md)).
+  Each block is sent as one complete, append-only structured block
+  message. The client validates, groups, and renders it. Only the block
+  types the stream client supports are accepted. `html_block` and the
+  `web_*` family. Any other block type (e.g. a tool block, which the
+  client would drop with a warning) raises an error.
+
 - operation:
 
   The operation to perform on the markdown stream. The default,
@@ -43,6 +53,11 @@ markdown_stream(
 - session:
 
   The Shiny session object.
+
+## Value
+
+A promise that resolves to the accumulated stream content as a single
+string. Structured blocks contribute nothing to the string.
 
 ## Examples
 

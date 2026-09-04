@@ -108,9 +108,10 @@ The actual message content can one of the following:</p><ul><li><p>A string, whi
 the client.</p><ul><li><p>To prevent interpreting as markdown, mark the string as
 <code><a href="https://rstudio.github.io/htmltools/reference/HTML.html" class="external-link">htmltools::HTML()</a></code>.</p></li>
 </ul></li>
-<li><p>A UI element.</p><ul><li><p>This includes <code><a href="https://rstudio.github.io/htmltools/reference/tagList.html" class="external-link">htmltools::tagList()</a></code>, which take UI elements
-(including strings) as children. In this case, strings are still
-interpreted as markdown as long as they're not inside HTML.</p></li>
+<li><p>A UI element.</p><ul><li><p>This includes <code><a href="https://rstudio.github.io/htmltools/reference/tagList.html" class="external-link">htmltools::tagList()</a></code>, which takes UI elements
+(including strings) as children. Strings inside a tagList are
+literal text (HTML-escaped), not markdown. Use
+<code><a href="https://rstudio.github.io/htmltools/reference/HTML.html" class="external-link">htmltools::HTML()</a></code> for trusted raw HTML strings.</p></li>
 </ul></li>
 </ul></dd>
 

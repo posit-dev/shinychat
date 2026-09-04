@@ -116,12 +116,16 @@ managing conversation state yourself. Each message can be one of the following:<
 client.</p><ul><li><p>To prevent interpreting as markdown, mark the string as
 <code><a href="https://rstudio.github.io/htmltools/reference/HTML.html" class="external-link">htmltools::HTML()</a></code>.</p></li>
 </ul></li>
-<li><p>A UI element.</p><ul><li><p>This includes <code><a href="https://rstudio.github.io/htmltools/reference/tagList.html" class="external-link">htmltools::tagList()</a></code>, which take UI elements (including
-strings) as children. In this case, strings are still interpreted as
-markdown as long as they're not inside HTML.</p></li>
+<li><p>A UI element.</p><ul><li><p>This includes <code><a href="https://rstudio.github.io/htmltools/reference/tagList.html" class="external-link">htmltools::tagList()</a></code>, which takes UI elements
+(including strings) as children. Strings inside a tagList are
+literal text (HTML-escaped), not markdown. Use
+<code><a href="https://rstudio.github.io/htmltools/reference/HTML.html" class="external-link">htmltools::HTML()</a></code> for trusted raw HTML strings.</p></li>
 </ul></li>
 <li><p>A named list of <code>content</code> and <code>role</code>. The <code>content</code> can contain content
 as described above, and the <code>role</code> can be "assistant" or "user".</p></li>
+<li><p>Advanced: a <code><a href="https://rdrr.io/r/base/list.html" class="external-link">list()</a></code> mixing bare strings and UI elements interleaves
+markdown and HTML in one message, in order. This API is provisional
+and may change in a future release.</p></li>
 </ul></dd>
 
 
