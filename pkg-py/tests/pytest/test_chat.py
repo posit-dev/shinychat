@@ -17,6 +17,7 @@ from shinychat import Chat
 from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
     ChatMessage,
+    HtmlBlock,
     Role,
     StoredMessage,
     StoredSegment,
@@ -1240,6 +1241,40 @@ def test_streaming_chunk_content_type_follows_segment():
         ]
         assert ("reasoning", "thinking") in chunk_types
         assert ("answer", "markdown") in chunk_types
+
+
+def test_streamed_tag_chunk_block_survives_in_stored_message():
+    """Regression: a streamed TagList/HTML chunk's html_block must accumulate
+    into the stored message (not just the wire), or bookmark restore and
+    `.messages()` lose the content entirely.
+    """
+    with session_context(test_session):
+        chat = Chat(id="chat")
+
+        async def _noop_send(*a: object, **k: object) -> None:
+            return None
+
+        chat._send_action = _noop_send  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            await chat._append_message_chunk("", chunk="start", stream_id="s1")
+            await chat._append_message_chunk(
+                TagList(tags.div("styled card")), chunk=True, stream_id="s1"
+            )
+            await chat._append_message_chunk("", chunk="end", stream_id="s1")
+
+        run_async(_exercise)
+
+        with reactive.isolate():
+            stored = chat._messages()[-1]
+            msgs = chat.messages()
+        assert [b["type"] for b in stored.blocks] == ["html_block"]
+        block = cast(HtmlBlock, stored.blocks[0])
+        assert block["content"] == "<div>styled card</div>"
+        # The wire invariant holds even for a blocks-only message.
+        assert isinstance(stored.segments[0], StoredSegment)
+        # `.messages()` flattens the html_block back to its HTML string.
+        assert msgs[-1]["content"] == "<div>styled card</div>"
 
 
 def test_stored_message_attachments_stored_separately():

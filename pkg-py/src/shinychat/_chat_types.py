@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Iterable
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -246,6 +247,10 @@ def is_structured_segment(
     seg: SegmentPayload,
 ) -> TypeGuard[StructuredBlock]:
     return isinstance(seg, dict) and "type" in seg
+
+
+def is_html_block(seg: StructuredBlock) -> TypeGuard[HtmlBlock]:
+    return seg["type"] == "html_block"
 
 
 class MessagePayload(TypedDict):
@@ -775,6 +780,32 @@ class StoredSegment(_SegmentBase):
     html_deps: list[SerializedDep] | None = None
 
 
+def flatten_segments_content(
+    segments: Iterable[_SegmentBase | StructuredBlock],
+) -> str:
+    """String spelling of segments: string content joined (thinking wrapped in
+    ``<thinking>`` tags) plus raw HTML from ``html_block``s. Other blocks have
+    no string spelling.
+    """
+    parts: list[str] = []
+    for s in segments:
+        if isinstance(s, _SegmentBase):
+            parts.append(s.stringify(s.content, s.content_type))
+        elif is_html_block(s):
+            parts.append(s["content"])
+    return "".join(parts)
+
+
+def ensure_string_segment(
+    segments: list[StoredSegment | StructuredBlock],
+    content_type: ContentType,
+) -> None:
+    # The wire carries at least one string segment, even for blocks-only
+    # messages.
+    if not any(isinstance(s, StoredSegment) for s in segments):
+        segments.insert(0, StoredSegment(content="", content_type=content_type))
+
+
 class StoredMessage(BaseModel):
     role: Role
     # Interleaved in content order, mirroring ChatMessage.segments and the
@@ -785,11 +816,7 @@ class StoredMessage(BaseModel):
 
     @property
     def content(self) -> str:
-        return "".join(
-            StoredSegment.stringify(s.content, s.content_type)
-            for s in self.segments
-            if isinstance(s, StoredSegment)
-        )
+        return flatten_segments_content(self.segments)
 
     @property
     def blocks(self) -> list[StructuredBlock]:
@@ -824,13 +851,7 @@ class StoredMessage(BaseModel):
             else seg
             for seg in message.segments
         ]
-        if not any(isinstance(s, StoredSegment) for s in segments):
-            # The wire always carries at least one string segment, even for
-            # a blocks-only message.
-            segments.insert(
-                0,
-                StoredSegment(content="", content_type=message.content_type),
-            )
+        ensure_string_segment(segments, message.content_type)
         first = next(s for s in segments if isinstance(s, StoredSegment))
         first.html_deps = html_deps
         return cls(
@@ -857,26 +878,42 @@ def serialize_html_deps(
     return cast(list[SerializedDep], processed["deps"])
 
 
+def processed_block_deps(
+    message: ChatMessage,
+    serialize_deps: "Callable[[list[HTMLDependency] | None], list[SerializedDep] | None]",
+) -> list[StructuredBlock]:
+    """Copies of ``message.blocks`` with session-processed html deps.
+
+    Without a session, the block keeps its raw ``as_dict()`` deps.
+    """
+    blocks = [cast(StructuredBlock, dict(b)) for b in message.blocks]
+    for idx, dep_objs in message._block_html_deps.items():
+        if idx >= len(blocks):
+            continue
+        processed = serialize_deps(dep_objs)
+        block = blocks[idx]
+        if (
+            processed is not None
+            and is_html_block(block)
+            and "html_deps" in block
+        ):
+            block["html_deps"] = processed
+    return blocks
+
+
 def _assemble_stored_message(
     message: ChatMessage,
     serialize_deps: "Callable[[list[HTMLDependency] | None], list[SerializedDep] | None]",
 ) -> StoredMessage:
-    """Assemble a :class:`StoredMessage`, session-processing html deps.
-
-    Overwrites each block's raw ``as_dict()`` ``html_deps`` with the
-    session-processed form (see :func:`serialize_html_deps`).
-    """
-    html_deps = serialize_deps(message.html_deps)
-    stored = StoredMessage.from_chat_message(message, html_deps=html_deps)
-    for idx, dep_objs in message._block_html_deps.items():
-        if idx < len(stored.blocks):
-            processed = serialize_deps(dep_objs)
-            block = stored.blocks[idx]
-            if "html_deps" in block:
-                if processed is not None:
-                    block["html_deps"] = processed
-                # No session: keep the raw as_dict() fallback already on the
-                # block.
+    """Assemble a :class:`StoredMessage`, session-processing html deps."""
+    stored = StoredMessage.from_chat_message(
+        message, html_deps=serialize_deps(message.html_deps)
+    )
+    for stored_block, block in zip(
+        stored.blocks, processed_block_deps(message, serialize_deps)
+    ):
+        if is_html_block(stored_block) and "html_deps" in block:
+            stored_block["html_deps"] = block["html_deps"]
     return stored
 
 

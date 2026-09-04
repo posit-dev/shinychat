@@ -543,8 +543,17 @@ test_that("mixed initial content carries leaf-level provenance", {
     segments[[1]],
     list(text = "## This is markdown", trusted = FALSE)
   )
-  expect_true(segments[[2]]$trusted)
-  expect_match(segments[[2]]$text, "<shiny-chat-raw-html>", fixed = TRUE)
-  expect_match(segments[[2]]$text, "<div>This is HTML</div>", fixed = TRUE)
+  # Trusted HTML leaves travel as `html_block` envelopes, which only
+  # trusted server content can produce.
+  expect_identical(
+    segments[[2]],
+    list(
+      block = list(
+        type = "html_block",
+        version = 1L,
+        content = "<div>This is HTML</div>"
+      )
+    )
+  )
   expect_identical(el$attribs[["content-trusted"]], "false")
 })

@@ -243,10 +243,13 @@ def extend_record_linear(
     deriving each new node's stored UI server-side from its turn group.
 
     Each group is one or more turns that form a single exchange unit. The
-    i-th derived message attaches to the i-th new node. The client-reported
-    snapshot (``ui_messages``) serves bookkeeping and out-of-band messages
-    only: derived messages consume the first ``n_derived`` not-yet-saved
-    client messages, and any extras attach to the last appended node.
+    i-th derived message attaches to the i-th new node. ``ui_messages`` is
+    the server-side stored-message snapshot (from
+    ``Chat._messages_for_bookmark()``) and serves bookkeeping and
+    out-of-band messages only: derived messages consume the first
+    ``n_derived`` not-yet-saved stored messages, and any extras (e.g.
+    ``append_message()`` calls outside the turn flow) attach to the last
+    appended node.
     """
     existing = len(record.path_node_ids())
     new_groups = turn_groups[existing:]
@@ -265,8 +268,8 @@ def extend_record_linear(
     if fallback is None:
         return  # empty record and no new groups: nothing to attach to
 
-    new_client_messages = ui_messages[ui_offset:]
-    for message in new_client_messages[n_derived:]:
+    new_stored_messages = ui_messages[ui_offset:]
+    for message in new_stored_messages[n_derived:]:
         node = record.nodes[fallback]
         node.ui = [*(node.ui or []), message]
 

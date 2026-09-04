@@ -55,7 +55,8 @@ from ._chat_normalize import (
     normalize_message_chunk,
 )
 from ._chat_segments import (
-    append_to_segments,
+    StreamSegment,
+    append_chunk_segments,
     copy_segments,
     has_mixed_content_types,
     segments_content,
@@ -68,7 +69,6 @@ from ._chat_types import (
     ChatMessage,
     ChatMessageDict,
     ClearAction,
-    ContentSegment,
     GreetingOptions,
     MessagePayload,
     SerializedDep,
@@ -76,9 +76,10 @@ from ._chat_types import (
     StoredMessage,
     StoredSegment,
     StringSegment,
-    StructuredBlock,
     _assemble_stored_message,
     chat_greeting,
+    ensure_string_segment,
+    flatten_segments_content,
     initial_message_payload,
     is_structured_segment,
     serialize_html_deps,
@@ -378,12 +379,12 @@ class Chat:
         self.on_error = on_error
 
         # Chunked messages get accumulated (using this property) before changing state
-        self._current_stream_segments: list[ContentSegment] = []
+        self._current_stream_segments: list[StreamSegment] = []
         self._current_stream_id: str | None = None
         self._pending_messages: list[PendingMessage] = []
 
         # For tracking message stream state when entering/exiting nested streams
-        self._message_stream_segments_checkpoint: list[ContentSegment] = []
+        self._message_stream_segments_checkpoint: list[StreamSegment] = []
 
         # Keep track of effects so we can destroy them when the chat is destroyed
         self._effects: list["Effect_"] = []
@@ -1187,7 +1188,6 @@ class Chat:
 
         # Normalize various message types into a ChatMessage()
         msg = normalize_message_chunk(message)
-        chunk_deps = msg.html_deps or []
 
         if operation == "replace":
             if has_mixed_content_types(
@@ -1204,11 +1204,8 @@ class Chat:
                 self._message_stream_segments_checkpoint
             )
 
-        append_to_segments(
-            self._current_stream_segments,
-            msg.content,
-            msg.content_type,
-            chunk_deps or None,
+        append_chunk_segments(
+            self._current_stream_segments, msg, self._serialize_html_deps
         )
 
         stream_content = segments_content(self._current_stream_segments)
@@ -1240,14 +1237,13 @@ class Chat:
                             first.html_deps = serialized_deps
                     self._store_message(msg)
             elif chunk == "end":
-                text_segs: list[StoredSegment | StructuredBlock] = [
-                    seg
-                    for seg in serialize_segments(
-                        self._current_stream_segments, self._serialize_html_deps
-                    )
-                ]
+                stored_segments = serialize_segments(
+                    self._current_stream_segments,
+                    self._serialize_html_deps,
+                )
+                ensure_string_segment(stored_segments, msg.content_type)
                 self._store_message(
-                    StoredMessage(role=msg.role, segments=text_segs),
+                    StoredMessage(role=msg.role, segments=stored_segments),
                 )
 
             # Send the message to the client
@@ -1477,9 +1473,8 @@ class Chat:
         try:
             async for msg in message:
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
-            # The string returned to the caller mirrors StoredMessage.content
-            # (thinking wrapped in <thinking> tags), not segments_content's bare join.
-            return "".join(str(s) for s in self._current_stream_segments)
+            # Same string spelling as the stored message's .content
+            return flatten_segments_content(self._current_stream_segments)
         finally:
             await self._append_message_chunk(empty, chunk="end", stream_id=id)
             await self._flush_pending_messages()
