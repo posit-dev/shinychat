@@ -12,13 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Several features under *New features* below — most notably message editing — build on the conversation history that `Chat(client=...)` (the recommended setup) enables automatically.
 
 * Added `page_chat()` for full-window chat pages with persistent chat navigation, responsive sidebars, and drawers, including a Shiny Express adapter. Register secondary pages with `chat_nav_panel()`, configure sidebars with `chat_sidebar()`, and add a drawer with `chat_drawer()`, controllable from the server via `chat.drawer.show()`, `.update()`, `.hide()`, and `.toggle()`. Related additions: `chat_ui_history()` for mounting conversation history outside the chat, a `page_chat_theme()` baseline theme, and `drawer`/`show_history` options on `chat_ui()`. (#329)
-    * The page shell supports standard Shiny programmatic navigation: `shiny.ui.update_navset()` works against its `"<id>_page"` ID, and the active page is readable server-side as `input["<id>_page"]()` (`"__home__"` when the chat home is active).
+    * The page shell also supports standard Shiny programmatic navigation (e.g. `shiny.ui.update_navset()`), with the active page readable server-side as `input["<id>_page"]()`.
 
 * Added `chat.get_greeting()` for reading the current greeting (and whether the user dismissed it) from the server, along with a new `{id}_greeting_dismissed` input event. Server-set greetings now also survive bookmarking round-trips. (#254)
 
 ### New features
 
-* You can now edit a message after sending it. Hover a user message (or press and hold on a touch device) and click the pencil icon to edit and resend. Editing forks the conversation from that point — the original branch is kept as a sibling, and `‹ 1 / 2 ›` controls let you switch between versions at any time, including after reloading the page or returning from the history drawer. Requires history to be enabled (the default when using `client=`). (#269)
+* You can now edit and resend a message after sending it. Editing forks the conversation from that point — the original branch is kept as a sibling, and `‹ 1 / 2 ›` controls let you switch between versions at any time, including after reloading the page or returning from the history drawer. Requires history to be enabled (the default when using `client=`). (#269)
 
 * Conversation history gained a stable, reactive conversation ID via `chat.history.conversation_id()` (also emitted on OpenTelemetry spans as `gen_ai.conversation.id`, so telemetry can group model work by conversation) and a programmatic `chat.history.save()` for saving the active conversation on demand. (#307, #328)
 
@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Tool call displays have been reworked to be more concise and to intelligently group multiple calls together. By default, calls render as a condensed activity row; expand a group row to see each call, then drill into a call for its full request/result card. (#283)
     * `ToolResultDisplay` gained `label` (a short per-call identifying value, e.g. a filename or query) and `value_preview` (a terse peek at the result, e.g. "1,204 rows"), both shown in the activity row and expanded call list.
+    * A tool's definition `title` (from its annotations) and its result `title` (from `ToolResultDisplay`) are now shown as-is, without client-side tense conjugation — the old `"Running {title}"` / `"{title} failed"` templates are gone. The definition title shows while the call is running; for a single-call row, the result title (if provided) replaces it when the result arrives, and failures are shown via a separate status cue. If a title now reads oddly while running, write it in the present tense (e.g. "Running code").
     * Control grouping with the `tool_grouping` parameter of `chat_ui()` / `Chat.ui()`: `"tool"` (default) groups calls to the same tool within a tool-calling loop, `"all"` groups every call in the loop together, and `"none"` shows one activity row per call (thinking or prose starts a new loop). Individual tools can override the chat-level setting via a `grouping` tool annotation — for chatlas tools, set it under `annotations={"extra": {"grouping": ...}}`.
     * Set `open_style="framed"` on a tool result display to draw a border around an open tool result's header and contents — a better fit for results with a footer or fullscreen toggle. (#331)
     * Fully custom `ContentToolResult` UI returned through a `message_content()` or `message_content_chunk()` handler now pairs with its tool request: while the tool runs it appears in the activity row, and once the result arrives the custom UI renders as standalone output. This works for streamed messages, static preloads, and restored conversations without changes to existing handlers.
@@ -48,8 +49,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `chat_ui()` / `Chat.ui()` and `page_chat()` no longer show an assistant icon by default. Pass `icon_assistant=True` to restore the built-in robot icon, or supply your own icon as before. (#345)
 
 * `chat_ui()` and `Chat.ui()` now use a wider default content width on large displays while preserving their existing width on smaller windows. (#364)
-
-* A tool's definition `title` (from its annotations) and its result `title` (from `ToolResultDisplay`) are now shown as-is, without client-side tense conjugation — the old `"Running {title}"` / `"{title} failed"` templates are gone. The definition title shows while the call is running; for a single-call row, the result title (if provided) replaces it when the result arrives. If a title now reads oddly while running, use an explicit present-tense definition title (e.g. "Running code") and, optionally, a past-tense result title (e.g. "Ran code"). Failures are shown via a separate status cue rather than appended to the title.
 
 * The history drawer now orders conversations by creation time instead of last update, so simply opening an older conversation no longer moves it to the top of the list. (#372)
 
