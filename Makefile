@@ -140,6 +140,11 @@ r-update-dist: r-sync-fixtures ## [r] Update shinychat web assets
 	cp -r $(PATH_PKG_JS)/dist/* $(PATH_PKG_R)/inst/lib/shiny/
 	(git rev-parse HEAD) > "$(PATH_PKG_R)/inst/lib/shiny/GIT_VERSION"
 
+.PHONY: r-vignette-screenshots
+r-vignette-screenshots: ## [r] Regenerate tool-ui vignette screenshots (requires Chrome)
+	@echo "📸 Capturing tool-ui vignette screenshots"
+	Rscript $(PATH_PKG_R)/vignettes/scripts/tool-ui/screenshots.R
+
 .PHONY: r-docs-render
 r-docs-render: ## [r] Build R docs
 	@echo "📖 Rendering R docs with pkgdown"
