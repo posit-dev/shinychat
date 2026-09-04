@@ -158,7 +158,7 @@ def test_transform_user_input_callbacks_transform_contents_in_order():
     def add_context(contents: list[Any]) -> list[Any]:
         return ["context", *contents]
 
-    @chat.transform_user_input
+    @chat.transform_user_input()
     async def add_instruction(contents: list[Any]) -> list[Any]:
         return [*contents, "instruction"]
 

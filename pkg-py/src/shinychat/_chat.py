@@ -697,9 +697,22 @@ class Chat:
 
         return create_effect(fn)
 
+    @overload
     def transform_user_input(
         self, fn: TransformUserInputFn
-    ) -> TransformUserInputFn:
+    ) -> TransformUserInputFn: ...
+
+    @overload
+    def transform_user_input(
+        self,
+    ) -> Callable[[TransformUserInputFn], TransformUserInputFn]: ...
+
+    def transform_user_input(
+        self, fn: TransformUserInputFn | None = None
+    ) -> (
+        TransformUserInputFn
+        | Callable[[TransformUserInputFn], TransformUserInputFn]
+    ):
         """
         Add a function that transforms the contents sent to a chat client.
 
@@ -712,18 +725,30 @@ class Chat:
         This method only affects automatic client handling from ``Chat(client=...)``.
         It does not apply to slash commands: a command's handler owns the
         transformation for its submissions. Transforms run in registration order.
-        Register transforms before a user submits a message::
+        Register transforms before a user submits a message, either directly or
+        with arguments::
 
             @chat.transform_user_input
             def add_context(contents):
                 context = retrieve_context(contents)
                 return [context, *contents]
 
+
+            @chat.transform_user_input()
+            def add_instruction(contents):
+                return [*contents, "instruction"]
+
         A function that returns ``None`` is skipped with a warning; return the
         modified contents instead.
         """
-        self._transform_user_input_fns.append(fn)
-        return fn
+
+        def register(fn: TransformUserInputFn) -> TransformUserInputFn:
+            self._transform_user_input_fns.append(fn)
+            return fn
+
+        if fn is None:
+            return register
+        return register(fn)
 
     async def _run_transform_user_input(
         self, contents: UserInputContents
