@@ -2,6 +2,10 @@
 title: "Get started"
 resource_files:
   - images/
+vignette: >
+  %\VignetteIndexEntry{Get started}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
 ---
 
 <style>
