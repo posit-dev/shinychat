@@ -161,7 +161,8 @@ HistoryController <- R6::R6Class(
       self$record <- extend_record_linear(
         self$record,
         recorded_turns,
-        tools = private$client$get_tools()
+        tools = private$client$get_tools(),
+        session = private$session
       )
       self$record$response_count <- (self$record$response_count %||% 0L) + 1L
       self$record$values <- private$capture_app_state()
@@ -309,24 +310,17 @@ HistoryController <- R6::R6Class(
         for (node_id in record_path_node_ids(record)) {
           node <- record$nodes[[node_id]]
           stored <- node$ui
-          if (is.null(stored)) {
-            last_turn <- node$turns[[length(node$turns)]]
-            last_turn_live <- ellmer::contents_replay(
-              last_turn,
-              tools = private$client$get_tools()
-            )
-            stored <- list(
-              list(
-                role = ellmer_turn_effective_role(last_turn_live),
-                segments = list(
-                  list(
-                    content = turn_fallback_markdown(last_turn),
-                    content_type = "markdown"
-                  )
-                )
-              )
+
+          # Stored UI failing the current-version check is discarded and
+          # re-derived from turns, never re-parsed.
+          if (is.null(stored) || !is_stored_ui_versioned(stored)) {
+            stored <- derive_node_ui_from_turns(
+              node,
+              tools = private$client$get_tools(),
+              session = private$session
             )
           }
+
           for (message in stored) {
             restore_history_message(
               private$chat_id,
@@ -368,7 +362,8 @@ HistoryController <- R6::R6Class(
       self$record <- extend_record_linear(
         self$record,
         recorded_turns,
-        tools = private$client$get_tools()
+        tools = private$client$get_tools(),
+        session = private$session
       )
       self$record$values <- private$capture_app_state()
       self$put_record(self$partition, self$record)

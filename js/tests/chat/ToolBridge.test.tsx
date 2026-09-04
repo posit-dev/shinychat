@@ -19,7 +19,7 @@ function expandToolRow() {
 }
 
 describe("Tool component bridge rendering", () => {
-  it("renders a tool request card from server HTML", () => {
+  it("renders a tool request card from a structured tool_request block", () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()
 
@@ -47,9 +47,12 @@ describe("Tool component bridge rendering", () => {
           role: "assistant",
           segments: [
             {
-              content:
-                '<shiny-tool-request data-shinychat-react request-id="req-1" tool-name="get_weather" tool-title="Get Weather" arguments=\'{"city":"NYC"}\'></shiny-tool-request>',
-              content_type: "html",
+              type: "tool_request",
+              version: 1,
+              request_id: "req-1",
+              tool_name: "get_weather",
+              title: "Get Weather",
+              arguments: '{"city":"NYC"}',
             },
           ],
         },
@@ -97,9 +100,11 @@ describe("Tool component bridge rendering", () => {
           role: "assistant",
           segments: [
             {
-              content:
-                '<shiny-tool-request data-shinychat-react request-id="req-2" tool-name="get_weather" arguments="{}"></shiny-tool-request>',
-              content_type: "html",
+              type: "tool_request",
+              version: 1,
+              request_id: "req-2",
+              tool_name: "get_weather",
+              arguments: "{}",
             },
           ],
         },
@@ -114,9 +119,13 @@ describe("Tool component bridge rendering", () => {
           role: "assistant",
           segments: [
             {
-              content:
-                '<shiny-tool-result data-shinychat-react request-id="req-2" tool-name="get_weather" status="success" value="Sunny, 72°F" value-type="text"></shiny-tool-result>',
-              content_type: "html",
+              type: "tool_result",
+              version: 1,
+              request_id: "req-2",
+              tool_name: "get_weather",
+              status: "success",
+              value: "Sunny, 72°F",
+              value_type: "text",
             },
           ],
         },
@@ -158,9 +167,11 @@ describe("Tool component bridge rendering", () => {
           role: "assistant",
           segments: [
             {
-              content:
-                '<shiny-tool-request data-shinychat-react request-id="req-inline-hide" tool-name="get_weather" arguments="{}"></shiny-tool-request>',
-              content_type: "html",
+              type: "tool_request",
+              version: 1,
+              request_id: "req-inline-hide",
+              tool_name: "get_weather",
+              arguments: "{}",
             },
           ],
         },
@@ -177,9 +188,13 @@ describe("Tool component bridge rendering", () => {
           role: "assistant",
           segments: [
             {
-              content:
-                '<shiny-tool-result data-shinychat-react request-id="req-inline-hide" tool-name="get_weather" status="success" value="Sunny, 72°F" value-type="text"></shiny-tool-result>',
-              content_type: "html",
+              type: "tool_result",
+              version: 1,
+              request_id: "req-inline-hide",
+              tool_name: "get_weather",
+              status: "success",
+              value: "Sunny, 72°F",
+              value_type: "text",
             },
           ],
         },
@@ -193,7 +208,7 @@ describe("Tool component bridge rendering", () => {
     expect(document.body.textContent).toContain("Sunny, 72°F")
   })
 
-  it("hides an existing tool request when a matching streamed tool result replaces chunk content", () => {
+  it("hides an existing tool request when a matching streamed tool result arrives via block_insert", () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()
 
@@ -221,9 +236,11 @@ describe("Tool component bridge rendering", () => {
           role: "assistant",
           segments: [
             {
-              content:
-                '<shiny-tool-request data-shinychat-react request-id="req-stream-hide" tool-name="get_weather" arguments="{}"></shiny-tool-request>',
-              content_type: "html",
+              type: "tool_request",
+              version: 1,
+              request_id: "req-stream-hide",
+              tool_name: "get_weather",
+              arguments: "{}",
             },
           ],
         },
@@ -237,18 +254,23 @@ describe("Tool component bridge rendering", () => {
         type: "chunk_start",
         message: {
           role: "assistant",
-          segments: [{ content: "", content_type: "html" }],
+          segments: [],
         },
       })
     })
 
     act(() => {
       transport.fire("test-chat", {
-        type: "chunk",
-        content:
-          '<shiny-tool-result data-shinychat-react request-id="req-stream-hide" tool-name="get_weather" status="success" value="Done" value-type="text"></shiny-tool-result>',
-        content_type: "html",
-        operation: "replace",
+        type: "block_insert",
+        block: {
+          type: "tool_result",
+          version: 1,
+          request_id: "req-stream-hide",
+          tool_name: "get_weather",
+          status: "success",
+          value: "Done",
+          value_type: "text",
+        },
       })
     })
 
@@ -294,9 +316,11 @@ describe("Tool component bridge rendering", () => {
           role: "assistant",
           segments: [
             {
-              content:
-                '<shiny-tool-request data-shinychat-react request-id="req-3" tool-name="search" arguments="{}"></shiny-tool-request>',
-              content_type: "html",
+              type: "tool_request",
+              version: 1,
+              request_id: "req-3",
+              tool_name: "search",
+              arguments: "{}",
             },
           ],
         },
@@ -346,30 +370,82 @@ describe("Tool component bridge rendering", () => {
           {
             id: "msg-request",
             role: "assistant",
-            content:
-              '<shiny-tool-request data-shinychat-react request-id="req-preloaded" tool-name="search" arguments="{}"></shiny-tool-request>',
+            content: "",
             streaming: false,
             blocks: [
               {
-                type: "content",
-                content:
-                  '<shiny-tool-request data-shinychat-react request-id="req-preloaded" tool-name="search" arguments="{}"></shiny-tool-request>',
+                type: "tool_loop",
+                content: "",
                 contentType: "html",
+                grouping: "tool",
+                groups: [
+                  {
+                    key: "tool:search",
+                    toolName: "search",
+                    title: undefined,
+                    titleSettled: false,
+                    icon: undefined,
+                    count: 1,
+                    segments: [
+                      {
+                        toolName: "search",
+                        count: 1,
+                        settled: false,
+                      },
+                    ],
+                    calls: [
+                      {
+                        requestId: "req-preloaded",
+                        localId: "req-preloaded",
+                        toolName: "search",
+                        status: "running",
+                        structured: true,
+                      },
+                    ],
+                  },
+                ],
               },
             ],
           },
           {
             id: "msg-result",
             role: "assistant",
-            content:
-              '<shiny-tool-result data-shinychat-react request-id="req-preloaded" tool-name="search" status="success" value="Done" value-type="text"></shiny-tool-result>',
+            content: "",
             streaming: false,
             blocks: [
               {
-                type: "content",
-                content:
-                  '<shiny-tool-result data-shinychat-react request-id="req-preloaded" tool-name="search" status="success" value="Done" value-type="text"></shiny-tool-result>',
+                type: "tool_loop",
+                content: "",
                 contentType: "html",
+                grouping: "tool",
+                groups: [
+                  {
+                    key: "tool:search",
+                    toolName: "search",
+                    title: undefined,
+                    titleSettled: true,
+                    icon: undefined,
+                    count: 1,
+                    segments: [
+                      {
+                        toolName: "search",
+                        count: 1,
+                        settled: true,
+                      },
+                    ],
+                    calls: [
+                      {
+                        requestId: "req-preloaded",
+                        localId: "req-preloaded",
+                        toolName: "search",
+                        status: "success",
+                        value: "Done",
+                        valueType: "text",
+                        structured: true,
+                      },
+                    ],
+                  },
+                ],
               },
             ],
           },
@@ -413,8 +489,15 @@ describe("Tool component bridge rendering", () => {
           role: "assistant",
           segments: [
             {
-              content: `<shiny-tool-result data-shinychat-react request-id="req-icon" tool-name="list_files" tool-title="List Files" status="success" value="file1.txt" value-type="text" icon="${folderIcon.replace(/"/g, "&quot;")}"></shiny-tool-result>`,
-              content_type: "html",
+              type: "tool_result",
+              version: 1,
+              request_id: "req-icon",
+              tool_name: "list_files",
+              title: "List Files",
+              status: "success",
+              value: "file1.txt",
+              value_type: "text",
+              icon: folderIcon,
             },
           ],
         },
@@ -455,9 +538,13 @@ describe("Tool component bridge rendering", () => {
           role: "assistant",
           segments: [
             {
-              content:
-                '<shiny-tool-result data-shinychat-react request-id="req-no-icon" tool-name="get_weather" status="success" value="Sunny" value-type="text"></shiny-tool-result>',
-              content_type: "html",
+              type: "tool_result",
+              version: 1,
+              request_id: "req-no-icon",
+              tool_name: "get_weather",
+              status: "success",
+              value: "Sunny",
+              value_type: "text",
             },
           ],
         },
@@ -499,9 +586,16 @@ describe("Tool component bridge rendering", () => {
           role: "assistant",
           segments: [
             {
-              content:
-                '<shiny-tool-result data-shinychat-react request-id="req-empty" tool-name="get_weather" status="success" value="" value-type="text" show-request full-screen expanded></shiny-tool-result>',
-              content_type: "html",
+              type: "tool_result",
+              version: 1,
+              request_id: "req-empty",
+              tool_name: "get_weather",
+              status: "success",
+              value: "",
+              value_type: "text",
+              show_request: true,
+              full_screen: true,
+              expanded: true,
             },
           ],
         },
@@ -585,5 +679,48 @@ describe("Tool component bridge rendering", () => {
     expect(document.querySelector(".shiny-chat-thinking")).toBeTruthy()
     expect(document.body.textContent).toContain("Here you go.")
     vi.unstubAllGlobals()
+  })
+
+  it("does not mount an HTML payload in tool_name when the card is expanded", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+        uploadAccept={[]}
+        maxUploadSize={30000000}
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [
+            {
+              type: "tool_result",
+              version: 1,
+              request_id: "req-xss",
+              tool_name: "<img src=x onerror=alert(1)>",
+              status: "success",
+              value: "ok",
+              value_type: "text",
+              expanded: true,
+            },
+          ],
+        },
+      })
+    })
+
+    expect(document.querySelector(".shiny-chat-tool-group__row")).toBeTruthy()
+    expect(document.querySelector(".shiny-tool-card")).toBeTruthy()
+
+    expect(document.querySelector('img[src="x"]')).toBeNull()
+    expect(document.body.textContent).toContain("<img src=x onerror=alert(1)>")
   })
 })

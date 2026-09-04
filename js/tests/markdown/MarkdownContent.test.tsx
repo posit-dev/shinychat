@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { fireEvent, render, screen, within } from "@testing-library/react"
 import * as markdownToReactModule from "../../src/markdown/markdownToReact"
 import { MarkdownContent } from "../../src/markdown/MarkdownContent"
+import { EscapedIsland } from "../../src/markdown/EscapedIsland"
 import { chatTagToComponentMap } from "../../src/chat/chatTagToComponentMap"
 
 // MarkdownContent is a pure component — it does NOT call useShinyLifecycle,
@@ -36,50 +37,6 @@ describe("MarkdownContent (pure)", () => {
     expect(container.querySelector("strong")).toBeNull()
     expect(container.textContent).toContain("**not bold**")
     expect(container.textContent).toContain("tail")
-  })
-
-  it("renders React-backed tool tags from html content", () => {
-    const { container } = render(
-      <MarkdownContent
-        content={
-          '<shiny-tool-request data-shinychat-react request-id="req-html" tool-name="test" arguments="{}"></shiny-tool-request>'
-        }
-        contentType="html"
-        tagToComponentMap={chatTagToComponentMap}
-      />,
-    )
-
-    expect(container.querySelector(".shiny-tool-card")).not.toBeNull()
-  })
-
-  it("renders an ordinary tool result through the fallback bridge", () => {
-    const { container } = render(
-      <MarkdownContent
-        content={
-          '<shiny-tool-result request-id="req-html-result" tool-name="test" value="done" value-type="text"></shiny-tool-result>'
-        }
-        contentType="html"
-        tagToComponentMap={chatTagToComponentMap}
-      />,
-    )
-
-    expect(container.querySelector(".shiny-tool-card")).not.toBeNull()
-    expect(container.textContent).toContain("done")
-  })
-
-  it("renders no card for custom-display through the fallback bridge", () => {
-    const { container } = render(
-      <MarkdownContent
-        content={
-          '<shiny-tool-result request-id="req-custom" tool-name="test" value="&lt;p&gt;custom&lt;/p&gt;" value-type="html" custom-display></shiny-tool-result>'
-        }
-        contentType="html"
-        tagToComponentMap={chatTagToComponentMap}
-      />,
-    )
-
-    expect(container.querySelector(".shiny-tool-card")).toBeNull()
-    expect(container.textContent).not.toContain("custom")
   })
 
   it("groups a <shiny-aside> tag in html content into an aside pill", () => {
@@ -162,17 +119,6 @@ describe("MarkdownContent (pure)", () => {
     }).not.toThrow()
   })
 
-  it.each(["shiny-chat-raw-html", "shinychat-raw-html"])(
-    "renders %s block without throwing",
-    (tagName) => {
-      const content = `<${tagName}><div class="custom">Hello</div></${tagName}>`
-
-      expect(() => {
-        render(<MarkdownContent content={content} contentType="markdown" />)
-      }).not.toThrow()
-    },
-  )
-
   it("renders tool tags without requiring chat contexts", () => {
     const content =
       '<shiny-tool-result request-id="req-1" tool-name="get_weather" status="success" value="Sunny" value-type="text"></shiny-tool-result>'
@@ -183,24 +129,6 @@ describe("MarkdownContent (pure)", () => {
 
     expect(container.querySelector("shiny-tool-result")).not.toBeNull()
     expect(container.querySelector(".shiny-tool-card")).toBeNull()
-  })
-
-  it("renders tool tags as top-level React components (server splits content)", () => {
-    // The server now splits HTML islands around data-shinychat-react elements,
-    // so tool tags arrive as top-level elements (not wrapped in an HTML island).
-    const content =
-      '<shiny-tool-request data-shinychat-react request-id="req-1" tool-name="test" arguments="{}"></shiny-tool-request>'
-
-    const { container } = render(
-      <MarkdownContent
-        content={content}
-        contentType="markdown"
-        tagToComponentMap={chatTagToComponentMap}
-      />,
-    )
-
-    // The tool request bridge renders .shiny-tool-card
-    expect(container.querySelector(".shiny-tool-card")).not.toBeNull()
   })
 
   it("shows streaming dot when streaming=true", () => {
@@ -331,24 +259,14 @@ describe("MarkdownContent (pure)", () => {
     const content =
       '<shiny-chat-raw-html><img data-forged="1" src="x"></shiny-chat-raw-html>'
     const { container } = render(
-      <MarkdownContent content={content} contentType="markdown" />,
+      <MarkdownContent
+        content={content}
+        contentType="markdown"
+        tagToComponentMap={{ "shiny-chat-raw-html": EscapedIsland }}
+      />,
     )
 
     expect(container.querySelector("[data-forged]")).toBeNull()
     expect(container.textContent).toContain("<shiny-chat-raw-html>")
-  })
-
-  it("allows an explicitly trusted markdown island", () => {
-    const content =
-      '<shiny-chat-raw-html><div data-trusted="1">safe</div></shiny-chat-raw-html>'
-    const { container } = render(
-      <MarkdownContent
-        content={content}
-        contentType="markdown"
-        allowRawHtmlIslands
-      />,
-    )
-
-    expect(container.querySelector("[data-trusted]")).not.toBeNull()
   })
 })

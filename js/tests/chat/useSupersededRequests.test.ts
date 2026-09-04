@@ -1,24 +1,45 @@
 import { describe, it, expect } from "vitest"
 import { renderHook } from "@testing-library/react"
 import { useSupersededRequests } from "../../src/chat/useSupersededRequests"
-import { routeToolBlocks, type ChatMessageData } from "../../src/chat/state"
+import {
+  structuredBlockToLoop,
+  type ChatMessageData,
+} from "../../src/chat/state"
+import type {
+  ToolRequestBlock,
+  ToolResultBlock,
+} from "../../src/transport/types"
 
-const request = (id: string) =>
-  `<shiny-tool-request data-shinychat-react request-id="${id}" tool-name="search" arguments="{}"></shiny-tool-request>`
-const result = (id: string) =>
-  `<shiny-tool-result data-shinychat-react request-id="${id}" tool-name="search" status="success" value="ok" value-type="text"></shiny-tool-result>`
+const request = (id: string): ToolRequestBlock => ({
+  type: "tool_request",
+  version: 1,
+  request_id: id,
+  tool_name: "search",
+  arguments: "{}",
+})
 
-function message(content: string): ChatMessageData {
+const result = (id: string): ToolResultBlock => ({
+  type: "tool_result",
+  version: 1,
+  request_id: id,
+  tool_name: "search",
+  status: "success",
+  value: "ok",
+  value_type: "text",
+})
+
+function loopMessage(
+  blocks: Array<ToolRequestBlock | ToolResultBlock>,
+): ChatMessageData {
+  const loops = blocks
+    .map((b) => structuredBlockToLoop(b, "tool"))
+    .filter((l) => l !== null)
   return {
     id: "m",
     role: "assistant",
-    content,
+    content: "",
     streaming: false,
-    blocks: routeToolBlocks(
-      [{ type: "content", content, contentType: "html" }],
-      "tool",
-      "assistant",
-    ),
+    blocks: loops,
   }
 }
 
@@ -26,7 +47,7 @@ describe("useSupersededRequests", () => {
   it("supersedes a paired request", () => {
     const { result: hook } = renderHook(() =>
       useSupersededRequests(
-        [message(request("req-1") + result("req-1"))],
+        [loopMessage([request("req-1"), result("req-1")])],
         null,
       ),
     )
@@ -35,7 +56,7 @@ describe("useSupersededRequests", () => {
 
   it("leaves a request alone when its result never arrives", () => {
     const { result: hook } = renderHook(() =>
-      useSupersededRequests([message(request("req-1"))], null),
+      useSupersededRequests([loopMessage([request("req-1")])], null),
     )
     expect(hook.current.size).toBe(0)
   })
@@ -43,7 +64,7 @@ describe("useSupersededRequests", () => {
   // The set reaches every message through context, so a fresh identity on each
   // render would re-render the whole transcript per streaming chunk.
   it("keeps the same Set identity while membership is unchanged", () => {
-    const messages = [message(request("req-1") + result("req-1"))]
+    const messages = [loopMessage([request("req-1"), result("req-1")])]
     const { result: hook, rerender } = renderHook(
       ({ msgs }: { msgs: ChatMessageData[] }) =>
         useSupersededRequests(msgs, null),

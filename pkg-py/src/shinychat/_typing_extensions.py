@@ -29,16 +29,18 @@ if sys.version_info >= (3, 10):
 else:
     from typing_extensions import Concatenate, ParamSpec, TypeGuard
 
-# Even though TypedDict is available in Python 3.8, because it's used with NotRequired,
-# they should both come from the same typing module.
-# https://peps.python.org/pep-0655/#usage-in-python-3-11
+# TypedDict always comes from typing_extensions: pydantic requires
+# `typing_extensions.TypedDict` (not `typing.TypedDict`) on Python < 3.12 for
+# models with TypedDict-typed fields, and it interoperates with
+# `typing.NotRequired` on 3.11+ (https://peps.python.org/pep-0655/).
+from typing_extensions import TypedDict
+
 if sys.version_info >= (3, 11):
     from typing import (
         Never,
         NotRequired,
         Required,
         Self,
-        TypedDict,
         assert_type,
     )
 else:
@@ -47,7 +49,6 @@ else:
         NotRequired,
         Required,
         Self,
-        TypedDict,
         assert_type,
     )
 

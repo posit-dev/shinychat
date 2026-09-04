@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 from htmltools import tags
 from shinychat._history_client import (
+    TurnDict,
     TurnsAdapter,
     as_turns_adapter,
     turn_fallback_markdown,
@@ -38,7 +41,7 @@ def test_chatlas_adapter_round_trip():
     )
     adapter = as_turns_adapter(client)
     dumped = adapter.get_turns_json()
-    assert [d["role"] for d in dumped] == ["user", "assistant"]
+    assert [d.get("role") for d in dumped] == ["user", "assistant"]
     adapter.set_turns_json([])
     assert client.get_turns() == []
     adapter.set_turns_json(dumped)
@@ -56,7 +59,7 @@ def test_chatlas_adapter_serializes_dict_tool_result_display():
 
     dumped = as_turns_adapter(client).get_turns_json()
 
-    display = dumped[0]["contents"][0]["extra"]["display"]
+    display = cast(dict[str, Any], dumped[0])["contents"][0]["extra"]["display"]
     assert display["html"]["html"] == "<div>Widget output</div>"
     assert isinstance(result.extra["display"], dict)
 
@@ -81,7 +84,7 @@ def test_rejects_clients_without_turns():
 
 def test_turn_fallback_markdown_chatlas_shape():
     # chatlas serializes text contents as {"content_type": "text", "text": "..."}
-    turn = {
+    turn: TurnDict = {
         "role": "assistant",
         "contents": [
             {"content_type": "text", "text": "Hello "},
@@ -94,6 +97,7 @@ def test_turn_fallback_markdown_chatlas_shape():
             {"content_type": "text", "text": "world"},
         ],
     }
+
     assert turn_fallback_markdown(turn) == "Hello world"
 
 
@@ -134,8 +138,8 @@ def test_grouped_no_tools_chatlas():
     adapter = as_turns_adapter(client)
     groups = adapter.get_turns_grouped()
     assert len(groups) == 2
-    assert groups[0][0]["role"] == "user"
-    assert groups[1][0]["role"] == "assistant"
+    assert groups[0][0].get("role") == "user"
+    assert groups[1][0].get("role") == "assistant"
     # Each group is a single turn
     assert len(groups[0]) == 1
     assert len(groups[1]) == 1
@@ -174,12 +178,12 @@ def test_grouped_single_tool_call_chatlas():
     assert len(groups) == 2, "4 turns should produce 2 groups"
     # First group: the real user turn
     assert len(groups[0]) == 1
-    assert groups[0][0]["role"] == "user"
+    assert groups[0][0].get("role") == "user"
     # Second group: the 3 tool-exchange turns
     assert len(groups[1]) == 3
-    assert groups[1][0]["role"] == "assistant"  # tool request
-    assert groups[1][1]["role"] == "user"  # tool result
-    assert groups[1][2]["role"] == "assistant"  # final text
+    assert groups[1][0].get("role") == "assistant"  # tool request
+    assert groups[1][1].get("role") == "user"  # tool result
+    assert groups[1][2].get("role") == "assistant"  # final text
 
     # Flattened groups must equal the original turns (for API restoration)
     flat = [t for g in groups for t in g]
@@ -226,3 +230,37 @@ def test_grouped_multi_tool_call_chatlas():
 
     flat = [t for g in groups for t in g]
     assert flat == adapter.get_turns_json()
+
+
+def test_turn_round_trip_preserves_tool_result_value_with_display():
+    """A ContentToolResult with a ToolResultDisplay extra must keep its value
+    across a turn JSON round trip (bookmark/history restore path).
+
+    Regression: None display fields must round-trip as None, not empty-HTML
+    dicts.
+    """
+    chatlas = pytest.importorskip("chatlas")
+    from chatlas._content import ContentToolRequest, ContentToolResult
+    from chatlas._turn import AssistantTurn
+    from shinychat._history_client import normalize_turn_group
+    from shinychat.types import ToolResultDisplay
+
+    request = ContentToolRequest(id="t1", name="data_tool", arguments={})
+    result = ContentToolResult(
+        value="the tool output",
+        request=request,
+        extra={"display": ToolResultDisplay(title="Looked up data", open=True)},
+    )
+    turn_dicts = [
+        AssistantTurn(contents=[request]).model_dump(mode="json"),
+        chatlas.Turn(role="user", contents=[result]).model_dump(mode="json"),
+    ]
+
+    msg = normalize_turn_group(turn_dicts)
+    assert msg is not None
+    result_blocks = [b for b in msg.blocks if b["type"] == "tool_result"]
+    assert len(result_blocks) == 1
+    block = result_blocks[0]
+    assert block.get("value") == "the tool output"
+    assert block.get("title") == "Looked up data"
+    assert block.get("expanded") is True

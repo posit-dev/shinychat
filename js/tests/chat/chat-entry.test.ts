@@ -156,81 +156,6 @@ describe("chat-entry custom element boot", () => {
     expect(host.querySelector('[role="separator"]')).toBeNull()
   })
 
-  it("routes preloaded tool calls through the content router (tool-grouping attr)", async () => {
-    const host = document.createElement("shiny-chat-container")
-    host.setAttribute("id", "preloaded-tools")
-    host.setAttribute("tool-grouping", "all")
-    host.innerHTML = `
-      <shiny-chat-messages>
-        <shiny-chat-message
-          data-role="assistant"
-          content-type="html"
-          content='<shiny-tool-result data-shinychat-react request-id="r1" tool-name="foo" status="success" value="done" value-type="text"></shiny-tool-result>'
-        ></shiny-chat-message>
-      </shiny-chat-messages>
-      <shiny-chat-input placeholder="p"></shiny-chat-input>
-    `
-
-    await act(async () => {
-      document.body.appendChild(host)
-    })
-
-    // Preloaded tool HTML is routed into a tool_loop block and rendered as a
-    // condensed tool group — a quiet Tier-1 row (the tool name in code font,
-    // since this call has no title) that morphs into the leaf card on expand.
-    await waitFor(() => {
-      expect(host.querySelector(".shiny-chat-tool-group__row")).not.toBeNull()
-      expect(
-        host.querySelector(".shiny-chat-tool-group__toolname")?.textContent,
-      ).toBe("foo")
-    })
-
-    const row = host.querySelector(".shiny-chat-tool-group__row") as HTMLElement
-    await act(async () => {
-      row.click()
-    })
-
-    expect(host.querySelector(".shiny-tool-card")).not.toBeNull()
-    expect(host.textContent).toContain("done")
-  })
-
-  it("re-routes the existing transcript when tool-grouping changes", async () => {
-    // `tool-grouping` is observed, so switching it regroups the conversation
-    // already on screen instead of only future messages.
-    const call = (id: string, name: string) =>
-      `<shiny-tool-result data-shinychat-react request-id="${id}" tool-name="${name}" status="success" value="v" value-type="text"></shiny-tool-result>`
-
-    const host = document.createElement("shiny-chat-container")
-    host.setAttribute("id", "live-grouping")
-    host.setAttribute("tool-grouping", "none")
-    host.innerHTML = `
-      <shiny-chat-messages>
-        <shiny-chat-message
-          data-role="assistant"
-          content-type="html"
-          content='${call("r1", "foo")}${call("r2", "foo")}'
-        ></shiny-chat-message>
-      </shiny-chat-messages>
-      <shiny-chat-input placeholder="p"></shiny-chat-input>
-    `
-
-    await act(async () => {
-      document.body.appendChild(host)
-    })
-
-    const rows = () => host.querySelectorAll(".shiny-chat-tool-group__row")
-    await waitFor(() => expect(rows()).toHaveLength(2))
-
-    await act(async () => {
-      host.setAttribute("tool-grouping", "tool")
-    })
-
-    await waitFor(() => expect(rows()).toHaveLength(1))
-    expect(
-      host.querySelector(".shiny-chat-tool-group__count")?.textContent,
-    ).toBe("×2")
-  })
-
   it("falls back to the conventional input id when no child input id is provided", async () => {
     const host = document.createElement("shiny-chat-container")
     host.setAttribute("id", "fallback-chat")
@@ -440,6 +365,303 @@ describe("chat-entry custom element boot", () => {
     expect(host.textContent).toContain("Hello from the server")
     // Same DOM node => React state (including any streamed messages) preserved.
     expect(host.querySelector(".shiny-chat-message")).toBe(messageBefore)
+  })
+})
+
+describe("data-initial-messages attribute", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  async function bootContainer(
+    id: string,
+    attrValue: string | null,
+    innerHTML = `
+      <shiny-chat-messages></shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `,
+    extraAttrs: Record<string, string> = {},
+  ) {
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", id)
+    if (attrValue !== null) {
+      host.setAttribute("data-initial-messages", attrValue)
+    }
+    for (const [name, value] of Object.entries(extraAttrs)) {
+      host.setAttribute(name, value)
+    }
+    host.innerHTML = innerHTML
+
+    await act(async () => {
+      document.body.appendChild(host)
+    })
+
+    await waitFor(() => {
+      expect(host.querySelector('[role="textbox"]')).not.toBeNull()
+    })
+    return host
+  }
+
+  it("replays structured blocks into rendered messages, preserving segment order", async () => {
+    const entries = [
+      {
+        role: "assistant",
+        segments: [
+          { content: "Before the call. ", content_type: "markdown" },
+          {
+            type: "tool_request",
+            version: 1,
+            request_id: "call-1",
+            tool_name: "get_weather",
+            title: "Looking up weather",
+            intent: "check weather",
+            arguments: '{"location":"Duluth"}',
+          },
+          {
+            type: "tool_result",
+            version: 1,
+            request_id: "call-1",
+            tool_name: "get_weather",
+            status: "success",
+            value: "72F and sunny",
+            value_type: "text",
+            title: "Looked up weather",
+            expanded: true,
+          },
+          { content: " After the call.", content_type: "markdown" },
+          {
+            type: "html_block",
+            version: 1,
+            content: "<p class='island'>Island HTML</p>",
+          },
+        ],
+      },
+    ]
+
+    const host = await bootContainer(
+      "attr-blocks-chat",
+      JSON.stringify(entries),
+    )
+
+    expect(host.querySelector(".shiny-chat-tool-group")).not.toBeNull()
+    expect(host.querySelector(".shiny-tool-card")).not.toBeNull()
+    expect(host.textContent).toContain("72F and sunny")
+
+    const island = host.querySelector(".island")
+    expect(island).not.toBeNull()
+    expect(island!.innerHTML).toBe("Island HTML")
+
+    const text = host.textContent ?? ""
+    expect(text.indexOf("Before the call.")).toBeLessThan(
+      text.indexOf("72F and sunny"),
+    )
+    expect(text.indexOf("72F and sunny")).toBeLessThan(
+      text.indexOf("After the call."),
+    )
+    expect(text.indexOf("After the call.")).toBeLessThan(
+      text.indexOf("Island HTML"),
+    )
+  })
+
+  it("honors the container tool-grouping attribute for embedded blocks", async () => {
+    const makeEntries = () => [
+      {
+        role: "assistant",
+        segments: [
+          {
+            type: "tool_result",
+            version: 1,
+            request_id: "call-1",
+            tool_name: "get_weather",
+            status: "success",
+            value: "72F and sunny",
+            value_type: "text",
+          },
+          {
+            type: "tool_result",
+            version: 1,
+            request_id: "call-2",
+            tool_name: "get_time",
+            status: "success",
+            value: "noon",
+            value_type: "text",
+          },
+        ],
+      },
+    ]
+
+    const grouped = await bootContainer(
+      "attr-grouping-default",
+      JSON.stringify(makeEntries()),
+    )
+    expect(grouped.querySelectorAll(".shiny-chat-tool-group")).toHaveLength(2)
+
+    const all = await bootContainer(
+      "attr-grouping-all",
+      JSON.stringify(makeEntries()),
+      undefined,
+      { "tool-grouping": "all" },
+    )
+    expect(all.querySelectorAll(".shiny-chat-tool-group")).toHaveLength(1)
+  })
+
+  it("ignores non-html_block structured blocks in user-role entries but keeps html_block", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const entries = [
+      {
+        role: "user",
+        segments: [
+          { content: "User says hi", content_type: "markdown" },
+          {
+            type: "tool_result",
+            version: 1,
+            request_id: "r1",
+            tool_name: "my_tool",
+            status: "success",
+            value: "42",
+          },
+          {
+            type: "html_block",
+            version: 1,
+            content: "<p class='island'>User island</p>",
+          },
+        ],
+      },
+    ]
+
+    const host = await bootContainer(
+      "attr-user-gate-chat",
+      JSON.stringify(entries),
+    )
+
+    expect(warn).toHaveBeenCalledWith(
+      "Ignoring non-html_block structured block in a user-role message",
+    )
+    expect(host.querySelector(".shiny-chat-tool-group")).toBeNull()
+    expect(host.querySelector(".shiny-tool-card")).toBeNull()
+    expect(host.textContent).toContain("User says hi")
+    const island = host.querySelector(".island")
+    expect(island).not.toBeNull()
+    expect(island!.innerHTML).toBe("User island")
+  })
+
+  it("warns and skips a block with an unsupported version but keeps the message", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const entries = [
+      {
+        role: "assistant",
+        segments: [
+          { content: "just text", content_type: "markdown" },
+          {
+            type: "html_block",
+            version: 2,
+            content: "<p class='island'>Future island</p>",
+          },
+        ],
+      },
+    ]
+
+    const host = await bootContainer(
+      "attr-version-chat",
+      JSON.stringify(entries),
+    )
+
+    expect(warn).toHaveBeenCalledWith(
+      "Ignoring html_block block with unsupported version: 2",
+    )
+    expect(host.textContent).toContain("just text")
+    expect(host.querySelector(".island")).toBeNull()
+  })
+
+  it("warns and falls back to static tags when the attribute is malformed JSON", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const host = await bootContainer(
+      "attr-malformed-chat",
+      "not json {",
+      `
+      <shiny-chat-messages>
+        <shiny-chat-message
+          data-role="assistant"
+          content="Static fallback"
+        ></shiny-chat-message>
+      </shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `,
+    )
+
+    expect(warn).toHaveBeenCalledWith(
+      "Ignoring malformed data-initial-messages attribute: not valid JSON",
+    )
+    expect(host.textContent).toContain("Static fallback")
+  })
+
+  it("warns and falls back to static tags when the attribute is not an array", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const host = await bootContainer(
+      "attr-nonarray-chat",
+      '{"role":"assistant","segments":[]}',
+      `
+      <shiny-chat-messages>
+        <shiny-chat-message
+          data-role="assistant"
+          content="Static fallback"
+        ></shiny-chat-message>
+      </shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `,
+    )
+
+    expect(warn).toHaveBeenCalledWith(
+      "Ignoring malformed data-initial-messages attribute: expected a JSON array",
+    )
+    expect(host.textContent).toContain("Static fallback")
+  })
+
+  it("warns and skips malformed entries but keeps the surviving messages", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const entries = [
+      "oops",
+      { role: "assistant" },
+      {
+        role: "assistant",
+        segments: [{ content: "Good message", content_type: "markdown" }],
+      },
+    ]
+
+    const host = await bootContainer(
+      "attr-bad-entry-chat",
+      JSON.stringify(entries),
+    )
+
+    expect(warn).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenCalledWith(
+      "Skipping malformed entry in data-initial-messages: expected an object with a segments array",
+    )
+    expect(host.textContent).toContain("Good message")
+  })
+
+  it("uses the static-tag path unchanged when the attribute is absent", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const host = await bootContainer(
+      "attr-absent-chat",
+      null,
+      `
+      <shiny-chat-messages>
+        <shiny-chat-message
+          data-role="assistant"
+          content-type="markdown"
+          content="Static only"
+        ></shiny-chat-message>
+      </shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `,
+    )
+
+    expect(host.textContent).toContain("Static only")
+    expect(warn).not.toHaveBeenCalled()
   })
 })
 

@@ -257,6 +257,9 @@ chat_update_bookmark <- function(
     promises::then(stream_promise, function(stream) {
       # Force a bookmark update when the stream ends!
       shiny::isolate(session$doBookmark())
+      # Preserve the stream's accumulated result value rather than
+      # doBookmark()'s return value.
+      stream
     })
 
   return(prom)

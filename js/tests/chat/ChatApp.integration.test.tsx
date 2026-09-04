@@ -189,13 +189,18 @@ describe("ChatApp integration: full message flow", () => {
         type: "chunk_start",
         message: {
           role: "assistant",
-          segments: [
-            {
-              content:
-                '<shiny-web-search query="R 4.5.0 release date"></shiny-web-search>',
-              content_type: "markdown",
-            },
-          ],
+          segments: [],
+        },
+      })
+    })
+
+    await act(async () => {
+      transport.fire("test-chat", {
+        type: "block_insert",
+        block: {
+          type: "web_search",
+          version: 1,
+          query: "R 4.5.0 release date",
         },
       })
     })

@@ -262,3 +262,47 @@ def test_artifact_validates_title_and_content() -> None:
         _run_async(chat.drawer.show(title=cast(Any, 1)))
     with pytest.raises(PydanticSerializationError, match="Unable to serialize"):
         _run_async(chat.drawer.show(cast(Any, object())))
+
+
+def test_drawer_mixed_content_bare_string_escaped() -> None:
+    """A bare string containing executable HTML in mixed drawer content is
+    HTML-escaped in the action payload (safe for the single-string innerHTML
+    payload), while trusted tags still render as real HTML."""
+    chat, session = _make_chat()
+
+    _run_async(
+        chat.drawer.show(
+            TagList("<img src=x onerror=alert(1)>", tags.div("trusted"))
+        )
+    )
+
+    assert len(session.messages) == 1
+    _, envelope = session.messages[0]
+    action = envelope["action"]
+    assert action["type"] == "drawer_show"
+    content = action["content"]
+    # Bare string is HTML-escaped — executable HTML is neutralized.
+    assert "&lt;img" in content
+    assert "<img src=x onerror" not in content
+    # Trusted tag rendered to HTML.
+    assert "<div>trusted</div>" in content
+
+
+def test_drawer_mixed_content_update_bare_string_escaped() -> None:
+    """Same safe escaping applies to drawer.update()."""
+    chat, session = _make_chat()
+
+    _run_async(
+        chat.drawer.update(
+            TagList("<img src=x onerror=alert(1)>", tags.span("trusted"))
+        )
+    )
+
+    assert len(session.messages) == 1
+    _, envelope = session.messages[0]
+    action = envelope["action"]
+    assert action["type"] == "drawer_update"
+    content = action["content"]
+    assert "&lt;img" in content
+    assert "<img src=x onerror" not in content
+    assert "<span>trusted</span>" in content

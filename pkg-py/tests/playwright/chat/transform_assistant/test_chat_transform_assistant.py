@@ -29,6 +29,10 @@ def test_validate_chat_transform_assistant(
     chat.send_user_input()
     bold = chat.loc_latest_message.locator("b")
     expect(bold).to_have_text("Transformed response")
+    expect(chat.loc_latest_message).to_have_text(
+        "Transformed response: return HTML"
+    )
+    expect(chat.loc_latest_message).not_to_contain_text("<b>")
 
     message_state_expected = tuple(
         [
@@ -36,7 +40,7 @@ def test_validate_chat_transform_assistant(
             {"content": "Transformed response: `hello`", "role": "assistant"},
             {"content": "return HTML", "role": "user"},
             {
-                "content": "\n\n<shiny-chat-raw-html><b>Transformed response</b>: return HTML</shiny-chat-raw-html>\n\n",
+                "content": "<b>Transformed response</b>: return HTML",
                 "role": "assistant",
             },
         ]

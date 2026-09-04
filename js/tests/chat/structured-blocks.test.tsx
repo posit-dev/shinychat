@@ -1,0 +1,1557 @@
+import { describe, it, expect, vi, afterEach } from "vitest"
+import { fireEvent, render, act } from "@testing-library/react"
+
+vi.mock("../../src/chat/TiptapInput", async () => {
+  const { FakeTiptapInput } = await import("../helpers/fakeTiptapInput")
+  return { TiptapInput: FakeTiptapInput }
+})
+
+import { ChatMessages } from "../../src/chat/ChatMessages"
+import { ChatToolContext, ShinyLifecycleContext } from "../../src/chat/context"
+import {
+  chatReducer,
+  initialState,
+  supersededRequestIds,
+  type ChatMessageData,
+  type ChatState,
+} from "../../src/chat/state"
+import type {
+  ChatAction,
+  HtmlBlock,
+  StructuredBlock,
+  ToolRequestBlock,
+  ToolResultBlock,
+  WebFetchBlock,
+  WebSearchBlock,
+  WebSearchCitationsBlock,
+  WebSearchResultsBlock,
+} from "../../src/transport/types"
+import type { ShinyLifecycle, HtmlDep } from "../../src/transport/types"
+
+const toolResultBlock = (
+  overrides: Partial<ToolResultBlock> = {},
+): ToolResultBlock => ({
+  type: "tool_result",
+  version: 1,
+  request_id: "call-1",
+  tool_name: "get_weather",
+  status: "success",
+  value: "72F and sunny",
+  value_type: "text",
+  title: "Looked up weather",
+  expanded: true,
+  ...overrides,
+})
+
+const toolRequestBlock = (
+  overrides: Partial<ToolRequestBlock> = {},
+): ToolRequestBlock => ({
+  type: "tool_request",
+  version: 1,
+  request_id: "call-1",
+  tool_name: "get_weather",
+  title: "Looking up weather",
+  intent: "check weather",
+  arguments: '{"location":"Duluth"}',
+  ...overrides,
+})
+
+const webSearchBlock = (
+  overrides: Partial<WebSearchBlock> = {},
+): WebSearchBlock => ({
+  type: "web_search",
+  version: 1,
+  query: "weather in Duluth",
+  ...overrides,
+})
+
+const webSearchResultsBlock = (
+  overrides: Partial<WebSearchResultsBlock> = {},
+): WebSearchResultsBlock => ({
+  type: "web_search_results",
+  version: 1,
+  sources: [
+    { url: "https://example.com/weather", title: "Duluth weather" },
+    { url: "https://example.org/forecast" },
+  ],
+  ...overrides,
+})
+
+const webFetchBlock = (
+  overrides: Partial<WebFetchBlock> = {},
+): WebFetchBlock => ({
+  type: "web_fetch",
+  version: 1,
+  url: "https://example.net/article",
+  status: "success",
+  ...overrides,
+})
+
+const webSearchCitationsBlock = (
+  overrides: Partial<WebSearchCitationsBlock> = {},
+): WebSearchCitationsBlock => ({
+  type: "web_search_citations",
+  version: 1,
+  sources: [
+    { url: "https://example.com/cited", title: "Cited page" },
+    { url: "https://example.org/also-cited" },
+  ],
+  ...overrides,
+})
+
+const htmlBlock = (overrides: Partial<HtmlBlock> = {}): HtmlBlock => ({
+  type: "html_block",
+  version: 1,
+  content: '<div class="island">Hello from HTML</div>',
+  ...overrides,
+})
+
+function mockShiny(): ShinyLifecycle {
+  return {
+    bindAll: vi.fn().mockResolvedValue(undefined),
+    unbindAll: vi.fn(),
+    renderDependencies: vi.fn().mockResolvedValue(undefined),
+    showClientMessage: vi.fn(),
+  }
+}
+
+function fakeDep(name: string): HtmlDep {
+  return { name, version: "1.0.0" } as unknown as HtmlDep
+}
+
+function makeState(overrides: Partial<ChatState> = {}): ChatState {
+  return { ...initialState, ...overrides }
+}
+
+function renderMessages(messages: ChatMessageData[]) {
+  return render(<ChatMessages messages={messages} inputId="test-input" />)
+}
+
+function expectToolCard(container: HTMLElement, value: string) {
+  expect(container.querySelector(".shiny-chat-tool-group")).not.toBeNull()
+  expect(container.querySelector(".shiny-tool-card")).not.toBeNull()
+  expect(container.textContent).toContain(value)
+}
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+describe("structured tool_result block via message.segments", () => {
+  it("reduces to a tool_loop block and renders a real tool card", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "Before the call. ", content_type: "markdown" },
+          toolResultBlock(),
+          { content: " After the call.", content_type: "markdown" },
+        ],
+      },
+    })
+
+    expect(state.messages).toHaveLength(1)
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual([
+      "content",
+      "tool_loop",
+      "content",
+    ])
+
+    const { container } = renderMessages(state.messages)
+    expectToolCard(container, "72F and sunny")
+
+    const text = container.textContent ?? ""
+    expect(text.indexOf("Before the call.")).toBeLessThan(
+      text.indexOf("72F and sunny"),
+    )
+    expect(text.indexOf("72F and sunny")).toBeLessThan(
+      text.indexOf("After the call."),
+    )
+  })
+
+  it("adjacent structured blocks merge into one tool loop", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          toolResultBlock({ request_id: "call-1" }),
+          toolResultBlock({ request_id: "call-2", value: "rain later" }),
+        ],
+      },
+    })
+
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    const loop = blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const calls = loop.groups.flatMap((g) => g.calls)
+    expect(calls.map((c) => c.requestId)).toEqual(["call-1", "call-2"])
+  })
+
+  it("tolerates whitespace-only content between tool blocks", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          toolResultBlock({ request_id: "call-1" }),
+          { content: " \n", content_type: "markdown" },
+          toolResultBlock({ request_id: "call-2", value: "rain later" }),
+        ],
+      },
+    })
+
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    const loop = blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const calls = loop.groups.flatMap((g) => g.calls)
+    expect(calls.map((c) => c.requestId)).toEqual(["call-1", "call-2"])
+  })
+
+  it("maps the full field surface onto the ToolCallItem", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          toolResultBlock({
+            icon: "<svg></svg>",
+            intent: "check weather",
+            label: "duluth.txt",
+            value_preview: "72F",
+            request_call: 'get_weather("Duluth")',
+            show_request: true,
+            full_screen: true,
+            open_style: "framed",
+            custom_display: true,
+            footer: "<em>footer</em>",
+            grouping: "none",
+          }),
+        ],
+      },
+    })
+
+    const loop = state.messages[0]!.blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const call = loop.groups.flatMap((g) => g.calls)[0]!
+    expect(call).toMatchObject({
+      requestId: "call-1",
+      localId: "call-1",
+      toolName: "get_weather",
+      status: "success",
+      title: "Looked up weather",
+      icon: "<svg></svg>",
+      intent: "check weather",
+      label: "duluth.txt",
+      valuePreview: "72F",
+      value: "72F and sunny",
+      valueType: "text",
+      requestCall: 'get_weather("Duluth")',
+      showRequest: true,
+      fullScreen: true,
+      openStyle: "framed",
+      expanded: true,
+      customDisplay: true,
+      footer: "<em>footer</em>",
+      grouping: "none",
+    })
+  })
+
+  it("ignores unknown block types and unsupported versions with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const unknownType = {
+      type: "future_block",
+      version: 1,
+      content: "<div></div>",
+    } as unknown as StructuredBlock
+    const unknownVersion = {
+      ...toolResultBlock(),
+      version: 2,
+    } as unknown as StructuredBlock
+
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "just text", content_type: "markdown" },
+          unknownType,
+          unknownVersion,
+        ],
+      },
+    })
+
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["content"])
+    expect(warn).toHaveBeenCalledTimes(2)
+  })
+
+  it("ignores a tool_result with a missing/invalid status with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const noStatus = (({ status, ...rest }) => rest)(
+      toolResultBlock(),
+    ) as unknown as StructuredBlock
+    const badStatus = {
+      ...toolResultBlock(),
+      status: "pending",
+    } as unknown as StructuredBlock
+
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "just text", content_type: "markdown" },
+          noStatus,
+          badStatus,
+        ],
+      },
+    })
+
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["content"])
+    expect(warn).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe("structured tool_result block via block_insert mid-stream", () => {
+  function startStream(state: ChatState): ChatState {
+    return chatReducer(state, {
+      type: "chunk_start",
+      message: { role: "assistant", segments: [] },
+    })
+  }
+
+  it("appends a render-ready tool loop to the in-flight message", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "Before the call. ",
+      operation: "append",
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolResultBlock(),
+    })
+
+    const midBlocks = state.streamingMessage!.blocks
+    expect(midBlocks.map((b) => b.type)).toEqual(["content", "tool_loop"])
+
+    state = chatReducer(state, {
+      type: "chunk",
+      content: " After the call.",
+      operation: "append",
+    })
+
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual([
+      "content",
+      "tool_loop",
+      "content",
+    ])
+
+    state = chatReducer(state, { type: "chunk_end" })
+    expect(state.streamingMessage).toBeNull()
+    expect(state.messages).toHaveLength(1)
+    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual([
+      "content",
+      "tool_loop",
+      "content",
+    ])
+
+    const { container } = renderMessages(state.messages)
+    expectToolCard(container, "72F and sunny")
+
+    const text = container.textContent ?? ""
+    expect(text.indexOf("Before the call.")).toBeLessThan(
+      text.indexOf("72F and sunny"),
+    )
+    expect(text.indexOf("72F and sunny")).toBeLessThan(
+      text.indexOf("After the call."),
+    )
+  })
+
+  it("merges into an adjacent trailing tool loop", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolResultBlock({ request_id: "call-1" }),
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolResultBlock({ request_id: "call-2", value: "rain later" }),
+    })
+
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    const loop = blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const calls = loop.groups.flatMap((g) => g.calls)
+    expect(calls.map((c) => c.requestId)).toEqual(["call-1", "call-2"])
+  })
+
+  it("tolerates whitespace-only content between tool blocks mid-stream", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolResultBlock({ request_id: "call-1" }),
+    })
+    state = chatReducer(state, {
+      type: "chunk",
+      content: " \n",
+      operation: "append",
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolResultBlock({ request_id: "call-2", value: "rain later" }),
+    })
+
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    const loop = blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const calls = loop.groups.flatMap((g) => g.calls)
+    expect(calls.map((c) => c.requestId)).toEqual(["call-1", "call-2"])
+  })
+
+  it("does not disturb thinking-tag/fence stream state", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "```\nsome code",
+      operation: "append",
+    })
+    expect(state.streamingMessage!.insideFence).toBe(true)
+
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolResultBlock(),
+    })
+    expect(state.streamingMessage!.insideFence).toBe(true)
+    expect(state.streamingMessage!.blocks.map((b) => b.type)).toEqual([
+      "content",
+      "tool_loop",
+    ])
+  })
+
+  it("chunk(replace) after block_insert replaces ALL blocks uniformly", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "Before the call. ",
+      operation: "append",
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolResultBlock(),
+    })
+    expect(state.streamingMessage!.blocks.map((b) => b.type)).toEqual([
+      "content",
+      "tool_loop",
+    ])
+
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "Replaced content.",
+      operation: "replace",
+    })
+
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["content"])
+    const content = blocks[0]!
+    if (content.type !== "content") throw new Error("expected content")
+    expect(content.content).toBe("Replaced content.")
+    expect(state.streamingMessage!.content).toBe("Replaced content.")
+  })
+
+  it("empty chunk(replace) wipes blocks without leaving an empty content block", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "ephemeral",
+      operation: "append",
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: htmlBlock({ content: "<div>progress</div>" }),
+    })
+
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "",
+      operation: "replace",
+      content_type: "markdown",
+    })
+    expect(state.streamingMessage!.blocks).toEqual([])
+    expect(state.streamingMessage!.content).toBe("")
+
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: htmlBlock({ content: "<div>final</div>" }),
+    })
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "done",
+      operation: "append",
+    })
+    expect(state.streamingMessage!.blocks.map((b) => b.type)).toEqual([
+      "html_block",
+      "content",
+    ])
+  })
+
+  it("chunk(replace) while inside a code fence wipes the fenced content and starts fresh", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "```\nsome code",
+      operation: "append",
+    })
+    expect(state.streamingMessage!.insideFence).toBe(true)
+
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "fresh content",
+      operation: "replace",
+    })
+
+    expect(state.streamingMessage!.insideFence).toBe(false)
+    expect(state.streamingMessage!.content).toBe("fresh content")
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["content"])
+    const content = blocks[0]!
+    if (content.type !== "content") throw new Error("expected content")
+    expect(content.content).toBe("fresh content")
+  })
+
+  it("chunk(replace) whose content contains markup replaces rather than appends", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "old content",
+      operation: "append",
+    })
+
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "<div>new content</div>",
+      operation: "replace",
+    })
+
+    expect(state.streamingMessage!.content).toBe("<div>new content</div>")
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["content"])
+    const content = blocks[0]!
+    if (content.type !== "content") throw new Error("expected content")
+    expect(content.content).toBe("<div>new content</div>")
+  })
+
+  it("chunk(replace) with content_type thinking wipes content and leaves a single fresh thinking block", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "markdown content",
+      operation: "append",
+    })
+    expect(state.streamingMessage!.blocks.map((b) => b.type)).toEqual([
+      "content",
+    ])
+
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "thinking afresh",
+      operation: "replace",
+      content_type: "thinking",
+    })
+
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["thinking"])
+    const thinking = blocks[0]!
+    if (thinking.type !== "thinking") throw new Error("expected thinking")
+    expect(thinking.content).toBe("thinking afresh")
+    expect(state.streamingMessage!.content).toBe("")
+  })
+
+  it("is a no-op with a warning when no stream is in flight", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const before = makeState()
+    const state = chatReducer(before, {
+      type: "block_insert",
+      block: toolResultBlock(),
+    })
+    expect(state).toBe(before)
+    expect(warn).toHaveBeenCalled()
+  })
+
+  it("ignores unknown block types and unsupported versions with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: {
+        type: "future_block",
+        version: 1,
+        content: "<div></div>",
+      } as unknown as StructuredBlock,
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: { ...toolResultBlock(), version: 2 } as unknown as StructuredBlock,
+    })
+
+    expect(state.streamingMessage!.blocks).toHaveLength(0)
+    expect(warn).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe("structured loops survive regrouping", () => {
+  it("SET_TOOL_GROUPING keeps the structured tool_loop block", () => {
+    let state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [toolResultBlock()],
+      },
+    })
+    state = chatReducer(state, { type: "SET_TOOL_GROUPING", grouping: "all" })
+
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    const loop = blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    expect(loop.groups.flatMap((g) => g.calls)).toHaveLength(1)
+
+    const { container } = renderMessages(state.messages)
+    expectToolCard(container, "72F and sunny")
+  })
+})
+
+describe("structured tool_request block via message.segments", () => {
+  it("reduces to a running tool_loop call and renders the running row", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "Before the call. ", content_type: "markdown" },
+          toolRequestBlock(),
+          { content: " After the call.", content_type: "markdown" },
+        ],
+      },
+    })
+
+    expect(state.messages).toHaveLength(1)
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual([
+      "content",
+      "tool_loop",
+      "content",
+    ])
+
+    const loop = blocks[1]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const call = loop.groups.flatMap((g) => g.calls)[0]!
+    expect(call.status).toBe("running")
+    expect(call.structured).toBe(true)
+
+    const { container } = renderMessages(state.messages)
+    expect(container.querySelector(".shiny-chat-tool-group")).not.toBeNull()
+    expect(container.textContent).toContain("Looking up weather")
+    expect(container.textContent).toContain("Running…")
+
+    const text = container.textContent ?? ""
+    expect(text.indexOf("Before the call.")).toBeLessThan(
+      text.indexOf("Looking up weather"),
+    )
+    expect(text.indexOf("Looking up weather")).toBeLessThan(
+      text.indexOf("After the call."),
+    )
+  })
+
+  it("maps the full field surface onto the ToolCallItem", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          toolRequestBlock({
+            icon: "<svg></svg>",
+            grouping: "none",
+          }),
+        ],
+      },
+    })
+
+    const loop = state.messages[0]!.blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const call = loop.groups.flatMap((g) => g.calls)[0]!
+    expect(call).toMatchObject({
+      requestId: "call-1",
+      localId: "call-1",
+      toolName: "get_weather",
+      status: "running",
+      definitionTitle: "Looking up weather",
+      definitionIcon: "<svg></svg>",
+      intent: "check weather",
+      arguments: '{"location":"Duluth"}',
+      grouping: "none",
+      structured: true,
+    })
+    expect(call.title).toBeUndefined()
+    expect(call.icon).toBeUndefined()
+    expect(call.value).toBeUndefined()
+  })
+
+  it("hides the running request row once its result arrives", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [toolRequestBlock(), toolResultBlock()],
+      },
+    })
+
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    const loop = blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const calls = loop.groups.flatMap((g) => g.calls)
+    expect(
+      calls.map((c) => ({ requestId: c.requestId, status: c.status })),
+    ).toEqual([
+      { requestId: "call-1", status: "running" },
+      { requestId: "call-1", status: "success" },
+    ])
+
+    const superseded = supersededRequestIds(state.messages, null)
+    expect([...superseded]).toEqual(["call-1"])
+    const { container } = render(
+      <ChatToolContext.Provider value={{ supersededRequests: superseded }}>
+        <ChatMessages messages={state.messages} inputId="test-input" />
+      </ChatToolContext.Provider>,
+    )
+    expectToolCard(container, "72F and sunny")
+    expect(container.textContent).not.toContain("Running…")
+  })
+})
+
+describe("structured tool_request block via block_insert mid-stream", () => {
+  function startStream(state: ChatState): ChatState {
+    return chatReducer(state, {
+      type: "chunk_start",
+      message: { role: "assistant", segments: [] },
+    })
+  }
+
+  it("appends a render-ready running tool loop to the in-flight message", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "Checking the weather. ",
+      operation: "append",
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolRequestBlock(),
+    })
+
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["content", "tool_loop"])
+    const loop = blocks[1]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const call = loop.groups.flatMap((g) => g.calls)[0]!
+    expect(call.status).toBe("running")
+    expect(call.structured).toBe(true)
+
+    state = chatReducer(state, { type: "chunk_end" })
+    expect(state.streamingMessage).toBeNull()
+    const { container } = renderMessages(state.messages)
+    expect(container.querySelector(".shiny-chat-tool-group")).not.toBeNull()
+    expect(container.textContent).toContain("Running…")
+  })
+
+  it("a result block for the same request merges into the request's loop", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolRequestBlock(),
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolResultBlock(),
+    })
+
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    const loop = blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const calls = loop.groups.flatMap((g) => g.calls)
+    expect(
+      calls.map((c) => ({ requestId: c.requestId, status: c.status })),
+    ).toEqual([
+      { requestId: "call-1", status: "running" },
+      { requestId: "call-1", status: "success" },
+    ])
+
+    state = chatReducer(state, { type: "chunk_end" })
+    const superseded = supersededRequestIds(state.messages, null)
+    const { container } = render(
+      <ChatToolContext.Provider value={{ supersededRequests: superseded }}>
+        <ChatMessages messages={state.messages} inputId="test-input" />
+      </ChatToolContext.Provider>,
+    )
+    expectToolCard(container, "72F and sunny")
+    expect(container.textContent).not.toContain("Running…")
+  })
+
+  it("adjacent structured requests merge into one tool loop", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolRequestBlock({ request_id: "call-1" }),
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: toolRequestBlock({
+        request_id: "call-2",
+        tool_name: "get_time",
+        title: "Checking the time",
+      }),
+    })
+
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
+    const loop = blocks[0]!
+    if (loop.type !== "tool_loop") throw new Error("expected tool_loop")
+    const calls = loop.groups.flatMap((g) => g.calls)
+    expect(calls.map((c) => c.requestId)).toEqual(["call-1", "call-2"])
+    expect(calls.every((c) => c.status === "running")).toBe(true)
+  })
+})
+
+describe("structured web_* blocks via message.segments", () => {
+  it("groups adjacent web blocks into one web_activity, pairing results with the pending search", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "Before the burst. ", content_type: "markdown" },
+          webSearchBlock(),
+          webSearchResultsBlock(),
+          webFetchBlock(),
+          { content: " After the burst.", content_type: "markdown" },
+        ],
+      },
+    })
+
+    expect(state.messages).toHaveLength(1)
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual([
+      "content",
+      "web_activity",
+      "content",
+    ])
+
+    const activity = blocks[1]!
+    if (activity.type !== "web_activity")
+      throw new Error("expected web_activity")
+    expect(activity.items).toEqual([
+      {
+        kind: "search",
+        query: "weather in Duluth",
+        sources: [
+          { url: "https://example.com/weather", title: "Duluth weather" },
+          { url: "https://example.org/forecast" },
+        ],
+        citedSources: [],
+      },
+      { kind: "fetch", url: "https://example.net/article", status: "success" },
+    ])
+
+    const { container } = renderMessages(state.messages)
+    expect(container.querySelector(".shiny-web-activity")).not.toBeNull()
+    const text = container.textContent ?? ""
+    expect(text.indexOf("Before the burst.")).toBeLessThan(
+      text.indexOf("Searched the web"),
+    )
+    expect(text.indexOf("Searched the web")).toBeLessThan(
+      text.indexOf("After the burst."),
+    )
+  })
+
+  it("tolerates whitespace-only content between carriers", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          webSearchBlock(),
+          { content: " \n", content_type: "markdown" },
+          webSearchResultsBlock(),
+          webFetchBlock(),
+        ],
+      },
+    })
+
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["web_activity"])
+    const activity = blocks[0]!
+    if (activity.type !== "web_activity")
+      throw new Error("expected web_activity")
+    expect(activity.items.map((it) => it.kind)).toEqual(["search", "fetch"])
+    expect(state.messages[0]!.content).toBe("")
+
+    const { container } = renderMessages(state.messages)
+    expect(container.querySelector(".shiny-web-activity")).not.toBeNull()
+  })
+
+  it("ends the activity run when prose intervenes", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          webSearchBlock(),
+          { content: " Some prose. ", content_type: "markdown" },
+          webFetchBlock(),
+        ],
+      },
+    })
+
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual([
+      "web_activity",
+      "content",
+      "web_activity",
+    ])
+    const first = blocks[0]!
+    if (first.type !== "web_activity") throw new Error("expected web_activity")
+    expect(first.items).toEqual([
+      {
+        kind: "search",
+        query: "weather in Duluth",
+        sources: null,
+        citedSources: [],
+      },
+    ])
+    const second = blocks[2]!
+    if (second.type !== "web_activity") throw new Error("expected web_activity")
+    expect(second.items).toEqual([
+      { kind: "fetch", url: "https://example.net/article", status: "success" },
+    ])
+  })
+
+  it("attaches a citations block's sources as the cited-sources fallback", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [webSearchBlock(), webSearchCitationsBlock()],
+      },
+    })
+
+    const activity = state.messages[0]!.blocks[0]!
+    if (activity.type !== "web_activity")
+      throw new Error("expected web_activity")
+    expect(activity.items).toEqual([
+      {
+        kind: "search",
+        query: "weather in Duluth",
+        sources: null,
+        citedSources: [
+          { url: "https://example.com/cited", title: "Cited page" },
+          { url: "https://example.org/also-cited" },
+        ],
+      },
+    ])
+
+    const { container } = renderMessages(state.messages)
+    fireEvent.click(container.querySelector(".shiny-web-activity__header")!)
+    expect(container.textContent).toContain("Cited sources")
+    expect(container.textContent).toContain("Cited page")
+  })
+
+  it("results pairing overrides the cited-sources fallback", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          webSearchBlock(),
+          webSearchCitationsBlock({
+            sources: [
+              { url: "https://example.com/cited", title: "Cited page" },
+            ],
+          }),
+          webSearchResultsBlock(),
+        ],
+      },
+    })
+
+    const activity = state.messages[0]!.blocks[0]!
+    if (activity.type !== "web_activity")
+      throw new Error("expected web_activity")
+    const search = activity.items[0]!
+    if (search.kind !== "search") throw new Error("expected search item")
+    expect(search.sources).toHaveLength(2)
+    expect(search.citedSources).toEqual([
+      { url: "https://example.com/cited", title: "Cited page" },
+    ])
+
+    const { container } = renderMessages(state.messages)
+    fireEvent.click(container.querySelector(".shiny-web-activity__header")!)
+    expect(container.textContent).toContain("2 results")
+    expect(container.textContent).toContain("Duluth weather")
+    expect(container.textContent).not.toContain("Cited sources")
+    expect(container.textContent).not.toContain("Cited page")
+  })
+
+  it("pairs results with the search named by search_id, not FIFO order", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          webSearchBlock({ id: "search-a", query: "query A" }),
+          webSearchBlock({ id: "search-b", query: "query B" }),
+          webSearchResultsBlock({ search_id: "search-b" }),
+        ],
+      },
+    })
+
+    const activity = state.messages[0]!.blocks[0]!
+    if (activity.type !== "web_activity")
+      throw new Error("expected web_activity")
+    const a = activity.items[0]!
+    const b = activity.items[1]!
+    if (a.kind !== "search" || b.kind !== "search")
+      throw new Error("expected search items")
+    expect(a.sources).toBeNull()
+    expect(b.sources).toHaveLength(2)
+  })
+
+  it("falls back to the earliest pending search when results carry no search_id", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          webSearchBlock({ query: "query A" }),
+          webSearchBlock({ query: "query B" }),
+          webSearchResultsBlock(),
+        ],
+      },
+    })
+
+    const activity = state.messages[0]!.blocks[0]!
+    if (activity.type !== "web_activity")
+      throw new Error("expected web_activity")
+    const a = activity.items[0]!
+    const b = activity.items[1]!
+    if (a.kind !== "search" || b.kind !== "search")
+      throw new Error("expected search items")
+    expect(a.sources).toHaveLength(2)
+    expect(b.sources).toBeNull()
+  })
+
+  it("attaches citations to the most recent search across intervening prose", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          webSearchBlock({ query: "first query" }),
+          webSearchResultsBlock({ sources: [{ url: "https://results.com" }] }),
+          { content: "First answer. ", content_type: "markdown" },
+          webSearchBlock({ query: "second query" }),
+          { content: "Second answer ", content_type: "markdown" },
+          webSearchCitationsBlock({
+            sources: [{ url: "https://example.com/cited", title: "Cited" }],
+          }),
+        ],
+      },
+    })
+
+    const activities = state.messages[0]!.blocks.filter(
+      (b) => b.type === "web_activity",
+    )
+    expect(activities).toHaveLength(2)
+    const first = activities[0]!.items[0]!
+    const second = activities[1]!.items[0]!
+    if (first.kind !== "search" || second.kind !== "search")
+      throw new Error("expected search items")
+    expect(first.citedSources).toEqual([])
+    expect(second.citedSources).toEqual([
+      { url: "https://example.com/cited", title: "Cited" },
+    ])
+  })
+
+  it("drops citations when no search exists and renders nothing for the block", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "just text", content_type: "markdown" },
+          webSearchCitationsBlock(),
+        ],
+      },
+    })
+
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["content"])
+  })
+
+  it("ignores web blocks with unsupported versions with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "just text", content_type: "markdown" },
+          { ...webSearchBlock(), version: 2 } as unknown as StructuredBlock,
+          { ...webFetchBlock(), version: 2 } as unknown as StructuredBlock,
+        ],
+      },
+    })
+
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["content"])
+    expect(warn).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe("structured web_* blocks via block_insert mid-stream", () => {
+  function startStream(state: ChatState): ChatState {
+    return chatReducer(state, {
+      type: "chunk_start",
+      message: { role: "assistant", segments: [] },
+    })
+  }
+
+  it("pairs a results block with a search inserted earlier in the stream", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: webSearchBlock(),
+    })
+
+    const midBlocks = state.streamingMessage!.blocks
+    expect(midBlocks.map((b) => b.type)).toEqual(["web_activity"])
+    const midActivity = midBlocks[0]!
+    if (midActivity.type !== "web_activity")
+      throw new Error("expected web_activity")
+    expect(midActivity.items).toEqual([
+      {
+        kind: "search",
+        query: "weather in Duluth",
+        sources: null,
+        citedSources: [],
+      },
+    ])
+
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: webSearchResultsBlock(),
+    })
+
+    const blocks = state.streamingMessage!.blocks
+    expect(blocks.map((b) => b.type)).toEqual(["web_activity"])
+    const activity = blocks[0]!
+    if (activity.type !== "web_activity")
+      throw new Error("expected web_activity")
+    expect(activity.items).toHaveLength(1)
+    const search = activity.items[0]!
+    if (search.kind !== "search") throw new Error("expected search item")
+    expect(search.sources).toHaveLength(2)
+
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: webSearchBlock({ query: "second query" }),
+    })
+    const after = state.streamingMessage!.blocks[0]!
+    if (after.type !== "web_activity") throw new Error("expected web_activity")
+    expect(after.items.map((it) => it.kind)).toEqual(["search", "search"])
+    const secondSearch = after.items[1]!
+    if (secondSearch.kind !== "search") throw new Error("expected search item")
+    expect(secondSearch.query).toBe("second query")
+    expect(secondSearch.sources).toBeNull()
+  })
+
+  it("renders an expandable activity that survives chunk_end", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "Checking the web. ",
+      operation: "append",
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: webSearchBlock(),
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: webSearchResultsBlock(),
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: webFetchBlock(),
+    })
+
+    expect(state.streamingMessage!.blocks.map((b) => b.type)).toEqual([
+      "content",
+      "web_activity",
+    ])
+
+    state = chatReducer(state, { type: "chunk_end" })
+    expect(state.streamingMessage).toBeNull()
+    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual([
+      "content",
+      "web_activity",
+    ])
+
+    const { container } = renderMessages(state.messages)
+    const header = container.querySelector(".shiny-web-activity__header")
+    expect(header).not.toBeNull()
+    expect(container.textContent).toContain("Searched the web")
+
+    expect(container.querySelector(".shiny-web-activity__timeline")).toBeNull()
+    fireEvent.click(header!)
+    expect(header!.getAttribute("aria-expanded")).toBe("true")
+    expect(
+      container.querySelector(".shiny-web-activity__timeline"),
+    ).not.toBeNull()
+    expect(container.textContent).toContain("weather in Duluth")
+    expect(container.textContent).toContain("2 results")
+    expect(container.textContent).toContain("Duluth weather")
+    expect(container.textContent).toContain("example.org")
+    expect(container.querySelector(".shiny-web-activity__fetch")).not.toBeNull()
+    expect(container.textContent).toContain("https://example.net/article")
+    expect(
+      container.querySelector(".shiny-web-activity__status--ok"),
+    ).not.toBeNull()
+
+    const text = container.textContent ?? ""
+    expect(text.indexOf("Checking the web.")).toBeLessThan(
+      text.indexOf("Searched the web"),
+    )
+  })
+
+  it("ignores web blocks with unsupported versions with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: { ...webSearchBlock(), version: 2 } as unknown as StructuredBlock,
+    })
+
+    expect(state.streamingMessage!.blocks).toHaveLength(0)
+    expect(warn).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("structured html_block via message.segments", () => {
+  it("reduces to an html_block and renders innerHTML in segment order", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "Before the island. ", content_type: "markdown" },
+          htmlBlock({ content: "<p class='island'>Island HTML</p>" }),
+          { content: " After the island.", content_type: "markdown" },
+        ],
+      },
+    })
+
+    expect(state.messages).toHaveLength(1)
+    const blocks = state.messages[0]!.blocks
+    expect(blocks.map((b) => b.type)).toEqual([
+      "content",
+      "html_block",
+      "content",
+    ])
+
+    const block = blocks[1]!
+    if (block.type !== "html_block") throw new Error("expected html_block")
+    expect(block.content).toBe("<p class='island'>Island HTML</p>")
+    expect(block.contentType).toBe("html")
+
+    const { container } = renderMessages(state.messages)
+    const island = container.querySelector(".island")
+    expect(island).not.toBeNull()
+    expect(island!.innerHTML).toBe("Island HTML")
+
+    const text = container.textContent ?? ""
+    expect(text.indexOf("Before the island.")).toBeLessThan(
+      text.indexOf("Island HTML"),
+    )
+    expect(text.indexOf("Island HTML")).toBeLessThan(
+      text.indexOf("After the island."),
+    )
+  })
+
+  it("merges block-level html_deps into the message htmlDeps", () => {
+    const dep = fakeDep("island-dep")
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [htmlBlock({ html_deps: [dep] })],
+      },
+    })
+
+    expect(state.messages[0]!.htmlDeps).toEqual([dep])
+  })
+
+  it("merges block-level deps with envelope-level html_deps", () => {
+    const blockDep = fakeDep("block-dep")
+    const envDep = fakeDep("env-dep")
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [htmlBlock({ html_deps: [blockDep] })],
+      },
+      html_deps: [envDep],
+    })
+
+    expect(state.messages[0]!.htmlDeps).toEqual([blockDep, envDep])
+  })
+
+  it("renders html_block in a user-role message", () => {
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "user",
+        segments: [htmlBlock({ content: "<p class='island'>User island</p>" })],
+      },
+    })
+
+    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual(["html_block"])
+    const block = state.messages[0]!.blocks[0]!
+    if (block.type !== "html_block") throw new Error("expected html_block")
+    expect(block.content).toBe("<p class='island'>User island</p>")
+
+    const { container } = renderMessages(state.messages)
+    const island = container.querySelector(".island")
+    expect(island).not.toBeNull()
+    expect(island!.innerHTML).toBe("User island")
+  })
+
+  it("still ignores non-html_block structured blocks in a user-role message", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const toolResult: StructuredBlock = {
+      type: "tool_result",
+      version: 1,
+      request_id: "r1",
+      tool_name: "my_tool",
+      status: "success",
+      value: "42",
+    }
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "user",
+        segments: [toolResult],
+      },
+    })
+
+    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual([])
+    expect(warn).toHaveBeenCalled()
+  })
+
+  it("ignores html_block with unsupported version with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "just text", content_type: "markdown" },
+          { ...htmlBlock(), version: 2 } as unknown as StructuredBlock,
+        ],
+      },
+    })
+
+    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual(["content"])
+    expect(warn).toHaveBeenCalledTimes(1)
+  })
+
+  it("ignores a malformed html_block (missing content) with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const malformed = { type: "html_block", version: 1 }
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [
+          { content: "just text", content_type: "markdown" },
+          malformed as unknown as StructuredBlock,
+        ],
+      },
+    })
+
+    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual(["content"])
+    expect(warn).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("structured html_block via block_insert mid-stream", () => {
+  function startStream(state: ChatState): ChatState {
+    return chatReducer(state, {
+      type: "chunk_start",
+      message: { role: "assistant", segments: [] },
+    })
+  }
+
+  it("appends a render-ready html_block to the in-flight message", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "Before the island. ",
+      operation: "append",
+    })
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: htmlBlock({ content: "<p class='island'>Mid-stream island</p>" }),
+    })
+
+    const midBlocks = state.streamingMessage!.blocks
+    expect(midBlocks.map((b) => b.type)).toEqual(["content", "html_block"])
+
+    state = chatReducer(state, {
+      type: "chunk",
+      content: " After the island.",
+      operation: "append",
+    })
+    expect(state.streamingMessage!.blocks.map((b) => b.type)).toEqual([
+      "content",
+      "html_block",
+      "content",
+    ])
+
+    state = chatReducer(state, { type: "chunk_end" })
+    expect(state.streamingMessage).toBeNull()
+    expect(state.messages[0]!.blocks.map((b) => b.type)).toEqual([
+      "content",
+      "html_block",
+      "content",
+    ])
+
+    const { container } = renderMessages(state.messages)
+    expect(container.querySelector(".island")).not.toBeNull()
+    expect(container.textContent).toContain("Mid-stream island")
+
+    const text = container.textContent ?? ""
+    expect(text.indexOf("Before the island.")).toBeLessThan(
+      text.indexOf("Mid-stream island"),
+    )
+    expect(text.indexOf("Mid-stream island")).toBeLessThan(
+      text.indexOf("After the island."),
+    )
+  })
+
+  it("does not disturb thinking-tag/fence stream state", () => {
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "chunk",
+      content: "```\nsome code",
+      operation: "append",
+    })
+    expect(state.streamingMessage!.insideFence).toBe(true)
+
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: htmlBlock(),
+    })
+    expect(state.streamingMessage!.insideFence).toBe(true)
+    expect(state.streamingMessage!.blocks.map((b) => b.type)).toEqual([
+      "content",
+      "html_block",
+    ])
+  })
+
+  it("merges block-level deps into the streaming message htmlDeps", () => {
+    const dep = fakeDep("island-dep")
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: htmlBlock({ html_deps: [dep] }),
+    })
+
+    expect(state.streamingMessage!.htmlDeps).toEqual([dep])
+
+    state = chatReducer(state, { type: "chunk_end" })
+    expect(state.messages[0]!.htmlDeps).toEqual([dep])
+  })
+
+  it("ignores html_block with unsupported version with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    let state = startStream(makeState())
+    state = chatReducer(state, {
+      type: "block_insert",
+      block: { ...htmlBlock(), version: 2 } as unknown as StructuredBlock,
+    })
+
+    expect(state.streamingMessage!.blocks).toHaveLength(0)
+    expect(warn).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("html_block deps-before-innerHTML ordering", () => {
+  it("renders dependencies before mounting innerHTML", async () => {
+    const shiny = mockShiny()
+    const dep = fakeDep("island-dep")
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [htmlBlock({ html_deps: [dep] })],
+      },
+    })
+
+    const { container } = render(
+      <ShinyLifecycleContext.Provider value={shiny}>
+        <ChatMessages messages={state.messages} inputId="test-input" />
+      </ShinyLifecycleContext.Provider>,
+    )
+
+    expect(container.querySelector(".island")).toBeNull()
+    expect(shiny.renderDependencies).toHaveBeenCalledWith([dep])
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(container.querySelector(".island")).not.toBeNull()
+    expect(shiny.bindAll).toHaveBeenCalled()
+  })
+
+  it("mounts innerHTML immediately when no deps", () => {
+    const shiny = mockShiny()
+    const state = chatReducer(makeState(), {
+      type: "message",
+      message: {
+        role: "assistant",
+        segments: [htmlBlock({ content: "<p class='island'>No deps</p>" })],
+      },
+    })
+
+    const { container } = render(
+      <ShinyLifecycleContext.Provider value={shiny}>
+        <ChatMessages messages={state.messages} inputId="test-input" />
+      </ShinyLifecycleContext.Provider>,
+    )
+
+    expect(container.querySelector(".island")).not.toBeNull()
+    expect(shiny.renderDependencies).not.toHaveBeenCalled()
+    expect(shiny.bindAll).toHaveBeenCalled()
+  })
+})

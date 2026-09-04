@@ -55,7 +55,8 @@ from ._chat_normalize import (
     normalize_message_chunk,
 )
 from ._chat_segments import (
-    append_to_segments,
+    StreamSegment,
+    append_chunk_segments,
     copy_segments,
     has_mixed_content_types,
     segments_content,
@@ -68,16 +69,28 @@ from ._chat_types import (
     ChatMessage,
     ChatMessageDict,
     ClearAction,
-    ContentSegment,
     GreetingOptions,
     MessagePayload,
     SerializedDep,
     SlashCommandDef,
     StoredMessage,
+    StoredSegment,
+    StringSegment,
+    _assemble_stored_message,
     chat_greeting,
+    ensure_string_segment,
+    flatten_segments_content,
+    initial_message_payload,
+    is_structured_segment,
+    serialize_html_deps,
 )
 from ._drawer import ChatDrawerController
 from ._history import ChatHistory, HistoryOptions
+from ._history_client import (
+    TurnsAdapter,
+    as_turns_adapter,
+    normalize_turn_group,
+)
 from ._html_deps_py_shiny import shinychat_dependency
 from ._page_chat import (
     ChatDrawer,
@@ -366,12 +379,12 @@ class Chat:
         self.on_error = on_error
 
         # Chunked messages get accumulated (using this property) before changing state
-        self._current_stream_segments: list[ContentSegment] = []
+        self._current_stream_segments: list[StreamSegment] = []
         self._current_stream_id: str | None = None
         self._pending_messages: list[PendingMessage] = []
 
         # For tracking message stream state when entering/exiting nested streams
-        self._message_stream_segments_checkpoint: list[ContentSegment] = []
+        self._message_stream_segments_checkpoint: list[StreamSegment] = []
 
         # Keep track of effects so we can destroy them when the chat is destroyed
         self._effects: list["Effect_"] = []
@@ -921,9 +934,11 @@ class Chat:
                 * To prevent interpreting as markdown, mark the string as
                   :class:`~shiny.ui.HTML`.
             * A UI element (specifically, a :class:`~shiny.ui.TagChild`).
-                * This includes :class:`~shiny.ui.TagList`, which take UI elements
-                  (including strings) as children. In this case, strings are still
-                  interpreted as markdown as long as they're not inside HTML.
+                * This includes :class:`~shiny.ui.TagList`, which takes UI elements
+                  (including strings) as children. TagList content is treated as
+                  HTML: strings inside it are literal text (HTML-escaped), not
+                  markdown. Use :class:`~shiny.ui.HTML` for trusted raw HTML
+                  strings.
             * A dictionary with `content` and `role` keys. The `content` key can contain
               content as described above, and the `role` key can be "assistant" or
               "user".
@@ -1173,7 +1188,6 @@ class Chat:
 
         # Normalize various message types into a ChatMessage()
         msg = normalize_message_chunk(message)
-        chunk_deps = msg.html_deps or []
 
         if operation == "replace":
             if has_mixed_content_types(
@@ -1190,11 +1204,8 @@ class Chat:
                 self._message_stream_segments_checkpoint
             )
 
-        append_to_segments(
-            self._current_stream_segments,
-            msg.content,
-            msg.content_type,
-            chunk_deps or None,
+        append_chunk_segments(
+            self._current_stream_segments, msg, self._serialize_html_deps
         )
 
         stream_content = segments_content(self._current_stream_segments)
@@ -1221,14 +1232,18 @@ class Chat:
                     # _transform_message returns a single-segment StoredMessage, so all stream
                     # deps belong on segments[0].
                     if serialized_deps and msg.segments:
-                        msg.segments[0].html_deps = serialized_deps
+                        first = msg.segments[0]
+                        if isinstance(first, StoredSegment):
+                            first.html_deps = serialized_deps
                     self._store_message(msg)
             elif chunk == "end":
-                text_segs = serialize_segments(
-                    self._current_stream_segments, self._serialize_html_deps
+                stored_segments = serialize_segments(
+                    self._current_stream_segments,
+                    self._serialize_html_deps,
                 )
+                ensure_string_segment(stored_segments, msg.content_type)
                 self._store_message(
-                    StoredMessage(role=msg.role, segments=text_segs),
+                    StoredMessage(role=msg.role, segments=stored_segments),
                 )
 
             # Send the message to the client
@@ -1264,9 +1279,11 @@ class Chat:
                 * To prevent interpreting as markdown, mark the string as
                   :class:`~shiny.ui.HTML`.
             * A UI element (specifically, a :class:`~shiny.ui.TagChild`).
-                * This includes :class:`~shiny.ui.TagList`, which take UI elements
-                  (including strings) as children. In this case, strings are still
-                  interpreted as markdown as long as they're not inside HTML.
+                * This includes :class:`~shiny.ui.TagList`, which takes UI elements
+                  (including strings) as children. TagList content is treated as
+                  HTML: strings inside it are literal text (HTML-escaped), not
+                  markdown. Use :class:`~shiny.ui.HTML` for trusted raw HTML
+                  strings.
             * A dictionary with `content` and `role` keys. The `content` key can contain
               content as described above, and the `role` key can be "assistant" or
               "user".
@@ -1456,9 +1473,8 @@ class Chat:
         try:
             async for msg in message:
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
-            # The string returned to the caller mirrors StoredMessage.content
-            # (thinking wrapped in <thinking> tags), not segments_content's bare join.
-            return "".join(str(s) for s in self._current_stream_segments)
+            # Same string spelling as the stored message's .content
+            return flatten_segments_content(self._current_stream_segments)
         finally:
             await self._append_message_chunk(empty, chunk="end", stream_id=id)
             await self._flush_pending_messages()
@@ -1490,17 +1506,6 @@ class Chat:
         if message.role == "system":
             return
 
-        # Bare segment content (no <thinking> wrapping): on the wire, thinking
-        # travels as raw text paired with content_type="thinking", and the
-        # client builds the thinking block from that type. StoredMessage.content
-        # is the flat-string form that re-wraps thinking in tags instead.
-        content = "".join(s.content for s in message.segments)
-        content_type = (
-            message.segments[-1].content_type
-            if message.segments
-            else "markdown"
-        )
-
         msg_payload: MessagePayload = {
             "role": message.role,
             "segments": message.wire_segments(),
@@ -1517,26 +1522,61 @@ class Chat:
             action: ChatAction = {"type": "chunk_start", "message": msg_payload}
             await self._send_action(action, message.html_deps)
         elif chunk == "end":
-            if content:
-                chunk_action: ChatAction = {
-                    "type": "chunk",
-                    "content": content,
-                    "operation": operation,
-                    "content_type": content_type,
-                }
-                await self._send_action(chunk_action, message.html_deps)
+            await self._send_wire_segment_actions(message, operation)
             await self._send_action({"type": "chunk_end"})
         elif chunk is True:
-            chunk_action = {
-                "type": "chunk",
-                "content": content,
-                "operation": operation,
-                "content_type": content_type,
-            }
-            await self._send_action(chunk_action, message.html_deps)
+            await self._send_wire_segment_actions(message, operation)
         else:
             action = {"type": "message", "message": msg_payload}
             await self._send_action(action, message.html_deps)
+
+    async def _send_block_inserts(self, message: StoredMessage) -> None:
+        """Send one ``block_insert`` action per structured block in the message."""
+        for block in message.blocks:
+            action: ChatAction = {"type": "block_insert", "block": block}
+            await self._send_action(action, message.html_deps)
+
+    async def _send_wire_segment_actions(
+        self,
+        message: StoredMessage,
+        operation: Literal["append", "replace"],
+    ) -> None:
+        """Send a message's wire segments as ordered actions.
+
+        String segments go as ``chunk`` actions, structured blocks as
+        ``block_insert`` actions. Segments are never collapsed into one
+        chunk: mixed content types must keep per-segment types, since one
+        chunk would stamp the whole concatenation with a single type.
+
+        Under replace semantics, a replace chunk supersedes the whole
+        in-flight message, so a leading empty replace chunk (the wipe) is
+        sent before all segments are emitted as appends."""
+        if operation == "replace":
+            wipe_action: ChatAction = {
+                "type": "chunk",
+                "content": "",
+                "operation": "replace",
+                "content_type": "markdown",
+            }
+            await self._send_action(wipe_action, message.html_deps)
+            operation = "append"
+        for seg in message.wire_segments():
+            if is_structured_segment(seg):
+                block_action: ChatAction = {
+                    "type": "block_insert",
+                    "block": seg,
+                }
+                await self._send_action(block_action, message.html_deps)
+            else:
+                string_seg = cast(StringSegment, seg)
+                if string_seg["content"]:
+                    chunk_action: ChatAction = {
+                        "type": "chunk",
+                        "content": string_seg["content"],
+                        "operation": operation,
+                        "content_type": string_seg["content_type"],
+                    }
+                    await self._send_action(chunk_action, message.html_deps)
 
     def _messages_for_bookmark(self) -> list[dict[str, Any]]:
         from shiny import reactive
@@ -1578,6 +1618,20 @@ class Chat:
             return
         self._store_message(stored)
         await self._send_append_message(stored)
+
+    async def _restore_turns_ui(self, adapter: "TurnsAdapter") -> None:
+        """Re-derive and append UI messages from the client's current turns.
+
+        Each turn group is merged and run through ``normalize_message``, so
+        structured blocks are reconstructed from the turns rather than
+        re-parsed from persisted UI markup. ``transform_assistant_response``
+        does not run on restore.
+        """
+        for group in adapter.get_turns_grouped():
+            msg = normalize_turn_group(group)
+            if msg is None:
+                continue
+            await self._send_append_message(msg)
 
     def transform_user_input(self, *args: object, **kwargs: object) -> object:
         raise TypeError(
@@ -1674,11 +1728,14 @@ class Chat:
         if content is None:
             return None
 
+        # Reuse res.blocks: its html_deps are already session-processed,
+        # unlike message.blocks (raw as_dict() deps).
         return StoredMessage.from_chat_message(
             ChatMessage(
                 content=content,
                 role=res.role,
                 attachments=message.attachments,
+                blocks=list(res.blocks),
             ),
             html_deps=res.html_deps,
         )
@@ -1692,12 +1749,7 @@ class Chat:
     def _serialize_html_deps(
         self, deps: list[HTMLDependency] | None
     ) -> list[SerializedDep] | None:
-        if not deps:
-            return None
-        if self._session is None:
-            return None
-        processed = self._session._process_ui(TagList(*deps))
-        return cast(list[SerializedDep], processed["deps"])
+        return serialize_html_deps(deps, self._session)
 
     def _as_stored_message(
         self,
@@ -1706,8 +1758,7 @@ class Chat:
         if isinstance(message, StoredMessage):
             return message
 
-        html_deps = self._serialize_html_deps(message.html_deps)
-        return StoredMessage.from_chat_message(message, html_deps=html_deps)
+        return _assemble_stored_message(message, self._serialize_html_deps)
 
     def _store_message(
         self,
@@ -2148,6 +2199,14 @@ class Chat:
                 "`async def set_state(self, value: Jsonifiable)` (which should restore the `client=`'s state given the `state=`)."
             )
 
+        # Turns-capable clients re-derive the UI from the client's turns on
+        # restore; persisted UI state in old bookmarks is ignored.
+        turns_adapter: TurnsAdapter | None = None
+        try:
+            turns_adapter = as_turns_adapter(client)
+        except ValueError:
+            turns_adapter = None
+
         # Reset prior bookmarking hooks
         self._destroy_bookmarking()
 
@@ -2221,6 +2280,9 @@ class Chat:
 
         @root_session.bookmark.on_bookmark
         def _on_bookmark_ui(state: BookmarkState):
+            if turns_adapter is not None:
+                # UI is re-derived from the client's turns on restore.
+                return
             if resolved_bookmark_id_msgs_str in state.values:
                 raise ValueError(
                     f'Bookmark value with id (`"{resolved_bookmark_id_msgs_str}"`) already exists.'
@@ -2255,6 +2317,14 @@ class Chat:
             # We always want to keep the `chat.ui(messages=)` values
             # and `self.messages()` are never initialized due to
             # calling `self._init_chat.destroy()` above
+
+            if turns_adapter is not None:
+                # Re-derive the UI from the client's turns.
+                if resolved_bookmark_id_str not in state.values:
+                    await self._append_init_messages()
+                    return
+                await self._restore_turns_ui(turns_adapter)
+                return
 
             if resolved_bookmark_id_msgs_str not in state.values:
                 # If no messages to restore, display the `__init__(messages=)` messages
@@ -2607,11 +2677,17 @@ def chat_ui(
             * To prevent interpreting as markdown, mark the string as
               :class:`~shiny.ui.HTML`.
         * A UI element (specifically, a :class:`~shiny.ui.TagChild`).
-            * This includes :class:`~shiny.ui.TagList`, which take UI elements
-              (including strings) as children. In this case, strings are still
-              interpreted as markdown as long as they're not inside HTML.
+            * This includes :class:`~shiny.ui.TagList`, which takes UI elements
+              (including strings) as children. TagList content is treated as
+              HTML: strings inside it are literal text (HTML-escaped), not
+              markdown. Use :class:`~shiny.ui.HTML` for trusted raw HTML strings.
         * A dictionary with `content` and `role` keys. The `content` key can contain a
           content as described above, and the `role` key can be "assistant" or "user".
+        * Advanced: to interleave markdown and UI in one message, construct a
+          :class:`~shinychat.types.ChatMessage` with ``parts=[...]`` — an
+          ordered list of bare strings (markdown segments) and structured
+          block dicts. This segment API is provisional and may change in a
+          future release.
         * More generally, any type registered with :func:`shinychat.message_content`.
 
         **NOTE:** content may include specially formatted **input suggestion** links
@@ -2808,22 +2884,37 @@ def chat_ui(
         icon_send_deps = icon_send.get_dependencies()
 
     message_tags: list[Tag] = []
+    initial_messages_attr: Optional[str] = None
+    initial_message_deps: list[HTMLDependency] = []
     if messages is None:
         messages = []
-    for x in messages:
-        msg = normalize_message(x)
-        message_tags.append(
-            Tag(
-                "shiny-chat-message",
-                *msg.html_deps,
-                content=msg.content,
-                # The assistant default must not leak onto user messages, which
-                # render `message.icon` directly (no assistant fallback chain).
-                icon=icon_attr if msg.role != "user" else None,
-                data_role=msg.role,
-                content_type=msg.content_type,
+    normalized_messages = [normalize_message(x) for x in messages]
+    if any(msg.blocks for msg in normalized_messages):
+        # Block-carrying messages can't use static <shiny-chat-message> tags;
+        # embed the whole list as JSON in `data-initial-messages` so the
+        # client replays it through the same path as server-sent messages.
+        # Html deps attach to the container tag below, not the JSON.
+        initial_entries: list[dict[str, Any]] = []
+        for msg in normalized_messages:
+            entry, deps = initial_message_payload(msg)
+            # The assistant-icon default must not leak onto user messages.
+            if msg.role != "user" and icon_attr is not None:
+                entry["icon"] = icon_attr
+            initial_entries.append(entry)
+            initial_message_deps.extend(deps)
+        initial_messages_attr = json.dumps(initial_entries)
+    else:
+        for msg in normalized_messages:
+            message_tags.append(
+                Tag(
+                    "shiny-chat-message",
+                    *msg.html_deps,
+                    content=msg.content,
+                    icon=icon_attr if msg.role != "user" else None,
+                    data_role=msg.role,
+                    content_type=msg.content_type,
+                )
             )
-        )
 
     toolbar_tag = None
     if toolbar_input is not None:
@@ -2885,6 +2976,7 @@ def chat_ui(
     res = Tag(
         "shiny-chat-container",
         *greeting_deps,
+        *initial_message_deps,
         Tag("shiny-chat-messages", *message_tags),
         Tag(
             "shiny-chat-input",
@@ -2902,6 +2994,7 @@ def chat_ui(
         placeholder=placeholder,
         fill=fill,
         greeting=greeting_attr,
+        data_initial_messages=initial_messages_attr,
         aside_favicon=aside_favicon_attr,
         enable_cancel=enable_cancel_attr,
         allow_attachments=allow_attachments_attr,

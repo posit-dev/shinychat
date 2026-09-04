@@ -44,12 +44,16 @@ client.
 }
 \item A UI element.
 \itemize{
-\item This includes \code{\link[htmltools:tagList]{htmltools::tagList()}}, which take UI elements (including
-strings) as children. In this case, strings are still interpreted as
-markdown as long as they're not inside HTML.
+\item This includes \code{\link[htmltools:tagList]{htmltools::tagList()}}, which takes UI elements
+(including strings) as children. Strings inside a tagList are
+literal text (HTML-escaped), not markdown. Use
+\code{\link[htmltools:HTML]{htmltools::HTML()}} for trusted raw HTML strings.
 }
 \item A named list of \code{content} and \code{role}. The \code{content} can contain content
 as described above, and the \code{role} can be "assistant" or "user".
+\item Advanced: a \code{list()} mixing bare strings and UI elements interleaves
+markdown and HTML in one message, in order. This API is provisional
+and may change in a future release.
 }}
 
 \item{greeting}{An optional greeting to display when the chat first loads.

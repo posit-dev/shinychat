@@ -128,6 +128,20 @@ describe("ToolCard", () => {
     expect(nameSpan!.textContent).toBe("bold")
   })
 
+  it("escapes the toolName fallback when no toolTitle is provided (model-influenced text)", () => {
+    const payload = "<img src=x onerror=alert(1)>"
+    const { container } = render(
+      <ToolCard toolName={payload} initialExpanded={true}>
+        <div>body</div>
+      </ToolCard>,
+    )
+
+    const nameSpan = container.querySelector(".tool-title-name")
+    expect(nameSpan).toBeTruthy()
+    expect(nameSpan!.querySelector("img")).toBeNull()
+    expect(nameSpan!.textContent).toContain(payload)
+  })
+
   it("does not wrap the title in a 'Running '/'failed' template (titleTemplate removed)", () => {
     const { container } = render(
       <ToolCard toolName="search" toolTitle="Searching" statusNote="failed">
@@ -149,6 +163,84 @@ describe("ToolCard", () => {
     )
     expect(container.querySelector(".tool-status-note")?.textContent).toBe(
       "failed",
+    )
+  })
+})
+
+describe("ToolCard error containment", () => {
+  function ThrowingBody(): never {
+    throw new Error("bad tool metadata")
+  }
+
+  it("a throwing card body leaves the header intact", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const { container, getByRole } = render(
+      <ToolCard toolName="my_tool" initialExpanded={true}>
+        <ThrowingBody />
+      </ToolCard>,
+    )
+
+    // The header row still renders and remains expandable.
+    const header = container.querySelector(".card-header")
+    expect(header).toBeTruthy()
+    expect(header!.textContent).toContain("my_tool")
+    // The body degrades to an inline notice.
+    expect(getByRole("alert").textContent).toContain("couldn’t be displayed")
+  })
+
+  it("a throwing footer leaves the card intact", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const { container, queryByRole, getByText } = render(
+      <ToolCard
+        toolName="my_tool"
+        initialExpanded={true}
+        footer={
+          {
+            toString: () => {
+              throw new Error("bad footer")
+            },
+          } as unknown as string
+        }
+      >
+        <div>body content</div>
+      </ToolCard>,
+    )
+
+    // Footer is dropped (fallback null), body and header survive.
+    expect(getByText("body content")).toBeTruthy()
+    expect(container.querySelector(".card-header")).toBeTruthy()
+    expect(queryByRole("alert")).toBeNull()
+  })
+
+  it("recovers when a throwing footer is corrected", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const badFooter = {
+      toString: () => {
+        throw new Error("bad footer")
+      },
+    } as unknown as string
+    const { rerender, container, queryByRole } = render(
+      <ToolCard toolName="my_tool" initialExpanded={true} footer={badFooter}>
+        <div>body content</div>
+      </ToolCard>,
+    )
+    expect(container.querySelector(".card-footer")).toBeNull()
+
+    rerender(
+      <ToolCard toolName="my_tool" initialExpanded={true} footer="<p>fixed</p>">
+        <div>body content</div>
+      </ToolCard>,
+    )
+    expect(queryByRole("alert")).toBeNull()
+    expect(container.querySelector(".card-footer")).toBeTruthy()
+    expect(container.querySelector(".card-footer")!.innerHTML).toContain(
+      "fixed",
     )
   })
 })

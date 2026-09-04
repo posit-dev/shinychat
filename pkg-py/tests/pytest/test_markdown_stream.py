@@ -1,0 +1,494 @@
+"""Tests for MarkdownStream structured `html_block` emission.
+
+Trusted non-string content (Shiny UI) in a markdown stream ships as
+structured `html_block` envelopes — not as `<shiny-chat-raw-html>` island
+tags inside content strings — both mid-stream (`MarkdownStream.stream()`)
+and in the initial `content-segments` attribute (`output_markdown_stream`).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import threading
+from typing import Any, cast
+
+import pytest
+from htmltools import HTMLDependency, Tag, TagList, div
+from shiny import Inputs, Session
+from shiny.module import ResolvedId
+from shiny.session import session_context
+from shinychat import MarkdownStream, output_markdown_stream
+
+
+class _CaptureSession:
+    """Minimal session capturing custom messages. `_process_ui` marks deps
+    as session-processed (mirrors the pattern in test_html_islands.py)."""
+
+    ns: ResolvedId = ResolvedId("")
+    app: object = None
+    id: str = "capture-session"
+
+    def __init__(self) -> None:
+        self.input = Inputs({}, ns=ResolvedId)
+        self.messages: list[dict[str, Any]] = []
+
+    def on_ended(self, callback: object) -> None:
+        pass
+
+    def on_destroy(self, callback: object) -> None:
+        pass
+
+    def _increment_busy_count(self) -> None:
+        pass
+
+    def is_stub_session(self) -> bool:
+        return False
+
+    def _process_ui(self, ui: object) -> dict[str, Any]:
+        rendered = TagList(cast(Any, ui)).render()
+        return {
+            "html": rendered["html"],
+            "deps": [
+                {**d.as_dict(), "from_session": self.id}
+                for d in rendered["dependencies"]
+            ],
+        }
+
+    async def send_custom_message(
+        self, type: str, message: dict[str, Any]
+    ) -> None:
+        assert type == "shinyMarkdownStreamMessage"
+        self.messages.append(message)
+
+
+def run_stream(ms: MarkdownStream, content: Any) -> str:
+    """Drive MarkdownStream.stream()'s extended task to completion.
+
+    stream() schedules a reactive extended task on the current event loop,
+    so run it inside asyncio.run (in a thread, mirroring run_async in
+    test_chat.py) and await the underlying asyncio task to make the wire
+    emission synchronous for the test. Returns the task's result string.
+    """
+    results: list[str] = []
+    errors: list[BaseException] = []
+
+    def _run() -> None:
+        async def _exercise() -> None:
+            task = await ms.stream(content)
+            inner = getattr(task, "_task", None)
+            if inner is not None:
+                await inner
+                results.append(inner.result())
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+
+        try:
+            asyncio.run(_exercise())
+        except BaseException as err:  # noqa: BLE001
+            errors.append(err)
+
+    t = threading.Thread(target=_run)
+    t.start()
+    t.join()
+    if errors:
+        raise errors[0]
+    return results[0] if results else ""
+
+
+def content_messages(
+    messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """The non-streaming-dot messages (content and block carriers)."""
+    return [m for m in messages if "isStreaming" not in m]
+
+
+# ---------------------------------------------------------------------------
+# MarkdownStream.stream() wire emission
+# ---------------------------------------------------------------------------
+
+
+def test_stream_emits_html_block_for_trusted_island_content():
+    """A trusted tag ships as a structured html_block block-message, not as
+    an island-tag string segment."""
+    mock = _CaptureSession()
+    with session_context(cast(Session, mock)):
+        ms = MarkdownStream(id="stream")
+        run_stream(ms, [div("trusted UI")])
+
+    msgs = content_messages(mock.messages)
+    # Leading empty replace (the clear), then the block message.
+    assert msgs[0] == {
+        "id": "stream",
+        "content": "",
+        "operation": "replace",
+        "html_deps": [],
+        "trusted": False,
+        "segment_start": True,
+    }
+    assert len(msgs) == 2
+    block_msg = msgs[1]
+    assert "content" not in block_msg
+    assert block_msg["operation"] == "append"
+    block = block_msg["block"]
+    assert block["type"] == "html_block"
+    assert block["version"] == 1
+    assert "<div>trusted UI</div>" in block["content"]
+    assert "<shiny-chat-raw-html>" not in block["content"]
+
+
+def test_stream_mixed_content_interleaves_blocks_and_segments():
+    """Untrusted text stays an untrusted string segment; island wrappers
+    become block messages; bare data-shinychat-react elements stay trusted
+    residual string segments (blank-line wrapped)."""
+    mock = _CaptureSession()
+    react_el = Tag(
+        "shiny-tool-result", data_shinychat_react=True, request_id="abc"
+    )
+    with session_context(cast(Session, mock)):
+        ms = MarkdownStream(id="stream")
+        run_stream(
+            ms,
+            ["model text ", TagList(div("before"), react_el, div("after"))],
+        )
+
+    msgs = content_messages(mock.messages)[1:]  # drop the leading clear
+
+    kinds = ["block" if "block" in m else "content" for m in msgs]
+    assert kinds == ["content", "block", "content", "block"]
+
+    assert msgs[0]["content"] == "model text "
+    assert msgs[0]["trusted"] is False
+    assert msgs[0]["segment_start"] is False
+
+    assert msgs[1]["block"]["type"] == "html_block"
+    assert "<div>before</div>" in msgs[1]["block"]["content"]
+    assert msgs[3]["block"]["type"] == "html_block"
+    assert "<div>after</div>" in msgs[3]["block"]["content"]
+
+    residual = msgs[2]
+    assert residual["trusted"] is True
+    assert residual["segment_start"] is True
+    assert "shiny-tool-result" in residual["content"]
+    assert residual["content"].startswith("\n\n")
+    assert residual["content"].endswith("\n\n")
+    assert "<shiny-chat-raw-html>" not in residual["content"]
+
+
+def test_stream_sends_already_structured_block_dicts():
+    """An already-structured block dict in the stream content passes through
+    as one complete block message."""
+    mock = _CaptureSession()
+    search_block = {
+        "type": "web_search",
+        "version": 1,
+        "query": "weather in Duluth",
+    }
+    results_block = {
+        "type": "web_search_results",
+        "version": 1,
+        "sources": [{"url": "https://example.com/weather"}],
+    }
+    citations_block = {
+        "type": "web_search_citations",
+        "version": 1,
+        "sources": [{"url": "https://example.com/cited"}],
+    }
+    with session_context(cast(Session, mock)):
+        ms = MarkdownStream(id="stream")
+        result = run_stream(
+            ms,
+            [
+                "model text ",
+                search_block,
+                results_block,
+                citations_block,
+                " done",
+            ],
+        )
+
+    msgs = content_messages(mock.messages)[1:]  # drop the leading clear
+    kinds = ["block" if "block" in m else "content" for m in msgs]
+    assert kinds == ["content", "block", "block", "block", "content"]
+
+    assert msgs[1]["block"] == search_block
+    assert msgs[2]["block"] == results_block
+    assert msgs[3]["block"] == citations_block
+    assert "content" not in msgs[1]
+    assert msgs[1]["operation"] == "append"
+
+    assert msgs[0]["content"] == "model text "
+    assert msgs[4]["content"] == " done"
+
+    assert result == "model text  done"
+
+
+def test_stream_rejects_tool_block_dicts():
+    """Tool blocks are type-valid StructuredBlocks, but the stream client
+    intentionally supports only html_block and web_* blocks — it drops tool
+    blocks with a warning. stream() must reject them server-side with a
+    clear error (fail openly) instead of silently discarding them."""
+    mock = _CaptureSession()
+    tool_request = {
+        "type": "tool_request",
+        "version": 1,
+        "request_id": "r1",
+        "tool_name": "some_tool",
+    }
+    tool_result = {
+        "type": "tool_result",
+        "version": 1,
+        "request_id": "r1",
+        "tool_name": "some_tool",
+        "status": "success",
+    }
+    with session_context(cast(Session, mock)):
+        ms = MarkdownStream(id="stream")
+        for block in (tool_request, tool_result):
+            with pytest.raises(
+                ValueError, match="Unsupported structured block"
+            ):
+                run_stream(ms, ["before ", block])
+
+    assert all("block" not in m for m in content_messages(mock.messages))
+
+
+def test_stream_rejects_unknown_and_typeless_block_dicts():
+    """A dict whose `type` is unknown — or absent — fails openly too."""
+    mock = _CaptureSession()
+    with session_context(cast(Session, mock)):
+        ms = MarkdownStream(id="stream")
+        with pytest.raises(ValueError, match="Unsupported structured block"):
+            run_stream(ms, [{"type": "made_up", "version": 1}])
+        with pytest.raises(ValueError, match="Unsupported structured block"):
+            run_stream(ms, [{"version": 1}])
+
+    assert all("block" not in m for m in content_messages(mock.messages))
+
+
+def test_stream_block_message_carries_session_processed_deps():
+    """Island dependencies are serialized through session._process_ui and
+    ride the block (for its mount gate) AND the message envelope (the
+    run's first — here only — envelope, so the client loads them before
+    dispatching the block)."""
+    mock = _CaptureSession()
+    dep = HTMLDependency(
+        "testlib", "1.0", source={"href": "/test"}, script={"src": "test.js"}
+    )
+    with session_context(cast(Session, mock)):
+        ms = MarkdownStream(id="stream")
+        run_stream(ms, [TagList(div("x"), dep)])
+
+    msgs = content_messages(mock.messages)
+    block_msg = msgs[1]
+    envelope_deps = block_msg["html_deps"]
+    assert [d["name"] for d in envelope_deps] == ["testlib"]
+    block_deps = block_msg["block"].get("html_deps")
+    assert block_deps is not None
+    assert block_deps[0]["name"] == "testlib"
+    assert envelope_deps[0].get("from_session") == "capture-session"
+    assert block_deps[0].get("from_session") == "capture-session"
+
+
+def test_stream_aggregates_run_deps_onto_first_envelope():
+    """Every dep of a trusted run rides the first outbound envelope of the
+    run (block or string), so all of the run's dependencies load before any
+    of its parts mount. Later parts of the run send empty envelope html_deps;
+    a block still carries its own deps for its mount gate."""
+    mock = _CaptureSession()
+    dep = HTMLDependency(
+        "latelib", "1.0", source={"href": "/late"}, script={"src": "late.js"}
+    )
+    react_el = Tag(
+        "shiny-tool-result", data_shinychat_react=True, request_id="abc"
+    )
+    with session_context(cast(Session, mock)):
+        ms = MarkdownStream(id="stream")
+        run_stream(ms, [TagList(div("before"), react_el, div("after"), dep)])
+
+    msgs = content_messages(mock.messages)[1:]  # drop the leading clear
+    kinds = ["block" if "block" in m else "content" for m in msgs]
+    assert kinds == ["block", "content", "block"]
+
+    first, residual, last = msgs
+    assert [d["name"] for d in first["html_deps"]] == ["latelib"]
+    assert residual["html_deps"] == []
+    assert last["html_deps"] == []
+    assert "html_deps" not in first["block"]
+    assert [d["name"] for d in last["block"]["html_deps"]] == ["latelib"]
+
+
+def test_stream_aggregates_run_deps_onto_first_string_envelope():
+    """When a trusted run starts with a residual string part (bare React
+    elements), the aggregated run deps ride that content envelope."""
+    mock = _CaptureSession()
+    dep_first = HTMLDependency(
+        "firstlib",
+        "1.0",
+        source={"href": "/first"},
+        script={"src": "first.js"},
+    )
+    dep_second = HTMLDependency(
+        "secondlib",
+        "2.0",
+        source={"href": "/second"},
+        script={"src": "second.js"},
+    )
+    react_el = Tag(
+        "shiny-tool-result",
+        dep_first,
+        data_shinychat_react=True,
+        request_id="abc",
+    )
+    with session_context(cast(Session, mock)):
+        ms = MarkdownStream(id="stream")
+        run_stream(ms, [TagList(react_el, div("after", dep_second))])
+
+    msgs = content_messages(mock.messages)[1:]  # drop the leading clear
+    kinds = ["block" if "block" in m else "content" for m in msgs]
+    assert kinds == ["content", "block"]
+
+    assert [d["name"] for d in msgs[0]["html_deps"]] == [
+        "firstlib",
+        "secondlib",
+    ]
+    assert msgs[1]["html_deps"] == []
+    assert [d["name"] for d in msgs[1]["block"]["html_deps"]] == ["secondlib"]
+
+
+def test_stream_result_includes_island_html():
+    """The stream result string accumulates untrusted text, island HTML,
+    and residual markup alike."""
+    mock = _CaptureSession()
+    with session_context(cast(Session, mock)):
+        ms = MarkdownStream(id="stream")
+        result = run_stream(ms, ["model text ", div("trusted UI")])
+
+    assert "model text " in result
+    assert "<div>trusted UI</div>" in result
+
+
+def test_stream_untrusted_content_unchanged():
+    """Plain string streams keep the exact pre-block wire shape (no block
+    key, content present, append with segment_start=False)."""
+    mock = _CaptureSession()
+    with session_context(cast(Session, mock)):
+        ms = MarkdownStream(id="stream")
+        run_stream(ms, ["hello ", "world"])
+
+    msgs = content_messages(mock.messages)[1:]  # drop the leading clear
+    assert msgs == [
+        {
+            "id": "stream",
+            "content": "hello ",
+            "operation": "append",
+            "html_deps": [],
+            "trusted": False,
+            "segment_start": False,
+        },
+        {
+            "id": "stream",
+            "content": "world",
+            "operation": "append",
+            "html_deps": [],
+            "trusted": False,
+            "segment_start": False,
+        },
+    ]
+
+
+# ---------------------------------------------------------------------------
+# output_markdown_stream() initial content-segments
+# ---------------------------------------------------------------------------
+
+
+def test_output_emits_block_entries_for_island_content():
+    el = output_markdown_stream(
+        "stream",
+        content=TagList("## This is markdown", div("This is HTML")),
+    )
+    segments = json.loads(str(el.attrs["content-segments"]))
+
+    assert segments[0] == {"text": "## This is markdown", "trusted": False}
+    assert segments[1] == {
+        "block": {
+            "type": "html_block",
+            "version": 1,
+            "content": "<div>This is HTML</div>",
+        }
+    }
+    assert "<div>This is HTML</div>" in str(el.attrs["content"])
+    assert el.attrs["content-trusted"] == "false"
+
+
+def test_output_block_entry_carries_serialized_deps():
+    """Block-level deps ride the block entry as serialized dicts AND the
+    element's dependencies (page-level, registered at render)."""
+    dep = HTMLDependency(
+        "testlib", "1.0", source={"href": "/test"}, script={"src": "test.js"}
+    )
+    el = output_markdown_stream("stream", content=TagList(div("x"), dep))
+    segments = json.loads(str(el.attrs["content-segments"]))
+
+    block_deps = segments[0]["block"].get("html_deps")
+    assert block_deps is not None
+    assert block_deps[0]["name"] == "testlib"
+    rendered = TagList(el).render()
+    assert any(d.name == "testlib" for d in rendered["dependencies"])
+
+
+def test_output_react_element_stays_trusted_text_segment():
+    """Bare data-shinychat-react elements remain trusted residual string
+    segments (blank-line wrapped); surrounding UI becomes block entries."""
+    react_el = Tag(
+        "shiny-tool-result", data_shinychat_react=True, request_id="abc"
+    )
+    el = output_markdown_stream(
+        "stream",
+        content=TagList(div("before"), react_el, div("after")),
+    )
+    segments = json.loads(str(el.attrs["content-segments"]))
+
+    assert len(segments) == 3
+    assert segments[0]["block"]["type"] == "html_block"
+    assert "<div>before</div>" in segments[0]["block"]["content"]
+    assert segments[1]["trusted"] is True
+    assert "shiny-tool-result" in segments[1]["text"]
+    assert segments[1]["text"].startswith("\n\n")
+    assert segments[2]["block"]["type"] == "html_block"
+    assert "<div>after</div>" in segments[2]["block"]["content"]
+
+
+def test_output_single_react_element_keeps_trusted_fallback():
+    """A lone residual text segment (no blocks) keeps content-trusted=true:
+    the fallback content is exactly the trusted server-authored HTML."""
+    react_el = Tag(
+        "shiny-tool-result", data_shinychat_react=True, request_id="abc"
+    )
+    el = output_markdown_stream("stream", content=react_el)
+    segments = json.loads(str(el.attrs["content-segments"]))
+
+    assert len(segments) == 1
+    assert segments[0]["trusted"] is True
+    assert el.attrs["content-trusted"] == "true"
+
+
+def test_stream_block_types_allowlist_pin():
+    """Pin the exact set of structured block types accepted in a markdown
+    stream.
+
+    If you are adding a block type, you MUST update all three allowlists
+    in sync:
+      1. `_STREAM_BLOCK_TYPES` in pkg-py/src/shinychat/_markdown_stream.py
+      2. `STREAM_BLOCK_TYPES` in pkg-r/R/markdown-stream.R
+      3. `asStreamBlock` in js/src/markdown-stream/markdown-stream-entry.ts
+    """
+    from shinychat._markdown_stream import _STREAM_BLOCK_TYPES
+
+    assert _STREAM_BLOCK_TYPES == {
+        "html_block",
+        "web_search",
+        "web_search_results",
+        "web_search_citations",
+        "web_fetch",
+    }

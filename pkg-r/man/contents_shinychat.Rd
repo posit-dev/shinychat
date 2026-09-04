@@ -94,7 +94,7 @@ drill-down card:
   res$value <- gt::as_raw_html(gt::gt(content@value))
   res$value_type <- "html"
   # ...and update the tool result title to include the location name
-  res$tool_title <- paste("Got weather forecast for", content@location_name)
+  res$title <- paste("Got weather forecast for", content@location_name)
   res$label <- content@location_name
   res$value_preview <- paste(nrow(content@value), "hourly readings")
 

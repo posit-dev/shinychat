@@ -89,21 +89,14 @@ test_that("ContentToolRequest rich display", {
 
   res <- contents_shinychat(request)
   expect_s3_class(res, "shinychat_tool_request")
+  expect_s3_class(res, "shinychat_block")
+  expect_equal(res$type, "tool_request")
+  expect_equal(res$version, 1L)
   expect_equal(res$request_id, "test-123")
   expect_equal(res$tool_name, "weather")
   expect_equal(res$intent, "Check weather")
   expect_equal(
     jsonlite::fromJSON(res$arguments),
-    list(`_intent` = "Check weather", location = "NYC")
-  )
-
-  res_tags <- as.tags(res)
-  expect_equal(res_tags$name, "shiny-tool-request")
-  expect_equal(res_tags$attribs$"request-id", "test-123")
-  expect_equal(res_tags$attribs[["tool-name"]], "weather")
-  expect_equal(res_tags$attribs$intent, "Check weather")
-  expect_equal(
-    jsonlite::fromJSON(res_tags$attribs$arguments),
     list(`_intent` = "Check weather", location = "NYC")
   )
 })
@@ -115,20 +108,20 @@ test_that("tool card serialization matches the shared wire fixture", {
   )
 
   request <- new_tool_card(
-    "request",
+    "tool_request",
     request_id = "wire-1",
     tool_name = "search",
-    tool_title = "Searching",
+    title = "Searching",
     icon = "<i>search</i>",
     intent = "Find docs",
     arguments = '{"q":"shiny"}',
     grouping = "all"
   )
   result <- new_tool_card(
-    "result",
+    "tool_result",
     request_id = "wire-1",
     tool_name = "search",
-    tool_title = "Searched",
+    title = "Searched",
     icon = "<i>done</i>",
     intent = "Find docs",
     status = "success",
@@ -137,16 +130,45 @@ test_that("tool card serialization matches the shared wire fixture", {
     value = "Result body",
     value_type = "markdown",
     request_call = 'search(q="shiny")',
-    show_request = NA,
-    full_screen = NA,
-    expanded = NA,
+    show_request = TRUE,
+    full_screen = TRUE,
+    expanded = TRUE,
     footer = "<span>footer</span>",
     grouping = "all",
     open_style = "framed"
   )
 
-  expect_identical(format(as.tags(request)), fixture$request)
-  expect_identical(format(as.tags(result)), fixture$result)
+  req_expected <- fixture$blocks$request
+  expect_equal(request$type, req_expected$type)
+  expect_equal(request$version, req_expected$version)
+  expect_equal(request$request_id, req_expected$request_id)
+  expect_equal(request$tool_name, req_expected$tool_name)
+  expect_equal(request$title, req_expected$title)
+  expect_equal(request$icon, req_expected$icon)
+  expect_equal(request$intent, req_expected$intent)
+  expect_equal(request$arguments, req_expected$arguments)
+  expect_equal(request$grouping, req_expected$grouping)
+
+  res_expected <- fixture$blocks$result
+  expect_equal(result$type, res_expected$type)
+  expect_equal(result$version, res_expected$version)
+  expect_equal(result$request_id, res_expected$request_id)
+  expect_equal(result$tool_name, res_expected$tool_name)
+  expect_equal(result$title, res_expected$title)
+  expect_equal(result$icon, res_expected$icon)
+  expect_equal(result$intent, res_expected$intent)
+  expect_equal(result$status, res_expected$status)
+  expect_equal(result$label, res_expected$label)
+  expect_equal(result$value_preview, res_expected$value_preview)
+  expect_equal(result$value, res_expected$value)
+  expect_equal(result$value_type, res_expected$value_type)
+  expect_equal(result$request_call, res_expected$request_call)
+  expect_equal(result$show_request, res_expected$show_request)
+  expect_equal(result$full_screen, res_expected$full_screen)
+  expect_equal(result$expanded, res_expected$expanded)
+  expect_equal(result$open_style, res_expected$open_style)
+  expect_equal(result$footer, res_expected$footer)
+  expect_equal(result$grouping, res_expected$grouping)
 })
 
 test_that("ContentToolRequest handles tool annotations", {
@@ -160,7 +182,19 @@ test_that("ContentToolRequest handles tool annotations", {
   res <- contents_shinychat(request)
 
   expect_s3_class(res, "shinychat_tool_request")
-  expect_equal(res$tool_title, "Weather Tool")
+  expect_equal(res$title, "Weather Tool")
+})
+
+test_that("absent annotation title yields no title field, not character(0)", {
+  local_shinychat_tool_display(opt = "rich")
+
+  request <- new_tool_request(tool = new_tool(name = "weather"))
+  res <- contents_shinychat(request)
+  expect_true(is.null(res$title))
+
+  result <- new_tool_result(value = "ok", request = request)
+  res <- contents_shinychat(result)
+  expect_true(is.null(res$title))
 })
 
 test_that("ContentToolRequest emits the tool definition icon and its dependencies", {
@@ -180,13 +214,9 @@ test_that("ContentToolRequest emits the tool definition icon and its dependencie
   )
   res <- contents_shinychat(new_tool_request(tool = tool))
 
-  expect_equal(res$icon, tool@annotations$icon)
-
-  res_tags <- as.tags(res)
-  expect_equal(format(res_tags$attribs$icon), '<i class="icon"></i>')
-  expect_true(
-    list(icon_dep) %in% htmltools::findDependencies(res_tags$children)
-  )
+  expect_equal(res$icon, '<i class="icon"></i>')
+  block_deps <- attr(res, "shinychat_html_deps")
+  expect_true("test" %in% vapply(block_deps, function(d) d$name, character(1)))
 })
 
 test_that("ContentToolRequest emits no icon when the tool has no icon annotation", {
@@ -195,7 +225,6 @@ test_that("ContentToolRequest emits no icon when the tool has no icon annotation
   res <- contents_shinychat(new_tool_request(tool = new_tool()))
 
   expect_null(res$icon)
-  expect_null(as.tags(res)$attribs$icon)
 })
 
 test_that("ContentToolResult requires an associated `@request` property", {
@@ -261,22 +290,17 @@ test_that("ContentToolResult with custom text display", {
 
   res <- contents_shinychat(result)
   expect_s3_class(res, "shinychat_tool_result")
+  expect_s3_class(res, "shinychat_block")
+  expect_equal(res$type, "tool_result")
+  expect_equal(res$version, 1L)
   expect_equal(res$request_id, result@request@id)
   expect_equal(res$tool_name, result@request@name)
   expect_equal(res$status, "success")
   expect_equal(res$value, "Success!")
   expect_equal(res$value_type, "text")
-  expect_equal(res$show_request, NA)
-  expect_null(res$expanded)
-
-  res_tags <- as.tags(res)
-  expect_s3_class(res_tags, "shiny.tag")
-  expect_equal(res_tags$name, "shiny-tool-result")
-  expect_equal(res_tags$attribs$status, "success")
-  expect_equal(res_tags$attribs$value, "Success!")
-  expect_equal(res_tags$attribs$"value-type", "text")
-  expect_equal(res_tags$attribs[["show-request"]], NA)
-  expect_null(res_tags$attribs$expanded)
+  expect_true(res$show_request)
+  expect_false(res$expanded)
+  expect_false(res$full_screen)
 })
 
 test_that("ContentToolResult with additional display options from result", {
@@ -297,16 +321,9 @@ test_that("ContentToolResult with additional display options from result", {
   expect_s3_class(res, "shinychat_tool_result")
   expect_equal(res$value, "<p>test</p>")
   expect_equal(res$value_type, "html")
-  expect_equal(res$show_request, NULL)
-  expect_equal(res$expanded, NA)
-  expect_equal(res$tool_title, "Custom Title")
-
-  res_tags <- as.tags(res)
-  expect_equal(res_tags$attribs$value, "<p>test</p>")
-  expect_equal(res_tags$attribs$"value-type", "html")
-  expect_equal(res_tags$attribs[["show-request"]], NULL)
-  expect_equal(res_tags$attribs$expanded, NA)
-  expect_equal(res_tags$attribs[["tool-title"]], "Custom Title")
+  expect_false(res$show_request)
+  expect_true(res$expanded)
+  expect_equal(res$title, "Custom Title")
 })
 
 test_that("ContentToolResult serializes framed open style only when requested", {
@@ -321,19 +338,13 @@ test_that("ContentToolResult serializes framed open style only when requested", 
     extra = list(display = tool_result_display())
   )
 
-  expect_equal(
-    as.tags(contents_shinychat(framed))$attribs[["open-style"]],
-    "framed"
-  )
-  expect_null(as.tags(contents_shinychat(minimal))$attribs[["open-style"]])
+  expect_equal(contents_shinychat(framed)$open_style, "framed")
+  expect_null(contents_shinychat(minimal)$open_style)
 })
 
-test_that("mutating a card's tool_title overrides the annotation title", {
+test_that("mutating a card's title overrides the annotation title", {
   # The documented pattern for a custom result class (see the
   # `contents_shinychat()` example): call the super method, then mutate the
-  # card. The field is `tool_title`, which renders as the `tool-title`
-  # attribute the client reads -- `res$title` would silently add an unread
-  # `title` attribute instead.
   local_shinychat_tool_display(opt = "rich")
 
   result <- new_tool_result(
@@ -343,12 +354,10 @@ test_that("mutating a card's tool_title overrides the annotation title", {
     )
   )
   res <- contents_shinychat(result)
-  expect_equal(res$tool_title, "Static")
+  expect_equal(res$title, "Static")
 
-  res$tool_title <- "Dynamic for Portland"
-  res_tags <- as.tags(res)
-  expect_equal(res_tags$attribs[["tool-title"]], "Dynamic for Portland")
-  expect_null(res_tags$attribs$title)
+  res$title <- "Dynamic for Portland"
+  expect_equal(res$title, "Dynamic for Portland")
 })
 
 test_that("ContentToolResult with HTML() title preserves markup", {
@@ -364,15 +373,7 @@ test_that("ContentToolResult with HTML() title preserves markup", {
     )
   )
   res <- contents_shinychat(result)
-  expect_s3_class(res$tool_title, "html")
-  expect_equal(as.character(res$tool_title), "Map of <i>Paris</i>")
-
-  # htmltools always escapes attribute values, but the browser decodes them,
-  # so JS getAttribute() returns the original HTML string. The Playwright
-
-  # test (test_html_title.py) verifies the end-to-end rendering.
-  res_tags <- as.tags(res)
-  expect_equal(res_tags$attribs[["tool-title"]], HTML("Map of <i>Paris</i>"))
+  expect_equal(res$title, "Map of <i>Paris</i>")
 })
 
 test_that("ContentToolResult handles icon and dependencies from tool definition", {
@@ -397,13 +398,9 @@ test_that("ContentToolResult handles icon and dependencies from tool definition"
 
   res <- contents_shinychat(result)
   expect_s3_class(res, "shinychat_tool_result")
-  expect_equal(res$icon, tool@annotations$icon)
-
-  res_tags <- as.tags(res)
-  expect_equal(format(res_tags$attribs$icon), '<i class="icon"></i>')
-  expect_true(
-    list(icon_dep) %in% htmltools::findDependencies(res_tags$children)
-  )
+  expect_equal(res$icon, '<i class="icon"></i>')
+  block_deps <- attr(res, "shinychat_html_deps")
+  expect_true("test" %in% vapply(block_deps, function(d) d$name, character(1)))
 })
 
 test_that("ContentToolResult formats request_call correctly", {
@@ -429,6 +426,30 @@ test_that("ContentToolResult formats request_call correctly", {
       arguments = result@request@arguments
     )
   )
+})
+
+test_that("ContentToolResult request_call stays a single string when format() wraps", {
+  local_shinychat_tool_display(opt = "rich")
+
+  # ellmer's format(show = "call") line-wraps at argument boundaries once the
+  # deparsed call exceeds the console width; a long tool name plus several
+  # arguments reliably triggers it. The block must still carry a length-1
+  # string (the client calls .split() on it).
+  request <- new_tool_request(
+    name = "btw_tool_files_list",
+    arguments = list(
+      path = ".",
+      type = "any",
+      regexp = "README.*",
+      `_intent` = "Check for README file"
+    )
+  )
+  expect_gt(length(format(request, show = "call")), 1)
+
+  res <- contents_shinychat(new_tool_result(value = "test", request = request))
+  expect_type(res$request_call, "character")
+  expect_length(res$request_call, 1)
+  expect_match(res$request_call, "btw_tool_files_list", fixed = TRUE)
 })
 
 test_that("get_tool_result_display handles invalid formats", {
@@ -483,90 +504,189 @@ test_that("tool_result_display rich format", {
   )
 })
 
-test_that("web content renders as shinychat web activity and citations", {
-  skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
+test_that("web content emitters produce structured shinychat_block lists", {
   local_shinychat_tool_display(opt = "rich")
 
-  request <- ellmer::ContentToolRequestSearch(
-    query = "ggplot2 release date"
+  MockSearchRequest <- S7::new_class(
+    "MockSearchRequest",
+    properties = list(
+      query = S7::class_character,
+      extra = NULL | S7::class_list
+    )
   )
-  request_tag <- contents_shinychat(request)
-  expect_equal(request_tag$name, "shiny-web-search")
-  expect_equal(request_tag$attribs$query, "ggplot2 release date")
-  expect_true("data-shinychat-react" %in% names(request_tag$attribs))
+  MockSearchResponse <- S7::new_class(
+    "MockSearchResponse",
+    properties = list(
+      sources = S7::class_list,
+      extra = NULL | S7::class_list
+    )
+  )
+  MockWebSource <- S7::new_class(
+    "MockWebSource",
+    properties = list(url = S7::class_character, title = S7::class_character)
+  )
+  MockFetchResponse <- S7::new_class(
+    "MockFetchResponse",
+    properties = list(url = S7::class_character, status = S7::class_character)
+  )
 
-  response <- ellmer::ContentToolResponseSearch(
+  search_content <- MockSearchRequest(query = "ggplot2 release date")
+  search_block <- contents_shinychat_search_request(search_content)
+  expect_s3_class(search_block, "shinychat_web_search")
+  expect_s3_class(search_block, "shinychat_block")
+  expect_equal(search_block$type, "web_search")
+  expect_equal(search_block$version, 1L)
+  expect_equal(search_block$query, "ggplot2 release date")
+  expect_false("id" %in% names(search_block))
+
+  keyed_search <- contents_shinychat_search_request(
+    MockSearchRequest(
+      query = "ggplot2 release date",
+      extra = list(type = "server_tool_use", id = "srvtoolu_123")
+    )
+  )
+  expect_equal(keyed_search$id, "srvtoolu_123")
+
+  results_content <- MockSearchResponse(
     sources = list(
-      ellmer::WebSource(
-        "https://cran.r-project.org/package=ggplot2",
-        "ggplot2"
+      MockWebSource(
+        url = "https://cran.r-project.org/package=ggplot2",
+        title = "ggplot2"
       ),
-      ellmer::WebSource(title = "No URL")
+      MockWebSource(url = "https://example.com", title = NA_character_),
+      MockWebSource(url = NA_character_, title = "No URL")
     )
   )
-  response_tag <- contents_shinychat(response)
-  sources <- jsonlite::fromJSON(
-    response_tag$attribs$sources,
-    simplifyVector = FALSE
+  results_block <- contents_shinychat_search_response(results_content)
+  expect_s3_class(results_block, "shinychat_web_search_results")
+  expect_s3_class(results_block, "shinychat_block")
+  expect_equal(results_block$type, "web_search_results")
+  expect_equal(results_block$version, 1L)
+  expect_length(results_block$sources, 2L)
+  expect_equal(
+    results_block$sources[[1]]$url,
+    "https://cran.r-project.org/package=ggplot2"
   )
-  expect_equal(length(sources), 1L)
-  expect_false("domain" %in% names(sources[[1]]))
+  expect_equal(results_block$sources[[1]]$title, "ggplot2")
+  expect_equal(results_block$sources[[2]]$url, "https://example.com")
+  expect_false("title" %in% names(results_block$sources[[2]]))
+  expect_false("search_id" %in% names(results_block))
 
-  expect_null(
-    contents_shinychat(
-      ellmer::ContentToolRequestFetch("https://example.com")
+  keyed_results <- contents_shinychat_search_response(
+    MockSearchResponse(
+      sources = list(),
+      extra = list(
+        type = "web_search_tool_result",
+        tool_use_id = "srvtoolu_123"
+      )
     )
   )
+  expect_equal(keyed_results$search_id, "srvtoolu_123")
+  # An empty results set is valid: `sources` must survive NULL-field
+  # stripping or the client rejects the block as malformed.
+  expect_true("sources" %in% names(keyed_results))
+  expect_length(keyed_results$sources, 0L)
 
-  fetch_tag <- contents_shinychat(
-    ellmer::ContentToolResponseFetch(
-      url = "https://example.com",
-      status = "success"
-    )
-  )
-  expect_equal(fetch_tag$name, "shiny-web-fetch")
-  expect_equal(fetch_tag$attribs$status, "success")
+  expect_null(contents_shinychat_fetch_request(list()))
 
-  citation <- ellmer::ContentCitation(
-    source = ellmer::WebSource(
-      "https://x.example/?a=1&b=2",
-      "A & B <source>"
-    ),
-    grounded_span = 'Supported answer "text"',
-    cited_quote = "Source evidence <verbatim>"
+  fetch_content <- MockFetchResponse(
+    url = "https://example.com",
+    status = "success"
   )
-  citation_markup <- contents_shinychat(citation)
-  expect_match(citation_markup, "<shiny-aside", fixed = TRUE)
-  expect_match(citation_markup, "data-citation", fixed = TRUE)
-  expect_false(grepl("label=", citation_markup, fixed = TRUE))
-  expect_match(citation_markup, "A &amp; B &lt;source&gt;", fixed = TRUE)
-  expect_match(citation_markup, "a=1&amp;b=2", fixed = TRUE)
-  expect_match(
-    citation_markup,
-    'grounded-span="Supported answer &quot;text&quot;"',
-    fixed = TRUE
+  fetch_block <- contents_shinychat_fetch_response(fetch_content)
+  expect_s3_class(fetch_block, "shinychat_web_fetch")
+  expect_s3_class(fetch_block, "shinychat_block")
+  expect_equal(fetch_block$type, "web_fetch")
+  expect_equal(fetch_block$version, 1L)
+  expect_equal(fetch_block$url, "https://example.com")
+  expect_equal(fetch_block$status, "success")
+
+  fetch_error <- MockFetchResponse(
+    url = "https://example.com",
+    status = "error"
   )
-  expect_match(
-    citation_markup,
-    'cited-quote="Source evidence &lt;verbatim&gt;"',
-    fixed = TRUE
+  expect_null(contents_shinychat_fetch_response(fetch_error))
+
+  fetch_no_url <- MockFetchResponse(url = NA_character_, status = "success")
+  expect_null(contents_shinychat_fetch_response(fetch_no_url))
+})
+
+test_that("web content emitters respect disabled tool display", {
+  local_shinychat_tool_display(opt = "none")
+
+  MockSearchRequest <- S7::new_class(
+    "MockSearchRequest2",
+    properties = list(query = S7::class_character)
+  )
+  MockSearchResponse <- S7::new_class(
+    "MockSearchResponse2",
+    properties = list(sources = S7::class_list)
+  )
+  MockFetchResponse <- S7::new_class(
+    "MockFetchResponse2",
+    properties = list(url = S7::class_character, status = S7::class_character)
   )
 
-  citation_without_grounding <- contents_shinychat(
+  search_content <- MockSearchRequest(query = "test")
+  expect_null(contents_shinychat_search_request(search_content))
+
+  results_content <- MockSearchResponse(sources = list())
+  expect_null(contents_shinychat_search_response(results_content))
+
+  fetch_content <- MockFetchResponse(
+    url = "https://example.com",
+    status = "success"
+  )
+  expect_null(contents_shinychat_fetch_response(fetch_content))
+})
+
+test_that("web_source_record omits title when NA and filters NA urls", {
+  MockWebSource <- S7::new_class(
+    "MockWebSource2",
+    properties = list(url = S7::class_character, title = S7::class_character)
+  )
+
+  source_with_title <- MockWebSource(
+    url = "https://example.com",
+    title = "Example"
+  )
+  record <- web_source_record(source_with_title)
+  expect_equal(record, list(url = "https://example.com", title = "Example"))
+
+  source_no_title <- MockWebSource(
+    url = "https://example.com",
+    title = NA_character_
+  )
+  record <- web_source_record(source_no_title)
+  expect_equal(record, list(url = "https://example.com"))
+  expect_false("title" %in% names(record))
+
+  source_no_url <- MockWebSource(url = NA_character_, title = "No URL")
+  expect_null(web_source_record(source_no_url))
+})
+
+test_that("ContentCitation yields an aside plus a web_search_citations block", {
+  skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
+
+  result <- contents_shinychat(
     ellmer::ContentCitation(
       source = ellmer::WebSource("https://x.example", "Example")
     )
   )
-  expect_false(
-    grepl("grounded-span=", citation_without_grounding, fixed = TRUE)
-  )
-  expect_false(grepl("cited-quote=", citation_without_grounding, fixed = TRUE))
+  expect_s3_class(result, "shinychat_content_splice")
+  expect_length(result, 2L)
 
-  expect_null(contents_shinychat(ellmer::ContentCitation()))
-  expect_null(
-    contents_shinychat(
-      ellmer::ContentToolResponseFetch(status = "error")
-    )
+  aside <- result[[1]]
+  expect_match(aside, "data-citation", fixed = TRUE)
+  expect_match(aside, "https://x.example", fixed = TRUE)
+
+  block <- result[[2]]
+  expect_s3_class(block, "shinychat_block")
+  expect_equal(block$type, "web_search_citations")
+  expect_equal(block$version, 1L)
+  expect_equal(
+    block$sources,
+    list(list(url = "https://x.example", title = "Example"))
   )
 })
 
@@ -578,7 +698,7 @@ test_that("ContentCitation preserves optional metadata independently", {
       source = ellmer::WebSource("https://x.example", "Example"),
       grounded_span = "Supported answer"
     )
-  )
+  )[[1]]
   expect_match(
     grounded_only,
     'grounded-span="Supported answer"',
@@ -591,7 +711,7 @@ test_that("ContentCitation preserves optional metadata independently", {
       source = ellmer::WebSource("https://x.example", "Example"),
       cited_quote = "Source evidence"
     )
-  )
+  )[[1]]
   expect_match(quote_only, 'cited-quote="Source evidence"', fixed = TRUE)
   expect_false(grepl("grounded-span=", quote_only, fixed = TRUE))
 })
@@ -605,33 +725,48 @@ test_that("web content feature detection derives classes from registered methods
   expect_false(ellmer_web_content_available(methods, exports[-2]))
 })
 
-test_that("web content renderers respect disabled tool display", {
+test_that("Turn conversion emits citations as their own blocks", {
   skip_if_not(ellmer_web_content_available(ellmer_web_content_methods()))
-  local_shinychat_tool_display(opt = "none")
 
-  contents <- list(
-    ellmer::ContentToolRequestSearch("ggplot2 release date"),
-    ellmer::ContentToolResponseSearch(
-      list(ellmer::WebSource("https://cran.r-project.org", "CRAN"))
-    ),
-    ellmer::ContentToolRequestFetch("https://example.com"),
-    ellmer::ContentToolResponseFetch("https://example.com", "success"),
-    ellmer::ContentCitation(
-      ellmer::WebSource("https://example.com", "Example")
-    )
-  )
-
-  expect_true(
-    all(
-      vapply(
-        contents,
-        function(content) {
-          is.null(contents_shinychat(content))
-        },
-        logical(1)
+  turn <- ellmer::AssistantTurn(
+    contents = list(
+      ellmer::ContentToolRequestSearch(
+        query = "shinychat structured blocks"
+      ),
+      ellmer::ContentText("According to the docs..."),
+      ellmer::ContentCitation(
+        source = ellmer::WebSource("https://example.com/docs", "Docs"),
+        grounded_span = "According to the docs"
       )
     )
   )
+
+  results <- contents_shinychat(turn)
+  block_types <- vapply(
+    Filter(function(x) inherits(x, "shinychat_block"), results),
+    function(x) x$type,
+    character(1)
+  )
+  expect_equal(block_types, c("web_search", "web_search_citations"))
+
+  citations <- Filter(
+    function(x) {
+      inherits(x, "shinychat_block") &&
+        identical(x$type, "web_search_citations")
+    },
+    results
+  )
+  expect_equal(
+    citations[[1]]$sources,
+    list(list(url = "https://example.com/docs", title = "Docs"))
+  )
+
+  # The splice is flattened: the aside rides as a plain string item.
+  asides <- Filter(
+    function(x) is.character(x) && grepl("data-citation", x, fixed = TRUE),
+    results
+  )
+  expect_length(asides, 1L)
 })
 
 test_that("processes a Turn object", {
@@ -689,7 +824,7 @@ test_that("doesn't consolidate adjacent turns with different roles in a Chat obj
   )
 
   messages <- contents_shinychat(chat)
-  expect_length(messages, 2) # Previous consolidated message + 2 new messages
+  expect_length(messages, 2)
   expect_equal(messages[[1]]$role, "user")
   expect_equal(messages[[2]]$role, "assistant")
 })
@@ -758,7 +893,7 @@ test_that("warns when `display` is not a list", {
     extra = list(display = htmltools::tags$p("test"))
   )
   expect_snapshot(
-    as.tags(contents_shinychat(result))
+    format(contents_shinychat(result))
   )
 })
 
@@ -944,9 +1079,9 @@ test_that("malformed display flags serialize to their defaults", {
   expect_warning(res <- contents_shinychat(result), class = "rlang_warning")
 
   # Defaults: the request is shown, the card is collapsed and not full screen
-  expect_equal(res$show_request, NA)
-  expect_null(res$expanded)
-  expect_null(res$full_screen)
+  expect_true(res$show_request)
+  expect_false(res$expanded)
+  expect_false(res$full_screen)
 
   # A well-formed bare list is still honored end to end
   result_ok <- new_tool_result(
@@ -961,9 +1096,9 @@ test_that("malformed display flags serialize to their defaults", {
     )
   )
   res_ok <- contents_shinychat(result_ok)
-  expect_null(res_ok$show_request)
-  expect_equal(res_ok$expanded, NA)
-  expect_equal(res_ok$full_screen, NA)
+  expect_false(res_ok$show_request)
+  expect_true(res_ok$expanded)
+  expect_true(res_ok$full_screen)
 })
 
 test_that("as_tool_result_display() warns and returns an empty object for non-list input", {
@@ -1006,12 +1141,6 @@ test_that("S3 display object and equivalent bare list serialize identically", {
   res_s3$request_id <- NULL
   res_list$request_id <- NULL
   expect_equal(res_s3, res_list)
-
-  tags_s3 <- as.tags(contents_shinychat(result_s3))
-  tags_list <- as.tags(contents_shinychat(result_list))
-  tags_s3$attribs$"request-id" <- NULL
-  tags_list$attribs$"request-id" <- NULL
-  expect_equal(format(tags_s3), format(tags_list))
 })
 
 test_that("tool_result_value() selects markdown when only markdown is provided", {
@@ -1046,9 +1175,6 @@ test_that("ContentToolRequest emits grouping from tool annotations", {
   res <- contents_shinychat(request)
 
   expect_equal(res$grouping, "all")
-
-  res_tags <- as.tags(res)
-  expect_equal(res_tags$attribs$grouping, "all")
 })
 
 test_that("ContentToolResult emits grouping from tool annotations", {
@@ -1062,12 +1188,9 @@ test_that("ContentToolResult emits grouping from tool annotations", {
   res <- contents_shinychat(result)
 
   expect_equal(res$grouping, "all")
-
-  res_tags <- as.tags(res)
-  expect_equal(res_tags$attribs$grouping, "all")
 })
 
-test_that("invalid tool annotation grouping is dropped (no attribute emitted)", {
+test_that("invalid tool annotation grouping is dropped (no field emitted)", {
   local_shinychat_tool_display(opt = "rich")
 
   tool <- new_tool(annotations = list(grouping = "bogus"))
@@ -1078,8 +1201,6 @@ test_that("invalid tool annotation grouping is dropped (no attribute emitted)", 
   res <- contents_shinychat(result)
 
   expect_null(res$grouping)
-  res_tags <- as.tags(res)
-  expect_null(res_tags$attribs$grouping)
 })
 
 test_that("basic tool display suppresses custom display metadata but keeps annotations", {
@@ -1101,12 +1222,12 @@ test_that("basic tool display suppresses custom display metadata but keeps annot
 
   req_res <- contents_shinychat(request)
   expect_s3_class(req_res, "shinychat_tool_request")
-  expect_equal(req_res$tool_title, "Weather Tool")
+  expect_equal(req_res$title, "Weather Tool")
   expect_equal(req_res$grouping, "all")
 
   tool_res <- contents_shinychat(result)
   expect_s3_class(tool_res, "shinychat_tool_result")
-  expect_equal(tool_res$tool_title, "Weather Tool")
+  expect_equal(tool_res$title, "Weather Tool")
   expect_equal(tool_res$grouping, "all")
   expect_null(tool_res$label)
   expect_null(tool_res$value_preview)
@@ -1185,4 +1306,99 @@ test_that("group_ellmer_turns() merges adjacent same-role turns with no tool cal
 
 test_that("group_ellmer_turns() returns an empty list for no turns", {
   expect_equal(group_ellmer_turns(list()), list())
+})
+
+test_that("coalesce_content_strings keeps a shinychat_thinking string separate between markdown strings", {
+  thinking1 <- structure("let me think", class = "shinychat_thinking")
+  content <- list("before", thinking1, "after")
+
+  result <- coalesce_content_strings(content)
+  expect_length(result, 3)
+  expect_equal(result[[1]], "before")
+  expect_equal(result[[2]], thinking1)
+  expect_s3_class(result[[2]], "shinychat_thinking")
+  expect_equal(result[[3]], "after")
+})
+
+test_that("coalesce_content_strings merges consecutive thinking strings but not with markdown", {
+  thinking1 <- structure("thought 1", class = "shinychat_thinking")
+  thinking2 <- structure("thought 2", class = "shinychat_thinking")
+  content <- list("md", thinking1, thinking2, "md2")
+
+  result <- coalesce_content_strings(content)
+  expect_length(result, 3)
+  expect_equal(result[[1]], "md")
+  expect_s3_class(result[[2]], "shinychat_thinking")
+  expect_equal(as.character(result[[2]]), "thought 1\n\nthought 2")
+  expect_equal(result[[3]], "md2")
+})
+
+test_that("coalesce_content_strings flushes markdown buffer before a thinking part", {
+  thinking <- structure("hmm", class = "shinychat_thinking")
+  content <- list("a", "b", thinking, "c")
+
+  result <- coalesce_content_strings(content)
+  expect_length(result, 3)
+  expect_equal(result[[1]], "a\n\nb")
+  expect_s3_class(result[[2]], "shinychat_thinking")
+  expect_equal(result[[3]], "c")
+})
+
+test_that("coalesce_content_strings keeps thinking parts around blocks", {
+  thinking <- structure("hmm", class = "shinychat_thinking")
+  block <- new_web_block("web_search", query = "test")
+  content <- list("md", thinking, block, thinking, "md2")
+
+  result <- coalesce_content_strings(content)
+  expect_length(result, 5)
+  expect_equal(result[[1]], "md")
+  expect_s3_class(result[[2]], "shinychat_thinking")
+  expect_s3_class(result[[3]], "shinychat_block")
+  expect_s3_class(result[[4]], "shinychat_thinking")
+  expect_equal(result[[5]], "md2")
+})
+
+test_that("merge_ellmer_turn_group preserves ContentThinking class in the merged content", {
+  turn <- ellmer::AssistantTurn(
+    contents = list(
+      ellmer::ContentThinking("reasoning about the question"),
+      ellmer::ContentText("Here is my answer."),
+      ellmer::ContentText("And more detail.")
+    )
+  )
+
+  merged <- merge_ellmer_turn_group(list(turn), tools = list())
+  expect_equal(merged$role, "assistant")
+  expect_type(merged$content, "list")
+  expect_s3_class(merged$content[[1]], "shinychat_thinking")
+  expect_equal(
+    as.character(merged$content[[1]]),
+    "reasoning about the question"
+  )
+  expect_equal(merged$content[[2]], "Here is my answer.\n\nAnd more detail.")
+})
+
+test_that("merge_ellmer_turn_group preserves ContentThinking alongside a tool block", {
+  request <- new_tool_request(id = "t1", name = "get_weather")
+  turn <- ellmer::AssistantTurn(
+    contents = list(
+      ellmer::ContentThinking("let me check the weather"),
+      ellmer::ContentText("Let me check."),
+      request
+    )
+  )
+
+  merged <- merge_ellmer_turn_group(list(turn), tools = list())
+  expect_type(merged$content, "list")
+  thinking_parts <- Filter(
+    function(x) is.character(x) && inherits(x, "shinychat_thinking"),
+    merged$content
+  )
+  expect_length(thinking_parts, 1)
+  expect_equal(as.character(thinking_parts[[1]]), "let me check the weather")
+  block_parts <- Filter(
+    function(x) inherits(x, "shinychat_block"),
+    merged$content
+  )
+  expect_length(block_parts, 1)
 })

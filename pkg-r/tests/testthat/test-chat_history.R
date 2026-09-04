@@ -879,19 +879,7 @@ test_that("handle_navigate() steps to the previous sibling branch and replays it
       )
     )
   }
-  make_ui_message <- function(role, text) {
-    list(
-      role = role,
-      segments = list(list(content = text, content_type = "markdown"))
-    )
-  }
-  report_client_messages <- function(texts) {
-    roles <- rep(c("user", "assistant"), length.out = length(texts))
-    spy$session$setInputs(chat_messages = Map(make_ui_message, roles, texts))
-  }
-
   # First branch: "Hi" / "Hello"
-  report_client_messages(c("Hi", "Hello"))
   ctrl$on_response(list(
     make_turn("user", "Hi"),
     make_turn("assistant", "Hello")
@@ -901,9 +889,11 @@ test_that("handle_navigate() steps to the previous sibling branch and replays it
 
   # Fork at the root by editing message 0 ("Hi"), then simulate the resubmit's
   # on_response with new turns "Hi again" / "New reply" -- this creates a
-  # second root-level sibling.
+  # second root-level sibling. handle_edit()'s replay_ui() sets is_replaying
+  # and only clears it on the session's next reactive flush, so on_response()
+  # would otherwise no-op here.
   ctrl$handle_edit(0, "Hi again", NULL)
-  report_client_messages(c("Hi again", "New reply"))
+  spy$session$flushReact()
   ctrl$on_response(list(
     make_turn("user", "Hi again"),
     make_turn("assistant", "New reply")
@@ -1001,18 +991,6 @@ test_that("handle_edit() truncates current_leaf to the fork parent and resubmits
       )
     )
   }
-  make_ui_message <- function(role, text) {
-    list(
-      role = role,
-      segments = list(list(content = text, content_type = "markdown"))
-    )
-  }
-  spy$session$setInputs(
-    chat_messages = list(
-      make_ui_message("user", "Hi"),
-      make_ui_message("assistant", "Hello")
-    )
-  )
   ctrl$on_response(list(
     make_turn("user", "Hi"),
     make_turn("assistant", "Hello")
@@ -1067,18 +1045,6 @@ test_that("handle_edit() revalidates and forwards attachments with attachment_mo
       )
     )
   }
-  make_ui_message <- function(role, text) {
-    list(
-      role = role,
-      segments = list(list(content = text, content_type = "markdown"))
-    )
-  }
-  spy$session$setInputs(
-    chat_messages = list(
-      make_ui_message("user", "Hi"),
-      make_ui_message("assistant", "Hello")
-    )
-  )
   ctrl$on_response(list(
     make_turn("user", "Hi"),
     make_turn("assistant", "Hello")
@@ -1137,18 +1103,6 @@ test_that("handle_edit() forces attachment_mode = set for an empty-but-present a
       )
     )
   }
-  make_ui_message <- function(role, text) {
-    list(
-      role = role,
-      segments = list(list(content = text, content_type = "markdown"))
-    )
-  }
-  spy$session$setInputs(
-    chat_messages = list(
-      make_ui_message("user", "Hi"),
-      make_ui_message("assistant", "Hello")
-    )
-  )
   ctrl$on_response(list(
     make_turn("user", "Hi"),
     make_turn("assistant", "Hello")
@@ -1200,18 +1154,6 @@ test_that("handle_edit() rejects unsupported attachment MIME types before resubm
       )
     )
   }
-  make_ui_message <- function(role, text) {
-    list(
-      role = role,
-      segments = list(list(content = text, content_type = "markdown"))
-    )
-  }
-  spy$session$setInputs(
-    chat_messages = list(
-      make_ui_message("user", "Hi"),
-      make_ui_message("assistant", "Hello")
-    )
-  )
   ctrl$on_response(list(
     make_turn("user", "Hi"),
     make_turn("assistant", "Hello")
@@ -1227,5 +1169,346 @@ test_that("handle_edit() rejects unsupported attachment MIME types before resubm
   expect_error(
     ctrl$handle_edit(0, "see attached", bad_attachments),
     "unsupported MIME type"
+  )
+})
+
+
+make_tool_turns <- function(
+  user_text = "what's the weather?",
+  asst_text = "Let me check.",
+  result_value = "Sunny, 75F",
+  final_text = "It's sunny and 75F!"
+) {
+  user_turn <- list(
+    class = "ellmer::UserTurn",
+    version = 1,
+    props = list(
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = user_text)
+        )
+      )
+    )
+  )
+  tool_request_turn <- list(
+    class = "ellmer::AssistantTurn",
+    version = 1,
+    props = list(
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = asst_text)
+        ),
+        list(
+          class = "ellmer::ContentToolRequest",
+          version = 1,
+          props = list(
+            id = "t1",
+            name = "get_weather",
+            arguments = list(),
+            extra = list()
+          )
+        )
+      )
+    )
+  )
+  tool_result_turn <- list(
+    class = "ellmer::UserTurn",
+    version = 1,
+    props = list(
+      contents = list(
+        list(
+          class = "ellmer::ContentToolResult",
+          version = 1,
+          props = list(
+            value = result_value,
+            extra = list(),
+            request = list(
+              class = "ellmer::ContentToolRequest",
+              version = 1,
+              props = list(
+                id = "t1",
+                name = "get_weather",
+                arguments = list(),
+                extra = list()
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  final_turn <- list(
+    class = "ellmer::AssistantTurn",
+    version = 1,
+    props = list(
+      contents = list(
+        list(
+          class = "ellmer::ContentText",
+          version = 1,
+          props = list(text = final_text)
+        )
+      )
+    )
+  )
+  list(user_turn, tool_request_turn, tool_result_turn, final_turn)
+}
+
+test_that("saving after a tool request+result stores UI with interleaved blocks", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  turns <- make_tool_turns()
+  ctrl$on_response(turns)
+
+  expect_equal(ctrl$record$nodes$n_0001$ui[[1]]$version, STORED_UI_VERSION)
+  expect_equal(ctrl$record$nodes$n_0001$ui[[1]]$role, "user")
+  expect_equal(
+    ctrl$record$nodes$n_0001$ui[[1]]$segments[[1]]$content,
+    "what's the weather?"
+  )
+
+  derived <- ctrl$record$nodes$n_0002$ui[[1]]
+  expect_equal(derived$version, STORED_UI_VERSION)
+  expect_equal(derived$role, "assistant")
+  # Blocks live inline in segments now; the parallel fields are gone.
+  expect_null(derived$blocks)
+  expect_null(derived$block_positions)
+
+  # Segments are interleaved: blocks inline at their positions.
+  block_segs <- Filter(function(s) "type" %in% names(s), derived$segments)
+  expect_true(length(block_segs) >= 2)
+  block_types <- vapply(block_segs, function(s) s$type, character(1))
+  expect_true("tool_request" %in% block_types)
+  expect_true("tool_result" %in% block_types)
+
+  req_block <- block_segs[[which(block_types == "tool_request")[1]]]
+  expect_equal(req_block$request_id, "t1")
+  expect_equal(req_block$tool_name, "get_weather")
+  expect_equal(req_block$version, 1L)
+
+  res_block <- block_segs[[which(block_types == "tool_result")[1]]]
+  expect_equal(res_block$request_id, "t1")
+  expect_equal(res_block$tool_name, "get_weather")
+  expect_equal(res_block$status, "success")
+  expect_equal(res_block$version, 1L)
+
+  # String segments interleave with the blocks in order.
+  string_segs <- Filter(function(s) !"type" %in% names(s), derived$segments)
+  expect_true(length(string_segs) >= 1)
+})
+
+test_that("replay emits message actions with structured blocks inline in segments", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  session <- shiny::MockShinySession$new()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  turns <- make_tool_turns()
+  ctrl$on_response(turns)
+
+  spy <- history_mock_session_with_spy()
+  ctrl2 <- HistoryController$new(
+    chat_id = "chat",
+    client = mock_chat_client(),
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl2$partition <- conversation_partition("chat", "test-user")
+  ctrl2$replay_ui(ctrl$record)
+
+  sent <- history_spy_messages(spy)
+  message_actions <- Filter(
+    function(m) identical(m$message$action$type, "message"),
+    sent
+  )
+  expect_length(message_actions, 2)
+
+  asst_segments <- message_actions[[2]]$message$action$message$segments
+  block_segs <- Filter(function(s) "type" %in% names(s), asst_segments)
+  expect_true(length(block_segs) >= 2)
+  block_types <- vapply(block_segs, function(s) s$type, character(1))
+  expect_true("tool_request" %in% block_types)
+  expect_true("tool_result" %in% block_types)
+
+  string_segs <- Filter(function(s) !"type" %in% names(s), asst_segments)
+  seg_contents <- vapply(string_segs, function(s) s$content, character(1))
+  expect_true("It's sunny and 75F!" %in% seg_contents)
+})
+
+test_that("old-format stored UI (no version marker) is discarded and re-derived from turns", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  spy <- history_mock_session_with_spy()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  turns <- make_tool_turns()
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list("n_0002"),
+      turns = list(turns[[1]]),
+      ui = list(list(
+        role = "user",
+        segments = list(list(
+          content = "what's the weather?",
+          content_type = "markdown"
+        ))
+      ))
+    ),
+    n_0002 = list(
+      parent = "n_0001",
+      children = list(),
+      turns = turns[2:4],
+      ui = list(list(
+        role = "assistant",
+        segments = list(list(
+          content = "Let me check. [tool card] It's sunny!",
+          content_type = "markdown"
+        ))
+      ))
+    )
+  )
+  rec$current_leaf <- "n_0002"
+
+  ctrl$replay_ui(rec)
+
+  sent <- history_spy_messages(spy)
+  message_actions <- Filter(
+    function(m) identical(m$message$action$type, "message"),
+    sent
+  )
+  expect_length(message_actions, 2)
+
+  asst_segments <- message_actions[[2]]$message$action$message$segments
+  block_segs <- Filter(function(s) "type" %in% names(s), asst_segments)
+  expect_true(length(block_segs) >= 2)
+  block_types <- vapply(block_segs, function(s) s$type, character(1))
+  expect_true("tool_request" %in% block_types)
+  expect_true("tool_result" %in% block_types)
+})
+
+
+test_that("current-version stored UI replays verbatim (no turns re-derivation)", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  spy <- history_mock_session_with_spy()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list(),
+      turns = list(
+        list(
+          class = "ellmer::AssistantTurn",
+          version = 1,
+          props = list(
+            contents = list(
+              list(
+                class = "ellmer::ContentText",
+                version = 1,
+                props = list(text = "turn text that should NOT be replayed")
+              )
+            )
+          )
+        )
+      ),
+      ui = list(list(
+        version = STORED_UI_VERSION,
+        role = "assistant",
+        segments = list(list(
+          content = "stored UI replayed verbatim",
+          content_type = "markdown"
+        ))
+      ))
+    )
+  )
+  rec$current_leaf <- "n_0001"
+
+  ctrl$replay_ui(rec)
+
+  sent <- history_spy_messages(spy)
+  message_actions <- Filter(
+    function(m) identical(m$message$action$type, "message"),
+    sent
+  )
+  expect_length(message_actions, 1)
+  expect_equal(
+    message_actions[[1]]$message$action$message$segments[[1]]$content,
+    "stored UI replayed verbatim"
+  )
+})
+
+test_that("node with neither usable UI nor turns falls back to text-only", {
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  spy <- history_mock_session_with_spy()
+
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+  ctrl$partition <- conversation_partition("chat", "test-user")
+
+  rec <- new_conversation_record("test")
+  rec$nodes <- list(
+    n_0001 = list(
+      parent = NULL,
+      children = list(),
+      turns = list(),
+      ui = NULL
+    )
+  )
+  rec$current_leaf <- "n_0001"
+
+  ctrl$replay_ui(rec)
+
+  sent <- history_spy_messages(spy)
+  message_actions <- Filter(
+    function(m) identical(m$message$action$type, "message"),
+    sent
+  )
+  expect_length(message_actions, 1)
+  expect_equal(
+    message_actions[[1]]$message$action$message$segments[[1]]$content,
+    ""
   )
 })

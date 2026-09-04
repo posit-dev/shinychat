@@ -2,7 +2,6 @@ import {
   Fragment,
   memo,
   useEffect,
-  useId,
   useRef,
   useState,
   type ReactNode,
@@ -25,7 +24,9 @@ import {
 } from "./tool-presentation"
 import { ToolResult, ToolResultValue } from "./ToolResult"
 import { ToolRequest } from "./ToolRequest"
+import { RawHTML } from "./RawHTML"
 import { useChatStopScroll } from "./context"
+import { useToolUiId } from "./useToolUiId"
 import { useFadingValue } from "./useFadingText"
 import { bareDot, chevronDown, exclamationCircleFill } from "../utils/icons"
 
@@ -98,13 +99,19 @@ function renderLeaf(item: ToolCallItem, open: boolean): ReactNode {
 }
 
 // One tool's stretch of the header: its name, then its own ×N. A title is
-// `dangerouslySetInnerHTML` because server-provided titles may carry markup.
+// injected via `RawHTML` because server-provided titles may carry markup.
 function TitleSegment({
   segment,
   showVerb,
+  bind,
 }: {
   segment: ToolCallSegment
   showVerb: boolean
+  /**
+   * Passed through to the title's RawHTML. False when the header's expansion
+   * also mounts the full card, so the card's copy owns the Shiny bindings.
+   */
+  bind?: boolean
 }): ReactNode {
   const name = toolSegmentName(segment, showVerb)
   // A tool's title changes under it as the call settles (the definition title
@@ -119,10 +126,9 @@ function TitleSegment({
   return (
     <>
       {visible.title != null ? (
-        <span
-          {...nameProps}
-          dangerouslySetInnerHTML={{ __html: visible.title }}
-        />
+        <span {...nameProps}>
+          <RawHTML html={visible.title} as="span" bind={bind} />
+        </span>
       ) : (
         <span {...nameProps}>
           {visible.verb}
@@ -148,9 +154,16 @@ function TitleSegment({
 // would show ungrouped — joined by ", ". A homogeneous group has a single
 // segment and renders exactly as it always has: the title span (plus its ×N),
 // unwrapped, straight into the row's flex layout.
-function GroupTitle({ segments }: { segments: ToolCallSegment[] }): ReactNode {
+function GroupTitle({
+  segments,
+  bind,
+}: {
+  segments: ToolCallSegment[]
+  /** See the `bind` prop on TitleSegment. */
+  bind?: boolean
+}): ReactNode {
   if (segments.length === 1) {
-    return <TitleSegment segment={segments[0]!} showVerb={true} />
+    return <TitleSegment segment={segments[0]!} showVerb={true} bind={bind} />
   }
 
   const { shown, overflowText } = toolHeaderSegments(segments)
@@ -160,7 +173,7 @@ function GroupTitle({ segments }: { segments: ToolCallSegment[] }): ReactNode {
         <Fragment key={segment.toolName}>
           {i > 0 && ", "}
           <span className="shiny-chat-tool-group__segment">
-            <TitleSegment segment={segment} showVerb={showVerb} />
+            <TitleSegment segment={segment} showVerb={showVerb} bind={bind} />
           </span>
         </Fragment>
       ))}
@@ -202,9 +215,7 @@ function ToolCallRow({
   // whichever glyph it ends up with, and it keeps the "failed" note below, so
   // failure stays legible even when an icon replaces the exclamation.
   const glyph = glyphHtml(toolCallGlyph(item, heterogeneous))
-  // Not derived from `item.requestId`: it is optional, and a request can
-  // render in a different message than its result before pairing settles.
-  const contentId = `tool-call${useId()}`
+  const contentId = useToolUiId("tool-call")
 
   return (
     <li
@@ -223,9 +234,14 @@ function ToolCallRow({
           setOpen((v) => !v)
         }}
       >
-        <span
+        {/* The expanded card owns the Shiny bindings. This copy binds only
+            while collapsed. */}
+        <RawHTML
+          html={glyph}
+          as="span"
+          bind={!open}
           className={`shiny-chat-tool-call-row__status${statusClass}`}
-          dangerouslySetInnerHTML={{ __html: glyph }}
+          displayContents={false}
         />
         {label && (
           <span className="shiny-chat-tool-call-row__label">
@@ -285,12 +301,7 @@ export const ToolGroup = memo(function ToolGroup({
 }) {
   const { row, standalonePayloads } = projectToolGroup(group)
   const [expanded, setExpanded] = useExpandable(row?.hasExpandedCall)
-  // Not seeded from `group.key` or a call's `requestId`: `group.key` is only
-  // unique within one routed loop (two messages that both group "all", or
-  // repeat a tool name, would point their rows' `aria-controls` at the same
-  // region), and a request id is optional and can render in a different message
-  // than its result before pairing settles.
-  const bodyId = `tool-group${useId()}`
+  const bodyId = useToolUiId("tool-group")
 
   // A rendered result supersedes its matching request wherever it lives, but
   // that is not this component's job to announce: ChatApp derives it from the
@@ -359,9 +370,12 @@ function ToolGroupRow({
           setExpanded((v) => !v)
         }}
       >
-        <span
+        <RawHTML
+          html={glyph}
+          as="span"
+          bind={!expanded}
           className={`shiny-chat-tool-group__glyph${anyRunning ? " running" : ""}`}
-          dangerouslySetInnerHTML={{ __html: glyph }}
+          displayContents={false}
         />
         {/* The title sits at this exact depth in both shapes, so it survives a
                 1→N growth and can crossfade across it. The ×N lives inside the
@@ -369,7 +383,7 @@ function ToolGroupRow({
                 show, and a homogeneous one has exactly one segment, so its badge
                 lands beside the title either way. */}
         <span className="shiny-chat-tool-group__titlewrap">
-          <GroupTitle segments={identity.segments} />
+          <GroupTitle segments={identity.segments} bind={!expanded} />
           {label && (
             <span className="shiny-chat-tool-group__label">
               {": "}

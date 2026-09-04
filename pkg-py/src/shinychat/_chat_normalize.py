@@ -1,13 +1,21 @@
 from __future__ import annotations
 
-import json
 import sys
 from functools import singledispatch
 from typing import TYPE_CHECKING, Any, TypeGuard
 
 from htmltools import HTML, HTMLDependency, Tag, Tagifiable, TagList
 
-from ._chat_types import ChatMessage
+from ._chat_types import (
+    ChatMessage,
+    StructuredBlock,
+    WebFetchBlock,
+    WebSearchBlock,
+    WebSearchCitationsBlock,
+    WebSearchResultsBlock,
+    WebSearchSource,
+    is_structured_segment,
+)
 
 if TYPE_CHECKING:
     from chatlas.types import ContentToolResult
@@ -224,6 +232,7 @@ try:
         citation_aside,
         tool_display_override,
         tool_request_contents,
+        tool_request_message,
         tool_result_contents,
         tool_result_message,
     )
@@ -281,7 +290,7 @@ try:
 
     @message_content.register
     def _(chunk: ContentToolRequest):
-        return ChatMessage(content=tool_request_contents(chunk))
+        return tool_request_message(tool_request_contents(chunk))
 
     @message_content_chunk.register
     def _(chunk: ContentToolRequest):
@@ -310,13 +319,18 @@ try:
         def _(message: ContentToolRequestSearch):
             if tool_display_override() == "none":
                 return ChatMessage(content="")
-            return ChatMessage(
-                content=Tag(
-                    "shiny-web-search",
-                    data_shinychat_react=True,
-                    query=message.query,
-                )
-            )
+            block: WebSearchBlock = {
+                "type": "web_search",
+                "version": 1,
+                "query": message.query,
+            }
+            # Providers that key their search calls (Anthropic, OpenAI)
+            # carry the id in extra; the client pairs results against it.
+            if message.extra is not None:
+                search_id = message.extra.get("id")
+                if isinstance(search_id, str):
+                    block["id"] = search_id
+            return ChatMessage(content="", blocks=[block])
 
         @message_content_chunk.register
         def _(chunk: ContentToolRequestSearch):
@@ -326,20 +340,22 @@ try:
         def _(message: ContentToolResponseSearch):
             if tool_display_override() == "none":
                 return ChatMessage(content="")
-            sources = [
-                {
-                    "url": s.url,
-                    "title": s.title,
-                }
-                for s in message.sources
-            ]
-            return ChatMessage(
-                content=Tag(
-                    "shiny-web-search-results",
-                    data_shinychat_react=True,
-                    sources=json.dumps(sources),
-                )
-            )
+            sources: list[WebSearchSource] = []
+            for s in message.sources:
+                source: WebSearchSource = {"url": s.url}
+                if s.title is not None:
+                    source["title"] = s.title
+                sources.append(source)
+            block: WebSearchResultsBlock = {
+                "type": "web_search_results",
+                "version": 1,
+                "sources": sources,
+            }
+            if message.extra is not None:
+                search_id = message.extra.get("tool_use_id")
+                if isinstance(search_id, str):
+                    block["search_id"] = search_id
+            return ChatMessage(content="", blocks=[block])
 
         @message_content_chunk.register
         def _(chunk: ContentToolResponseSearch):
@@ -357,14 +373,14 @@ try:
         def _(message: ContentToolResponseFetch):
             if tool_display_override() == "none":
                 return ChatMessage(content="")
-            return ChatMessage(
-                content=Tag(
-                    "shiny-web-fetch",
-                    data_shinychat_react=True,
-                    url=message.url,
-                    status=message.status,
-                )
-            )
+            block: WebFetchBlock = {
+                "type": "web_fetch",
+                "version": 1,
+                "url": message.url,
+            }
+            if message.status is not None:
+                block["status"] = message.status
+            return ChatMessage(content="", blocks=[block])
 
         @message_content_chunk.register
         def _(chunk: ContentToolResponseFetch):
@@ -376,6 +392,16 @@ try:
                 message.source, WebSource
             ):
                 return ChatMessage(content="")
+            cited: WebSearchSource = {"url": message.source.url}
+            if message.source.title:
+                cited["title"] = message.source.title
+            # Citations ride their own block so the client can pair them
+            # with the search on both the stream and replay paths.
+            citations: WebSearchCitationsBlock = {
+                "type": "web_search_citations",
+                "version": 1,
+                "sources": [cited],
+            }
             return ChatMessage(
                 content=citation_aside(
                     message.source.url,
@@ -384,6 +410,7 @@ try:
                     cited_quote=message.cited_quote,
                 ),
                 content_type="markdown",
+                blocks=[citations],
             )
 
         @message_content_chunk.register
@@ -418,27 +445,31 @@ try:
 
     @message_content.register
     def _(message: Turn):
-        content = ""
         deps: list[HTMLDependency] = []
+        blocks: list[StructuredBlock] = []
+        parts: list[str | StructuredBlock] = []
+        block_dep_objs: dict[int, list[HTMLDependency]] = {}
         for x in message.contents:
-            # Normalize and wrap per item, mirroring R's
-            # `contents_shinychat_wrapped()`.
-            # Converting a turn discards each `ContentToolResult` before any
-            # caller could wrap it, so a turn carrying a custom tool result
-            # would otherwise emit bare UI with no `<shiny-tool-result>` for
-            # the client to pair its request against.
             item = normalize_message(x)
-            content += item.content
-            # Collected separately from the content: only the rendered *string*
-            # is concatenated, so per-item dependencies would otherwise be
-            # dropped and the item's UI would arrive unstyled and unscripted.
             deps += item.html_deps
+            offset = len(blocks)
+            blocks.extend(item.blocks)
+            for idx, block_deps in item._block_html_deps.items():
+                block_dep_objs[offset + idx] = block_deps
+            if item.content:
+                parts.append(item.content)
+            parts.extend(item.blocks)
         if all(isinstance(x, ContentToolResult) for x in message.contents):
             role = "assistant"
         else:
             role = message.role
-        result = ChatMessage(content=content, role=role)
+        # The merged segment list already carries the blocks, so it is the
+        # only content spelling passed. String parts flatten to the
+        # message-level content_type (markdown), matching the pre-segments
+        # merge; per-item content_type fidelity is a future improvement.
+        result = ChatMessage(content="", role=role, parts=parts or None)
         result.html_deps = deps + result.html_deps
+        result._block_html_deps = block_dep_objs
         return result
 
     @message_content_chunk.register
@@ -471,8 +502,26 @@ def _is_tool_result(value: object) -> TypeGuard["ContentToolResult"]:
         return False
 
 
+def _part_text(p: "str | StructuredBlock") -> str:
+    """Extract text from one ``parts`` entry.
+
+    Strings contribute themselves. ``html_block`` blocks contribute
+    their ``content``. Other structured blocks contribute nothing.
+    """
+    if isinstance(p, str):
+        return p
+    if is_structured_segment(p) and p["type"] == "html_block":
+        return p["content"]
+    return ""
+
+
 def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
-    """Wrap custom tool-result UI in a routable result element."""
+    """Emit a custom tool result as a structured ``tool_result`` block.
+
+    The author's custom UI is the block's ``value`` with
+    ``custom_display: True``, so the client pairs it with the pending
+    ``tool_request`` row.
+    """
     if not _is_tool_result(message):
         return msg
 
@@ -483,9 +532,9 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
         from ._chat_normalize_chatlas import (
             ShinyToolCardMessage,
             ValueType,
-            is_legacy,
             resolve_tool_annotations,
             tool_display_override,
+            tool_result_message,
             wrap_custom_tool_result,
         )
     except ImportError:
@@ -495,7 +544,7 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
         return msg
 
     # These are shinychat's own early returns, not an author's bypass.
-    if tool_display_override() == "none" or is_legacy():
+    if tool_display_override() == "none":
         return msg
 
     # Mirror the author's payload mode, while keeping the wrapper itself
@@ -506,24 +555,26 @@ def _wrap_custom_tool_result(message: Any, msg: ChatMessage) -> ChatMessage:
         else "markdown"
     )
     annotations = resolve_tool_annotations(message.request.tool)
+    if msg.parts is not None:
+        content = "".join(_part_text(p) for p in msg.parts)
+    else:
+        content = msg.content + "".join(
+            b["content"] for b in msg.blocks if b["type"] == "html_block"
+        )
     wrapped = wrap_custom_tool_result(
         request_id=message.request.id,
         tool_name=message.request.name,
         # A custom renderer owns its error presentation; the wrapper only
         # carries the lifecycle signal needed by the client.
         status="success" if message.error is None else "error",
-        value=TagList(HTML(msg.content))
-        if value_type == "html"
-        else msg.content,
+        value=TagList(HTML(content)) if value_type == "html" else content,
         value_type=value_type,
         grouping=annotations.grouping,
     )
 
-    result = ChatMessage(
-        content=wrapped,
-        role=msg.role,
-        attachments=msg.attachments,
-    )
+    result = tool_result_message(wrapped)
+    result.role = msg.role
+    result.attachments = msg.attachments
     result.html_deps = list(msg.html_deps) + list(result.html_deps)
     return result
 

@@ -42,7 +42,7 @@ def test_append_linear_builds_chain():
     assert rec.nodes[n2].parent == n1
     assert rec.current_leaf == n2
     assert rec.nodes[n2].ui == [{"role": "assistant"}]
-    assert [t["role"] for t in rec.path_turns()] == ["user", "assistant"]
+    assert [t.get("role") for t in rec.path_turns()] == ["user", "assistant"]
     assert rec.updated_at >= rec.created_at
 
 
@@ -53,7 +53,7 @@ def test_path_follows_current_leaf_not_all_nodes():
     sibling = ConversationNode(parent=n1, turns=turn("assistant", "v2"))
     rec.nodes["n_sib"] = sibling
     rec.current_leaf = "n_sib"
-    assert [t["content"] for t in rec.path_turns()] == ["hi", "v2"]
+    assert [t.get("content") for t in rec.path_turns()] == ["hi", "v2"]
 
 
 def test_json_round_trip():

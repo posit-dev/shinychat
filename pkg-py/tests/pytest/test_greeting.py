@@ -6,7 +6,7 @@ import threading
 from typing import Any, cast
 
 import pytest
-from htmltools import HTML, HTMLDependency, tags
+from htmltools import HTML, HTMLDependency, Tag, TagList, tags
 from shiny.session import session_context
 from shinychat import Chat, chat_greeting, chat_ui
 from shinychat._chat_client import resolve_greeting
@@ -133,6 +133,16 @@ def test_chat_ui_tag_greeting_has_html_content_type():
     assert "hi" in payload["content"]
 
 
+def test_chat_ui_tag_greeting_payload_has_no_island_tags():
+    """The static greeting attribute carries flattened trusted html — no
+    <shiny-chat-raw-html> wrappers on the wire."""
+    g = chat_greeting(tags.div("hi"))
+    tag = chat_ui("chat", greeting=g)
+    payload = _greeting_payload(tag)
+    assert "shiny-chat-raw-html" not in payload["content"]
+    assert "<div>hi</div>" in payload["content"]
+
+
 def test_chat_ui_no_greeting_no_attribute():
     tag = chat_ui("chat")
     rendered = tag.get_html_string()
@@ -155,6 +165,66 @@ def test_chat_greeting_tag_with_dependency_has_html_deps():
     assert g.content_type == "html"
     dep_names = [d.name for d in g.html_deps]
     assert "my-dep" in dep_names
+
+
+def test_chat_greeting_tag_content_emits_no_island_tags():
+    """Tag content flattens to a single trusted html string — no
+    <shiny-chat-raw-html> island wrappers are emitted."""
+    g = chat_greeting(tags.div("hello"))
+    assert g.content_type == "html"
+    assert isinstance(g.content, str)
+    assert "shiny-chat-raw-html" not in g.content
+    assert "<div>hello</div>" in g.content
+
+
+def test_chat_greeting_react_element_stays_inline():
+    """Bare data-shinychat-react elements stay inline in the flattened
+    greeting html string (they resolve through the client's component map)."""
+    content = TagList(
+        tags.div("before"),
+        Tag("shiny-aside", data_shinychat_react=True),
+        tags.div("after"),
+    )
+    g = chat_greeting(content)
+    assert g.content_type == "html"
+    assert isinstance(g.content, str)
+    assert "shiny-chat-raw-html" not in g.content
+    assert "<div>before</div>" in g.content
+    assert "shiny-aside" in g.content
+    assert "data-shinychat-react" in g.content
+    assert "<div>after</div>" in g.content
+
+
+def test_chat_greeting_mixed_content_bare_string_escaped():
+    """A bare string containing executable HTML in mixed greeting content is
+    HTML-escaped in the payload (safe for the single-string innerHTML payload),
+    while trusted tags still render as real HTML."""
+    content = TagList("<img src=x onerror=alert(1)>", tags.div("trusted"))
+    g = chat_greeting(content)
+    assert g.content_type == "html"
+    assert isinstance(g.content, str)
+    # The bare string is HTML-escaped — executable HTML is neutralized.
+    assert "&lt;img" in g.content
+    assert "<img src=x onerror" not in g.content
+    # The trusted tag is rendered to HTML.
+    assert "<div>trusted</div>" in g.content
+    # No island wrappers.
+    assert "shiny-chat-raw-html" not in g.content
+
+
+def test_chat_ui_mixed_greeting_bare_string_escaped_on_wire():
+    """The chat_ui greeting attribute carries the bare-string portion
+    HTML-escaped in the wire payload (safe for innerHTML), while trusted tags
+    render as real HTML."""
+    g = chat_greeting(
+        TagList("<img src=x onerror=alert(1)>", tags.div("trusted"))
+    )
+    tag = chat_ui("chat", greeting=g)
+    payload = _greeting_payload(tag)
+    assert payload["content_type"] == "html"
+    assert "&lt;img" in payload["content"]
+    assert "<img src=x onerror" not in payload["content"]
+    assert "<div>trusted</div>" in payload["content"]
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +327,23 @@ def test_set_greeting_html_sends_html_content_type():
     assert actions[0]["type"] == "greeting"
     assert actions[0]["content_type"] == "html"
     assert "<b>hi</b>" in actions[0]["content"]
+
+
+def test_set_greeting_tag_content_sends_no_island_tags():
+    """The greeting action carries flattened trusted html — no island tags
+    on the wire."""
+    chat, spy = _make_spy_chat()
+
+    async def _run():
+        await chat.set_greeting(chat_greeting(tags.div("hi")))
+
+    _run_async(_run)
+    actions = _spy_actions(spy)
+    assert len(actions) == 1
+    assert actions[0]["type"] == "greeting"
+    assert actions[0]["content_type"] == "html"
+    assert "shiny-chat-raw-html" not in actions[0]["content"]
+    assert "<div>hi</div>" in actions[0]["content"]
 
 
 def test_set_greeting_stream_sends_start_chunks_end():

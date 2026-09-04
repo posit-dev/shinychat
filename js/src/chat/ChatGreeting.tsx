@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useContext, memo } from "react"
 import type { GreetingData } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
+import { ShinyBindScope } from "./ShinyBindScope"
 import { chatTagToComponentMap } from "./chatTagToComponentMap"
 import { ChatDispatchContext } from "./context"
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion"
@@ -75,16 +76,31 @@ export const ChatGreeting = memo(function ChatGreeting({
       {...(dismissing ? { "data-dismissing": "" } : {})}
     >
       <div className="shiny-chat-greeting-content">
-        {greeting.blocks.map((block, i) => (
-          <MarkdownContent
-            key={i}
-            content={block.content}
-            contentType={block.contentType}
-            role="assistant"
-            streaming={greeting.streaming && i === lastBlockIndex}
-            tagToComponentMap={chatTagToComponentMap}
-          />
-        ))}
+        {greeting.blocks.map((block, i) =>
+          block.contentType === "html" ? (
+            // Render html-typed greeting blocks through the trusted component
+            // map and ShinyBindScope. Keyed by content so a replaced greeting
+            // remounts the scope (unbind-old → bind-new).
+            <ShinyBindScope key={`${i}:${block.content}`}>
+              <MarkdownContent
+                content={block.content}
+                contentType="html"
+                role="assistant"
+                streaming={greeting.streaming && i === lastBlockIndex}
+                tagToComponentMap={chatTagToComponentMap}
+              />
+            </ShinyBindScope>
+          ) : (
+            <MarkdownContent
+              key={i}
+              content={block.content}
+              contentType={block.contentType}
+              role="assistant"
+              streaming={greeting.streaming && i === lastBlockIndex}
+              tagToComponentMap={chatTagToComponentMap}
+            />
+          ),
+        )}
       </div>
     </div>
   )

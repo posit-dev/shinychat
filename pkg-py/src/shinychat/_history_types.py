@@ -3,11 +3,47 @@ from __future__ import annotations
 import secrets
 import time
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
 
+from ._chat_types import ContentType, Role, SerializedDep, StructuredBlock
+from ._history_client import TurnDict
+from ._typing_extensions import NotRequired, TypedDict
+
 TitleSource = Literal["llm", "user"]
+
+
+class StoredSegmentDict(TypedDict):
+    """Serialized form of a ``StoredSegment`` (``model_dump(exclude_none=True)``)."""
+
+    content: str
+    content_type: ContentType
+    html_deps: NotRequired[list[SerializedDep]]
+
+
+class AttachmentDict(TypedDict):
+    """Serialized form of an :class:`~shinychat._attachments.Attachment`."""
+
+    mime: str
+    name: str
+    size: int
+    data_url: str
+
+
+class StoredUiMessage(TypedDict):
+    """A serialized :class:`StoredMessage` persisted in a node's ``ui`` list.
+
+    Matches ``StoredMessage.model_dump(exclude_none=True)`` plus the
+    ``version`` marker. ``segments`` is interleaved: string segment dicts
+    and structured blocks in content order. Empty ``attachments`` is
+    dropped, so it is ``NotRequired``.
+    """
+
+    role: Role
+    segments: list[StoredSegmentDict | StructuredBlock]
+    version: int
+    attachments: NotRequired[list[AttachmentDict]]
 
 
 def new_conversation_record(
@@ -59,6 +95,24 @@ class ConversationNode(BaseModel):
 
 MIN_SCHEMA_VERSION = 1
 MAX_SCHEMA_VERSION = 1
+
+# Version marker on stored UI message dicts. The marker's presence, not its
+# value, is what counts. Old or absent markers are discarded and re-derived
+# from turns at replay time.
+STORED_UI_VERSION = 1
+
+
+def is_stored_ui_versioned(ui: list[dict[str, Any]] | None) -> bool:
+    """Whether a node's stored UI carries the version marker.
+
+    Checks the first message only. Derived messages always lead a node's
+    UI list. Unversioned entries after them are client-snapshot messages
+    preserved from the save-time snapshot.
+    """
+    if not ui:
+        return False
+    first = ui[0]
+    return isinstance(first, dict) and first.get("version") is not None
 
 
 class UnsupportedSchemaVersionError(ValueError):
@@ -133,12 +187,15 @@ class ConversationRecord(BaseModel):
         ids.reverse()
         return ids
 
-    def path_turns(self) -> list[dict[str, Any]]:
-        return [
-            turn
-            for node_id in self.path_node_ids()
-            for turn in self.nodes[node_id].turns
-        ]
+    def path_turns(self) -> list[TurnDict]:
+        return cast(
+            list[TurnDict],
+            [
+                turn
+                for node_id in self.path_node_ids()
+                for turn in self.nodes[node_id].turns
+            ],
+        )
 
     def children_of(self, node_id: str | None) -> list[str]:
         if node_id is None:

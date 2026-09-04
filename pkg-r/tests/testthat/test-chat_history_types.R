@@ -49,6 +49,38 @@ test_that("check_schema_version() rejects non-scalar integer values", {
   }
 })
 
+test_that("is_stored_ui_versioned() requires an exact current-version match", {
+  message_with_version <- function(version) {
+    list(list(
+      version = version,
+      role = "assistant",
+      segments = list(list(content = "hi", content_type = "markdown"))
+    ))
+  }
+
+  expect_false(is_stored_ui_versioned(NULL))
+  expect_false(is_stored_ui_versioned(list()))
+  expect_false(is_stored_ui_versioned("not a list"))
+  expect_false(is_stored_ui_versioned(list(list(
+    role = "assistant",
+    segments = list(list(content = "hi", content_type = "markdown"))
+  ))))
+
+  expect_false(is_stored_ui_versioned(message_with_version(0L)))
+  expect_false(is_stored_ui_versioned(message_with_version(
+    STORED_UI_VERSION + 1L
+  )))
+
+  expect_true(is_stored_ui_versioned(message_with_version(STORED_UI_VERSION)))
+  expect_true(is_stored_ui_versioned(message_with_version(as.numeric(
+    STORED_UI_VERSION
+  ))))
+
+  expect_false(is_stored_ui_versioned(message_with_version(NA_integer_)))
+  expect_false(is_stored_ui_versioned(message_with_version("2")))
+  expect_false(is_stored_ui_versioned(message_with_version(c(2L, 2L))))
+})
+
 test_that("record_path_node_ids() walks parent chain", {
   rec <- new_conversation_record("test")
   rec$nodes <- list(
@@ -441,4 +473,188 @@ test_that("extend_record_linear() appends only new turns", {
   rec <- extend_record_linear(rec, turns2, tools = list())
   expect_equal(length(rec$nodes), 2)
   expect_equal(rec$current_leaf, "n_0002")
+})
+test_that("extend_record_linear() derives UI from turns and attaches to matching nodes", {
+  rec <- new_conversation_record("test")
+  turns <- list(user_turn_fixture("hi"), assistant_turn_fixture("hello"))
+
+  rec <- extend_record_linear(
+    rec,
+    turns,
+    tools = list()
+  )
+
+  expect_equal(rec$nodes$n_0001$ui[[1]]$version, STORED_UI_VERSION)
+  expect_equal(rec$nodes$n_0001$ui[[1]]$role, "user")
+  expect_equal(rec$nodes$n_0001$ui[[1]]$segments[[1]]$content, "hi")
+  expect_equal(rec$nodes$n_0002$ui[[1]]$version, STORED_UI_VERSION)
+  expect_equal(rec$nodes$n_0002$ui[[1]]$role, "assistant")
+  expect_equal(rec$nodes$n_0002$ui[[1]]$segments[[1]]$content, "hello")
+})
+
+test_that("extend_record_linear() derives UI with structured blocks from tool-call turns", {
+  rec <- new_conversation_record("test")
+  turns <- list(
+    user_turn_fixture("weather?"),
+    tool_request_turn_fixture("checking"),
+    tool_result_turn_fixture(),
+    assistant_turn_fixture("sunny")
+  )
+
+  rec <- extend_record_linear(
+    rec,
+    turns,
+    tools = list()
+  )
+
+  expect_equal(rec$nodes$n_0001$ui[[1]]$version, STORED_UI_VERSION)
+  expect_equal(rec$nodes$n_0001$ui[[1]]$role, "user")
+  expect_equal(rec$nodes$n_0001$ui[[1]]$segments[[1]]$content, "weather?")
+
+  expect_length(rec$nodes$n_0002$ui, 1)
+  derived <- rec$nodes$n_0002$ui[[1]]
+  expect_equal(derived$version, STORED_UI_VERSION)
+  expect_equal(derived$role, "assistant")
+  # Segments are interleaved: blocks inline, no parallel blocks field.
+  expect_null(derived$blocks)
+  expect_null(derived$block_positions)
+  block_segs <- Filter(function(s) "type" %in% names(s), derived$segments)
+  expect_true(length(block_segs) > 0)
+  block_types <- vapply(block_segs, function(s) s$type, character(1))
+  expect_true("tool_request" %in% block_types)
+  expect_true("tool_result" %in% block_types)
+  # Interleaving order: "checking" (request text), blocks, then "sunny".
+  seg_contents <- vapply(
+    Filter(function(s) !"type" %in% names(s), derived$segments),
+    function(s) s$content,
+    character(1)
+  )
+  expect_equal(seg_contents[1], "checking")
+  expect_equal(seg_contents[length(seg_contents)], "sunny")
+})
+
+test_that("extend_record_linear() records children pointers", {
+  rec <- new_conversation_record("test")
+  turns <- list(user_turn_fixture("hi"), assistant_turn_fixture("hello"))
+  rec <- extend_record_linear(
+    rec,
+    turns,
+    tools = list()
+  )
+
+  expect_equal(rec$nodes$n_0001$children, list("n_0002"))
+  expect_equal(rec$nodes$n_0002$children, list())
+})
+
+test_that("build_stored_message_from_content stores thinking as its own segment between markdown (no blocks)", {
+  thinking <- structure("my thoughts", class = "shinychat_thinking")
+  content <- list("before text", thinking, "after text")
+
+  msg <- build_stored_message_from_content(
+    role = "assistant",
+    content = content
+  )
+
+  expect_equal(msg$role, "assistant")
+  expect_equal(msg$version, STORED_UI_VERSION)
+  expect_length(msg$segments, 3)
+  expect_equal(msg$segments[[1]]$content, "before text")
+  expect_equal(msg$segments[[1]]$content_type, "markdown")
+  expect_equal(msg$segments[[2]]$content, "my thoughts")
+  expect_equal(msg$segments[[2]]$content_type, "thinking")
+  expect_equal(msg$segments[[3]]$content, "after text")
+  expect_equal(msg$segments[[3]]$content_type, "markdown")
+})
+
+test_that("build_stored_message_from_content coalesces adjacent markdown around thinking (no blocks)", {
+  thinking <- structure("hmm", class = "shinychat_thinking")
+  content <- list("a", "b", thinking, "c", "d")
+
+  msg <- build_stored_message_from_content(
+    role = "assistant",
+    content = content
+  )
+
+  expect_length(msg$segments, 3)
+  expect_equal(msg$segments[[1]]$content, "a\n\nb")
+  expect_equal(msg$segments[[1]]$content_type, "markdown")
+  expect_equal(msg$segments[[2]]$content, "hmm")
+  expect_equal(msg$segments[[2]]$content_type, "thinking")
+  expect_equal(msg$segments[[3]]$content, "c\n\nd")
+  expect_equal(msg$segments[[3]]$content_type, "markdown")
+})
+
+test_that("build_stored_message_from_content stores thinking alongside blocks", {
+  thinking <- structure("reasoning", class = "shinychat_thinking")
+  block <- new_web_block("web_search", query = "test")
+  content <- list("intro", thinking, block, "outro")
+
+  msg <- build_stored_message_from_content(
+    role = "assistant",
+    content = content
+  )
+
+  string_segs <- Filter(function(s) !"type" %in% names(s), msg$segments)
+  seg_types <- vapply(string_segs, function(s) s$content_type, character(1))
+  expect_true("thinking" %in% seg_types)
+  thinking_idx <- which(seg_types == "thinking")
+  expect_equal(string_segs[[thinking_idx]]$content, "reasoning")
+  # Blocks are interleaved in segments; no parallel blocks field.
+  expect_null(msg$blocks)
+  block_segs <- Filter(function(s) "type" %in% names(s), msg$segments)
+  expect_length(block_segs, 1)
+  expect_equal(block_segs[[1]]$type, "web_search")
+  # Interleaving order: "intro", thinking, web_search block, "outro".
+  expect_equal(msg$segments[[1]]$content, "intro")
+  expect_equal(msg$segments[[2]]$content, "reasoning")
+  expect_equal(msg$segments[[3]]$type, "web_search")
+  expect_equal(msg$segments[[4]]$content, "outro")
+})
+
+test_that("build_stored_message_from_content blocks-only message carries one leading empty string segment", {
+  block <- new_web_block("web_search", query = "test")
+  content <- list(block, block)
+
+  msg <- build_stored_message_from_content(
+    role = "assistant",
+    content = content
+  )
+
+  # The wire always carries at least one string segment.
+  expect_length(msg$segments, 3)
+  expect_equal(msg$segments[[1]]$content, "")
+  expect_equal(msg$segments[[1]]$content_type, "markdown")
+  expect_equal(msg$segments[[2]]$type, "web_search")
+  expect_equal(msg$segments[[3]]$type, "web_search")
+  expect_null(msg$blocks)
+  expect_null(msg$block_positions)
+})
+
+test_that("build_stored_message_from_content stores only-thinking + markdown (no blocks) round-trips", {
+  thinking <- structure("just thinking", class = "shinychat_thinking")
+  content <- list(thinking, "the answer")
+
+  msg <- build_stored_message_from_content(
+    role = "assistant",
+    content = content
+  )
+
+  expect_length(msg$segments, 2)
+  expect_equal(msg$segments[[1]]$content, "just thinking")
+  expect_equal(msg$segments[[1]]$content_type, "thinking")
+  expect_equal(msg$segments[[2]]$content, "the answer")
+  expect_equal(msg$segments[[2]]$content_type, "markdown")
+})
+
+test_that("build_stored_message_from_content without thinking still produces a single segment (no blocks)", {
+  content <- list("hello", "world")
+
+  msg <- build_stored_message_from_content(
+    role = "assistant",
+    content = content
+  )
+
+  expect_length(msg$segments, 1)
+  expect_equal(msg$segments[[1]]$content, "hello\n\nworld")
+  expect_equal(msg$segments[[1]]$content_type, "markdown")
 })

@@ -60,6 +60,297 @@ record_meta <- function(record, size_bytes) {
 MIN_SCHEMA_VERSION <- 1L
 MAX_SCHEMA_VERSION <- 1L
 
+# Current version marker for stored UI messages. Older or unversioned UI is
+# discarded at replay time and re-derived from the node's stored turns.
+STORED_UI_VERSION <- 1L
+
+# Build a stored UI message from merge_ellmer_turn_group() output.
+# Mirrors Python's StoredMessage.from_chat_message.
+build_stored_message_from_content <- function(
+  role,
+  content,
+  session = NULL,
+  attachments = NULL
+) {
+  parts <- content_to_parts(content)
+  all_deps <- list()
+  has_blocks <- any(vapply(parts, inherits, logical(1), "shinychat_block"))
+  has_thinking <- any(vapply(
+    parts,
+    function(p) {
+      is.character(p) && inherits(p, "shinychat_thinking")
+    },
+    logical(1)
+  ))
+
+  if (!has_blocks) {
+    if (!has_thinking) {
+      # Fast path: no thinking parts, so all character parts can be pasted
+      # into a single segment (existing behavior).
+      text <- paste(unlist(parts), collapse = "\n\n")
+      is_html <- any(vapply(
+        parts,
+        function(p) {
+          is.character(p) && inherits(p, "html")
+        },
+        logical(1)
+      ))
+      content_type <- if (is_html) "html" else "markdown"
+
+      message <- list(
+        version = STORED_UI_VERSION,
+        role = role,
+        segments = list(list(content = text, content_type = content_type))
+      )
+
+      if (is_html && !is.null(session)) {
+        for (p in parts) {
+          if (is.character(p) && inherits(p, "html")) {
+            ui <- process_ui(p, session)
+            all_deps <- c(all_deps, ui[["deps"]])
+          }
+        }
+      }
+    } else {
+      # Thinking parts are present (no blocks): emit multiple segments
+      # preserving order. Plain character parts are coalesced with each
+      # other into markdown (or html) segments; thinking parts get their
+      # own "thinking" segment.
+      segments <- list()
+      str_buf <- character(0)
+      str_is_html <- FALSE
+
+      flush_str_buf <- function() {
+        if (length(str_buf) > 0) {
+          ct <- if (str_is_html) "html" else "markdown"
+          segments[[length(segments) + 1]] <<- list(
+            content = paste(str_buf, collapse = "\n\n"),
+            content_type = ct
+          )
+          str_buf <<- character(0)
+          str_is_html <<- FALSE
+        }
+      }
+
+      for (part in parts) {
+        if (is.character(part) && inherits(part, "shinychat_thinking")) {
+          flush_str_buf()
+          segments[[length(segments) + 1]] <- list(
+            content = as.character(part),
+            content_type = "thinking"
+          )
+        } else if (is.character(part)) {
+          is_html_part <- inherits(part, "html")
+          if (is_html_part && !is.null(session)) {
+            ui <- process_ui(part, session)
+            all_deps <- c(all_deps, ui[["deps"]])
+          }
+          # If the html-ness changes, flush the buffer first so html and
+          # plain markdown parts don't get coalesced into one segment.
+          if (length(str_buf) > 0 && str_is_html != is_html_part) {
+            flush_str_buf()
+          }
+          str_is_html <- str_is_html || is_html_part
+          str_buf <- c(str_buf, as.character(part))
+        } else {
+          # Non-character, non-block part (e.g. shiny.tag): coerce to
+          # character and treat as markdown.
+          flush_str_buf()
+          segments[[length(segments) + 1]] <- list(
+            content = as.character(part),
+            content_type = "markdown"
+          )
+        }
+      }
+      flush_str_buf()
+
+      message <- list(
+        version = STORED_UI_VERSION,
+        role = role,
+        segments = segments
+      )
+    }
+  } else {
+    # `segments` is interleaved: each entry is either a string segment
+    # (content/content_type) or a structured block (distinguished by a
+    # `type` field). Mirrors Python's interleaved StoredMessage.segments.
+    segments <- list()
+
+    for (part in parts) {
+      if (inherits(part, "shinychat_block")) {
+        block <- as.list(part)
+        result <- process_block_deps(block, session)
+        all_deps <- c(all_deps, result$deps)
+        segments <- c(segments, list(result$block))
+      } else if (is.character(part) && inherits(part, "shinychat_thinking")) {
+        segments <- c(
+          segments,
+          list(list(
+            content = as.character(part),
+            content_type = "thinking"
+          ))
+        )
+      } else if (is.character(part)) {
+        is_html_part <- inherits(part, "html")
+        if (is_html_part && !is.null(session)) {
+          ui <- process_ui(part, session)
+          all_deps <- c(all_deps, ui[["deps"]])
+          segments <- c(
+            segments,
+            list(list(
+              content = as.character(part),
+              content_type = "html"
+            ))
+          )
+        } else {
+          segments <- c(
+            segments,
+            list(list(
+              content = as.character(part),
+              content_type = "markdown"
+            ))
+          )
+        }
+      } else if (
+        inherits(part, c("shiny.tag", "shiny.tag.list", "htmlwidget"))
+      ) {
+        island_result <- if (!is.null(session)) {
+          build_html_island_segments(part, session)
+        } else {
+          build_html_island_segments_static(part)
+        }
+        all_deps <- c(all_deps, island_result$deps)
+        for (seg in island_result$segments) {
+          segments <- c(segments, list(seg))
+        }
+      } else {
+        segments <- c(
+          segments,
+          list(list(
+            content = as.character(part),
+            content_type = "markdown"
+          ))
+        )
+      }
+    }
+
+    # Blocks-only (no string segments): add an empty string segment so
+    # htmlDeps can ride on it and the wire always carries at least one
+    # string segment.
+    has_string_segment <- any(vapply(
+      segments,
+      function(seg) !"type" %in% names(seg),
+      logical(1)
+    ))
+    if (!has_string_segment) {
+      segments <- c(
+        list(list(content = "", content_type = "markdown")),
+        segments
+      )
+    }
+
+    message <- list(
+      version = STORED_UI_VERSION,
+      role = role,
+      segments = segments
+    )
+  }
+
+  if (length(all_deps) > 0) {
+    message$htmlDeps <- all_deps
+  }
+
+  if (!is.null(attachments) && length(attachments) > 0) {
+    message$attachments <- attachments
+  }
+
+  message
+}
+
+# Normalize content into a list of parts (strings and shinychat_block objects).
+content_to_parts <- function(content) {
+  if (is.character(content) && !inherits(content, "shinychat_block")) {
+    list(content)
+  } else if (inherits(content, "shinychat_block")) {
+    list(content)
+  } else if (is.list(content)) {
+    as.list(content)
+  } else {
+    list(as.character(content))
+  }
+}
+
+# Derive stored UI messages from turn groups via contents_shinychat.
+derive_stored_ui_messages <- function(live_groups, tools, session = NULL) {
+  messages <- list()
+  for (i in seq_along(live_groups)) {
+    group <- live_groups[[i]]
+    merged <- merge_ellmer_turn_group(group, tools = tools)
+    if (is.null(merged)) {
+      next
+    }
+    stored <- build_stored_message_from_content(
+      role = merged$role,
+      content = merged$content,
+      session = session
+    )
+    messages <- c(messages, list(stored))
+  }
+  messages
+}
+
+# Check whether a stored UI list carries the current version. Older or
+# unversioned UI returns FALSE and is discarded at replay time.
+is_stored_ui_versioned <- function(stored) {
+  if (!is.list(stored) || length(stored) == 0) {
+    return(FALSE)
+  }
+  # Numeric-tolerant: JSON round-trips deserialize the marker as double.
+  version <- stored[[1]]$version
+  is.numeric(version) &&
+    length(version) == 1L &&
+    !is.na(version) &&
+    version == STORED_UI_VERSION
+}
+
+# Re-derive stored UI from a node's turns at replay time (when stored UI is
+# NULL or fails the version check). Falls back to text-only when turns are
+# also missing.
+derive_node_ui_from_turns <- function(node, tools, session = NULL) {
+  turns <- node$turns
+  if (is.null(turns) || length(turns) == 0) {
+    return(list(list(
+      version = STORED_UI_VERSION,
+      role = "assistant",
+      segments = list(list(content = "", content_type = "markdown"))
+    )))
+  }
+
+  live_turns <- lapply(turns, ellmer::contents_replay, tools = tools)
+  live_groups <- group_ellmer_turns(live_turns)
+
+  messages <- derive_stored_ui_messages(
+    live_groups,
+    tools = tools,
+    session = session
+  )
+
+  if (length(messages) == 0) {
+    last_turn <- turns[[length(turns)]]
+    last_turn_live <- ellmer::contents_replay(last_turn, tools = tools)
+    return(list(list(
+      version = STORED_UI_VERSION,
+      role = ellmer_turn_effective_role(last_turn_live),
+      segments = list(list(
+        content = turn_fallback_markdown(last_turn),
+        content_type = "markdown"
+      ))
+    )))
+  }
+
+  messages
+}
+
 # NULL means the record predates schema_version and is treated as version 1L.
 check_schema_version <- function(version) {
   version <- if (is.null(version)) 1L else version
@@ -238,7 +529,8 @@ record_node_id_for_message_index <- function(record, index) {
 extend_record_linear <- function(
   record,
   recorded_turns,
-  tools
+  tools,
+  session = NULL
 ) {
   existing_turn_count <- record_turn_count(record)
   new_turns_recorded <- recorded_turns[
@@ -282,6 +574,24 @@ extend_record_linear <- function(
     }
     record <- record_set_current_leaf(record, node_id)
     new_node_ids <- c(new_node_ids, node_id)
+  }
+
+  # Derive stored UI messages server-side from the turn groups.
+  derived_messages <- derive_stored_ui_messages(
+    live_groups,
+    tools = tools,
+    session = session
+  )
+
+  # Attach each derived message to its corresponding new node.
+  for (i in seq_along(derived_messages)) {
+    if (i <= length(new_node_ids)) {
+      target <- new_node_ids[[i]]
+      record$nodes[[target]]$ui <- c(
+        record$nodes[[target]]$ui,
+        list(derived_messages[[i]])
+      )
+    }
   }
 
   record$updated_at <- utcnow_iso()

@@ -2,7 +2,11 @@ import { describe, it, expect, vi } from "vitest"
 import { render, fireEvent, act } from "@testing-library/react"
 import { ToolGroup } from "../../src/chat/ToolGroup"
 import type { ToolCallGroup, ToolCallItem } from "../../src/chat/state"
-import { ChatScrollContext } from "../../src/chat/context"
+import {
+  ChatScrollContext,
+  ShinyLifecycleContext,
+} from "../../src/chat/context"
+import type { ShinyLifecycle } from "../../src/transport/types"
 
 function call(
   partial: Partial<ToolCallItem> & { requestId: string },
@@ -708,6 +712,63 @@ describe("ToolGroup", () => {
       container.querySelectorAll(".shiny-chat-tool-call-row__status svg")
         .length,
     ).toBe(2)
+  })
+
+  it("lets the expanded card own the Shiny bindings instead of binding the row's copies twice", () => {
+    const shiny: ShinyLifecycle = {
+      bindAll: vi.fn().mockResolvedValue(undefined),
+      unbindAll: vi.fn(),
+      renderDependencies: vi.fn().mockResolvedValue(undefined),
+      showClientMessage: vi.fn(),
+    }
+    const bindsFor = (el: Element) =>
+      vi.mocked(shiny.bindAll).mock.calls.filter(([bound]) => bound === el)
+        .length
+
+    const { container } = render(
+      <ShinyLifecycleContext.Provider value={shiny}>
+        <ToolGroup
+          group={group({
+            title: "Searched",
+            icon: webIcon,
+            calls: [
+              iconedCall({
+                requestId: "a",
+                icon: webIcon,
+                value: "1",
+                valueType: "text",
+              }),
+            ],
+          })}
+        />
+      </ShinyLifecycleContext.Provider>,
+    )
+    const row = container.querySelector(".shiny-chat-tool-group__row")!
+    const headerGlyph = container.querySelector(
+      ".shiny-chat-tool-group__glyph",
+    )!
+    const headerTitle = container.querySelector(
+      ".shiny-chat-tool-group__title > span",
+    )!
+    expect(bindsFor(headerGlyph)).toBe(1)
+    expect(bindsFor(headerTitle)).toBe(1)
+
+    fireEvent.click(row)
+    const cardIcon = container.querySelector(".shiny-tool-card .tool-icon")!
+    const cardTitle = container.querySelector(".shiny-tool-card .tool-title")!
+    expect(headerGlyph.querySelector(".icon-web")).toBeTruthy()
+    expect(cardIcon.querySelector(".icon-web")).toBeTruthy()
+    expect(shiny.unbindAll).toHaveBeenCalledWith(headerGlyph)
+    expect(shiny.unbindAll).toHaveBeenCalledWith(headerTitle)
+    expect(bindsFor(cardIcon)).toBe(1)
+    expect(bindsFor(cardTitle)).toBe(1)
+    expect(bindsFor(headerGlyph)).toBe(1)
+    expect(bindsFor(headerTitle)).toBe(1)
+
+    fireEvent.click(row)
+    expect(shiny.unbindAll).toHaveBeenCalledWith(cardIcon)
+    expect(bindsFor(headerGlyph)).toBe(2)
+    expect(bindsFor(headerTitle)).toBe(2)
   })
 
   it("moves the tool icons to the rows when the group spans several tools", () => {

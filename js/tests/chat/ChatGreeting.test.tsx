@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, act } from "@testing-library/react"
 import { ChatGreeting } from "../../src/chat/ChatGreeting"
-import { ChatDispatchContext } from "../../src/chat/context"
+import {
+  ChatDispatchContext,
+  ShinyLifecycleContext,
+} from "../../src/chat/context"
 import type { GreetingData } from "../../src/chat/state"
 import type { AnyAction } from "../../src/chat/state"
+import type { ShinyLifecycle } from "../../src/transport/types"
 
 function renderWithDispatch(
   element: React.ReactElement,
@@ -96,6 +100,144 @@ describe("ChatGreeting", () => {
     const content = container.querySelector(".shiny-chat-greeting-content")
     expect(content).not.toBeNull()
     expect(content?.textContent).toContain("Welcome!")
+  })
+
+  it("binds Shiny UI in html-typed greeting content, scoped to the greeting", () => {
+    const shiny: ShinyLifecycle = {
+      bindAll: vi.fn(async () => {}),
+      unbindAll: vi.fn(),
+      renderDependencies: vi.fn(async () => {}),
+      showClientMessage: vi.fn(),
+    }
+    const html =
+      '<div class="shiny-plot-output" id="greeting-plot" style="width:100%;height:200px"></div>'
+
+    const { container, unmount } = render(
+      <ChatDispatchContext.Provider value={() => {}}>
+        <ShinyLifecycleContext.Provider value={shiny}>
+          <ChatGreeting
+            greeting={makeGreeting({
+              content: html,
+              contentType: "html",
+              blocks: [{ type: "content", content: html, contentType: "html" }],
+            })}
+          />
+        </ShinyLifecycleContext.Provider>
+      </ChatDispatchContext.Provider>,
+    )
+
+    const output = container.querySelector("#greeting-plot")
+    expect(output).not.toBeNull()
+    expect(shiny.bindAll).toHaveBeenCalledOnce()
+    const bindScope = vi.mocked(shiny.bindAll).mock.calls[0]![0] as HTMLElement
+    expect(bindScope.contains(output)).toBe(true)
+    const content = container.querySelector(".shiny-chat-greeting-content")
+    expect(content?.contains(bindScope)).toBe(true)
+
+    unmount()
+    expect(shiny.unbindAll).toHaveBeenCalledOnce()
+    const unbindScope = vi.mocked(shiny.unbindAll).mock
+      .calls[0]![0] as HTMLElement
+    expect(unbindScope).toBe(bindScope)
+  })
+
+  it("resolves react carriers in html-typed greeting content (shiny-aside → AsideGroup)", () => {
+    const html =
+      '<p>Welcome!</p><shiny-aside label="Docs" url="https://example.com">Extra info</shiny-aside>'
+
+    const { container } = renderWithDispatch(
+      <ChatGreeting
+        greeting={makeGreeting({
+          content: html,
+          contentType: "html",
+          blocks: [{ type: "content", content: html, contentType: "html" }],
+        })}
+      />,
+    )
+
+    const pill = container.querySelector(".shiny-aside-pill")
+    expect(pill).not.toBeNull()
+    expect(pill?.textContent).toContain("Docs")
+    expect(container.querySelector("shiny-aside")).toBeNull()
+    expect(container.querySelector("shiny-aside-group")).toBeNull()
+    expect(container.textContent).toContain("Welcome!")
+  })
+
+  it("rebinds when html greeting content is replaced while visible", () => {
+    const shiny: ShinyLifecycle = {
+      bindAll: vi.fn(async () => {}),
+      unbindAll: vi.fn(),
+      renderDependencies: vi.fn(async () => {}),
+      showClientMessage: vi.fn(),
+    }
+    const firstHtml =
+      '<div class="shiny-plot-output" id="plot-a" style="width:100%;height:200px"></div>'
+    const secondHtml =
+      '<div class="shiny-plot-output" id="plot-b" style="width:100%;height:200px"></div>'
+
+    const { container, rerender } = render(
+      <ChatDispatchContext.Provider value={() => {}}>
+        <ShinyLifecycleContext.Provider value={shiny}>
+          <ChatGreeting
+            greeting={makeGreeting({
+              content: firstHtml,
+              contentType: "html",
+              blocks: [
+                { type: "content", content: firstHtml, contentType: "html" },
+              ],
+            })}
+          />
+        </ShinyLifecycleContext.Provider>
+      </ChatDispatchContext.Provider>,
+    )
+    expect(container.querySelector("#plot-a")).not.toBeNull()
+    expect(shiny.bindAll).toHaveBeenCalledOnce()
+
+    rerender(
+      <ChatDispatchContext.Provider value={() => {}}>
+        <ShinyLifecycleContext.Provider value={shiny}>
+          <ChatGreeting
+            greeting={makeGreeting({
+              content: secondHtml,
+              contentType: "html",
+              blocks: [
+                { type: "content", content: secondHtml, contentType: "html" },
+              ],
+            })}
+          />
+        </ShinyLifecycleContext.Provider>
+      </ChatDispatchContext.Provider>,
+    )
+
+    expect(container.querySelector("#plot-b")).not.toBeNull()
+    expect(shiny.unbindAll).toHaveBeenCalledOnce()
+    expect(shiny.bindAll).toHaveBeenCalledTimes(2)
+    const rebindingScope = vi.mocked(shiny.bindAll).mock
+      .calls[1]![0] as HTMLElement
+    expect(rebindingScope.contains(container.querySelector("#plot-b"))).toBe(
+      true,
+    )
+  })
+
+  it("does not bind markdown-typed greeting content", () => {
+    const shiny: ShinyLifecycle = {
+      bindAll: vi.fn(async () => {}),
+      unbindAll: vi.fn(),
+      renderDependencies: vi.fn(async () => {}),
+      showClientMessage: vi.fn(),
+    }
+
+    const { unmount } = render(
+      <ChatDispatchContext.Provider value={() => {}}>
+        <ShinyLifecycleContext.Provider value={shiny}>
+          <ChatGreeting greeting={makeGreeting()} />
+        </ShinyLifecycleContext.Provider>
+      </ChatDispatchContext.Provider>,
+    )
+
+    expect(shiny.bindAll).not.toHaveBeenCalled()
+    unmount()
+    expect(shiny.unbindAll).not.toHaveBeenCalled()
   })
 
   it("renders nothing when blocks are empty", () => {

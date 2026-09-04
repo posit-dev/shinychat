@@ -343,11 +343,15 @@ chat_greeting <- function(
 #'     * To prevent interpreting as markdown, mark the string as
 #'       [htmltools::HTML()].
 #'   * A UI element.
-#'     * This includes [htmltools::tagList()], which take UI elements (including
-#'       strings) as children. In this case, strings are still interpreted as
-#'       markdown as long as they're not inside HTML.
+#'     * This includes [htmltools::tagList()], which takes UI elements
+#'       (including strings) as children. Strings inside a tagList are
+#'       literal text (HTML-escaped), not markdown. Use
+#'       [htmltools::HTML()] for trusted raw HTML strings.
 #'   * A named list of `content` and `role`. The `content` can contain content
 #'     as described above, and the `role` can be "assistant" or "user".
+#'   * Advanced: a `list()` mixing bare strings and UI elements interleaves
+#'     markdown and HTML in one message, in order. This API is provisional
+#'     and may change in a future release.
 #'
 #' @param greeting An optional greeting to display when the chat first loads.
 #'   Can be a [chat_greeting()] object, or a plain string (which is auto-wrapped
@@ -490,36 +494,80 @@ chat_ui <- function(
 
   icon_attr <- resolve_icon_attr(icon_assistant)
 
-  message_tags <- lapply(messages, function(x) {
-    role <- "assistant"
-    content <- x
-    if (is.list(x) && ("content" %in% names(x))) {
-      content <- x[["content"]]
-      role <- x[["role"]] %||% role
-    }
+  # Block-carrying initial messages go into data-initial-messages JSON
+  # (static tags carry strings only); html deps attach to the container.
+  # Mirrors Python's chat_ui().
+  initial_messages_attr <- NULL
+  initial_message_deps <- list()
 
-    # `content` is most likely a string, so avoid overhead in that case
-    # (it's also important that we *don't escape HTML* here).
-    if (is.character(content)) {
-      ui <- list(html = paste(content, collapse = "\n"))
-    } else {
-      ui <- with_current_theme({
-        htmltools::renderTags(pre_process_ui(content))
-      })
+  any_blocks <- FALSE
+  if (!is.null(messages) && length(messages) > 0) {
+    for (msg in messages) {
+      content <- msg
+      if (
+        is.list(msg) &&
+          !inherits(msg, "shinychat_block") &&
+          ("content" %in% names(msg))
+      ) {
+        content <- msg[["content"]]
+      }
+      if (message_has_blocks(content)) {
+        any_blocks <- TRUE
+        break
+      }
     }
+  }
 
-    tag(
-      "shiny-chat-message",
-      rlang::list2(
-        `data-role` = role,
-        content = ui[["html"]],
-        # The assistant default must not leak onto user messages, which render
-        # `message.icon` directly (no assistant fallback chain).
-        icon = if (!identical(role, "user")) icon_attr,
-        ui[["dependencies"]],
-      )
+  if (any_blocks) {
+    initial_entries <- list()
+    for (msg in messages) {
+      payload <- initial_message_payload(msg, icon_attr)
+      initial_entries[[length(initial_entries) + 1]] <- payload$entry
+      initial_message_deps <- c(initial_message_deps, payload$deps)
+    }
+    initial_messages_attr <- jsonlite::toJSON(
+      initial_entries,
+      auto_unbox = TRUE,
+      null = "null"
     )
-  })
+  }
+
+  message_tags <- if (any_blocks) {
+    list()
+  } else {
+    lapply(messages, function(x) {
+      role <- "assistant"
+      content <- x
+      if (
+        is.list(x) &&
+          !inherits(x, "shinychat_block") &&
+          ("content" %in% names(x))
+      ) {
+        content <- x[["content"]]
+        role <- x[["role"]] %||% role
+      }
+
+      # `content` is most likely a string, so avoid overhead in that case
+      # (it's also important that we *don't escape HTML* here).
+      if (is.character(content)) {
+        ui <- list(html = paste(content, collapse = "\n"), deps = list())
+      } else {
+        ui <- render_island_string(content)
+      }
+
+      tag(
+        "shiny-chat-message",
+        rlang::list2(
+          `data-role` = role,
+          content = ui[["html"]],
+          # The assistant default must not leak onto user messages, which render
+          # `message.icon` directly (no assistant fallback chain).
+          icon = if (!identical(role, "user")) icon_attr,
+          ui[["deps"]],
+        )
+      )
+    })
+  }
 
   toolbar_tag <- NULL
   if (!is.null(toolbar_input)) {
@@ -571,12 +619,10 @@ chat_ui <- function(
       greeting_content_type <- "html"
     } else {
       # htmltools tag or tagList - render to HTML and collect deps
-      rendered <- with_current_theme({
-        htmltools::renderTags(pre_process_ui(content))
-      })
-      greeting_content <- rendered[["html"]]
+      rendered <- render_island_string(content)
+      greeting_content <- rendered$html
       greeting_content_type <- "html"
-      greeting_deps <- rendered[["dependencies"]]
+      greeting_deps <- rendered$deps
     }
 
     greeting_payload <- list(
@@ -629,6 +675,7 @@ chat_ui <- function(
       `icon-assistant` = resolve_icon_attr(icon_assistant),
       `icon-send` = resolve_send_icon_attr(icon_send),
       greeting = greeting_attr,
+      `data-initial-messages` = initial_messages_attr,
       ...,
       tag("shiny-chat-messages", message_tags),
       tag(
@@ -641,7 +688,8 @@ chat_ui <- function(
       shinychat_deps(),
       htmltools::findDependencies(icon_assistant),
       htmltools::findDependencies(icon_send),
-      greeting_deps
+      greeting_deps,
+      initial_message_deps
     )
   )
 
@@ -819,9 +867,10 @@ resolve_aside_favicon <- function() {
 #'     * To prevent interpreting as markdown, mark the string as
 #'       [htmltools::HTML()].
 #'   * A UI element.
-#'     * This includes [htmltools::tagList()], which take UI elements
-#'       (including strings) as children. In this case, strings are still
-#'       interpreted as markdown as long as they're not inside HTML.
+#'     * This includes [htmltools::tagList()], which takes UI elements
+#'       (including strings) as children. Strings inside a tagList are
+#'       literal text (HTML-escaped), not markdown. Use
+#'       [htmltools::HTML()] for trusted raw HTML strings.
 #'
 #' @param role The role of the message (either "assistant" or "user"). Defaults
 #'   to "assistant".
@@ -888,6 +937,385 @@ chat_append <- function(
 
   stream <- as_generator(response)
   chat_append_stream(id, stream, role = role, icon = icon, session = session)
+}
+
+# Session-process block-level html dependencies and attach them to the
+# block's `html_deps` field. Returns list(block, deps).
+process_block_deps <- function(block, session) {
+  deps <- attr(block, "shinychat_html_deps")
+  if (is.null(deps) || length(deps) == 0) {
+    return(list(block = block, deps = list()))
+  }
+  # Remove the attribute so it doesn't serialize
+  attr(block, "shinychat_html_deps") <- NULL
+  processed <- process_ui(htmltools::tagList(!!!deps), session)
+  processed_deps <- processed[["deps"]] %||% list()
+  if (length(processed_deps) > 0) {
+    block$html_deps <- processed_deps
+  }
+  list(block = block, deps = processed_deps)
+}
+
+# Build wire segments from non-string HTML content via the shared island
+# derivation. Island items become html_block blocks; bare React elements stay
+# string parts. Mirrors Python's ChatMessage.__init__ non-string content path.
+#
+# tagList() content is an HTML container: bare strings inside it are escaped
+# text, NOT markdown. To mix markdown and UI, use list() content instead.
+build_html_island_segments <- function(content, session) {
+  parts <- derive_island_parts(content)
+  if (length(parts) == 0) {
+    return(list(segments = list(), deps = list()))
+  }
+
+  segments <- list()
+  all_deps <- list()
+
+  for (part in parts) {
+    if (inherits(part, "shinychat_island_block_part")) {
+      block <- new_html_block(part$html)
+      if (length(part$deps) > 0) {
+        attr(block, "shinychat_html_deps") <- part$deps
+      }
+      result <- process_block_deps(block, session)
+      all_deps <- c(all_deps, result$deps)
+      segments[[length(segments) + 1]] <- result$block
+    } else {
+      # Raw html_dependency objects must not enter all_deps directly — they
+      # cannot be JSON-serialized and would bypass session registration.
+      processed_deps <- serialize_html_deps(part$deps, session)
+      all_deps <- c(all_deps, processed_deps)
+      if (
+        length(segments) > 0 &&
+          is.character(segments[[length(segments)]]$content) &&
+          !"type" %in% names(segments[[length(segments)]])
+      ) {
+        segments[[length(segments)]]$content <-
+          paste0(segments[[length(segments)]]$content, part$html)
+      } else {
+        segments[[length(segments) + 1]] <- list(
+          content = part$html,
+          content_type = "html"
+        )
+      }
+    }
+  }
+
+  list(segments = segments, deps = all_deps)
+}
+
+new_html_block <- function(content) {
+  structure(
+    list(
+      type = "html_block",
+      version = 1L,
+      content = content
+    ),
+    class = c("shinychat_html_block", "shinychat_block")
+  )
+}
+
+# Append a markdown string segment, coalescing onto a preceding markdown
+# segment with a paragraph break (direct concatenation is unsafe at a
+# markdown seam). Mirrors coalesce_content_strings() and Python's
+# _parts_to_segments().
+append_markdown_segment <- function(segments, text) {
+  last <- if (length(segments) > 0) segments[[length(segments)]] else NULL
+  if (
+    !is.null(last) &&
+      !"type" %in% names(last) &&
+      identical(last$content_type, "markdown")
+  ) {
+    last$content <- paste(last$content, text, sep = "\n\n")
+    segments[[length(segments)]] <- last
+  } else {
+    segments[[length(segments) + 1]] <- list(
+      content = text,
+      content_type = "markdown"
+    )
+  }
+  segments
+}
+
+# Build wire segments from a shinychat_block or a mixed content list
+# (strings + blocks). Returns list(segments, deps).
+build_wire_segments <- function(content, session) {
+  all_deps <- list()
+
+  if (inherits(content, "shinychat_block")) {
+    block <- as.list(content)
+    result <- process_block_deps(block, session)
+    all_deps <- c(all_deps, result$deps)
+    list(segments = list(result$block), deps = all_deps)
+  } else {
+    segments <- list()
+    for (item in content) {
+      if (inherits(item, "shinychat_block")) {
+        block <- as.list(item)
+        result <- process_block_deps(block, session)
+        all_deps <- c(all_deps, result$deps)
+        segments[[length(segments) + 1]] <- result$block
+      } else if (is.character(item) && !inherits(item, "html")) {
+        segments <- append_markdown_segment(segments, as.character(item))
+      } else if (
+        inherits(item, c("html", "shiny.tag", "shiny.tag.list", "htmlwidget"))
+      ) {
+        # Route tag/HTML items through the HTML-island builder so ordinary
+        # tags become html_block islands, not bare HTML string segments.
+        island_result <- build_html_island_segments(item, session)
+        all_deps <- c(all_deps, island_result$deps)
+        segments <- c(segments, island_result$segments)
+      } else {
+        segments <- append_markdown_segment(segments, as.character(item))
+      }
+    }
+    list(segments = segments, deps = all_deps)
+  }
+}
+
+# Session-free variant of process_block_deps for the static chat_ui() path.
+# No session at render time, so raw html_dependency objects are collected
+# separately for the caller to attach to the container tag. Mirrors Python's
+# initial_message_payload().
+process_block_deps_static <- function(block) {
+  deps <- attr(block, "shinychat_html_deps")
+  # Strip the S3 class so jsonlite::toJSON serializes the block as a plain list.
+  block <- unclass(block)
+  if (is.null(deps) || length(deps) == 0) {
+    return(list(block = block, deps = list()))
+  }
+  attr(block, "shinychat_html_deps") <- NULL
+  list(block = block, deps = as.list(deps))
+}
+
+# Emit a block-carrying message's wire segments mid-stream as an ordered
+# action sequence: string segments as `chunk` actions, structured blocks as
+# `block_insert` actions. Mirrors Python's Chat._send_message_parts().
+#
+# Under replace semantics a replace sends a leading empty replace chunk (the
+# wipe) before any part, then emits every part as an append.
+send_wire_segment_actions <- function(
+  id,
+  wire_segments,
+  operation,
+  html_deps,
+  session
+) {
+  if (operation == "replace") {
+    wipe_action <- list(
+      type = "chunk",
+      content = "",
+      operation = "replace",
+      content_type = "markdown"
+    )
+    send_chat_action(
+      id,
+      action = wipe_action,
+      html_deps = html_deps,
+      session = session
+    )
+    operation <- "append"
+  }
+  for (seg in wire_segments) {
+    if ("type" %in% names(seg)) {
+      block_action <- list(type = "block_insert", block = seg)
+      send_chat_action(
+        id,
+        action = block_action,
+        html_deps = html_deps,
+        session = session
+      )
+    } else if (nzchar(seg$content)) {
+      chunk_action <- list(
+        type = "chunk",
+        content = seg$content,
+        operation = operation,
+        content_type = seg$content_type
+      )
+      send_chat_action(
+        id,
+        action = chunk_action,
+        html_deps = html_deps,
+        session = session
+      )
+    }
+  }
+}
+
+# Session-free variant of build_html_island_segments for the static chat_ui()
+# path. Returns list(segments, deps) where deps are raw html_dependency objects.
+build_html_island_segments_static <- function(content) {
+  parts <- derive_island_parts(content)
+  if (length(parts) == 0) {
+    return(list(segments = list(), deps = list()))
+  }
+
+  segments <- list()
+  all_deps <- list()
+
+  for (part in parts) {
+    if (inherits(part, "shinychat_island_block_part")) {
+      block <- new_html_block(part$html)
+      if (length(part$deps) > 0) {
+        attr(block, "shinychat_html_deps") <- part$deps
+      }
+      result <- process_block_deps_static(block)
+      all_deps <- c(all_deps, result$deps)
+      segments[[length(segments) + 1]] <- result$block
+    } else {
+      all_deps <- c(all_deps, part$deps)
+      if (
+        length(segments) > 0 &&
+          is.character(segments[[length(segments)]]$content) &&
+          !"type" %in% names(segments[[length(segments)]])
+      ) {
+        segments[[length(segments)]]$content <-
+          paste0(segments[[length(segments)]]$content, part$html)
+      } else {
+        segments[[length(segments) + 1]] <- list(
+          content = part$html,
+          content_type = "html"
+        )
+      }
+    }
+  }
+
+  list(segments = segments, deps = all_deps)
+}
+
+# Session-free variant of build_wire_segments for the static chat_ui() path.
+# Returns list(segments, deps) where deps are raw html_dependency objects for
+# the caller to attach to the container tag. Mirrors Python's
+# initial_message_payload().
+build_wire_segments_static <- function(content) {
+  all_deps <- list()
+
+  if (inherits(content, "shinychat_block")) {
+    block <- as.list(content)
+    result <- process_block_deps_static(block)
+    all_deps <- c(all_deps, result$deps)
+    list(segments = list(result$block), deps = all_deps)
+  } else {
+    segments <- list()
+    for (item in content) {
+      if (inherits(item, "shinychat_block")) {
+        block <- as.list(item)
+        result <- process_block_deps_static(block)
+        all_deps <- c(all_deps, result$deps)
+        segments[[length(segments) + 1]] <- result$block
+      } else if (is.character(item) && !inherits(item, "html")) {
+        segments <- append_markdown_segment(segments, as.character(item))
+      } else if (
+        inherits(item, c("html", "shiny.tag", "shiny.tag.list", "htmlwidget"))
+      ) {
+        island_result <- build_html_island_segments_static(item)
+        all_deps <- c(all_deps, island_result$deps)
+        segments <- c(segments, island_result$segments)
+      } else {
+        segments <- append_markdown_segment(segments, as.character(item))
+      }
+    }
+    list(segments = segments, deps = all_deps)
+  }
+}
+
+# Detect whether a message's content carries any shinychat_block content.
+# Any blocks at all → the whole list goes to JSON. Checks four forms
+# chat_ui() accepts: direct block, mixed list with blocks, string-typed
+# HTML, and non-string HTML that produces islands.
+message_has_blocks <- function(content) {
+  if (inherits(content, "shinychat_block")) {
+    return(TRUE)
+  }
+  if (
+    is.list(content) &&
+      !inherits(content, c("shiny.tag", "shiny.tag.list", "html", "htmlwidget"))
+  ) {
+    return(any(vapply(content, inherits, logical(1), "shinychat_block")))
+  }
+  # String-typed HTML: becomes a single html_block via the island derivation.
+  if (is.character(content) && inherits(content, "html")) {
+    return(TRUE)
+  }
+  # Non-string HTML content: check whether island splitting would produce
+  # any islands.
+  if (inherits(content, c("shiny.tag", "shiny.tag.list", "htmlwidget"))) {
+    islands <- split_html_islands(content)
+    return(any(vapply(islands, inherits, logical(1), "shinychat_island")))
+  }
+  FALSE
+}
+
+# Build one data-initial-messages JSON entry for a message, session-free.
+# Returns list(entry, deps) where entry = {role, segments, icon?, attachments?}
+# with html_deps stripped from every block, and deps = raw html_dependency
+# objects for the caller to attach to the container. Mirrors Python's
+# initial_message_payload().
+initial_message_payload <- function(msg, icon_attr) {
+  role <- "assistant"
+  content <- msg
+  if (
+    is.list(msg) &&
+      !inherits(msg, "shinychat_block") &&
+      ("content" %in% names(msg))
+  ) {
+    content <- msg[["content"]]
+    role <- msg[["role"]] %||% role
+  }
+
+  is_block <- inherits(content, "shinychat_block")
+  is_mixed_list <- is.list(content) &&
+    !is_block &&
+    !inherits(content, c("shiny.tag", "shiny.tag.list", "html", "htmlwidget"))
+  is_non_string_html <- inherits(
+    content,
+    c("shiny.tag", "shiny.tag.list", "htmlwidget")
+  )
+  is_string_html <- is.character(content) && inherits(content, "html")
+
+  if (is_block || is_mixed_list || is_non_string_html || is_string_html) {
+    if (is_non_string_html || is_string_html) {
+      segments_result <- build_html_island_segments_static(content)
+    } else {
+      segments_result <- build_wire_segments_static(content)
+    }
+    wire_segments <- segments_result$segments
+    all_deps <- segments_result$deps
+  } else {
+    # Plain character content (markdown string).
+    wire_segments <- list(list(
+      content = paste(content, collapse = "\n"),
+      content_type = "markdown"
+    ))
+    all_deps <- list()
+  }
+
+  # Strip html_deps from every block segment so they don't enter the JSON.
+  # Raw dep objects are collected separately and attached to the container.
+  segments <- lapply(wire_segments, function(seg) {
+    if ("type" %in% names(seg) && "html_deps" %in% names(seg)) {
+      seg[names(seg) != "html_deps"]
+    } else {
+      seg
+    }
+  })
+
+  entry <- list(role = role, segments = segments)
+  # Mirror the static tag path: the assistant-icon default must not leak onto
+  # user messages.
+  if (!identical(role, "user") && !is.null(icon_attr)) {
+    entry$icon <- icon_attr
+  }
+  # Attachments (when present on the message list form)
+  if (
+    is.list(msg) &&
+      !is.null(msg[["attachments"]]) &&
+      length(msg$attachments) > 0
+  ) {
+    entry$attachments <- msg$attachments
+  }
+
+  list(entry = entry, deps = all_deps)
 }
 
 #' Low-level function to append a message to a chat control
@@ -1000,16 +1428,22 @@ chat_append_message <- function(
   if (is_thinking) {
     content <- unclass(content)
   }
-  is_html <- inherits(
+
+  is_block <- inherits(content, "shinychat_block")
+  is_mixed_list <- is.list(content) &&
+    !is_block &&
+    !inherits(content, c("shiny.tag", "shiny.tag.list", "html", "htmlwidget"))
+
+  # Non-string HTML content (tag/tag.list/htmlwidget) and string-typed HTML
+  # (htmltools::HTML()) both go through the html_block island-splitting path.
+  # Mirrors Python's ChatMessage.__init__, where HTML is not a str subclass
+  # and so takes the non-string (island) branch.
+  is_non_string_html <- inherits(
     content,
-    c(
-      "shiny.tag",
-      "shiny.tag.list",
-      "html",
-      "htmlwidget",
-      "shinychat_tool_card"
-    )
+    c("shiny.tag", "shiny.tag.list", "htmlwidget")
   )
+  is_string_html <- is.character(content) && inherits(content, "html")
+  is_html <- is_non_string_html || is_string_html
   content_type <- if (is_thinking) {
     "thinking"
   } else if (is_html) {
@@ -1020,27 +1454,94 @@ chat_append_message <- function(
 
   operation <- match.arg(operation)
 
-  if (is.character(content) && !is_html) {
-    # content is most likely a string, so avoid overhead in that case
+  icon_str <- resolve_icon_attr(icon)
+
+  if (is_block || is_mixed_list || is_html) {
+    # Build wire segments from the block(s), mixed list, or HTML content
+    # (split into html_block islands + bare React string parts).
+    # Block deps are session-processed and attached to the block's
+    # html_deps field; all block deps are also collected for the envelope.
+    if (is_html) {
+      segments_result <- build_html_island_segments(content, session)
+    } else {
+      segments_result <- build_wire_segments(content, session)
+    }
+    wire_segments <- segments_result$segments
+    all_block_deps <- segments_result$deps
+
+    if (chunk_type == "start") {
+      # chunk_start carries the full message payload with inline segments
+      message_payload <- list(
+        role = msg[["role"]],
+        segments = wire_segments
+      )
+      if (!is.null(icon_str)) {
+        message_payload$icon <- icon_str
+      }
+      action <- list(type = "chunk_start", message = message_payload)
+      send_chat_action(
+        id,
+        action = action,
+        html_deps = all_block_deps,
+        session = session
+      )
+    } else if (chunk_type == "end") {
+      # Emit any remaining segments as chunk/block_insert, then chunk_end
+      send_wire_segment_actions(
+        id,
+        wire_segments,
+        operation = operation,
+        html_deps = all_block_deps,
+        session = session
+      )
+      send_chat_action(id, action = list(type = "chunk_end"), session = session)
+    } else if (chunk_type == "intermediate") {
+      # A single block or mixed list arriving mid-stream: emit each segment
+      # in order (chunk for strings, block_insert for blocks).
+      send_wire_segment_actions(
+        id,
+        wire_segments,
+        operation = operation,
+        html_deps = all_block_deps,
+        session = session
+      )
+    } else {
+      # chunk_type == "complete": message action with inline mixed segments
+      message_payload <- list(
+        role = msg[["role"]],
+        segments = wire_segments
+      )
+      if (!is.null(icon_str)) {
+        message_payload$icon <- icon_str
+      }
+      action <- list(type = "message", message = message_payload)
+      send_chat_action(
+        id,
+        action = action,
+        html_deps = all_block_deps,
+        session = session
+      )
+    }
+
+    invisible(NULL)
+    return(invisible(NULL))
+  }
+
+  if (is.character(content)) {
+    # content is most likely a string, so avoid overhead in that case.
+    # (HTML()-marked strings were already handled above via
+    # build_html_island_segments, so the remaining character content is
+    # plain markdown/thinking text.)
     ui <- list(html = content, deps = NULL)
   } else {
-    # process_ui() does *not* render markdown->HTML, but it does:
-    # 1. Extract and register HTMLdependency()s with the session.
-    # 2. Returns a HTML string representation of the TagChild
-    #    (i.e., `div()` -> `"<div>"`).
-    ui <- process_ui(pre_process_ui(content), session)
+    # Fallback for exotic non-character content that is neither a block, a
+    # mixed list, nor HTML (everything documented is handled above).
+    ui <- process_ui(htmltools::as.tags(content), session)
   }
 
   msg_content <- ui[["html"]]
-  if (is_html) {
-    # Surround with blank lines so the markdown parser treats
-    # block-level custom elements correctly.
-    msg_content <- paste0("\n\n", msg_content, "\n\n")
-  }
 
   html_deps <- ui[["deps"]]
-
-  icon_str <- resolve_icon_attr(icon)
 
   if (chunk_type == "start") {
     message_payload <- list(
@@ -1108,11 +1609,22 @@ chat_append_message <- function(
 }
 
 restore_history_message <- function(chat_id, message, session) {
+  # Stored segments are already interleaved: each entry is either a string
+  # segment (content/content_type) or a structured block (distinguished by
+  # a `type` field). Project to the wire format by passing blocks through
+  # unchanged and keeping only content/content_type on string segments.
+  # Mirrors Python's StoredMessage.wire_segments().
+  wire_segments <- lapply(message$segments, function(seg) {
+    if ("type" %in% names(seg)) {
+      seg
+    } else {
+      list(content = seg$content, content_type = seg$content_type)
+    }
+  })
+
   message_payload <- list(
     role = message$role,
-    segments = lapply(message$segments, function(seg) {
-      list(content = seg$content, content_type = seg$content_type)
-    })
+    segments = wire_segments
   )
   if (!is.null(message$attachments) && length(message$attachments) > 0) {
     message_payload$attachments <- message$attachments
@@ -1459,10 +1971,13 @@ chat_set_greeting <- function(
     greeting_content_type <- "html"
     html_deps <- NULL
   } else {
-    ui <- process_ui(pre_process_ui(content), session)
-    greeting_content <- ui[["html"]]
+    # tag/tagList content: the greeting wire payload is a single string (it
+    # cannot carry structured blocks), so trusted content renders via the
+    # shared island derivation concatenated into one HTML string.
+    rendered <- render_island_string(content)
+    greeting_content <- rendered$html
     greeting_content_type <- "html"
-    html_deps <- ui[["deps"]]
+    html_deps <- serialize_html_deps(rendered$deps, session)
   }
 
   action <- list(
@@ -1516,23 +2031,29 @@ rlang::on_load(
       }
 
       if (is.character(msg) && !inherits(msg, "html")) {
-        ui <- list(html = msg, deps = NULL)
+        chunk_html <- msg
+        chunk_deps <- NULL
         chunk_content_type <- "markdown"
       } else {
-        ui <- process_ui(pre_process_ui(msg), session)
+        # Trusted content (HTML()/tags): render via the shared island
+        # derivation into a single HTML string — the greeting_chunk wire
+        # payload is a string and cannot carry structured blocks.
+        rendered <- render_island_string(msg)
+        chunk_html <- rendered$html
+        chunk_deps <- serialize_html_deps(rendered$deps, session)
         chunk_content_type <- "html"
       }
 
-      chunks <- c(chunks, ui[["html"]])
+      chunks <- c(chunks, chunk_html)
       send_chat_action(
         id,
         action = list(
           type = "greeting_chunk",
-          content = ui[["html"]],
+          content = chunk_html,
           operation = "append",
           content_type = chunk_content_type
         ),
-        html_deps = ui[["deps"]],
+        html_deps = chunk_deps,
         session = session
       )
     }

@@ -16,10 +16,6 @@ as_generator <- function(x) {
   }
 }
 
-pre_process_ui <- function(ui) {
-  htmltools::tagList(!!!split_html_islands(ui))
-}
-
 process_ui <- function(ui, session) {
   process_deps <- asNamespace("shiny")[["processDeps"]]
   if (!is.function(process_deps)) {
@@ -36,6 +32,29 @@ process_ui <- function(ui, session) {
   # Remove html_dependency class so jsonlite can handle it
   res[["deps"]] <- lapply(res[["deps"]], unclass)
   res
+}
+
+# Serialize HTMLDependency objects for the wire through the session's
+# processDeps. Mirrors Python's serialize_html_deps.
+serialize_html_deps <- function(deps, session) {
+  if (length(deps) == 0) {
+    return(list())
+  }
+  process_ui(htmltools::tagList(!!!deps), session)[["deps"]] %||% list()
+}
+
+# Session-free serialization of HTMLDependency objects for the wire shape
+# the client's renderDependencies understands. Used when there is no running
+# app at UI-construction time. Mirrors Python's serialize_html_deps_static.
+serialize_html_deps_static <- function(deps) {
+  lapply(deps, function(dep) {
+    dep <- unclass(dep)
+    if (is.null(dep$src) || is.null(dep$src$href)) {
+      dep$src$href <- paste0(dep$name, "-", dep$version)
+    }
+    dep$src$file <- NULL
+    dep
+  })
 }
 
 # Compile HTMLDependency()s against the current/default theme
