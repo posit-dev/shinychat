@@ -6,11 +6,6 @@
     function(value, session, name) user_input_contents(value),
     force = TRUE
   )
-  shiny::registerInputHandler(
-    "shinychat.messages",
-    function(value, session, name) messages_input_value(value),
-    force = TRUE
-  )
 }
 
 as_generator <- function(x) {

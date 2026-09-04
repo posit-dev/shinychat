@@ -1,11 +1,7 @@
 ---
 title: "Tool Calling UI"
-output:
-  html_document:
-    theme:
-      version: 5
-      preset: shiny
-    self_contained: false
+resource_files:
+  - images/
 vignette: >
   %\VignetteIndexEntry{Tool Calling UI}
   %\VignetteEngine{knitr::rmarkdown}
@@ -22,14 +18,6 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{=html}
-<style>
-.shiny-tool-card {
-  margin-bottom: 1rem !important;
-}
-</style>
-```
-
 ## Introduction
 
 shinychat automatically displays rich UI for tool calls and results, providing users with an intuitive view of what tools are being executed and their outcomes. This tool UI works out-of-the-box with ellmer and requires no additional configuration to get started.
@@ -42,6 +30,7 @@ Let's start with a simple weather forecasting tool to demonstrate the default be
 
 ```{r}
 #| echo: true
+#| eval: false
 library(shinychat)
 library(ellmer)
 library(weathR) # for forecasts via `point_tomorrow()`
@@ -57,19 +46,6 @@ get_weather_forecast <- tool(
     lon = type_number("Longitude")
   )
 )
-```
-
-```{r}
-# Shim point_tomorrow with caching to speed up rendering
-point_tomorrow <- local({
-  result <- NULL
-  function(lat, lon, short = TRUE) {
-    if (is.null(result)) {
-      result <<- weathR::point_tomorrow(lat, lon, short = short)
-    }
-    result
-  }
-})
 ```
 
 With `{ellmer}`, you register this tool with a chat object.
@@ -108,19 +84,9 @@ Depending on `tool_grouping`, one row can summarize several calls; expand the ro
 
 ```{r}
 #| echo: false
-
-# Simulate a tool request
-request <- ContentToolRequest(
-  id = "tool_call_001",
-  name = "get_weather_forecast",
-  arguments = list(
-    lat = 40.7128,
-    lon = -74.0060
-  ),
-  tool = get_weather_forecast
-)
-
-contents_shinychat(request)
+#| fig.cap: "While the tool runs, a compact activity row summarizes the call without crowding the conversation."
+#| out.width: "100%"
+knitr::include_graphics("images/tool-ui/basic-running.png")
 ```
 
 When the tool result completes, the activity row becomes settled.
@@ -128,28 +94,19 @@ Drilling into that call opens a card containing the request and result:
 
 ```{r}
 #| echo: false
-
-request@id <- "tool_call_002" # Don't match so we don't hide the request
-
-result <- ContentToolResult(
-  value = get_weather_forecast(42.3601, -71.0589),
-  request = request
-)
-
-contents_shinychat(result)
+#| fig.cap: "When the result lands, the activity row settles. Expanding it opens a drill-down card containing the full request and result."
+#| out.width: "100%"
+knitr::include_graphics("images/tool-ui/basic-settled.png")
 ```
 
 If the tool throws an error when called, ellmer captures the error and shows it to the LLM.
 shinychat marks the settled activity row as failed and shows the error in its drill-down card:
 
 ```{r}
-request@id <- "tool_call_001c"
-error_result <- ContentToolResult(
-  error = rlang::catch_cnd(mean[[1]]),
-  request = request
-)
-
-contents_shinychat(error_result)
+#| echo: false
+#| fig.cap: "A failed tool call marks the activity row as an error, and the drill-down card shows the error message."
+#| out.width: "100%"
+knitr::include_graphics("images/tool-ui/basic-error.png")
 ```
 
 When you use `chat_app()` or `chat_server()`, shinychat automatically handles tool requests and results, displaying them in the chat interface.
@@ -182,6 +139,7 @@ If the tool annotations include a `title` or `icon`, shinychat uses them in the 
 
 ```{r}
 #| echo: true
+#| eval: false
 
 get_weather_forecast <- tool(
   function(lat, lon) {
@@ -203,30 +161,19 @@ get_weather_forecast <- tool(
 Now the running activity row shows the custom title:
 
 ```{r}
-request_with_annotations <- ContentToolRequest(
-  id = "tool_call_003",
-  name = "get_weather_forecast",
-  arguments = list(
-    lat = 42.3601,
-    lon = -71.0589
-  ),
-  tool = get_weather_forecast
-)
-
-contents_shinychat(request_with_annotations)
+#| echo: false
+#| fig.cap: "The running activity row uses the annotation's custom title and icon."
+#| out.width: "100%"
+knitr::include_graphics("images/tool-ui/annotations-running.png")
 ```
 
 The settled call keeps that title unless its result supplies a replacement, and it uses the same icon:
 
 ```{r}
-request_with_annotations@id <- "tool_call_004"
-
-result_with_annotations <- ContentToolResult(
-  value = get_weather_forecast(42.3601, -71.0589),
-  request = request_with_annotations
-)
-
-contents_shinychat(result_with_annotations)
+#| echo: false
+#| fig.cap: "The settled call keeps the custom title and icon from the tool's annotations."
+#| out.width: "100%"
+knitr::include_graphics("images/tool-ui/annotations-settled.png")
 ```
 
 ### Present tense while running, past tense once done
@@ -255,6 +202,7 @@ Note that we need to also update the tool's `arguments` to include the new `loca
 
 ```{r}
 #| echo: true
+#| eval: false
 
 get_weather_forecast <- tool(
   function(lat, lon, location_name) {
@@ -297,21 +245,10 @@ get_weather_forecast <- tool(
 This complete example gives the running call a present-tense title, then gives the settled call a past-tense title and icon based on the forecast. Its `label` identifies the location in a group of calls, and its `value_preview` reports the result size without opening the drill-down card:
 
 ```{r}
-request_title_icon_result <- ContentToolRequest(
-  id = "tool_call_005",
-  name = "get_weather_forecast",
-  arguments = list(
-    lat = 42.3601,
-    lon = -71.0589,
-    location_name = "Boston, MA"
-  ),
-  tool = get_weather_forecast
-)
-
-result_title_icon_result <- get_weather_forecast(42.3601, -71.0589, "Boston, MA")
-result_title_icon_result@request <- request_title_icon_result
-
-contents_shinychat(result_title_icon_result)
+#| echo: false
+#| fig.cap: "The settled call with a past-tense result title, an icon chosen from the forecast, and a per-call label and value preview."
+#| out.width: "100%"
+knitr::include_graphics("images/tool-ui/result-fields.png")
 ```
 
 ## Tool intent
@@ -326,6 +263,7 @@ On its own, the tool doesn't need any arguments, but we include a `` `_intent` `
 
 ```{r}
 #| echo: true
+#| eval: false
 
 tool_random_number <- tool(
   function(`_intent`) {
@@ -348,19 +286,10 @@ tool_random_number <- tool(
 When the tool is called, shinychat shows the reason the LLM called the tool in the activity row and drill-down card.
 
 ```{r}
-request_random_number <- ContentToolRequest(
-  id = "tool_call_006",
-  name = "tool_random_number",
-  arguments = list(`_intent` = "Generate a random number for testing"),
-  tool = tool_random_number
-)
-
-result_random_number <- ContentToolResult(
-  runif(1),
-  request = request_random_number
-)
-
-contents_shinychat(result_random_number)
+#| echo: false
+#| fig.cap: "The activity row shows the `_intent` value supplied by the LLM as the reason the tool was called."
+#| out.width: "100%"
+knitr::include_graphics("images/tool-ui/intent.png")
 ```
 
 ## Customizing tool result display
@@ -405,6 +334,7 @@ In the following example, we'll update the `get_weather_forecast()` to show the 
 
 ```{r}
 #| echo: true
+#| eval: false
 
 get_weather_forecast <- tool(
   function(lat, lon, location_name) {
@@ -442,20 +372,13 @@ get_weather_forecast <- tool(
 )
 ```
 
-This result opens its drill-down card by default. Its rich table, footer, and fullscreen toggle all live in that card; the compact activity row remains available as the summary. `presentation = "framed"` opts this expanded normal rich result into Shiny Chat's frame. Omit it, or use the default `"default"`, to retain the existing drill-down presentation.
+This result opens its drill-down card by default. Its rich table, footer, and fullscreen toggle all live in that card; the compact activity row remains available as the summary. `open_style = "framed"` opts this expanded normal rich result into Shiny Chat's frame. Omit it, or use the default `"minimal"`, to keep the plain drill-down presentation.
 
 ```{r}
-request_html <- ContentToolRequest(
-  id = "tool_call_007",
-  name = "get_weather_forecast",
-  arguments = list(location_name = "Boston, MA", lat = 42.3601, lon = -71.0589),
-  tool = get_weather_forecast
-)
-
-result_html <- do.call(get_weather_forecast, request_html@arguments)
-result_html@request <- request_html
-
-contents_shinychat(result_html)
+#| echo: false
+#| fig.cap: "A rich tool result: the drill-down card opens by default and shows a formatted table, an attribution footer, and a fullscreen toggle."
+#| out.width: "100%"
+knitr::include_graphics("images/tool-ui/rich-html.png")
 ```
 
 #### Alternative markdown display
@@ -466,6 +389,7 @@ It's less appropriate in our weather tool, but we could use markdown to summariz
 
 ```{r}
 #| echo: true
+#| eval: false
 
 get_weather_forecast <- tool(
   function(lat, lon, location_name) {
@@ -513,17 +437,10 @@ get_weather_forecast <- tool(
 ```
 
 ```{r}
-request_html <- ContentToolRequest(
-  id = "tool_call_008",
-  name = "get_weather_forecast",
-  arguments = list(location_name = "Boston, MA", lat = 42.3601, lon = -71.0589),
-  tool = get_weather_forecast
-)
-
-result_html <- do.call(get_weather_forecast, request_html@arguments)
-result_html@request <- request_html
-
-contents_shinychat(result_html)
+#| echo: false
+#| fig.cap: "The drill-down card renders the `markdown` display content as rich HTML in place of the raw result."
+#| out.width: "100%"
+knitr::include_graphics("images/tool-ui/rich-markdown.png")
 ```
 
 ### Fully custom standalone output
@@ -553,7 +470,7 @@ These options apply to the drill-down card beneath the activity row:
 
    When clicked, the card expands to fill the entire viewport, making it easy to inspect large or detailed content like maps, tables, and plots. Users can exit fullscreen by pressing `Escape`, clicking the backdrop, or using the close button.
 
-- **`presentation = "framed"`**: Opt an expanded normal rich result into Shiny Chat's frame. The default `"default"` keeps the existing drill-down presentation.
+- **`open_style = "framed"`**: Opt an expanded normal rich result into Shiny Chat's frame. The default `"minimal"` keeps the plain drill-down presentation.
 
 - **`footer`**: Add HTML content below the drill-down card body. Use it for attribution, a compact summary, or related controls.
 

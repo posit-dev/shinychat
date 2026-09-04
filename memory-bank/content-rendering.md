@@ -66,7 +66,7 @@ One tool-specific invariant: `status: "running"` is never a wire value. The wire
 
 Persisted UI markup is never scanned for trust. Both servers re-derive structured blocks from stored **turns**: a `Turn` normalizes its contents into an ordered interleaving of string runs and blocks, and `StoredMessage.wire_segments()` re-interleaves them at the recorded positions so wire order matches source order. Python follows R's turns-based restore model; the R entry point is `chat_restore()`.
 
-HTML dependencies follow a client-authoritative round-trip: the client renders deps on arrival *and* retains them per message (`ChatMessageData.htmlDeps`), reports them back in the settled-messages snapshot, and the server parks them on the stored segment so they can be re-registered on restore in a fresh browser session. (Python only; R has no equivalent round-trip.)
+HTML dependencies are server-owned, not client-reported. The client renders deps on arrival and retains them per message (`ChatMessageData.htmlDeps`) so a re-render (e.g. a grouping change) doesn't lose them, but persistence for restore is derived server-side from stored turns, not from anything the client sends back: Python and R both serialize dependencies onto the derived `StoredMessage`/UI-message segments (via `session._process_ui`) when history saves a turn group, so they can be re-registered on restore in a fresh browser session.
 
 ## Why RawHTML / innerHTML
 
@@ -106,7 +106,7 @@ String content is parsed by unified/rehype into HAST, then converted to React. T
 | Message rendering | `chat/ChatMessage.tsx`, `chat/chatTagToComponentMap.ts` (trusted vs untrusted maps) |
 | innerHTML sink | `chat/RawHTML.tsx`, `chat/ShinyBindScope.tsx` |
 | Markdown pipeline | `markdown/processors.ts`, `markdown/MarkdownContent.tsx`, `markdown/EscapedIsland.tsx`, `markdown/plugins/rehypeNeutralizeIslands.ts`, `markdown/plugins/rehypeUnwrapBlockCEs.ts` |
-| Deps round-trip | `transport/shiny-transport.ts`, `chat/state.ts` (`buildMessagesSnapshot`) |
+| Deps on arrival | `transport/shiny-transport.ts`, `chat/RawHTML.tsx` |
 | MarkdownStream | `markdown-stream/MarkdownStream.tsx` (segment/block union state), `markdown-stream/markdown-stream-entry.ts` (flat wire protocol, `block` field) |
 
 **Python (pkg-py/src/shinychat/)**
@@ -115,7 +115,7 @@ String content is parsed by unified/rehype into HAST, then converted to React. T
 |---|---|
 | Island partition | `_html_islands.py` (`derive_island_parts`) |
 | Message construction | `_chat.py` (`ChatMessage`), `_markdown_stream.py` |
-| Types / restore | `_chat_types.py` (`Turn`, `StoredMessage.wire_segments`), `_input_handler.py` (`messages_input_value`) |
+| Types / restore | `_chat_types.py` (`Turn`, `StoredMessage.wire_segments`) |
 | Normalization | `_chat_normalize*.py`, `_chat_segments.py` |
 
 **R (pkg-r/R/)**

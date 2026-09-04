@@ -60,6 +60,7 @@ from ._chat_segments import (
     has_mixed_content_types,
     segments_content,
     segments_deps,
+    serialize_segments,
 )
 from ._chat_types import (
     ChatAction,
@@ -75,6 +76,7 @@ from ._chat_types import (
     StoredMessage,
     StoredSegment,
     StringSegment,
+    StructuredBlock,
     _assemble_stored_message,
     chat_greeting,
     initial_message_payload,
@@ -293,7 +295,12 @@ class Chat:
         client with empty turns is passed so the greeting can be LLM-generated
         without polluting conversation history.
     messages
-        Deprecated. Use `chat.ui(messages=...)` instead.
+        Deprecated. When non-empty startup messages are provided, they can't be
+        recorded by the conversation-history feature, so ``messages`` requires
+        ``history=False``. Use the ``greeting`` parameter for a startup
+        message, use ``.append_message()`` to replay messages from the server, or
+        set ``history=False`` if you're managing conversation state
+        yourself.
     on_error
         How to handle errors that occur in response to user input. When `"unhandled"`,
         the app will stop running when an error occurs. Otherwise, a notification
@@ -328,8 +335,18 @@ class Chat:
             raise TypeError("`id` must be a string.")
 
         if messages:
+            if history is not False:
+                raise ValueError(
+                    "`Chat(messages=...)` requires `history=False`: startup "
+                    "messages can't be recorded by the conversation-history "
+                    "feature. Use the `greeting` parameter for a startup "
+                    "message, use `.append_message()` to replay messages from the "
+                    "server, or set `history=False` if you're managing "
+                    "conversation state yourself."
+                )
             warn_deprecated(
-                "`Chat(messages=...)` is deprecated. Use `.ui(messages=...)` instead."
+                "`Chat(messages=...)` is deprecated and will be removed in a "
+                "future release. Use `.append_message()` instead."
             )
 
         if not isinstance(tokenizer, DEPRECATED_TYPE):
@@ -341,7 +358,6 @@ class Chat:
 
         self.id = resolve_id(id)
         self.user_input_id = ResolvedId(f"{self.id}_user_input")
-        self.messages_input_id = ResolvedId(f"{self.id}_messages")
         self._slash_command_id = ResolvedId(f"{self.id}_slash_command")
         self._transform_user: TransformUserInputAsync | None = None
         self._transform_assistant: (
@@ -385,6 +401,10 @@ class Chat:
         from shiny.session import session_context
 
         with session_context(self._session):
+            self._messages: reactive.Value[tuple[StoredMessage, ...]] = (
+                reactive.Value(())
+            )
+
             # `None` until the first registration, which lets us skip the
             # redundant initial sync (the client already initializes to `[]`).
             # An empty dict, by contrast, is sent so that removing the last
@@ -432,7 +452,7 @@ class Chat:
                         role="user",
                         attachments=attachments,
                     )
-                    self._latest_user_input.set(self._as_stored_message(msg))
+                    self._store_message(msg)
                 except Exception as e:
                     await self._raise_exception(e)
 
@@ -458,7 +478,7 @@ class Chat:
                 if echo:
                     full_text = f"/{command} {user_text}".rstrip()
                     msg = ChatMessage(content=full_text, role="user")
-                    self._latest_user_input.set(self._as_stored_message(msg))
+                    self._store_message(msg)
                 cmds = self._slash_commands()
                 reg = cmds.get(command) if cmds else None
                 try:
@@ -859,14 +879,6 @@ class Chat:
 
         Note
         ----
-        This reflects the messages the browser has rendered and reported back,
-        so it is *eventually* consistent: it returns an empty tuple until the
-        client's first report, and a message passed to
-        :meth:`~shinychat.Chat.append_message` does not appear here until the
-        browser has rendered it and echoed its snapshot to the server. Read it
-        reactively (e.g. in an `.on_user_submit()` callback) rather than
-        expecting it to update synchronously right after appending.
-
         Returns
         -------
         tuple[ChatMessageDict, ...]
@@ -889,7 +901,7 @@ class Chat:
                 "Use your LLM provider (e.g., chatlas, LangChain) to manage conversation context instead."
             )
 
-        messages = self._reported_messages()
+        messages = self._messages()
 
         res: list[ChatMessageDict] = []
         for m in messages:
@@ -901,18 +913,6 @@ class Chat:
             res.append(chat_msg)
 
         return tuple(res)
-
-    def _reported_messages(self) -> tuple[StoredMessage, ...]:
-        # Client-authoritative UI state: the React client reports its settled-
-        # message snapshot as the `${id}_messages` input (see _input_handler.py).
-        # Returns () before the client has reported anything.
-        from shiny.types import SilentException
-
-        try:
-            val = self._session.input[self.messages_input_id]()
-        except SilentException:
-            return ()
-        return tuple(val) if val else ()
 
     async def append_message(
         self,
@@ -1061,6 +1061,7 @@ class Chat:
         msg = await self._transform_message(msg)
         if msg is None:
             return
+        self._store_message(msg)
         await self._send_append_message(
             message=msg,
             chunk=False,
@@ -1237,6 +1238,17 @@ class Chat:
                         first = msg.segments[0]
                         if isinstance(first, StoredSegment):
                             first.html_deps = serialized_deps
+                    self._store_message(msg)
+            elif chunk == "end":
+                text_segs: list[StoredSegment | StructuredBlock] = [
+                    seg
+                    for seg in serialize_segments(
+                        self._current_stream_segments, self._serialize_html_deps
+                    )
+                ]
+                self._store_message(
+                    StoredMessage(role=msg.role, segments=text_segs),
+                )
 
             # Send the message to the client
             await self._send_append_message(
@@ -1575,7 +1587,7 @@ class Chat:
         from shiny import reactive
 
         with reactive.isolate():
-            messages = self._reported_messages()
+            messages = self._messages()
 
         dumps: list[dict[str, Any]] = []
         for m in messages:
@@ -1609,6 +1621,7 @@ class Chat:
                 stacklevel=2,
             )
             return
+        self._store_message(stored)
         await self._send_append_message(stored)
 
     async def _restore_turns_ui(self, adapter: "TurnsAdapter") -> None:
@@ -1752,6 +1765,19 @@ class Chat:
 
         return _assemble_stored_message(message, self._serialize_html_deps)
 
+    def _store_message(
+        self,
+        message: StoredMessage | ChatMessage,
+    ) -> None:
+        from shiny import reactive
+
+        stored = self._as_stored_message(message)
+        with reactive.isolate():
+            messages = self._messages()
+        self._messages.set((*messages, stored))
+        if stored.role == "user":
+            self._latest_user_input.set(stored)
+
     def user_input(self) -> "UserInput | None":
         """
         Reactively read the user's latest submission.
@@ -1885,6 +1911,7 @@ class Chat:
             react to the request to generate a new one via
             :meth:`~shinychat.Chat.set_greeting`.
         """
+        self._messages.set(())
         action: ClearAction = {"type": "clear"}
         if greeting:
             self._greeting_content = None
@@ -2193,7 +2220,6 @@ class Chat:
         root_session = session.root_scope()
         for suffix in (
             "_user_input",
-            "_messages",
             "_cancel",
             "_slash_command",
             "_greeting_requested",
@@ -2375,10 +2401,7 @@ class ChatExpress(Chat):
         Parameters
         ----------
         messages
-            A sequence of messages to display in the chat. Each message can be either a
-            string or a dictionary with `content` and `role` keys. The `content` key
-            should contain the message text, and the `role` key can be "assistant" or
-            "user".
+            Deprecated.
         greeting
             An optional greeting to display at the top of the chat before any conversation
             messages. Can be a markdown string or a :func:`~shinychat.chat_greeting`
@@ -2646,8 +2669,14 @@ def chat_ui(
     id
         A unique identifier for the chat UI.
     messages
-        A sequence of messages to display in the chat. A given message can be one of the
-        following:
+        Deprecated. Non-empty startup messages can't be recorded by the
+        conversation-history feature. Use ``greeting`` for a startup message,
+        use ``.append_message()`` to replay messages from the server, or set
+        ``history=False`` on the server-side :class:`~shinychat.Chat` if
+        you're managing conversation state yourself.
+
+        A sequence of messages to display in the chat. A given message can be
+        one of the following:
 
         * A string, which is interpreted as markdown and rendered to HTML on the client.
             * To prevent interpreting as markdown, mark the string as
@@ -2705,7 +2734,7 @@ def chat_ui(
         container or any ancestor:
 
         * ``--shiny-chat-btn-send-size`` -- button width and height (default ``24px``)
-        * ``--shiny-chat-input-icon-size`` -- icon size, shared with the attach button (default ``18px``)
+        * ``--shiny-chat-input-icon-size`` -- icon size, shared with the attach button (default ``22px``)
         * ``--shiny-chat-btn-send-bg`` -- button background (default: state color)
         * ``--shiny-chat-btn-send-color`` -- icon color (default: ``#fff``)
         * ``--shiny-chat-btn-send-border`` -- button border (default: ``none``)
@@ -2807,9 +2836,20 @@ def chat_ui(
     kwargs
         Additional attributes for the chat container element.
     """
+    from shiny._deprecated import warn_deprecated
     from shiny.module import resolve_id
     from shiny.ui.css import as_css_unit
     from shiny.ui.fill import as_fill_item, as_fillable_container
+
+    if messages:
+        warn_deprecated(
+            "`chat_ui(messages=...)` is deprecated. Startup messages can't "
+            "be recorded by the conversation-history feature. Use "
+            "`greeting=` for a startup message, `Chat.append_message()` to replay "
+            "messages from the server, or set `history=False` on "
+            "the server-side `Chat` if you're managing conversation state "
+            "yourself."
+        )
 
     id = resolve_id(id)
 

@@ -525,3 +525,26 @@ test_that("stream block type allowlist matches the pinned set", {
   )
   expect_length(STREAM_BLOCK_TYPES, 5)
 })
+
+test_that("mixed initial content carries leaf-level provenance", {
+  el <- output_markdown_stream(
+    "stream",
+    content = tagList(
+      "## This is markdown",
+      div("This is HTML")
+    )
+  )
+  segments <- jsonlite::fromJSON(
+    el$attribs[["content-segments"]],
+    simplifyVector = FALSE
+  )
+
+  expect_identical(
+    segments[[1]],
+    list(text = "## This is markdown", trusted = FALSE)
+  )
+  expect_true(segments[[2]]$trusted)
+  expect_match(segments[[2]]$text, "<shiny-chat-raw-html>", fixed = TRUE)
+  expect_match(segments[[2]]$text, "<div>This is HTML</div>", fixed = TRUE)
+  expect_identical(el$attribs[["content-trusted"]], "false")
+})

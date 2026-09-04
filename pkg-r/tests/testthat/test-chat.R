@@ -110,7 +110,9 @@ test_that("chat_ui() errors for an invalid tool_grouping value", {
 
 test_that("chat_ui(icon_assistant = FALSE) removes the icon", {
   # FALSE removes the icon: the container and each message carry icon="".
-  ui <- chat_ui("chat", messages = list("Hello"), icon_assistant = FALSE)
+  ui <- suppressWarnings(
+    chat_ui("chat", messages = list("Hello"), icon_assistant = FALSE)
+  )
   expect_equal(ui$attribs[["icon-assistant"]], "")
 
   html <- as.character(ui)
@@ -119,13 +121,15 @@ test_that("chat_ui(icon_assistant = FALSE) removes the icon", {
 })
 
 test_that("chat_ui(icon_assistant = TRUE) omits the icon attribute", {
-  ui_true <- chat_ui("chat", messages = list("Hello"), icon_assistant = TRUE)
+  ui_true <- suppressWarnings(
+    chat_ui("chat", messages = list("Hello"), icon_assistant = TRUE)
+  )
   expect_null(ui_true$attribs[["icon-assistant"]])
   expect_no_match(as.character(ui_true), "icon-assistant", fixed = TRUE)
 })
 
 test_that("chat_ui(icon_assistant = NULL) (the default) removes the icon", {
-  ui_null <- chat_ui("chat", messages = list("Hello"))
+  ui_null <- suppressWarnings(chat_ui("chat", messages = list("Hello")))
   expect_equal(ui_null$attribs[["icon-assistant"]], "")
 
   html <- as.character(ui_null)
@@ -136,13 +140,15 @@ test_that("chat_ui(icon_assistant = NULL) (the default) removes the icon", {
 test_that("chat_ui() does not put the assistant icon on user messages", {
   # User messages render `icon` directly, so the assistant default must not be
   # copied onto them (it would misattribute who said what).
-  ui <- chat_ui(
-    "chat",
-    messages = list(
-      list(role = "user", content = "Hi"),
-      list(role = "assistant", content = "Hello")
-    ),
-    icon_assistant = htmltools::HTML("<span>ROBOT</span>")
+  ui <- suppressWarnings(
+    chat_ui(
+      "chat",
+      messages = list(
+        list(role = "user", content = "Hi"),
+        list(role = "assistant", content = "Hello")
+      ),
+      icon_assistant = htmltools::HTML("<span>ROBOT</span>")
+    )
   )
 
   msgs <- strsplit(as.character(ui), "<shiny-chat-message ")[[1]]

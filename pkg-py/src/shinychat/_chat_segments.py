@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Callable
 
 from htmltools import HTMLDependency
 
-from ._chat_types import ContentSegment, ContentType, _SegmentBase
+from ._chat_types import (
+    ContentSegment,
+    ContentType,
+    SerializedDep,
+    StoredSegment,
+    _SegmentBase,
+)
 
 
 def segments_content(segments: list[ContentSegment]) -> str:
@@ -59,3 +66,19 @@ def append_to_segments(
                 html_deps=list(deps) if deps else None,
             )
         )
+
+
+def serialize_segments(
+    segments: list[ContentSegment],
+    serialize_deps: Callable[
+        [list[HTMLDependency] | None], list[SerializedDep] | None
+    ],
+) -> list[StoredSegment]:
+    return [
+        StoredSegment(
+            content=seg.content,
+            content_type=seg.content_type,
+            html_deps=serialize_deps(seg.html_deps or None),
+        )
+        for seg in segments
+    ]

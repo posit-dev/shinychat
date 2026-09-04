@@ -419,12 +419,12 @@ class HistoryController:
     async def on_response(self) -> None:
         """Save trigger: a completed assistant response.
 
-        Reads ``self.ui_offset`` near the top and writes it near the bottom,
-        with awaits (``store.put``, eviction, bookmark mint) in between. This
-        is safe without an explicit lock because Shiny serializes reactive
-        flushes behind a single process-wide ``reactive.lock()`` for the
-        full duration of effect execution, so two invocations of this effect
-        can never overlap.
+        The server-side message accumulator and recorded turns are read before
+        writing the record. Reads and writes are separated by awaits
+        (``store.put``, eviction, bookmark mint), but this is safe without an
+        explicit lock because Shiny serializes reactive flushes behind a
+        single process-wide ``reactive.lock()`` for the full duration of
+        effect execution.
         """
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
@@ -441,11 +441,11 @@ class HistoryController:
                 for nid in record.path_node_ids()
                 for m in (record.nodes[nid].ui or [])
             ]
-            # Idempotent + truncation guard. A restore re-renders the stored
-            # conversation and makes the client re-report its snapshot; that report
-            # must never overwrite the record. Skip when no new turn groups AND the
-            # reported snapshot is no longer than what's already stored (covers exact
-            # re-reports and shorter partial mid-restore reports).
+            # Idempotent + truncation guard. A restore may trigger the
+            # response effect while the server still has the restored
+            # conversation. Never let that state overwrite the record. Skip
+            # when there are no new turn groups and the server message list is
+            # no longer than what's already stored.
             if len(turn_groups) <= len(record.path_node_ids()) and len(
                 messages
             ) <= len(stored_ui):
@@ -661,10 +661,8 @@ class HistoryController:
             for message_dict in stored:
                 await self.chat._restore_bookmark_message(message_dict)
                 restored_count += 1
-        # ui_offset must reflect the messages the client will report for the
-        # restored conversation. `_messages_for_bookmark()` reads the async
-        # client-reported input, which still holds the PREVIOUS conversation's
-        # snapshot at this synchronous point — so count what we actually restored.
+        # The restored messages are already in the server-side accumulator, so
+        # start the offset after the messages restored into the record.
         self.ui_offset = restored_count
 
     # -- list mutations ----------------------------------------------------
@@ -1030,9 +1028,6 @@ class ChatHistory:
 
         ids = HistoryInputIds.for_chat(chat.id)
         root_session.bookmark.exclude.extend(ids.all_ids())
-        # `messages_input_id` carries StoredMessage (Pydantic) objects, which
-        # aren't JSON-serializable for Shiny's bookmark input.json.
-        root_session.bookmark.exclude.append(chat.messages_input_id)
 
         adapter = as_turns_adapter(chat_client)
         resolved_store = resolve_store(self._store)

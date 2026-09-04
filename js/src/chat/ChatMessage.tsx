@@ -11,7 +11,7 @@ import { ThinkingDisplay } from "./ThinkingDisplay"
 import { ToolGroup } from "./ToolGroup"
 import { WebActivity } from "./WebActivity"
 import { HtmlBlockContent } from "./HtmlBlockContent"
-import { robot, dots_fade, arrowUpShort, pencil } from "../utils/icons"
+import { robot, dots_fade, arrowUp, pencil } from "../utils/icons"
 import {
   chatTagToComponentMap,
   untrustedChatTagToComponentMap,
@@ -619,7 +619,7 @@ export const ChatMessage = memo(function ChatMessage({
                 }}
                 aria-label="Save and resend"
                 title="Save and resend"
-                dangerouslySetInnerHTML={{ __html: arrowUpShort }}
+                dangerouslySetInnerHTML={{ __html: arrowUp }}
               />
             </div>
             <button

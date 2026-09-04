@@ -118,18 +118,6 @@ chat_greeting <- function(
 #' `id="my_chat"`, user input will be at `input$my_chat_user_input`), and use
 #' [chat_append()] to append messages to the chat.
 #'
-#' The chat also reports the client's current rendered message transcript as
-#' `input$ID_messages` (for example, `input$my_chat_messages`), tagged
-#' `shinychat.messages`. It updates every time a message finishes rendering
-#' or streaming (a "settle point"), and is a list of message objects:
-#' `list(role =, segments = list(list(content =, content_type =), ...))`,
-#' plus optional `htmlDeps` and `attachments` fields when present.
-#' [chat_enable_history()] reads this internally to persist and restore
-#' exactly what was rendered — including raw HTML and Shiny UI dependencies —
-#' across a conversation switch or reload. It's exposed for advanced,
-#' read-only use (for example, custom logging or export); it is not an input
-#' you write to.
-#'
 #' @section Pairing with `chat_server()`:
 #'
 #' `chat_ui(id)` and `chat_server(id, client)` pair by matching `id`. This
@@ -245,7 +233,7 @@ chat_greeting <- function(
 #'
 #' The send button is a filled circle (24px by default) whose background
 #' color reflects the current state (primary when ready, gray when
-#' empty/disabled, danger when cancelling) with a white icon (18px by
+#' empty/disabled, danger when cancelling) with a white icon (22px by
 #' default) centered inside. The `icon_send` parameter swaps the
 #' ready-state icon without changing the button's surface.
 #'
@@ -309,7 +297,7 @@ chat_greeting <- function(
 #' **Key CSS variables:**
 #'
 #'   * `--shiny-chat-btn-send-size` — Button width and height (default `24px`)
-#'   * `--shiny-chat-input-icon-size` — Icon size, shared with the attach button (default `18px`)
+#'   * `--shiny-chat-input-icon-size` — Icon size, shared with the attach button (default `22px`)
 #'   * `--shiny-chat-btn-send-bg` — Button background (default: state color)
 #'   * `--shiny-chat-btn-send-color` — Icon color (default: `#fff`)
 #'   * `--shiny-chat-btn-send-border` — Button border (default: `none`)
@@ -344,8 +332,11 @@ chat_greeting <- function(
 #'
 #' @param id The ID of the chat element
 #' @param ... Extra HTML attributes to include on the chat element
-#' @param messages A list of messages to prepopulate the chat with. Each message
-#'   can be one of the following:
+#' @param messages Deprecated. A list of messages to prepopulate the chat with.
+#'   Startup messages can't be recorded by the conversation-history feature.
+#'   Use `greeting` for a startup message, `chat_append()` to replay messages
+#'   from the server, or set `history = FALSE` in [chat_server()] if you're
+#'   managing conversation state yourself. Each message can be one of the following:
 #'
 #'   * A string, which is interpreted as markdown and rendered to HTML on the
 #'     client.
@@ -480,6 +471,16 @@ chat_ui <- function(
 ) {
   submit_key <- rlang::arg_match(submit_key)
   tool_grouping <- rlang::arg_match(tool_grouping)
+  if (!is.null(messages)) {
+    lifecycle::deprecate_warn(
+      "0.5.0",
+      "chat_ui(messages = )",
+      details = c(
+        "Startup messages can't be recorded by the conversation-history feature.",
+        "Use `greeting` for a startup message, `chat_append()` to replay messages from the server, or set `history = FALSE` in `chat_server()` if you're managing conversation state yourself."
+      )
+    )
+  }
   chat_validate_boolean(show_history, "show_history")
   drawer <- normalize_chat_drawer(drawer)
   # `NULL` (the default) means no assistant icon; `TRUE` opts back into the
@@ -1655,10 +1656,7 @@ chat_append_stream <- function(
     error = function(cnd) promises::promise_reject(cnd)
   )
   result <- chat_update_bookmark(id, result, session = session)
-  # History saves are triggered by the client's `_messages` echo (see the
-  # message_response_effect observer in chat_enable_history()), not chained
-  # here onto stream completion -- the browser only reports the finished
-  # assistant reply after a separate render/report round trip.
+  result <- chat_history_on_response(id, result, session = session)
   # Handle erroneous result...
   result <- promises::catch(result, function(reason) {
     # ...but rethrow the error as a silent error, so the caller can also handle

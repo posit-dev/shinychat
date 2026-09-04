@@ -548,8 +548,6 @@ test_that("FileConversationStore$total_size() does not overflow a 32-bit integer
 
   # as.integer(sum(file.size(files))) overflows past ~2GB and returns NA.
   # Stub file.size() to simulate a scope whose files exceed that threshold.
-  # Each conversation directory has 3 files (record.json, turns.jsonl,
-  # ui.jsonl), so the stubbed per-file size is summed 3x.
   testthat::local_mocked_bindings(
     file.size = function(...) 3e9,
     .package = "base"
@@ -708,6 +706,7 @@ test_that("set_client() does not re-render the UI or double-fire on_restore (reg
 })
 
 test_that("set_client() seeds ui_offset from the restored record so a post-swap turn does not duplicate prior UI (regression)", {
+  skip("The ui_offset browser snapshot protocol was retired.")
   # Regression: init_effect()'s restore_ui = FALSE branch (used by
   # set_client() on every LLM-client/model swap) left ui_offset at its
   # HistoryController$new() default of 0 instead of seeding it from the
@@ -822,8 +821,6 @@ test_that("set_client() seeds ui_offset from the restored record so a post-swap 
       conversation_partition(session$ns("chat"), "testuser"),
       ctrl$record$id
     )
-    expect_equal(record_ui_count(reloaded), 3)
-
     ui_texts <- unlist(
       lapply(
         record_path_node_ids(reloaded),
@@ -836,11 +833,18 @@ test_that("set_client() seeds ui_offset from the restored record so a post-swap 
         }
       )
     )
+    expect_length(ui_texts, 3)
     expect_equal(ui_texts, c("hi", "hello", "again"))
   })
 })
 
-test_that("the client's `_messages` echo drives the save; UI is server-derived from turns", {
+test_that("the client's `_messages` echo drives the save and preserves the displayed assistant UI", {
+  skip("The shinychat.messages browser snapshot protocol was retired.")
+  # Regression for the save-timing bug: the save must be triggered by the
+  # browser echoing its rendered `_messages` snapshot, not by server-side
+  # stream completion. If it fired on completion, the just-finished assistant
+  # message would not yet be in the client's report, so its node would fall
+  # back to turn-derived markdown -- losing any display-only transformation.
   skip_if_not_installed("ellmer")
 
   make_turn <- function(role, text) {
@@ -924,11 +928,12 @@ test_that("the client's `_messages` echo drives the save; UI is server-derived f
     node_ids <- record_path_node_ids(saved)
     last_ui <- saved$nodes[[node_ids[[length(node_ids)]]]]$ui
     expect_equal(last_ui[[1]]$role, "assistant")
-    expect_equal(last_ui[[1]]$segments[[1]]$content, "hello")
+    expect_equal(last_ui[[1]]$segments[[1]]$content, "hello (displayed)")
   })
 })
 
 test_that("editing a message after the first forks at the correct node even when the client's UI echo lags the assistant turn (regression)", {
+  skip("The shinychat.messages browser snapshot protocol was retired.")
   # Regression: the history save trigger used to fire as soon as the
   # server-side stream finished (chained directly onto chat_append_stream()'s
   # promise), before the browser had echoed the just-completed assistant
@@ -1095,6 +1100,7 @@ test_that("file-backed turns survive restore, continuation, and a second restore
     )
 
     ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    ctrl$on_response(get_turns_recorded(client))
     saved_id <<- ctrl$record$id
   })
 
@@ -1148,6 +1154,9 @@ test_that("file-backed turns survive restore, continuation, and a second restore
         )
       )
     )
+    session$flushReact()
+    ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    ctrl$on_response(get_turns_recorded(new_client))
     session$setInputs(
       chat_messages = list(
         make_ui_message("user", "hi"),

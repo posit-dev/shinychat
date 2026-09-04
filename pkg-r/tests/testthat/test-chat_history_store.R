@@ -436,10 +436,8 @@ test_that("FileConversationStore: put errors when atomic rename fails", {
   rec <- new_conversation_record("Persisted")
 
   partition <- part()
-
   # Warm the store's write-state cache and create a real record.json first,
-  # then swap record.json for a directory so the *next* put()'s
-  # file_move() collides without re-reading (and erroring on) record.json.
+  # then replace it with a directory so the next atomic rename collides.
   store$put(partition, rec)
   cdir <- file.path(
     dir,

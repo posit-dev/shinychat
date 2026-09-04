@@ -1,28 +1,3 @@
-messages_input_value <- function(value) {
-  if (!is.list(value)) {
-    rlang::abort(paste0(
-      "Expected a list from shinychat.messages, got ",
-      class(value)[1]
-    ))
-  }
-  lapply(value, function(m) {
-    message <- list(
-      role = m$role,
-      segments = lapply(m$segments, function(s) {
-        list(content = s$content, content_type = s$content_type)
-      })
-    )
-    if (!is.null(m$htmlDeps)) {
-      message$htmlDeps <- m$htmlDeps
-    }
-    if (!is.null(m$attachments) && length(m$attachments) > 0) {
-      validate_attachments(m$attachments)
-      message$attachments <- m$attachments
-    }
-    message
-  })
-}
-
 int_to_hex <- function(n, width = 13L) {
   hex_chars <- c(0:9, letters[1:6])
   digits <- character(0)
@@ -461,15 +436,6 @@ record_turn_count <- function(record) {
   sum(vapply(ids, function(id) length(record$nodes[[id]]$turns), integer(1)))
 }
 
-record_ui_count <- function(record) {
-  ids <- record_path_node_ids(record)
-  sum(vapply(
-    ids,
-    function(id) length(record$nodes[[id]]$ui),
-    integer(1)
-  ))
-}
-
 record_children_of <- function(record, node_id) {
   if (is.null(node_id)) {
     roots <- names(record$nodes)[
@@ -537,10 +503,10 @@ record_path_sibling_metadata <- function(record) {
   result
 }
 
-# Client-facing message count for a node. Mirrors replay_ui()'s NULL-ui
-# fallback: a missing/empty `ui` still renders one fabricated message, so index
-# math (record_node_id_for_message_index, send_sibling_metadata) stays aligned
-# with what the client reports.
+# Rendered message count for a node. Mirrors replay_ui()'s NULL-ui fallback: a
+# missing/empty `ui` still renders one fabricated message, so index math
+# (record_node_id_for_message_index, send_sibling_metadata) stays aligned with
+# the restored UI.
 record_ui_message_count <- function(node) {
   if (length(node$ui) > 0) length(node$ui) else 1L
 }
@@ -563,8 +529,6 @@ record_node_id_for_message_index <- function(record, index) {
 extend_record_linear <- function(
   record,
   recorded_turns,
-  ui_messages,
-  ui_offset,
   tools,
   session = NULL
 ) {
@@ -627,30 +591,6 @@ extend_record_linear <- function(
         record$nodes[[target]]$ui,
         list(derived_messages[[i]])
       )
-    }
-  }
-
-  # Out-of-band messages (client-reported but not from a turn group) are
-  # attached from the client snapshot beyond the derived count.
-  fallback <- if (length(new_node_ids) > 0) {
-    new_node_ids[length(new_node_ids)]
-  } else {
-    record$current_leaf
-  }
-
-  if (!is.null(fallback) && length(ui_messages) > ui_offset) {
-    new_client_messages <- ui_messages[seq_along(ui_messages) > ui_offset]
-    n_derived <- length(derived_messages)
-    if (length(new_client_messages) > n_derived) {
-      extra_messages <- new_client_messages[
-        (n_derived + 1L):length(new_client_messages)
-      ]
-      for (message in extra_messages) {
-        record$nodes[[fallback]]$ui <- c(
-          record$nodes[[fallback]]$ui,
-          list(message)
-        )
-      }
     }
   }
 

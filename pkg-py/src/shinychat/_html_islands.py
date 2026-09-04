@@ -47,7 +47,7 @@ def split_content_by_trust(
         children = [content]
 
     def is_trusted(child: TagChild) -> bool:
-        return not (isinstance(child, str) and not isinstance(child, HTML))
+        return not isinstance(child, str)
 
     result: list[tuple[bool, TagChild]] = []
     for trusted, group_iter in groupby(children, is_trusted):
