@@ -164,7 +164,7 @@ describe("chat-entry custom element boot", () => {
       <shiny-chat-messages>
         <shiny-chat-message
           data-role="assistant"
-          content-type="markdown"
+          content-type="html"
           content='<shiny-tool-result data-shinychat-react request-id="r1" tool-name="foo" status="success" value="done" value-type="text"></shiny-tool-result>'
         ></shiny-chat-message>
       </shiny-chat-messages>
@@ -207,7 +207,7 @@ describe("chat-entry custom element boot", () => {
       <shiny-chat-messages>
         <shiny-chat-message
           data-role="assistant"
-          content-type="markdown"
+          content-type="html"
           content='${call("r1", "foo")}${call("r2", "foo")}'
         ></shiny-chat-message>
       </shiny-chat-messages>

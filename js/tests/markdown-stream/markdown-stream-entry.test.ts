@@ -30,6 +30,8 @@ type ContentMessage = {
   id: string
   content: string
   operation: "append" | "replace"
+  trusted: boolean
+  segment_start: boolean
 }
 
 type IsStreamingMessage = {
@@ -121,15 +123,57 @@ function createElement_(): {
 // ---------------------------------------------------------------------------
 
 describe("MarkdownStreamElement — pending message queue", () => {
+  it("renders structured initial trust segments", async () => {
+    const el = document.createElement("shiny-markdown-stream")
+    el.setAttribute(
+      "content-segments",
+      JSON.stringify([
+        { text: "## Markdown", trusted: false },
+        {
+          text: "<shiny-chat-raw-html><div data-trusted>HTML</div></shiny-chat-raw-html>",
+          trusted: true,
+        },
+      ]),
+    )
+
+    await act(async () => {
+      document.body.appendChild(el)
+    })
+
+    await waitFor(() => {
+      expect(el.querySelector("h2")?.textContent).toBe("Markdown")
+      expect(el.querySelector("[data-trusted]")?.textContent).toBe("HTML")
+    })
+  })
+
+  it("fails closed when initial provenance is malformed", async () => {
+    const el = document.createElement("shiny-markdown-stream")
+    el.setAttribute(
+      "content",
+      "<shiny-chat-raw-html><div data-forged>unsafe</div></shiny-chat-raw-html>",
+    )
+    el.setAttribute("content-segments", "{not-json")
+    el.setAttribute("content-trusted", "true")
+
+    await act(async () => {
+      document.body.appendChild(el)
+    })
+
+    await waitFor(() => {
+      expect(el.textContent).toContain("<shiny-chat-raw-html>")
+    })
+    expect(el.querySelector("[data-forged]")).toBeNull()
+  })
+
   it("treats presence boolean attributes as enabled on connect", async () => {
     const el = document.createElement("shiny-markdown-stream")
     el.setAttribute("content", "streaming")
     el.setAttribute("streaming", "")
     document.body.appendChild(el)
 
-    await new Promise((resolve) => setTimeout(resolve, 0))
-
-    expect(el.querySelector(".markdown-stream-dot")).toBeTruthy()
+    await waitFor(() => {
+      expect(el.querySelector(".markdown-stream-dot")).toBeTruthy()
+    })
   })
 
   it("queues messages when api is null and dispatches them in order on API ready", () => {
@@ -140,11 +184,15 @@ describe("MarkdownStreamElement — pending message queue", () => {
       id: "x",
       content: "hello",
       operation: "append",
+      trusted: false,
+      segment_start: false,
     }
     const msg2: ContentMessage = {
       id: "x",
       content: " world",
       operation: "append",
+      trusted: false,
+      segment_start: false,
     }
     const msg3: IsStreamingMessage = { id: "x", isStreaming: false }
 
@@ -163,8 +211,8 @@ describe("MarkdownStreamElement — pending message queue", () => {
     simulateApiReady(api)
 
     expect(internals(el).pendingMessages).toHaveLength(0)
-    expect(api.appendContent).toHaveBeenNthCalledWith(1, "hello")
-    expect(api.appendContent).toHaveBeenNthCalledWith(2, " world")
+    expect(api.appendContent).toHaveBeenNthCalledWith(1, "hello", false, false)
+    expect(api.appendContent).toHaveBeenNthCalledWith(2, " world", false, false)
     expect(api.setStreaming).toHaveBeenCalledWith(false)
   })
 
@@ -179,6 +227,8 @@ describe("MarkdownStreamElement — pending message queue", () => {
       id: "x",
       content: "immediate",
       operation: "replace",
+      trusted: true,
+      segment_start: true,
     }
     const handle = el as unknown as {
       handleMessage: (m: ContentMessage | IsStreamingMessage) => void
@@ -186,7 +236,7 @@ describe("MarkdownStreamElement — pending message queue", () => {
     handle.handleMessage(msg)
 
     expect(internals(el).pendingMessages).toHaveLength(0)
-    expect(api.replaceContent).toHaveBeenCalledWith("immediate")
+    expect(api.replaceContent).toHaveBeenCalledWith("immediate", true)
   })
 
   it("preserves streamed content when moved to another container", async () => {
@@ -217,6 +267,8 @@ describe("MarkdownStreamElement — pending message queue", () => {
         id: "move-stream",
         content: " streamed",
         operation: "append",
+        trusted: false,
+        segment_start: false,
       })
     })
 
@@ -244,6 +296,8 @@ describe("MarkdownStreamElement — pending message queue", () => {
       id: "x",
       content: "queued",
       operation: "append",
+      trusted: false,
+      segment_start: false,
     }
     const handle = el as unknown as {
       handleMessage: (m: ContentMessage | IsStreamingMessage) => void

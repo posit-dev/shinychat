@@ -30,8 +30,11 @@ chat_ui(
 
 \item{...}{Extra HTML attributes to include on the chat element}
 
-\item{messages}{A list of messages to prepopulate the chat with. Each message
-can be one of the following:
+\item{messages}{Deprecated. A list of messages to prepopulate the chat with.
+Startup messages can't be recorded by the conversation-history feature.
+Use \code{greeting} for a startup message, \code{chat_append()} to replay messages
+from the server, or set \code{history = FALSE} in \code{\link[=chat_server]{chat_server()}} if you're
+managing conversation state yourself. Each message can be one of the following:
 \itemize{
 \item A string, which is interpreted as markdown and rendered to HTML on the
 client.
@@ -168,18 +171,6 @@ enter new messages.
 To respond to user input, listen for \code{input$ID_user_input} (for example, if
 \code{id="my_chat"}, user input will be at \code{input$my_chat_user_input}), and use
 \code{\link[=chat_append]{chat_append()}} to append messages to the chat.
-
-The chat also reports the client's current rendered message transcript as
-\code{input$ID_messages} (for example, \code{input$my_chat_messages}), tagged
-\code{shinychat.messages}. It updates every time a message finishes rendering
-or streaming (a "settle point"), and is a list of message objects:
-\code{list(role =, segments = list(list(content =, content_type =), ...))},
-plus optional \code{htmlDeps} and \code{attachments} fields when present.
-\code{\link[=chat_enable_history]{chat_enable_history()}} reads this internally to persist and restore
-exactly what was rendered — including raw HTML and Shiny UI dependencies —
-across a conversation switch or reload. It's exposed for advanced,
-read-only use (for example, custom logging or export); it is not an input
-you write to.
 }
 \section{Pairing with \code{chat_server()}}{
 
@@ -298,7 +289,7 @@ works -- it just won't have sub-section headings.
 
 The send button is a filled circle (24px by default) whose background
 color reflects the current state (primary when ready, gray when
-empty/disabled, danger when cancelling) with a white icon (18px by
+empty/disabled, danger when cancelling) with a white icon (22px by
 default) centered inside. The \code{icon_send} parameter swaps the
 ready-state icon without changing the button's surface.
 
@@ -357,7 +348,7 @@ variable resolves on the button itself:
 \strong{Key CSS variables:}
 \itemize{
 \item \code{--shiny-chat-btn-send-size} — Button width and height (default \verb{24px})
-\item \code{--shiny-chat-input-icon-size} — Icon size, shared with the attach button (default \verb{18px})
+\item \code{--shiny-chat-input-icon-size} — Icon size, shared with the attach button (default \verb{22px})
 \item \code{--shiny-chat-btn-send-bg} — Button background (default: state color)
 \item \code{--shiny-chat-btn-send-color} — Icon color (default: \verb{#fff})
 \item \code{--shiny-chat-btn-send-border} — Button border (default: \code{none})

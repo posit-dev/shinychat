@@ -38,18 +38,14 @@
 #'       card_header("Chat with Claude"),
 #'       chat_ui(
 #'         "claude",
-#'         messages = list(
-#'           "Hi! Use this chat interface to chat with Anthropic's `claude-3-5-sonnet`."
-#'         )
+#'         greeting = "Hi! Use this chat interface to chat with Anthropic's `claude-3-5-sonnet`."
 #'       )
 #'     ),
 #'     card(
 #'       card_header("Chat with ChatGPT"),
 #'       chat_ui(
 #'         "openai",
-#'         messages = list(
-#'           "Hi! Use this chat interface to chat with OpenAI's `gpt-4o`."
-#'         )
+#'         greeting = "Hi! Use this chat interface to chat with OpenAI's `gpt-4o`."
 #'       )
 #'     )
 #'   )
@@ -196,6 +192,12 @@ chat_app <- function(
   check_ellmer_chat(client)
   dots <- rlang::dots_list(...)
   check_chat_app_dots(dots)
+  if (!isFALSE(history) && !is.null(dots$messages)) {
+    cli::cli_abort(c(
+      "{.code chat_app(messages = ...)} requires {.code history = FALSE}: startup messages can't be recorded by the conversation-history feature.",
+      "Use the {.arg greeting} argument for a startup message, or set {.code history = FALSE} if you're managing conversation state yourself."
+    ))
+  }
   if (isFALSE(history) && !"sidebar" %in% rlang::names2(dots)) {
     dots$sidebar <- FALSE
   }
@@ -536,17 +538,17 @@ chat_server <- function(
     }
     client <<- new_client
 
-    # Capture the active conversation identity before re-registering
-    # history, but only for unsaved drafts: seeding a saved conversation's
-    # ID when init won't restore its record (restore_mode = "none", failed
-    # restore) would make the next save overwrite the stored record. Saved
-    # conversations get their ID back from the restore, or a fresh one on
-    # the next submission.
+    config <- if (isTRUE(history)) history_options() else history
+
+    # Preserve the active conversation across the controller replacement.
+    # A completed response has already created a record, while an in-progress
+    # draft has only an allocated ID.
     old_ctrl <- get_session_chat_bookmark_info(
       session,
       paste0(id, ".history-controller")
     )
-    active_id <- if (!is.null(old_ctrl) && is.null(old_ctrl$record)) {
+    active_record <- if (!is.null(old_ctrl)) old_ctrl$record else NULL
+    active_id <- if (!is.null(old_ctrl) && is.null(active_record)) {
       shiny::isolate(old_ctrl$conversation_id())
     } else {
       NULL
@@ -557,7 +559,6 @@ chat_server <- function(
     }
 
     cancel_history <<- if (!isFALSE(history)) {
-      config <- if (isTRUE(history)) history_options() else history
       chat_enable_history(
         id,
         client,
@@ -584,7 +585,12 @@ chat_server <- function(
     )
     history_controller(new_ctrl)
     if (!is.null(new_ctrl)) {
-      if (!is.null(active_id)) {
+      if (
+        !is.null(active_record) &&
+          !identical(config$restore_mode, "none")
+      ) {
+        new_ctrl$activate_record(active_record)
+      } else if (!is.null(active_id)) {
         new_ctrl$seed_conversation_id(active_id)
       }
       for (fn in saved_on_save_fns) {

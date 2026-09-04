@@ -5,7 +5,6 @@ import {
   initialState,
   routeToolBlocks,
   supersededRequestIds,
-  buildMessagesSnapshot,
   type ChatState,
   type ChatMessageData,
   type GreetingData,
@@ -1778,12 +1777,39 @@ describe("routeToolBlocks (tool content router)", () => {
     grouping: ToolGrouping = "tool",
   ): MessageBlock[] {
     return routeToolBlocks(
+      [{ type: "content", content, contentType: "html" }],
+      grouping,
+      "assistant",
+    )
+  }
+  // For content that is prose with fenced/inline tool-tag *examples* — real
+  // server output types this as markdown (it's model-authored prose, not
+  // server-authored tool markup). Markdown blocks are not routable, so the
+  // fence-detection path is what keeps the examples literal.
+  function routeMarkdown(
+    content: string,
+    grouping: ToolGrouping = "tool",
+  ): MessageBlock[] {
+    return routeToolBlocks(
       [{ type: "content", content, contentType: "markdown" }],
       grouping,
       "assistant",
     )
   }
   function routeStreaming(
+    content: string,
+    grouping: ToolGrouping = "tool",
+  ): MessageBlock[] {
+    return routeToolBlocks(
+      [{ type: "content", content, contentType: "html" }],
+      grouping,
+      "assistant",
+      true,
+    )
+  }
+  // Same as routeMarkdown but with the streaming shield flag (unclosed fence
+  // hides what follows it to EOF).
+  function routeMarkdownStreaming(
     content: string,
     grouping: ToolGrouping = "tool",
   ): MessageBlock[] {
@@ -1808,9 +1834,9 @@ describe("routeToolBlocks (tool content router)", () => {
 
   it("passes thinking blocks through unchanged and as loop boundaries", () => {
     const input: MessageBlock[] = [
-      { type: "content", content: res("1", "a"), contentType: "markdown" },
+      { type: "content", content: res("1", "a"), contentType: "html" },
       { type: "thinking", content: "hmm", streaming: false },
-      { type: "content", content: res("2", "a"), contentType: "markdown" },
+      { type: "content", content: res("2", "a"), contentType: "html" },
     ]
     const out = routeToolBlocks(input, "tool", "assistant")
     expect(out.map((b) => b.type)).toEqual([
@@ -1828,8 +1854,8 @@ describe("routeToolBlocks (tool content router)", () => {
     // `__anon-0`; once merged, "none" grouping collapsed them into one group.
     const out = routeToolBlocks(
       [
-        { type: "content", content: anonRes, contentType: "markdown" },
-        { type: "content", content: anonRes, contentType: "markdown" },
+        { type: "content", content: anonRes, contentType: "html" },
+        { type: "content", content: anonRes, contentType: "html" },
       ],
       "none",
       "assistant",
@@ -1844,19 +1870,19 @@ describe("routeToolBlocks (tool content router)", () => {
   it("leaves tool tags inside a code fence or inline code as literal prose", () => {
     const fenced =
       "Here is the protocol:\n\n```html\n" + res("1", "a") + "\n```\n"
-    expect(loops(route(fenced))).toHaveLength(0)
-    expect(route(fenced)).toEqual([
+    expect(loops(routeMarkdown(fenced))).toHaveLength(0)
+    expect(routeMarkdown(fenced)).toEqual([
       { type: "content", content: fenced, contentType: "markdown" },
     ])
 
     const inline = "Use `" + res("1", "a") + "` to render a result."
-    expect(loops(route(inline))).toHaveLength(0)
+    expect(loops(routeMarkdown(inline))).toHaveLength(0)
   })
 
   it("leaves tool tags inside a multi-backtick code span as literal prose", () => {
     // A span quoting a sample that itself contains a backtick needs ``…``.
     const doubled = "Write ``" + res("1", "a") + "`` verbatim."
-    expect(loops(route(doubled))).toHaveLength(0)
+    expect(loops(routeMarkdown(doubled))).toHaveLength(0)
   })
 
   it("does not let stray single backticks on separate lines swallow an element", () => {
@@ -1873,7 +1899,7 @@ describe("routeToolBlocks (tool content router)", () => {
     // example nested in a list item or blockquote is written.
     for (const pad of [" ", "  ", "   "]) {
       const fenced = `- Example:\n\n${pad}\`\`\`html\n${pad}${res("1", "a")}\n${pad}\`\`\`\n`
-      expect(loops(route(fenced))).toHaveLength(0)
+      expect(loops(routeMarkdown(fenced))).toHaveLength(0)
     }
   })
 
@@ -1888,17 +1914,30 @@ describe("routeToolBlocks (tool content router)", () => {
   it("closes a fence with a longer run of backticks", () => {
     // The closer only has to be at least as long as the opener.
     const fenced = "```html\n" + res("1", "a") + "\n````\n"
-    expect(loops(route(fenced))).toHaveLength(0)
+    expect(loops(routeMarkdown(fenced))).toHaveLength(0)
   })
 
   it("leaves tool tags inside a tilde fence as literal prose", () => {
     const fenced = "~~~html\n" + res("1", "a") + "\n~~~\n"
-    expect(loops(route(fenced))).toHaveLength(0)
+    expect(loops(routeMarkdown(fenced))).toHaveLength(0)
   })
 
   it("still routes a real tool element alongside a fenced example", () => {
-    const mixed = "```html\n" + res("1", "a") + "\n```\n\n" + res("2", "a")
-    const l = loops(route(mixed))
+    // The fenced example is model-authored prose (markdown); the real element
+    // is server-authored tool markup (html). Split into two ordered blocks so
+    // the fence-detection path keeps the example literal while the html block
+    // routes the real element.
+    const fenced = "```html\n" + res("1", "a") + "\n```\n\n"
+    const real = res("2", "a")
+    const blocks = routeToolBlocks(
+      [
+        { type: "content", content: fenced, contentType: "markdown" },
+        { type: "content", content: real, contentType: "html" },
+      ],
+      "tool",
+      "assistant",
+    )
+    const l = loops(blocks)
     expect(l).toHaveLength(1)
     expect(l[0]!.groups[0]!.calls.map((c) => c.requestId)).toEqual(["2"])
   })
@@ -1907,18 +1946,30 @@ describe("routeToolBlocks (tool content router)", () => {
     // Mid-stream the opening fence has arrived but its closer has not, so the
     // sample would otherwise flash into live tool UI for a few chunks.
     const partial = "Example:\n\n```html\n" + res("1", "a") + "\n"
-    expect(loops(routeStreaming(partial))).toHaveLength(0)
+    expect(loops(routeMarkdownStreaming(partial))).toHaveLength(0)
   })
 
   it("keeps the example as prose once its fence closes", () => {
     const complete = "Example:\n\n```html\n" + res("1", "a") + "\n```\n"
-    expect(loops(routeStreaming(complete))).toHaveLength(0)
+    expect(loops(routeMarkdownStreaming(complete))).toHaveLength(0)
   })
 
   it("still routes a real element outside any fence while streaming", () => {
     // The to-EOF rule must only shield text after an *unmatched* opener.
-    const mixed = "```html\n" + res("1", "a") + "\n```\n\n" + res("2", "a")
-    const l = loops(routeStreaming(mixed))
+    // Split: markdown prose with a closed fence (the example), then an html
+    // block with the real element, routed with the streaming shield flag.
+    const fenced = "```html\n" + res("1", "a") + "\n```\n\n"
+    const real = res("2", "a")
+    const blocks = routeToolBlocks(
+      [
+        { type: "content", content: fenced, contentType: "markdown" },
+        { type: "content", content: real, contentType: "html" },
+      ],
+      "tool",
+      "assistant",
+      true,
+    )
+    const l = loops(blocks)
     expect(l).toHaveLength(1)
     expect(l[0]!.groups[0]!.calls.map((c) => c.requestId)).toEqual(["2"])
   })
@@ -1936,9 +1987,19 @@ describe("routeToolBlocks (tool content router)", () => {
     // Preloaded/restored transcripts arrive as one markdown block and never
     // touch the streaming tag state machine, so they finalize (and route)
     // unshielded: one unbalanced ``` in prose must not hide the real tool
-    // calls after it.
-    const mixed = "Prose with a stray ```\n\nmore prose\n\n" + res("1", "a")
-    const l = loops(route(mixed))
+    // calls after it. Split: markdown prose with a stray fence, then an html
+    // block with the real element.
+    const prose = "Prose with a stray ```\n\nmore prose\n\n"
+    const real = res("1", "a")
+    const blocks = routeToolBlocks(
+      [
+        { type: "content", content: prose, contentType: "markdown" },
+        { type: "content", content: real, contentType: "html" },
+      ],
+      "tool",
+      "assistant",
+    )
+    const l = loops(blocks)
     expect(l).toHaveLength(1)
     expect(l[0]!.groups[0]!.calls.map((c) => c.requestId)).toEqual(["1"])
   })
@@ -1968,7 +2029,7 @@ describe("routeToolBlocks (tool content router)", () => {
     const msg = makeAssistantMsg({
       streaming: true,
       content,
-      blocks: [{ type: "content", content, contentType: "markdown" }],
+      blocks: [{ type: "content", content, contentType: "html" }],
     })
     const next = chatReducer(makeState({ streamingMessage: msg }), {
       type: "chunk_end",
@@ -2316,8 +2377,8 @@ describe("routeToolBlocks (tool content router)", () => {
 
   it("merges adjacent tool loops that share a content type into one loop", () => {
     const input: MessageBlock[] = [
-      { type: "content", content: res("1", "X"), contentType: "markdown" },
-      { type: "content", content: res("2", "X"), contentType: "markdown" },
+      { type: "content", content: res("1", "X"), contentType: "html" },
+      { type: "content", content: res("2", "X"), contentType: "html" },
     ]
     const blocks = routeToolBlocks(input, "tool", "assistant")
     expect(blocks.map((b) => b.type)).toEqual(["tool_loop"])
@@ -2326,28 +2387,32 @@ describe("routeToolBlocks (tool content router)", () => {
   })
 
   it("does NOT merge adjacent tool loops from segments with different content types", () => {
+    // Only "html" is routable now, so a non-routable content type (e.g. "text")
+    // carrying tool markup stays as a content block — it must not merge with a
+    // neighboring html tool loop. This guards the content-type boundary that
+    // keeps loops from segments of different types separate.
     const input: MessageBlock[] = [
-      { type: "content", content: res("1", "X"), contentType: "markdown" },
-      { type: "content", content: res("2", "X"), contentType: "html" },
+      { type: "content", content: res("1", "X"), contentType: "html" },
+      { type: "content", content: res("2", "X"), contentType: "text" },
     ]
     const blocks = routeToolBlocks(input, "tool", "assistant")
-    expect(blocks.map((b) => b.type)).toEqual(["tool_loop", "tool_loop"])
-    expect((blocks[0] as ToolLoopBlock).contentType).toBe("markdown")
-    expect((blocks[1] as ToolLoopBlock).contentType).toBe("html")
-    // Each loop keeps only its own call, rather than the two being combined.
+    expect(blocks.map((b) => b.type)).toEqual(["tool_loop", "content"])
+    expect((blocks[0] as ToolLoopBlock).contentType).toBe("html")
+    // The html loop keeps only its own call.
     expect(
       (blocks[0] as ToolLoopBlock).groups.flatMap((g) => g.calls),
     ).toHaveLength(1)
-    expect(
-      (blocks[1] as ToolLoopBlock).groups.flatMap((g) => g.calls),
-    ).toHaveLength(1)
+    // The text block is not routed — its tool markup stays as content.
+    expect((blocks[1] as { type: string; content: string }).content).toBe(
+      res("2", "X"),
+    )
   })
 
   it("a thinking block between loops keeps them separate, at every mode", () => {
     const input: MessageBlock[] = [
-      { type: "content", content: res("1", "X"), contentType: "markdown" },
+      { type: "content", content: res("1", "X"), contentType: "html" },
       { type: "thinking", content: "hmm", streaming: false },
-      { type: "content", content: res("2", "X"), contentType: "markdown" },
+      { type: "content", content: res("2", "X"), contentType: "html" },
     ]
     for (const grouping of ["tool", "all"] as const) {
       const blocks = routeToolBlocks(input, grouping, "assistant")
@@ -2430,7 +2495,7 @@ describe("routeToolBlocks (tool content router)", () => {
             {
               type: "content",
               content: requestThenResult,
-              contentType: "markdown",
+              contentType: "html",
             },
           ],
           "tool",
@@ -2445,7 +2510,7 @@ describe("routeToolBlocks (tool content router)", () => {
   describe("role gate", () => {
     const typed = `${req("1", "search")}${res("1", "search")}`
     const userBlocks: MessageBlock[] = [
-      { type: "content", content: typed, contentType: "markdown" },
+      { type: "content", content: typed, contentType: "html" },
     ]
 
     it("does not route tool elements a user typed", () => {
@@ -2484,7 +2549,7 @@ describe("routeToolBlocks (tool content router)", () => {
       expect(loops(out)).toHaveLength(0)
     })
 
-    it.each(["markdown", "html"] as const)(
+    it.each(["html"] as const)(
       'still routes a "%s"-typed block',
       (contentType) => {
         const out = routeToolBlocks(
@@ -2517,6 +2582,27 @@ describe("supersededRequestIds", () => {
       streaming: false,
       ...overrides,
       blocks: routeToolBlocks(
+        [{ type: "content", content, contentType: "html" }],
+        "tool",
+        role,
+      ),
+    }
+  }
+
+  // Same as routed() but for markdown-typed prose (e.g. a fenced tool-tag
+  // example). Markdown is not routable, so the router leaves it as content.
+  function routedMarkdown(
+    content: string,
+    overrides: Partial<ChatMessageData> = {},
+  ): ChatMessageData {
+    const role = overrides.role ?? "assistant"
+    return {
+      id: "m",
+      role: "assistant",
+      content,
+      streaming: false,
+      ...overrides,
+      blocks: routeToolBlocks(
         [{ type: "content", content, contentType: "markdown" }],
         "tool",
         role,
@@ -2535,7 +2621,7 @@ describe("supersededRequestIds", () => {
       role: "assistant",
       content,
       streaming: true,
-      blocks: [{ type: "content", content, contentType: "markdown" }],
+      blocks: [{ type: "content", content, contentType: "html" }],
       ...overrides,
     }
   }
@@ -2584,7 +2670,7 @@ describe("supersededRequestIds", () => {
     const ids = supersededRequestIds(
       [
         routed(request("req-1")),
-        routed("```html\n" + result("req-1") + "\n```"),
+        routedMarkdown("```html\n" + result("req-1") + "\n```"),
       ],
       null,
     )
@@ -2623,7 +2709,7 @@ describe("toolGrouping state wiring (Phase 1)", () => {
       type: "message",
       message: {
         role: "assistant",
-        segments: [{ content: twoTools, content_type: "markdown" }],
+        segments: [{ content: twoTools, content_type: "html" }],
       },
     })
     const groups = loopGroups(next.messages[0]!)
@@ -2637,7 +2723,7 @@ describe("toolGrouping state wiring (Phase 1)", () => {
       type: "message",
       message: {
         role: "assistant",
-        segments: [{ content: twoTools, content_type: "markdown" }],
+        segments: [{ content: twoTools, content_type: "html" }],
       },
     })
     const groups = loopGroups(next.messages[0]!)
@@ -2656,7 +2742,7 @@ describe("toolGrouping state wiring (Phase 1)", () => {
         type: "message",
         message: {
           role: "assistant",
-          segments: [{ content: twoTools, content_type: "markdown" }],
+          segments: [{ content: twoTools, content_type: "html" }],
         },
       })
     }
@@ -2745,50 +2831,5 @@ describe("html_deps retention", () => {
     s = chatReducer(s, { type: "chunk_end" })
     const last = s.messages[s.messages.length - 1]!
     expect(last.htmlDeps).toEqual([dep])
-  })
-})
-
-describe("buildMessagesSnapshot", () => {
-  it("maps settled messages to wire segments and excludes placeholders/streaming", () => {
-    let s = chatReducer(initialState, {
-      type: "message",
-      message: {
-        role: "user",
-        segments: [{ content: "hello", content_type: "markdown" }],
-      },
-    })
-    // a streaming message must NOT appear
-    s = chatReducer(s, {
-      type: "chunk_start",
-      message: { role: "assistant", segments: [] },
-    })
-    const snap = buildMessagesSnapshot(s)
-    expect(snap).toEqual([
-      {
-        role: "user",
-        segments: [{ content: "hello", content_type: "markdown" }],
-      },
-    ])
-  })
-
-  it("emits thinking blocks with content_type 'thinking' and carries htmlDeps", () => {
-    const dep: HtmlDep = { name: "w", version: "1" }
-    const s = chatReducer(initialState, {
-      type: "message",
-      message: {
-        role: "assistant",
-        segments: [
-          { content: "reasoning", content_type: "thinking" },
-          { content: "answer", content_type: "markdown" },
-        ],
-      },
-      html_deps: [dep],
-    })
-    const snap = buildMessagesSnapshot(s)
-    expect(snap[0]!.segments).toEqual([
-      { content: "reasoning", content_type: "thinking" },
-      { content: "answer", content_type: "markdown" },
-    ])
-    expect(snap[0]!.htmlDeps).toEqual([dep])
   })
 })

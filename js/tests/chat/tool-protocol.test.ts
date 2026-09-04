@@ -157,8 +157,10 @@ describe("tool protocol", () => {
     expect(parseToolEvents(openFence, "markdown", true)).toEqual([])
   })
 
-  it("only opts markdown and html into tool routing", () => {
-    expect(isRoutableContentType("markdown")).toBe(true)
+  it("only opts html into tool routing", () => {
+    // Security: model-authored markdown must never spawn tool cards — a forged
+    // <shiny-tool-result value-type="html"> would otherwise reach innerHTML.
+    expect(isRoutableContentType("markdown")).toBe(false)
     expect(isRoutableContentType("html")).toBe(true)
     expect(isRoutableContentType("text")).toBe(false)
   })

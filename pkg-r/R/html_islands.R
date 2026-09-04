@@ -44,6 +44,45 @@ split_html_islands <- function(content) {
   result
 }
 
+#' Split mixed content into ordered provenance runs
+#'
+#' Plain character values may contain model output and are untrusted.
+#' HTML()-marked strings and tags are server-authored UI and trusted.
+#'
+#' @param content Content accepted by htmltools.
+#' @return A list of lists containing `trusted` and `content`.
+#' @noRd
+split_content_by_trust <- function(content) {
+  if (inherits(content, "shiny.tag.list")) {
+    children <- as.list(content)
+  } else {
+    children <- list(content)
+  }
+
+  is_trusted <- vapply(
+    children,
+    function(child) !(is.character(child) && !inherits(child, "html")),
+    logical(1)
+  )
+  if (length(children) == 0) {
+    return(list(list(trusted = FALSE, content = "")))
+  }
+
+  group_id <- cumsum(c(TRUE, diff(is_trusted) != 0))
+  groups <- split(children, group_id)
+  unname(lapply(groups, function(group) {
+    trusted <- !(is.character(group[[1]]) && !inherits(group[[1]], "html"))
+    list(
+      trusted = trusted,
+      content = if (trusted) {
+        do.call(htmltools::tagList, group)
+      } else {
+        paste0(unlist(group, use.names = FALSE), collapse = "")
+      }
+    )
+  }))
+}
+
 has_react_attr <- function(child) {
   if (!inherits(child, "shiny.tag")) {
     return(FALSE)

@@ -35,15 +35,35 @@ output_markdown_stream <- function(
   width = "min(680px, 100%)",
   height = "auto"
 ) {
-  # `content` is most likely a string, so avoid overhead in that case
-  # (it's also important that we *don't escape HTML* here).
-  if (is.character(content)) {
-    ui <- list(html = paste(content, collapse = "\n"))
-  } else {
-    ui <- with_current_theme({
-      htmltools::renderTags(pre_process_ui(content))
-    })
-  }
+  segments <- lapply(split_content_by_trust(content), function(segment) {
+    if (segment$trusted) {
+      ui <- with_current_theme({
+        htmltools::renderTags(pre_process_ui(segment$content))
+      })
+    } else {
+      ui <- list(
+        html = as.character(segment$content),
+        dependencies = list()
+      )
+    }
+    list(
+      text = ui[["html"]],
+      trusted = segment$trusted,
+      dependencies = ui[["dependencies"]]
+    )
+  })
+  rendered_content <- paste0(
+    vapply(segments, `[[`, character(1), "text"),
+    collapse = ""
+  )
+  dependencies <- unlist(
+    lapply(segments, `[[`, "dependencies"),
+    recursive = FALSE
+  )
+  fallback_trusted <- length(segments) == 1 && isTRUE(segments[[1]]$trusted)
+  encoded_segments <- lapply(segments, function(segment) {
+    list(text = segment$text, trusted = segment$trusted)
+  })
 
   htmltools::tag(
     "shiny-markdown-stream",
@@ -54,11 +74,16 @@ output_markdown_stream <- function(
         height = height,
         margin = "0 auto"
       ),
-      content = ui[["html"]],
+      content = rendered_content,
       "content-type" = content_type,
+      "content-segments" = jsonlite::toJSON(
+        encoded_segments,
+        auto_unbox = TRUE
+      ),
+      "content-trusted" = if (fallback_trusted) "true" else "false",
       "auto-scroll" = if (auto_scroll) "" else NULL,
       ...,
-      ui[["dependencies"]],
+      dependencies,
       shinychat_deps()
     )
   )
@@ -169,7 +194,12 @@ rlang::on_load(
     }
 
     if (operation == "replace") {
-      send_stream_message(content = "", operation = "replace")
+      send_stream_message(
+        content = "",
+        operation = "replace",
+        trusted = FALSE,
+        segment_start = TRUE
+      )
     }
 
     send_stream_message(isStreaming = TRUE)
@@ -186,18 +216,25 @@ rlang::on_load(
         break
       }
 
-      if (is.character(msg)) {
-        # content is most likely a string, so avoid overhead in that case
-        ui <- list(html = msg, deps = "[]")
-      } else {
-        ui <- process_ui(pre_process_ui(msg), session)
-      }
+      segments <- split_content_by_trust(msg)
+      composite <- !(is.character(msg) && !inherits(msg, "html")) ||
+        length(segments) > 1
+      for (index in seq_along(segments)) {
+        segment <- segments[[index]]
+        if (segment$trusted) {
+          ui <- process_ui(pre_process_ui(segment$content), session)
+        } else {
+          ui <- list(html = as.character(segment$content), deps = "[]")
+        }
 
-      send_stream_message(
-        content = ui[["html"]],
-        operation = "append",
-        html_deps = ui[["deps"]]
-      )
+        send_stream_message(
+          content = ui[["html"]],
+          operation = "append",
+          html_deps = ui[["deps"]],
+          trusted = segment$trusted,
+          segment_start = composite || index > 1
+        )
+      }
     }
 
     invisible(NULL)

@@ -176,16 +176,16 @@ chat <- ellmer::chat_ollama(system_prompt = "You are a helpful assistant")
 
 To learn more about writing system prompts, see ellmer's [Prompt design](https://ellmer.tidyverse.org/articles/prompt-design.html) vignette. Generally, we recommend writing the system prompt in a separate markdown file, but if your prompt is short you can also supply it directly as a string to the `system_prompt` argument.
 
-### Add messages and suggestions
+### Add greetings and suggestions
 
 #### On startup
 
-You can specify messages to show when the chat first loads by using `chat_ui()`'s `messages` argument. You can use markdown or HTML to format these messages.
+To show a greeting when the chat first loads, set the `greeting` argument of `chat_ui()` or `page_chat()`. You can format the greeting with markdown or HTML.
 
 ```r
 chat_ui(
     id = "chat",
-    messages = "**Hello!** How can I help you today?"
+    greeting = "**Hello!** How can I help you today?"
 )
 ```
 
@@ -193,10 +193,10 @@ chat_ui(
 knitr::include_graphics("images/chat-messages.png")
 ```
 
-You can also suggest inputs to the user by adding the `suggestion` CSS class to the relevant portions of the message. Similarly, use the `submit` class to make clicking on the suggestion submit the input automatically.
+You can also suggest inputs to the user by adding the `suggestion` CSS class to the relevant portions of the greeting. Similarly, use the `submit` class to make clicking on the suggestion submit the input automatically.
 
 ```r
-messages <-
+greeting <-
   '
   **Hello!** How can I help you today?
 
@@ -209,7 +209,7 @@ messages <-
 ui <- bslib::page_fillable(
   chat_ui(
     id = "chat",
-    messages = messages
+    greeting = greeting
   )
 )
 ```
@@ -220,7 +220,7 @@ knitr::include_graphics("images/chat-suggestions.png")
 
 A markdown list (`<ul>` or `<ol>`) in which every item contains a single suggestion element is automatically rendered as a grid of clickable cards instead of inline chips. Each suggestion accepts an optional `title` attribute (plain text), which becomes the card heading; the suggestion's body becomes the card description. For ordered lists (`<ol>`), the list-item number is included in the heading.
 
-Messages can also contain arbitrary Shiny UI [components](https://shiny.posit.co/r/components/), so you could even include something like a [tooltip](https://shiny.posit.co/r/components/display-messages/tooltips/) to provide additional details on demand.
+Greetings can also contain arbitrary Shiny UI [components](https://shiny.posit.co/r/components/). For example, include a [tooltip](https://shiny.posit.co/r/components/display-messages/tooltips/) to provide more details on demand.
 
 #### Mid-conversation
 
@@ -262,7 +262,7 @@ artifact_content <- function(label) {
 
 ui <- page_chat(
   "Assistant",
-  messages = "Welcome! Ask a question to get started.",
+  greeting = "Welcome! Ask a question to get started.",
   toolbar = bslib::toolbar(
     actionButton("show_preview", "Show preview")
   ),
@@ -339,7 +339,7 @@ content or when you need to compose the chat with an existing `bslib` layout.
 
 ```r
 ui <- bslib::page_fillable(
-  chat_ui("chat", messages = "Welcome!"),
+  chat_ui("chat", greeting = "Welcome!"),
   fillable_mobile = TRUE
 )
 ```
@@ -390,9 +390,7 @@ ui <- bslib::page_sidebar(
   sidebar = sidebar(
     chat_ui(
       "chat",
-      messages = list(
-        "Welcome! Here is a <span class='suggestion'>suggestion</span>."
-      ),
+      greeting = "Welcome! Here is a <span class='suggestion'>suggestion</span>.",
       height = "100%"
     ),
     width = 300,
@@ -437,7 +435,7 @@ ui <- page_fillable(
     ),
     chat_ui(
       id = "chat",
-      messages = "Hello! How can I help you today?"
+      greeting = "Hello! How can I help you today?"
     )
   ),
   fillable_mobile = TRUE
