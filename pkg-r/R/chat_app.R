@@ -100,6 +100,13 @@
 #'       changing the message in the chat UI or `last_input`. Callbacks run in
 #'       registration order. Slash commands are not transformed: the command's
 #'       handler owns the transformation for its submissions.
+#'
+#'       ```r
+#'       chat$transform_user_input(function(contents) {
+#'         context <- retrieve_context(contents)
+#'         c(list(context), contents)
+#'       })
+#'       ```
 #'     * `update_user_input()`: A function to update the chat input or submit a
 #'       new user input. Takes the same arguments as [update_chat_user_input()],
 #'       except for `id` and `session`, which are supplied automatically.
