@@ -7,7 +7,6 @@
 ^_pkgdown\.yml$
 ^docs$
 ^pkgdown$
-^vignettes*
 ^_dev$
 ^cran-comments\.md$
 ^CRAN-SUBMISSION$
@@ -15,4 +14,5 @@
 ^revdep$
 ^shiny_bookmarks$
 ^vignettes/articles$
+^vignettes/scripts$
 ^inst/lib/shiny/.*\.map$

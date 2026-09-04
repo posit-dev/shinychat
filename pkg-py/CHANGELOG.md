@@ -7,49 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [UNRELEASED]
 
+### API additions
+
+* Several features under *New features* below — most notably message editing — build on the conversation history that `Chat(client=...)` (the recommended setup) enables automatically.
+
+* Added `page_chat()` for full-window chat pages with persistent chat navigation, responsive sidebars, and drawers, including a Shiny Express adapter. Register secondary pages with `chat_nav_panel()`, configure sidebars with `chat_sidebar()`, and add a drawer with `chat_drawer()`, controllable from the server via `chat.drawer.show()`, `.update()`, `.hide()`, and `.toggle()`. Related additions: `chat_ui_history()` for mounting conversation history outside the chat, a `page_chat_theme()` baseline theme, and `drawer`/`show_history` options on `chat_ui()`. (#329)
+    * The page shell also supports standard Shiny programmatic navigation (e.g. `shiny.ui.update_navset()`), with the active page readable server-side as `input["<id>_page"]()`.
+
+* Added `chat.get_greeting()` for reading the current greeting (and whether the user dismissed it) from the server, along with a new `{id}_greeting_dismissed` input event. Server-set greetings now also survive bookmarking round-trips. (#254)
+
 ### New features
 
-* `Chat.transform_user_input` lets an app add per-message context before content
-  reaches the chat client. The function receives the submitted contents and
-  returns the contents to send. The chat UI and `Chat.user_input()` continue to
-  show the user's original message. (#376)
+* `Chat.transform_user_input()` lets an app add per-message context before content reaches the chat client. The function receives the submitted contents (the arguments for the client's `stream_async()` method) and returns the contents to send, and can be used as a direct decorator or called with arguments. The chat UI and `Chat.user_input()` continue to show the user's original message. (#376)
 
-* Conversations now have a stable, publicly accessible ID, available reactively via `chat.history.conversation_id()` (`None` when history is disabled or the chat is still empty). The ID is stable across retries, restores, conversation switches, and `chat.client.set()` calls, and becomes the saved `ConversationRecord.id`. The ID is also handed to the chat client, which records it as the standard `gen_ai.conversation.id` attribute on its own OpenTelemetry spans ([OTel GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/)), so telemetry consumers can group model work by conversation. (#307)
+* You can now edit and resend a message after sending it. Editing forks the conversation from that point — the original branch is kept as a sibling, and `‹ 1 / 2 ›` controls let you switch between versions at any time, including after reloading the page or returning from the history drawer. Requires history to be enabled (the default when using `client=`). (#269)
 
-* Chatlas web search and web fetch responses now show their activity and citations directly in the chat. Readers can open a citation beside its claim or use the message-wide Sources pill. `ContentCitation.grounded_span` links each citation to the answer text that it supports.
+* Conversation history gained a stable, reactive conversation ID via `chat.history.conversation_id()` (also emitted on OpenTelemetry spans as `gen_ai.conversation.id`, so telemetry can group model work by conversation) and a programmatic `chat.history.save()` for saving the active conversation on demand. (#307, #328)
 
-* Assistant messages can now attach source details to specific claims with the `<shiny-aside>` markup convention. This convention powers shinychat's web citations and can also support custom RAG workflows. Add an inline `<shiny-aside>` tag with source details and an optional `grounded-span`. Shinychat shows a compact source pill and highlights the related text when the pill is open. See the `Asides` callout in the `append_message` and `append_message_stream` documentation.
+* Chatlas web search and web fetch responses now show their activity and citations directly in the chat. Readers can open a citation beside its claim or use the message-wide Sources pill. `ContentCitation.grounded_span` links each citation to the answer text it supports. (#280)
+    * Citations are powered by a new `<shiny-aside>` markup convention that any assistant message can use to attach source details to specific claims — useful for custom RAG workflows. See the `Asides` callout in the `append_message` and `append_message_stream` documentation. (#278)
 
-* You can now edit a message you already sent, instead of only being able to send a new one. Hover a user message (or press and hold on a touch device) and click the pencil icon to open an inline editor (pre-filled with the original text and attachments); press Enter (or Cmd/Ctrl+Enter, depending on `submit_key`) to save and resend, or Escape to cancel. Editing forks the conversation from that point — the original branch isn't lost, it's kept as a sibling. `‹ 1 / 2 ›`-style controls appear on any message with more than one version, letting you step back and forth between them at any time, including after reloading the page or returning from the history drawer. Requires history to be enabled (the default when using `client=`). (#269)
+* Tool call displays have been reworked to be more concise and to intelligently group multiple calls together. By default, calls render as a condensed activity row; expand a group row to see each call, then drill into a call for its full request/result card. (#283)
+    * `ToolResultDisplay` gained `label` (a short per-call identifying value, e.g. a filename or query) and `value_preview` (a terse peek at the result, e.g. "1,204 rows"), both shown in the activity row and expanded call list.
+    * A tool's definition `title` (from its annotations) and its result `title` (from `ToolResultDisplay`) are now shown as-is, without client-side tense conjugation — the old `"Running {title}"` / `"{title} failed"` templates are gone. The definition title shows while the call is running; for a single-call row, the result title (if provided) replaces it when the result arrives, and failures are shown via a separate status cue. If a title now reads oddly while running, write it in the present tense (e.g. "Running code").
+    * Control grouping with the `tool_grouping` parameter of `chat_ui()` / `Chat.ui()`: `"tool"` (default) groups calls to the same tool within a tool-calling loop, `"all"` groups every call in the loop together, and `"none"` shows one activity row per call (thinking or prose starts a new loop). Individual tools can override the chat-level setting via a `grouping` tool annotation — for chatlas tools, set it under `annotations={"extra": {"grouping": ...}}`.
+    * Set `open_style="framed"` on a tool result display to draw a border around an open tool result's header and contents — a better fit for results with a footer or fullscreen toggle. (#331)
+    * Fully custom `ContentToolResult` UI returned through a `message_content()` or `message_content_chunk()` handler now pairs with its tool request: while the tool runs it appears in the activity row, and once the result arrives the custom UI renders as standalone output. This works for streamed messages, static preloads, and restored conversations without changes to existing handlers.
 
-* Tool calls now render as a condensed activity row by default. Expand a group row to see each individual call, then drill into a call to see its full request/result card. `ToolResultDisplay` gained `label` (a short per-call identifying value, e.g. a filename or query) and `value_preview` (a terse peek at the result, e.g. "1,204 rows"), both shown in the activity row and expanded call list.
+* The send button is easier to customize: a new `icon_send` parameter on `chat_ui()`/`Chat.ui()` swaps the submit icon, and a `data-state` attribute exposes the button's current state for styling. (#350)
 
-* Added `tool_grouping` to `chat_ui()` / `Chat.ui()`: `"tool"` (default) groups calls to the same tool within a tool-calling loop (order-independent, not just consecutive calls); `"all"` groups every call in the loop together; `"none"` shows one activity row per call. Prose and thinking start a new loop. Individual tools can override `"tool"` or `"all"` via a `grouping` tool annotation -- for chatlas tools, set it under `annotations={"extra": {"grouping": ...}}`. Chat-level `"none"` always disables grouping.
+* Styling is more customizable via CSS custom properties: the set of public `--shiny-chat-*` variables has grown to cover the send button, history drawer, page layout, thinking display, and more, and all of them can now be overridden from `:root` (previously, element-level defaults always won). (#350, #355)
 
-* Fully custom `ContentToolResult` UI returned through a `message_content()` or `message_content_chunk()` handler now settles its pending tool activity row and renders as standalone output. This preserves the custom UI for streamed messages, static preloads, and restored conversations without requiring changes to existing handlers.
+* Single tildes no longer trigger strikethrough in markdown. Text like `(~$1.50)` and `~/Documents` now renders as literal text; only `~~text~~` produces strikethrough. (#349, #353)
 
-* `page_chat()` now supports standard Shiny programmatic navigation. The page shell's root element carries the derived ID `"<id>_page"`, so `shiny.ui.update_navset()` works against it. The active page is readable server-side as `input["<id>_page"]()` (`"__home__"` when the chat home is active).
+### Breaking changes
+
+* The `messages` parameter is deprecated in favor of the conversation-history feature. `Chat(messages=...)` now errors when history is enabled (the default), and `chat_ui(messages=...)` warns. Use `greeting` for a startup message, `Chat.append_message()` to replay messages, or `history=False` if you manage state yourself. (#381)
+
+* CSS classes and custom properties used by the external-link dialog, thinking display, and tool-result images/PDFs now use the `.shiny-chat-*` prefix instead of `.shinychat-*`. Update any custom CSS that targets these identifiers. (#285, #286)
 
 ### Changes
 
-* `chat_ui()` and `Chat.ui()` now use a wider default content width on large
-  displays while preserving their existing width on smaller windows. (#364)
-
 * `chat_ui()` / `Chat.ui()` and `page_chat()` no longer show an assistant icon by default. Pass `icon_assistant=True` to restore the built-in robot icon, or supply your own icon as before. (#345)
 
-* The CSS classes used by the external-link dialog, thinking display, and tool-result images/PDFs now use the `.shiny-chat-*` prefix instead of `.shinychat-*`. The thinking display's custom properties and animation names have likewise changed from `--shinychat-thinking-*` / `shinychat-thinking-*` to `--shiny-chat-thinking-*` / `shiny-chat-thinking-*`. Update any custom CSS that targets these identifiers. (#285, #286)
+* `chat_ui()` and `Chat.ui()` now use a wider default content width on large displays while preserving their existing width on smaller windows. (#364)
 
-* A tool's definition `title` (from its annotations) and its result `title` (from `ToolResultDisplay`) are now shown as-is, without any client-side tense conjugation. The definition title is shown while the call is running and labels multi-call groups. For a single-call row, the result title (if provided) replaces it when the result arrives; in a multi-call group, a distinct result title can identify that call in the expanded list. The old `"Running {title}"` / `"{title} failed"` client-side title template has been removed. If a tool's title reads oddly while running now that the automatic "Running " prefix is gone, write an explicit present-tense definition title (e.g. "Running R code") and, optionally, a past-tense result title (e.g. "Ran R code"). Failures are shown via a separate status cue (a "failed"/"N failed" note and icon) rather than appended to the title.
+* The history drawer now orders conversations by creation time instead of last update, so simply opening an older conversation no longer moves it to the top of the list. (#372)
 
-* The `messages` parameter is deprecated in favor of the conversation-history feature. `Chat(messages=...)` now errors when history is enabled (the default); use `greeting` for a startup message, `Chat.append_message()` to replay messages, or `history=False` if you manage state yourself.
+* `FileConversationStore` now writes conversation records atomically and tolerates damaged journal entries (with a warning), so a failed save can no longer leave a conversation half-written. (#359)
 
 ### Bug fixes
 
+* Fixed a security issue where model-authored Markdown could create or escape into shinychat's raw-HTML islands (`<shiny-chat-raw-html>`), potentially injecting arbitrary HTML into the page. As part of this, `MarkdownStream` now tracks which parts of a mixed value (e.g. `TagList("## markdown", div("html"))`) are trusted server-rendered HTML versus untrusted text. (#287, #360)
+
 * Attachment data URLs must now use the declared MIME type and a valid base64 header. PDF previews are also restricted to PDF content and rendered in a sandboxed iframe, preventing mismatched attachment data from being interpreted as active HTML. (#325)
 
-* Fixed `MarkdownStream` permanently stopping following new content after the user scrolled back to the bottom. Pinning was decided only from `scroll` events, which browsers dispatch asynchronously; if a chunk grew the container first, the user's at-bottom position no longer read as at-bottom and auto-scroll silently disengaged for good. (#282)
+* Fixed slash command handlers that stream a response asynchronously never showing the response: the loading indicator vanished and the turn looked finished, but no message appeared. (#336, #354)
 
-* Single tildes no longer trigger strikethrough in markdown. Text like `(~$1.50)` and `~/Documents` now renders as literal text; only `~~text~~` produces strikethrough. (#349, #353)
+* Fixed expanding or collapsing a tool result yanking the chat's scroll position away from what you were reading. (#348)
+
+* Fixed chat history failing to initialize over plain HTTP (non-localhost) deployments, where `crypto.randomUUID()` is unavailable. (#367, #368)
+
+* Fixed the greeting being shown while a conversation history restore was still pending: on hosted deployments, reloading into an existing conversation could show the greeting for the full restore latency before it was replaced. (#371)
+
+* Fixed `Attachment.from_path()`/`from_url()` resolving some text file extensions (e.g. `.md`, `.qmd`, `.rmd`) to the wrong MIME type depending on the platform. (#366)
+
+* Fixed a `Chat` reconstructed with the same ID (e.g. after dynamic UI re-renders) leaving the previous instance's history handlers active, causing both to race on the same chat. (#365)
+
+* Fixed `append_message()` calls made inside a bare `message_stream_context()` never reaching the browser. (#358)
+
+* Fixed control-only inputs (the cancel button, slash command triggers, and the greeting-requested signal) leaking into bookmarked state. (#258, #259)
+
+* Fixed Pydantic serializer warnings when saving rich chat messages with HTML dependencies. (#330)
+
+* Fixed the chat input reserving space for the attachment button when attachments are disabled. (#256, #257)
+
+* Fixed focus jumping back to the chat input instead of staying on a newly staged attachment. (#352, #356)
+
+* Fixed `MarkdownStream` permanently stopping following new content after the user scrolled back to the bottom. (#282)
 
 ## [0.6.1] - 2026-08-14
 
