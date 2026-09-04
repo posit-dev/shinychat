@@ -238,7 +238,7 @@ chat_greeting <- function(
 #' ready-state icon without changing the button's surface.
 #'
 #' **Custom icon.** Pass an SVG from [bsicons::bs_icon()] or
-#' [faicons::icon_svg()]. The button provides the surface, so a bare glyph
+#' `fontawesome::fa()`. The button provides the surface, so a bare glyph
 #' gets the same filled-circle treatment as the default arrow:
 #'
 #' ```r
@@ -1693,7 +1693,7 @@ chat_append_stream <- function(
   result
 }
 
-utils:::globalVariables(c("generator_env", "exits", "yield"))
+utils::globalVariables(c("generator_env", "exits", "yield"))
 
 chat_append_stream_impl <- NULL
 rlang::on_load(

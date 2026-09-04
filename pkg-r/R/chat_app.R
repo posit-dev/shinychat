@@ -285,7 +285,7 @@ check_chat_app_dots <- function(dots) {
   cli::cli_abort(
     c(
       "{.fn chat_app} no longer passes {.arg ...} to {.fn shiny::shinyApp}.",
-      setNames(migration[legacy_args], rep("i", length(legacy_args)))
+      stats::setNames(migration[legacy_args], rep("i", length(legacy_args)))
     ),
     call = rlang::caller_env()
   )
