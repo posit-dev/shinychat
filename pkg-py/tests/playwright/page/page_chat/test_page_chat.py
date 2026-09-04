@@ -18,7 +18,11 @@ def open_page(
     toolbar_input: bool = False,
 ) -> tuple[ChatController, PageChatController]:
     page.set_viewport_size({"width": viewport[0], "height": viewport[1]})
-    url = f"{local_app.url}?toolbar_input=true" if toolbar_input else local_app.url
+    url = (
+        f"{local_app.url}?toolbar_input=true"
+        if toolbar_input
+        else local_app.url
+    )
     page.goto(url)
     chat = ChatController(page, "chat")
     page_chat = PageChatController(page, "chat")
@@ -175,7 +179,10 @@ def test_page_chat_toolbar_input_aligns_with_composer_and_footer_is_pinned(
     assert toolbar_box["x"] == pytest.approx(input_box["x"], abs=1)
     toolbar_gap = toolbar_box["y"] - (input_box["y"] + input_box["height"])
     assert 4 <= toolbar_gap <= 8
-    assert footer_box["y"] + footer_box["height"] <= chat_box["y"] + chat_box["height"]
+    assert (
+        footer_box["y"] + footer_box["height"]
+        <= chat_box["y"] + chat_box["height"]
+    )
     assert footer_box["y"] + footer_box["height"] >= (
         chat_box["y"] + chat_box["height"] - 32
     )
@@ -729,9 +736,9 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
     assert footer_box is not None
     assert wrapper_box is not None
     assert composer_box["y"] >= greeting_box["y"] + greeting_box["height"]
-    assert composer_box["y"] - (
-        greeting_box["y"] + greeting_box["height"]
-    ) <= 16
+    assert (
+        composer_box["y"] - (greeting_box["y"] + greeting_box["height"]) <= 16
+    )
     assert toolbar_box["y"] >= composer_box["y"]
     assert footer_box["y"] >= composer_box["y"]
     group_center = (
@@ -748,7 +755,9 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
 
     chat.set_user_input("Move the composer")
     chat.send_user_input()
-    expect(layout).not_to_have_attribute("data-composer-centered", timeout=TIMEOUT)
+    expect(layout).not_to_have_attribute(
+        "data-composer-centered", timeout=TIMEOUT
+    )
     page.wait_for_timeout(400)
     composer_box = composer.bounding_box()
     chat_box = chat.loc.bounding_box()
@@ -763,7 +772,9 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
     page.reload()
     expect(layout).to_have_attribute("data-composer-centered", "")
     greeting.evaluate("(element) => { element.style.minHeight = '100vh'; }")
-    expect(layout).not_to_have_attribute("data-composer-centered", timeout=TIMEOUT)
+    expect(layout).not_to_have_attribute(
+        "data-composer-centered", timeout=TIMEOUT
+    )
     page.wait_for_timeout(400)
     composer_box = composer.bounding_box()
     chat_box = chat.loc.bounding_box()

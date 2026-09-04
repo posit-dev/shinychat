@@ -222,6 +222,4 @@ def normalize_turn_group(group: list[TurnDict]) -> ChatMessage | None:
     )
     if not content:
         return None
-    return ChatMessage(
-        content=content, role=turn_dict_effective_role(group[0])
-    )
+    return ChatMessage(content=content, role=turn_dict_effective_role(group[0]))
