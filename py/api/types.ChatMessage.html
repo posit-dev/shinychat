@@ -111,8 +111,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 
 <meta property="og:title" content="shinychat">
+<meta property="og:description" content="Chat UI Component for Shiny">
 <meta property="og:site_name" content="shinychat">
 <meta name="twitter:title" content="shinychat">
+<meta name="twitter:description" content="Chat UI Component for Shiny">
 <meta name="twitter:card" content="summary">
 </head>
 
@@ -415,7 +417,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#shinychat.types.ChatMessage" id="toc-shinychat.types.ChatMessage" class="nav-link active" data-scroll-target="#shinychat.types.ChatMessage">types.ChatMessage</a></li>
+  <li><a href="#shinychat.types.ChatMessage" id="toc-shinychat.types.ChatMessage" class="nav-link active" data-scroll-target="#shinychat.types.ChatMessage">types.ChatMessage</a>
+  <ul class="collapse">
+  <li><a href="#parameters" id="toc-parameters" class="nav-link" data-scroll-target="#parameters">Parameters</a></li>
+  <li><a href="#attributes" id="toc-attributes" class="nav-link" data-scroll-target="#attributes">Attributes</a></li>
+  </ul></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/types.ChatMessage.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></nav>
     </div>
@@ -432,9 +438,90 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    role<span class="op">=</span><span class="st">'assistant'</span>,</span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    content_type<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    attachments<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    blocks<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    parts<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>A chat message with ordered content segments.</p>
+<p>The message stores its content as <code>segments</code>: string segments interleaved with structured blocks. This is the same shape the wire format and :class:<code>StoredMessage</code> use. The <code>content</code>, <code>blocks</code>, and <code>parts</code> properties are read-only views over those segments.</p>
+<p>Pass <code>content</code> for a simple string or HTML tag, <code>parts</code> to interleave strings and blocks in one message, or <code>blocks</code> to attach structured blocks after a string. These three inputs are mutually exclusive: <code>parts</code> raises when combined with <code>blocks</code> or non-empty <code>content</code>.</p>
+<section id="parameters" class="level2 doc-section doc-section-parameters">
+<h2 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>content</td>
+<td><a href="`htmltools.TagChild`">TagChild</a></td>
+<td>The message content. A plain string is markdown. An htmltools tag, :class:<code>~htmltools.TagList</code>, or :class:<code>~htmltools.HTML</code> is trusted HTML. Tag content is an HTML container: bare strings inside it are escaped text, not markdown. To mix markdown and HTML in one message, use <code>parts</code> instead.</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>role</td>
+<td><a href="`shinychat._chat_types.Role`">Role</a></td>
+<td>The message role. One of <code>"assistant"</code>, <code>"user"</code>, or <code>"system"</code>. Defaults to <code>"assistant"</code>.</td>
+<td><code>'assistant'</code></td>
+</tr>
+<tr class="odd">
+<td>content_type</td>
+<td>'ContentType | None'</td>
+<td>The content type for string segments. One of <code>"markdown"</code>, <code>"html"</code>, <code>"text"</code>, or <code>"thinking"</code>. When <code>content</code> is a string, defaults to <code>"markdown"</code>. When <code>content</code> is a tag or TagList, defaults to <code>"html"</code>. When <code>parts</code> is passed, applies to every string part in the list.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>attachments</td>
+<td>'list[Attachment] | None'</td>
+<td>Files attached to the message. Each item is an :class:<code>~shinychat.Attachment</code> or a dict that validates as one.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>blocks</td>
+<td>'list[StructuredBlock] | None'</td>
+<td>Structured blocks to append after the content. Cannot be combined with <code>parts</code>.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>parts</td>
+<td>'list[str | StructuredBlock] | None'</td>
+<td>An ordered list of bare strings and structured blocks. Strings become segments stamped with <code>content_type</code>. Blocks pass through in order. Cannot be combined with <code>blocks</code> or non-empty <code>content</code>.</td>
+<td><code>None</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="attributes" class="level2">
+<h2 class="anchored" data-anchor-id="attributes">Attributes</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a href="#shinychat.types.ChatMessage.blocks">blocks</a></td>
+<td>The structured blocks in the message, in content order.</td>
+</tr>
+<tr class="even">
+<td><a href="#shinychat.types.ChatMessage.content">content</a></td>
+<td>The string content of the message, joined from its string segments.</td>
+</tr>
+<tr class="odd">
+<td><a href="#shinychat.types.ChatMessage.parts">parts</a></td>
+<td>The segment list as bare strings interleaved with blocks.</td>
+</tr>
+</tbody>
+</table>
 
 
+</section>
 </section>
 
 </main> <!-- /main -->
