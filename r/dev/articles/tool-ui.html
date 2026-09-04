@@ -81,23 +81,18 @@
 
 
 
-<link href="tool-ui_files/shinychat-0.4.0.9000/shinychat.css" rel="stylesheet">
-<script src="tool-ui_files/shinychat-0.4.0.9000/shinychat.js" type="module"></script><div class="row">
+
+<div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Tool Calling UI</h1>
             
       
-      <small class="dont-index">Source: <a href="https://github.com/posit-dev/shinychat/blob/main/vignettes/articles/tool-ui.Rmd" class="external-link"><code>vignettes/articles/tool-ui.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/posit-dev/shinychat/blob/main/vignettes/tool-ui.Rmd" class="external-link"><code>vignettes/tool-ui.Rmd</code></a></small>
       <div class="d-none name"><code>tool-ui.Rmd</code></div>
     </div>
 
     
     
-<style>
-.shiny-tool-card {
-  margin-bottom: 1rem !important;
-}
-</style>
 <div class="section level2">
 <h2 id="introduction">Introduction<a class="anchor" aria-label="anchor" href="#introduction"></a>
 </h2>
@@ -163,154 +158,31 @@ activity row to the conversation. Depending on
 <code>tool_grouping</code>, one row can summarize several calls; expand
 the row to inspect its calls, then drill into a call to see its full
 request and result.</p>
-<shiny-tool-request request-id="tool_call_001" tool-name="get_weather_forecast" arguments='{"lat":40.7128,"lon":-74.006}' data-shinychat-react></shiny-tool-request><p>When the tool result completes, the activity row becomes settled.
+<div class="figure">
+<img src="images/tool-ui/basic-running.png" class="r-plt" alt="While the tool runs, a compact activity row summarizes the call without crowding the conversation." width="100%"><p class="caption">
+While the tool runs, a compact activity row summarizes the call without
+crowding the conversation.
+</p>
+</div>
+<p>When the tool result completes, the activity row becomes settled.
 Drilling into that call opens a card containing the request and
 result:</p>
-<shiny-tool-result request-id="tool_call_002" tool-name="get_weather_forecast" request-call="get_weather_forecast(lat = 40.7128, lon = -74.006)" status="success" show-request value='[
-  {
-    "time": "2026-09-03 14:00:00 EDT",
-    "temp": 73,
-    "dewpoint": 19.4444,
-    "humidity": 81,
-    "p_rain": 0,
-    "wind_speed": 2,
-    "wind_dir": "SE",
-    "skies": "Slight Chance Rain Showers",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 15:00:00 EDT",
-    "temp": 73,
-    "dewpoint": 19.4444,
-    "humidity": 84,
-    "p_rain": 19,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Slight Chance Rain Showers",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 16:00:00 EDT",
-    "temp": 72,
-    "dewpoint": 20,
-    "humidity": 86,
-    "p_rain": 12,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Partly Cloudy",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 17:00:00 EDT",
-    "temp": 72,
-    "dewpoint": 20,
-    "humidity": 88,
-    "p_rain": 9,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Partly Cloudy",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 18:00:00 EDT",
-    "temp": 71,
-    "dewpoint": 20,
-    "humidity": 90,
-    "p_rain": 7,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Partly Cloudy",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 19:00:00 EDT",
-    "temp": 70,
-    "dewpoint": 20,
-    "humidity": 93,
-    "p_rain": 4,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Areas Of Fog",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 20:00:00 EDT",
-    "temp": 70,
-    "dewpoint": 19.4444,
-    "humidity": 90,
-    "p_rain": 3,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Areas Of Fog",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 21:00:00 EDT",
-    "temp": 70,
-    "dewpoint": 18.8889,
-    "humidity": 87,
-    "p_rain": 2,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Areas Of Fog",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 22:00:00 EDT",
-    "temp": 69,
-    "dewpoint": 18.8889,
-    "humidity": 90,
-    "p_rain": 0,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Areas Of Fog",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 23:00:00 EDT",
-    "temp": 68,
-    "dewpoint": 18.3333,
-    "humidity": 90,
-    "p_rain": 0,
-    "wind_speed": 3,
-    "wind_dir": "NE",
-    "skies": "Areas Of Fog",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  }
-]' value-type="code" data-shinychat-react></shiny-tool-result><p>If the tool throws an error when called, ellmer captures the error
+<div class="figure">
+<img src="images/tool-ui/basic-settled.png" class="r-plt" alt="When the result lands, the activity row settles. Expanding it opens a drill-down card containing the full request and result." width="100%"><p class="caption">
+When the result lands, the activity row settles. Expanding it opens a
+drill-down card containing the full request and result.
+</p>
+</div>
+<p>If the tool throws an error when called, ellmer captures the error
 and shows it to the LLM. shinychat marks the settled activity row as
 failed and shows the error in its drill-down card:</p>
-<shiny-tool-result request-id="tool_call_001c" tool-name="get_weather_forecast" request-call="get_weather_forecast(lat = 40.7128, lon = -74.006)" status="error" show-request value="object of type 'closure' is not subsettable" value-type="code" data-shinychat-react></shiny-tool-result><p>When you use <code><a href="../reference/chat_app.html">chat_app()</a></code> or <code><a href="../reference/chat_app.html">chat_server()</a></code>,
+<div class="figure">
+<img src="images/tool-ui/basic-error.png" class="r-plt" alt="A failed tool call marks the activity row as an error, and the drill-down card shows the error message." width="100%"><p class="caption">
+A failed tool call marks the activity row as an error, and the
+drill-down card shows the error message.
+</p>
+</div>
+<p>When you use <code><a href="../reference/chat_app.html">chat_app()</a></code> or <code><a href="../reference/chat_app.html">chat_server()</a></code>,
 shinychat automatically handles tool requests and results, displaying
 them in the chat interface.</p>
 <p>On the other hand, if you’re using <code><a href="../reference/chat_ui.html">chat_ui()</a></code> and calling
@@ -363,152 +235,19 @@ in the activity row and its drill-down card.</p>
 <span>  <span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <p>Now the running activity row shows the custom title:</p>
-<shiny-tool-request request-id="tool_call_003" tool-name="get_weather_forecast" arguments='{"lat":42.3601,"lon":-71.0589}' tool-title="Getting weather forecast" icon='&lt;svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="bi bi-cloud-sun " style="height:1em;width:1em;fill:currentColor;vertical-align:-0.125em;" aria-hidden="true" role="img" &gt;&lt;path d="M7 8a3.5 3.5 0 0 1 3.5 3.555.5.5 0 0 0 .624.492A1.503 1.503 0 0 1 13 13.5a1.5 1.5 0 0 1-1.5 1.5H3a2 2 0 1 1 .1-3.998.5.5 0 0 0 .51-.375A3.502 3.502 0 0 1 7 8zm4.473 3a4.5 4.5 0 0 0-8.72-.99A3 3 0 0 0 3 16h8.5a2.5 2.5 0 0 0 0-5h-.027z"&gt;&lt;/path&gt;
-&lt;path d="M10.5 1.5a.5.5 0 0 0-1 0v1a.5.5 0 0 0 1 0v-1zm3.743 1.964a.5.5 0 1 0-.707-.707l-.708.707a.5.5 0 0 0 .708.708l.707-.708zm-7.779-.707a.5.5 0 0 0-.707.707l.707.708a.5.5 0 1 0 .708-.708l-.708-.707zm1.734 3.374a2 2 0 1 1 3.296 2.198c.199.281.372.582.516.898a3 3 0 1 0-4.84-3.225c.352.011.696.055 1.028.129zm4.484 4.074c.6.215 1.125.59 1.522 1.072a.5.5 0 0 0 .039-.742l-.707-.707a.5.5 0 0 0-.854.377zM14.5 6.5a.5.5 0 0 0 0 1h1a.5.5 0 0 0 0-1h-1z"&gt;&lt;/path&gt;&lt;/svg&gt;' data-shinychat-react></shiny-tool-request><p>The settled call keeps that title unless its result supplies a
+<div class="figure">
+<img src="images/tool-ui/annotations-running.png" class="r-plt" alt="The running activity row uses the annotation's custom title and icon." width="100%"><p class="caption">
+The running activity row uses the annotation’s custom title and icon.
+</p>
+</div>
+<p>The settled call keeps that title unless its result supplies a
 replacement, and it uses the same icon:</p>
-<shiny-tool-result request-id="tool_call_004" tool-name="get_weather_forecast" request-call="get_weather_forecast(lat = 42.3601, lon = -71.0589)" status="success" tool-title="Getting weather forecast" icon='&lt;svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="bi bi-cloud-sun " style="height:1em;width:1em;fill:currentColor;vertical-align:-0.125em;" aria-hidden="true" role="img" &gt;&lt;path d="M7 8a3.5 3.5 0 0 1 3.5 3.555.5.5 0 0 0 .624.492A1.503 1.503 0 0 1 13 13.5a1.5 1.5 0 0 1-1.5 1.5H3a2 2 0 1 1 .1-3.998.5.5 0 0 0 .51-.375A3.502 3.502 0 0 1 7 8zm4.473 3a4.5 4.5 0 0 0-8.72-.99A3 3 0 0 0 3 16h8.5a2.5 2.5 0 0 0 0-5h-.027z"&gt;&lt;/path&gt;
-&lt;path d="M10.5 1.5a.5.5 0 0 0-1 0v1a.5.5 0 0 0 1 0v-1zm3.743 1.964a.5.5 0 1 0-.707-.707l-.708.707a.5.5 0 0 0 .708.708l.707-.708zm-7.779-.707a.5.5 0 0 0-.707.707l.707.708a.5.5 0 1 0 .708-.708l-.708-.707zm1.734 3.374a2 2 0 1 1 3.296 2.198c.199.281.372.582.516.898a3 3 0 1 0-4.84-3.225c.352.011.696.055 1.028.129zm4.484 4.074c.6.215 1.125.59 1.522 1.072a.5.5 0 0 0 .039-.742l-.707-.707a.5.5 0 0 0-.854.377zM14.5 6.5a.5.5 0 0 0 0 1h1a.5.5 0 0 0 0-1h-1z"&gt;&lt;/path&gt;&lt;/svg&gt;' show-request value='[
-  {
-    "time": "2026-09-03 14:00:00 EDT",
-    "temp": 73,
-    "dewpoint": 19.4444,
-    "humidity": 81,
-    "p_rain": 0,
-    "wind_speed": 2,
-    "wind_dir": "SE",
-    "skies": "Slight Chance Rain Showers",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 15:00:00 EDT",
-    "temp": 73,
-    "dewpoint": 19.4444,
-    "humidity": 84,
-    "p_rain": 19,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Slight Chance Rain Showers",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 16:00:00 EDT",
-    "temp": 72,
-    "dewpoint": 20,
-    "humidity": 86,
-    "p_rain": 12,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Partly Cloudy",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 17:00:00 EDT",
-    "temp": 72,
-    "dewpoint": 20,
-    "humidity": 88,
-    "p_rain": 9,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Partly Cloudy",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 18:00:00 EDT",
-    "temp": 71,
-    "dewpoint": 20,
-    "humidity": 90,
-    "p_rain": 7,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Partly Cloudy",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 19:00:00 EDT",
-    "temp": 70,
-    "dewpoint": 20,
-    "humidity": 93,
-    "p_rain": 4,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Areas Of Fog",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 20:00:00 EDT",
-    "temp": 70,
-    "dewpoint": 19.4444,
-    "humidity": 90,
-    "p_rain": 3,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Areas Of Fog",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 21:00:00 EDT",
-    "temp": 70,
-    "dewpoint": 18.8889,
-    "humidity": 87,
-    "p_rain": 2,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Areas Of Fog",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 22:00:00 EDT",
-    "temp": 69,
-    "dewpoint": 18.8889,
-    "humidity": 90,
-    "p_rain": 0,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Areas Of Fog",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 23:00:00 EDT",
-    "temp": 68,
-    "dewpoint": 18.3333,
-    "humidity": 90,
-    "p_rain": 0,
-    "wind_speed": 3,
-    "wind_dir": "NE",
-    "skies": "Areas Of Fog",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  }
-]' value-type="code" data-shinychat-react></shiny-tool-result>
+<div class="figure">
+<img src="images/tool-ui/annotations-settled.png" class="r-plt" alt="The settled call keeps the custom title and icon from the tool's annotations." width="100%"><p class="caption">
+The settled call keeps the custom title and icon from the tool’s
+annotations.
+</p>
+</div>
 </div>
 <div class="section level3">
 <h3 id="present-tense-while-running-past-tense-once-done">Present tense while running, past tense once done<a class="anchor" aria-label="anchor" href="#present-tense-while-running-past-tense-once-done"></a>
@@ -610,148 +349,12 @@ then gives the settled call a past-tense title and icon based on the
 forecast. Its <code>label</code> identifies the location in a group of
 calls, and its <code>value_preview</code> reports the result size
 without opening the drill-down card:</p>
-<shiny-tool-result request-id="tool_call_005" tool-name="get_weather_forecast" request-call='get_weather_forecast(lat = 42.3601, lon = -71.0589, location_name = "Boston, MA")' status="success" tool-title="Got weather forecast for Boston, MA" icon='&lt;svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="bi bi-sun-fill " style="height:1em;width:1em;fill:currentColor;vertical-align:-0.125em;" aria-hidden="true" role="img" &gt;&lt;path d="M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM8 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0zm0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13zm8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5zM3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8zm10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.415a.5.5 0 1 1-.707-.708l1.414-1.414a.5.5 0 0 1 .707 0zm-9.193 9.193a.5.5 0 0 1 0 .707L3.05 13.657a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0zm9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707zM4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 1 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .708z"&gt;&lt;/path&gt;&lt;/svg&gt;' show-request label="Boston, MA" value-preview="10 hourly readings" value='[
-  {
-    "time": "2026-09-03 14:00:00 EDT",
-    "temp": 73,
-    "dewpoint": 19.4444,
-    "humidity": 81,
-    "p_rain": 0,
-    "wind_speed": 2,
-    "wind_dir": "SE",
-    "skies": "Slight Chance Rain Showers",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 15:00:00 EDT",
-    "temp": 73,
-    "dewpoint": 19.4444,
-    "humidity": 84,
-    "p_rain": 19,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Slight Chance Rain Showers",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 16:00:00 EDT",
-    "temp": 72,
-    "dewpoint": 20,
-    "humidity": 86,
-    "p_rain": 12,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Partly Cloudy",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 17:00:00 EDT",
-    "temp": 72,
-    "dewpoint": 20,
-    "humidity": 88,
-    "p_rain": 9,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Partly Cloudy",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 18:00:00 EDT",
-    "temp": 71,
-    "dewpoint": 20,
-    "humidity": 90,
-    "p_rain": 7,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Partly Cloudy",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 19:00:00 EDT",
-    "temp": 70,
-    "dewpoint": 20,
-    "humidity": 93,
-    "p_rain": 4,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Areas Of Fog",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 20:00:00 EDT",
-    "temp": 70,
-    "dewpoint": 19.4444,
-    "humidity": 90,
-    "p_rain": 3,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Areas Of Fog",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 21:00:00 EDT",
-    "temp": 70,
-    "dewpoint": 18.8889,
-    "humidity": 87,
-    "p_rain": 2,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Areas Of Fog",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 22:00:00 EDT",
-    "temp": 69,
-    "dewpoint": 18.8889,
-    "humidity": 90,
-    "p_rain": 0,
-    "wind_speed": 3,
-    "wind_dir": "E",
-    "skies": "Areas Of Fog",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  },
-  {
-    "time": "2026-09-03 23:00:00 EDT",
-    "temp": 68,
-    "dewpoint": 18.3333,
-    "humidity": 90,
-    "p_rain": 0,
-    "wind_speed": 3,
-    "wind_dir": "NE",
-    "skies": "Areas Of Fog",
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-71.0589, 42.3601]
-    }
-  }
-]' value-type="code" data-shinychat-react></shiny-tool-result>
+<div class="figure">
+<img src="images/tool-ui/result-fields.png" class="r-plt" alt="The settled call with a past-tense result title, an icon chosen from the forecast, and a per-call label and value preview." width="100%"><p class="caption">
+The settled call with a past-tense result title, an icon chosen from the
+forecast, and a per-call label and value preview.
+</p>
+</div>
 </div>
 </div>
 <div class="section level2">
@@ -789,7 +392,12 @@ its purpose.</p>
 <span><span class="op">)</span></span></code></pre></div>
 <p>When the tool is called, shinychat shows the reason the LLM called
 the tool in the activity row and drill-down card.</p>
-<shiny-tool-result request-id="tool_call_006" tool-name="tool_random_number" request-call='tool_random_number(`_intent` = "Generate a random number for testing")' status="success" tool-title="Generating random number" icon='&lt;svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="bi bi-dice-3-fill " style="height:1em;width:1em;fill:currentColor;vertical-align:-0.125em;" aria-hidden="true" role="img" &gt;&lt;path d="M3 0a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V3a3 3 0 0 0-3-3H3zm2.5 4a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm8 8a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zM8 9.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"&gt;&lt;/path&gt;&lt;/svg&gt;' intent="Generate a random number for testing" show-request value="0.6008" value-type="code" data-shinychat-react></shiny-tool-result>
+<div class="figure">
+<img src="images/tool-ui/intent.png" class="r-plt" alt="The activity row shows the `_intent` value supplied by the LLM as the reason the tool was called." width="100%"><p class="caption">
+The activity row shows the <code>_intent</code> value supplied by the
+LLM as the reason the tool was called.
+</p>
+</div>
 </div>
 <div class="section level2">
 <h2 id="customizing-tool-result-display">Customizing tool result display<a class="anchor" aria-label="anchor" href="#customizing-tool-result-display"></a>
@@ -909,122 +517,15 @@ HTML table using <a href="https://gt.rstudio.com" class="external-link">gt</a>.<
 <p>This result opens its drill-down card by default. Its rich table,
 footer, and fullscreen toggle all live in that card; the compact
 activity row remains available as the summary.
-<code>presentation = "framed"</code> opts this expanded normal rich
-result into Shiny Chat’s frame. Omit it, or use the default
-<code>"default"</code>, to retain the existing drill-down
-presentation.</p>
-<shiny-tool-result request-id="tool_call_007" tool-name="get_weather_forecast" request-call='get_weather_forecast(lat = 42.3601, lon = -71.0589, location_name = "Boston, MA")' status="success" tool-title="Got weather forecast for Boston, MA" icon='&lt;svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="bi bi-cloud-sun " style="height:1em;width:1em;fill:currentColor;vertical-align:-0.125em;" aria-hidden="true" role="img" &gt;&lt;path d="M7 8a3.5 3.5 0 0 1 3.5 3.555.5.5 0 0 0 .624.492A1.503 1.503 0 0 1 13 13.5a1.5 1.5 0 0 1-1.5 1.5H3a2 2 0 1 1 .1-3.998.5.5 0 0 0 .51-.375A3.502 3.502 0 0 1 7 8zm4.473 3a4.5 4.5 0 0 0-8.72-.99A3 3 0 0 0 3 16h8.5a2.5 2.5 0 0 0 0-5h-.027z"&gt;&lt;/path&gt;
-&lt;path d="M10.5 1.5a.5.5 0 0 0-1 0v1a.5.5 0 0 0 1 0v-1zm3.743 1.964a.5.5 0 1 0-.707-.707l-.708.707a.5.5 0 0 0 .708.708l.707-.708zm-7.779-.707a.5.5 0 0 0-.707.707l.707.708a.5.5 0 1 0 .708-.708l-.708-.707zm1.734 3.374a2 2 0 1 1 3.296 2.198c.199.281.372.582.516.898a3 3 0 1 0-4.84-3.225c.352.011.696.055 1.028.129zm4.484 4.074c.6.215 1.125.59 1.522 1.072a.5.5 0 0 0 .039-.742l-.707-.707a.5.5 0 0 0-.854.377zM14.5 6.5a.5.5 0 0 0 0 1h1a.5.5 0 0 0 0-1h-1z"&gt;&lt;/path&gt;&lt;/svg&gt;' expanded full-screen open-style="framed" footer="&lt;small&gt;Forecast data from weather.gov&lt;/small&gt;" label="Boston, MA" value-preview="10 hourly readings" value="&lt;div id=&quot;efoodfieex&quot; style=&quot;padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;&quot;&gt;
-  
-  &lt;table class=&quot;gt_table&quot; data-quarto-disable-processing=&quot;false&quot; data-quarto-bootstrap=&quot;false&quot; style=&quot;-webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji'; display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3;&quot; bgcolor=&quot;#FFFFFF&quot;&gt;
-  &lt;thead style=&quot;border-style: none;&quot;&gt;
-    &lt;tr class=&quot;gt_col_headings&quot; style=&quot;border-style: none; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3;&quot;&gt;
-      &lt;th class=&quot;gt_col_heading gt_columns_bottom_border gt_left&quot; rowspan=&quot;1&quot; colspan=&quot;1&quot; scope=&quot;col&quot; id=&quot;time&quot; style=&quot;border-style: none; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 6px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; text-align: left;&quot; bgcolor=&quot;#FFFFFF&quot; valign=&quot;bottom&quot; align=&quot;left&quot;&gt;time&lt;/th&gt;
-      &lt;th class=&quot;gt_col_heading gt_columns_bottom_border gt_right&quot; rowspan=&quot;1&quot; colspan=&quot;1&quot; scope=&quot;col&quot; id=&quot;temp&quot; style=&quot;border-style: none; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 6px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; bgcolor=&quot;#FFFFFF&quot; valign=&quot;bottom&quot; align=&quot;right&quot;&gt;temp&lt;/th&gt;
-      &lt;th class=&quot;gt_col_heading gt_columns_bottom_border gt_right&quot; rowspan=&quot;1&quot; colspan=&quot;1&quot; scope=&quot;col&quot; id=&quot;dewpoint&quot; style=&quot;border-style: none; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 6px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; bgcolor=&quot;#FFFFFF&quot; valign=&quot;bottom&quot; align=&quot;right&quot;&gt;dewpoint&lt;/th&gt;
-      &lt;th class=&quot;gt_col_heading gt_columns_bottom_border gt_right&quot; rowspan=&quot;1&quot; colspan=&quot;1&quot; scope=&quot;col&quot; id=&quot;humidity&quot; style=&quot;border-style: none; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 6px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; bgcolor=&quot;#FFFFFF&quot; valign=&quot;bottom&quot; align=&quot;right&quot;&gt;humidity&lt;/th&gt;
-      &lt;th class=&quot;gt_col_heading gt_columns_bottom_border gt_right&quot; rowspan=&quot;1&quot; colspan=&quot;1&quot; scope=&quot;col&quot; id=&quot;p_rain&quot; style=&quot;border-style: none; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 6px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; bgcolor=&quot;#FFFFFF&quot; valign=&quot;bottom&quot; align=&quot;right&quot;&gt;p_rain&lt;/th&gt;
-      &lt;th class=&quot;gt_col_heading gt_columns_bottom_border gt_right&quot; rowspan=&quot;1&quot; colspan=&quot;1&quot; scope=&quot;col&quot; id=&quot;wind_speed&quot; style=&quot;border-style: none; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 6px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; bgcolor=&quot;#FFFFFF&quot; valign=&quot;bottom&quot; align=&quot;right&quot;&gt;wind_speed&lt;/th&gt;
-      &lt;th class=&quot;gt_col_heading gt_columns_bottom_border gt_left&quot; rowspan=&quot;1&quot; colspan=&quot;1&quot; scope=&quot;col&quot; id=&quot;wind_dir&quot; style=&quot;border-style: none; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 6px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; text-align: left;&quot; bgcolor=&quot;#FFFFFF&quot; valign=&quot;bottom&quot; align=&quot;left&quot;&gt;wind_dir&lt;/th&gt;
-      &lt;th class=&quot;gt_col_heading gt_columns_bottom_border gt_left&quot; rowspan=&quot;1&quot; colspan=&quot;1&quot; scope=&quot;col&quot; id=&quot;skies&quot; style=&quot;border-style: none; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 6px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; text-align: left;&quot; bgcolor=&quot;#FFFFFF&quot; valign=&quot;bottom&quot; align=&quot;left&quot;&gt;skies&lt;/th&gt;
-      &lt;th class=&quot;gt_col_heading gt_columns_bottom_border gt_center&quot; rowspan=&quot;1&quot; colspan=&quot;1&quot; scope=&quot;col&quot; id=&quot;geometry&quot; style=&quot;border-style: none; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 6px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; text-align: center;&quot; bgcolor=&quot;#FFFFFF&quot; valign=&quot;bottom&quot; align=&quot;center&quot;&gt;geometry&lt;/th&gt;
-    &lt;/tr&gt;
-  &lt;/thead&gt;
-  &lt;tbody class=&quot;gt_table_body&quot; style=&quot;border-style: none; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3;&quot;&gt;
-    &lt;tr style=&quot;border-style: none;&quot;&gt;&lt;td headers=&quot;time&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;2026-09-03 14:00:00 EDT&lt;/td&gt;
-&lt;td headers=&quot;temp&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;73&lt;/td&gt;
-&lt;td headers=&quot;dewpoint&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;19.44444&lt;/td&gt;
-&lt;td headers=&quot;humidity&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;81&lt;/td&gt;
-&lt;td headers=&quot;p_rain&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;0&lt;/td&gt;
-&lt;td headers=&quot;wind_speed&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;2&lt;/td&gt;
-&lt;td headers=&quot;wind_dir&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;SE&lt;/td&gt;
-&lt;td headers=&quot;skies&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;Slight Chance Rain Showers&lt;/td&gt;
-&lt;td headers=&quot;geometry&quot; class=&quot;gt_row gt_center&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: center;&quot; valign=&quot;middle&quot; align=&quot;center&quot;&gt;c(-71.0589, 42.3601)&lt;/td&gt;&lt;/tr&gt;
-    &lt;tr style=&quot;border-style: none;&quot;&gt;&lt;td headers=&quot;time&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;2026-09-03 15:00:00 EDT&lt;/td&gt;
-&lt;td headers=&quot;temp&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;73&lt;/td&gt;
-&lt;td headers=&quot;dewpoint&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;19.44444&lt;/td&gt;
-&lt;td headers=&quot;humidity&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;84&lt;/td&gt;
-&lt;td headers=&quot;p_rain&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;19&lt;/td&gt;
-&lt;td headers=&quot;wind_speed&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;3&lt;/td&gt;
-&lt;td headers=&quot;wind_dir&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;E&lt;/td&gt;
-&lt;td headers=&quot;skies&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;Slight Chance Rain Showers&lt;/td&gt;
-&lt;td headers=&quot;geometry&quot; class=&quot;gt_row gt_center&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: center;&quot; valign=&quot;middle&quot; align=&quot;center&quot;&gt;c(-71.0589, 42.3601)&lt;/td&gt;&lt;/tr&gt;
-    &lt;tr style=&quot;border-style: none;&quot;&gt;&lt;td headers=&quot;time&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;2026-09-03 16:00:00 EDT&lt;/td&gt;
-&lt;td headers=&quot;temp&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;72&lt;/td&gt;
-&lt;td headers=&quot;dewpoint&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;20.00000&lt;/td&gt;
-&lt;td headers=&quot;humidity&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;86&lt;/td&gt;
-&lt;td headers=&quot;p_rain&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;12&lt;/td&gt;
-&lt;td headers=&quot;wind_speed&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;3&lt;/td&gt;
-&lt;td headers=&quot;wind_dir&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;E&lt;/td&gt;
-&lt;td headers=&quot;skies&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;Partly Cloudy&lt;/td&gt;
-&lt;td headers=&quot;geometry&quot; class=&quot;gt_row gt_center&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: center;&quot; valign=&quot;middle&quot; align=&quot;center&quot;&gt;c(-71.0589, 42.3601)&lt;/td&gt;&lt;/tr&gt;
-    &lt;tr style=&quot;border-style: none;&quot;&gt;&lt;td headers=&quot;time&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;2026-09-03 17:00:00 EDT&lt;/td&gt;
-&lt;td headers=&quot;temp&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;72&lt;/td&gt;
-&lt;td headers=&quot;dewpoint&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;20.00000&lt;/td&gt;
-&lt;td headers=&quot;humidity&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;88&lt;/td&gt;
-&lt;td headers=&quot;p_rain&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;9&lt;/td&gt;
-&lt;td headers=&quot;wind_speed&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;3&lt;/td&gt;
-&lt;td headers=&quot;wind_dir&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;E&lt;/td&gt;
-&lt;td headers=&quot;skies&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;Partly Cloudy&lt;/td&gt;
-&lt;td headers=&quot;geometry&quot; class=&quot;gt_row gt_center&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: center;&quot; valign=&quot;middle&quot; align=&quot;center&quot;&gt;c(-71.0589, 42.3601)&lt;/td&gt;&lt;/tr&gt;
-    &lt;tr style=&quot;border-style: none;&quot;&gt;&lt;td headers=&quot;time&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;2026-09-03 18:00:00 EDT&lt;/td&gt;
-&lt;td headers=&quot;temp&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;71&lt;/td&gt;
-&lt;td headers=&quot;dewpoint&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;20.00000&lt;/td&gt;
-&lt;td headers=&quot;humidity&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;90&lt;/td&gt;
-&lt;td headers=&quot;p_rain&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;7&lt;/td&gt;
-&lt;td headers=&quot;wind_speed&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;3&lt;/td&gt;
-&lt;td headers=&quot;wind_dir&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;E&lt;/td&gt;
-&lt;td headers=&quot;skies&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;Partly Cloudy&lt;/td&gt;
-&lt;td headers=&quot;geometry&quot; class=&quot;gt_row gt_center&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: center;&quot; valign=&quot;middle&quot; align=&quot;center&quot;&gt;c(-71.0589, 42.3601)&lt;/td&gt;&lt;/tr&gt;
-    &lt;tr style=&quot;border-style: none;&quot;&gt;&lt;td headers=&quot;time&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;2026-09-03 19:00:00 EDT&lt;/td&gt;
-&lt;td headers=&quot;temp&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;70&lt;/td&gt;
-&lt;td headers=&quot;dewpoint&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;20.00000&lt;/td&gt;
-&lt;td headers=&quot;humidity&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;93&lt;/td&gt;
-&lt;td headers=&quot;p_rain&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;4&lt;/td&gt;
-&lt;td headers=&quot;wind_speed&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;3&lt;/td&gt;
-&lt;td headers=&quot;wind_dir&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;E&lt;/td&gt;
-&lt;td headers=&quot;skies&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;Areas Of Fog&lt;/td&gt;
-&lt;td headers=&quot;geometry&quot; class=&quot;gt_row gt_center&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: center;&quot; valign=&quot;middle&quot; align=&quot;center&quot;&gt;c(-71.0589, 42.3601)&lt;/td&gt;&lt;/tr&gt;
-    &lt;tr style=&quot;border-style: none;&quot;&gt;&lt;td headers=&quot;time&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;2026-09-03 20:00:00 EDT&lt;/td&gt;
-&lt;td headers=&quot;temp&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;70&lt;/td&gt;
-&lt;td headers=&quot;dewpoint&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;19.44444&lt;/td&gt;
-&lt;td headers=&quot;humidity&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;90&lt;/td&gt;
-&lt;td headers=&quot;p_rain&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;3&lt;/td&gt;
-&lt;td headers=&quot;wind_speed&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;3&lt;/td&gt;
-&lt;td headers=&quot;wind_dir&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;E&lt;/td&gt;
-&lt;td headers=&quot;skies&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;Areas Of Fog&lt;/td&gt;
-&lt;td headers=&quot;geometry&quot; class=&quot;gt_row gt_center&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: center;&quot; valign=&quot;middle&quot; align=&quot;center&quot;&gt;c(-71.0589, 42.3601)&lt;/td&gt;&lt;/tr&gt;
-    &lt;tr style=&quot;border-style: none;&quot;&gt;&lt;td headers=&quot;time&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;2026-09-03 21:00:00 EDT&lt;/td&gt;
-&lt;td headers=&quot;temp&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;70&lt;/td&gt;
-&lt;td headers=&quot;dewpoint&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;18.88889&lt;/td&gt;
-&lt;td headers=&quot;humidity&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;87&lt;/td&gt;
-&lt;td headers=&quot;p_rain&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;2&lt;/td&gt;
-&lt;td headers=&quot;wind_speed&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;3&lt;/td&gt;
-&lt;td headers=&quot;wind_dir&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;E&lt;/td&gt;
-&lt;td headers=&quot;skies&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;Areas Of Fog&lt;/td&gt;
-&lt;td headers=&quot;geometry&quot; class=&quot;gt_row gt_center&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: center;&quot; valign=&quot;middle&quot; align=&quot;center&quot;&gt;c(-71.0589, 42.3601)&lt;/td&gt;&lt;/tr&gt;
-    &lt;tr style=&quot;border-style: none;&quot;&gt;&lt;td headers=&quot;time&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;2026-09-03 22:00:00 EDT&lt;/td&gt;
-&lt;td headers=&quot;temp&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;69&lt;/td&gt;
-&lt;td headers=&quot;dewpoint&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;18.88889&lt;/td&gt;
-&lt;td headers=&quot;humidity&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;90&lt;/td&gt;
-&lt;td headers=&quot;p_rain&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;0&lt;/td&gt;
-&lt;td headers=&quot;wind_speed&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;3&lt;/td&gt;
-&lt;td headers=&quot;wind_dir&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;E&lt;/td&gt;
-&lt;td headers=&quot;skies&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;Areas Of Fog&lt;/td&gt;
-&lt;td headers=&quot;geometry&quot; class=&quot;gt_row gt_center&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: center;&quot; valign=&quot;middle&quot; align=&quot;center&quot;&gt;c(-71.0589, 42.3601)&lt;/td&gt;&lt;/tr&gt;
-    &lt;tr style=&quot;border-style: none;&quot;&gt;&lt;td headers=&quot;time&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;2026-09-03 23:00:00 EDT&lt;/td&gt;
-&lt;td headers=&quot;temp&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;68&lt;/td&gt;
-&lt;td headers=&quot;dewpoint&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;18.33333&lt;/td&gt;
-&lt;td headers=&quot;humidity&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;90&lt;/td&gt;
-&lt;td headers=&quot;p_rain&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;0&lt;/td&gt;
-&lt;td headers=&quot;wind_speed&quot; class=&quot;gt_row gt_right&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: right; font-variant-numeric: tabular-nums;&quot; valign=&quot;middle&quot; align=&quot;right&quot;&gt;3&lt;/td&gt;
-&lt;td headers=&quot;wind_dir&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;NE&lt;/td&gt;
-&lt;td headers=&quot;skies&quot; class=&quot;gt_row gt_left&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: left;&quot; valign=&quot;middle&quot; align=&quot;left&quot;&gt;Areas Of Fog&lt;/td&gt;
-&lt;td headers=&quot;geometry&quot; class=&quot;gt_row gt_center&quot; style=&quot;border-style: none; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; text-align: center;&quot; valign=&quot;middle&quot; align=&quot;center&quot;&gt;c(-71.0589, 42.3601)&lt;/td&gt;&lt;/tr&gt;
-  &lt;/tbody&gt;
-  
-&lt;/table&gt;
-&lt;/div&gt;" value-type="html" data-shinychat-react></shiny-tool-result>
+<code>open_style = "framed"</code> opts this expanded normal rich result
+into Shiny Chat’s frame. Omit it, or use the default
+<code>"minimal"</code>, to keep the plain drill-down presentation.</p>
+<div class="figure">
+<img src="images/tool-ui/rich-html.png" class="r-plt" alt="A rich tool result: the drill-down card opens by default and shows a formatted table, an attribution footer, and a fullscreen toggle." width="100%"><p class="caption">
+A rich tool result: the drill-down card opens by default and shows a
+formatted table, an attribution footer, and a fullscreen toggle.
+</p>
+</div>
 </div>
 <div class="section level4">
 <h4 id="alternative-markdown-display">Alternative markdown display<a class="anchor" aria-label="anchor" href="#alternative-markdown-display"></a>
@@ -1076,8 +577,12 @@ markdown to summarize the forecast in a few sentences.</p>
 <span>    icon <span class="op">=</span> <span class="fu">bsicons</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/bsicons/man/bs_icon.html" class="external-link">bs_icon</a></span><span class="op">(</span><span class="st">"cloud-sun"</span><span class="op">)</span></span>
 <span>  <span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<shiny-tool-result request-id="tool_call_008" tool-name="get_weather_forecast" request-call='get_weather_forecast(lat = 42.3601, lon = -71.0589, location_name = "Boston, MA")' status="success" tool-title="Got weather forecast for Boston, MA" icon='&lt;svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="bi bi-cloud-sun " style="height:1em;width:1em;fill:currentColor;vertical-align:-0.125em;" aria-hidden="true" role="img" &gt;&lt;path d="M7 8a3.5 3.5 0 0 1 3.5 3.555.5.5 0 0 0 .624.492A1.503 1.503 0 0 1 13 13.5a1.5 1.5 0 0 1-1.5 1.5H3a2 2 0 1 1 .1-3.998.5.5 0 0 0 .51-.375A3.502 3.502 0 0 1 7 8zm4.473 3a4.5 4.5 0 0 0-8.72-.99A3 3 0 0 0 3 16h8.5a2.5 2.5 0 0 0 0-5h-.027z"&gt;&lt;/path&gt;
-&lt;path d="M10.5 1.5a.5.5 0 0 0-1 0v1a.5.5 0 0 0 1 0v-1zm3.743 1.964a.5.5 0 1 0-.707-.707l-.708.707a.5.5 0 0 0 .708.708l.707-.708zm-7.779-.707a.5.5 0 0 0-.707.707l.707.708a.5.5 0 1 0 .708-.708l-.708-.707zm1.734 3.374a2 2 0 1 1 3.296 2.198c.199.281.372.582.516.898a3 3 0 1 0-4.84-3.225c.352.011.696.055 1.028.129zm4.484 4.074c.6.215 1.125.59 1.522 1.072a.5.5 0 0 0 .039-.742l-.707-.707a.5.5 0 0 0-.854.377zM14.5 6.5a.5.5 0 0 0 0 1h1a.5.5 0 0 0 0-1h-1z"&gt;&lt;/path&gt;&lt;/svg&gt;' show-request value="In **Boston, MA**, it's currently 73°F with _slight chance rain showers_ skies. Today's high will be 73°F and the low will be 68°F. Humidity is around 87.9%. Look for **areas of fog** skies throughout the day." value-type="markdown" data-shinychat-react></shiny-tool-result>
+<div class="figure">
+<img src="images/tool-ui/rich-markdown.png" class="r-plt" alt="The drill-down card renders the `markdown` display content as rich HTML in place of the raw result." width="100%"><p class="caption">
+The drill-down card renders the <code>markdown</code> display content as
+rich HTML in place of the raw result.
+</p>
+</div>
 </div>
 </div>
 <div class="section level3">
@@ -1135,10 +640,9 @@ easy to inspect large or detailed content like maps, tables, and plots.
 Users can exit fullscreen by pressing <code>Escape</code>, clicking the
 backdrop, or using the close button.</p>
 </li>
-<li><p><strong><code>presentation = "framed"</code></strong>: Opt an
+<li><p><strong><code>open_style = "framed"</code></strong>: Opt an
 expanded normal rich result into Shiny Chat’s frame. The default
-<code>"default"</code> keeps the existing drill-down
-presentation.</p></li>
+<code>"minimal"</code> keeps the plain drill-down presentation.</p></li>
 <li><p><strong><code>footer</code></strong>: Add HTML content below the
 drill-down card body. Use it for attribution, a compact summary, or
 related controls.</p></li>

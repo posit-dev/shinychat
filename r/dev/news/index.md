@@ -2,82 +2,7 @@
 
 ## shinychat (development version)
 
-### New features and improvements
-
-- [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
-  now uses a wider default content width on large displays while
-  preserving its existing width on smaller windows.
-  ([\#364](https://github.com/posit-dev/shinychat/issues/364))
-
-- Added
-  [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
-  for full-window chat pages with persistent chat navigation, responsive
-  sidebars, optional page-specific sidebars, and drawers. Use it instead
-  of `bslib::page_fillable(chat_ui(...))` when shinychat owns the page
-  composition; continue using
-  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
-  for embedded or mixed layouts.
-
-- [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
-  now supports standard bslib programmatic navigation. The page shell’s
-  root element carries the derived id `"<id>_page"`, so
-  [`bslib::nav_select()`](https://rstudio.github.io/bslib/reference/nav_select.html),
-  [`bslib::nav_show()`](https://rstudio.github.io/bslib/reference/nav_select.html),
-  and
-  [`bslib::nav_hide()`](https://rstudio.github.io/bslib/reference/nav_select.html)
-  work against it. The active page is readable server-side as
-  `input$<id>_page` (`"__home__"` when the chat home is active).
-  [`nav_insert()`](https://rstudio.github.io/bslib/reference/nav_select.html)
-  and
-  [`nav_remove()`](https://rstudio.github.io/bslib/reference/nav_select.html)
-  are not yet supported.
-
-- Web search and web fetch responses from ellmer now show their activity
-  and citations directly in the chat. Readers can open a citation beside
-  its claim or use the message-wide Sources pill.
-  `ContentCitation@grounded_span` links each citation to the answer text
-  that it supports.
-
-- Assistant messages can now attach source details to specific claims
-  with the `<shiny-aside>` markup convention. This convention powers
-  shinychat’s web citations and can also support custom RAG workflows.
-  Add an inline `<shiny-aside>` tag with source details and an optional
-  `grounded-span`. Shinychat shows a compact source pill and highlights
-  the related text when the pill is open. See the `Asides` section in
-  [`?chat_append`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md).
-
-- Tool calls now render as a condensed activity row by default. Expand a
-  group row to see each individual call, then drill into a call to see
-  its full request/result card. Added
-  [`tool_result_display()`](https://posit-dev.github.io/shinychat/r/dev/reference/tool_result_display.md),
-  a validated constructor for the `display` object passed as
-  `extra = list(display = tool_result_display(...))` on an
-  [`ellmer::ContentToolResult`](https://ellmer.tidyverse.org/reference/Content.html)
-  – the recommended way to build it going forward. A bare named list
-  with the same fields still works and is promoted internally.
-  [`tool_result_display()`](https://posit-dev.github.io/shinychat/r/dev/reference/tool_result_display.md)
-  gained `label` (a short per-call identifying value, e.g. a filename or
-  query) and `value_preview` (a terse peek at the result, e.g. “1,204
-  rows”), both shown in the activity row.
-
-- Fully custom tool-result UI returned from a
-  [`contents_shinychat()`](https://posit-dev.github.io/shinychat/r/dev/reference/contents_shinychat.md)
-  method is now paired with its tool request. While the tool runs, it
-  appears in the activity row; after the custom result settles, that
-  call leaves the row and the custom UI renders as standalone output.
-  This also preserves custom results when preloading or restoring
-  conversations.
-
-- Added `tool_grouping` to
-  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md):
-  `"tool"` (default) groups calls to the same tool in a contiguous tool
-  loop (order-independent, not just consecutive calls); `"all"` groups
-  every call in the loop together; `"none"` shows one activity row per
-  call. Thinking or prose starts a new loop, and chat-level `"none"`
-  disables grouping even when an annotation asks for it. Individual
-  tools can override `"tool"` or `"all"` with a top-level `grouping`
-  tool annotation,
-  e.g. `tool(..., annotations = tool_annotations(grouping = "all"))`.
+### API additions
 
 - Added
   [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
@@ -87,9 +12,8 @@
   `chat_server("chat", client)`. It does the same job as
   [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
   but runs directly in the caller’s session scope rather than creating
-  its own module scope. If you’re already inside a
-  [`moduleServer()`](https://rdrr.io/pkg/shiny/man/moduleServer.html),
-  pass that session in.
+  its own module scope, and it enables many of the features under *New
+  features and improvements* below automatically.
   [`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
   and
   [`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_mod_ui.md)
@@ -99,58 +23,166 @@
   [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md).
   ([\#264](https://github.com/posit-dev/shinychat/issues/264))
 
+- Added
+  [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+  for full-window chat pages with persistent chat navigation, responsive
+  sidebars, and drawers. Register secondary pages with
+  [`chat_nav_panel()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_nav_panel.md),
+  configure sidebars with
+  [`chat_sidebar()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_sidebar.md),
+  and add a drawer with
+  [`chat_drawer()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_drawer.md),
+  controllable from the server via
+  [`chat_drawer_show()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_drawer_show.md),
+  [`chat_drawer_update()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_drawer_update.md),
+  [`chat_drawer_hide()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_drawer_hide.md),
+  and
+  [`chat_drawer_toggle()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_drawer_toggle.md).
+  Related additions:
+  [`chat_ui_history()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui_history.md)
+  for mounting conversation history outside the chat, a
+  [`page_chat_theme()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat_theme.md)
+  baseline theme, and `drawer`/`show_history` options on
+  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md).
+  ([\#329](https://github.com/posit-dev/shinychat/issues/329))
+
+  - The page shell also supports standard bslib programmatic navigation
+    (e.g. [`bslib::nav_select()`](https://rstudio.github.io/bslib/reference/nav_select.html)),
+    with the active page readable server-side as `input$<id>_page`.
+
+- Added slash commands: a typeahead command palette that lets users
+  trigger named shortcuts directly from the chat input (type `/` to open
+  it). Commands can expand into LLM prompts, trigger server-side side
+  effects (clear chat, open a modal, export transcript), or be handled
+  entirely client-side via the cancelable `shiny:chat-slash-command` DOM
+  event. Register commands with the `slash_command()` method of the
+  object returned by
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md);
+  its `echo` parameter controls whether an invocation is recorded as a
+  user message and triggers a loading state.
+  ([\#239](https://github.com/posit-dev/shinychat/issues/239))
+
+- Added
+  [`chat_get_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_get_greeting.md)
+  for reading the current greeting (and whether the user dismissed it)
+  from the server, along with a new `input$<id>_greeting_dismissed`
+  event. Server-set greetings now also survive Shiny bookmarking
+  round-trips.
+  ([\#254](https://github.com/posit-dev/shinychat/issues/254))
+
+### New features and improvements
+
 - [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
   gets multi-conversation history automatically: a drawer for starting
   new chats and returning to previous ones, with LLM-generated titles,
   search, rename, and delete. Conversations are persisted per-user (or a
-  custom scope) via a pluggable store — the default
-  `FileConversationStore` finds a redeploy-safe location automatically
-  on Posit Connect. Customize with `history = history_options(...)`, or
-  opt out entirely with `history = FALSE`. For apps that can’t use the
-  module pattern, wire it up manually with
+  custom scope) via a pluggable store (the default
+  `FileConversationStore` works out of the box, including on Posit
+  Connect). Customize with `history = history_options(...)` — e.g. how
+  the active conversation is restored across reloads (browser storage,
+  URL, or Shiny bookmarking) and callbacks to keep app state synced to
+  it — or opt out with `history = FALSE`. The history object also offers
+  programmatic control, including a reactive conversation ID and an
+  explicit [`save()`](https://rdrr.io/r/base/save.html) method. For apps
+  that can’t use
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md),
+  wire it up manually with
   [`chat_enable_history()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_enable_history.md).
-  ([\#266](https://github.com/posit-dev/shinychat/issues/266))
+  ([\#266](https://github.com/posit-dev/shinychat/issues/266),
+  [\#307](https://github.com/posit-dev/shinychat/issues/307),
+  [\#328](https://github.com/posit-dev/shinychat/issues/328))
 
-  - `history_options(restore_mode = )` controls how the active
-    conversation is remembered across page reloads: `"browser"`
-    (default) via `localStorage`, `"url"` via a
-    `?shinychat_conversation_id=` query parameter, `"bookmark"` via full
-    Shiny server bookmarking (requires `bookmarkStore = "server"`, and
-    also restores raw input controls), or `"none"` to disable. Use the
-    `on_save`/`on_restore` arguments of
-    [`chat_enable_history()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_enable_history.md)
-    (or `on_save()`/`on_restore()` on the `history` object returned by
-    [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md))
-    to keep other app state synced to the active conversation.
-    ([\#266](https://github.com/posit-dev/shinychat/issues/266))
+- You can now edit and resend a message after sending it. Editing forks
+  the conversation from that point — the original branch is kept as a
+  sibling, and `‹ 1 / 2 ›` controls let you switch between versions at
+  any time, including after reloading the page or returning from the
+  history drawer. Requires history to be enabled (the default with
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)).
+  ([\#269](https://github.com/posit-dev/shinychat/issues/269))
+
+- Cancelling an in-progress response is now automatic with
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md):
+  the stop button appears by default and cancellation is handled for
+  you. ([\#264](https://github.com/posit-dev/shinychat/issues/264))
 
 - Added file attachment support: users can upload images, PDFs, and text
-  files alongside chat messages via a file picker button, drag-and-drop,
-  or clipboard paste.
+  files alongside their messages.
   [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-  enables attachments by default and automatically convert uploads into
+  enables attachments by default and automatically converts uploads into
   ellmer `Content` objects for the model. For
   non-[`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-  usage, enable with `allow_attachments = TRUE` (or a MIME allow-list)
-  and splice `input$<id>_user_input` into chat methods with `!!!`. The
-  maximum combined attachment size defaults to approximately 30 MB and
-  can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE` environment
-  variable.
+  usage, enable with `allow_attachments = TRUE` (or a MIME allow-list).
+  The maximum combined attachment size defaults to approximately 30 MB
+  and can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE`
+  environment variable.
+  ([\#250](https://github.com/posit-dev/shinychat/issues/250))
 
-- Added slash commands: a typeahead command palette that lets users
-  trigger named shortcuts directly from the chat input. Type `/` to open
-  the palette, filter by typing, and pick a command with arrow keys or
-  click. Commands can expand into LLM prompts, trigger server-side side
-  effects (clear chat, open a modal, export transcript), or be handled
-  entirely client-side via the cancelable `shiny:chat-slash-command` DOM
-  event. Register commands with `chat$slash_command()`, which accepts 0-
-  or 1-argument handlers; 1-argument handlers receive a
-  `ContentSlashCommand` object (a `ContentText` subclass with `command`
-  and `user_text` slots) so handlers can mutate `content@text` before
-  passing it to `client$stream()`. The `echo` parameter controls whether
-  an invocation is recorded as a user message and triggers a loading
-  state. Echoed commands are faithfully restored on bookmark/restore.
-  ([\#239](https://github.com/posit-dev/shinychat/issues/239))
+  - When attachments are enabled, `input$<id>_user_input` is a list of
+    ellmer `Content` objects (typed text, if present, followed by one
+    object per attachment) rather than a plain string — forward it to a
+    chat method by splicing with `!!!`,
+    e.g. `chat$stream_async(!!!input$<id>_user_input)`. The `last_input`
+    reactive returned by
+    [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+    mirrors this shape.
+
+- Web search and web fetch responses from ellmer now show their activity
+  and citations directly in the chat. Readers can open a citation beside
+  its claim or use the message-wide Sources pill.
+  `ContentCitation@grounded_span` links each citation to the answer text
+  it supports.
+  ([\#280](https://github.com/posit-dev/shinychat/issues/280))
+
+  - Citations are powered by a new `<shiny-aside>` markup convention
+    that any assistant message can use to attach source details to
+    specific claims — useful for custom RAG workflows. See the `Asides`
+    section in
+    [`?chat_append`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md).
+    ([\#278](https://github.com/posit-dev/shinychat/issues/278))
+
+- Tool call displays have been reworked to be more concise and to
+  intelligently group multiple calls together. By default, calls render
+  as a condensed activity row; expand a group row to see each call, then
+  drill into a call for its full request/result card.
+  ([\#283](https://github.com/posit-dev/shinychat/issues/283))
+
+  - Added
+    [`tool_result_display()`](https://posit-dev.github.io/shinychat/r/dev/reference/tool_result_display.md),
+    a constructor for the `display` object passed as
+    `extra = list(display = ...)` on an
+    [`ellmer::ContentToolResult`](https://ellmer.tidyverse.org/reference/Content.html)
+    (a bare named list with the same fields still works). New `label`
+    and `value_preview` fields (e.g. a filename, and “1,204 rows”) are
+    shown in the activity row.
+  - A tool’s definition `title` (from its annotations) and its result
+    `title` (from
+    [`tool_result_display()`](https://posit-dev.github.io/shinychat/r/dev/reference/tool_result_display.md))
+    are now shown as-is, without client-side tense conjugation — the old
+    `"Running {title}"` / `"{title} failed"` templates are gone. The
+    definition title shows while the call is running; for a single-call
+    row, the result title (if provided) replaces it when the result
+    arrives, and failures are shown via a separate status cue. If a
+    title now reads oddly while running, write it in the present tense
+    (e.g. “Running R code”).
+  - Control grouping with the `tool_grouping` parameter of
+    [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md):
+    `"tool"` (default) groups calls to the same tool within a
+    tool-calling loop, `"all"` groups every call in the loop together,
+    and `"none"` shows one activity row per call (thinking or prose
+    starts a new loop). Individual tools can override the chat-level
+    setting with a `grouping` tool annotation,
+    e.g. `tool(..., annotations = tool_annotations(grouping = "all"))`.
+  - Set `open_style = "framed"` in
+    [`tool_result_display()`](https://posit-dev.github.io/shinychat/r/dev/reference/tool_result_display.md)
+    to draw a border around an open tool result’s header and contents —
+    a better fit for results with a footer or fullscreen toggle.
+    ([\#331](https://github.com/posit-dev/shinychat/issues/331))
+  - Fully custom tool-result UI returned from a
+    [`contents_shinychat()`](https://posit-dev.github.io/shinychat/r/dev/reference/contents_shinychat.md)
+    method is now paired with its tool request: while the tool runs it
+    appears in the activity row, and once the result arrives the custom
+    UI renders as standalone output. Custom results are also preserved
+    when preloading or restoring conversations.
 
 - Added `submit_key` parameter to
   [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md):
@@ -160,13 +192,25 @@
   blocked, not typing.
   ([\#251](https://github.com/posit-dev/shinychat/issues/251))
 
-- [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
-  and
-  [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
-  no longer show an assistant icon by default. Pass
-  `icon_assistant = TRUE` to restore the built-in robot icon, or supply
-  your own icon as before.
-  ([\#345](https://github.com/posit-dev/shinychat/issues/345))
+- The send button is easier to customize: a new `icon_send` parameter on
+  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+  swaps the submit icon, and a `data-state` attribute exposes the
+  button’s current state for styling.
+  ([\#350](https://github.com/posit-dev/shinychat/issues/350))
+
+- Styling is more customizable via CSS custom properties: the set of
+  public `--shiny-chat-*` variables has grown to cover the send button,
+  history drawer, page layout, thinking display, and more, and all of
+  them can now be overridden from `:root` (previously, element-level
+  defaults always won).
+  ([\#350](https://github.com/posit-dev/shinychat/issues/350),
+  [\#355](https://github.com/posit-dev/shinychat/issues/355))
+
+- Single tildes no longer trigger strikethrough in markdown. Text like
+  `(~$1.50)` and `~/Documents` now renders as literal text; only
+  `~~text~~` produces strikethrough.
+  ([\#349](https://github.com/posit-dev/shinychat/issues/349),
+  [\#353](https://github.com/posit-dev/shinychat/issues/353))
 
 ### Breaking changes
 
@@ -189,90 +233,76 @@
   [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
   and
   [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-  directly.
+  directly. ([\#329](https://github.com/posit-dev/shinychat/issues/329))
 
-- The CSS classes used by the external-link dialog, thinking display,
-  and tool-result images/PDFs now use the `.shiny-chat-*` prefix instead
-  of `.shinychat-*`. The thinking display’s custom properties and
-  animation names have likewise changed from `--shinychat-thinking-*` /
-  `shinychat-thinking-*` to `--shiny-chat-thinking-*` /
-  `shiny-chat-thinking-*`. Update any custom CSS that targets these
-  identifiers.
+- The `messages` parameter is deprecated in favor of the
+  conversation-history feature: `chat_ui(messages = ...)` now warns, and
+  `chat_app(messages = ...)` errors when history is enabled (the
+  default). Use `greeting` for a startup message,
+  [`chat_append()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md)
+  to replay messages, or `history = FALSE` if you manage state yourself.
+  ([\#381](https://github.com/posit-dev/shinychat/issues/381))
+
+- CSS classes and custom properties used by the external-link dialog,
+  thinking display, and tool-result images/PDFs now use the
+  `.shiny-chat-*` prefix instead of `.shinychat-*`. Update any custom
+  CSS that targets these identifiers.
   ([\#285](https://github.com/posit-dev/shinychat/issues/285),
   [\#286](https://github.com/posit-dev/shinychat/issues/286))
 
-- A tool’s definition `title` (from its annotations) and its result
-  `title` (from
-  [`tool_result_display()`](https://posit-dev.github.io/shinychat/r/dev/reference/tool_result_display.md))
-  are now shown as-is, without any client-side tense conjugation. The
-  definition title is shown while the call is running and labels
-  multi-call groups. For a single-call row, the result title (if
-  provided) replaces it when the result arrives; in a multi-call group,
-  a distinct result title can identify that call in the expanded list.
-  The old `"Running {title}"` / `"{title} failed"` client-side title
-  template has been removed. If a tool’s title reads oddly while running
-  now that the automatic “Running” prefix is gone, write an explicit
-  present-tense definition title (e.g. “Running R code”) and,
-  optionally, a past-tense result title (e.g. “Ran R code”). Failures
-  are shown via a separate status cue (a “failed”/“N failed” note and
-  icon) rather than appended to the title.
+### Changes
 
-- `input$<id>_user_input` now depends on `allow_attachments`. With
-  `allow_attachments = FALSE`, it remains the historical typed string.
-  With attachments enabled (`TRUE` or a MIME allow-list), it is always a
-  list of ellmer `Content` objects (typed text, if present, followed by
-  one object per attachment), and the separate
-  `input$<id>_user_attachments` input has been removed. Forward either
-  form to a chat method by splicing with `!!!`,
-  e.g. `chat$stream_async(!!!input$<id>_user_input)`.
+- [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+  and
+  [`page_chat()`](https://posit-dev.github.io/shinychat/r/dev/reference/page_chat.md)
+  no longer show an assistant icon by default. Pass
+  `icon_assistant = TRUE` to restore the built-in robot icon, or supply
+  your own icon as before.
+  ([\#345](https://github.com/posit-dev/shinychat/issues/345))
 
-- The `last_input` reactive returned by
-  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-  now mirrors the shape of `input$<id>_user_input`: a string when
-  attachments are disabled, and a list of ellmer `Content` objects when
-  enabled.
+- [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)
+  now uses a wider default content width on large displays while
+  preserving its existing width on smaller windows.
+  ([\#364](https://github.com/posit-dev/shinychat/issues/364))
 
-- The `messages` parameter is deprecated in favor of the
-  conversation-history feature. `chat_app(messages = ...)` now errors
-  when history is enabled (the default); use `greeting` for a startup
-  message,
-  [`chat_append()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md)
-  to replay messages, or `history = FALSE` if you manage state yourself.
+- The `dismissible` parameter of
+  [`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md)
+  has been renamed to `persistent` with an inverted value.
+  `dismissible = FALSE` (greeting stays visible) is now
+  `persistent = TRUE`. The old `dismissible` argument still works but
+  warns. ([\#260](https://github.com/posit-dev/shinychat/issues/260))
 
 ### Bug fixes
 
-- A response that fails before it streams anything is now reported in
-  the chat instead of leaving a loading indicator that never resolves
-  and a locked composer. The stream is consumed inside a coroutine
-  (`chat_append_stream_impl()`) ahead of its first `await`, so a failure
-  there was raised synchronously, skipped the error handling in
-  `chat_append_stream()` entirely, and ended up in the
-  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-  stream task where nothing read it. That is the shape of every turn a
-  provider rejects outright – an exhausted quota, an over-long context,
-  a dropped connection. The
+- Fixed a security issue where model-authored Markdown could create or
+  escape into shinychat’s raw-HTML islands (`<shiny-chat-raw-html>`),
+  potentially injecting arbitrary HTML into the page. As part of this,
+  [`output_markdown_stream()`](https://posit-dev.github.io/shinychat/r/dev/reference/output_markdown_stream.md)/[`markdown_stream()`](https://posit-dev.github.io/shinychat/r/dev/reference/markdown_stream.md)
+  now track which parts of a mixed value are trusted server-rendered
+  HTML versus untrusted text.
+  ([\#287](https://github.com/posit-dev/shinychat/issues/287),
+  [\#360](https://github.com/posit-dev/shinychat/issues/360))
+
+- A response that fails before it streams anything (e.g. an exhausted
+  quota, an over-long context, or a dropped connection) is now reported
+  in the chat instead of leaving a loading indicator that never resolves
+  and a locked composer. The
   [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
   return also gained `last_error`, a reactive holding the condition from
   the most recent failed response, since both a finished and a failed
   response report `"idle"` in `status`.
-  ([\#304](https://github.com/posit-dev/shinychat/issues/304))
-
-- Fixed a race between the chat greeting and conversation history
-  restore: reloading a page that restored a previous conversation could
-  briefly flash the app’s greeting, and starting a new chat after a
-  session began with a restored conversation could fail to show any
-  greeting at all. Greeting resolution now defers to history’s own
-  restore decision instead of racing the client’s independent greeting
-  request.
+  ([\#304](https://github.com/posit-dev/shinychat/issues/304),
+  [\#314](https://github.com/posit-dev/shinychat/issues/314))
 
 - Fixed
   [`output_markdown_stream()`](https://posit-dev.github.io/shinychat/r/dev/reference/output_markdown_stream.md)
   permanently stopping following new content after the user scrolled
-  back to the bottom. Pinning was decided only from `scroll` events,
-  which browsers dispatch asynchronously; if a chunk grew the container
-  first, the user’s at-bottom position no longer read as at-bottom and
-  auto-scroll silently disengaged for good.
+  back to the bottom.
   ([\#282](https://github.com/posit-dev/shinychat/issues/282))
+
+- Fixed expanding or collapsing a tool result yanking the chat’s scroll
+  position away from what you were reading.
+  ([\#348](https://github.com/posit-dev/shinychat/issues/348))
 
 - [`chat_app()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
   no longer renders a close button or registers a
@@ -282,20 +312,16 @@
   preventing session crashes in multi-user deployments.
   ([\#265](https://github.com/posit-dev/shinychat/issues/265))
 
-- Single tildes no longer trigger strikethrough in markdown. Text like
-  `(~$1.50)` and `~/Documents` now renders as literal text; only
-  `~~text~~` produces strikethrough.
-  ([\#349](https://github.com/posit-dev/shinychat/issues/349),
-  [\#353](https://github.com/posit-dev/shinychat/issues/353))
+- Fixed control-only inputs (the close button, cancel button, and
+  greeting-requested signal) leaking into bookmarked state.
+  ([\#258](https://github.com/posit-dev/shinychat/issues/258),
+  [\#259](https://github.com/posit-dev/shinychat/issues/259))
 
-- The `dismissible` parameter of
-  [`chat_greeting()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_greeting.md)
-  has been renamed to `persistent` with an inverted value.
-  `dismissible = FALSE` (greeting stays visible) is now
-  `persistent = TRUE`. The old `dismissible` argument still works but
-  warns. When both `persistent` and `dismissible` are provided,
-  `persistent` now takes precedence silently rather than erroring.
-  ([\#260](https://github.com/posit-dev/shinychat/issues/260))
+- Fixed `set_client()` failing when the conversation contains an
+  htmlwidget or
+  [`tagList()`](https://rstudio.github.io/htmltools/reference/tagList.html).
+  ([\#362](https://github.com/posit-dev/shinychat/issues/362),
+  [\#369](https://github.com/posit-dev/shinychat/issues/369))
 
 - Fixed suggestion cards and the greeting overflowing the chat container
   in narrow spaces such as sidebars.

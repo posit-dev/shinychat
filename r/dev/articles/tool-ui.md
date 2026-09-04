@@ -79,12 +79,32 @@ compact activity row to the conversation. Depending on `tool_grouping`,
 one row can summarize several calls; expand the row to inspect its
 calls, then drill into a call to see its full request and result.
 
+![While the tool runs, a compact activity row summarizes the call
+without crowding the conversation.](images/tool-ui/basic-running.png)
+
+While the tool runs, a compact activity row summarizes the call without
+crowding the conversation.
+
 When the tool result completes, the activity row becomes settled.
 Drilling into that call opens a card containing the request and result:
+
+![When the result lands, the activity row settles. Expanding it opens a
+drill-down card containing the full request and
+result.](images/tool-ui/basic-settled.png)
+
+When the result lands, the activity row settles. Expanding it opens a
+drill-down card containing the full request and result.
 
 If the tool throws an error when called, ellmer captures the error and
 shows it to the LLM. shinychat marks the settled activity row as failed
 and shows the error in its drill-down card:
+
+![A failed tool call marks the activity row as an error, and the
+drill-down card shows the error
+message.](images/tool-ui/basic-error.png)
+
+A failed tool call marks the activity row as an error, and the
+drill-down card shows the error message.
 
 When you use
 [`chat_app()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
@@ -155,8 +175,19 @@ get_weather_forecast <- tool(
 
 Now the running activity row shows the custom title:
 
+![The running activity row uses the annotation's custom title and
+icon.](images/tool-ui/annotations-running.png)
+
+The running activity row uses the annotation’s custom title and icon.
+
 The settled call keeps that title unless its result supplies a
 replacement, and it uses the same icon:
+
+![The settled call keeps the custom title and icon from the tool's
+annotations.](images/tool-ui/annotations-settled.png)
+
+The settled call keeps the custom title and icon from the tool’s
+annotations.
 
 ### Present tense while running, past tense once done
 
@@ -264,6 +295,13 @@ forecast. Its `label` identifies the location in a group of calls, and
 its `value_preview` reports the result size without opening the
 drill-down card:
 
+![The settled call with a past-tense result title, an icon chosen from
+the forecast, and a per-call label and value
+preview.](images/tool-ui/result-fields.png)
+
+The settled call with a past-tense result title, an icon chosen from the
+forecast, and a per-call label and value preview.
+
 ## Tool intent
 
 In the last example, we saw that we could include arguments in the tool
@@ -302,6 +340,12 @@ tool_random_number <- tool(
 
 When the tool is called, shinychat shows the reason the LLM called the
 tool in the activity row and drill-down card.
+
+![The activity row shows the \`\_intent\` value supplied by the LLM as
+the reason the tool was called.](images/tool-ui/intent.png)
+
+The activity row shows the `_intent` value supplied by the LLM as the
+reason the tool was called.
 
 ## Customizing tool result display
 
@@ -422,10 +466,17 @@ get_weather_forecast <- tool(
 
 This result opens its drill-down card by default. Its rich table,
 footer, and fullscreen toggle all live in that card; the compact
-activity row remains available as the summary. `presentation = "framed"`
+activity row remains available as the summary. `open_style = "framed"`
 opts this expanded normal rich result into Shiny Chat’s frame. Omit it,
-or use the default `"default"`, to retain the existing drill-down
+or use the default `"minimal"`, to keep the plain drill-down
 presentation.
+
+![A rich tool result: the drill-down card opens by default and shows a
+formatted table, an attribution footer, and a fullscreen
+toggle.](images/tool-ui/rich-html.png)
+
+A rich tool result: the drill-down card opens by default and shows a
+formatted table, an attribution footer, and a fullscreen toggle.
 
 #### Alternative markdown display
 
@@ -479,6 +530,12 @@ get_weather_forecast <- tool(
   )
 )
 ```
+
+![The drill-down card renders the \`markdown\` display content as rich
+HTML in place of the raw result.](images/tool-ui/rich-markdown.png)
+
+The drill-down card renders the `markdown` display content as rich HTML
+in place of the raw result.
 
 ### Fully custom standalone output
 
@@ -541,9 +598,9 @@ These options apply to the drill-down card beneath the activity row:
   plots. Users can exit fullscreen by pressing `Escape`, clicking the
   backdrop, or using the close button.
 
-- **`presentation = "framed"`**: Opt an expanded normal rich result into
-  Shiny Chat’s frame. The default `"default"` keeps the existing
-  drill-down presentation.
+- **`open_style = "framed"`**: Opt an expanded normal rich result into
+  Shiny Chat’s frame. The default `"minimal"` keeps the plain drill-down
+  presentation.
 
 - **`footer`**: Add HTML content below the drill-down card body. Use it
   for attribution, a compact summary, or related controls.
