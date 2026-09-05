@@ -190,7 +190,10 @@ history_json <- function(value) {
     value,
     auto_unbox = TRUE,
     null = "null",
-    digits = 17
+    digits = 17,
+    # Unclass shinychat_block segments (and any other classed values hiding
+    # at any depth) so asJSON dispatch doesn't fail on them.
+    force = TRUE
   ))
 }
 

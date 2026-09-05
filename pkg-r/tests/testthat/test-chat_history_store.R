@@ -1011,3 +1011,83 @@ test_that("safe_conv_path() rejects path traversal", {
   expect_error(safe_conv_path(tempdir(), "../../../etc/passwd"))
   expect_error(safe_conv_path(tempdir(), ""))
 })
+
+test_that("history_json() serializes stored messages with classed tool blocks", {
+  # Regression test: as.list() on a classed list retains its class, so
+  # shinychat_block segments used to reach jsonlite::toJSON() classed and
+  # error with "No method asJSON S3 class: shinychat_block".
+  tool_result <- ellmer::ContentToolResult(
+    request = ellmer::ContentToolRequest(
+      id = "t1",
+      name = "rnorm",
+      arguments = list(n = 3)
+    ),
+    value = "0.1, 0.2"
+  )
+  card <- contents_shinychat_wrapped(tool_result)
+  expect_s3_class(card, "shinychat_block")
+
+  ui_msg <- build_stored_message_from_content("assistant", list(card))
+
+  json <- history_json(ui_msg)
+  decoded <- jsonlite::fromJSON(json, simplifyVector = FALSE)
+  seg_types <- vapply(
+    decoded$segments,
+    function(seg) seg$type %||% "",
+    character(1)
+  )
+  expect_true("tool_result" %in% seg_types)
+})
+
+test_that("history_json() serializes stored messages with classed html blocks", {
+  block <- new_html_block("<p>hello</p>")
+  expect_s3_class(block, "shinychat_block")
+
+  ui_msg <- build_stored_message_from_content("assistant", list(block))
+
+  json <- history_json(ui_msg)
+  decoded <- jsonlite::fromJSON(json, simplifyVector = FALSE)
+  seg_types <- vapply(
+    decoded$segments,
+    function(seg) seg$type %||% "",
+    character(1)
+  )
+  expect_true("html_block" %in% seg_types)
+})
+
+test_that("FileConversationStore round-trips a record with classed block segments", {
+  tool_result <- ellmer::ContentToolResult(
+    request = ellmer::ContentToolRequest(
+      id = "t1",
+      name = "rnorm",
+      arguments = list(n = 3)
+    ),
+    value = "0.1, 0.2"
+  )
+  card <- contents_shinychat_wrapped(tool_result)
+  ui_msg <- build_stored_message_from_content("assistant", list(card))
+
+  dir <- withr::local_tempdir()
+  partition <- part()
+  store <- FileConversationStore$new(dir = dir)
+  rec <- new_conversation_record("tool call chat")
+  rec$nodes$n_0001 <- list(
+    parent = NULL,
+    children = list(),
+    turns = list(
+      list(role = "user", content = "roll some dice"),
+      list(role = "assistant", content = "0.1, 0.2")
+    ),
+    ui = list(ui_msg),
+    selected_child = NULL
+  )
+  rec$current_leaf <- "n_0001"
+
+  expect_no_error(store$put(partition, rec))
+
+  restored <- FileConversationStore$new(dir = dir)$get(partition, rec$id)
+  expect_identical(
+    history_json(restored$nodes$n_0001$ui[[1]]),
+    history_json(ui_msg)
+  )
+})
