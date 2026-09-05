@@ -73,6 +73,8 @@ The context saves the user input before yielding. Each `append_message()` saves 
 
 Workers reject incompatible provider turns before restoration. Shiny can retain display history when model replay is unavailable; an unattended worker cannot safely make that choice for the user.
 
+Workers also reject pending exchanges and checkpoints without captured provider state. After interrupted work, pass a previously retained exchange ID to `Conversation.load(..., exchange_id=...)` to restore a complete checkpoint and start an alternative continuation. Failed and cancelled exchanges with successfully captured turns remain resumable. A load alone does not save a different branch selection; the next exchange or `save()` does.
+
 `values` is a conversation-level JSON object shared with `on_save` and `on_restore`. Applications own their keys and payload versions. This is suitable for a run ID, but is not branch-local application-state restoration. The named exchange-state hooks planned in #379 remain a separate API decision. Unrecognized exchange-state entries fail restoration through the existing validation.
 
 For a new conversation, use `await Conversation.create(store, partition, client=client, title=...)`. Listing, renaming, and deletion remain operations on `ConversationStore`; this API does not introduce another store interface.

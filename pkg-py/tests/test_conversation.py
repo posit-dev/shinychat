@@ -177,7 +177,7 @@ async def test_partition_is_required_for_load_and_list(store, partition):
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "damage", ["id", "path", "state", "provider", "version"]
+    "damage", ["id", "path", "state", "provider", "version", "future_version"]
 )
 async def test_restore_rejects_invalid_history_before_changing_client(
     store, damage
@@ -199,6 +199,8 @@ async def test_restore_rejects_invalid_history_before_changing_client(
         record.nodes[record.active_leaf].state["shinychat:turns"].version = 99
     elif damage == "version":
         record = new_conversation_record(title="Legacy", id=source.id)
+    elif damage == "future_version":
+        record.schema_version = 99
 
     class LoadedStore(InMemoryConversationStore):
         async def get(self, partition, conv_id):
@@ -246,6 +248,25 @@ async def test_unsaved_or_invalid_values_cannot_mutate_store(store):
     with pytest.raises(ValueError):
         await conversation.save()
     assert (await store.get(PARTITION, conversation.id)).values == {}
+
+
+@pytest.mark.anyio
+async def test_application_values_remain_live_across_checkpoints(store):
+    conversation = await Conversation.create(
+        store, PARTITION, client=TurnsClient()
+    )
+    root = conversation.active_leaf
+    values = conversation.values
+    async with conversation.exchange("Question"):
+        await conversation.append_message("Answer")
+        values["run_id"] = "run-123"
+    await conversation.select(root)
+    values["result"] = "complete"
+    await conversation.save()
+    assert (await store.get(PARTITION, conversation.id)).values == {
+        "run_id": "run-123",
+        "result": "complete",
+    }
 
 
 @pytest.mark.anyio
@@ -300,12 +321,75 @@ async def test_capture_failure_preserves_output_and_propagates_original_error(
 async def test_capture_failure_cannot_mark_an_exchange_completed(store):
     client = TurnsClient()
     conversation = await Conversation.create(store, PARTITION, client=client)
+    root = conversation.active_leaf
     with pytest.raises(TypeError):
         async with conversation.exchange("Question"):
             await conversation.append_message("Output before capture failed")
             client.turns.append({"invalid": object()})
     record = await store.get(PARTITION, conversation.id)
     assert record.nodes[conversation.active_leaf].status == "error"
+    failed = conversation.active_leaf
+    with pytest.raises(ValueError, match="incomplete provider state"):
+        async with conversation.exchange("Continue with missing context"):
+            pytest.fail("continued without captured turns")
+    untouched_client = TurnsClient()
+    with pytest.raises(ValueError, match="incomplete provider state"):
+        await Conversation.load(
+            store, PARTITION, conversation.id, client=untouched_client
+        )
+    assert untouched_client.get_turns() == TurnsClient().get_turns()
+    recovered = await Conversation.load(
+        store,
+        PARTITION,
+        conversation.id,
+        client=untouched_client,
+        exchange_id=root,
+    )
+    assert (await store.get(PARTITION, conversation.id)).active_leaf == failed
+    async with recovered.exchange("Try again"):
+        await recovered.append_message("Recovered answer")
+    record = await store.get(PARTITION, conversation.id)
+    assert len(record.nodes[root].children) == 2
+    assert record.nodes[failed].messages[0].segments[0].content == (
+        "Output before capture failed"
+    )
+
+
+@pytest.mark.anyio
+async def test_pending_checkpoint_cannot_be_loaded_for_continuation(store):
+    conversation = await Conversation.create(
+        store, PARTITION, client=TurnsClient()
+    )
+    async with conversation.exchange("Still running"):
+        await conversation.append_message("Checkpoint")
+        with pytest.raises(ValueError, match="incomplete provider state"):
+            await Conversation.load(
+                store, PARTITION, conversation.id, client=TurnsClient()
+            )
+
+
+@pytest.mark.anyio
+async def test_failed_append_can_be_retried_without_duplicate_output():
+    class FailingStore(InMemoryConversationStore):
+        fail_once = False
+
+        async def put(self, partition, record):
+            if self.fail_once:
+                self.fail_once = False
+                raise OSError("disk unavailable")
+            await super().put(partition, record)
+
+    store = FailingStore()
+    conversation = await Conversation.create(
+        store, PARTITION, client=TurnsClient()
+    )
+    async with conversation.exchange("Question"):
+        store.fail_once = True
+        with pytest.raises(OSError, match="disk unavailable"):
+            await conversation.append_message("Answer")
+        await conversation.append_message("Answer")
+    record = await store.get(PARTITION, conversation.id)
+    assert len(record.nodes[conversation.active_leaf].messages) == 1
 
 
 @pytest.mark.anyio

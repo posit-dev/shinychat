@@ -14,6 +14,7 @@ from ._history_store import ConversationPartition, ConversationStore
 from ._history_types import (
     CapturedMessage,
     ConversationRecordV2,
+    check_schema_version,
     new_conversation_record_v2,
 )
 from ._utils import private_random_id
@@ -84,12 +85,17 @@ class Conversation:
         conversation_id: str,
         *,
         client: Any,
+        exchange_id: str | None = None,
     ) -> Conversation:
         """Load the selected branch and restore its provider turns.
 
         Missing, unsupported, or malformed history raises before changing
         the client. Incompatible provider turns also raise: a worker must
         not silently continue with an incomplete model context.
+
+        Pass ``exchange_id`` to load an earlier, completed checkpoint after
+        interrupted work. Loading does not change the saved selection;
+        the next exchange or explicit :meth:`save` persists it.
         """
         record = await store.get(partition, conversation_id)
         if record is None:
@@ -105,6 +111,8 @@ class Conversation:
         conversation = cls(
             store, partition, client, record.model_copy(deep=True)
         )
+        if exchange_id is not None:
+            conversation._record.set_active_leaf(exchange_id)
         await conversation._restore(conversation._record)
         return conversation
 
@@ -131,12 +139,30 @@ class Conversation:
         return self._record.values
 
     async def _restore(self, record: ConversationRecordV2) -> None:
+        if check_schema_version(record.schema_version) != 2:
+            raise ValueError(
+                "Conversation requires exchange-tree history (v2)."
+            )
         node_ids = tuple(record.path_node_ids())
         if not node_ids:
             raise ValueError("Exchange-tree record has no active path.")
+        self._require_captured_turns(record)
         planned = self._state._preflight_rewind_state(record, node_ids)
         await self._state._rewind_state(planned)
         self._state.record = record
+
+    @staticmethod
+    def _require_captured_turns(record: ConversationRecordV2) -> None:
+        assert record.active_leaf is not None
+        selected = record.nodes[record.active_leaf]
+        if (
+            selected.status == "pending"
+            or "shinychat:turns" not in selected.state
+        ):
+            raise ValueError(
+                "Selected exchange has incomplete provider state. "
+                "Select an earlier exchange with captured turns."
+            )
 
     async def select(self, exchange_id: str) -> None:
         """Select and save an existing exchange, restoring its provider turns.
@@ -144,9 +170,14 @@ class Conversation:
         The next :meth:`exchange` adds a child here. Existing descendants
         remain available, so selecting an earlier exchange and submitting
         new input creates an alternative continuation.
+
+        Selection is applied to the client before saving. If persistence
+        fails, retry :meth:`save` or discard this handle and load it again.
         """
         self._require_idle()
-        target = self._record.model_copy(deep=True)
+        target = self._record.model_copy(
+            deep=True, update={"values": self.values}
+        )
         target.set_active_leaf(exchange_id)
         await self._restore(target)
         await self.save()
@@ -174,6 +205,7 @@ class Conversation:
         self._require_idle()
         if not isinstance(input, str):
             raise TypeError("Input must be a Markdown string.")
+        self._require_captured_turns(self._record)
         message = StoredMessage.from_chat_message(
             ChatMessage(input, role="user", attachments=attachments)
         )
@@ -181,14 +213,12 @@ class Conversation:
         exchange_id = private_random_id()
         self._exchange_id = exchange_id
         try:
-            previous = self._record
-            self._state.record = previous.model_copy(deep=True)
-            self._record.open_exchange(exchange_id, message)
-            try:
-                await self.save()
-            except BaseException:
-                self._state.record = previous
-                raise
+            target = self._record.model_copy(
+                deep=True, update={"values": self.values}
+            )
+            target.open_exchange(exchange_id, message)
+            await self._save_record(target)
+            self._state.record = target
             try:
                 yield exchange_id
             except BaseException as error:
@@ -219,11 +249,15 @@ class Conversation:
             raise TypeError("Content must be a Markdown string.")
         message = StoredMessage.from_chat_message(ChatMessage(content))
         # A checkpoint is still pending until the exchange context exits.
-        self._record.append_stream_message(
+        target = self._record.model_copy(
+            deep=True, update={"values": self.values}
+        )
+        target.append_stream_message(
             self._exchange_id,
             CapturedMessage.from_stored_message(message, icon=None),
         )
-        await self.save()
+        await self._save_record(target)
+        self._state.record = target
 
     async def _finish(
         self, exchange_id: str, status: Literal["ok", "error", "cancelled"]
@@ -243,10 +277,11 @@ class Conversation:
         Provider turns are captured when the exchange context exits. Saving
         alone does not capture model work or complete an exchange.
         """
-        _validate_mapping_keys(self.values)
-        json.dumps(self.values, allow_nan=False)
+        await self._save_record(self._record)
+
+    async def _save_record(self, record: ConversationRecordV2) -> None:
+        _validate_mapping_keys(record.values)
+        json.dumps(record.values, allow_nan=False)
         # Store implementations may retain references. Give them a snapshot,
         # so further work cannot change a saved checkpoint without a put().
-        await self._store.put(
-            self._partition, self._record.model_copy(deep=True)
-        )
+        await self._store.put(self._partition, record.model_copy(deep=True))
