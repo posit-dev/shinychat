@@ -976,7 +976,7 @@ chat_enable_history <- function(
         target <- tryCatch(
           controller$get_record(controller$partition, restored_id),
           error = function(e) {
-            history_notify_error("Could not load conversation", e)
+            notify_error("Could not load conversation", e)
             NULL
           }
         )
@@ -1009,7 +1009,7 @@ chat_enable_history <- function(
       target <- tryCatch(
         controller$get_record(controller$partition, current_id),
         error = function(e) {
-          history_notify_error("Could not load conversation", e)
+          notify_error("Could not load conversation", e)
           NULL
         }
       )
@@ -1029,15 +1029,6 @@ chat_enable_history <- function(
     controller$notify_settled(!is.null(controller$record))
   })
 
-  history_notify_error <- function(prefix, e) {
-    shiny::showNotification(
-      paste0(prefix, ": ", sanitized_error_message(e)),
-      type = "error",
-      duration = NULL
-    )
-    rlang::warn(prefix, parent = e)
-  }
-
   select_effect <- shiny::observeEvent(
     session$input[[paste0(id, "_history_select")]],
     label = "history_select",
@@ -1049,7 +1040,7 @@ chat_enable_history <- function(
       tryCatch(
         controller$switch_to(as.character(payload$id)[[1L]]),
         error = function(e) {
-          history_notify_error("Could not open conversation", e)
+          notify_error("Could not open conversation", e)
         }
       )
     }
@@ -1065,7 +1056,7 @@ chat_enable_history <- function(
       tryCatch(
         controller$new_chat(),
         error = function(e) {
-          history_notify_error("Could not start a new chat", e)
+          notify_error("Could not start a new chat", e)
         }
       )
     }
@@ -1085,7 +1076,7 @@ chat_enable_history <- function(
           as.character(payload$title)[[1L]]
         ),
         error = function(e) {
-          history_notify_error("Could not rename conversation", e)
+          notify_error("Could not rename conversation", e)
         }
       )
     }
@@ -1102,7 +1093,7 @@ chat_enable_history <- function(
       tryCatch(
         controller$delete(as.character(payload$id)[[1L]]),
         error = function(e) {
-          history_notify_error("Could not delete conversation", e)
+          notify_error("Could not delete conversation", e)
         }
       )
     }
@@ -1123,7 +1114,7 @@ chat_enable_history <- function(
           payload$attachments
         ),
         error = function(e) {
-          history_notify_error("Could not edit message", e)
+          notify_error("Could not edit message", e)
         }
       )
     }
@@ -1143,7 +1134,7 @@ chat_enable_history <- function(
           as.character(payload$direction)[[1L]]
         ),
         error = function(e) {
-          history_notify_error("Could not navigate messages", e)
+          notify_error("Could not navigate messages", e)
         }
       )
     }
@@ -1193,18 +1184,17 @@ chat_history_on_response <- function(
     return(stream_promise)
   }
 
-  result <- promises::then(stream_promise, function(value) {
+  promises::then(stream_promise, function(value) {
     if (!controller$is_replaying) {
-      controller$on_response(get_turns_recorded(controller$get_client()))
+      tryCatch(
+        controller$on_response(get_turns_recorded(controller$get_client())),
+        error = function(e) {
+          notify_error("Could not save conversation", e)
+        }
+      )
     }
     value
   })
-
-  promises::catch(result, function(e) {
-    history_notify_error("Could not save conversation", e)
-  })
-
-  result
 }
 
 call_on_save <- function(fn, values) {
