@@ -1010,9 +1010,6 @@ test_that("as_tool_result_display() rejects non-scalar and NA logicals", {
 })
 
 test_that("as_tool_result_display() silently drops NULL fields", {
-  # `list(title = if (cond) title)` is an idiomatic way for tool authors to
-  # conditionally include a field; it yields a named NULL that should be
-  # treated as absent, not as an invalid value.
   expect_no_warning(
     res <- as_tool_result_display(list(title = NULL, open = TRUE))
   )

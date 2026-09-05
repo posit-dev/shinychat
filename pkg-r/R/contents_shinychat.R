@@ -836,8 +836,6 @@ as_tool_result_display <- function(display, error_context = NULL) {
     return(structure(list(), class = "shinychat_tool_result_display"))
   }
 
-  # Named NULLs arise from idiomatic conditional fields like
-  # `list(title = if (cond) title)`; treat them as absent.
   display <- display[!map_lgl(display, is.null)]
 
   unknown <- setdiff(names(display), tool_result_display_fields)
