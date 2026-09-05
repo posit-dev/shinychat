@@ -250,7 +250,7 @@ class _ExchangeState:
                 adapter.set_turns_json([])
             self._set_turn_baseline(turns)
             return
-        adapter.set_turns_json(turns)
+        adapter.set_turns_json(turns, include_system_prompt=True)
         self._set_turn_baseline(turns)
 
     @staticmethod

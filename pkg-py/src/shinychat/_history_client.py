@@ -88,20 +88,31 @@ class TurnsAdapter:
             return [[t] for t in turns]
         return _group_chatlas_turns(turns)
 
-    def set_turns_json(self, turns: list[dict[str, Any]]) -> None:
+    def set_turns_json(
+        self,
+        turns: list[dict[str, Any]],
+        *,
+        include_system_prompt: bool = False,
+    ) -> None:
         raw = self._turns_client()
         if is_chatlas_chat_client(raw):
             from chatlas import Turn
 
             restored = [Turn.model_validate(t) for t in turns]
-            system = restored[0] if restored and restored[0].role == "system" else None
+            system = (
+                restored[0]
+                if restored and restored[0].role == "system"
+                else None
+            )
             conversation = restored[1:] if system is not None else restored
             if any(turn.role == "system" for turn in conversation):
-                raise ValueError("System turns are only allowed at the start of history.")
+                raise ValueError(
+                    "System turns are only allowed at the start of history."
+                )
             # chatlas keeps the system prompt separately from set_turns().
             raw.set_turns(conversation)
-            if system is not None:
-                raw.system_prompt = system.text
+            if include_system_prompt or system is not None:
+                raw.system_prompt = system.text if system is not None else None
         else:
             raw.set_turns(list(turns))
 

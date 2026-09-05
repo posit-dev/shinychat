@@ -414,7 +414,9 @@ class _FakeAdapter:
     def get_turns_grouped(self) -> list[list[Any]]:
         return [[t] for t in self.get_turns_json()]
 
-    def set_turns_json(self, turns: list[Any]) -> None:
+    def set_turns_json(
+        self, turns: list[Any], *, include_system_prompt: bool = False
+    ) -> None:
         self.turns = list(turns)
 
     def client_info(self) -> dict[str, Any]:
@@ -426,9 +428,13 @@ class _TrackingFakeAdapter(_FakeAdapter):
         super().__init__(chatlas=chatlas)
         self.set_calls: list[list[dict[str, Any]]] = []
 
-    def set_turns_json(self, turns: list[Any]) -> None:
+    def set_turns_json(
+        self, turns: list[Any], *, include_system_prompt: bool = False
+    ) -> None:
         self.set_calls.append(list(turns))
-        super().set_turns_json(turns)
+        super().set_turns_json(
+            turns, include_system_prompt=include_system_prompt
+        )
 
 
 class _RecordingStore(ConversationStore):
@@ -3477,10 +3483,14 @@ async def test_v2_restore_failure_becomes_fresh_draft(
     elif failure == "turns":
         original_set_turns = adapter.set_turns_json
 
-        def fail_turns(turns: list[Any]) -> None:
+        def fail_turns(
+            turns: list[Any], *, include_system_prompt: bool = False
+        ) -> None:
             if turns:
                 raise expected
-            original_set_turns(turns)
+            original_set_turns(
+                turns, include_system_prompt=include_system_prompt
+            )
 
         adapter.set_turns_json = fail_turns  # type: ignore[method-assign]
     elif failure == "hook":
@@ -3657,7 +3667,9 @@ async def test_v2_restore_cleanup_failures_are_secondary_and_reported(
         fake_chat.clear_messages = fail_cleanup_clear  # type: ignore[method-assign]
     elif cleanup == "turns":
 
-        def fail_cleanup_turns(_turns: list[Any]) -> None:
+        def fail_cleanup_turns(
+            _turns: list[Any], *, include_system_prompt: bool = False
+        ) -> None:
             raise cleanup_error
 
         adapter.set_turns_json = fail_cleanup_turns  # type: ignore[method-assign]
@@ -3718,9 +3730,11 @@ async def test_v2_restore_cleanup_continues_after_earlier_failure():
         events.append("initial-clear")
         await original_clear()
 
-    def set_turns(turns: list[Any]) -> None:
+    def set_turns(
+        turns: list[Any], *, include_system_prompt: bool = False
+    ) -> None:
         events.append("turns")
-        original_set_turns(turns)
+        original_set_turns(turns, include_system_prompt=include_system_prompt)
 
     async def greeting(value: Any) -> None:
         nonlocal greeting_calls
@@ -3936,9 +3950,11 @@ async def test_v2_restore_success_order_and_no_failure_notification():
         events.append("replay")
         await original_replay(message, icon=icon)
 
-    def set_turns(turns: list[Any]) -> None:
+    def set_turns(
+        turns: list[Any], *, include_system_prompt: bool = False
+    ) -> None:
         events.append("turns")
-        original_set_turns(turns)
+        original_set_turns(turns, include_system_prompt=include_system_prompt)
 
     def install(record: ConversationRecordV2) -> None:
         events.append("install")
@@ -7413,7 +7429,9 @@ class _NavFakeAdapter(_FakeAdapter):
     def __init__(self) -> None:
         self.set_calls: list[list[Any]] = []
 
-    def set_turns_json(self, turns: list[Any]) -> None:
+    def set_turns_json(
+        self, turns: list[Any], *, include_system_prompt: bool = False
+    ) -> None:
         self.set_calls.append(turns)
 
 
@@ -7877,7 +7895,9 @@ class _GrowingFakeAdapter:
     def get_turns_grouped(self) -> list[list[Any]]:
         return [[t] for t in self.turns]
 
-    def set_turns_json(self, turns: list[Any]) -> None:
+    def set_turns_json(
+        self, turns: list[Any], *, include_system_prompt: bool = False
+    ) -> None:
         self.turns = list(turns)
 
     def client_info(self) -> dict[str, Any]:
@@ -8488,7 +8508,9 @@ class _TrackingAdapter:
     def get_turns_grouped(self) -> list[list[dict[str, Any]]]:
         return [[t] for t in self.turns]
 
-    def set_turns_json(self, turns: list[dict[str, Any]]) -> None:
+    def set_turns_json(
+        self, turns: list[dict[str, Any]], *, include_system_prompt: bool = False
+    ) -> None:
         self.turns = list(turns)
 
     def client_info(self) -> dict[str, str]:

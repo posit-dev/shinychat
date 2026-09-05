@@ -306,3 +306,38 @@ async def test_capture_failure_cannot_mark_an_exchange_completed(store):
             client.turns.append({"invalid": object()})
     record = await store.get(PARTITION, conversation.id)
     assert record.nodes[conversation.active_leaf].status == "error"
+
+
+@pytest.mark.anyio
+async def test_chatlas_removed_system_prompt_survives_selection_and_load(store):
+    client = chatlas.ChatOpenAI(
+        model="test-model",
+        api_key="unused",
+        system_prompt="Initial instructions",
+    )
+    conversation = await Conversation.create(store, PARTITION, client=client)
+    root = conversation.active_leaf
+    async with conversation.exchange("Remove the instructions") as removed:
+        client.system_prompt = None
+        client.set_turns(
+            [chatlas.Turn(role="user", contents="Remove the instructions")]
+        )
+
+    await conversation.select(root)
+    assert client.system_prompt == "Initial instructions"
+    await conversation.select(removed)
+    assert client.system_prompt is None
+    assert [turn.text for turn in client.get_turns()] == [
+        "Remove the instructions"
+    ]
+
+    restored_client = chatlas.ChatOpenAI(
+        model="test-model", api_key="unused", system_prompt="Worker default"
+    )
+    await Conversation.load(
+        store, PARTITION, conversation.id, client=restored_client
+    )
+    assert restored_client.system_prompt is None
+    assert [turn.text for turn in restored_client.get_turns()] == [
+        "Remove the instructions"
+    ]

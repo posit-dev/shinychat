@@ -52,23 +52,52 @@ def test_chatlas_adapter_includes_system_prompt_when_requested():
 
     adapter = as_turns_adapter(client)
     assert [turn["role"] for turn in adapter.get_turns_json()] == ["user"]
-    assert [turn["role"] for turn in adapter.get_turns_json(include_system_prompt=True)] == [
+    assert [
+        turn["role"]
+        for turn in adapter.get_turns_json(include_system_prompt=True)
+    ] == [
         "system",
         "user",
     ]
 
     client.system_prompt = "different instructions"
-    adapter.set_turns_json([
-        {"role": "system", "contents": [{"content_type": "text", "text": "be precise"}]},
-        {"role": "user", "contents": [{"content_type": "text", "text": "hi"}]},
-    ])
+    adapter.set_turns_json(
+        [
+            {
+                "role": "system",
+                "contents": [{"content_type": "text", "text": "be precise"}],
+            },
+            {
+                "role": "user",
+                "contents": [{"content_type": "text", "text": "hi"}],
+            },
+        ]
+    )
     assert client.system_prompt == "be precise"
     assert [turn.text for turn in client.get_turns()] == ["hi"]
 
     before = adapter.get_turns_json(include_system_prompt=True)
-    with pytest.raises(ValueError, match="System turns are only allowed at the start"):
+    with pytest.raises(
+        ValueError, match="System turns are only allowed at the start"
+    ):
         adapter.set_turns_json(list(reversed(before)))
     assert adapter.get_turns_json(include_system_prompt=True) == before
+
+
+def test_chatlas_adapter_clears_system_prompt_only_for_complete_history():
+    chatlas = pytest.importorskip("chatlas")
+    client = chatlas.ChatOpenAI(
+        api_key="fake", system_prompt="live instructions"
+    )
+    adapter = as_turns_adapter(client)
+
+    # Legacy history excludes the system prompt and must retain the live one.
+    adapter.set_turns_json([])
+    assert client.system_prompt == "live instructions"
+
+    # Exchange-tree snapshots include the prompt, including its absence.
+    adapter.set_turns_json([], include_system_prompt=True)
+    assert client.system_prompt is None
 
 
 def test_chatlas_adapter_serializes_dict_tool_result_display():
