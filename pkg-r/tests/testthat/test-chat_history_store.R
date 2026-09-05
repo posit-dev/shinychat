@@ -1013,9 +1013,6 @@ test_that("safe_conv_path() rejects path traversal", {
 })
 
 test_that("history_json() serializes stored messages with classed tool blocks", {
-  # Regression test: as.list() on a classed list retains its class, so
-  # shinychat_block segments used to reach jsonlite::toJSON() classed and
-  # error with "No method asJSON S3 class: shinychat_block".
   tool_result <- ellmer::ContentToolResult(
     request = ellmer::ContentToolRequest(
       id = "t1",
