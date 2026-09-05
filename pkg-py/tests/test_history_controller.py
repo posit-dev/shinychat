@@ -32,11 +32,11 @@ from shinychat._history import (
     HistoryController,
     HistoryInputIds,
     HistoryOptions,
-    StatePathContext,
     do_bookmark_with_cleanup,
     extend_record_linear,
 )
 from shinychat._history_client import TurnsAdapter
+from shinychat._history_state import StatePathContext
 from shinychat._history_store import (
     ConversationPartition,
     ConversationStore,
