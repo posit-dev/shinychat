@@ -37,7 +37,13 @@ to silence it.}
 \code{session$user} if authenticated, otherwise a per-browser token).
 Pass a shared string to allow multiple users to share history — for
 example \code{session$groups[[1]]} to scope by group, or a constant like
-\code{"global"} to share across all users.}
+\code{"global"} to share across all users. \strong{Warning:} a shared scope is a
+storage partition, not a concurrency mechanism — sessions writing to
+the same scope are not coordinated, so concurrent sessions sharing a
+scope can corrupt the history on disk (duplicate or skipped entries).
+Only share a scope when writes are effectively serialized (for
+example, a single-session app). The default per-user scoping is
+unaffected.}
 
 \item{title}{Title generation strategy. \code{"auto"} (default) for LLM-generated
 titles, a \verb{function(recorded_turns)} for custom titles, or \code{NULL} to skip

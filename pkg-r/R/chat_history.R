@@ -683,7 +683,13 @@ HistoryController <- R6::R6Class(
 #'   `session$user` if authenticated, otherwise a per-browser token).
 #'   Pass a shared string to allow multiple users to share history — for
 #'   example `session$groups[[1]]` to scope by group, or a constant like
-#'   `"global"` to share across all users.
+#'   `"global"` to share across all users. **Warning:** a shared scope is a
+#'   storage partition, not a concurrency mechanism — sessions writing to
+#'   the same scope are not coordinated, so concurrent sessions sharing a
+#'   scope can corrupt the history on disk (duplicate or skipped entries).
+#'   Only share a scope when writes are effectively serialized (for
+#'   example, a single-session app). The default per-user scoping is
+#'   unaffected.
 #' @param title Title generation strategy. `"auto"` (default) for LLM-generated
 #'   titles, a `function(recorded_turns)` for custom titles, or `NULL` to skip
 #'   LLM titling (the conversation keeps its initial timestamp-based name).
