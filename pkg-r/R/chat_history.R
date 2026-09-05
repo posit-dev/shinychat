@@ -898,8 +898,10 @@ chat_enable_history <- function(
           captured_id
         )
       })
-      session$doBookmark()
-      cancel_bm()
+      # doBookmark() reads input reactive values; this callback can run from
+      # a promise handler where no reactive context exists.
+      on.exit(cancel_bm())
+      shiny::isolate(session$doBookmark())
     }
 
     controller$on_pre_switch <- function(target) {
