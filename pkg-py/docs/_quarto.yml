@@ -30,6 +30,8 @@ website:
         href: index.qmd
       - text: Page chat
         href: page-chat.qmd
+      - text: History workers
+        href: history-workers.qmd
       - text: API Reference
         href: api/index.qmd
     tools:
@@ -124,6 +126,7 @@ quartodoc:
         include_classes: true
         include_functions: true
       contents:
+        - Conversation
         - types.HistoryOptions
         - types.ConversationPartition
         - types.ConversationStore

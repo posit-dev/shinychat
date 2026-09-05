@@ -1,6 +1,7 @@
 from ._attachments import Attachment, attachment_to_content
 from ._chat import Chat, UserInput, chat_greeting, chat_ui
 from ._chat_normalize import message_content, message_content_chunk
+from ._conversation import Conversation
 from ._markdown_stream import MarkdownStream, output_markdown_stream
 from ._page_chat import (
     chat_drawer,
@@ -15,6 +16,7 @@ __all__ = [
     "Attachment",
     "attachment_to_content",
     "Chat",
+    "Conversation",
     "UserInput",
     "chat_drawer",
     "chat_greeting",

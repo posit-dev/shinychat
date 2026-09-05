@@ -1,0 +1,94 @@
+---
+title: Conversation history in a worker
+---
+
+`Conversation` lets a worker continue the branch selected in a Shiny app and save the result for the user's next visit. It uses the exchange-tree history format proposed in [#379](https://github.com/posit-dev/shinychat/pull/379). This is a draft API for [#391](https://github.com/posit-dev/shinychat/issues/391); it requires v2 history and does not load legacy v1 records.
+
+The app passes its store location, resolved chat ID, trusted owner scope, and conversation ID to the worker. The worker creates its own model client. No `Chat`, Shiny session, or reactive context is needed.
+
+```python
+from chatlas import ChatOpenAI
+from shinychat import Conversation
+from shinychat.types import ConversationPartition, FileConversationStore
+
+
+async def continue_conversation(directory, scope, chat_id, conversation_id, run_id):
+    client = ChatOpenAI(model="gpt-4.1")
+    conversation = await Conversation.load(
+        FileConversationStore(directory),
+        ConversationPartition(chat_id=chat_id, scope=scope),
+        conversation_id,
+        client=client,
+    )
+
+    prompt = "Continue the analysis and write a brief conclusion."
+    async with conversation.exchange(prompt):
+        conversation.values["deputy"] = {"version": 1, "run_id": run_id}
+        response = await client.chat_async(prompt, echo="none", stream=False)
+        await conversation.append_message(await response.get_content())
+```
+
+The caller runs this function in its chosen worker system. The caller also authorizes the scope and serializes access to the conversation for the entire operation. The file store does not coordinate concurrent writers. A disconnected browser is not sufficient if the server is still processing an earlier response; the app must finish or hand off that work first. Use an explicit shared directory, not a session-dependent default store location. Create a fresh store when returning to the conversation so process-local list caches do not hide another process's changes.
+
+When the user returns, ordinary Shiny history restoration replays the saved messages and restores the model's turns. Application values use the existing callbacks:
+
+```python
+# Within the Shiny server function, after creating chat:
+from shiny import reactive
+
+run_id = reactive.Value(None)
+
+
+@chat.history.on_restore
+def restore_run(values):
+    state = values.get("deputy")
+    if state is not None and state.get("version") != 1:
+        raise ValueError("Unsupported Deputy history values")
+    run_id.set(state["run_id"] if state is not None else None)
+
+
+@chat.history.on_save
+def save_run(values):
+    values["deputy"] = {"version": 1, "run_id": run_id.get()}
+```
+
+## Branches and model context
+
+`Conversation.load()` restores the saved active branch. `conversation.active_leaf` identifies its selected exchange. To create an alternative continuation, select an earlier exchange and submit a new input:
+
+```python
+await conversation.select(previous_exchange_id)
+async with conversation.exchange("Try a different approach"):
+    # Invoke the client and append the resulting Markdown here.
+    ...
+```
+
+Selection restores provider turns before work starts. Existing descendants remain in the tree. Retain an exchange ID returned by the `exchange()` context or `active_leaf` to select it later; callers do not need to modify tree fields.
+
+Display content and provider turns are independent. A worker can replace or summarize the client's turns **inside** the exchange context. Capture stores a snapshot when the original prefix changes. Earlier messages and branches remain intact. Append only the Markdown that should appear to the reader; provider tool turns and other context are saved through the client's turn adapter. New worker output currently supports complete Markdown messages and user attachments. Existing custom display messages are preserved without re-rendering them in the worker.
+
+## Persistence boundaries
+
+The context saves the user input before yielding. Each `append_message()` saves another complete message. Context exit captures provider turns and saves the terminal status. Exceptions and cancellation propagate to the caller, while saved errors use the same bounded summaries as Shiny history. A killed process leaves its latest checkpoint pending. Persistence failures propagate too; they do not report successful completion.
+
+Workers reject incompatible provider turns before restoration. Shiny can retain display history when model replay is unavailable; an unattended worker cannot safely make that choice for the user.
+
+`values` is a conversation-level JSON object shared with `on_save` and `on_restore`. Applications own their keys and payload versions. This is suitable for a run ID, but is not branch-local application-state restoration. The named exchange-state hooks planned in #379 remain a separate API decision. Unrecognized exchange-state entries fail restoration through the existing validation.
+
+For a new conversation, use `await Conversation.create(store, partition, client=client, title=...)`. Listing, renaming, and deletion remain operations on `ConversationStore`; this API does not introduce another store interface.
+
+## Contract for the R port
+
+This draft implements the Python side against #379. It does not port or expose R's older history representation. The corresponding R API should follow the same boundaries once the exchange-tree design is accepted:
+
+| Operation | Required behavior |
+| --- | --- |
+| Create/load | Explicit store, trusted owner scope, resolved chat ID, and conversation ID; no reactive domain or Shiny session. Restore ellmer turns using ellmer's serialization. |
+| Select | Restore an existing exchange's provider state; preserve descendants. The next user input creates a child of the selected exchange. |
+| Exchange | Persist accepted input, checkpoint display messages, then capture provider state and terminal outcome. Preserve and propagate errors and cancellation. |
+| Compact | Capture a snapshot when model turns replace their earlier prefix, preserving the original display transcript. |
+| Application values | Share the existing conversation-level callback payload. Application keys and payload versions remain application-owned. |
+| Validation | Use the same record/state validation as the UI before mutating the client. Reject incompatible provider state for unattended continuation. |
+| Concurrency | Caller owns authorization, scheduling, and exclusive access for the full operation. No implicit worker queue or multi-writer guarantee. |
+
+R and Python share behavior, not provider-turn encodings or cross-language stored records. Deputy's integration remains gated on a supported, released R API, as tracked in [Deputy #66](https://github.com/JamesHWade/deputy/issues/66).
