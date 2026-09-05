@@ -1,4 +1,4 @@
-"""A separate process using only the public worker API and a real chatlas client."""
+"""A separate process using the private worker prototype and a real chatlas client."""
 
 import asyncio
 import json
@@ -10,7 +10,7 @@ from typing import Any, cast
 import chatlas
 import httpx
 from shiny.session import get_current_session
-from shinychat import Conversation
+from shinychat._conversation import Conversation
 from shinychat.types import ConversationPartition, FileConversationStore
 
 

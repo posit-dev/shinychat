@@ -8,7 +8,11 @@ from typing import Any, Literal
 
 from ._attachments import Attachment, validate_attachments
 from ._chat_types import ChatMessage, StoredMessage
-from ._history_client import _validate_mapping_keys, as_turns_adapter
+from ._history_client import (
+    TurnsAdapter,
+    _validate_mapping_keys,
+    as_turns_adapter,
+)
 from ._history_state import _ExchangeState
 from ._history_store import ConversationPartition, ConversationStore
 from ._history_types import (
@@ -20,8 +24,14 @@ from ._history_types import (
 from ._utils import private_random_id
 
 
+class ConversationConflictError(RuntimeError):
+    """The stored conversation changed; reload before continuing."""
+
+
 class Conversation:
-    """Continue exchange-tree history without a Shiny session.
+    """Private prototype for exchange-tree history without a Shiny session.
+
+    Not exported until Shiny has a public way to enable v2 history.
 
     Use `create()` or `load()` with the app's store, resolved chat ID,
     and trusted owner scope. The caller authorizes access and serializes the
@@ -39,14 +49,15 @@ class Conversation:
         self,
         store: ConversationStore,
         partition: ConversationPartition,
-        client: Any,
+        adapter: TurnsAdapter,
         record: ConversationRecordV2,
     ) -> None:
         self._store = store
         self._partition = partition
-        self._state = _ExchangeState(as_turns_adapter(client))
+        self._state = _ExchangeState(adapter)
         self._state.record = record
         self._exchange_id: str | None = None
+        self._saved_record: str | None = None
 
     @property
     def _record(self) -> ConversationRecordV2:
@@ -67,7 +78,7 @@ class Conversation:
         conversation = cls(
             store,
             partition,
-            client,
+            adapter,
             new_conversation_record_v2(
                 title=title, client_info=adapter.client_info()
             ),
@@ -109,8 +120,12 @@ class Conversation:
                 "Stored conversation ID does not match the requested ID."
             )
         conversation = cls(
-            store, partition, client, record.model_copy(deep=True)
+            store,
+            partition,
+            as_turns_adapter(client),
+            record.model_copy(deep=True),
         )
+        conversation._saved_record = conversation._snapshot(record)
         if exchange_id is not None:
             conversation._record.set_active_leaf(exchange_id)
         await conversation._restore(conversation._record)
@@ -133,7 +148,9 @@ class Conversation:
 
         Use an application-owned key and version its payload, for example
         ``values["deputy"] = {"version": 1, "run_id": run_id}``. Values must
-        be JSON-serializable. They belong to the conversation, not a branch.
+        be JSON-serializable with string keys and finite numbers; invalid
+        values raise `ValueError` on save. They belong to the conversation,
+        not a branch.
         Call `save()` after changes outside an exchange.
         """
         return self._record.values
@@ -153,7 +170,8 @@ class Conversation:
 
     @staticmethod
     def _require_captured_turns(record: ConversationRecordV2) -> None:
-        assert record.active_leaf is not None
+        if record.active_leaf is None:
+            raise ValueError("Exchange-tree record has no active path.")
         selected = record.nodes[record.active_leaf]
         if (
             selected.status == "pending"
@@ -171,8 +189,9 @@ class Conversation:
         remain available, so selecting an earlier exchange and submitting
         new input creates an alternative continuation.
 
-        Selection is applied to the client before saving. If persistence
-        fails, retry `save()` or discard this handle and load it again.
+        Selection is applied to the client before saving. After an I/O
+        failure, retry `save()` or load again. A `ConversationConflictError`
+        requires discarding this handle and reloading the newer record.
         """
         self._require_idle()
         target = self._record.model_copy(
@@ -188,7 +207,7 @@ class Conversation:
 
     @asynccontextmanager
     async def exchange(
-        self, input: str, *, attachments: list[Attachment] | None = None
+        self, prompt: str, *, attachments: list[Attachment] | None = None
     ) -> AsyncIterator[str]:
         """Record one user input and the work performed in this context.
 
@@ -203,11 +222,11 @@ class Conversation:
         context is captured on the new exchange, leaving its parent intact.
         """
         self._require_idle()
-        if not isinstance(input, str):
+        if not isinstance(prompt, str):
             raise TypeError("Input must be a Markdown string.")
         self._require_captured_turns(self._record)
         message = StoredMessage.from_chat_message(
-            ChatMessage(input, role="user", attachments=attachments)
+            ChatMessage(prompt, role="user", attachments=attachments)
         )
         validate_attachments(message.attachments)
         exchange_id = private_random_id()
@@ -276,12 +295,41 @@ class Conversation:
 
         Provider turns are captured when the exchange context exits. Saving
         alone does not capture model work or complete an exchange.
+
+        Raises `ConversationConflictError` if the stored record changed or
+        was deleted since loading or the last successful save. Reload to
+        recover; retrying this handle cannot resolve a conflict. This check
+        is not atomic with the write: callers must still serialize access.
         """
         await self._save_record(self._record)
 
+    @staticmethod
+    def _snapshot(record: ConversationRecordV2) -> str:
+        # JSON distinguishes true from 1; Python dictionary equality does not.
+        return json.dumps(record.model_dump(mode="json"), sort_keys=True)
+
     async def _save_record(self, record: ConversationRecordV2) -> None:
-        _validate_mapping_keys(record.values)
-        json.dumps(record.values, allow_nan=False)
+        try:
+            json.dumps(record.values, allow_nan=False)
+            _validate_mapping_keys(record.values)
+        except (TypeError, ValueError, RecursionError) as error:
+            raise ValueError(
+                "Conversation values must be JSON-serializable "
+                "with string keys and finite numbers."
+            ) from error
+        current = await self._store.get(self._partition, record.id)
+        current_snapshot = (
+            self._snapshot(current) if current is not None else None
+        )
+        if current_snapshot != self._saved_record:
+            raise ConversationConflictError(
+                "The conversation changed or was deleted since it was loaded "
+                "or last saved. Reload before continuing."
+            )
+        # Compare complete records: values-only writes need not advance
+        # updated_at. This detects stale handles, not simultaneous writers.
+        snapshot = self._snapshot(record)
         # Store implementations may retain references. Give them a snapshot,
         # so further work cannot change a saved checkpoint without a put().
         await self._store.put(self._partition, record.model_copy(deep=True))
+        self._saved_record = snapshot

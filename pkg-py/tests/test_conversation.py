@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import copy
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import chatlas
 import pytest
 from shiny.session import get_current_session
-from shinychat import Conversation
+from shinychat import Attachment
+from shinychat._conversation import Conversation, ConversationConflictError
 from shinychat._history_store import InMemoryConversationStore
 from shinychat._history_types import new_conversation_record
 from shinychat.types import ConversationPartition, FileConversationStore
@@ -238,16 +240,139 @@ async def test_invalid_selection_and_overlapping_exchange_do_not_change_branch(
 
 
 @pytest.mark.anyio
-async def test_unsaved_or_invalid_values_cannot_mutate_store(store):
+@pytest.mark.parametrize(
+    "invalid",
+    [float("nan"), datetime(2026, 1, 1), {1: "non-string key"}, "cycle"],
+)
+async def test_unsaved_or_invalid_values_cannot_mutate_store(store, invalid):
     conversation = await Conversation.create(
         store, PARTITION, client=TurnsClient()
     )
     conversation.values["run"] = {"version": 1, "id": "unsaved"}
     assert (await store.get(PARTITION, conversation.id)).values == {}
-    conversation.values["invalid"] = float("nan")
-    with pytest.raises(ValueError):
+    conversation.values["invalid"] = (
+        conversation.values if invalid == "cycle" else invalid
+    )
+    with pytest.raises(ValueError, match="Conversation values must be JSON"):
         await conversation.save()
     assert (await store.get(PARTITION, conversation.id)).values == {}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("change", ["values", "value_type", "branch", "delete"])
+async def test_stale_handle_cannot_replace_newer_history(store, change):
+    original = await Conversation.create(store, PARTITION, client=TurnsClient())
+    original.values["accepted"] = True
+    await original.save()
+    stale = await Conversation.load(
+        store, PARTITION, original.id, client=TurnsClient()
+    )
+    timestamp = (await store.get(PARTITION, original.id)).updated_at
+    if change in ("values", "value_type"):
+        if change == "values":
+            original.values["run_id"] = "newer-run"
+        else:
+            original.values["accepted"] = 1
+        await original.save()
+        # Metadata-only writes need not advance the record timestamp.
+        assert (await store.get(PARTITION, original.id)).updated_at == timestamp
+    elif change == "branch":
+        async with original.exchange("Newer question"):
+            await original.append_message("Newer answer")
+    else:
+        await store.delete(PARTITION, original.id)
+    newer = await store.get(PARTITION, original.id)
+
+    stale.values["run_id"] = "stale-run"
+    with pytest.raises(ConversationConflictError, match="Reload"):
+        await stale.save()
+    with pytest.raises(ConversationConflictError):
+        async with stale.exchange("Stale question"):
+            pytest.fail("work began from a stale handle")
+    assert await store.get(PARTITION, original.id) == newer
+
+    if change != "delete":
+        recovered = await Conversation.load(
+            store, PARTITION, original.id, client=TurnsClient()
+        )
+        recovered.values["result"] = "recovered"
+        await recovered.save()
+        assert (await store.get(PARTITION, original.id)).values[
+            "result"
+        ] == "recovered"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("checkpoint", ["append", "finish"])
+async def test_newer_write_during_work_survives_worker_checkpoints(
+    store, checkpoint
+):
+    conversation = await Conversation.create(
+        store, PARTITION, client=TurnsClient()
+    )
+    newer = None
+    with pytest.raises(ConversationConflictError):
+        async with conversation.exchange("Question"):
+            # Simulate an app save after this worker persisted its input.
+            newer = (await store.get(PARTITION, conversation.id)).model_copy(
+                deep=True
+            )
+            newer.values["app_result"] = "Keep this"
+            await store.put(PARTITION, newer)
+            if checkpoint == "append":
+                await conversation.append_message("Stale answer")
+    assert newer is not None
+    assert await store.get(PARTITION, conversation.id) == newer
+
+
+@pytest.mark.anyio
+async def test_snapshot_comparison_accepts_json_normalized_values(store):
+    conversation = await Conversation.create(
+        store, PARTITION, client=TurnsClient()
+    )
+    conversation.values["labels"] = ("first", "second")
+    await conversation.save()
+    conversation.values["run_id"] = "next-run"
+    await conversation.save()
+    restored = await Conversation.load(
+        store, PARTITION, conversation.id, client=TurnsClient()
+    )
+    restored.values["result"] = "complete"
+    await restored.save()
+    assert (await store.get(PARTITION, conversation.id)).values[
+        "result"
+    ] == "complete"
+
+
+@pytest.mark.anyio
+async def test_user_attachments_are_saved_before_work_and_survive_restore(
+    store,
+):
+    client = TurnsClient()
+    conversation = await Conversation.create(store, PARTITION, client=client)
+    attachment = Attachment.from_data(
+        b"Worker input", "text/plain", name="notes.txt"
+    )
+    async with conversation.exchange(
+        "Read this", attachments=[attachment]
+    ) as exchange_id:
+        saved = await store.get(PARTITION, conversation.id)
+        assert saved.nodes[exchange_id].input.attachments == [attachment]
+        assert saved.nodes[exchange_id].input.content == "Read this"
+    restored = await Conversation.load(
+        store, PARTITION, conversation.id, client=TurnsClient()
+    )
+    await restored.save()
+    saved = await store.get(PARTITION, conversation.id)
+    assert saved.nodes[exchange_id].input.attachments == [attachment]
+
+    invalid = attachment.model_copy(
+        update={"data_url": "data:image/png;base64,aGk="}
+    )
+    with pytest.raises(ValueError):
+        async with restored.exchange("Invalid", attachments=[invalid]):
+            pytest.fail("work began with an invalid attachment")
+    assert await store.get(PARTITION, conversation.id) == saved
 
 
 @pytest.mark.anyio
@@ -360,12 +485,24 @@ async def test_pending_checkpoint_cannot_be_loaded_for_continuation(store):
     conversation = await Conversation.create(
         store, PARTITION, client=TurnsClient()
     )
-    async with conversation.exchange("Still running"):
+    root = conversation.active_leaf
+    async with conversation.exchange("Still running") as pending:
         await conversation.append_message("Checkpoint")
         with pytest.raises(ValueError, match="incomplete provider state"):
             await Conversation.load(
                 store, PARTITION, conversation.id, client=TurnsClient()
             )
+        client = TurnsClient()
+        recovered = await Conversation.load(
+            store, PARTITION, conversation.id, client=client, exchange_id=root
+        )
+        before = client.get_turns()
+        saved = await store.get(PARTITION, conversation.id)
+        with pytest.raises(ValueError, match="incomplete provider state"):
+            await recovered.select(pending)
+        assert recovered.active_leaf == root
+        assert client.get_turns() == before
+        assert await store.get(PARTITION, conversation.id) == saved
 
 
 @pytest.mark.anyio

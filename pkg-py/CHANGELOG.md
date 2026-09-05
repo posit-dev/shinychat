@@ -9,8 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### New features
 
-* `Conversation` can create, restore, branch, and continue exchange-tree history in a Python worker without a Shiny session. Workers share the app's store and owner partition, preserve displayed messages independently of provider turns, and save application values through the existing history callbacks. (#391)
-
 * Conversations now have a stable, publicly accessible ID, available reactively via `chat.history.conversation_id()` (`None` when history is disabled or the chat is still empty). The ID is stable across retries, restores, conversation switches, and `chat.client.set()` calls, and becomes the saved `ConversationRecord.id`. The ID is also handed to the chat client, which records it as the standard `gen_ai.conversation.id` attribute on its own OpenTelemetry spans ([OTel GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/)), so telemetry consumers can group model work by conversation. (#307)
 
 * Chatlas web search and web fetch responses now show their activity and citations directly in the chat. Readers can open a citation beside its claim or use the message-wide Sources pill. `ContentCitation.grounded_span` links each citation to the answer text that it supports.

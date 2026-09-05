@@ -1,14 +1,22 @@
----
-title: Conversation history in a worker
----
+# Conversation history in a worker: draft fixture
 
-`Conversation` lets a worker continue the branch selected in a Shiny app and save the result for the user's next visit. It uses the exchange-tree history format proposed in [#379](https://github.com/posit-dev/shinychat/pull/379). This is a draft API for [#391](https://github.com/posit-dev/shinychat/issues/391); it requires v2 history and does not load legacy v1 records.
+This fixture exercises the private `shinychat._conversation.Conversation` prototype for [#391](https://github.com/posit-dev/shinychat/issues/391). It uses the exchange-tree history format proposed in [#379](https://github.com/posit-dev/shinychat/pull/379), which has no public enablement path yet. The prototype is not exported or included in the package's published documentation. It requires v2 history and does not load legacy v1 records.
+
+The fixture's `app.py` explicitly enables the draft format before constructing its Shiny app:
+
+```python
+import shinychat._history as history_module
+
+history_module._EXCHANGE_TREE_HISTORY_V2 = True
+```
+
+This flag is for testing the draft, not a supported application configuration. Public exposure of the worker API must wait for #379's enablement decision. The browser test selects a branch, closes the session, runs `worker.py` in a separate process, and reopens the app to verify the saved continuation and original branches.
 
 The app passes its store location, resolved chat ID, trusted owner scope, and conversation ID to the worker. The worker creates its own model client. No `Chat`, Shiny session, or reactive context is needed.
 
 ```python
 from chatlas import ChatOpenAI
-from shinychat import Conversation
+from shinychat._conversation import Conversation
 from shinychat.types import ConversationPartition, FileConversationStore
 
 
@@ -28,7 +36,9 @@ async def continue_conversation(directory, scope, chat_id, conversation_id, run_
         await conversation.append_message(await response.get_content())
 ```
 
-The caller runs this function in its chosen worker system. The caller also authorizes the scope and serializes access to the conversation for the entire operation. The file store does not coordinate concurrent writers. A disconnected browser is not sufficient if the server is still processing an earlier response; the app must finish or hand off that work first. Use an explicit shared directory, not a session-dependent default store location. Create a fresh store when returning to the conversation so process-local list caches do not hide another process's changes.
+The caller runs this function in its chosen worker system. The caller also authorizes the scope and serializes access to the conversation for the entire operation. The file store does not coordinate concurrent writers. A disconnected browser is not sufficient if the server is still processing an earlier response; the app must finish or hand off that work first. Use an explicit shared directory, not a session-dependent default store location.
+
+Create a fresh store in each worker and each returning Shiny session, as `app.py` does inside its server function. A module-level `FileConversationStore` can retain stale titles and ordering after another process writes. A fresh worker store alone does not refresh the app's cached list.
 
 When the user returns, ordinary Shiny history restoration replays the saved messages and restores the model's turns. Application values use the existing callbacks:
 
@@ -73,6 +83,8 @@ The context saves the user input before yielding. Each `append_message()` saves 
 
 Workers reject incompatible provider turns before restoration. Shiny can retain display history when model replay is unavailable; an unattended worker cannot safely make that choice for the user.
 
+Before each write, the worker compares the stored record with the complete snapshot last loaded or successfully saved. A change or deletion raises `ConversationConflictError`; discard the handle and reload before deciding how to continue. This also detects values-only writes that do not advance `updated_at`. A failed write does not advance the expected snapshot. The comparison and write are separate operations, so this detects already-stale handles but does not provide an atomic lock or protect against simultaneous writers. Exclusive access is still required for the whole load/work/save operation, including writers in the Shiny app.
+
 Workers also reject pending exchanges and checkpoints without captured provider state. After interrupted work, pass a previously retained exchange ID to `Conversation.load(..., exchange_id=...)` to restore a complete checkpoint and start an alternative continuation. Failed and cancelled exchanges with successfully captured turns remain resumable. A load alone does not save a different branch selection; the next exchange or `save()` does.
 
 `values` is a conversation-level JSON object shared with `on_save` and `on_restore`. Applications own their keys and payload versions. This is suitable for a run ID, but is not branch-local application-state restoration. The named exchange-state hooks planned in #379 remain a separate API decision. Unrecognized exchange-state entries fail restoration through the existing validation.
@@ -93,4 +105,4 @@ This draft implements the Python side against #379. It does not port or expose R
 | Validation | Use the same record/state validation as the UI before mutating the client. Reject incompatible provider state for unattended continuation. |
 | Concurrency | Caller owns authorization, scheduling, and exclusive access for the full operation. No implicit worker queue or multi-writer guarantee. |
 
-R and Python share behavior, not provider-turn encodings or cross-language stored records. Deputy's integration remains gated on a supported, released R API, as tracked in [Deputy #66](https://github.com/JamesHWade/deputy/issues/66).
+R and Python share behavior, not provider-turn encodings or cross-language stored records.
