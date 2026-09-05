@@ -1195,11 +1195,6 @@ chat_history_on_response <- function(
 
   promises::then(stream_promise, function(value) {
     if (!controller$is_replaying) {
-      # A persistence failure must not fail an otherwise-successful
-      # response: notify and let the original value through. Scoping the
-      # catch to the save also keeps genuine stream errors from raising a
-      # spurious "Could not save conversation" notification. Mirrors
-      # Python's `_save_on_response` effect.
       tryCatch(
         controller$on_response(get_turns_recorded(controller$get_client())),
         error = function(e) {

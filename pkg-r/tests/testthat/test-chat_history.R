@@ -1558,7 +1558,6 @@ test_that("chat_history_on_response() resolves with the stream value when saving
   )
   set_session_chat_bookmark_info(session, "chat.history-controller", controller)
 
-  # A persistence failure must not fail an otherwise-successful response.
   p <- chat_history_on_response(
     "chat",
     promises::promise_resolve("stream-value"),
