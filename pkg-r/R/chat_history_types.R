@@ -362,7 +362,7 @@ check_schema_version <- function(version) {
       version < MIN_SCHEMA_VERSION ||
       version > MAX_SCHEMA_VERSION
   ) {
-    version_label <- paste(capture.output(dput(version)), collapse = " ")
+    version_label <- paste(utils::capture.output(dput(version)), collapse = " ")
     rlang::abort(
       paste0(
         "Unsupported conversation record schema version: ",

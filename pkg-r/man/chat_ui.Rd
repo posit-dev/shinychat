@@ -298,7 +298,7 @@ default) centered inside. The \code{icon_send} parameter swaps the
 ready-state icon without changing the button's surface.
 
 \strong{Custom icon.} Pass an SVG from \code{\link[bsicons:bs_icon]{bsicons::bs_icon()}} or
-\code{\link[faicons:icon_svg]{faicons::icon_svg()}}. The button provides the surface, so a bare glyph
+\code{fontawesome::fa()}. The button provides the surface, so a bare glyph
 gets the same filled-circle treatment as the default arrow:
 
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{chat_ui("chat", icon_send = bsicons::bs_icon("send-fill"))
