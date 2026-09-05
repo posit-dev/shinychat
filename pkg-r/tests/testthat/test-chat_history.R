@@ -1517,7 +1517,7 @@ test_that("chat_history_on_response() saves the response and passes through its 
   session <- shiny::MockShinySession$new()
   notified <- NULL
   testthat::local_mocked_bindings(
-    history_notify_error = function(prefix, e) notified <<- prefix
+    notify_error = function(prefix, e) notified <<- prefix
   )
 
   saved <- NULL
@@ -1545,7 +1545,7 @@ test_that("chat_history_on_response() resolves with the stream value when saving
   session <- shiny::MockShinySession$new()
   notified <- NULL
   testthat::local_mocked_bindings(
-    history_notify_error = function(prefix, e) notified <<- prefix
+    notify_error = function(prefix, e) notified <<- prefix
   )
 
   fake_client <- list(get_turns = function() list(), get_tools = function() {
@@ -1571,7 +1571,7 @@ test_that("chat_history_on_response() propagates stream errors without saving or
   session <- shiny::MockShinySession$new()
   notified <- NULL
   testthat::local_mocked_bindings(
-    history_notify_error = function(prefix, e) notified <<- prefix
+    notify_error = function(prefix, e) notified <<- prefix
   )
 
   saved <- FALSE
