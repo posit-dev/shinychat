@@ -129,7 +129,12 @@ def test_v2_switch_replays_the_active_conversation(
     chat.expect_latest_message("echo: conversation A", timeout=30_000)
 
     page.locator(".shiny-chat-history-trigger").click()
-    page.locator(".shiny-chat-history-item", has_text="conversation B").click()
+    expect(
+        page.locator(".shiny-chat-history-item.active", has_text="conversation A")
+    ).to_have_count(1, timeout=30_000)
+    page.locator(".shiny-chat-history-item", has_text="conversation B").locator(
+        ".shiny-chat-history-item-select"
+    ).click()
     chat.expect_latest_message("echo: conversation B", timeout=30_000)
     controller.InputActionButton(page, "inspect_turns").click()
     controller.OutputText(page, "recorder").expect_value(

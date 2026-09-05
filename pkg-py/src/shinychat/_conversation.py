@@ -23,7 +23,7 @@ from ._utils import private_random_id
 class Conversation:
     """Continue exchange-tree history without a Shiny session.
 
-    Use :meth:`create` or :meth:`load` with the app's store, resolved chat ID,
+    Use `create()` or `load()` with the app's store, resolved chat ID,
     and trusted owner scope. The caller authorizes access and serializes the
     entire load/work/save operation with other writers, including the app.
     A partition is a storage namespace, not an authorization check.
@@ -95,7 +95,7 @@ class Conversation:
 
         Pass ``exchange_id`` to load an earlier, completed checkpoint after
         interrupted work. Loading does not change the saved selection;
-        the next exchange or explicit :meth:`save` persists it.
+        the next exchange or explicit `save()` persists it.
         """
         record = await store.get(partition, conversation_id)
         if record is None:
@@ -123,7 +123,7 @@ class Conversation:
 
     @property
     def active_leaf(self) -> str:
-        """The selected exchange ID; pass it to :meth:`select` to return here."""
+        """The selected exchange ID; pass it to `select()` to return here."""
         assert self._record.active_leaf is not None
         return self._record.active_leaf
 
@@ -134,7 +134,7 @@ class Conversation:
         Use an application-owned key and version its payload, for example
         ``values["deputy"] = {"version": 1, "run_id": run_id}``. Values must
         be JSON-serializable. They belong to the conversation, not a branch.
-        Call :meth:`save` after changes outside an exchange.
+        Call `save()` after changes outside an exchange.
         """
         return self._record.values
 
@@ -167,12 +167,12 @@ class Conversation:
     async def select(self, exchange_id: str) -> None:
         """Select and save an existing exchange, restoring its provider turns.
 
-        The next :meth:`exchange` adds a child here. Existing descendants
+        The next `exchange()` adds a child here. Existing descendants
         remain available, so selecting an earlier exchange and submitting
         new input creates an alternative continuation.
 
         Selection is applied to the client before saving. If persistence
-        fails, retry :meth:`save` or discard this handle and load it again.
+        fails, retry `save()` or discard this handle and load it again.
         """
         self._require_idle()
         target = self._record.model_copy(
@@ -193,7 +193,7 @@ class Conversation:
         """Record one user input and the work performed in this context.
 
         Yields its exchange ID. Input is saved before work starts; each
-        :meth:`append_message` saves display output. On exit, save provider
+        `append_message()` saves display output. On exit, save provider
         turns and mark the exchange completed, failed, or cancelled. Errors
         propagate to the caller; persisted errors use Shiny's safe summary.
         Process termination leaves the last saved checkpoint pending.
