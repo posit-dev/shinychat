@@ -1512,3 +1512,86 @@ test_that("node with neither usable UI nor turns falls back to text-only", {
     ""
   )
 })
+
+test_that("chat_history_on_response() saves the response and passes through its value", {
+  session <- shiny::MockShinySession$new()
+  notified <- NULL
+  testthat::local_mocked_bindings(
+    history_notify_error = function(prefix, e) notified <<- prefix
+  )
+
+  saved <- NULL
+  fake_client <- list(get_turns = function() list(), get_tools = function() {
+    list()
+  })
+  controller <- list(
+    is_replaying = FALSE,
+    get_client = function() fake_client,
+    on_response = function(turns) saved <<- turns
+  )
+  set_session_chat_bookmark_info(session, "chat.history-controller", controller)
+
+  p <- chat_history_on_response(
+    "chat",
+    promises::promise_resolve("stream-value"),
+    session = session
+  )
+  expect_equal(sync(p), "stream-value")
+  expect_equal(saved, list())
+  expect_null(notified)
+})
+
+test_that("chat_history_on_response() resolves with the stream value when saving fails", {
+  session <- shiny::MockShinySession$new()
+  notified <- NULL
+  testthat::local_mocked_bindings(
+    history_notify_error = function(prefix, e) notified <<- prefix
+  )
+
+  fake_client <- list(get_turns = function() list(), get_tools = function() {
+    list()
+  })
+  controller <- list(
+    is_replaying = FALSE,
+    get_client = function() fake_client,
+    on_response = function(turns) stop("simulated save failure")
+  )
+  set_session_chat_bookmark_info(session, "chat.history-controller", controller)
+
+  # A persistence failure must not fail an otherwise-successful response.
+  p <- chat_history_on_response(
+    "chat",
+    promises::promise_resolve("stream-value"),
+    session = session
+  )
+  expect_equal(sync(p), "stream-value")
+  expect_equal(notified, "Could not save conversation")
+})
+
+test_that("chat_history_on_response() propagates stream errors without saving or notifying", {
+  session <- shiny::MockShinySession$new()
+  notified <- NULL
+  testthat::local_mocked_bindings(
+    history_notify_error = function(prefix, e) notified <<- prefix
+  )
+
+  saved <- FALSE
+  fake_client <- list(get_turns = function() list(), get_tools = function() {
+    list()
+  })
+  controller <- list(
+    is_replaying = FALSE,
+    get_client = function() fake_client,
+    on_response = function(turns) saved <<- TRUE
+  )
+  set_session_chat_bookmark_info(session, "chat.history-controller", controller)
+
+  p <- chat_history_on_response(
+    "chat",
+    promises::promise_reject("model exploded"),
+    session = session
+  )
+  expect_error(sync(p), "model exploded")
+  expect_false(saved)
+  expect_null(notified)
+})

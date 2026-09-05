@@ -1029,15 +1029,6 @@ chat_enable_history <- function(
     controller$notify_settled(!is.null(controller$record))
   })
 
-  history_notify_error <- function(prefix, e) {
-    shiny::showNotification(
-      paste0(prefix, ": ", sanitized_error_message(e)),
-      type = "error",
-      duration = NULL
-    )
-    rlang::warn(prefix, parent = e)
-  }
-
   select_effect <- shiny::observeEvent(
     session$input[[paste0(id, "_history_select")]],
     label = "history_select",
@@ -1180,6 +1171,15 @@ chat_enable_history <- function(
   invisible(cancel)
 }
 
+history_notify_error <- function(prefix, e) {
+  shiny::showNotification(
+    paste0(prefix, ": ", sanitized_error_message(e)),
+    type = "error",
+    duration = NULL
+  )
+  rlang::warn(prefix, parent = e)
+}
+
 chat_history_on_response <- function(
   id,
   stream_promise,
@@ -1193,18 +1193,22 @@ chat_history_on_response <- function(
     return(stream_promise)
   }
 
-  result <- promises::then(stream_promise, function(value) {
+  promises::then(stream_promise, function(value) {
     if (!controller$is_replaying) {
-      controller$on_response(get_turns_recorded(controller$get_client()))
+      # A persistence failure must not fail an otherwise-successful
+      # response: notify and let the original value through. Scoping the
+      # catch to the save also keeps genuine stream errors from raising a
+      # spurious "Could not save conversation" notification. Mirrors
+      # Python's `_save_on_response` effect.
+      tryCatch(
+        controller$on_response(get_turns_recorded(controller$get_client())),
+        error = function(e) {
+          history_notify_error("Could not save conversation", e)
+        }
+      )
     }
     value
   })
-
-  promises::catch(result, function(e) {
-    history_notify_error("Could not save conversation", e)
-  })
-
-  result
 }
 
 call_on_save <- function(fn, values) {
