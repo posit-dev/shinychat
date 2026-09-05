@@ -898,7 +898,12 @@ chat_enable_history <- function(
           captured_id
         )
       })
-      session$doBookmark()
+      # on_response_saved runs from a promises::then() callback when the
+      # response stream completes, where no reactive context is guaranteed.
+      # doBookmark() serializes the app's input values (reactive reads), so
+      # it needs an isolation context -- normally provided by the bookmark
+      # button's observer in interactive use.
+      shiny::isolate(session$doBookmark())
       cancel_bm()
     }
 
