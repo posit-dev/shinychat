@@ -93,7 +93,15 @@ class TurnsAdapter:
         if is_chatlas_chat_client(raw):
             from chatlas import Turn
 
-            raw.set_turns([Turn.model_validate(t) for t in turns])
+            restored = [Turn.model_validate(t) for t in turns]
+            system = restored[0] if restored and restored[0].role == "system" else None
+            conversation = restored[1:] if system is not None else restored
+            if any(turn.role == "system" for turn in conversation):
+                raise ValueError("System turns are only allowed at the start of history.")
+            # chatlas keeps the system prompt separately from set_turns().
+            raw.set_turns(conversation)
+            if system is not None:
+                raw.system_prompt = system.text
         else:
             raw.set_turns(list(turns))
 

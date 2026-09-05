@@ -57,6 +57,19 @@ def test_chatlas_adapter_includes_system_prompt_when_requested():
         "user",
     ]
 
+    client.system_prompt = "different instructions"
+    adapter.set_turns_json([
+        {"role": "system", "contents": [{"content_type": "text", "text": "be precise"}]},
+        {"role": "user", "contents": [{"content_type": "text", "text": "hi"}]},
+    ])
+    assert client.system_prompt == "be precise"
+    assert [turn.text for turn in client.get_turns()] == ["hi"]
+
+    before = adapter.get_turns_json(include_system_prompt=True)
+    with pytest.raises(ValueError, match="System turns are only allowed at the start"):
+        adapter.set_turns_json(list(reversed(before)))
+    assert adapter.get_turns_json(include_system_prompt=True) == before
+
 
 def test_chatlas_adapter_serializes_dict_tool_result_display():
     chatlas = pytest.importorskip("chatlas")
