@@ -190,7 +190,8 @@ history_json <- function(value) {
     value,
     auto_unbox = TRUE,
     null = "null",
-    digits = 17
+    digits = 17,
+    force = TRUE
   ))
 }
 
