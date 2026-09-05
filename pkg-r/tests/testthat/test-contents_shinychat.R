@@ -1009,6 +1009,25 @@ test_that("as_tool_result_display() rejects non-scalar and NA logicals", {
   expect_null(res$show_request)
 })
 
+test_that("as_tool_result_display() silently drops NULL fields", {
+  expect_no_warning(
+    res <- as_tool_result_display(list(title = NULL, open = TRUE))
+  )
+  expect_s3_class(res, "shinychat_tool_result_display")
+  expect_null(res$title)
+  expect_true(res$open)
+
+  expect_no_warning(
+    res <- as_tool_result_display(list(
+      title = NULL,
+      show_request = NULL,
+      markdown = "content"
+    ))
+  )
+  expect_equal(res$markdown, "content")
+  expect_false(any(c("title", "show_request") %in% names(res)))
+})
+
 test_that("as_tool_result_display() keeps valid logical flags", {
   res <- as_tool_result_display(
     list(show_request = FALSE, open = TRUE, full_screen = TRUE)
