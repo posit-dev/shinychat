@@ -971,7 +971,14 @@ chat_enable_history <- function(
     # Priority 1: restore from a Shiny bookmark context (any mode).
     rc <- session$restoreContext
     if (!is.null(rc) && isTRUE(rc$active)) {
-      restored_id <- rc$values[[stamp_key]]
+      # The stamp is written via the (possibly module) session's onBookmark,
+      # which namespaces value keys with session$ns(). `session$restoreContext`
+      # is NOT namespaced by the module session proxy -- it is the root
+      # restore context -- so the read must apply the namespace explicitly.
+      # The bare-key fallback covers sessions whose onBookmark does not
+      # namespace values (e.g. MockShinySession).
+      restored_id <- rc$values[[session$ns(stamp_key)]] %||%
+        rc$values[[stamp_key]]
       if (!is.null(restored_id) && nzchar(restored_id)) {
         target <- tryCatch(
           controller$get_record(controller$partition, restored_id),
