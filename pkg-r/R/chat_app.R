@@ -225,13 +225,28 @@ chat_app <- function(
   }
 
   ui <- function(req) {
-    rlang::exec(
-      page_chat,
-      title = title,
-      icon = icon,
-      !!!dots,
-      id = id,
-      window_title = window_title
+    withCallingHandlers(
+      rlang::exec(
+        page_chat,
+        title = title,
+        icon = icon,
+        !!!dots,
+        id = id,
+        window_title = window_title
+      ),
+      # `messages` only reaches here on the history = FALSE path (chat_app()
+      # aborts otherwise), which is the documented way to self-manage state.
+      lifecycle_warning_deprecated = function(cnd) {
+        if (
+          any(grepl(
+            "The `messages` argument of `chat_ui()` is deprecated",
+            cnd$message,
+            fixed = TRUE
+          ))
+        ) {
+          rlang::cnd_muffle(cnd)
+        }
+      }
     )
   }
 

@@ -225,3 +225,10 @@ test_that("chat_app() omits the stop button outside interactive use", {
   expect_false(grepl('id="chat-close-btn"', html, fixed = TRUE))
   expect_false(grepl("bi-stop-circle-fill", html, fixed = TRUE))
 })
+
+test_that("chat_app() with history = FALSE renders startup messages without a deprecation warning", {
+  client <- mock_chat_client()
+  app <- chat_app(client, messages = list("Hi!"), history = FALSE)
+  withr::local_options(lifecycle_verbosity = "warning")
+  expect_no_warning(chat_app_html(app))
+})
