@@ -1204,10 +1204,12 @@ chat_history_on_response <- function(
             paste0(id, ".pending-attachments"),
             NULL
           )
-          controller$on_response(
-            get_turns_recorded(controller$get_client()),
-            attachments = attachments
-          )
+          turns <- get_turns_recorded(controller$get_client())
+          if (is.null(attachments)) {
+            controller$on_response(turns)
+          } else {
+            controller$on_response(turns, attachments = attachments)
+          }
         },
         error = function(e) {
           notify_error("Could not save conversation", e)
