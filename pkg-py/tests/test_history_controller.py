@@ -102,6 +102,31 @@ def test_extend_appends_only_new_groups_with_ui_by_role():
     assert rec.nodes[rec.path_node_ids()[2]].ui == [derived("user", "q2")]
 
 
+def test_extend_preserves_attachment_payload_from_ui_snapshot():
+    rec = new_conversation_record(title="t")
+    attachment = {
+        "mime": "text/markdown",
+        "name": "notes.md",
+        "size": 7,
+        "data_url": "data:text/markdown;base64,IyBOb3Rlcw==",
+    }
+    user_message = {
+        "role": "user",
+        "segments": [{"content": "See attached", "content_type": "markdown"}],
+        "attachments": [attachment],
+    }
+    extend_record_linear(
+        rec,
+        [[{"role": "user", "content": "See attached"}]],
+        [user_message],
+        ui_offset=0,
+    )
+
+    stored = rec.nodes[rec.path_node_ids()[0]].ui
+    assert stored is not None
+    assert stored[0]["attachments"] == [attachment]
+
+
 def test_extend_groups_tool_exchange_into_single_node():
     user_turn: TurnDict = {
         "role": "user",

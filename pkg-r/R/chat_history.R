@@ -131,7 +131,7 @@ HistoryController <- R6::R6Class(
       }
     },
 
-    on_response = function(recorded_turns) {
+    on_response = function(recorded_turns, attachments = NULL) {
       # These flags protect in-flight response completions from a history replay.
       if (self$is_replaying) {
         return(invisible())
@@ -162,7 +162,8 @@ HistoryController <- R6::R6Class(
         self$record,
         recorded_turns,
         tools = private$client$get_tools(),
-        session = private$session
+        session = private$session,
+        attachments = attachments
       )
       self$record$response_count <- (self$record$response_count %||% 0L) + 1L
       self$record$values <- private$capture_app_state()
@@ -1193,7 +1194,21 @@ chat_history_on_response <- function(
   promises::then(stream_promise, function(value) {
     if (!controller$is_replaying) {
       tryCatch(
-        controller$on_response(get_turns_recorded(controller$get_client())),
+        {
+          attachments <- get_session_chat_bookmark_info(
+            session,
+            paste0(id, ".pending-attachments")
+          )
+          set_session_chat_bookmark_info(
+            session,
+            paste0(id, ".pending-attachments"),
+            NULL
+          )
+          controller$on_response(
+            get_turns_recorded(controller$get_client()),
+            attachments = attachments
+          )
+        },
         error = function(e) {
           notify_error("Could not save conversation", e)
         }
