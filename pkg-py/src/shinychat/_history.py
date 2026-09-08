@@ -256,11 +256,19 @@ def extend_record_linear(
 
     new_node_ids: list[str] = []
     n_derived = 0
+    new_stored_messages = ui_messages[ui_offset:]
     for g in new_groups:
         node_id = record.append_linear(cast(list[dict[str, Any]], g))
         new_node_ids.append(node_id)
         derived = derive_stored_ui_message(g, session=session)
         if derived is not None:
+            source = (
+                new_stored_messages[n_derived]
+                if n_derived < len(new_stored_messages)
+                else None
+            )
+            if source and source.get("attachments"):
+                derived["attachments"] = source["attachments"]
             record.nodes[node_id].ui = cast(list[dict[str, Any]], [derived])
             n_derived += 1
 
@@ -268,7 +276,6 @@ def extend_record_linear(
     if fallback is None:
         return  # empty record and no new groups: nothing to attach to
 
-    new_stored_messages = ui_messages[ui_offset:]
     for message in new_stored_messages[n_derived:]:
         node = record.nodes[fallback]
         node.ui = [*(node.ui or []), message]

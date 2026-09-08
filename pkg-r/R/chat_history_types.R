@@ -530,7 +530,8 @@ extend_record_linear <- function(
   record,
   recorded_turns,
   tools,
-  session = NULL
+  session = NULL,
+  attachments = NULL
 ) {
   existing_turn_count <- record_turn_count(record)
   new_turns_recorded <- recorded_turns[
@@ -582,6 +583,17 @@ extend_record_linear <- function(
     tools = tools,
     session = session
   )
+
+  if (!is.null(attachments) && length(attachments) > 0) {
+    user_index <- which(vapply(
+      derived_messages,
+      function(message) identical(message$role, "user"),
+      logical(1)
+    ))
+    if (length(user_index) > 0) {
+      derived_messages[[user_index[[1]]]]$attachments <- attachments
+    }
+  }
 
   # Attach each derived message to its corresponding new node.
   for (i in seq_along(derived_messages)) {

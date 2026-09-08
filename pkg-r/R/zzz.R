@@ -3,7 +3,7 @@
   S7::methods_register()
   shiny::registerInputHandler(
     "shinychat.userInput",
-    function(value, session, name) user_input_contents(value),
+    user_input_contents,
     force = TRUE
   )
 }
