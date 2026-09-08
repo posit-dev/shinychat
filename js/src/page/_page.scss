@@ -112,7 +112,7 @@ body:has(shiny-chat-page) > .toast-container:is(
   );
   font-weight: var(
     --shiny-chat-page-title-font-weight,
-    var(--bs-navbar-brand-font-weight, 500)
+    var(--bs-body-font-weight, 400)
   );
   line-height: var(--bs-navbar-brand-line-height, 1.2);
   text-align: start;
