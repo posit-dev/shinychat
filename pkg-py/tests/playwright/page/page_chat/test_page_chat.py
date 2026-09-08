@@ -69,7 +69,9 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     resizer = page_chat.loc.get_by_role("separator", name="Resize sidebar")
     expect(resizer).to_be_visible()
     resizer.press("End")
-    expect(resizer).to_have_attribute("aria-valuenow", "920")
+    expect(resizer).to_have_attribute(
+        "aria-valuenow", resizer.get_attribute("aria-valuemax")
+    )
     resizer.press("Home")
     expect(resizer).to_have_attribute("aria-valuenow", "150")
 
