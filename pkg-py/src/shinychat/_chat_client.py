@@ -98,7 +98,19 @@ class ChatClient:
         client_history: Literal["clear", "set", "append", "keep"] = "clear",
     ) -> None:
         """
-        Clear chat messages and optionally reset the client's turn history.
+        Clear the chat and optionally reset the client's turn history.
+
+        When conversation history is enabled, the default operation starts a
+        new conversation through the history controller. The current record
+        is saved before the client turns, rendered messages, active
+        conversation ID, and history drawer state are reset. In that mode,
+        ``messages`` and the non-default ``client_history`` modes are not
+        supported because they can make the rendered chat, client turns, and
+        persisted conversation disagree.
+
+        When conversation history is disabled, this method retains its
+        existing behavior and ``client_history`` controls only the underlying
+        client's turns.
 
         Parameters
         ----------
@@ -107,11 +119,14 @@ class ChatClient:
             ``client_history`` is ``"set"`` or ``"append"``, and not allowed
             with ``"clear"`` or ``"keep"``.
         greeting
-            Passed to :meth:`~shinychat.Chat.clear_messages`.
+            Passed to :meth:`~shinychat.Chat.clear_messages`. With history
+            enabled, ``True`` also causes the configured greeting to be
+            resolved for the new conversation.
         client_history
             How to handle the client's turn history:
 
-            * ``"clear"`` (default): removes all turns from the client.
+            * ``"clear"`` (default): removes all turns from the client. With
+              history enabled, this starts a new saved-history conversation.
             * ``"set"``: sets the client's turns to ``messages``.  Requires
               ``messages`` to be provided.
             * ``"append"``: appends ``messages`` to the client's existing turns.
@@ -133,6 +148,21 @@ class ChatClient:
                 f"`client_history={client_history!r}` is not valid. Expected "
                 'one of "clear", "set", "append", or "keep".'
             )
+        history_controller = getattr(
+            getattr(self._chat, "history", None), "_controller", None
+        )
+        if history_controller is not None:
+            if messages is not None:
+                raise ValueError(
+                    "`messages` cannot be supplied when conversation history "
+                    "is enabled; use `chat.client.clear()` to start a new "
+                    "conversation."
+                )
+            if client_history != "clear":
+                raise ValueError(
+                    '`client_history` must be "clear" when conversation '
+                    "history is enabled."
+                )
         if client_history in ("set", "append") and messages is None:
             raise ValueError(
                 f"`messages` must be provided when `client_history='{client_history}'`."
@@ -150,6 +180,10 @@ class ChatClient:
                 "generated. Please wait for it to finish or stop it first.",
                 sanitize=False,
             )
+
+        if history_controller is not None:
+            await history_controller.new_chat(greeting=greeting)
+            return
 
         await self._chat.clear_messages(greeting=greeting)
 

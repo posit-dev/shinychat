@@ -634,10 +634,19 @@ class HistoryController:
         await self._send_sibling_metadata()
         await self.send_history_update()
 
-    async def new_chat(self) -> None:
+    async def new_chat(self, *, greeting: bool = False) -> None:
+        """
+        Start a new conversation.
+
+        The current conversation is saved before the client turns, rendered
+        messages, active ID, and history drawer state are reset. ``greeting``
+        is forwarded to :meth:`Chat.clear_messages`; when ``True``, the
+        greeting is cleared and the configured greeting is resolved again
+        after the new-chat transition settles.
+        """
         await self.save_current()
         self.adapter.set_turns_json([])
-        await self.chat.clear_messages()
+        await self.chat.clear_messages(greeting=greeting)
         self.ui_offset = 0
         # Announce the cleared state even when the active ID is already None:
         # in URL/bookmark restore modes the browser may still carry a stale

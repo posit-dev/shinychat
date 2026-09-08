@@ -19,6 +19,11 @@ allowing the server to generate a new greeting.}
 Removes all messages from the chat UI. Set \code{greeting = TRUE} to also
 clear the greeting, which re-triggers \code{greeting_requested} (see the
 \strong{Greeting} section in \code{\link[=chat_ui]{chat_ui()}}).
+
+This is a UI-level primitive: it does not clear an ellmer client's turns or
+reset conversation history managed by \code{\link[=chat_server]{chat_server()}}. For a full reset of a
+managed chat, call the \code{clear()} method on the value returned by
+\code{\link[=chat_server]{chat_server()}}.
 }
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}

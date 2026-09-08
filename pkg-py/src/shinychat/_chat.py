@@ -1894,7 +1894,13 @@ class Chat:
 
     async def clear_messages(self, *, greeting: bool = False):
         """
-        Clear all chat messages.
+        Clear all rendered chat messages.
+
+        This is a UI-level primitive. It does not reset the underlying
+        client's turns or the conversation-history controller. When a chat
+        was created with a client and conversation history is enabled, use
+        ``await chat.client.clear()`` for a coordinated new-conversation
+        reset.
 
         Parameters
         ----------
