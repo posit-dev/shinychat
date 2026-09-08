@@ -70,6 +70,34 @@ def test_mobile_drawer_capable_chat_fills_page_and_keeps_composer_inset(
     )
 
 
+def test_mobile_drawer_takeover_hides_separator_and_keeps_sidebar_on_top(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, page_chat = open_page(page, local_app, viewport=(390, 760))
+    layout = chat.loc.locator(".shiny-chat-layout")
+    sidebar = page_chat.loc_sidebar
+
+    page_chat.loc_sidebar_toggle.click()
+    page.get_by_role("button", name="Show drawer").click()
+
+    expect(layout).to_have_attribute("data-drawer-open", "")
+    expect(layout).to_have_attribute("data-drawer-takeover", "")
+    expect(sidebar).to_be_visible()
+    assert layout.evaluate(
+        "(element) => getComputedStyle(element, '::after').display"
+    ) == "none"
+    assert sidebar.evaluate(
+        """(element) => {
+          const box = element.getBoundingClientRect();
+          const topElement = document.elementFromPoint(
+            box.left + box.width / 2,
+            box.top + box.height / 2,
+          );
+          return topElement?.closest(".shiny-chat-page-sidebar") === element;
+        }"""
+    )
+
+
 def test_percentage_drawer_keeps_desktop_chat_width(
     page: Page, local_app: ShinyAppProc
 ) -> None:

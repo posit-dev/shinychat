@@ -441,6 +441,14 @@ shiny-chat-page .shiny-chat-layout[data-drawer-open]::after {
   background: var(--_page-panel-gap-bg);
 }
 
+// The drawer owns the full chat region in narrow container takeover mode, so
+// the desktop-only separator must not overlay its content.
+@container shiny-chat (max-width: 639.99px) {
+  shiny-chat-page .shiny-chat-layout[data-drawer-open]::after {
+    display: none;
+  }
+}
+
 .shiny-chat-page-sidebar-resizer {
   inset-inline-start: calc(
     var(--shiny-chat-page-sidebar-rendered-width, var(--_page-sidebar-width)) -
@@ -691,6 +699,7 @@ shiny-chat-page .shiny-chat-layout[data-drawer-open]::after {
   }
 
   shiny-chat-page[data-mobile-menu-open] .shiny-chat-page-sidebar {
+    z-index: 9;
     visibility: visible;
     transform: translateX(0);
     transition-delay: 0s;
@@ -820,6 +829,7 @@ shiny-chat-page .shiny-chat-layout[data-drawer-open]::after {
 
   shiny-chat-page[data-mobile-menu-open] .shiny-chat-page-sidebar-scrim {
     display: block;
+    z-index: 8;
   }
 }
 
