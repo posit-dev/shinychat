@@ -497,7 +497,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="odd">
 <td><a href="#shinychat.express.Chat.clear_messages">clear_messages</a></td>
-<td>Clear all chat messages.</td>
+<td>Clear all rendered chat messages.</td>
 </tr>
 <tr class="even">
 <td><a href="#shinychat.express.Chat.destroy">destroy</a></td>
@@ -844,7 +844,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="shinychat.express.Chat.clear_messages" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.clear_messages">clear_messages</h3>
 <div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>express.Chat.clear_messages(greeting<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Clear all chat messages.</p>
+<p>Clear all rendered chat messages.</p>
+<p>This is a UI-level primitive. It does not reset the underlying client’s turns or the conversation-history controller. When a chat was created with a client and conversation history is enabled, use <code>await chat.client.new_chat()</code> for a coordinated new-conversation reset.</p>
 <section id="parameters-2" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-2">Parameters</h4>
 <table class="caption-top table">

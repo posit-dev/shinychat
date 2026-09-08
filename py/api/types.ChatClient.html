@@ -423,6 +423,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#methods" id="toc-methods" class="nav-link" data-scroll-target="#methods">Methods</a>
   <ul class="collapse">
   <li><a href="#shinychat.types.ChatClient.clear" id="toc-shinychat.types.ChatClient.clear" class="nav-link" data-scroll-target="#shinychat.types.ChatClient.clear">clear</a></li>
+  <li><a href="#shinychat.types.ChatClient.new_chat" id="toc-shinychat.types.ChatClient.new_chat" class="nav-link" data-scroll-target="#shinychat.types.ChatClient.new_chat">new_chat</a></li>
   <li><a href="#shinychat.types.ChatClient.set" id="toc-shinychat.types.ChatClient.set" class="nav-link" data-scroll-target="#shinychat.types.ChatClient.set">set</a></li>
   </ul></li>
   </ul></li>
@@ -469,9 +470,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td><a href="#shinychat.types.ChatClient.clear">clear</a></td>
-<td>Clear chat messages and optionally reset the client’s turn history.</td>
+<td>Clear the chat and optionally reset the client’s turn history.</td>
 </tr>
 <tr class="even">
+<td><a href="#shinychat.types.ChatClient.new_chat">new_chat</a></td>
+<td>Save the current conversation and start a new one.</td>
+</tr>
+<tr class="odd">
 <td><a href="#shinychat.types.ChatClient.set">set</a></td>
 <td>Replace the chatlas client.</td>
 </tr>
@@ -480,7 +485,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="shinychat.types.ChatClient.clear" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.types.ChatClient.clear">clear</h3>
 <div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>types.ChatClient.clear(messages<span class="op">=</span><span class="va">None</span>, greeting<span class="op">=</span><span class="va">False</span>, client_history<span class="op">=</span><span class="st">'clear'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Clear chat messages and optionally reset the client’s turn history.</p>
+<p>Clear the chat and optionally reset the client’s turn history.</p>
+<p>This is a lower-level operation for chats without conversation history. <code>client_history</code> controls only the underlying client’s turns. When conversation history is enabled, use :meth:<code>new_chat</code> instead so the rendered chat, client turns, and persisted conversation remain synchronized.</p>
 <section id="parameters" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h4>
 <table class="caption-top table">
@@ -534,13 +540,64 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </table>
 </section>
 </section>
-<section id="shinychat.types.ChatClient.set" class="level3">
-<h3 class="anchored" data-anchor-id="shinychat.types.ChatClient.set">set</h3>
-<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>types.ChatClient.<span class="bu">set</span>(new_client, <span class="op">*</span>, sync<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Replace the chatlas client.</p>
-<p>If a response stream is currently running the swap is deferred until the stream completes.</p>
+<section id="shinychat.types.ChatClient.new_chat" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.types.ChatClient.new_chat">new_chat</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>types.ChatClient.new_chat(greeting<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Save the current conversation and start a new one.</p>
+<p>This method is available only when conversation history is enabled. It saves the current record, clears the client turns and rendered messages, resets the active conversation ID, and updates the history drawer.</p>
 <section id="parameters-1" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-1">Parameters</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>greeting</td>
+<td><a href="`bool`">bool</a></td>
+<td>Passed to :meth:<code>~shinychat.Chat.clear_messages</code>. When <code>True</code>, also clears the greeting and resolves the configured greeting for the new conversation.</td>
+<td><code>False</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="raises-1" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-1">Raises</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><a href="`ValueError`">ValueError</a></td>
+<td>If conversation history is not enabled.</td>
+</tr>
+<tr class="even">
+<td></td>
+<td><a href="`shiny`">shiny</a>.<a href="`shiny.types`">types</a>.<a href="`shiny.types.NotifyException`">NotifyException</a></td>
+<td>If an assistant response is currently streaming. To avoid this error, guard the call by checking <code>chat.latest_message_stream.status() != "running"</code> before calling :meth:<code>new_chat</code>.</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="shinychat.types.ChatClient.set" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.types.ChatClient.set">set</h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>types.ChatClient.<span class="bu">set</span>(new_client, <span class="op">*</span>, sync<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Replace the chatlas client.</p>
+<p>If a response stream is currently running the swap is deferred until the stream completes.</p>
+<section id="parameters-2" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-2">Parameters</h4>
 <table class="caption-top table">
 <thead>
 <tr class="header">
