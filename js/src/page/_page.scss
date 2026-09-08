@@ -13,6 +13,10 @@ shiny-chat-page {
     --shiny-chat-page-sidebar-padding,
     var(--bslib-sidebar-padding, var(--bslib-spacer, var(--bs-spacer, 1rem)))
   );
+  --_page-panel-gap: var(
+    --shiny-chat-page-panel-gap,
+    clamp(0.75rem, 1.5vw, 1.5rem)
+  );
   --_page-surface-bg: var(--shiny-chat-page-surface-bg, var(--bs-body-bg, #fff));
   --_page-sidebar-bg: var(--shiny-chat-page-sidebar-bg, var(--bs-body-bg, #fff));
   --_page-canvas-bg: var(--shiny-chat-page-canvas-bg, var(--bs-body-bg, #fff));
@@ -415,6 +419,21 @@ button.shiny-chat-page-identity:focus-visible,
   background: var(--_page-canvas-bg);
 }
 
+shiny-chat-page .shiny-chat-layout[data-drawer-open] {
+  position: relative;
+}
+
+shiny-chat-page .shiny-chat-layout[data-drawer-open]::after {
+  position: absolute;
+  z-index: 1;
+  inset-block: 0;
+  inset-inline-end: var(--_drawer-layout-width);
+  width: var(--_drawer-layout-gap);
+  content: "";
+  pointer-events: none;
+  background: var(--_page-canvas-bg);
+}
+
 .shiny-chat-page-sidebar-resizer {
   inset-inline-start: calc(
     var(--shiny-chat-page-sidebar-rendered-width, var(--_page-sidebar-width)) -
@@ -432,6 +451,13 @@ button.shiny-chat-page-identity:focus-visible,
       --shiny-chat-page-sidebar-rendered-width,
       var(--_page-sidebar-width)
     );
+
+    column-gap: var(--_page-panel-gap);
+  }
+
+  .shiny-chat-page-main {
+    container-type: inline-size;
+    container-name: shiny-chat-page-main;
   }
 
   .shiny-chat-page-header {
@@ -504,6 +530,27 @@ button.shiny-chat-page-identity:focus-visible,
     [data-sidebar-handoff]
   ) :is(.shiny-chat-page-body, .shiny-chat-page-sidebar) {
     transition: none;
+  }
+}
+
+// When both page sidebar and chat drawer are open, keep the drawer in takeover
+// until the main region can fit a 360px chat column, 320px drawer, and gutter.
+@container shiny-chat-page-main (max-width: 704.99px) {
+  shiny-chat-page[data-sidebar-open] .shiny-chat-layout[data-drawer-open] {
+    display: block;
+    column-gap: 0;
+
+    .shiny-chat-wrapper,
+    .shiny-chat-footer {
+      display: none;
+    }
+
+    .shiny-chat-drawer {
+      width: 100%;
+      min-height: 100%;
+      border-inline: 0;
+      box-shadow: none;
+    }
   }
 }
 

@@ -803,18 +803,91 @@ def test_drawer_stays_adjacent_with_open_desktop_sidebar(
         viewport=(1024, 900),
     )
     sidebar = page_chat.loc_sidebar
+    body = page_chat.loc_body
+    main = page_chat.loc_main
     if sidebar.is_hidden():
         page_chat.loc_sidebar_toggle.click()
     expect(sidebar).to_be_visible(timeout=TIMEOUT)
+    page.wait_for_timeout(220)
 
     page.get_by_role("button", name="Show drawer").click()
     layout = chat.loc.locator(".shiny-chat-layout")
     panel = chat.loc.locator(".shiny-chat-drawer")
+    wrapper = chat.loc.locator(".shiny-chat-wrapper")
     expect(panel).to_be_visible(timeout=TIMEOUT)
     expect(layout).not_to_have_attribute("data-drawer-takeover")
     expect(
         page.get_by_role("separator", name="Resize drawer panel")
     ).to_be_visible()
+    page.wait_for_timeout(220)
+
+    sidebar_box = sidebar.bounding_box()
+    main_box = main.bounding_box()
+    panel_box = panel.bounding_box()
+    wrapper_box = wrapper.bounding_box()
+    assert sidebar_box is not None
+    assert main_box is not None
+    assert panel_box is not None
+    assert wrapper_box is not None
+
+    page_gap = body.evaluate(
+        "(element) => Number.parseFloat(getComputedStyle(element).columnGap)"
+    )
+    drawer_gap = layout.evaluate(
+        "(element) => Number.parseFloat(getComputedStyle(element).columnGap)"
+    )
+    assert page_gap > 0
+    assert drawer_gap > 0
+    assert main_box["x"] - (sidebar_box["x"] + sidebar_box["width"]) == (
+        pytest.approx(page_gap, abs=1)
+    )
+    assert panel_box["x"] - (wrapper_box["x"] + wrapper_box["width"]) == (
+        pytest.approx(drawer_gap, abs=1)
+    )
+    assert layout.evaluate(
+        """(element) => {
+          const style = getComputedStyle(element, "::after");
+          return {
+            background: style.backgroundColor,
+            width: Number.parseFloat(style.width),
+          };
+        }"""
+    ) == {
+        "background": main.evaluate(
+            "(element) => getComputedStyle(element).backgroundColor"
+        ),
+        "width": pytest.approx(drawer_gap, abs=1),
+    }
+
+
+def test_open_sidebar_keeps_drawer_in_takeover_until_split_tracks_fit(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, page_chat = open_page(
+        page,
+        local_app,
+        drawer_width="default",
+        viewport=(920, 900),
+    )
+    sidebar = page_chat.loc_sidebar
+    if sidebar.is_hidden():
+        page_chat.loc_sidebar_toggle.click()
+    expect(sidebar).to_be_visible(timeout=TIMEOUT)
+    page.wait_for_timeout(220)
+
+    page.get_by_role("button", name="Show drawer").click()
+    panel = chat.loc.locator(".shiny-chat-drawer")
+    wrapper = chat.loc.locator(".shiny-chat-wrapper")
+    expect(panel).to_be_visible(timeout=TIMEOUT)
+    expect(wrapper).to_be_hidden()
+    page.wait_for_timeout(220)
+
+    panel_box = panel.bounding_box()
+    main_box = page_chat.loc_main.bounding_box()
+    assert panel_box is not None
+    assert main_box is not None
+    assert panel_box["x"] == pytest.approx(main_box["x"], abs=1)
+    assert panel_box["width"] == pytest.approx(main_box["width"], abs=1)
 
 
 @pytest.mark.parametrize(
