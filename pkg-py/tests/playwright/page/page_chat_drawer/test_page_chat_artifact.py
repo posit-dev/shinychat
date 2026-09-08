@@ -83,9 +83,12 @@ def test_mobile_drawer_takeover_hides_separator_and_keeps_sidebar_on_top(
     expect(layout).to_have_attribute("data-drawer-open", "")
     expect(layout).to_have_attribute("data-drawer-takeover", "")
     expect(sidebar).to_be_visible()
-    assert layout.evaluate(
-        "(element) => getComputedStyle(element, '::after').display"
-    ) == "none"
+    assert (
+        layout.evaluate(
+            "(element) => getComputedStyle(element, '::after').display"
+        )
+        == "none"
+    )
     assert sidebar.evaluate(
         """(element) => {
           const box = element.getBoundingClientRect();
@@ -950,8 +953,15 @@ def test_compact_drawer_trigger_does_not_overlay_messages(
     chat.expect_latest_message("echo: hi there", timeout=TIMEOUT)
 
     if viewport[0] <= 799:
+        # On mobile the header toolbar lives inside the app menu, so the
+        # "Show drawer" button is only clickable while the menu is open.
         page_chat.loc_sidebar_toggle.click()
+        page_chat.expect_mobile_menu_open()
     page.get_by_role("button", name="Show drawer").click()
+    if viewport[0] <= 799:
+        # Close the menu so its scrim doesn't overlay the drawer takeover.
+        page_chat.close_mobile_menu()
+        page_chat.expect_mobile_menu_closed()
     page.get_by_role("button", name="Close drawer").click()
 
     trigger = chat.loc.locator(".shiny-chat-drawer-trigger")
