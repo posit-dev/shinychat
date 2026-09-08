@@ -42,6 +42,171 @@ test_that("chat_server() accepts history = FALSE", {
   )
 })
 
+clear_contract_turns <- function(user_text, assistant_text) {
+  list(
+    ellmer::UserTurn(
+      contents = list(ellmer::ContentText(user_text))
+    ),
+    ellmer::AssistantTurn(
+      contents = list(ellmer::ContentText(assistant_text))
+    )
+  )
+}
+
+test_that("chat_server clear saves and separates history conversations", {
+  skip_if_not_installed("ellmer")
+
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  chat_module <- NULL
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = history_options(
+          store = store,
+          scope = "clear-test",
+          title = NULL,
+          restore_mode = "none"
+        ),
+        session = session
+      )
+    },
+    {
+      session$setInputs(chat_history_browser_token = "browser-token")
+      ctrl <- get_session_chat_bookmark_info(
+        session,
+        "chat.history-controller"
+      )
+      turns_one <- clear_contract_turns("first", "reply one")
+      client$set_turns(turns_one)
+      ctrl$on_response(lapply(turns_one, ellmer::contents_record))
+
+      first_id <- ctrl$record$id
+      first_record <- store$get(ctrl$partition, first_id)
+
+      chat_module$clear()
+
+      expect_null(ctrl$record)
+      expect_null(shiny::isolate(chat_module$history$conversation_id()))
+      expect_length(client$get_turns(), 0)
+      expect_identical(store$get(ctrl$partition, first_id), first_record)
+
+      turns_two <- clear_contract_turns("second", "reply two")
+      client$set_turns(turns_two)
+      ctrl$on_response(lapply(turns_two, ellmer::contents_record))
+
+      expect_false(identical(ctrl$record$id, first_id))
+      expect_identical(store$get(ctrl$partition, first_id), first_record)
+      expect_length(store$list(ctrl$partition), 2)
+    }
+  )
+})
+
+test_that("chat_server clear(greeting = TRUE) forwards greeting clearing", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+  chat_module <- NULL
+  spy <- new.env(parent = emptyenv())
+  spy$messages <- list()
+
+  shiny::testServer(
+    function(input, output, session) {
+      session$sendCustomMessage <- function(type, message) {
+        spy$messages[[length(spy$messages) + 1L]] <<- list(
+          type = type,
+          message = message
+        )
+      }
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = history_options(store = "memory", title = NULL),
+        session = session
+      )
+    },
+    {
+      chat_module$clear(greeting = TRUE)
+
+      clear_messages <- Filter(
+        function(x) identical(x$message$action$type, "clear"),
+        spy$messages
+      )
+      expect_length(clear_messages, 1)
+      expect_true(clear_messages[[1]]$message$action$greeting)
+    }
+  )
+})
+
+test_that("history-enabled chat_server clear rejects advanced modes", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+  chat_module <- NULL
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = history_options(store = "memory", title = NULL),
+        session = session
+      )
+    },
+    {
+      expect_error(
+        chat_module$clear(
+          messages = list(list(role = "assistant", content = "seed"))
+        ),
+        "only supports starting an empty new chat"
+      )
+      expect_error(
+        chat_module$clear(client_history = "set"),
+        "only supports starting an empty new chat"
+      )
+      expect_error(
+        chat_module$clear(client_history = "append"),
+        "only supports starting an empty new chat"
+      )
+      expect_error(
+        chat_module$clear(client_history = "keep"),
+        "only supports starting an empty new chat"
+      )
+    }
+  )
+})
+
+test_that("history-disabled chat_server clear keeps client-history modes", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client(turns = list("existing"))
+  chat_module <- NULL
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = FALSE,
+        session = session
+      )
+    },
+    {
+      expect_no_error(chat_module$clear())
+      expect_length(client$get_turns(), 0)
+
+      expect_no_error(chat_module$clear(
+        messages = list(list(role = "assistant", content = "seed")),
+        client_history = "set"
+      ))
+      expect_length(client$get_turns(), 1)
+    }
+  )
+})
+
 test_that("chat_server() history save returns FALSE before a conversation exists", {
   skip_if_not_installed("ellmer")
 

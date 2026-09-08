@@ -234,10 +234,14 @@ HistoryController <- R6::R6Class(
       self$send_history_update()
     },
 
-    new_chat = function() {
+    new_chat = function(greeting = FALSE) {
       self$save_current()
       private$client$set_turns(list())
-      chat_clear(private$chat_id, session = private$session)
+      chat_clear(
+        private$chat_id,
+        greeting = greeting,
+        session = private$session
+      )
       # Announce the cleared state even when the active ID is already NULL:
       # in URL/bookmark restore modes the browser may still carry a stale
       # conversation param (e.g. after a failed restore) that only
