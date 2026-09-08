@@ -618,6 +618,103 @@ describe("ToolGroup", () => {
     }
   })
 
+  it("recovers the title when a same-tool group's header title reverts mid-fade", () => {
+    // Three parallel calls of one tool, each carrying its own title: while
+    // they run the header shows the first request's title, and as results
+    // land (superseding their requests out of the visible set) `resolveTitle`
+    // walks through the remaining requests' titles, then settles on the first
+    // result's own title — which is the same one already on screen. That last
+    // step reverts the crossfade's key to the visible value mid-fade, and the
+    // fade used to die there: the timer was cleared by the re-render and never
+    // re-armed, leaving the committed title at opacity 0 forever
+    // (`data-fading` stuck true) once the calls finished.
+    vi.useFakeTimers()
+    try {
+      const confInfo = "Learned about posit::conf info"
+      const hotels = "Learned about hotel blocks"
+      const workshops = "Learned about workshops"
+      const request = (id: string, title: string) =>
+        call({
+          requestId: id,
+          status: "running",
+          definitionTitle: title,
+        })
+      const result = (id: string, title: string) =>
+        call({ requestId: id, status: "success", title })
+
+      const { container, rerender } = render(
+        <ToolGroup
+          group={group({
+            title: confInfo,
+            calls: [
+              request("r1", confInfo),
+              request("r2", hotels),
+              request("r3", workshops),
+            ],
+          })}
+        />,
+      )
+      const title = () =>
+        container.querySelector(".shiny-chat-tool-group__title")!
+      expect(title().textContent).toBe(confInfo)
+      expect(title().hasAttribute("data-fading")).toBe(false)
+
+      // r1 settles: the visible set is [r2, r3, r1's result], whose header
+      // title is r2's. The fade-out begins.
+      rerender(
+        <ToolGroup
+          group={group({
+            title: hotels,
+            calls: [
+              result("r1", confInfo),
+              request("r2", hotels),
+              request("r3", workshops),
+            ],
+          })}
+        />,
+      )
+      expect(title().getAttribute("data-fading")).toBe("true")
+
+      // r2 settles: [r3, r1's result, r2's result] → r3's title.
+      rerender(
+        <ToolGroup
+          group={group({
+            title: workshops,
+            calls: [
+              result("r1", confInfo),
+              result("r2", hotels),
+              request("r3", workshops),
+            ],
+          })}
+        />,
+      )
+      expect(title().getAttribute("data-fading")).toBe("true")
+
+      // r3 settles: [r1, r2, r3's results] → the first result's title, which
+      // is the value the fade started from. The title must come back.
+      rerender(
+        <ToolGroup
+          group={group({
+            title: confInfo,
+            calls: [
+              result("r1", confInfo),
+              result("r2", hotels),
+              result("r3", workshops),
+            ],
+          })}
+        />,
+      )
+      act(() => {
+        vi.advanceTimersByTime(200)
+      })
+      expect(title().hasAttribute("data-fading")).toBe(false)
+      expect(title().textContent).toBe(confInfo)
+      expect(headerText(container)).toContain("×3")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("does not fade the title when only the call count changes", () => {
     // The ×N badge lives outside the fading element on purpose: another call
     // landing is not a change of identity, and blinking the title for it would

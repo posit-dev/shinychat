@@ -19,6 +19,11 @@ export const FADE_DURATION_MS = 200
  * callers fade rendered content (which is a fresh object every render) rather
  * than only plain strings.
  *
+ * The fade ends when the key returns to the visible value mid-transition (the
+ * value on screen is already the target, so it just fades back in) and its
+ * deadline never moves: a value that keeps its key across renders only
+ * refreshes the pending content, not the timer.
+ *
  * There is no fade on first render, and none at all under
  * `prefers-reduced-motion`.
  */
@@ -30,25 +35,48 @@ export function useFadingValue<T>(
   const [visible, setVisible] = useState({ key, value })
   const [fading, setFading] = useState(false)
   const pending = useRef({ key, value })
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useLayoutEffect(() => {
     pending.current = { key, value }
-    if (key === visible.key) return
+
+    const clearTimer = () => {
+      if (timer.current !== null) {
+        clearTimeout(timer.current)
+        timer.current = null
+      }
+    }
 
     if (reducedMotion) {
-      setVisible({ key, value })
+      clearTimer()
+      if (key !== visible.key) setVisible({ key, value })
       setFading(false)
       return
     }
 
-    setFading(true)
-    const timer = setTimeout(() => {
-      setVisible(pending.current)
+    if (key === visible.key) {
+      clearTimer()
       setFading(false)
-    }, FADE_DURATION_MS)
+      return
+    }
 
-    return () => clearTimeout(timer)
+    if (timer.current === null) {
+      timer.current = setTimeout(() => {
+        timer.current = null
+        setVisible(pending.current)
+        setFading(false)
+      }, FADE_DURATION_MS)
+    }
+    setFading(true)
   }, [key, value, visible.key, reducedMotion])
+
+  // The timer outlives the effect's dependency changes by design (a re-render
+  // must not restart it), so it is cleared here on unmount only.
+  useLayoutEffect(() => {
+    return () => {
+      if (timer.current !== null) clearTimeout(timer.current)
+    }
+  }, [])
 
   return { visible: visible.value, fading }
 }

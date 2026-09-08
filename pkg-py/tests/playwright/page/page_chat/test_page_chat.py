@@ -69,7 +69,9 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     resizer = page_chat.loc.get_by_role("separator", name="Resize sidebar")
     expect(resizer).to_be_visible()
     resizer.press("End")
-    expect(resizer).to_have_attribute("aria-valuenow", "920")
+    expect(resizer).to_have_attribute(
+        "aria-valuenow", resizer.get_attribute("aria-valuemax")
+    )
     resizer.press("Home")
     expect(resizer).to_have_attribute("aria-valuenow", "150")
 
@@ -145,6 +147,23 @@ def test_explicit_theme_keeps_embedded_chat_composer_chrome(
     )
     expect(wrapper).to_have_css("padding-left", "32px")
     expect(input_area).to_have_css("padding-bottom", "48px")
+
+
+def test_page_chat_requests_standalone_mobile_app_display(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    chat, _ = open_page(page, local_app, viewport=(390, 760))
+
+    expect(
+        page.locator('meta[name="apple-mobile-web-app-capable"]')
+    ).to_have_attribute("content", "yes")
+    expect(
+        page.locator('meta[name="mobile-web-app-capable"]')
+    ).to_have_attribute("content", "yes")
+    expect(chat.loc.locator(".shiny-chat-input .tiptap")).to_have_css(
+        "font-size", "16px"
+    )
 
 
 def test_page_chat_toolbar_input_aligns_with_composer_and_footer_is_pinned(
@@ -266,6 +285,37 @@ def test_desktop_header_keeps_controls_available(
     expect(toolbar_source).to_be_hidden()
 
 
+def test_mobile_header_title_uses_available_space(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    _, page_chat = open_page(page, local_app, viewport=(390, 760))
+    header = page_chat.loc_header
+    identity = page_chat.loc_identity
+    identity_title = page_chat.loc_identity_title
+    toggle = page_chat.loc_sidebar_toggle
+
+    identity_title.evaluate(
+        "(element) => { element.textContent = 'Research Assistant for "
+        "long-running analyses and multi-step investigations'; }"
+    )
+
+    header_box = header.bounding_box()
+    identity_box = identity.bounding_box()
+    toggle_box = toggle.bounding_box()
+    assert header_box is not None
+    assert identity_box is not None
+    assert toggle_box is not None
+
+    expect(identity_title).to_have_css("white-space", "nowrap")
+    expect(toggle).to_be_visible()
+    assert identity_box["width"] > header_box["width"] * 0.75
+    assert identity_box["x"] >= toggle_box["x"] + toggle_box["width"]
+    assert identity_box["x"] + identity_box["width"] <= (
+        header_box["x"] + header_box["width"]
+    )
+
+
 def test_single_page_title_is_not_truncated(
     page: Page,
     local_app: ShinyAppProc,
@@ -372,6 +422,8 @@ def test_mobile_moves_controls_and_manages_dialog_focus(
         )
     ).to_have_count(1)
     expect(page.locator("#toolbar_value")).to_have_count(1)
+    expect(toggle).to_have_css("width", "44px")
+    expect(toggle).to_have_css("height", "44px")
     expect(toggle).to_have_attribute("aria-expanded", "false")
 
     toggle.click()
@@ -769,6 +821,9 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
 
     # A greeting taller than the chat region retains the usual bottom-pinned
     # composer instead of competing for the centered empty-state layout.
+    # Clear the stored browser token so the reload starts a fresh
+    # conversation instead of racing the history restore for the empty state.
+    page.evaluate("localStorage.clear()")
     page.reload()
     expect(layout).to_have_attribute("data-composer-centered", "")
     greeting.evaluate("(element) => { element.style.minHeight = '100vh'; }")

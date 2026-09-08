@@ -15,7 +15,15 @@ from typing import (
     cast,
 )
 
-from htmltools import HTML, MetadataNode, Tag, TagAttrValue, TagChild, TagList
+from htmltools import (
+    HTML,
+    MetadataNode,
+    Tag,
+    TagAttrValue,
+    TagChild,
+    TagList,
+    head_content,
+)
 
 from ._page_chat_theme import page_chat_theme
 from ._utils_types import MISSING, MISSING_TYPE
@@ -1390,6 +1398,10 @@ def _render_page_chat(
         else window_title
     )
     return ui.page_fillable(
+        head_content(
+            Tag("meta", name="apple-mobile-web-app-capable", content="yes"),
+            Tag("meta", name="mobile-web-app-capable", content="yes"),
+        ),
         shell,
         fillable_mobile=True,
         padding=0,

@@ -70,6 +70,37 @@ def test_mobile_drawer_capable_chat_fills_page_and_keeps_composer_inset(
     )
 
 
+def test_mobile_drawer_takeover_hides_separator_and_keeps_sidebar_on_top(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, page_chat = open_page(page, local_app, viewport=(390, 760))
+    layout = chat.loc.locator(".shiny-chat-layout")
+    sidebar = page_chat.loc_sidebar
+
+    page_chat.loc_sidebar_toggle.click()
+    page.get_by_role("button", name="Show drawer").click()
+
+    expect(layout).to_have_attribute("data-drawer-open", "")
+    expect(layout).to_have_attribute("data-drawer-takeover", "")
+    expect(sidebar).to_be_visible()
+    assert (
+        layout.evaluate(
+            "(element) => getComputedStyle(element, '::after').display"
+        )
+        == "none"
+    )
+    assert sidebar.evaluate(
+        """(element) => {
+          const box = element.getBoundingClientRect();
+          const topElement = document.elementFromPoint(
+            box.left + box.width / 2,
+            box.top + box.height / 2,
+          );
+          return topElement?.closest(".shiny-chat-page-sidebar") === element;
+        }"""
+    )
+
+
 def test_percentage_drawer_keeps_desktop_chat_width(
     page: Page, local_app: ShinyAppProc
 ) -> None:
@@ -522,6 +553,7 @@ def test_default_drawer_width_centers_chat_wrapper(
     layout = chat.loc.locator(".shiny-chat-layout")
     panel = chat.loc.locator(".shiny-chat-drawer")
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
+    input_container = chat.loc_input_container
 
     closed_box = wrapper.bounding_box()
     assert closed_box is not None
@@ -551,9 +583,11 @@ def test_default_drawer_width_centers_chat_wrapper(
     layout_box = layout.bounding_box()
     panel_box = panel.bounding_box()
     wrapper_box = wrapper.bounding_box()
+    input_box = input_container.bounding_box()
     assert layout_box is not None
     assert panel_box is not None
     assert wrapper_box is not None
+    assert input_box is not None
     assert isinstance(opening_x, (int, float))
     assert panel_box["width"] == pytest.approx(400, abs=1)
 
@@ -803,18 +837,98 @@ def test_drawer_stays_adjacent_with_open_desktop_sidebar(
         viewport=(1024, 900),
     )
     sidebar = page_chat.loc_sidebar
+    body = page_chat.loc_body
+    main = page_chat.loc_main
     if sidebar.is_hidden():
         page_chat.loc_sidebar_toggle.click()
     expect(sidebar).to_be_visible(timeout=TIMEOUT)
+    page.wait_for_timeout(220)
 
     page.get_by_role("button", name="Show drawer").click()
     layout = chat.loc.locator(".shiny-chat-layout")
     panel = chat.loc.locator(".shiny-chat-drawer")
+    wrapper = chat.loc.locator(".shiny-chat-wrapper")
+    input_container = chat.loc_input_container
     expect(panel).to_be_visible(timeout=TIMEOUT)
     expect(layout).not_to_have_attribute("data-drawer-takeover")
     expect(
         page.get_by_role("separator", name="Resize drawer panel")
     ).to_be_visible()
+    page.wait_for_timeout(220)
+
+    sidebar_box = sidebar.bounding_box()
+    main_box = main.bounding_box()
+    panel_box = panel.bounding_box()
+    wrapper_box = wrapper.bounding_box()
+    input_box = input_container.bounding_box()
+    assert sidebar_box is not None
+    assert main_box is not None
+    assert panel_box is not None
+    assert wrapper_box is not None
+    assert input_box is not None
+
+    page_gap = body.evaluate(
+        "(element) => Number.parseFloat(getComputedStyle(element).columnGap)"
+    )
+    drawer_gap = layout.evaluate(
+        "(element) => Number.parseFloat(getComputedStyle(element).columnGap)"
+    )
+    assert page_gap > 0
+    assert drawer_gap > 0
+    assert page_gap <= 8
+    assert drawer_gap == pytest.approx(page_gap, abs=1)
+    assert main_box["x"] - (sidebar_box["x"] + sidebar_box["width"]) == (
+        pytest.approx(page_gap, abs=1)
+    )
+    assert panel_box["x"] - (wrapper_box["x"] + wrapper_box["width"]) == (
+        pytest.approx(drawer_gap, abs=1)
+    )
+    assert input_box["x"] - (sidebar_box["x"] + sidebar_box["width"]) <= 24
+    assert panel_box["x"] - (input_box["x"] + input_box["width"]) <= 24
+    assert layout.evaluate(
+        """(element) => {
+          const style = getComputedStyle(element, "::after");
+          return {
+            background: style.backgroundColor,
+            width: Number.parseFloat(style.width),
+          };
+        }"""
+    ) == {
+        "background": chat.loc.evaluate(
+            "(element) => getComputedStyle(element).backgroundColor"
+        ),
+        "width": pytest.approx(drawer_gap, abs=1),
+    }
+
+
+def test_open_sidebar_keeps_drawer_in_takeover_until_split_tracks_fit(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, page_chat = open_page(
+        page,
+        local_app,
+        drawer_width="default",
+        viewport=(920, 900),
+    )
+    sidebar = page_chat.loc_sidebar
+    if sidebar.is_hidden():
+        page_chat.loc_sidebar_toggle.click()
+    expect(sidebar).to_be_visible(timeout=TIMEOUT)
+    page.wait_for_timeout(220)
+
+    page.get_by_role("button", name="Show drawer").click()
+    panel = chat.loc.locator(".shiny-chat-drawer")
+    wrapper = chat.loc.locator(".shiny-chat-wrapper")
+    expect(panel).to_be_visible(timeout=TIMEOUT)
+    expect(wrapper).to_be_hidden()
+    page.wait_for_timeout(220)
+
+    panel_box = panel.bounding_box()
+    main_box = page_chat.loc_main.bounding_box()
+    assert panel_box is not None
+    assert main_box is not None
+    assert panel_box["x"] == pytest.approx(main_box["x"], abs=1)
+    assert panel_box["width"] == pytest.approx(main_box["width"], abs=1)
 
 
 @pytest.mark.parametrize(
@@ -839,8 +953,15 @@ def test_compact_drawer_trigger_does_not_overlay_messages(
     chat.expect_latest_message("echo: hi there", timeout=TIMEOUT)
 
     if viewport[0] <= 799:
+        # On mobile the header toolbar lives inside the app menu, so the
+        # "Show drawer" button is only clickable while the menu is open.
         page_chat.loc_sidebar_toggle.click()
+        page_chat.expect_mobile_menu_open()
     page.get_by_role("button", name="Show drawer").click()
+    if viewport[0] <= 799:
+        # Close the menu so its scrim doesn't overlay the drawer takeover.
+        page_chat.close_mobile_menu()
+        page_chat.expect_mobile_menu_closed()
     page.get_by_role("button", name="Close drawer").click()
 
     trigger = chat.loc.locator(".shiny-chat-drawer-trigger")

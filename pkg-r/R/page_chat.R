@@ -444,6 +444,13 @@ page_chat <- function(
   root <- tag_require(root, version = 5, caller = "page_chat")
 
   bslib::page_fillable(
+    htmltools::tags$head(
+      htmltools::tags$meta(
+        name = "apple-mobile-web-app-capable",
+        content = "yes"
+      ),
+      htmltools::tags$meta(name = "mobile-web-app-capable", content = "yes")
+    ),
     root,
     fillable_mobile = TRUE,
     padding = 0,
