@@ -102,7 +102,8 @@
 #'       empty new-chat form is supported: `messages` must be `NULL` and
 #'       `client_history` must be `"clear"`. Set `history = FALSE` to use the
 #'       other clearing modes. `clear(greeting = TRUE)` also clears the
-#'       greeting and requests a new one.
+#'       greeting and requests a new one. `clear()` errors while a response is
+#'       streaming; wait for it to complete or stop it first.
 #'     * `set_greeting()`: A function to set, stream, or clear the chat
 #'       greeting. Pass a [chat_greeting()] object, a plain string, or
 #'       `NULL` to clear. Streaming greetings run inside an
@@ -894,6 +895,12 @@ chat_server <- function(
     client_history = c("clear", "set", "append", "keep")
   ) {
     client_history <- arg_match(client_history)
+
+    if (append_stream_task$status() == "running") {
+      cli::cli_abort(
+        "Can't clear the chat while a response is still being generated. Please wait for it to finish or stop it first."
+      )
+    }
 
     hist_ctrl <- history_controller()
     if (

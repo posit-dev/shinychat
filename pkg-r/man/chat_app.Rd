@@ -90,7 +90,8 @@ resetting the active conversation. When history is enabled, only the
 empty new-chat form is supported: \code{messages} must be \code{NULL} and
 \code{client_history} must be \code{"clear"}. Set \code{history = FALSE} to use the
 other clearing modes. \code{clear(greeting = TRUE)} also clears the
-greeting and requests a new one.
+greeting and requests a new one. \code{clear()} errors while a response is
+streaming; wait for it to complete or stop it first.
 \item \code{set_greeting()}: A function to set, stream, or clear the chat
 greeting. Pass a \code{\link[=chat_greeting]{chat_greeting()}} object, a plain string, or
 \code{NULL} to clear. Streaming greetings run inside an

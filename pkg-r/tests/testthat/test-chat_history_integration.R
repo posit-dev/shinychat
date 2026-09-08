@@ -105,6 +105,54 @@ test_that("chat_server clear saves and separates history conversations", {
   )
 })
 
+test_that("chat_server clear rejects an in-flight response", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+  chat_module <- NULL
+  resolve_stream <- NULL
+  client$stream_async <- function(...) {
+    promises::promise(function(resolve, reject) {
+      resolve_stream <<- resolve
+    })
+  }
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = history_options(store = "memory", title = NULL),
+        session = session
+      )
+    },
+    {
+      session$setInputs(
+        chat_history_browser_token = "browser-token",
+        chat_user_input = "first"
+      )
+      session$flushReact()
+
+      expect_identical(shiny::isolate(chat_module$status()), "streaming")
+      expect_error(
+        chat_module$clear(),
+        "Can't clear the chat while a response is still being generated"
+      )
+
+      resolve_stream("reply")
+      deadline <- Sys.time() + 5
+      while (
+        shiny::isolate(chat_module$status()) != "idle" &&
+          Sys.time() < deadline
+      ) {
+        later::run_now(0.05)
+        session$flushReact()
+      }
+      expect_identical(shiny::isolate(chat_module$status()), "idle")
+    }
+  )
+})
+
 test_that("chat_server clear(greeting = TRUE) forwards greeting clearing", {
   skip_if_not_installed("ellmer")
 
