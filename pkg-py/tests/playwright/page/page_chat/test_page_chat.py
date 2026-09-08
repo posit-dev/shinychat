@@ -291,6 +291,7 @@ def test_mobile_header_title_uses_available_space(
     header = page_chat.loc_header
     identity = page_chat.loc_identity
     identity_title = page_chat.loc_identity_title
+    toggle = page_chat.loc_sidebar_toggle
 
     identity_title.evaluate(
         "(element) => { element.textContent = 'Research Assistant for "
@@ -299,11 +300,15 @@ def test_mobile_header_title_uses_available_space(
 
     header_box = header.bounding_box()
     identity_box = identity.bounding_box()
+    toggle_box = toggle.bounding_box()
     assert header_box is not None
     assert identity_box is not None
+    assert toggle_box is not None
 
     expect(identity_title).to_have_css("white-space", "nowrap")
+    expect(toggle).to_be_visible()
     assert identity_box["width"] > header_box["width"] * 0.75
+    assert identity_box["x"] >= toggle_box["x"] + toggle_box["width"]
     assert identity_box["x"] + identity_box["width"] <= (
         header_box["x"] + header_box["width"]
     )
