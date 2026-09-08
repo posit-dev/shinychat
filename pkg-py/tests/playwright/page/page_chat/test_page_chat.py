@@ -398,6 +398,8 @@ def test_mobile_moves_controls_and_manages_dialog_focus(
         )
     ).to_have_count(1)
     expect(page.locator("#toolbar_value")).to_have_count(1)
+    expect(toggle).to_have_css("width", "44px")
+    expect(toggle).to_have_css("height", "44px")
     expect(toggle).to_have_attribute("aria-expanded", "false")
 
     toggle.click()

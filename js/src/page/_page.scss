@@ -583,6 +583,13 @@ button.shiny-chat-page-identity:focus-visible,
     max-width: 100%;
   }
 
+  .shiny-chat-page-sidebar-toggle {
+    width: 2.75rem;
+    height: 2.75rem;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
   .shiny-chat-page-controls-mount-desktop {
     display: none;
   }
@@ -631,7 +638,7 @@ button.shiny-chat-page-identity:focus-visible,
   .shiny-chat-page-controls-mount-mobile {
     display: block;
     flex: 0 0 auto;
-    padding: max(3.25rem, calc(env(safe-area-inset-top) + 3.25rem)) 0.5rem 0.5rem;
+    padding: max(3.5rem, calc(env(safe-area-inset-top) + 3.5rem)) 0.5rem 0.5rem;
     border-bottom: var(--_page-border);
   }
 
