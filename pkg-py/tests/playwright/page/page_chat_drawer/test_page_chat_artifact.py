@@ -522,6 +522,7 @@ def test_default_drawer_width_centers_chat_wrapper(
     layout = chat.loc.locator(".shiny-chat-layout")
     panel = chat.loc.locator(".shiny-chat-drawer")
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
+    input_container = chat.loc_input_container
 
     closed_box = wrapper.bounding_box()
     assert closed_box is not None
@@ -551,9 +552,11 @@ def test_default_drawer_width_centers_chat_wrapper(
     layout_box = layout.bounding_box()
     panel_box = panel.bounding_box()
     wrapper_box = wrapper.bounding_box()
+    input_box = input_container.bounding_box()
     assert layout_box is not None
     assert panel_box is not None
     assert wrapper_box is not None
+    assert input_box is not None
     assert isinstance(opening_x, (int, float))
     assert panel_box["width"] == pytest.approx(400, abs=1)
 
@@ -814,6 +817,7 @@ def test_drawer_stays_adjacent_with_open_desktop_sidebar(
     layout = chat.loc.locator(".shiny-chat-layout")
     panel = chat.loc.locator(".shiny-chat-drawer")
     wrapper = chat.loc.locator(".shiny-chat-wrapper")
+    input_container = chat.loc_input_container
     expect(panel).to_be_visible(timeout=TIMEOUT)
     expect(layout).not_to_have_attribute("data-drawer-takeover")
     expect(
@@ -825,10 +829,12 @@ def test_drawer_stays_adjacent_with_open_desktop_sidebar(
     main_box = main.bounding_box()
     panel_box = panel.bounding_box()
     wrapper_box = wrapper.bounding_box()
+    input_box = input_container.bounding_box()
     assert sidebar_box is not None
     assert main_box is not None
     assert panel_box is not None
     assert wrapper_box is not None
+    assert input_box is not None
 
     page_gap = body.evaluate(
         "(element) => Number.parseFloat(getComputedStyle(element).columnGap)"
@@ -838,12 +844,16 @@ def test_drawer_stays_adjacent_with_open_desktop_sidebar(
     )
     assert page_gap > 0
     assert drawer_gap > 0
+    assert page_gap <= 8
+    assert drawer_gap == pytest.approx(page_gap, abs=1)
     assert main_box["x"] - (sidebar_box["x"] + sidebar_box["width"]) == (
         pytest.approx(page_gap, abs=1)
     )
     assert panel_box["x"] - (wrapper_box["x"] + wrapper_box["width"]) == (
         pytest.approx(drawer_gap, abs=1)
     )
+    assert input_box["x"] - (sidebar_box["x"] + sidebar_box["width"]) <= 24
+    assert panel_box["x"] - (input_box["x"] + input_box["width"]) <= 24
     assert layout.evaluate(
         """(element) => {
           const style = getComputedStyle(element, "::after");
@@ -853,7 +863,7 @@ def test_drawer_stays_adjacent_with_open_desktop_sidebar(
           };
         }"""
     ) == {
-        "background": main.evaluate(
+        "background": chat.loc.evaluate(
             "(element) => getComputedStyle(element).backgroundColor"
         ),
         "width": pytest.approx(drawer_gap, abs=1),

@@ -15,9 +15,13 @@ shiny-chat-page {
   );
   --_page-panel-gap: var(
     --shiny-chat-page-panel-gap,
-    clamp(0.75rem, 1.5vw, 1.5rem)
+    clamp(0.25rem, 0.5vw, 0.5rem)
   );
   --_page-surface-bg: var(--shiny-chat-page-surface-bg, var(--bs-body-bg, #fff));
+  --_page-panel-gap-bg: var(
+    --shiny-chat-page-panel-gap-bg,
+    var(--_page-surface-bg)
+  );
   --_page-sidebar-bg: var(--shiny-chat-page-sidebar-bg, var(--bs-body-bg, #fff));
   --_page-canvas-bg: var(--shiny-chat-page-canvas-bg, var(--bs-body-bg, #fff));
   --_page-border: var(--bs-border-width, 1px) solid var(
@@ -361,7 +365,7 @@ button.shiny-chat-page-identity:focus-visible,
   grid-template-columns: minmax(0, var(--_page-sidebar-track)) minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-  background: var(--_page-canvas-bg);
+  background: var(--_page-panel-gap-bg);
 }
 
 .shiny-chat-page-sidebar {
@@ -420,6 +424,8 @@ button.shiny-chat-page-identity:focus-visible,
 }
 
 shiny-chat-page .shiny-chat-layout[data-drawer-open] {
+  --_drawer-layout-gap: var(--_page-panel-gap);
+
   position: relative;
 }
 
@@ -431,7 +437,7 @@ shiny-chat-page .shiny-chat-layout[data-drawer-open]::after {
   width: var(--_drawer-layout-gap);
   content: "";
   pointer-events: none;
-  background: var(--_page-canvas-bg);
+  background: var(--_page-panel-gap-bg);
 }
 
 .shiny-chat-page-sidebar-resizer {
