@@ -363,15 +363,12 @@ export function ChatDrawer({
     }
 
     // A ResizeObserver can run before the grid applies a just-requested pixel
-    // width. Trust that configured value instead of restoring the stale,
-    // pre-resize measurement.
+    // width, or while the grid is transitioning to it. Trust the configured
+    // target and only notify the parent when container bounds clamp that target.
     const bounded = clampWidth(configured, maximum)
     setWidth(`${bounded}px`)
     setRenderedWidth(bounded)
-    if (
-      bounded !== measured ||
-      (configured !== undefined && bounded !== configured)
-    ) {
+    if (bounded !== configured) {
       onWidthChange(`${bounded}px`)
     }
   }, [

@@ -148,6 +148,43 @@ def test_percentage_drawer_keeps_desktop_chat_width(
     expect(separator).to_have_attribute("aria-valuetext", f"{current} pixels")
 
 
+def test_drawer_suppresses_track_motion_during_layout_resize(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    chat, _ = open_page(page, local_app)
+    page.get_by_role("button", name="Show drawer").click()
+    layout = chat.loc.locator(".shiny-chat-layout")
+    expect(chat.loc.locator(".shiny-chat-drawer")).to_be_visible(timeout=TIMEOUT)
+
+    resize_samples = layout.evaluate(
+        """async (element) => {
+          const samples = [];
+          for (const width of ["1200px", "900px", "1100px", "850px"]) {
+            element.style.width = width;
+            await new Promise(requestAnimationFrame);
+            await new Promise(requestAnimationFrame);
+            samples.push({
+              resizing: element.hasAttribute("data-drawer-resizing"),
+              transitionDuration:
+                getComputedStyle(element).transitionDuration,
+            });
+          }
+          element.style.removeProperty("width");
+          return samples;
+        }"""
+    )
+
+    assert all(sample["resizing"] for sample in resize_samples)
+    assert all(
+        sample["transitionDuration"] == "0s" for sample in resize_samples
+    )
+    expect(layout).not_to_have_attribute(
+        "data-drawer-resizing",
+        timeout=TIMEOUT,
+    )
+    expect(layout).to_have_css("transition-duration", "0.18s, 0.18s")
+
+
 @pytest.mark.parametrize(
     ("chat_width", "expected_max_width", "expected_rendered_width"),
     [

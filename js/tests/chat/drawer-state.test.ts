@@ -153,4 +153,23 @@ describe("artifact state", () => {
     expect(hidden.drawer).toEqual({ ...before.drawer, visible: false })
     expect(toggled.drawer).toEqual(before.drawer)
   })
+
+  it("ignores redundant drawer width updates", () => {
+    const before = stateWithDrawer({ width: "400px" })
+
+    expect(
+      chatReducer(before, { type: "SET_DRAWER_WIDTH", width: "400px" }),
+    ).toBe(before)
+  })
+
+  it("updates the drawer width when it changes", () => {
+    const before = stateWithDrawer({ width: "400px" })
+    const next = chatReducer(before, {
+      type: "SET_DRAWER_WIDTH",
+      width: "480px",
+    })
+
+    expect(next).not.toBe(before)
+    expect(next.drawer.width).toBe("480px")
+  })
 })
