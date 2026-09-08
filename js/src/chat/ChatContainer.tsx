@@ -46,6 +46,7 @@ const DEFAULT_DRAWER_LAYOUT_WIDTH = 400
 const MIN_DRAWER_LAYOUT_WIDTH = 240
 const MIN_CHAT_LAYOUT_WIDTH = 360
 const MAX_DRAWER_LAYOUT_GAP = 24
+const LAYOUT_RESIZE_SETTLE_DURATION = 120
 
 function openLink(url: string): void {
   window.open(url, "_blank", "noopener,noreferrer")
@@ -228,6 +229,7 @@ export const ChatContainer = forwardRef<
   const [drawerTakeover, setDrawerTakeover] = useState(false)
   const [drawerPresented, setDrawerPresented] = useState(drawer.visible)
   const [drawerResizing, setDrawerResizing] = useState(false)
+  const [drawerLayoutResizing, setDrawerLayoutResizing] = useState(false)
   const [composerPosition, setComposerPosition] = useState<ComposerPosition>({
     centered: false,
     greetingOverflows: false,
@@ -440,7 +442,7 @@ export const ChatContainer = forwardRef<
       if (resizeSettleTimer) window.clearTimeout(resizeSettleTimer)
       resizeSettleTimer = window.setTimeout(
         () => setComposerResizing(false),
-        120,
+        LAYOUT_RESIZE_SETTLE_DURATION,
       )
     }
 
@@ -493,14 +495,33 @@ export const ChatContainer = forwardRef<
     updateDrawerLayoutWidth()
 
     const layout = drawerLayoutRef.current
-    if (!layout || typeof ResizeObserver === "undefined") return
-    const observer = new ResizeObserver(updateDrawerLayoutWidth)
+    if (!layout || !drawer.enabled || typeof ResizeObserver === "undefined") {
+      return
+    }
+    let receivedInitialResize = false
+    let resizeSettleTimer: number | undefined
+    const observer = new ResizeObserver(() => {
+      updateDrawerLayoutWidth()
+      if (receivedInitialResize) {
+        setDrawerLayoutResizing(true)
+        if (resizeSettleTimer) window.clearTimeout(resizeSettleTimer)
+        resizeSettleTimer = window.setTimeout(() => {
+          resizeSettleTimer = undefined
+          setDrawerLayoutResizing(false)
+        }, LAYOUT_RESIZE_SETTLE_DURATION)
+      }
+      receivedInitialResize = true
+    })
     observer.observe(layout)
     if (drawerWidthProbeRef.current) {
       observer.observe(drawerWidthProbeRef.current)
     }
-    return () => observer.disconnect()
-  }, [drawer.visible, updateDrawerLayoutWidth])
+    return () => {
+      if (resizeSettleTimer) window.clearTimeout(resizeSettleTimer)
+      setDrawerLayoutResizing(false)
+      observer.disconnect()
+    }
+  }, [drawer.enabled, drawer.visible, updateDrawerLayoutWidth])
 
   useEffect(() => {
     const layout = drawerLayoutRef.current
@@ -968,7 +989,9 @@ export const ChatContainer = forwardRef<
         data-drawer-takeover={
           drawerTakeover && drawerPresented ? "" : undefined
         }
-        data-drawer-resizing={drawerResizing ? "" : undefined}
+        data-drawer-resizing={
+          drawerResizing || drawerLayoutResizing ? "" : undefined
+        }
         data-composer-centered={composerPosition.centered ? "" : undefined}
         data-greeting-overflow={
           composerPosition.greetingOverflows ? "" : undefined

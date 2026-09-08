@@ -1127,7 +1127,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "SET_DRAWER_WIDTH":
-      if (!state.drawer.enabled) return state
+      if (!state.drawer.enabled || state.drawer.width === action.width) {
+        return state
+      }
       return {
         ...state,
         drawer: { ...state.drawer, width: action.width },
