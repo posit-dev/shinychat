@@ -1899,7 +1899,7 @@ class Chat:
         This is a UI-level primitive. It does not reset the underlying
         client's turns or the conversation-history controller. When a chat
         was created with a client and conversation history is enabled, use
-        ``await chat.client.clear()`` for a coordinated new-conversation
+        ``await chat.client.new_chat()`` for a coordinated new-conversation
         reset.
 
         Parameters

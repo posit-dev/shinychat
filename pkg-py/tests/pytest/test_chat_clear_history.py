@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from shiny.types import NotifyException
 from shinychat._chat_client import ChatClient, messages_to_turns
 from shinychat._chat_types import ChatMessageDict
 from shinychat._history import HistoryController
@@ -15,8 +16,11 @@ from shinychat._history_store import (
 
 
 class _Stream:
+    def __init__(self, state: str = "initial") -> None:
+        self.state = state
+
     def status(self) -> str:
-        return "initial"
+        return self.state
 
 
 class _TurnClient:
@@ -102,7 +106,7 @@ def _set_exchange(
 
 
 @pytest.mark.anyio
-async def test_history_aware_clear_saves_and_separates_conversations():
+async def test_new_chat_saves_and_separates_conversations():
     client, chat, raw_client, store = await _make_history_chat()
     controller = chat.history._controller
     assert controller is not None
@@ -114,7 +118,7 @@ async def test_history_aware_clear_saves_and_separates_conversations():
     first_id = first.id
     first_snapshot = first.model_dump(mode="json")
 
-    await client.clear(greeting=True)
+    await client.new_chat(greeting=True)
 
     assert chat.clear_calls == [True]
     assert raw_client.get_turns() == []
@@ -141,41 +145,25 @@ async def test_history_aware_clear_saves_and_separates_conversations():
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    ("kwargs", "message"),
+    "kwargs",
     [
-        (
-            {"messages": [{"role": "user", "content": "seed"}]},
-            "messages.*conversation history",
-        ),
-        (
-            {
-                "messages": [{"role": "user", "content": "seed"}],
-                "client_history": "set",
-            },
-            "messages.*conversation history",
-        ),
-        (
-            {"client_history": "set"},
-            "client_history.*clear",
-        ),
-        (
-            {"client_history": "append"},
-            "client_history.*clear",
-        ),
-        (
-            {"client_history": "keep"},
-            "client_history.*clear",
-        ),
+        {},
+        {"messages": [{"role": "user", "content": "seed"}]},
+        {
+            "messages": [{"role": "user", "content": "seed"}],
+            "client_history": "set",
+        },
+        {"client_history": "set"},
+        {"client_history": "append"},
+        {"client_history": "keep"},
     ],
 )
-async def test_history_aware_clear_rejects_advanced_modes(
-    kwargs: dict[str, Any], message: str
-):
+async def test_clear_rejects_history_managed_chats(kwargs: dict[str, Any]):
     client, chat, raw_client, _store = await _make_history_chat()
     _set_exchange(raw_client, chat, "question", "answer")
     before_turns = raw_client.get_turns()
 
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(ValueError, match="new_chat"):
         await client.clear(**kwargs)  # type: ignore[arg-type]
 
     assert raw_client.get_turns() == before_turns
@@ -197,3 +185,27 @@ async def test_history_disabled_clear_keeps_legacy_modes():
     assert chat.clear_calls == [True]
     assert chat.messages == [messages[0]]
     assert raw_client.get_turns() == messages_to_turns(messages)
+
+
+@pytest.mark.anyio
+async def test_new_chat_requires_conversation_history():
+    raw_client = _TurnClient()
+    chat = _Chat()
+    client = ChatClient(chat=cast(Any, chat), client=cast(Any, raw_client))
+
+    with pytest.raises(ValueError, match="conversation history"):
+        await client.new_chat()
+
+
+@pytest.mark.anyio
+async def test_new_chat_rejects_an_in_flight_response():
+    client, chat, raw_client, _store = await _make_history_chat()
+    chat.latest_message_stream.state = "running"
+    turns = [{"role": "user", "content": "question"}]
+    raw_client.set_turns(turns)
+
+    with pytest.raises(NotifyException, match="Can't start a new chat while"):
+        await client.new_chat()
+
+    assert raw_client.get_turns() == turns
+    assert chat.clear_calls == []

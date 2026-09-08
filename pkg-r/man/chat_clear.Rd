@@ -22,7 +22,7 @@ clear the greeting, which re-triggers \code{greeting_requested} (see the
 
 This is a UI-level primitive: it does not clear an ellmer client's turns or
 reset conversation history managed by \code{\link[=chat_server]{chat_server()}}. For a full reset of a
-managed chat, call the \code{clear()} method on the value returned by
+managed chat, call the \code{new_chat()} method on the value returned by
 \code{\link[=chat_server]{chat_server()}}.
 }
 \examples{

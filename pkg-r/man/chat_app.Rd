@@ -84,14 +84,23 @@ except for \code{id} and \code{session}, which are supplied automatically.
 \item \code{append()}: A function to append a new message to the chat UI. Takes
 the same arguments as \code{\link[=chat_append]{chat_append()}}, except for \code{id} and \code{session},
 which are supplied automatically.
-\item \code{clear()}: A function to start a new chat by saving the current
-conversation, clearing the chat client's turns and the chat UI, and
-resetting the active conversation. When history is enabled, only the
-empty new-chat form is supported: \code{messages} must be \code{NULL} and
-\code{client_history} must be \code{"clear"}. Set \code{history = FALSE} to use the
-other clearing modes. \code{clear(greeting = TRUE)} also clears the
-greeting and requests a new one. \code{clear()} errors while a response is
-streaming; wait for it to complete or stop it first.
+\item \code{clear()}: A function to clear the chat client turns and the chat UI.
+It optionally takes a list of \code{messages} used to initialize the chat
+after clearing. \code{messages} should be a list of messages, where each
+message is a list with \code{role} and \code{content} fields. The
+\code{client_history} argument controls how the chat client's history is
+updated after clearing. It can be one of: \code{"clear"} the chat history;
+\code{"set"} the chat history to \code{messages}; \code{"append"} \code{messages} to the
+existing chat history; or \code{"keep"} the existing chat history.
+\code{clear()} is unavailable when conversation history is enabled; use
+\code{new_chat()} instead.
+\item \code{new_chat()}: A function to save the current conversation and start a
+new one by clearing the chat client's turns and chat UI, resetting the
+active conversation, and updating the history drawer. It is available
+only when conversation history is enabled. \code{new_chat(greeting = TRUE)}
+also clears the greeting and requests a new one. \code{new_chat()} errors
+while a response is streaming; wait for it to complete or stop it
+first.
 \item \code{set_greeting()}: A function to set, stream, or clear the chat
 greeting. Pass a \code{\link[=chat_greeting]{chat_greeting()}} object, a plain string, or
 \code{NULL} to clear. Streaming greetings run inside an

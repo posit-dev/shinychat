@@ -96,14 +96,23 @@
 #'     * `append()`: A function to append a new message to the chat UI. Takes
 #'       the same arguments as [chat_append()], except for `id` and `session`,
 #'       which are supplied automatically.
-#'     * `clear()`: A function to start a new chat by saving the current
-#'       conversation, clearing the chat client's turns and the chat UI, and
-#'       resetting the active conversation. When history is enabled, only the
-#'       empty new-chat form is supported: `messages` must be `NULL` and
-#'       `client_history` must be `"clear"`. Set `history = FALSE` to use the
-#'       other clearing modes. `clear(greeting = TRUE)` also clears the
-#'       greeting and requests a new one. `clear()` errors while a response is
-#'       streaming; wait for it to complete or stop it first.
+#'     * `clear()`: A function to clear the chat client turns and the chat UI.
+#'       It optionally takes a list of `messages` used to initialize the chat
+#'       after clearing. `messages` should be a list of messages, where each
+#'       message is a list with `role` and `content` fields. The
+#'       `client_history` argument controls how the chat client's history is
+#'       updated after clearing. It can be one of: `"clear"` the chat history;
+#'       `"set"` the chat history to `messages`; `"append"` `messages` to the
+#'       existing chat history; or `"keep"` the existing chat history.
+#'       `clear()` is unavailable when conversation history is enabled; use
+#'       `new_chat()` instead.
+#'     * `new_chat()`: A function to save the current conversation and start a
+#'       new one by clearing the chat client's turns and chat UI, resetting the
+#'       active conversation, and updating the history drawer. It is available
+#'       only when conversation history is enabled. `new_chat(greeting = TRUE)`
+#'       also clears the greeting and requests a new one. `new_chat()` errors
+#'       while a response is streaming; wait for it to complete or stop it
+#'       first.
 #'     * `set_greeting()`: A function to set, stream, or clear the chat
 #'       greeting. Pass a [chat_greeting()] object, a plain string, or
 #'       `NULL` to clear. Streaming greetings run inside an
@@ -896,28 +905,17 @@ chat_server <- function(
   ) {
     client_history <- arg_match(client_history)
 
+    hist_ctrl <- history_controller()
+    if (!is.null(hist_ctrl)) {
+      cli::cli_abort(
+        "Can't clear a chat with conversation history enabled. Use {.code chat$new_chat()} to start a new conversation."
+      )
+    }
+
     if (append_stream_task$status() == "running") {
       cli::cli_abort(
         "Can't clear the chat while a response is still being generated. Please wait for it to finish or stop it first."
       )
-    }
-
-    hist_ctrl <- history_controller()
-    if (
-      !is.null(hist_ctrl) &&
-        (!is.null(messages) || !identical(client_history, "clear"))
-    ) {
-      cli::cli_abort(c(
-        "{.fn chat_server}'s {.arg clear} only supports starting an empty new chat when history is enabled.",
-        "i" = "Set {.arg history} to {.val FALSE} to use {.arg messages} or a non-{.val clear} {.arg client_history} mode."
-      ))
-    }
-
-    if (!is.null(hist_ctrl)) {
-      hist_ctrl$new_chat(greeting = greeting)
-      last_turn(NULL)
-      last_input(NULL)
-      return(invisible())
     }
 
     if (!is.null(messages)) {
@@ -957,6 +955,25 @@ chat_server <- function(
     last_input(NULL)
   }
 
+  client_new_chat <- function(greeting = FALSE) {
+    hist_ctrl <- history_controller()
+    if (is.null(hist_ctrl)) {
+      cli::cli_abort(
+        "Can't start a new chat without conversation history enabled. Use {.code chat$clear()} instead."
+      )
+    }
+    if (append_stream_task$status() == "running") {
+      cli::cli_abort(
+        "Can't start a new chat while a response is still being generated. Please wait for it to finish or stop it first."
+      )
+    }
+
+    hist_ctrl$new_chat(greeting = greeting)
+    last_turn(NULL)
+    last_input(NULL)
+    invisible()
+  }
+
   ret <- new.env(parent = emptyenv())
   ret$last_turn <- shiny::reactive(last_turn(), label = "mod_last_turn")
   ret$last_input <- shiny::reactive(last_input(), label = "mod_last_input")
@@ -979,6 +996,7 @@ chat_server <- function(
   ret$append <- chat_append_mod
   ret$update_user_input <- chat_update_user_input
   ret$clear <- client_clear
+  ret$new_chat <- client_new_chat
   ret$set_greeting <- set_greeting_mod
   ret$set_client <- set_client
   ret$slash_command <- slash_command_method

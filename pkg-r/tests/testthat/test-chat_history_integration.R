@@ -53,7 +53,7 @@ clear_contract_turns <- function(user_text, assistant_text) {
   )
 }
 
-test_that("chat_server clear saves and separates history conversations", {
+test_that("chat_server new_chat saves and separates history conversations", {
   skip_if_not_installed("ellmer")
 
   store <- InMemoryConversationStore$new()
@@ -87,7 +87,7 @@ test_that("chat_server clear saves and separates history conversations", {
       first_id <- ctrl$record$id
       first_record <- store$get(ctrl$partition, first_id)
 
-      chat_module$clear()
+      chat_module$new_chat()
 
       expect_null(ctrl$record)
       expect_null(shiny::isolate(chat_module$history$conversation_id()))
@@ -105,7 +105,7 @@ test_that("chat_server clear saves and separates history conversations", {
   )
 })
 
-test_that("chat_server clear rejects an in-flight response", {
+test_that("chat_server new_chat rejects an in-flight response", {
   skip_if_not_installed("ellmer")
 
   client <- mock_chat_client()
@@ -135,8 +135,8 @@ test_that("chat_server clear rejects an in-flight response", {
 
       expect_identical(shiny::isolate(chat_module$status()), "streaming")
       expect_error(
-        chat_module$clear(),
-        "Can't clear the chat while a response is still being generated"
+        chat_module$new_chat(),
+        "Can't start a new chat while a response is still being generated"
       )
 
       resolve_stream("reply")
@@ -153,7 +153,7 @@ test_that("chat_server clear rejects an in-flight response", {
   )
 })
 
-test_that("chat_server clear(greeting = TRUE) forwards greeting clearing", {
+test_that("chat_server new_chat(greeting = TRUE) forwards greeting clearing", {
   skip_if_not_installed("ellmer")
 
   client <- mock_chat_client()
@@ -177,7 +177,7 @@ test_that("chat_server clear(greeting = TRUE) forwards greeting clearing", {
       )
     },
     {
-      chat_module$clear(greeting = TRUE)
+      chat_module$new_chat(greeting = TRUE)
 
       clear_messages <- Filter(
         function(x) identical(x$message$action$type, "clear"),
@@ -189,7 +189,7 @@ test_that("chat_server clear(greeting = TRUE) forwards greeting clearing", {
   )
 })
 
-test_that("history-enabled chat_server clear rejects advanced modes", {
+test_that("history-enabled chat_server clear directs callers to new_chat", {
   skip_if_not_installed("ellmer")
 
   client <- mock_chat_client()
@@ -206,22 +206,50 @@ test_that("history-enabled chat_server clear rejects advanced modes", {
     },
     {
       expect_error(
+        chat_module$clear(),
+        "Use `chat\\$new_chat\\(\\)`"
+      )
+      expect_error(
         chat_module$clear(
           messages = list(list(role = "assistant", content = "seed"))
         ),
-        "only supports starting an empty new chat"
+        "Use `chat\\$new_chat\\(\\)`"
       )
       expect_error(
         chat_module$clear(client_history = "set"),
-        "only supports starting an empty new chat"
+        "Use `chat\\$new_chat\\(\\)`"
       )
       expect_error(
         chat_module$clear(client_history = "append"),
-        "only supports starting an empty new chat"
+        "Use `chat\\$new_chat\\(\\)`"
       )
       expect_error(
         chat_module$clear(client_history = "keep"),
-        "only supports starting an empty new chat"
+        "Use `chat\\$new_chat\\(\\)`"
+      )
+    }
+  )
+})
+
+test_that("history-disabled chat_server new_chat errors", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+  chat_module <- NULL
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = FALSE,
+        session = session
+      )
+    },
+    {
+      expect_error(
+        chat_module$new_chat(),
+        "without conversation history enabled"
       )
     }
   )

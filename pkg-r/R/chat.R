@@ -2072,7 +2072,7 @@ rlang::on_load(
 #'
 #' This is a UI-level primitive: it does not clear an ellmer client's turns or
 #' reset conversation history managed by [chat_server()]. For a full reset of a
-#' managed chat, call the `clear()` method on the value returned by
+#' managed chat, call the `new_chat()` method on the value returned by
 #' [chat_server()].
 #'
 #' @param id The ID of the chat element
