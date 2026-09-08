@@ -821,6 +821,9 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
 
     # A greeting taller than the chat region retains the usual bottom-pinned
     # composer instead of competing for the centered empty-state layout.
+    # Clear the stored browser token so the reload starts a fresh
+    # conversation instead of racing the history restore for the empty state.
+    page.evaluate("localStorage.clear()")
     page.reload()
     expect(layout).to_have_attribute("data-composer-centered", "")
     greeting.evaluate("(element) => { element.style.minHeight = '100vh'; }")
