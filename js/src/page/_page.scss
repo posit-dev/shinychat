@@ -40,6 +40,7 @@ shiny-chat-page {
   ) minmax(0, 1fr);
   width: 100%;
   height: 100%;
+  height: 100dvh;
   min-height: 0;
   color: var(--bs-body-color, #212529);
   background: var(--_page-canvas-bg);
@@ -627,6 +628,13 @@ shiny-chat-page .shiny-chat-layout[data-drawer-open]::after {
 }
 
 @media (max-width: 799px) {
+  // iOS Safari zooms focused editable controls below 16px, which also leaves
+  // the chat shell magnified after the keyboard closes.
+  .shiny-chat-page-home :is(.shiny-chat-input, .shiny-chat-edit-box) .tiptap {
+    font-size: 16px;
+    font-size: max(1rem, 16px);
+  }
+
   .shiny-chat-page-header {
     grid-template-columns: auto minmax(0, 1fr);
     padding-inline: max(var(--_page-header-padding-x), env(safe-area-inset-left)) max(var(--_page-header-padding-x), env(safe-area-inset-right));

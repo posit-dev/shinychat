@@ -147,6 +147,23 @@ def test_explicit_theme_keeps_embedded_chat_composer_chrome(
     expect(input_area).to_have_css("padding-bottom", "48px")
 
 
+def test_page_chat_requests_standalone_mobile_app_display(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    chat, _ = open_page(page, local_app, viewport=(390, 760))
+
+    expect(
+        page.locator('meta[name="apple-mobile-web-app-capable"]')
+    ).to_have_attribute("content", "yes")
+    expect(
+        page.locator('meta[name="mobile-web-app-capable"]')
+    ).to_have_attribute("content", "yes")
+    expect(chat.loc.locator(".shiny-chat-input .tiptap")).to_have_css(
+        "font-size", "16px"
+    )
+
+
 def test_page_chat_toolbar_input_aligns_with_composer_and_footer_is_pinned(
     page: Page,
     local_app: ShinyAppProc,
