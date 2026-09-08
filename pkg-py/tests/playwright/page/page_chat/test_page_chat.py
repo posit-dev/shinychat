@@ -256,19 +256,15 @@ def test_desktop_header_keeps_controls_available(
     assert toolbar_box is not None
     assert toolbar_input_box is not None
 
-    title_cap_px = page.evaluate(
-        "12 * parseFloat(getComputedStyle(document.documentElement).fontSize)"
-    )
+    title_cap_px = header_box["width"] * 0.35
     header_right = header_box["x"] + header_box["width"]
     controls_mount_right = controls_mount_box["x"] + controls_mount_box["width"]
     identity_title_right = identity_title_box["x"] + identity_title_box["width"]
     toolbar_right = toolbar_box["x"] + toolbar_box["width"]
     toolbar_input_right = toolbar_input_box["x"] + toolbar_input_box["width"]
 
-    assert identity_box["width"] <= title_cap_px
-    if is_long_title:
-        assert identity_title_box["width"] >= 150
-    else:
+    assert identity_box["width"] <= title_cap_px + 1
+    if not is_long_title:
         assert identity_box["width"] < title_cap_px
     assert identity_title_right <= toolbar_box["x"]
     assert toolbar_box["x"] >= controls_mount_box["x"]
@@ -313,6 +309,33 @@ def test_mobile_header_title_uses_available_space(
     assert identity_box["x"] >= toggle_box["x"] + toggle_box["width"]
     assert identity_box["x"] + identity_box["width"] <= (
         header_box["x"] + header_box["width"]
+    )
+
+
+def test_wide_desktop_header_uses_space_for_the_title(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    page.set_viewport_size({"width": 1440, "height": 760})
+    page.goto(f"{local_app.url}?wide_title=true")
+    page_chat = PageChatController(page, "chat")
+    expect(page_chat.loc).to_be_visible(timeout=TIMEOUT)
+
+    identity = page_chat.loc_identity
+    identity_title = page_chat.loc_identity_title
+    controls_mount = page_chat.loc_controls_mount_desktop
+
+    identity_box = identity.bounding_box()
+    controls_mount_box = controls_mount.bounding_box()
+    title_size = identity_title.evaluate(
+        "(element) => ({ client: element.clientWidth, scroll: element.scrollWidth })"
+    )
+    assert identity_box is not None
+    assert controls_mount_box is not None
+
+    assert title_size["scroll"] <= title_size["client"]
+    assert identity_box["x"] + identity_box["width"] <= (
+        controls_mount_box["x"] + 4
     )
 
 

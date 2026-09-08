@@ -483,12 +483,25 @@ shiny-chat-page .shiny-chat-layout[data-drawer-open]::after {
     grid-template-columns: fit-content(12rem) minmax(0, 1fr);
   }
 
+  .shiny-chat-page-header:has(.shiny-chat-page-identity[data-page-home]) {
+    display: flex;
+  }
+
+  .shiny-chat-page-header:has(
+      .shiny-chat-page-identity[data-page-home]
+    )
+    .shiny-chat-page-controls-mount-desktop {
+    flex: 1 1 0;
+  }
+
   .shiny-chat-page-identity {
     min-width: auto;
   }
 
   .shiny-chat-page-identity[data-page-home] {
-    max-width: 12rem;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: min(30ch, 35%);
   }
 
   .shiny-chat-page-header:has(.shiny-chat-page-identity:not([data-page-home])) {
