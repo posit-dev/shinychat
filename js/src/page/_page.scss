@@ -579,6 +579,10 @@ button.shiny-chat-page-identity:focus-visible,
     padding-inline: max(var(--_page-header-padding-x), env(safe-area-inset-left)) max(var(--_page-header-padding-x), env(safe-area-inset-right));
   }
 
+  .shiny-chat-page-identity[data-page-home] {
+    max-width: 100%;
+  }
+
   .shiny-chat-page-controls-mount-desktop {
     display: none;
   }

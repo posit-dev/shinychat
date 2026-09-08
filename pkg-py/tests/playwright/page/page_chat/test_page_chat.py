@@ -266,6 +266,32 @@ def test_desktop_header_keeps_controls_available(
     expect(toolbar_source).to_be_hidden()
 
 
+def test_mobile_header_title_uses_available_space(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    _, page_chat = open_page(page, local_app, viewport=(390, 760))
+    header = page_chat.loc_header
+    identity = page_chat.loc_identity
+    identity_title = page_chat.loc_identity_title
+
+    identity_title.evaluate(
+        "(element) => { element.textContent = 'Research Assistant for "
+        "long-running analyses and multi-step investigations'; }"
+    )
+
+    header_box = header.bounding_box()
+    identity_box = identity.bounding_box()
+    assert header_box is not None
+    assert identity_box is not None
+
+    expect(identity_title).to_have_css("white-space", "nowrap")
+    assert identity_box["width"] > header_box["width"] * 0.75
+    assert identity_box["x"] + identity_box["width"] <= (
+        header_box["x"] + header_box["width"]
+    )
+
+
 def test_single_page_title_is_not_truncated(
     page: Page,
     local_app: ShinyAppProc,
