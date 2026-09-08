@@ -254,7 +254,7 @@ class _FakeChat:
     async def _send_action(self, action: Any) -> None:
         pass
 
-    async def clear_messages(self) -> None:
+    async def clear_messages(self, *, greeting: bool = False) -> None:
         pass
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
@@ -483,7 +483,7 @@ class _ReplayFakeChat(_FakeChat):
     def _messages_for_bookmark(self) -> list[Any]:
         return self.messages
 
-    async def clear_messages(self) -> None:
+    async def clear_messages(self, *, greeting: bool = False) -> None:
         self.messages = []
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
@@ -742,7 +742,7 @@ class _NavFakeChat(_FakeChat):
     async def _send_action(self, action: Any) -> None:
         self.actions.append(dict(action))
 
-    async def clear_messages(self) -> None:
+    async def clear_messages(self, *, greeting: bool = False) -> None:
         self.cleared += 1
 
     async def _restore_bookmark_message(self, message_dict: Any) -> None:
@@ -1722,7 +1722,7 @@ class _TrackingChat:
     async def _send_action(self, action: Any) -> None:
         self.actions.append(action)
 
-    async def clear_messages(self) -> None:
+    async def clear_messages(self, *, greeting: bool = False) -> None:
         self.messages_ = []
         self.cleared = True
 

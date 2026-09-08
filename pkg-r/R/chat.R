@@ -2070,6 +2070,11 @@ rlang::on_load(
 #' clear the greeting, which re-triggers `greeting_requested` (see the
 #' **Greeting** section in [chat_ui()]).
 #'
+#' This is a UI-level primitive: it does not clear an ellmer client's turns or
+#' reset conversation history managed by [chat_server()]. For a full reset of a
+#' managed chat, call the `new_chat()` method on the value returned by
+#' [chat_server()].
+#'
 #' @param id The ID of the chat element
 #' @param greeting If `TRUE`, also clears the greeting. When the greeting is
 #'   cleared, `greeting_requested` will fire again (if the chat is visible),
