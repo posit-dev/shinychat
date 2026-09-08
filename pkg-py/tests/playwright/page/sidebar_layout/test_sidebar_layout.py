@@ -1,3 +1,4 @@
+import pytest
 from playwright.sync_api import Page, expect
 from shiny.run import ShinyAppProc
 
@@ -210,8 +211,11 @@ def test_sidebar_clamps_to_page_and_supports_touch_drag(
     assert shell_box is not None
     assert sidebar_box is not None
     assert main_box is not None
-    assert sidebar_box["width"] == shell_box["width"] - 360
-    assert main_box["width"] == 360
+    gap = shell.locator(".shiny-chat-page-body").evaluate(
+        "(element) => parseFloat(getComputedStyle(element).columnGap) || 0"
+    )
+    assert sidebar_box["width"] == pytest.approx(shell_box["width"] - gap - 360)
+    assert main_box["width"] == pytest.approx(360)
     assert resizer.evaluate(
         "(element) => getComputedStyle(element).touchAction"
     ) == ("none")
@@ -251,5 +255,7 @@ def test_sidebar_clamps_to_page_and_supports_touch_drag(
     resized_main_box = main.bounding_box()
     assert resized_sidebar_box is not None
     assert resized_main_box is not None
-    assert resized_sidebar_box["width"] == 150
-    assert resized_main_box["width"] == 650
+    assert resized_sidebar_box["width"] == pytest.approx(150)
+    assert resized_main_box["width"] == pytest.approx(
+        shell_box["width"] - gap - 150
+    )

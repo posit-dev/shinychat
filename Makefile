@@ -169,12 +169,25 @@ py-check-tox:  ## [py] Run python checks across versions with tox
 	uv run tox run-parallel
 
 .PHONY: py-check-tests
-py-check-tests:  ## [py] Run python tests (FILTER=... for pytest -k selection)
+py-check-tests:  py-check-unit py-check-playwright ## [py] Run all python tests (FILTER=... for pytest -k selection)
+
+.PHONY: py-check-unit
+py-check-unit:  ## [py] Run python unit tests (FILTER=... for pytest -k selection)
 	@echo ""
-	@echo "🧪 Running tests with pytest"
-	uv run playwright install
-	uv run pytest pkg-py/tests/playwright/ $(if $(FILTER),-k "$(FILTER)")
+	@echo "🧪 Running unit tests with pytest"
 	uv run pytest --ignore=pkg-py/tests/playwright/ $(if $(FILTER),-k "$(FILTER)")
+
+.PHONY: py-check-playwright
+py-check-playwright:  ## [py] Run playwright tests (FILTER=... for pytest -k selection)
+	@echo ""
+	@echo "🎭 Running playwright tests"
+	uv run playwright install chromium
+	uv run pytest pkg-py/tests/playwright/ $(if $(FILTER),-k "$(FILTER)")
+
+.PHONY: py-check-playwright-debug
+py-check-playwright-debug:  ## [py] Run playwright tests headed with slowmo, traces, and video (FILTER=... for pytest -k selection)
+	uv run playwright install chromium
+	uv run pytest pkg-py/tests/playwright/ --headed --slowmo=250 --tracing=on --video=on $(if $(FILTER),-k "$(FILTER)")
 
 .PHONY: py-check-types
 py-check-types:  ## [py] Run python type checks

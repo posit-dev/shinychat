@@ -1,3 +1,11 @@
+# Checks for pkg-py, split into independent jobs so fast failures (formatting,
+# types) surface while the slower test jobs are still running.
+#
+# Every job uses a full-history checkout: hatch-vcs needs the latest py/v* tag
+# to compute a real workspace version (e.g. 0.3.2.devN+gSHA). The fallback
+# (0.1.dev1+gSHA) sorts before 0.1.0 (PEP 440), so it can't satisfy shiny>=1.5's
+# transitive `shinychat>=0.1.0` and uv silently downgrades shiny to 1.4.0, which
+# lacks the htmltools-0.7.0 Tagifiable fixes.
 name: py-check.yaml
 
 on:
@@ -16,10 +24,59 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs on the same PR; runs on main are never cancelled.
+concurrency:
+  group: py-check-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
-  UV_VERSION: "0.9.x"
+  UV_VERSION: "0.12.10"
+  PLAYWRIGHT_PYTHON_VERSION: "3.14"
 
 jobs:
+  py-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: 🚀 Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          # Distinct cache key per job: every job syncs a different environment
+          # (and the py-test matrix syncs per Python version), so a shared key
+          # races on save and matrix legs restore a partial cache.
+          cache-suffix: py-format
+
+      - name: 📐 Check formatting
+        run: make py-check-format
+
+  py-types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: 🚀 Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          cache-suffix: py-types
+
+      - name: 🐍 Set up Python 3.10
+        run: uv python install 3.10
+
+      - name: 📦 Install the project
+        run: uv sync --python 3.10 --all-extras --all-groups
+
+      - name: 📝 Check types
+        run: make py-check-types
+
   py-test:
     runs-on: ubuntu-latest
     strategy:
@@ -33,22 +90,16 @@ jobs:
           - "3.14"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
-          # Need full history + tags so hatch-vcs computes a real
-          # workspace version (e.g. 0.3.2.devN+gSHA, derived from the
-          # latest py/v* tag) instead of the fallback 0.1.dev1+gSHA.
-          # The fallback sorts before 0.1.0 (PEP 440), so it can't
-          # satisfy shiny>=1.5's transitive `shinychat>=0.1.0` and
-          # uv silently downgrades shiny to 1.4.0, which lacks the
-          # htmltools-0.7.0 Tagifiable fixes.
           fetch-depth: 0
           fetch-tags: true
 
       - name: 🚀 Install uv
-        uses: astral-sh/setup-uv@v6.1.0
+        uses: astral-sh/setup-uv@v10.0.1
         with:
           version: ${{ env.UV_VERSION }}
+          cache-suffix: py-test-${{ matrix.python-version }}
 
       - name: 🐍 Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
@@ -59,11 +110,38 @@ jobs:
       - name: 📜 Show uv.lock
         run: cat uv.lock
 
-      - name: 🧪 Check tests
-        run: make py-check-tests
+      - name: 🧪 Check unit tests
+        run: make py-check-unit
 
-      - name: 📝 Check types
-        run: make py-check-types
+  py-playwright:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
-      - name: 📐 Check formatting
-        run: make py-check-format
+      - name: 🚀 Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          cache-suffix: py-playwright
+
+      - name: 🐍 Set up Python ${{ env.PLAYWRIGHT_PYTHON_VERSION }}
+        run: uv python install ${{ env.PLAYWRIGHT_PYTHON_VERSION }}
+
+      - name: 📦 Install the project
+        run: uv sync --python ${{ env.PLAYWRIGHT_PYTHON_VERSION }} --all-extras --all-groups
+
+      - name: 🎭 Get Playwright version
+        id: playwright-version
+        run: echo "version=$(uv run playwright --version | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+
+      - name: 🎭 Cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.playwright-version.outputs.version }}-${{ runner.os }}
+
+      - name: 🎭 Check playwright tests
+        run: make py-check-playwright

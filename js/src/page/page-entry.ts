@@ -1319,7 +1319,11 @@ export class ChatPageElement extends HTMLElement {
       this.body?.getBoundingClientRect().width ||
       this.getBoundingClientRect().width ||
       window.innerWidth
-    return Math.max(MIN_SIDEBAR_WIDTH, Math.round(available - MIN_MAIN_WIDTH))
+    const gap = parseFloat(getComputedStyle(this.body ?? this).columnGap) || 0
+    return Math.max(
+      MIN_SIDEBAR_WIDTH,
+      Math.round(available - gap - MIN_MAIN_WIDTH),
+    )
   }
 
   private setSidebarWidth(width: number) {

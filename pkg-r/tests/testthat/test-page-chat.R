@@ -354,6 +354,17 @@ test_that("page_chat() builds the default fillable page contract", {
   expect_equal(root$attribs$id, "chat_page")
   expect_equal(root$attribs[["data-chat-id"]], "chat")
   expect_equal(root$attribs[["data-active-page"]], "__home__")
+  rendered_head <- htmltools::renderTags(page)$head
+  expect_match(
+    rendered_head,
+    'name="apple-mobile-web-app-capable" content="yes"',
+    fixed = TRUE
+  )
+  expect_match(
+    rendered_head,
+    'name="mobile-web-app-capable" content="yes"',
+    fixed = TRUE
+  )
   dark_mode <- page_chat_tag(page, "bslib-input-dark-mode")
   expect_equal(dark_mode$attribs$attribute, "data-bs-theme")
   global_toolbar <- page_chat_tag(page, ".shiny-chat-page-toolbar-global")
