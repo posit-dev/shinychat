@@ -139,9 +139,7 @@ class ChatClient:
                 f"`client_history={client_history!r}` is not valid. Expected "
                 'one of "clear", "set", "append", or "keep".'
             )
-        history_controller = getattr(
-            getattr(self._chat, "history", None), "_controller", None
-        )
+        history_controller = self._chat.history._controller
         if history_controller is not None:
             raise ValueError(
                 "Can't clear a chat with conversation history enabled; use "
@@ -209,9 +207,7 @@ class ChatClient:
             ``chat.latest_message_stream.status() != "running"`` before
             calling :meth:`new_chat`.
         """
-        history_controller = getattr(
-            getattr(self._chat, "history", None), "_controller", None
-        )
+        history_controller = self._chat.history._controller
         if history_controller is None:
             raise ValueError(
                 "Can't start a new chat without conversation history enabled; "

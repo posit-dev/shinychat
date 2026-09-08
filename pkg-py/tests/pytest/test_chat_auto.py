@@ -96,11 +96,16 @@ class _MockStreamTask:
         return self._status
 
 
+class _StubHistory:
+    _controller: object | None = None
+
+
 class _StubChat:
     def __init__(self, *, stream_status: str = "initial") -> None:
         self.latest_message_stream = _MockStreamTask(stream_status)
         self.clear_calls: list[bool] = []
         self.appended_messages: list[ChatMessageDict] = []
+        self.history = _StubHistory()
 
     async def clear_messages(self, *, greeting: bool = False) -> None:
         self.clear_calls.append(greeting)
