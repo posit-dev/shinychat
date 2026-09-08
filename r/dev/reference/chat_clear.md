@@ -5,6 +5,13 @@ clear the greeting, which re-triggers `greeting_requested` (see the
 **Greeting** section in
 [`chat_ui()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_ui.md)).
 
+This is a UI-level primitive: it does not clear an ellmer client's turns
+or reset conversation history managed by
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md).
+For a full reset of a managed chat, call the `new_chat()` method on the
+value returned by
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md).
+
 ## Usage
 
 ``` r

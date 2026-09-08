@@ -181,14 +181,23 @@ except for <code>id</code> and <code>session</code>, which are supplied automati
 <li><p><code><a href="https://rdrr.io/r/base/append.html" class="external-link">append()</a></code>: A function to append a new message to the chat UI. Takes
 the same arguments as <code><a href="chat_append.html">chat_append()</a></code>, except for <code>id</code> and <code>session</code>,
 which are supplied automatically.</p></li>
-<li><p><code>clear()</code>: A function to clear the chat history and the chat UI.
-<code>clear()</code> takes an optional list of <code>messages</code> used to initialize the
-chat after clearing. <code>messages</code> should be a list of messages, where
-each message is a list with <code>role</code> and <code>content</code> fields. The
+<li><p><code>clear()</code>: A function to clear the chat client turns and the chat UI.
+It optionally takes a list of <code>messages</code> used to initialize the chat
+after clearing. <code>messages</code> should be a list of messages, where each
+message is a list with <code>role</code> and <code>content</code> fields. The
 <code>client_history</code> argument controls how the chat client's history is
 updated after clearing. It can be one of: <code>"clear"</code> the chat history;
 <code>"set"</code> the chat history to <code>messages</code>; <code>"append"</code> <code>messages</code> to the
-existing chat history; or <code>"keep"</code> the existing chat history.</p></li>
+existing chat history; or <code>"keep"</code> the existing chat history.
+<code>clear()</code> is unavailable when conversation history is enabled; use
+<code>new_chat()</code> instead.</p></li>
+<li><p><code>new_chat()</code>: A function to save the current conversation and start a
+new one by clearing the chat client's turns and chat UI, resetting the
+active conversation, and updating the history drawer. It is available
+only when conversation history is enabled. <code>new_chat(greeting = TRUE)</code>
+also clears the greeting and requests a new one. <code>new_chat()</code> errors
+while a response is streaming; wait for it to complete or stop it
+first.</p></li>
 <li><p><code>set_greeting()</code>: A function to set, stream, or clear the chat
 greeting. Pass a <code><a href="chat_greeting.html">chat_greeting()</a></code> object, a plain string, or
 <code>NULL</code> to clear. Streaming greetings run inside an

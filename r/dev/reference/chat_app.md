@@ -144,15 +144,24 @@ chat_server(
     [`chat_append()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md),
     except for `id` and `session`, which are supplied automatically.
 
-  - `clear()`: A function to clear the chat history and the chat UI.
-    `clear()` takes an optional list of `messages` used to initialize
-    the chat after clearing. `messages` should be a list of messages,
-    where each message is a list with `role` and `content` fields. The
+  - `clear()`: A function to clear the chat client turns and the chat
+    UI. It optionally takes a list of `messages` used to initialize the
+    chat after clearing. `messages` should be a list of messages, where
+    each message is a list with `role` and `content` fields. The
     `client_history` argument controls how the chat client's history is
     updated after clearing. It can be one of: `"clear"` the chat
     history; `"set"` the chat history to `messages`; `"append"`
     `messages` to the existing chat history; or `"keep"` the existing
-    chat history.
+    chat history. `clear()` is unavailable when conversation history is
+    enabled; use `new_chat()` instead.
+
+  - `new_chat()`: A function to save the current conversation and start
+    a new one by clearing the chat client's turns and chat UI, resetting
+    the active conversation, and updating the history drawer. It is
+    available only when conversation history is enabled.
+    `new_chat(greeting = TRUE)` also clears the greeting and requests a
+    new one. `new_chat()` errors while a response is streaming; wait for
+    it to complete or stop it first.
 
   - `set_greeting()`: A function to set, stream, or clear the chat
     greeting. Pass a
