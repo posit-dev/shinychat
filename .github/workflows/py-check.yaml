@@ -46,6 +46,10 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.1
         with:
           version: ${{ env.UV_VERSION }}
+          # Distinct cache key per job: every job syncs a different environment
+          # (and the py-test matrix syncs per Python version), so a shared key
+          # races on save and matrix legs restore a partial cache.
+          cache-suffix: py-format
 
       - name: 📐 Check formatting
         run: make py-check-format
@@ -62,6 +66,7 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.1
         with:
           version: ${{ env.UV_VERSION }}
+          cache-suffix: py-types
 
       - name: 🐍 Set up Python 3.10
         run: uv python install 3.10
@@ -94,6 +99,7 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.1
         with:
           version: ${{ env.UV_VERSION }}
+          cache-suffix: py-test-${{ matrix.python-version }}
 
       - name: 🐍 Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
@@ -119,6 +125,7 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.1
         with:
           version: ${{ env.UV_VERSION }}
+          cache-suffix: py-playwright
 
       - name: 🐍 Set up Python ${{ env.PLAYWRIGHT_PYTHON_VERSION }}
         run: uv python install ${{ env.PLAYWRIGHT_PYTHON_VERSION }}

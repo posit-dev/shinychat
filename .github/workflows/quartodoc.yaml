@@ -37,6 +37,9 @@ jobs:
       uses: astral-sh/setup-uv@v10.0.1
       with:
         version: ${{ env.UV_VERSION }}
+        # Distinct cache key so this job can't race (or share keys) with the
+        # concurrent py-check jobs when both workflows trigger on the same PR.
+        cache-suffix: quartodoc
 
     - name: 🐍 Set up Python ${{ env.PYTHON_VERSION }}
       run: uv python install ${{ env.PYTHON_VERSION }}
