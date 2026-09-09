@@ -22,7 +22,8 @@ chat_ui(
   footer = NULL,
   drawer = TRUE,
   show_history = TRUE,
-  tool_grouping = c("tool", "none", "all")
+  tool_grouping = c("tool", "none", "all"),
+  show_thinking_after_s = 0
 )
 }
 \arguments{
@@ -163,6 +164,11 @@ can override \code{"tool"} or \code{"all"} via a top-level \code{grouping} tool
 annotation, e.g. \code{ellmer::tool(..., annotations = ellmer::tool_annotations(grouping = "all"))}. \code{tool_grouping = "none"}
 takes precedence over every annotation and disables grouping for the whole
 chat.}
+
+\item{show_thinking_after_s}{The minimum number of seconds a contiguous
+thinking block must run before it is displayed. Defaults to \code{0}, which
+displays thinking immediately. Positive values hide shorter blocks;
+negative values always hide thinking. Values must not exceed 60 seconds.}
 }
 \value{
 A Shiny tag object, suitable for inclusion in a Shiny UI
@@ -285,6 +291,13 @@ to indicate what you're currently reasoning about. For example:
 
 Topic labels are entirely optional. Without them, the thinking panel still
 works -- it just won't have sub-section headings.
+
+Set \code{show_thinking_after_s} in \code{\link[=chat_ui]{chat_ui()}} to delay the thinking panel until a
+contiguous thinking block has run for a minimum number of seconds. The
+default, \code{0}, displays thinking immediately; a negative value always hides
+it. Values greater than 60 seconds are not supported. Durations are measured
+in the browser while streaming, so preloaded or restored thinking is
+displayed only with the default.
 }
 }
 

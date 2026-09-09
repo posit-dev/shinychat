@@ -716,8 +716,10 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const messages = removeLoadingMessage(state.messages)
       const newMsg = messagePayloadToData(action.message, state.toolGrouping)
       newMsg.streaming = true
-      newMsg.blocks = newMsg.blocks.map((b) =>
-        b.type === "thinking" ? { ...b, streaming: true } : b,
+      newMsg.blocks = newMsg.blocks.map((b, index, blocks) =>
+        index === blocks.length - 1 && b.type === "thinking"
+          ? { ...b, streaming: true, startedAt: Date.now() }
+          : b,
       )
       if (action.html_deps)
         newMsg.htmlDeps = mergeHtmlDeps(newMsg.htmlDeps, action.html_deps)

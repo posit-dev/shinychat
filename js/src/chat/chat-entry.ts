@@ -50,6 +50,7 @@ const CHAT_MESSAGE_TAG = "shiny-chat-message"
 const CHAT_TOOLBAR_TAG = "shiny-chat-input-toolbar"
 const CHAT_FOOTER_TAG = "shiny-chat-footer"
 const CHAT_DRAWER_TAG = "shiny-chat-drawer"
+export const MAX_THINKING_SHOW_AFTER_S = 60
 
 /**
  * Parse the `data-initial-messages` attribute. A JSON array of message
@@ -106,14 +107,16 @@ function parseInitialMessages(
       (el.getAttribute("content-type") as ContentType) ?? "markdown"
     const icon = el.getAttribute("icon") ?? undefined
 
-    messages.push({
-      id: uuid(),
-      role,
-      content,
-      streaming: false,
-      icon,
-      blocks: [{ type: "content", content, contentType }],
-    })
+    messages.push(
+      messagePayloadToData(
+        {
+          role,
+          icon,
+          segments: [{ content, content_type: contentType }],
+        },
+        toolGrouping,
+      ),
+    )
   })
 
   return messages
@@ -174,6 +177,14 @@ function parseToolGrouping(value: string | null): ToolGrouping | undefined {
     : undefined
 }
 
+export function parseShowThinkingAfterS(value: string | null): number {
+  if (value === null) return 0
+  const parsed = Number(value)
+  return Number.isFinite(parsed)
+    ? Math.min(parsed, MAX_THINKING_SHOW_AFTER_S)
+    : 0
+}
+
 class ChatContainerElement extends HTMLElement {
   private reactRoot: Root | null = null
   private toolbarEl: Element | null = null
@@ -185,7 +196,11 @@ class ChatContainerElement extends HTMLElement {
   // which by then have been superseded by live reducer state).
   private appProps: ChatAppProps | null = null
 
-  static observedAttributes = ["tool-grouping", "show-history"]
+  static observedAttributes = [
+    "show-thinking-after-s",
+    "tool-grouping",
+    "show-history",
+  ]
 
   connectedCallback() {
     this.deferredTeardown.cancel()
@@ -210,6 +225,9 @@ class ChatContainerElement extends HTMLElement {
       enableUploadAttr === null ? undefined : enableUploadAttr !== "false"
 
     const toolGrouping = parseToolGrouping(this.getAttribute("tool-grouping"))
+    const thinkingShowAfter = parseShowThinkingAfterS(
+      this.getAttribute("show-thinking-after-s"),
+    )
     const showHistory = this.getAttribute("show-history") !== "false"
     // When history is enabled and this browser has a current conversation
     // (localStorage in "browser" mode, query param in "url" mode), the server
@@ -321,6 +339,7 @@ class ChatContainerElement extends HTMLElement {
       showHistory,
       restorePending,
       toolGrouping,
+      thinkingShowAfter,
       toolbarEl: this.toolbarEl ?? undefined,
       footerEl: this.footerEl ?? undefined,
       slashCommandId,
@@ -339,7 +358,12 @@ class ChatContainerElement extends HTMLElement {
     next: string | null,
   ) {
     if (!this.reactRoot || !this.appProps) return
-    if (name === "tool-grouping") {
+    if (name === "show-thinking-after-s") {
+      this.appProps = {
+        ...this.appProps,
+        thinkingShowAfter: parseShowThinkingAfterS(next),
+      }
+    } else if (name === "tool-grouping") {
       this.appProps = {
         ...this.appProps,
         toolGrouping: parseToolGrouping(next),

@@ -229,6 +229,13 @@ chat_greeting <- function(
 #' Topic labels are entirely optional. Without them, the thinking panel still
 #' works -- it just won't have sub-section headings.
 #'
+#' Set `show_thinking_after_s` in [chat_ui()] to delay the thinking panel until a
+#' contiguous thinking block has run for a minimum number of seconds. The
+#' default, `0`, displays thinking immediately; a negative value always hides
+#' it. Values greater than 60 seconds are not supported. Durations are measured
+#' in the browser while streaming, so preloaded or restored thinking is
+#' displayed only with the default.
+#'
 #' @section Customizing the send button:
 #'
 #' The send button is a filled circle (24px by default) whose background
@@ -446,6 +453,10 @@ chat_greeting <- function(
 #'   ellmer::tool_annotations(grouping = "all"))`. `tool_grouping = "none"`
 #'   takes precedence over every annotation and disables grouping for the whole
 #'   chat.
+#' @param show_thinking_after_s The minimum number of seconds a contiguous
+#'   thinking block must run before it is displayed. Defaults to `0`, which
+#'   displays thinking immediately. Positive values hide shorter blocks;
+#'   negative values always hide thinking. Values must not exceed 60 seconds.
 #'
 #' @returns A Shiny tag object, suitable for inclusion in a Shiny UI
 #' @export
@@ -467,10 +478,22 @@ chat_ui <- function(
   footer = NULL,
   drawer = TRUE,
   show_history = TRUE,
-  tool_grouping = c("tool", "none", "all")
+  tool_grouping = c("tool", "none", "all"),
+  show_thinking_after_s = 0
 ) {
   submit_key <- rlang::arg_match(submit_key)
   tool_grouping <- rlang::arg_match(tool_grouping)
+  if (
+    !is.numeric(show_thinking_after_s) ||
+      length(show_thinking_after_s) != 1 ||
+      is.na(show_thinking_after_s) ||
+      !is.finite(show_thinking_after_s) ||
+      show_thinking_after_s > 60
+  ) {
+    rlang::abort(
+      "`show_thinking_after_s` must be a finite number no greater than 60 seconds."
+    )
+  }
   if (!is.null(messages)) {
     lifecycle::deprecate_warn(
       "0.5.0",
@@ -666,6 +689,9 @@ chat_ui <- function(
       },
       `submit-key` = if (submit_key != "enter") submit_key,
       `tool-grouping` = if (tool_grouping != "tool") tool_grouping,
+      `show-thinking-after-s` = if (show_thinking_after_s != 0) {
+        format(show_thinking_after_s, scientific = FALSE)
+      },
       `show-history` = if (!show_history) "false",
       `allow-attachments` = attachment_attrs$allow,
       `attachment-accept` = attachment_attrs$accept,

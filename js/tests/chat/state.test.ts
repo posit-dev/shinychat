@@ -847,6 +847,7 @@ describe("chatReducer", () => {
 
   describe("thinking blocks", () => {
     it("chunk_start with thinking content_type creates a thinking block", () => {
+      vi.spyOn(Date, "now").mockReturnValue(1000)
       const state = makeState()
       const next = chatReducer(state, {
         type: "chunk_start",
@@ -862,9 +863,38 @@ describe("chatReducer", () => {
         type: "thinking"
         content: string
         streaming: boolean
+        startedAt: number
       }
       expect(block.content).toBe("reasoning...")
       expect(block.streaming).toBe(true)
+      expect(block.startedAt).toBe(1000)
+      vi.restoreAllMocks()
+    })
+
+    it("keeps completed thinking before content out of the active stream", () => {
+      const state = makeState()
+      const next = chatReducer(state, {
+        type: "chunk_start",
+        message: {
+          role: "assistant",
+          segments: [
+            { content: "completed thought", content_type: "thinking" },
+            { content: "Visible response", content_type: "markdown" },
+          ],
+        },
+      })
+      const [thinking, content] = next.streamingMessage!.blocks
+
+      expect(thinking).toMatchObject({
+        type: "thinking",
+        content: "completed thought",
+        streaming: false,
+      })
+      expect(thinking).not.toHaveProperty("startedAt")
+      expect(content).toMatchObject({
+        type: "content",
+        content: "Visible response",
+      })
     })
 
     it("thinking chunks append to existing thinking block", () => {

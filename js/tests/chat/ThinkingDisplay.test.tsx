@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
-import { render, fireEvent } from "@testing-library/react"
-import { ThinkingDisplay } from "../../src/chat/ThinkingDisplay"
+import { act, render, fireEvent } from "@testing-library/react"
+import {
+  ThinkingDisplay,
+  isThinkingVisible,
+} from "../../src/chat/ThinkingDisplay"
 import type { ThinkingBlock } from "../../src/chat/state"
 
 function thinking(partial: Partial<ThinkingBlock> = {}): ThinkingBlock {
@@ -118,5 +121,89 @@ describe("ThinkingDisplay", () => {
       "shiny-chat-thinking-dot",
       "shiny-chat-thinking-disclosure",
     ])
+  })
+
+  it("hides thinking when configured with a negative delay", () => {
+    expect(isThinkingVisible(thinking(), -1)).toBe(false)
+    const { container } = render(
+      <ThinkingDisplay thinking={thinking()} messageId="m1" showAfter={-1} />,
+    )
+    expect(container.querySelector(".shiny-chat-thinking")).toBeNull()
+  })
+
+  it("reveals streaming thinking after its configured delay", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-09-09T12:00:00Z"))
+    const { container } = render(
+      <ThinkingDisplay
+        thinking={thinking({
+          streaming: true,
+          durationMs: undefined,
+          startedAt: Date.now(),
+        })}
+        messageId="m1"
+        showAfter={10}
+      />,
+    )
+    expect(container.querySelector(".shiny-chat-thinking")).toBeNull()
+
+    act(() => vi.advanceTimersByTime(10_000))
+    expect(container.querySelector(".shiny-chat-thinking")).not.toBeNull()
+    vi.useRealTimers()
+  })
+
+  it("does not retain visibility across a new thinking run or hidden setting", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-09-09T12:00:00Z"))
+    const { container, rerender } = render(
+      <ThinkingDisplay
+        thinking={thinking({
+          streaming: true,
+          durationMs: undefined,
+          startedAt: Date.now() - 10_000,
+        })}
+        messageId="m1"
+        showAfter={10}
+      />,
+    )
+    expect(container.querySelector(".shiny-chat-thinking")).not.toBeNull()
+
+    rerender(
+      <ThinkingDisplay
+        thinking={thinking({
+          streaming: true,
+          durationMs: undefined,
+          startedAt: Date.now(),
+        })}
+        messageId="m1"
+        showAfter={10}
+      />,
+    )
+    expect(container.querySelector(".shiny-chat-thinking")).toBeNull()
+
+    rerender(
+      <ThinkingDisplay
+        thinking={thinking({
+          streaming: true,
+          durationMs: undefined,
+          startedAt: Date.now() - 10_000,
+        })}
+        messageId="m1"
+        showAfter={-1}
+      />,
+    )
+    expect(container.querySelector(".shiny-chat-thinking")).toBeNull()
+    vi.useRealTimers()
+  })
+
+  it("keeps completed thinking below the delay hidden", () => {
+    const { container } = render(
+      <ThinkingDisplay
+        thinking={thinking({ durationMs: 9_999 })}
+        messageId="m1"
+        showAfter={10}
+      />,
+    )
+    expect(container.querySelector(".shiny-chat-thinking")).toBeNull()
   })
 })

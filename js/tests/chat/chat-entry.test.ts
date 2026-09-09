@@ -10,9 +10,11 @@ import {
 import { act, waitFor } from "@testing-library/react"
 import { installShinyWindowStub } from "../helpers/mocks"
 
+let parseShowThinkingAfterS: (value: string | null) => number
+
 beforeAll(async () => {
   installShinyWindowStub()
-  await import("../../src/chat/chat-entry")
+  ;({ parseShowThinkingAfterS } = await import("../../src/chat/chat-entry"))
 })
 
 beforeEach(() => {
@@ -30,6 +32,39 @@ afterEach(async () => {
 })
 
 describe("chat-entry custom element boot", () => {
+  it("caps raw thinking delays at one minute", () => {
+    expect(parseShowThinkingAfterS("61")).toBe(60)
+  })
+
+  it.each([-1, 10])(
+    "hides static thinking with show-thinking-after-s=%i",
+    async (showAfter) => {
+      const host = document.createElement("shiny-chat-container")
+      host.setAttribute("id", "thinking-entry")
+      host.setAttribute("show-thinking-after-s", String(showAfter))
+      host.innerHTML = `
+        <shiny-chat-messages>
+          <shiny-chat-message
+            data-role="assistant"
+            content-type="thinking"
+            content="Reasoning"
+          ></shiny-chat-message>
+        </shiny-chat-messages>
+        <shiny-chat-input></shiny-chat-input>
+      `
+
+      await act(async () => {
+        document.body.appendChild(host)
+      })
+
+      await waitFor(() => {
+        expect(host.querySelector('[role="textbox"]')).not.toBeNull()
+      })
+      expect(host.querySelector(".shiny-chat-thinking")).toBeNull()
+      expect(host.textContent).not.toContain("Reasoning")
+    },
+  )
+
   it("honors a live show-history preference from server markup", async () => {
     const host = document.createElement("shiny-chat-container")
     host.setAttribute("id", "history-entry")

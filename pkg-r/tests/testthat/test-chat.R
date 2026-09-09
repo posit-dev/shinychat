@@ -87,6 +87,31 @@ test_that("chat_ui() emits tool-grouping only when non-default", {
   expect_snapshot(chat_ui("chat", tool_grouping = "all"))
 })
 
+test_that("chat_ui() emits and validates show-thinking-after-s", {
+  expect_null(chat_ui("chat")$attribs[["show-thinking-after-s"]])
+  expect_equal(
+    chat_ui("chat", show_thinking_after_s = 10)$attribs[[
+      "show-thinking-after-s"
+    ]],
+    "10"
+  )
+  expect_equal(
+    chat_ui("chat", show_thinking_after_s = -1)$attribs[[
+      "show-thinking-after-s"
+    ]],
+    "-1"
+  )
+
+  expect_error(
+    chat_ui("chat", show_thinking_after_s = Inf),
+    "show_thinking_after_s"
+  )
+  expect_error(
+    chat_ui("chat", show_thinking_after_s = 61),
+    "no greater than 60"
+  )
+})
+
 test_that("chat_ui() renders toolbar_input and footer islands", {
   ui <- chat_ui(
     "chat",

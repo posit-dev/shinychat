@@ -66,6 +66,7 @@ export interface ChatAppProps {
   asideFavicon?: boolean
   showHistory?: boolean
   toolGrouping?: ToolGrouping
+  thinkingShowAfter?: number
   toolbarEl?: Element
   footerEl?: Element
   slashCommandId?: string
@@ -120,6 +121,7 @@ export function ChatApp({
   asideFavicon = true,
   showHistory = true,
   toolGrouping,
+  thinkingShowAfter = 0,
   toolbarEl,
   footerEl,
   slashCommandId = "",
@@ -375,6 +377,7 @@ export function ChatApp({
                 cancelId={cancelId}
                 enableCancel={state.enableCancel}
                 enableUpload={state.enableUpload}
+                thinkingShowAfter={thinkingShowAfter}
                 cancelRequested={state.cancelRequested}
                 toolbarEl={toolbarEl}
                 footerEl={footerEl}

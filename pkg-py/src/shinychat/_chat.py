@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import math
 import os
 import re
 import warnings
@@ -2392,6 +2393,7 @@ class ChatExpress(Chat):
         toolbar_input: Optional[TagChild] = None,
         footer: Optional[TagChild] = None,
         tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
+        show_thinking_after_s: float = 0,
         drawer: bool | ChatDrawer = True,
         show_history: bool = True,
         **kwargs: TagAttrValue,
@@ -2500,6 +2502,11 @@ class ChatExpress(Chat):
             ``ToolAnnotations``, so type checkers reject it. Chat-level
             ``"none"`` always disables grouping, even when a tool annotation
             requests ``"tool"`` or ``"all"``.
+        show_thinking_after_s
+            Minimum seconds a contiguous thinking block must run before it is
+            displayed. ``0`` (the default) displays thinking immediately;
+            positive values hide shorter blocks, and negative values always
+            hide thinking. Values must not exceed 60 seconds.
         drawer
             Whether the artifact panel is available. Pass a
             :class:`~shinychat.types.ChatDrawer` to supply its initial content and
@@ -2529,6 +2536,7 @@ class ChatExpress(Chat):
             toolbar_input=toolbar_input,
             footer=footer,
             tool_grouping=tool_grouping,
+            show_thinking_after_s=show_thinking_after_s,
             drawer=drawer,
             show_history=show_history,
             **kwargs,
@@ -2654,6 +2662,7 @@ def chat_ui(
     toolbar_input: Optional[TagChild] = None,
     footer: Optional[TagChild] = None,
     tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
+    show_thinking_after_s: float = 0,
     drawer: bool | ChatDrawer = True,
     show_history: bool = True,
     **kwargs: TagAttrValue,
@@ -2828,6 +2837,16 @@ def chat_ui(
         chatlas' ``ToolAnnotations``, so type checkers reject it. Chat-level
         ``"none"`` always disables grouping, even when a tool annotation
         requests ``"tool"`` or ``"all"``.
+    show_thinking_after_s
+        Minimum seconds a contiguous thinking block must run before it is
+        displayed. ``0`` (the default) displays thinking immediately. A
+        positive value delays display until the block reaches that duration;
+        shorter blocks remain hidden. A negative value always hides thinking.
+        Values must not exceed 60 seconds.
+
+        The duration is measured in the browser while a response streams.
+        Preloaded or restored thinking has no measured duration, so it is
+        displayed only when this value is ``0``.
     drawer
         Whether the artifact panel is available. Pass a
         :class:`~shinychat.types.ChatDrawer` to supply its initial content and
@@ -2861,6 +2880,20 @@ def chat_ui(
         raise ValueError(
             '`tool_grouping` must be one of "none", "tool", or "all", '
             f"not {tool_grouping!r}."
+        )
+    if (
+        isinstance(show_thinking_after_s, bool)
+        or not isinstance(show_thinking_after_s, (int, float))
+        or not math.isfinite(show_thinking_after_s)
+    ):
+        raise TypeError(
+            "`show_thinking_after_s` must be a finite number of seconds, "
+            f"not {show_thinking_after_s!r}."
+        )
+    if show_thinking_after_s > 60:
+        raise ValueError(
+            "`show_thinking_after_s` must not exceed 60 seconds, "
+            f"not {show_thinking_after_s!r}."
         )
 
     if not isinstance(drawer, (bool, ChatDrawer)):
@@ -3012,6 +3045,9 @@ def chat_ui(
         icon_send=icon_send_attr,
         submit_key=submit_key if submit_key != "enter" else None,
         tool_grouping=tool_grouping if tool_grouping != "tool" else None,
+        show_thinking_after_s=(
+            str(show_thinking_after_s) if show_thinking_after_s != 0 else None
+        ),
         show_history="false" if not show_history else None,
         **kwargs,
     )

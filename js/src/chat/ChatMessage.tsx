@@ -7,7 +7,7 @@ import {
   type RenderBlock,
 } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
-import { ThinkingDisplay } from "./ThinkingDisplay"
+import { ThinkingDisplay, isThinkingVisible } from "./ThinkingDisplay"
 import { ToolGroup } from "./ToolGroup"
 import { WebActivity } from "./WebActivity"
 import { HtmlBlockContent } from "./HtmlBlockContent"
@@ -107,6 +107,7 @@ interface ChatMessageProps {
   uploadAccept?: string[]
   maxUploadSize?: number | null
   enableUpload?: boolean
+  thinkingShowAfter?: number
 }
 
 export const ChatMessage = memo(function ChatMessage({
@@ -125,6 +126,7 @@ export const ChatMessage = memo(function ChatMessage({
   uploadAccept = [],
   maxUploadSize = null,
   enableUpload,
+  thinkingShowAfter = 0,
 }: ChatMessageProps) {
   const slashCommands = useSlashCommands()
   const toolGrouping = useToolGrouping()
@@ -168,6 +170,36 @@ export const ChatMessage = memo(function ChatMessage({
     })
     return out
   }, [blocks, supersededRequests])
+
+  // Hidden thinking must not make an otherwise-empty assistant message look
+  // complete. Re-render at the next streaming threshold so the icon and
+  // pending indicator switch to the thinking panel in the same render.
+  const [, setThinkingVisibilityVersion] = useState(0)
+  useEffect(() => {
+    if (thinkingShowAfter <= 0) return
+
+    const remainingMs = visibleBlocks.flatMap(({ block }) => {
+      if (
+        block.type !== "thinking" ||
+        !block.streaming ||
+        block.startedAt === undefined ||
+        isThinkingVisible(block, thinkingShowAfter)
+      ) {
+        return []
+      }
+      return [
+        Math.max(0, thinkingShowAfter * 1000 - (Date.now() - block.startedAt)),
+      ]
+    })
+    const delay = Math.min(...remainingMs)
+    if (!Number.isFinite(delay)) return
+
+    const timer = setTimeout(
+      () => setThinkingVisibilityVersion((version) => version + 1),
+      delay,
+    )
+    return () => clearTimeout(timer)
+  }, [visibleBlocks, thinkingShowAfter])
 
   const touchHoldEnabled = isUser && !!onEdit && !disabled && !isEditing
 
@@ -293,7 +325,8 @@ export const ChatMessage = memo(function ChatMessage({
     message.content.trim() !== "" ||
     visibleBlocks.some(
       ({ block }) =>
-        block.type === "thinking" ||
+        (block.type === "thinking" &&
+          isThinkingVisible(block, thinkingShowAfter)) ||
         block.type === "tool_loop" ||
         block.type === "web_activity" ||
         block.type === "html_block",
@@ -438,6 +471,7 @@ export const ChatMessage = memo(function ChatMessage({
           key={i}
           thinking={block}
           messageId={`${message.id}-${i}`}
+          showAfter={thinkingShowAfter}
         />
       )
     }
