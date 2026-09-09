@@ -492,6 +492,116 @@ test_that("extend_record_linear() derives UI from turns and attaches to matching
   expect_equal(rec$nodes$n_0002$ui[[1]]$segments[[1]]$content, "hello")
 })
 
+test_that("extend_record_linear() stores attachment previews without model content", {
+  attachments <- list(
+    list(
+      mime = "image/png",
+      name = "plot.png",
+      size = 3L,
+      data_url = "data:image/png;base64,QUJD"
+    ),
+    list(
+      mime = "text/plain",
+      name = "notes.txt",
+      size = 5L,
+      data_url = "data:text/plain;base64,aGVsbG8="
+    )
+  )
+  contents <- c(
+    list(ellmer::ContentText("See attached")),
+    lapply(attachments, function(attachment) {
+      content <- content_from_attachment(attachment)
+      if (is.character(content)) ellmer::ContentText(content) else content
+    })
+  )
+  turns <- list(ellmer::contents_record(ellmer::UserTurn(contents)))
+
+  rec <- extend_record_linear(
+    new_conversation_record("test"),
+    turns,
+    tools = list(),
+    attachments = attachments
+  )
+
+  stored <- rec$nodes$n_0001$ui[[1]]
+  expect_equal(stored$attachments, attachments)
+  expect_equal(
+    stored$segments,
+    list(list(
+      content = "See attached",
+      content_type = "markdown"
+    ))
+  )
+  expect_true(stored$attachment_content_stripped)
+})
+
+test_that("strip_stored_attachment_content repairs existing stored UI", {
+  attachment <- list(
+    mime = "text/plain",
+    name = "notes.txt",
+    size = 5L,
+    data_url = "data:text/plain;base64,aGVsbG8="
+  )
+  stored <- list(
+    version = STORED_UI_VERSION,
+    role = "user",
+    segments = list(list(
+      content = paste0(
+        "See attached\n\n",
+        "<file-attachment name=\"notes.txt\" type=\"text/plain\">\n",
+        "hello\n",
+        "</file-attachment>"
+      ),
+      content_type = "markdown"
+    )),
+    attachments = list(attachment)
+  )
+
+  cleaned <- strip_stored_attachment_content(stored)
+
+  expect_equal(
+    cleaned$segments,
+    list(list(
+      content = "See attached",
+      content_type = "markdown"
+    ))
+  )
+  expect_true(cleaned$attachment_content_stripped)
+})
+
+test_that("attachment-only stored UI retains an empty message segment", {
+  attachment <- list(
+    mime = "text/plain",
+    name = "notes.txt",
+    size = 5L,
+    data_url = "data:text/plain;base64,aGVsbG8="
+  )
+  stored <- list(
+    version = STORED_UI_VERSION,
+    role = "user",
+    segments = list(list(
+      content = paste0(
+        "<file-attachment name=\"notes.txt\" type=\"text/plain\">\n",
+        "hello\n",
+        "</file-attachment>"
+      ),
+      content_type = "markdown"
+    )),
+    attachments = list(attachment)
+  )
+
+  cleaned <- strip_stored_attachment_content(stored)
+
+  expect_equal(
+    cleaned$segments,
+    list(list(
+      content = "",
+      content_type = "markdown"
+    ))
+  )
+  expect_true(cleaned$attachment_content_stripped)
+})
+
 test_that("extend_record_linear() derives UI with structured blocks from tool-call turns", {
   rec <- new_conversation_record("test")
   turns <- list(
