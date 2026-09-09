@@ -10,7 +10,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">shinychat</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.4.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.5.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -48,7 +48,7 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Update the user input of a chat control</h1>
-      <small class="dont-index">Source: <a href="https://github.com/posit-dev/shinychat/blob/r/v0.4.0/R/chat.R" class="external-link"><code>R/chat.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/posit-dev/shinychat/blob/main/R/chat.R" class="external-link"><code>R/chat.R</code></a></small>
       <div class="d-none name"><code>update_chat_user_input.Rd</code></div>
     </div>
 
@@ -65,6 +65,8 @@
 <span>  placeholder <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  submit <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  focus <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  attachments <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  attachment_mode <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"append"</span>, <span class="st">"set"</span><span class="op">)</span>,</span>
 <span>  session <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/domains.html" class="external-link">getDefaultReactiveDomain</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -94,7 +96,22 @@
 
 
 <dt id="arg-focus">focus<a class="anchor" aria-label="anchor" href="#arg-focus"></a></dt>
-<dd><p>Whether to move focus to the input element. Requires <code>value</code>.</p></dd>
+<dd><p>Whether to move focus to the input element. Requires <code>value</code>
+or non-empty <code>attachments</code>.</p></dd>
+
+
+<dt id="arg-attachments">attachments<a class="anchor" aria-label="anchor" href="#arg-attachments"></a></dt>
+<dd><p>A list of attachment objects created by
+<code><a href="chat_attachment.html">chat_attachment()</a></code>. When <code>NULL</code> (default), any existing staged
+attachments are left unchanged. Pass an empty list (<code><a href="https://rdrr.io/r/base/list.html" class="external-link">list()</a></code>) to clear
+staged attachments.</p></dd>
+
+
+<dt id="arg-attachment-mode">attachment_mode<a class="anchor" aria-label="anchor" href="#arg-attachment-mode"></a></dt>
+<dd><p>How to combine <code>attachments</code> with any already-staged
+attachments. <code>"append"</code> (default) adds to the existing set; <code>"set"</code>
+replaces it. Use <code>attachment_mode = "set"</code> with <code>attachments = list()</code> to
+clear all staged attachments.</p></dd>
 
 
 <dt id="arg-session">session<a class="anchor" aria-label="anchor" href="#arg-session"></a></dt>
@@ -146,7 +163,7 @@
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer></div>

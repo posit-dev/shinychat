@@ -7,16 +7,26 @@ If either `bookmark_on_input` or `bookmark_on_response` is `TRUE`, the
 Shiny App's bookmark will be automatically updated without showing a
 modal to the user.
 
-Note: Only the `client`'s chat state is saved/restored in the bookmark.
-If the `client`'s state doesn't properly capture the chat's UI (i.e., a
-transformation is applied in-between receiving and displaying the
-message), then you may need to implement your own `session$onRestore()`
-(and possibly `session$onBookmark`) handler to restore any additional
-state.
+Note: The `client`'s chat state and the greeting content are both
+saved/restored automatically. If the `client`'s state doesn't properly
+capture the chat's UI (i.e., a transformation is applied in-between
+receiving and displaying the message), you may need to implement your
+own `session$onRestore()` (and possibly `session$onBookmark`) handler to
+restore any additional state.
 
 To avoid restoring chat history from the `client`, you can ensure that
 the history is empty by calling `client$set_turns(list())` before
 passing the client to `chat_restore()`.
+
+`chat_restore()` bookmarks the whole session and doesn't know about
+multiple conversations. If you need per-conversation history (the chat
+history drawer, switching between saved conversations), use
+[`chat_enable_history()`](https://posit-dev.github.io/shinychat/r/reference/chat_enable_history.md)
+with `history_options(restore_mode = "bookmark")` instead — it replaces
+`chat_restore()`'s job for history-aware apps. The two are mutually
+exclusive;
+[`chat_app()`](https://posit-dev.github.io/shinychat/r/reference/chat_app.md)
+picks one or the other based on whether `history` is set.
 
 ## Usage
 

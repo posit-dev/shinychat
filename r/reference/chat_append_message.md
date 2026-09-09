@@ -51,7 +51,8 @@ chat_append_message(
   An optional icon to display next to the message, currently only used
   for assistant messages. The icon can be any HTML element (e.g.,
   [`htmltools::img()`](https://rstudio.github.io/htmltools/reference/builder.html)
-  tag) or a string of HTML.
+  tag) or a string of HTML. Pass `FALSE` to remove the icon for this
+  message, or `TRUE` to use the default icon.
 
 - session:
 

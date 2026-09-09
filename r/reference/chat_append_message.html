@@ -12,7 +12,7 @@ users should use chat_append() instead."><meta property="og:image" content="http
 
     <a class="navbar-brand me-2" href="../index.html">shinychat</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.4.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.5.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -50,7 +50,7 @@ users should use chat_append() instead."><meta property="og:image" content="http
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Low-level function to append a message to a chat control</h1>
-      <small class="dont-index">Source: <a href="https://github.com/posit-dev/shinychat/blob/r/v0.4.0/R/chat.R" class="external-link"><code>R/chat.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/posit-dev/shinychat/blob/main/R/chat.R" class="external-link"><code>R/chat.R</code></a></small>
       <div class="d-none name"><code>chat_append_message.Rd</code></div>
     </div>
 
@@ -104,7 +104,8 @@ content. Ignored if <code>chunk</code> is <code>FALSE</code>.</p></dd>
 <dt id="arg-icon">icon<a class="anchor" aria-label="anchor" href="#arg-icon"></a></dt>
 <dd><p>An optional icon to display next to the message, currently only
 used for assistant messages. The icon can be any HTML element (e.g.,
-<code><a href="https://rstudio.github.io/htmltools/reference/builder.html" class="external-link">htmltools::img()</a></code> tag) or a string of HTML.</p></dd>
+<code><a href="https://rstudio.github.io/htmltools/reference/builder.html" class="external-link">htmltools::img()</a></code> tag) or a string of HTML. Pass <code>FALSE</code> to remove the
+icon for this message, or <code>TRUE</code> to use the default icon.</p></dd>
 
 
 <dt id="arg-session">session<a class="anchor" aria-label="anchor" href="#arg-session"></a></dt>
@@ -172,7 +173,7 @@ used for assistant messages. The icon can be any HTML element (e.g.,
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer></div>

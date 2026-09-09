@@ -14,7 +14,7 @@ user sends their first message."><meta property="og:image" content="https://posi
 
     <a class="navbar-brand me-2" href="../index.html">shinychat</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.4.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.5.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -52,7 +52,7 @@ user sends their first message."><meta property="og:image" content="https://posi
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Create a greeting for a chat UI</h1>
-      <small class="dont-index">Source: <a href="https://github.com/posit-dev/shinychat/blob/r/v0.4.0/R/chat.R" class="external-link"><code>R/chat.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/posit-dev/shinychat/blob/main/R/chat.R" class="external-link"><code>R/chat.R</code></a></small>
       <div class="d-none name"><code>chat_greeting.Rd</code></div>
     </div>
 
@@ -64,7 +64,12 @@ user sends their first message.</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">chat_greeting</span><span class="op">(</span><span class="va">content</span>, dismissible <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">chat_greeting</span><span class="op">(</span></span>
+<span>  <span class="va">content</span>,</span>
+<span>  <span class="va">...</span>,</span>
+<span>  persistent <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  dismissible <span class="op">=</span> <span class="fu">lifecycle</span><span class="fu">::</span><span class="fu"><a href="https://lifecycle.r-lib.org/reference/deprecated.html" class="external-link">deprecated</a></span><span class="op">(</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -80,9 +85,20 @@ inputs/outputs.</p></li>
 </ul></dd>
 
 
+<dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
+<dd><p>These dots are for future extensions and must be empty.</p></dd>
+
+
+<dt id="arg-persistent">persistent<a class="anchor" aria-label="anchor" href="#arg-persistent"></a></dt>
+<dd><p>Whether the greeting persists after the user sends a
+message. Defaults to <code>FALSE</code>, meaning the greeting is dismissed when the
+user sends their first message.</p></dd>
+
+
 <dt id="arg-dismissible">dismissible<a class="anchor" aria-label="anchor" href="#arg-dismissible"></a></dt>
-<dd><p>Whether the greeting is automatically dismissed when the
-user sends a message. Defaults to <code>TRUE</code>.</p></dd>
+<dd><p><a href="https://lifecycle.r-lib.org/articles/stages.html#deprecated" class="external-link"><img src="figures/lifecycle-deprecated.svg" alt="[Deprecated]"></a> Renamed to
+<code>persistent</code> with an inverted value. <code>dismissible = FALSE</code> is equivalent
+to <code>persistent = TRUE</code>.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -94,8 +110,8 @@ user sends a message. Defaults to <code>TRUE</code>.</p></dd>
 
 
 
-<p><strong>Non-dismissible greeting</strong> (stays visible after the user sends a message):</p>
-<p></p><div class="sourceCode r"><pre><code><span><span class="fu"><a href="../reference/chat_greeting.html">chat_greeting</a></span><span class="op">(</span><span class="st">"Please read our [terms of service](https://example.com)."</span>, dismissible <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre><p></p></div>
+<p><strong>Persistent greeting</strong> (stays visible after the user sends a message):</p>
+<p></p><div class="sourceCode r"><pre><code><span><span class="fu"><a href="../reference/chat_greeting.html">chat_greeting</a></span><span class="op">(</span><span class="st">"Please read our [terms of service](https://example.com)."</span>, persistent <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre><p></p></div>
 <p><strong>Greeting with suggestion cards</strong> (clickable chips that fill the input):</p>
 <p></p><div class="sourceCode r"><pre><code><span><span class="fu"><a href="../reference/chat_greeting.html">chat_greeting</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span></span>
 <span>  <span class="st">"## Welcome!\n\n"</span>,</span>
@@ -145,7 +161,7 @@ user sends a message. Defaults to <code>TRUE</code>.</p></dd>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer></div>

@@ -84,7 +84,7 @@ ui <- bslib::page_fluid(
 
 server <- function(input, output, session) {
   chat <- ellmer::chat_openai()
-  
+
   observeEvent(input$chat_user_input, {
     stream <- chat$stream_async(input$chat_user_input)
     chat_append("chat", stream)
@@ -119,7 +119,7 @@ ui <- bslib::page_fluid(
 server <- function(input, output, session) {
   # Initialize a chat with your chosen model provider
   chat <- ellmer::chat_openai(system_prompt = "You are a helpful assistant.")
-  
+
   # Listen for user input and communicate with the model
   observeEvent(input$chat_user_input, {
     stream <- chat$stream_async(input$chat_user_input)
@@ -176,20 +176,22 @@ vignette. Generally, we recommend writing the system prompt in a
 separate markdown file, but if your prompt is short you can also supply
 it directly as a string to the `system_prompt` argument.
 
-### Add messages and suggestions
+### Add greetings and suggestions
 
 #### On startup
 
-You can specify messages to show when the chat first loads by using
-[`chat_ui()`](https://posit-dev.github.io/shinychat/r/reference/chat_ui.md)’s
-`messages` argument. You can use markdown or HTML to format these
-messages.
+To show a greeting when the chat first loads, set the `greeting`
+argument of
+[`chat_ui()`](https://posit-dev.github.io/shinychat/r/reference/chat_ui.md)
+or
+[`page_chat()`](https://posit-dev.github.io/shinychat/r/reference/page_chat.md).
+You can format the greeting with markdown or HTML.
 
 ``` r
 
 chat_ui(
     id = "chat",
-    messages = "**Hello!** How can I help you today?"
+    greeting = "**Hello!** How can I help you today?"
 )
 ```
 
@@ -199,13 +201,13 @@ message.](images/chat-messages.png)
 Screenshot of a chatbot with a welcome message.
 
 You can also suggest inputs to the user by adding the `suggestion` CSS
-class to the relevant portions of the message. Similarly, use the
+class to the relevant portions of the greeting. Similarly, use the
 `submit` class to make clicking on the suggestion submit the input
 automatically.
 
 ``` r
 
-messages <-
+greeting <-
   '
   **Hello!** How can I help you today?
 
@@ -218,7 +220,7 @@ messages <-
 ui <- bslib::page_fillable(
   chat_ui(
     id = "chat",
-    messages = messages
+    greeting = greeting
   )
 )
 ```
@@ -235,11 +237,11 @@ cards instead of inline chips. Each suggestion accepts an optional
 suggestion’s body becomes the card description. For ordered lists
 (`<ol>`), the list-item number is included in the heading.
 
-Messages can also contain arbitrary Shiny UI
-[components](https://shiny.posit.co/r/components/), so you could even
-include something like a
+Greetings can also contain arbitrary Shiny UI
+[components](https://shiny.posit.co/r/components/). For example, include
+a
 [tooltip](https://shiny.posit.co/r/components/display-messages/tooltips/)
-to provide additional details on demand.
+to provide more details on demand.
 
 #### Mid-conversation
 
@@ -263,6 +265,109 @@ prompt:
 
 ## Layouts
 
+### Full-window page with navigation
+
+For a full-window chat with navigation, use
+[`page_chat()`](https://posit-dev.github.io/shinychat/r/reference/page_chat.md).
+It owns the page container, the mounted chat, and the responsive
+app-menu sidebar. The example below uses a local echo response, so it
+can be run without an LLM provider:
+
+``` r
+
+library(shiny)
+library(shinychat)
+
+artifact_content <- function(label) {
+  tags$div(
+    tags$h3("Preview"),
+    tags$p(label)
+  )
+}
+
+ui <- page_chat(
+  "Assistant",
+  greeting = "Welcome! Ask a question to get started.",
+  toolbar = bslib::toolbar(
+    actionButton("show_preview", "Show preview")
+  ),
+  toolbar_global = bslib::toolbar(
+    bslib::input_dark_mode(),
+    actionButton("help", "Help")
+  ),
+  sidebar = chat_sidebar(
+    tags$p("Home tools"),
+    history = FALSE,
+    open = "open"
+  ),
+  pages_navbar = list(
+    chat_nav_panel(
+      "About",
+      tags$p("This is a secondary page."),
+      value = "about",
+    ),
+    chat_nav_panel(
+      "Settings",
+      tags$p("Settings live here."),
+      value = "settings",
+      sidebar = chat_sidebar(
+        tags$p("Settings menu"),
+        width = 320,
+        open = "closed"
+      ),
+      toolbar = bslib::toolbar(
+        actionButton("save_settings", "Save settings")
+      )
+    )
+  ),
+  drawer = chat_drawer(
+    artifact_content("Initial preview"),
+    title = "Preview"
+  )
+)
+
+server <- function(input, output, session) {
+  observeEvent(input$chat_user_input, {
+    chat_append("chat", paste0("You said: ", input$chat_user_input))
+  })
+
+  observeEvent(input$show_preview, {
+    chat_drawer_show(
+      "chat",
+      content = artifact_content("Preview opened from the server"),
+      title = "Preview"
+    )
+  })
+}
+
+shinyApp(ui, server)
+```
+
+This is the
+[`page_chat()`](https://posit-dev.github.io/shinychat/r/reference/page_chat.md)
+equivalent of `bslib::page_fillable(chat_ui("chat", fill = TRUE))`. Do
+not wrap
+[`page_chat()`](https://posit-dev.github.io/shinychat/r/reference/page_chat.md)
+in another page container or pass `height`, `fill`, or `show_history`;
+those options belong to the page. Use
+[`chat_ui()`](https://posit-dev.github.io/shinychat/r/reference/chat_ui.md)
+directly when the chat is embedded alongside other top-level UI or
+inside an existing `bslib` layout.
+
+Set `history = TRUE` in a
+[`chat_sidebar()`](https://posit-dev.github.io/shinychat/r/reference/chat_sidebar.md)
+when the chat is connected to
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/reference/chat_app.md)
+or
+[`chat_enable_history()`](https://posit-dev.github.io/shinychat/r/reference/chat_enable_history.md).
+Use
+[`chat_drawer_update()`](https://posit-dev.github.io/shinychat/r/reference/chat_drawer_update.md),
+[`chat_drawer_hide()`](https://posit-dev.github.io/shinychat/r/reference/chat_drawer_hide.md),
+and
+[`chat_drawer_toggle()`](https://posit-dev.github.io/shinychat/r/reference/chat_drawer_toggle.md)
+for subsequent artifact updates. Artifact content may contain ordinary
+Shiny inputs and outputs.
+
 ### Screen-filling layout
 
 Use
@@ -271,13 +376,58 @@ with `fillable_mobile = TRUE` if you want the chatbot input to stay
 anchored at the bottom of the page and the chat to fill the remaining
 space.
 
+This remains the compatible choice when the page contains other
+top-level content or when you need to compose the chat with an existing
+`bslib` layout.
+
 ``` r
 
 ui <- bslib::page_fillable(
-  chat_ui("chat", messages = "Welcome!"),
+  chat_ui("chat", greeting = "Welcome!"),
   fillable_mobile = TRUE
 )
 ```
+
+Use
+[`bslib::toolbar()`](https://rstudio.github.io/bslib/reference/toolbar.html)
+to group controls in every page-chat toolbar. `toolbar` is scoped to the
+home page. Navigation pages default to `toolbar = NULL`, which omits the
+scoped segment; their `chat_nav_panel(toolbar = bslib::toolbar(...))`
+supplies a page-specific replacement. Use
+`toolbar_global = bslib::toolbar(...)` for actions that remain mounted
+across every page. It is rendered after the active scoped toolbar. When
+omitted, `toolbar_global` contains bslib’s dark/light mode toggle; pass
+`toolbar_global = NULL` to opt out. The controls move between the
+desktop header and mobile app menu without duplicating their Shiny IDs
+or losing state.
+
+`pages_navbar` also accepts bslib navigation items. A standard
+[`bslib::nav_panel()`](https://rstudio.github.io/bslib/reference/nav-items.html)
+uses the normal page-chat content width with no page-specific sidebar or
+toolbar; use
+[`chat_nav_panel()`](https://posit-dev.github.io/shinychat/r/reference/chat_nav_panel.md)
+when a page needs those options.
+[`bslib::nav_menu()`](https://rstudio.github.io/bslib/reference/nav-items.html)
+supports nested menus,
+[`bslib::nav_item()`](https://rstudio.github.io/bslib/reference/nav-items.html)
+adds non-selecting navigation UI, and
+[`bslib::nav_spacer()`](https://rstudio.github.io/bslib/reference/nav-items.html)
+separates items.
+[`bslib::nav_panel_hidden()`](https://rstudio.github.io/bslib/reference/nav-items.html)
+creates an unlisted panel.
+
+The package includes runnable navigation and artifact-control examples.
+They use local echo responses, so no provider credentials are required:
+
+``` r
+
+shiny::runExample("page-chat-navigation", package = "shinychat")
+shiny::runExample("page-chat-drawer-controls", package = "shinychat")
+```
+
+The [R example
+source](https://github.com/posit-dev/shinychat/tree/main/pkg-r/inst/examples-shiny)
+is available in the repository.
 
 ![Screenshot of a chatbot filling the
 page.](images/chat-page_fillable.png)
@@ -302,9 +452,7 @@ ui <- bslib::page_sidebar(
   sidebar = sidebar(
     chat_ui(
       "chat",
-      messages = list(
-        "Welcome! Here is a <span class='suggestion'>suggestion</span>."
-      ),
+      greeting = "Welcome! Here is a <span class='suggestion'>suggestion</span>.",
       height = "100%"
     ),
     width = 300,
@@ -316,7 +464,7 @@ ui <- bslib::page_sidebar(
 
 server <- function(input, output, session) {
   chat <- ellmer::chat_openai()
-  
+
   observeEvent(input$chat_user_input, {
     stream <- chat$stream_async(input$chat_user_input)
     chat_append("chat", stream)
@@ -358,7 +506,7 @@ ui <- page_fillable(
     ),
     chat_ui(
       id = "chat",
-      messages = "Hello! How can I help you today?"
+      greeting = "Hello! How can I help you today?"
     )
   ),
   fillable_mobile = TRUE
@@ -366,7 +514,7 @@ ui <- page_fillable(
 
 server <- function(input, output, session) {
   chat <- ellmer::chat_openai()
-  
+
   observeEvent(input$chat_user_input, {
     stream <- chat$stream_async(input$chat_user_input)
     chat_append("chat", stream)
@@ -381,6 +529,146 @@ tooltip.](images/chat-card.png)
 
 Screenshot of a chatbot embedded in a card with a header and tooltip.
 
+## Slash commands
+
+Slash commands give users discoverable shortcuts — like `/search`,
+`/clear`, or `/help` — that run a handler you define on the server.
+Register commands on the object returned by
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/reference/chat_app.md),
+using its `slash_command()` method. When a user runs a command, its
+handler fires instead of the text being sent to the model, and what
+happens next is entirely up to the handler.
+
+The two most common patterns are **prompt expansion** — where the
+command transforms the user’s input before sending it to the LLM — and
+**side effects** — where the command performs an action without
+involving the LLM at all.
+
+### Prompt expansion
+
+The most common use of slash commands is giving users a shortcut that
+sends a prompt to the model on their behalf. A handler that takes one
+argument receives a `ContentSlashCommand` object — not a plain string.
+This object carries the command name, the text typed after it, and a
+`text` property that controls what the LLM sees. For
+`/search shiny modules`:
+
+- `content@command` is `"search"`
+- `content@user_text` is `"shiny modules"`
+- `content@text` starts as a descriptive default — set it to your
+  expanded prompt
+
+For example, a `/search` command could enrich the user’s query with
+retrieved context before streaming the model’s answer. In a real app the
+retrieval step would query a vector store or search index (i.e., a RAG
+workflow), but the core pattern is the same:
+
+``` r
+
+library(shiny)
+library(bslib)
+library(shinychat)
+
+ui <- page_fillable(
+  chat_ui("chat", placeholder = "Type / for commands, or chat away...")
+)
+
+server <- function(input, output, session) {
+  client <- ellmer::chat_openai(system_prompt = "You are a helpful assistant.")
+  chat <- chat_server("chat", client = client)
+
+  chat$slash_command("search", "Search the docs", function(content) {
+    # In practice, retrieve relevant documents here (e.g., via a vector DB)
+    content@text <- paste(
+      "Search the documentation for the following topic and provide a concise summary:",
+      content@user_text
+    )
+    stream <- client$stream(content)
+    chat_append("chat", stream)
+  })
+}
+
+shinyApp(ui, server)
+```
+
+When the user types `/search shiny modules`, the handler sets the
+expanded prompt as `content@text` and streams the model’s response. The
+user sees `/search shiny modules` as their message; the LLM receives the
+expanded prompt. Because `ContentSlashCommand` extends
+[`ellmer::ContentText`](https://ellmer.tidyverse.org/reference/Content.html),
+it works anywhere a `ContentText` does — the LLM reads the `text`
+property, while the chat UI preserves the original command for bookmark
+restore.
+
+### Side effects
+
+Some commands perform an action without involving the LLM — clearing the
+conversation, opening a help modal, exporting a transcript. Pass
+`echo = FALSE` so the command doesn’t appear as a user message:
+
+``` r
+
+chat$slash_command("clear", "Clear the conversation", function() {
+  chat$clear()
+}, echo = FALSE)
+```
+
+### Client-side handlers
+
+Pass `NULL` as the handler to register a command that appears in the
+palette but is handled entirely in the browser. Listen for the
+`shiny:chat-slash-command` event and call `preventDefault()`:
+
+``` r
+
+chat$slash_command("clear", "Clear the input", NULL)
+
+tags$script(HTML("
+  document.addEventListener('shiny:chat-slash-command', function(e) {
+    if (e.detail.id !== 'chat' || e.detail.command !== 'clear') return;
+    e.preventDefault();
+    document.querySelector('#chat-chat textarea').value = '';
+  });
+"))
+```
+
+The event is cancelable and bubbles. Use `e.detail.id` to target a
+specific chat. `preventDefault()` skips the server round-trip; set
+`e.detail.echo` to control whether the command appears as a user
+message.
+
+### Key points
+
+- Users type `/` to open a palette of registered commands; arrow keys
+  navigate, Enter or Tab selects, Escape dismisses.
+- A slash command’s handler fires instead of sending the text to the
+  model. What happens next — including whether anything reaches the LLM
+  — is entirely up to your handler.
+- A `/` message that doesn’t match any registered command is sent as an
+  ordinary message.
+- Handlers take 0 or 1 argument. A 1-argument handler receives a
+  `ContentSlashCommand` object (an
+  [`ellmer::ContentText`](https://ellmer.tidyverse.org/reference/Content.html)
+  subclass) whose `user_text` and `text` properties let you control what
+  the LLM sees while preserving the original command for display on
+  bookmark restore.
+- The `echo` argument controls whether invoking the command appears as a
+  user message. Defaults to `TRUE` with a handler. Pass `echo = FALSE`
+  for side-effect-only handlers.
+- `slash_command()` returns a function that removes the command when
+  called. Re-registering an existing name raises an error unless you
+  pass `force = TRUE`.
+- Slash command messages are restored faithfully when a bookmarked app
+  is reopened.
+
+Slash commands are currently available only through
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/reference/chat_app.md),
+not when building a fully custom chat loop with
+[`chat_ui()`](https://posit-dev.github.io/shinychat/r/reference/chat_ui.md)
+and
+[`chat_append()`](https://posit-dev.github.io/shinychat/r/reference/chat_append.md)
+directly.
+
 ## Stream cancellation
 
 shinychat supports cancelling an in-progress AI response. When
@@ -389,15 +677,14 @@ during streaming. Users can also press Escape while the chat has focus
 to cancel the current response. Any partial response already received is
 preserved in the chat history.
 
-### Using the chat module (recommended)
+### Using `chat_server()` (recommended)
 
-The easiest way to add cancellation support is to use the
-[`chat_mod_ui()`](https://posit-dev.github.io/shinychat/r/reference/chat_app.md)
+Pass `enable_cancel = TRUE` to
+[`chat_ui()`](https://posit-dev.github.io/shinychat/r/reference/chat_ui.md)
 and
-[`chat_mod_server()`](https://posit-dev.github.io/shinychat/r/reference/chat_app.md)
-functions. The module handles everything automatically — the stop button
-is shown during streaming and wired up internally, with no extra code
-required.
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/reference/chat_app.md)
+handles everything automatically — the stop button is shown during
+streaming and the cancel input is wired up internally.
 
 ``` r
 
@@ -407,12 +694,12 @@ library(shinychat)
 library(ellmer)
 
 ui <- page_fillable(
-  chat_mod_ui("chat")
+  chat_ui("chat", enable_cancel = TRUE)
 )
 
 server <- function(input, output, session) {
   chat <- chat_anthropic(system_prompt = "You are a helpful assistant.")
-  chat_mod_server("chat", client = chat)
+  chat_server("chat", client = chat)
 }
 
 shinyApp(ui, server)
@@ -420,10 +707,11 @@ shinyApp(ui, server)
 
 ### Manual approach
 
-If you are building a custom chat UI with
+If you are building a fully custom chat loop with
 [`chat_ui()`](https://posit-dev.github.io/shinychat/r/reference/chat_ui.md)
-directly, you can enable cancellation by setting `enable_cancel = TRUE`
-and wiring up the cancel input in your server function.
+and
+[`chat_append()`](https://posit-dev.github.io/shinychat/r/reference/chat_append.md)
+directly, you can wire up cancellation yourself.
 
 The key steps are:
 
@@ -471,3 +759,80 @@ server <- function(input, output, session) {
 
 shinyApp(ui, server)
 ```
+
+## File attachments
+
+shinychat supports file attachments, allowing users to upload images,
+PDFs, and text files alongside their messages. When attachments are
+enabled, the chat input shows a file picker button and also accepts
+drag-and-drop or clipboard paste.
+
+### Using `chat_server()` (recommended)
+
+Pass `allow_attachments = TRUE` to
+[`chat_ui()`](https://posit-dev.github.io/shinychat/r/reference/chat_ui.md)
+and
+[`chat_server()`](https://posit-dev.github.io/shinychat/r/reference/chat_app.md)
+handles the rest — uploaded files are automatically converted to ellmer
+content objects and sent to the model.
+
+``` r
+
+library(shiny)
+library(bslib)
+library(shinychat)
+library(ellmer)
+
+ui <- page_fillable(
+  chat_ui("chat", allow_attachments = TRUE)
+)
+
+server <- function(input, output, session) {
+  chat <- chat_anthropic(system_prompt = "You are a helpful assistant.")
+  chat_server("chat", client = chat)
+}
+
+shinyApp(ui, server)
+```
+
+### Manual approach
+
+If you are building a custom chat UI with
+[`chat_ui()`](https://posit-dev.github.io/shinychat/r/reference/chat_ui.md)
+directly, enable attachments by setting `allow_attachments = TRUE`. This
+changes the shape of `input$<id>_user_input` from a plain character
+string to a list of ellmer `Content` objects. Use the splice operator
+(`!!!`) to pass these content objects to the chat client.
+
+``` r
+
+ui <- page_fillable(
+  chat_ui("chat", allow_attachments = TRUE)
+)
+
+server <- function(input, output, session) {
+  chat <- ellmer::chat_openai(system_prompt = "You are a helpful assistant.")
+
+  observeEvent(input$chat_user_input, {
+    stream <- chat$stream_async(!!!input$chat_user_input)
+    chat_append("chat", stream)
+  })
+}
+
+shinyApp(ui, server)
+```
+
+Key points:
+
+- Pass `allow_attachments = TRUE` to
+  [`chat_ui()`](https://posit-dev.github.io/shinychat/r/reference/chat_ui.md)
+  to show the file picker button. You can also pass a character vector
+  of MIME types (e.g. `c("image/png", "image/jpeg")`) to restrict
+  accepted file types.
+- When `allow_attachments` is enabled, `input$<id>_user_input` is always
+  a list of ellmer `Content` objects (text first, then one content
+  object per attachment), even when no files are attached. Use `!!!` to
+  splice the list into `stream_async()`.
+- The maximum combined attachment size defaults to approximately 30 MB
+  and can be configured via the `SHINYCHAT_MAX_ATTACHMENT_SIZE`
+  environment variable.

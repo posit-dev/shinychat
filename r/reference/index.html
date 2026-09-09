@@ -10,7 +10,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">shinychat</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.4.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.5.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -69,7 +69,7 @@
 
         <dt>
 
-          <code><a href="chat_app.html">chat_app()</a></code> <code><a href="chat_app.html">chat_mod_ui()</a></code> <code><a href="chat_app.html">chat_mod_server()</a></code>
+          <code><a href="chat_app.html">chat_app()</a></code> <code><a href="chat_app.html">chat_server()</a></code>
 
         </dt>
         <dd>Open a live chat application in the browser</dd>
@@ -111,10 +111,96 @@
 
         <dt>
 
+          <code><a href="chat_get_greeting.html">chat_get_greeting()</a></code>
+
+        </dt>
+        <dd>Get the current greeting content</dd>
+
+        <dt>
+
           <code><a href="update_chat_user_input.html">update_chat_user_input()</a></code>
 
         </dt>
         <dd>Update the user input of a chat control</dd>
+      </dl></div><div class="section level2">
+      <h2 id="page-chat">Page chat<a class="anchor" aria-label="anchor" href="#page-chat"></a></h2>
+
+
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="page_chat.html">page_chat()</a></code>
+
+        </dt>
+        <dd>Create a full-window chat page</dd>
+
+        <dt>
+
+          <code><a href="page_chat_theme.html">page_chat_theme()</a></code>
+
+        </dt>
+        <dd>Create a theme for <code><a href="../reference/page_chat.html">page_chat()</a></code></dd>
+
+        <dt>
+
+          <code><a href="chat_nav_panel.html">chat_nav_panel()</a></code>
+
+        </dt>
+        <dd>Create a page-chat navigation panel</dd>
+
+        <dt>
+
+          <code><a href="chat_sidebar.html">chat_sidebar()</a></code>
+
+        </dt>
+        <dd>Create a chat sidebar configuration</dd>
+
+        <dt>
+
+          <code><a href="chat_ui_history.html">chat_ui_history()</a></code>
+
+        </dt>
+        <dd>Create a chat history selector</dd>
+
+        <dt>
+
+          <code><a href="chat_drawer.html">chat_drawer()</a></code>
+
+        </dt>
+        <dd>Create a chat drawer configuration</dd>
+
+        <dt>
+
+          <code><a href="chat_drawer_show.html">chat_drawer_show()</a></code>
+
+        </dt>
+        <dd>Show a chat drawer</dd>
+
+        <dt>
+
+          <code><a href="chat_drawer_hide.html">chat_drawer_hide()</a></code>
+
+        </dt>
+        <dd>Hide a chat drawer</dd>
+
+        <dt>
+
+          <code><a href="chat_drawer_toggle.html">chat_drawer_toggle()</a></code>
+
+        </dt>
+        <dd>Toggle a chat drawer</dd>
+
+        <dt>
+
+          <code><a href="chat_drawer_update.html">chat_drawer_update()</a></code>
+
+        </dt>
+        <dd>Update a chat drawer</dd>
       </dl></div><div class="section level2">
       <h2 id="streaming-markdown-interface">Streaming markdown interface<a class="anchor" aria-label="anchor" href="#streaming-markdown-interface"></a></h2>
 
@@ -139,7 +225,7 @@
         </dt>
         <dd>Create a UI element for a markdown stream.</dd>
       </dl></div><div class="section level2">
-      <h2 id="bookmark-chat-history">Bookmark chat history<a class="anchor" aria-label="anchor" href="#bookmark-chat-history"></a></h2>
+      <h2 id="chat-history">Chat history<a class="anchor" aria-label="anchor" href="#chat-history"></a></h2>
 
 
 
@@ -150,10 +236,70 @@
 
       <dl><dt>
 
+          <code><a href="chat_enable_history.html">chat_enable_history()</a></code>
+
+        </dt>
+        <dd>Enable conversation history for a chat</dd>
+
+        <dt>
+
+          <code><a href="history_options.html">history_options()</a></code>
+
+        </dt>
+        <dd>Configure chat history options</dd>
+
+        <dt>
+
+          <code><a href="ConversationStore.html">ConversationStore</a></code>
+
+        </dt>
+        <dd>Abstract base class for conversation storage backends</dd>
+
+        <dt>
+
+          <code><a href="FileConversationStore.html">FileConversationStore</a></code>
+
+        </dt>
+        <dd>File-based conversation storage backend</dd>
+
+        <dt>
+
           <code><a href="chat_restore.html">chat_restore()</a></code>
 
         </dt>
         <dd>Add Shiny bookmarking for shinychat</dd>
+      </dl></div><div class="section level2">
+      <h2 id="slash-commands">Slash commands<a class="anchor" aria-label="anchor" href="#slash-commands"></a></h2>
+
+
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="ContentSlashCommand.html">ContentSlashCommand()</a></code>
+
+        </dt>
+        <dd>Slash command content</dd>
+      </dl></div><div class="section level2">
+      <h2 id="file-attachments">File attachments<a class="anchor" aria-label="anchor" href="#file-attachments"></a></h2>
+
+
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="chat_attachment.html">chat_attachment()</a></code>
+
+        </dt>
+        <dd>Create an attachment from a local file path</dd>
       </dl></div><div class="section level2">
       <h2 id="integration-with-ellmer">Integration with ellmer<a class="anchor" aria-label="anchor" href="#integration-with-ellmer"></a></h2>
 
@@ -170,6 +316,13 @@
 
         </dt>
         <dd>Format ellmer content for shinychat</dd>
+
+        <dt>
+
+          <code><a href="tool_result_display.html">tool_result_display()</a></code>
+
+        </dt>
+        <dd>Customize how a tool result is displayed</dd>
       </dl></div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside></div>
@@ -180,7 +333,7 @@
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer></div>
