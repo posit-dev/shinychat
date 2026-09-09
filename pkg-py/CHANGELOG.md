@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-09-09
+
+### New features
+
+* Added `chat.client.new_chat()` for starting a new conversation when conversation history is enabled, optionally re-resolving the greeting (`greeting=True`). (#399)
+
+* Added a `show_thinking_after_s` parameter to `chat_ui()`/`Chat.ui()` to only show thinking that runs longer than the given number of seconds, avoiding flicker from brief thinking with fast models. (#403)
+
+### Breaking changes
+
+* `chat.client.clear()` now errors when conversation history is enabled (the default with `Chat(client=...)`); use `await chat.client.new_chat()` to start a new conversation instead. (#399)
+
+### Bug fixes
+
+* Fixed file attachments losing their previews when a conversation is restored from history. (#394)
+
+* Fixed restored conversations sending duplicated attachment content back to the model. (#401)
+
+* Fixed tool icons disappearing from collapsed tool call groups. (#402)
+
+* Fixed several `page_chat()` layout issues, including mobile viewport and drawer behavior and a resize feedback loop when resizing the drawer. (#395, #398, #400)
+
 ## [0.7.0] - 2026-09-04
 
 ### API additions
