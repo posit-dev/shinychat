@@ -11,6 +11,7 @@ import pytest
 from _history_test_helpers import branch_from
 from shinychat._history import (
     HistoryController,
+    _strip_attachment_content,
     do_bookmark_with_cleanup,
     extend_record_linear,
 )
@@ -24,6 +25,7 @@ from shinychat._history_types import (
     MAX_SCHEMA_VERSION,
     STORED_UI_VERSION,
     ConversationRecord,
+    StoredUiMessage,
     UnsupportedSchemaVersionError,
     new_conversation_record,
 )
@@ -102,14 +104,57 @@ def test_extend_appends_only_new_groups_with_ui_by_role():
     assert rec.nodes[rec.path_node_ids()[2]].ui == [derived("user", "q2")]
 
 
-def test_extend_preserves_attachment_payload_from_ui_snapshot():
+@pytest.mark.parametrize(
+    ("attachment", "turn_content"),
+    [
+        (
+            {
+                "mime": "image/png",
+                "name": "plot.png",
+                "size": 3,
+                "data_url": "data:image/png;base64,QUJD",
+            },
+            {
+                "content_type": "image_inline",
+                "image_content_type": "image/png",
+                "data": "QUJD",
+            },
+        ),
+        (
+            {
+                "mime": "text/markdown",
+                "name": "notes.md",
+                "size": 7,
+                "data_url": "data:text/markdown;base64,IyBOb3Rlcw==",
+            },
+            {
+                "content_type": "text",
+                "text": (
+                    '<file-attachment name="notes.md" '
+                    'type="text/markdown">\n# Notes\n</file-attachment>'
+                ),
+            },
+        ),
+        (
+            {
+                "mime": "application/pdf",
+                "name": "report.pdf",
+                "size": 4,
+                "data_url": "data:application/pdf;base64,JVBERg==",
+            },
+            {
+                "content_type": "pdf",
+                "data": "JVBERg==",
+                "filename": "report.pdf",
+            },
+        ),
+    ],
+)
+def test_extend_preserves_attachment_without_model_content(
+    attachment: dict[str, object],
+    turn_content: dict[str, object],
+):
     rec = new_conversation_record(title="t")
-    attachment = {
-        "mime": "text/markdown",
-        "name": "notes.md",
-        "size": 7,
-        "data_url": "data:text/markdown;base64,IyBOb3Rlcw==",
-    }
     user_message = {
         "role": "user",
         "segments": [{"content": "See attached", "content_type": "markdown"}],
@@ -117,7 +162,17 @@ def test_extend_preserves_attachment_payload_from_ui_snapshot():
     }
     extend_record_linear(
         rec,
-        [[{"role": "user", "content": "See attached"}]],
+        [
+            [
+                {
+                    "role": "user",
+                    "contents": [
+                        {"content_type": "text", "text": "See attached"},
+                        turn_content,
+                    ],
+                }
+            ]
+        ],
         [user_message],
         ui_offset=0,
     )
@@ -125,6 +180,74 @@ def test_extend_preserves_attachment_payload_from_ui_snapshot():
     stored = rec.nodes[rec.path_node_ids()[0]].ui
     assert stored is not None
     assert stored[0]["attachments"] == [attachment]
+    assert stored[0]["segments"] == [
+        {"content": "See attached", "content_type": "markdown"}
+    ]
+
+
+def test_strip_attachment_content_repairs_existing_stored_ui():
+    attachment = {
+        "mime": "image/png",
+        "name": "plot.png",
+        "size": 3,
+        "data_url": "data:image/png;base64,QUJD",
+    }
+    stored = cast(
+        StoredUiMessage,
+        {
+            "version": STORED_UI_VERSION,
+            "role": "user",
+            "segments": [
+                {"content": "See attached", "content_type": "markdown"},
+                {
+                    "type": "html_block",
+                    "version": 1,
+                    "content": '<img src="data:image/png;base64,QUJD"/>',
+                },
+            ],
+            "attachments": [attachment],
+        },
+    )
+
+    cleaned = _strip_attachment_content(stored)
+
+    assert cleaned["segments"] == [
+        {"content": "See attached", "content_type": "markdown"}
+    ]
+
+
+def test_strip_attachment_content_keeps_empty_attachment_only_message():
+    attachment = {
+        "mime": "text/plain",
+        "name": "notes.txt",
+        "size": 5,
+        "data_url": "data:text/plain;base64,aGVsbG8=",
+    }
+    stored = cast(
+        StoredUiMessage,
+        {
+            "version": STORED_UI_VERSION,
+            "role": "user",
+            "segments": [
+                {
+                    "content": (
+                        '<file-attachment name="notes.txt" '
+                        'type="text/plain">\n'
+                        "hello\n"
+                        "</file-attachment>"
+                    ),
+                    "content_type": "markdown",
+                }
+            ],
+            "attachments": [attachment],
+        },
+    )
+
+    cleaned = _strip_attachment_content(stored)
+
+    assert cleaned["segments"] == [
+        {"content": "", "content_type": "markdown"}
+    ]
 
 
 def test_extend_groups_tool_exchange_into_single_node():
@@ -2343,6 +2466,56 @@ async def test_replay_discards_old_format_ui_and_rederives_from_turns():
     assert [s["type"] for s in asst["segments"] if "type" in s] == [
         "tool_request",
         "tool_result",
+    ]
+
+
+@pytest.mark.anyio
+async def test_replay_repairs_attachment_content_in_existing_record():
+    attachment = {
+        "mime": "text/plain",
+        "name": "notes.txt",
+        "size": 5,
+        "data_url": "data:text/plain;base64,aGVsbG8=",
+    }
+    rec = new_conversation_record(title="t")
+    rec.append_linear(
+        [],
+        ui=[
+            {
+                "version": STORED_UI_VERSION,
+                "role": "user",
+                "segments": [
+                    {
+                        "content": (
+                            "See attached\n\n"
+                            '<file-attachment name="notes.txt" '
+                            'type="text/plain">\n'
+                            "hello\n"
+                            "</file-attachment>"
+                        ),
+                        "content_type": "markdown",
+                    }
+                ],
+                "attachments": [attachment],
+            }
+        ],
+    )
+
+    chat = _TrackingChat()
+    controller, _store = _make_controller()
+    controller.chat = chat  # type: ignore[assignment]
+
+    await controller.replay_ui(rec)
+
+    assert chat.messages_ == [
+        {
+            "version": STORED_UI_VERSION,
+            "role": "user",
+            "segments": [
+                {"content": "See attached", "content_type": "markdown"}
+            ],
+            "attachments": [attachment],
+        }
     ]
 
 

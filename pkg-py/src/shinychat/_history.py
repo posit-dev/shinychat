@@ -5,7 +5,12 @@ import dataclasses
 import warnings
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, cast
 
-from ._attachments import Attachment, validate_attachments
+from ._attachments import (
+    Attachment,
+    attachment_to_content,
+    validate_attachments,
+)
+from ._chat_normalize import normalize_message
 from ._chat_types import (
     HistoryNavigateAction,
     HistoryUpdateAction,
@@ -195,6 +200,70 @@ def derive_stored_ui_message(
     return _stored_ui_dict(as_stored_message(msg, session))
 
 
+def _strip_attachment_content(
+    message: StoredUiMessage,
+) -> StoredUiMessage:
+    """Remove model-facing attachment content from stored user UI."""
+    attachments = message.get("attachments")
+    if message.get("role") != "user" or not attachments:
+        return message
+
+    segments = [dict(segment) for segment in message["segments"]]
+    attachment_segments: list[dict[str, Any]] = []
+    try:
+        for value in attachments:
+            attachment = Attachment.model_validate(value)
+            attachment_message = normalize_message(
+                attachment_to_content(attachment)
+            )
+            stored = _stored_ui_dict(
+                as_stored_message(attachment_message, session=None)
+            )
+            attachment_segments.extend(
+                cast(list[dict[str, Any]], stored["segments"])
+            )
+    except Exception:
+        # StoredMessage validation reports malformed attachments later. Do not
+        # make replay more fragile while cleaning records from older versions.
+        return message
+
+    for attachment_segment in reversed(attachment_segments):
+        if "type" in attachment_segment:
+            for index in range(len(segments) - 1, -1, -1):
+                if segments[index] == attachment_segment:
+                    segments.pop(index)
+                    break
+            continue
+
+        suffix = str(attachment_segment.get("content", ""))
+        if not suffix:
+            continue
+        for index in range(len(segments) - 1, -1, -1):
+            segment = segments[index]
+            if "type" in segment:
+                continue
+            content = str(segment.get("content", ""))
+            if content == suffix:
+                segment["content"] = ""
+                break
+            separator_suffix = f"\n\n{suffix}"
+            if content.endswith(separator_suffix):
+                segment["content"] = content[: -len(separator_suffix)]
+                break
+
+    segments = [
+        segment
+        for segment in segments
+        if "type" in segment or segment.get("content") != ""
+    ]
+    if not any("type" not in segment for segment in segments):
+        segments.insert(0, {"content": "", "content_type": "markdown"})
+
+    cleaned = dict(message)
+    cleaned["segments"] = cast(Any, segments)
+    return cast(StoredUiMessage, cleaned)
+
+
 def derive_node_ui(
     turns: list[TurnDict],
     session: Session | None = None,
@@ -269,6 +338,7 @@ def extend_record_linear(
             )
             if source and source.get("attachments"):
                 derived["attachments"] = source["attachments"]
+                derived = _strip_attachment_content(derived)
             record.nodes[node_id].ui = cast(list[dict[str, Any]], [derived])
             n_derived += 1
 
@@ -677,6 +747,9 @@ class HistoryController:
                 stored = derive_node_ui(
                     cast(list[TurnDict], node.turns), session=self.chat._session
                 )
+            stored = [
+                _strip_attachment_content(message) for message in stored
+            ]
             for message_dict in stored:
                 await self.chat._restore_bookmark_message(message_dict)
                 restored_count += 1

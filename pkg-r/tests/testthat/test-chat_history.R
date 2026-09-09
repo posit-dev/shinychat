@@ -99,6 +99,62 @@ test_that("replay_ui() clears the greeting", {
   expect_true("greeting_clear" %in% types)
 })
 
+test_that("replay_ui() repairs attachment content in existing records", {
+  spy <- history_mock_session_with_spy()
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+
+  attachment <- list(
+    mime = "text/plain",
+    name = "notes.txt",
+    size = 5L,
+    data_url = "data:text/plain;base64,aGVsbG8="
+  )
+  record <- new_conversation_record(title = "t")
+  record$nodes$n_0001 <- list(
+    parent = NULL,
+    children = list(),
+    turns = list(),
+    ui = list(list(
+      version = STORED_UI_VERSION,
+      role = "user",
+      segments = list(list(
+        content = paste0(
+          "See attached\n\n",
+          "<file-attachment name=\"notes.txt\" type=\"text/plain\">\n",
+          "hello\n",
+          "</file-attachment>"
+        ),
+        content_type = "markdown"
+      )),
+      attachments = list(attachment)
+    ))
+  )
+  record$current_leaf <- "n_0001"
+
+  ctrl$replay_ui(record)
+
+  message_actions <- Filter(
+    function(message) identical(message$message$action$type, "message"),
+    history_spy_messages(spy)
+  )
+  restored <- message_actions[[1]]$message$action$message
+  expect_equal(restored$attachments, list(attachment))
+  expect_equal(
+    restored$segments,
+    list(list(
+      content = "See attached",
+      content_type = "markdown"
+    ))
+  )
+})
+
 test_that("HistoryController$on_response() creates record on first save", {
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()

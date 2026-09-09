@@ -325,6 +325,7 @@ HistoryController <- R6::R6Class(
               session = private$session
             )
           }
+          stored <- lapply(stored, strip_stored_attachment_content)
 
           for (message in stored) {
             restore_history_message(

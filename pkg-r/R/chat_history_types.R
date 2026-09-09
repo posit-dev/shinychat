@@ -299,6 +299,81 @@ derive_stored_ui_messages <- function(live_groups, tools, session = NULL) {
   messages
 }
 
+# Remove the model-facing representation of user attachments from stored UI.
+# Attachment metadata renders the rich preview, so the corresponding turn
+# content must not also appear in the message body.
+strip_stored_attachment_content <- function(message) {
+  attachments <- message$attachments
+  if (!identical(message$role, "user") || length(attachments) == 0) {
+    return(message)
+  }
+
+  attachment_content <- lapply(attachments, function(attachment) {
+    tryCatch(
+      {
+        content <- content_from_attachment(attachment)
+        if (is.character(content)) {
+          return(as.character(content))
+        }
+        rendered <- contents_shinychat(content)
+        if (is.null(rendered)) NULL else as.character(rendered)
+      },
+      error = function(e) NULL
+    )
+  })
+  attachment_content <- Filter(
+    function(content) !is.null(content) && nzchar(content),
+    attachment_content
+  )
+
+  segments <- message$segments
+  for (suffix in rev(attachment_content)) {
+    for (i in rev(seq_along(segments))) {
+      segment <- segments[[i]]
+      if ("type" %in% names(segment)) {
+        next
+      }
+      content <- segment$content %||% ""
+      if (identical(content, suffix)) {
+        segments[[i]]$content <- ""
+        break
+      }
+      separator_suffix <- paste0("\n\n", suffix)
+      if (endsWith(content, separator_suffix)) {
+        segments[[i]]$content <- substr(
+          content,
+          1L,
+          nchar(content) - nchar(separator_suffix)
+        )
+        break
+      }
+    }
+  }
+
+  keep <- vapply(
+    segments,
+    function(segment) {
+      "type" %in% names(segment) || nzchar(segment$content %||% "")
+    },
+    logical(1)
+  )
+  segments <- segments[keep]
+  has_string_segment <- any(vapply(
+    segments,
+    function(segment) !"type" %in% names(segment),
+    logical(1)
+  ))
+  if (!has_string_segment) {
+    segments <- c(
+      list(list(content = "", content_type = "markdown")),
+      segments
+    )
+  }
+
+  message$segments <- segments
+  message
+}
+
 # Check whether a stored UI list carries the current version. Older or
 # unversioned UI returns FALSE and is discarded at replay time.
 is_stored_ui_versioned <- function(stored) {
@@ -592,6 +667,10 @@ extend_record_linear <- function(
     ))
     if (length(user_index) > 0) {
       derived_messages[[user_index[[1]]]]$attachments <- attachments
+      derived_messages[[user_index[[1]]]] <-
+        strip_stored_attachment_content(
+          derived_messages[[user_index[[1]]]]
+        )
     }
   }
 
