@@ -397,11 +397,15 @@ make_turns <- function(user_text = "Hi", asst_text = "Hello") {
   )
 }
 
-flush_promises <- function(timeout = 2) {
-  deadline <- Sys.time() + timeout
-  while (Sys.time() < deadline) {
-    later::run_now(0.05)
-  }
+wait_for_history_title <- function(ctrl, title, source, timeout = 5) {
+  wait_until(
+    function() {
+      identical(ctrl$record$title, title) &&
+        identical(ctrl$record$title_source, source)
+    },
+    timeout = timeout,
+    description = sprintf("history title %s to be applied", dQuote(title))
+  )
 }
 
 test_that("title stays fallback after first response", {
@@ -447,7 +451,7 @@ test_that("titling fires after the second response, exactly once", {
   ctrl$on_response(turns)
 
   expect_equal(ctrl$record$response_count, 2L)
-  flush_promises()
+  wait_for_history_title(ctrl, "Generated Title", "llm")
   expect_equal(ctrl$record$title, "Generated Title")
   expect_equal(ctrl$record$title_source, "llm")
 })
@@ -456,6 +460,10 @@ test_that("rename between the first and second response blocks auto-titling", {
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()
   session <- shiny::MockShinySession$new()
+  title_promise <- promises::promise_resolve("Generated Title")
+  local_mocked_bindings(
+    generate_title = function(...) title_promise
+  )
 
   ctrl <- HistoryController$new(
     chat_id = "chat",
@@ -473,7 +481,14 @@ test_that("rename between the first and second response blocks auto-titling", {
 
   turns <- c(make_turns("Hi", "Hello"), make_turns("More", "Sure"))
   ctrl$on_response(turns)
-  flush_promises()
+  title_callback_finished <- FALSE
+  promises::then(title_promise, function(...) {
+    title_callback_finished <<- TRUE
+  })
+  wait_until(
+    function() title_callback_finished,
+    description = "automatic title callback to finish"
+  )
 
   expect_equal(ctrl$record$title, "My Title")
   expect_equal(ctrl$record$title_source, "user")
@@ -515,7 +530,7 @@ test_that("titling fires on the second response across sessions", {
 
   turns <- c(make_turns("Hi", "Hello"), make_turns("More", "Sure"))
   ctrl2$on_response(turns)
-  flush_promises()
+  wait_for_history_title(ctrl2, "Generated Title", "llm")
 
   expect_equal(ctrl2$record$title, "Generated Title")
   expect_equal(ctrl2$record$title_source, "llm")

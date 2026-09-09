@@ -228,17 +228,23 @@ test_that("chat_set_greeting() generator sends greeting_start, greeting_chunk(s)
   shiny::withReactiveDomain(spy$session, {
     p <- chat_set_greeting("chat", chat_greeting(gen()), session = spy$session)
     done <- FALSE
+    error <- NULL
     promises::then(
       p,
       function(x) {
         done <<- TRUE
       },
       function(e) {
+        error <<- e
         done <<- TRUE
       }
     )
-    while (!done) {
-      later::run_now(0.1)
+    wait_until(
+      function() done,
+      description = "greeting stream to finish"
+    )
+    if (!is.null(error)) {
+      stop(error)
     }
   })
   msgs <- spy_messages(spy)
