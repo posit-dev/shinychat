@@ -2393,9 +2393,9 @@ class ChatExpress(Chat):
         toolbar_input: Optional[TagChild] = None,
         footer: Optional[TagChild] = None,
         tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
-        show_thinking_after_s: float = 0,
         drawer: bool | ChatDrawer = True,
         show_history: bool = True,
+        show_thinking_after_s: float = 0,
         **kwargs: TagAttrValue,
     ) -> Tag:
         """
@@ -2502,17 +2502,17 @@ class ChatExpress(Chat):
             ``ToolAnnotations``, so type checkers reject it. Chat-level
             ``"none"`` always disables grouping, even when a tool annotation
             requests ``"tool"`` or ``"all"``.
-        show_thinking_after_s
-            Minimum seconds a contiguous thinking block must run before it is
-            displayed. ``0`` (the default) displays thinking immediately;
-            positive values hide shorter blocks, and negative values always
-            hide thinking. Values must not exceed 60 seconds.
         drawer
             Whether the artifact panel is available. Pass a
             :class:`~shinychat.types.ChatDrawer` to supply its initial content and
             configuration.
         show_history
             Whether to render the chat's built-in history selector.
+        show_thinking_after_s
+            Minimum seconds a contiguous thinking block must run before it is
+            displayed. ``0`` (the default) displays thinking immediately;
+            positive values hide shorter blocks, and negative values always
+            hide thinking. Values must not exceed 60 seconds.
         kwargs
             Additional attributes for the chat container element.
         """
@@ -2536,9 +2536,9 @@ class ChatExpress(Chat):
             toolbar_input=toolbar_input,
             footer=footer,
             tool_grouping=tool_grouping,
-            show_thinking_after_s=show_thinking_after_s,
             drawer=drawer,
             show_history=show_history,
+            show_thinking_after_s=show_thinking_after_s,
             **kwargs,
         )
 
@@ -2662,9 +2662,9 @@ def chat_ui(
     toolbar_input: Optional[TagChild] = None,
     footer: Optional[TagChild] = None,
     tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
-    show_thinking_after_s: float = 0,
     drawer: bool | ChatDrawer = True,
     show_history: bool = True,
+    show_thinking_after_s: float = 0,
     **kwargs: TagAttrValue,
 ) -> Tag:
     """
@@ -2837,6 +2837,12 @@ def chat_ui(
         chatlas' ``ToolAnnotations``, so type checkers reject it. Chat-level
         ``"none"`` always disables grouping, even when a tool annotation
         requests ``"tool"`` or ``"all"``.
+    drawer
+        Whether the artifact panel is available. Pass a
+        :class:`~shinychat.types.ChatDrawer` to supply its initial content and
+        configuration.
+    show_history
+        Whether to render the chat's built-in history selector.
     show_thinking_after_s
         Minimum seconds a contiguous thinking block must run before it is
         displayed. ``0`` (the default) displays thinking immediately. A
@@ -2847,12 +2853,6 @@ def chat_ui(
         The duration is measured in the browser while a response streams.
         Preloaded or restored thinking has no measured duration, so it is
         displayed only when this value is ``0``.
-    drawer
-        Whether the artifact panel is available. Pass a
-        :class:`~shinychat.types.ChatDrawer` to supply its initial content and
-        configuration.
-    show_history
-        Whether to render the chat's built-in history selector.
     kwargs
         Additional attributes for the chat container element.
     """
