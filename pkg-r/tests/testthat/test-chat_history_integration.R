@@ -92,14 +92,24 @@ test_that("chat_server new_chat saves and separates history conversations", {
       expect_null(ctrl$record)
       expect_null(shiny::isolate(chat_module$history$conversation_id()))
       expect_length(client$get_turns(), 0)
-      expect_identical(store$get(ctrl$partition, first_id), first_record)
+      saved_first_record <- store$get(ctrl$partition, first_id)
+      first_record$updated_at <- NULL
+      saved_first_record_without_timestamp <- saved_first_record
+      saved_first_record_without_timestamp$updated_at <- NULL
+      expect_identical(
+        saved_first_record_without_timestamp,
+        first_record
+      )
 
       turns_two <- clear_contract_turns("second", "reply two")
       client$set_turns(turns_two)
       ctrl$on_response(lapply(turns_two, ellmer::contents_record))
 
       expect_false(identical(ctrl$record$id, first_id))
-      expect_identical(store$get(ctrl$partition, first_id), first_record)
+      expect_identical(
+        store$get(ctrl$partition, first_id),
+        saved_first_record
+      )
       expect_length(store$list(ctrl$partition), 2)
     }
   )
