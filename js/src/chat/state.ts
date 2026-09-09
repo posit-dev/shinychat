@@ -35,6 +35,8 @@ import type { HtmlBlock } from "./html-block-model"
 
 export {
   deriveToolGroupIdentity,
+  inheritRequestDefinitionIcon,
+  requestDefinitionIcons,
   structuredBlockToLoop,
   supersededRequestIds,
 } from "./tool-model"
@@ -124,10 +126,12 @@ export interface ChatInputState {
  * Tool state shared with every message through context.
  *
  * `supersededRequests` is `supersededRequestIds`, derived from the
- * transcript — see there for how it decides a request is done.
+ * transcript. `requestDefinitionIcons` carries definition identity into
+ * results that omit it. See their source functions for the derivation rules.
  */
 export interface ChatToolState {
   supersededRequests: Set<string>
+  requestDefinitionIcons: ReadonlyMap<string, string>
 }
 
 export interface ChatHistoryState {

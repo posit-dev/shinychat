@@ -27,7 +27,10 @@ import {
   type GreetingData,
   type ToolGrouping,
 } from "./state"
-import { useSupersededRequests } from "./useSupersededRequests"
+import {
+  useRequestDefinitionIcons,
+  useSupersededRequests,
+} from "./useSupersededRequests"
 import { ChatContainer, type ChatContainerHandle } from "./ChatContainer"
 import { acquireHistoryStore, getHistoryStore } from "./historyStore"
 import type {
@@ -348,9 +351,13 @@ export function ChatApp({
     state.messages,
     state.streamingMessage,
   )
+  const requestDefinitionIcons = useRequestDefinitionIcons(
+    state.messages,
+    state.streamingMessage,
+  )
   const toolState: ChatToolState = useMemo(
-    () => ({ supersededRequests }),
-    [supersededRequests],
+    () => ({ supersededRequests, requestDefinitionIcons }),
+    [supersededRequests, requestDefinitionIcons],
   )
 
   return (
