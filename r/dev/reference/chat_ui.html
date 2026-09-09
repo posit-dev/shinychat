@@ -76,9 +76,13 @@ enter new messages.</p>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">chat_ui</span><span class="op">(</span></span>
 <span>  <span class="va">id</span>,</span>
 <span>  <span class="va">...</span>,</span>
-<span>  messages <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  greeting <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  placeholder <span class="op">=</span> <span class="st">"Enter a message..."</span>,</span>
+<span>  drawer <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  footer <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  toolbar_input <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  show_history <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  show_thinking_after_s <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  width <span class="op">=</span> <span class="st">"min(clamp(680px, 50vw, 760px), 100%)"</span>,</span>
 <span>  height <span class="op">=</span> <span class="st">"auto"</span>,</span>
 <span>  fill <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -87,11 +91,8 @@ enter new messages.</p>
 <span>  enable_cancel <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  submit_key <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"enter"</span>, <span class="st">"enter+modifier"</span><span class="op">)</span>,</span>
 <span>  allow_attachments <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  toolbar_input <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  footer <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  drawer <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  show_history <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  tool_grouping <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"tool"</span>, <span class="st">"none"</span>, <span class="st">"all"</span><span class="op">)</span></span>
+<span>  tool_grouping <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"tool"</span>, <span class="st">"none"</span>, <span class="st">"all"</span><span class="op">)</span>,</span>
+<span>  messages <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -107,28 +108,6 @@ enter new messages.</p>
 <dd><p>Extra HTML attributes to include on the chat element</p></dd>
 
 
-<dt id="arg-messages">messages<a class="anchor" aria-label="anchor" href="#arg-messages"></a></dt>
-<dd><p>Deprecated. A list of messages to prepopulate the chat with.
-Startup messages can't be recorded by the conversation-history feature.
-Use <code>greeting</code> for a startup message, <code><a href="chat_append.html">chat_append()</a></code> to replay messages
-from the server, or set <code>history = FALSE</code> in <code><a href="chat_app.html">chat_server()</a></code> if you're
-managing conversation state yourself. Each message can be one of the following:</p><ul><li><p>A string, which is interpreted as markdown and rendered to HTML on the
-client.</p><ul><li><p>To prevent interpreting as markdown, mark the string as
-<code><a href="https://rstudio.github.io/htmltools/reference/HTML.html" class="external-link">htmltools::HTML()</a></code>.</p></li>
-</ul></li>
-<li><p>A UI element.</p><ul><li><p>This includes <code><a href="https://rstudio.github.io/htmltools/reference/tagList.html" class="external-link">htmltools::tagList()</a></code>, which takes UI elements
-(including strings) as children. Strings inside a tagList are
-literal text (HTML-escaped), not markdown. Use
-<code><a href="https://rstudio.github.io/htmltools/reference/HTML.html" class="external-link">htmltools::HTML()</a></code> for trusted raw HTML strings.</p></li>
-</ul></li>
-<li><p>A named list of <code>content</code> and <code>role</code>. The <code>content</code> can contain content
-as described above, and the <code>role</code> can be "assistant" or "user".</p></li>
-<li><p>Advanced: a <code><a href="https://rdrr.io/r/base/list.html" class="external-link">list()</a></code> mixing bare strings and UI elements interleaves
-markdown and HTML in one message, in order. This API is provisional
-and may change in a future release.</p></li>
-</ul></dd>
-
-
 <dt id="arg-greeting">greeting<a class="anchor" aria-label="anchor" href="#arg-greeting"></a></dt>
 <dd><p>An optional greeting to display when the chat first loads.
 Can be a <code><a href="chat_greeting.html">chat_greeting()</a></code> object, or a plain string (which is auto-wrapped
@@ -138,6 +117,39 @@ first message. For example: <code>greeting = chat_greeting("## Hello!\n\nHow can
 
 <dt id="arg-placeholder">placeholder<a class="anchor" aria-label="anchor" href="#arg-placeholder"></a></dt>
 <dd><p>The placeholder text for the chat's user input field</p></dd>
+
+
+<dt id="arg-drawer">drawer<a class="anchor" aria-label="anchor" href="#arg-drawer"></a></dt>
+<dd><p>Whether to enable the drawer. <code>TRUE</code> (the default)
+enables an initially hidden panel with default options, <code>FALSE</code> omits it,
+and <code><a href="chat_drawer.html">chat_drawer()</a></code> supplies its initial configuration.</p></dd>
+
+
+<dt id="arg-footer">footer<a class="anchor" aria-label="anchor" href="#arg-footer"></a></dt>
+<dd><p>Optional HTML content to display in a bottom-pinned, full-width
+chat region.
+This can be any HTML content (tags, tag lists, or character strings).
+Useful for adding disclaimers, attribution, or other information.
+The footer text is styled slightly smaller and lighter than body text
+by default. Customize with CSS properties <code>--shiny-chat-footer-font-size</code>
+and <code>--shiny-chat-footer-color</code> on the chat container or footer element.</p></dd>
+
+
+<dt id="arg-toolbar-input">toolbar_input<a class="anchor" aria-label="anchor" href="#arg-toolbar-input"></a></dt>
+<dd><p>Optional HTML content to display directly below the chat
+input. Use <code><a href="https://rstudio.github.io/bslib/reference/toolbar.html" class="external-link">bslib::toolbar()</a></code> to group toolbar controls.</p></dd>
+
+
+<dt id="arg-show-history">show_history<a class="anchor" aria-label="anchor" href="#arg-show-history"></a></dt>
+<dd><p>Whether to show the built-in history selector. Defaults
+to <code>TRUE</code>; setting it to <code>FALSE</code> only hides its presentation.</p></dd>
+
+
+<dt id="arg-show-thinking-after-s">show_thinking_after_s<a class="anchor" aria-label="anchor" href="#arg-show-thinking-after-s"></a></dt>
+<dd><p>The minimum number of seconds a contiguous
+thinking block must run before it is displayed. Defaults to <code>0</code>, which
+displays thinking immediately. Positive values hide shorter blocks;
+negative values always hide thinking. Values must not exceed 60 seconds.</p></dd>
 
 
 <dt id="arg-width">width<a class="anchor" aria-label="anchor" href="#arg-width"></a></dt>
@@ -215,32 +227,6 @@ would push the total over this cap are rejected in the browser with a
 notice.</p></dd>
 
 
-<dt id="arg-toolbar-input">toolbar_input<a class="anchor" aria-label="anchor" href="#arg-toolbar-input"></a></dt>
-<dd><p>Optional HTML content to display directly below the chat
-input. Use <code><a href="https://rstudio.github.io/bslib/reference/toolbar.html" class="external-link">bslib::toolbar()</a></code> to group toolbar controls.</p></dd>
-
-
-<dt id="arg-footer">footer<a class="anchor" aria-label="anchor" href="#arg-footer"></a></dt>
-<dd><p>Optional HTML content to display in a bottom-pinned, full-width
-chat region.
-This can be any HTML content (tags, tag lists, or character strings).
-Useful for adding disclaimers, attribution, or other information.
-The footer text is styled slightly smaller and lighter than body text
-by default. Customize with CSS properties <code>--shiny-chat-footer-font-size</code>
-and <code>--shiny-chat-footer-color</code> on the chat container or footer element.</p></dd>
-
-
-<dt id="arg-drawer">drawer<a class="anchor" aria-label="anchor" href="#arg-drawer"></a></dt>
-<dd><p>Whether to enable the drawer. <code>TRUE</code> (the default)
-enables an initially hidden panel with default options, <code>FALSE</code> omits it,
-and <code><a href="chat_drawer.html">chat_drawer()</a></code> supplies its initial configuration.</p></dd>
-
-
-<dt id="arg-show-history">show_history<a class="anchor" aria-label="anchor" href="#arg-show-history"></a></dt>
-<dd><p>Whether to show the built-in history selector. Defaults
-to <code>TRUE</code>; setting it to <code>FALSE</code> only hides its presentation.</p></dd>
-
-
 <dt id="arg-tool-grouping">tool_grouping<a class="anchor" aria-label="anchor" href="#arg-tool-grouping"></a></dt>
 <dd><p>Controls how tool calls are grouped together in the
 compact activity rows:</p><ul><li><p><code>"tool"</code> (default): calls to the <em>same</em> tool within a turn's contiguous
@@ -259,6 +245,28 @@ can override <code>"tool"</code> or <code>"all"</code> via a top-level <code>gro
 annotation, e.g. <code>ellmer::tool(..., annotations = ellmer::tool_annotations(grouping = "all"))</code>. <code>tool_grouping = "none"</code>
 takes precedence over every annotation and disables grouping for the whole
 chat.</p></dd>
+
+
+<dt id="arg-messages">messages<a class="anchor" aria-label="anchor" href="#arg-messages"></a></dt>
+<dd><p>Deprecated. A list of messages to prepopulate the chat with.
+Startup messages can't be recorded by the conversation-history feature.
+Use <code>greeting</code> for a startup message, <code><a href="chat_append.html">chat_append()</a></code> to replay messages
+from the server, or set <code>history = FALSE</code> in <code><a href="chat_app.html">chat_server()</a></code> if you're
+managing conversation state yourself. Each message can be one of the following:</p><ul><li><p>A string, which is interpreted as markdown and rendered to HTML on the
+client.</p><ul><li><p>To prevent interpreting as markdown, mark the string as
+<code><a href="https://rstudio.github.io/htmltools/reference/HTML.html" class="external-link">htmltools::HTML()</a></code>.</p></li>
+</ul></li>
+<li><p>A UI element.</p><ul><li><p>This includes <code><a href="https://rstudio.github.io/htmltools/reference/tagList.html" class="external-link">htmltools::tagList()</a></code>, which takes UI elements
+(including strings) as children. Strings inside a tagList are
+literal text (HTML-escaped), not markdown. Use
+<code><a href="https://rstudio.github.io/htmltools/reference/HTML.html" class="external-link">htmltools::HTML()</a></code> for trusted raw HTML strings.</p></li>
+</ul></li>
+<li><p>A named list of <code>content</code> and <code>role</code>. The <code>content</code> can contain content
+as described above, and the <code>role</code> can be "assistant" or "user".</p></li>
+<li><p>Advanced: a <code><a href="https://rdrr.io/r/base/list.html" class="external-link">list()</a></code> mixing bare strings and UI elements interleaves
+markdown and HTML in one message, in order. This API is provisional
+and may change in a future release.</p></li>
+</ul></dd>
 
 </dl></div>
     <div class="section level2">
@@ -359,6 +367,12 @@ and the current topic appears in the collapsed header as a live status.</p>
 <span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a><span class="st">&lt;topic&gt;parsing the input&lt;/topic&gt;</span></span></code></pre><p></p></div>
 <p>Topic labels are entirely optional. Without them, the thinking panel still
 works – it just won't have sub-section headings.</p>
+<p>Set <code>show_thinking_after_s</code> in <code>chat_ui()</code> to delay the thinking panel until a
+contiguous thinking block has run for a minimum number of seconds. The
+default, <code>0</code>, displays thinking immediately; a negative value always hides
+it. Values greater than 60 seconds are not supported. Durations are measured
+in the browser while streaming, so preloaded or restored thinking is
+displayed only with the default.</p>
 </div>
 
     </div>

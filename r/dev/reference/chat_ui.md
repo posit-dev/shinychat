@@ -16,9 +16,13 @@ to append messages to the chat.
 chat_ui(
   id,
   ...,
-  messages = NULL,
   greeting = NULL,
   placeholder = "Enter a message...",
+  drawer = TRUE,
+  footer = NULL,
+  toolbar_input = NULL,
+  show_history = TRUE,
+  show_thinking_after_s = 0,
   width = "min(clamp(680px, 50vw, 760px), 100%)",
   height = "auto",
   fill = TRUE,
@@ -27,11 +31,8 @@ chat_ui(
   enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
-  toolbar_input = NULL,
-  footer = NULL,
-  drawer = TRUE,
-  show_history = TRUE,
-  tool_grouping = c("tool", "none", "all")
+  tool_grouping = c("tool", "none", "all"),
+  messages = NULL
 )
 ```
 
@@ -45,42 +46,6 @@ chat_ui(
 
   Extra HTML attributes to include on the chat element
 
-- messages:
-
-  Deprecated. A list of messages to prepopulate the chat with. Startup
-  messages can't be recorded by the conversation-history feature. Use
-  `greeting` for a startup message,
-  [`chat_append()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md)
-  to replay messages from the server, or set `history = FALSE` in
-  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
-  if you're managing conversation state yourself. Each message can be
-  one of the following:
-
-  - A string, which is interpreted as markdown and rendered to HTML on
-    the client.
-
-    - To prevent interpreting as markdown, mark the string as
-      [`htmltools::HTML()`](https://rstudio.github.io/htmltools/reference/HTML.html).
-
-  - A UI element.
-
-    - This includes
-      [`htmltools::tagList()`](https://rstudio.github.io/htmltools/reference/tagList.html),
-      which takes UI elements (including strings) as children. Strings
-      inside a tagList are literal text (HTML-escaped), not markdown.
-      Use
-      [`htmltools::HTML()`](https://rstudio.github.io/htmltools/reference/HTML.html)
-      for trusted raw HTML strings.
-
-  - A named list of `content` and `role`. The `content` can contain
-    content as described above, and the `role` can be "assistant" or
-    "user".
-
-  - Advanced: a [`list()`](https://rdrr.io/r/base/list.html) mixing bare
-    strings and UI elements interleaves markdown and HTML in one
-    message, in order. This API is provisional and may change in a
-    future release.
-
 - greeting:
 
   An optional greeting to display when the chat first loads. Can be a
@@ -93,6 +58,41 @@ chat_ui(
 - placeholder:
 
   The placeholder text for the chat's user input field
+
+- drawer:
+
+  Whether to enable the drawer. `TRUE` (the default) enables an
+  initially hidden panel with default options, `FALSE` omits it, and
+  [`chat_drawer()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_drawer.md)
+  supplies its initial configuration.
+
+- footer:
+
+  Optional HTML content to display in a bottom-pinned, full-width chat
+  region. This can be any HTML content (tags, tag lists, or character
+  strings). Useful for adding disclaimers, attribution, or other
+  information. The footer text is styled slightly smaller and lighter
+  than body text by default. Customize with CSS properties
+  `--shiny-chat-footer-font-size` and `--shiny-chat-footer-color` on the
+  chat container or footer element.
+
+- toolbar_input:
+
+  Optional HTML content to display directly below the chat input. Use
+  [`bslib::toolbar()`](https://rstudio.github.io/bslib/reference/toolbar.html)
+  to group toolbar controls.
+
+- show_history:
+
+  Whether to show the built-in history selector. Defaults to `TRUE`;
+  setting it to `FALSE` only hides its presentation.
+
+- show_thinking_after_s:
+
+  The minimum number of seconds a contiguous thinking block must run
+  before it is displayed. Defaults to `0`, which displays thinking
+  immediately. Positive values hide shorter blocks; negative values
+  always hide thinking. Values must not exceed 60 seconds.
 
 - width:
 
@@ -181,34 +181,6 @@ chat_ui(
   that would push the total over this cap are rejected in the browser
   with a notice.
 
-- toolbar_input:
-
-  Optional HTML content to display directly below the chat input. Use
-  [`bslib::toolbar()`](https://rstudio.github.io/bslib/reference/toolbar.html)
-  to group toolbar controls.
-
-- footer:
-
-  Optional HTML content to display in a bottom-pinned, full-width chat
-  region. This can be any HTML content (tags, tag lists, or character
-  strings). Useful for adding disclaimers, attribution, or other
-  information. The footer text is styled slightly smaller and lighter
-  than body text by default. Customize with CSS properties
-  `--shiny-chat-footer-font-size` and `--shiny-chat-footer-color` on the
-  chat container or footer element.
-
-- drawer:
-
-  Whether to enable the drawer. `TRUE` (the default) enables an
-  initially hidden panel with default options, `FALSE` omits it, and
-  [`chat_drawer()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_drawer.md)
-  supplies its initial configuration.
-
-- show_history:
-
-  Whether to show the built-in history selector. Defaults to `TRUE`;
-  setting it to `FALSE` only hides its presentation.
-
 - tool_grouping:
 
   Controls how tool calls are grouped together in the compact activity
@@ -234,6 +206,42 @@ chat_ui(
   `ellmer::tool(..., annotations = ellmer::tool_annotations(grouping = "all"))`.
   `tool_grouping = "none"` takes precedence over every annotation and
   disables grouping for the whole chat.
+
+- messages:
+
+  Deprecated. A list of messages to prepopulate the chat with. Startup
+  messages can't be recorded by the conversation-history feature. Use
+  `greeting` for a startup message,
+  [`chat_append()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_append.md)
+  to replay messages from the server, or set `history = FALSE` in
+  [`chat_server()`](https://posit-dev.github.io/shinychat/r/dev/reference/chat_app.md)
+  if you're managing conversation state yourself. Each message can be
+  one of the following:
+
+  - A string, which is interpreted as markdown and rendered to HTML on
+    the client.
+
+    - To prevent interpreting as markdown, mark the string as
+      [`htmltools::HTML()`](https://rstudio.github.io/htmltools/reference/HTML.html).
+
+  - A UI element.
+
+    - This includes
+      [`htmltools::tagList()`](https://rstudio.github.io/htmltools/reference/tagList.html),
+      which takes UI elements (including strings) as children. Strings
+      inside a tagList are literal text (HTML-escaped), not markdown.
+      Use
+      [`htmltools::HTML()`](https://rstudio.github.io/htmltools/reference/HTML.html)
+      for trusted raw HTML strings.
+
+  - A named list of `content` and `role`. The `content` can contain
+    content as described above, and the `role` can be "assistant" or
+    "user".
+
+  - Advanced: a [`list()`](https://rdrr.io/r/base/list.html) mixing bare
+    strings and UI elements interleaves markdown and HTML in one
+    message, in order. This API is provisional and may change in a
+    future release.
 
 ## Value
 
@@ -349,6 +357,13 @@ To use topic labels, add something like this to your system prompt:
 
 Topic labels are entirely optional. Without them, the thinking panel
 still works – it just won't have sub-section headings.
+
+Set `show_thinking_after_s` in `chat_ui()` to delay the thinking panel
+until a contiguous thinking block has run for a minimum number of
+seconds. The default, `0`, displays thinking immediately; a negative
+value always hides it. Values greater than 60 seconds are not supported.
+Durations are measured in the browser while streaming, so preloaded or
+restored thinking is displayed only with the default.
 
 ## Customizing the send button
 
