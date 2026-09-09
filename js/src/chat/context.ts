@@ -15,6 +15,7 @@ export function useChatStopScroll(): StopScroll | null {
 // Nothing is superseded until a transcript exists to derive it from.
 const initialToolState: ChatToolState = {
   supersededRequests: new Set(),
+  requestDefinitionIcons: new Map(),
 }
 
 export const ChatToolContext = createContext<ChatToolState>(initialToolState)

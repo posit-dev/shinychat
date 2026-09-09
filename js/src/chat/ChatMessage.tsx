@@ -2,6 +2,7 @@ import { memo, useMemo, useState, useRef, useCallback, useEffect } from "react"
 import { BlockErrorBoundary } from "./BlockErrorBoundary"
 import {
   deriveToolGroupIdentity,
+  inheritRequestDefinitionIcon,
   type ChatMessageData,
   type ContentBlock,
   type RenderBlock,
@@ -128,7 +129,7 @@ export const ChatMessage = memo(function ChatMessage({
 }: ChatMessageProps) {
   const slashCommands = useSlashCommands()
   const toolGrouping = useToolGrouping()
-  const { supersededRequests } = useChatToolState()
+  const { supersededRequests, requestDefinitionIcons } = useChatToolState()
   const [lightbox, setLightbox] = useState<{
     src: string
     name: string
@@ -155,11 +156,18 @@ export const ChatMessage = memo(function ChatMessage({
       }
       const groups = block.groups
         .map((g) => {
-          const calls = g.calls.filter(
-            (c) =>
-              !(c.status === "running" && supersededRequests.has(c.requestId)),
-          )
-          return calls.length === g.calls.length
+          const calls = g.calls
+            .filter(
+              (c) =>
+                !(
+                  c.status === "running" && supersededRequests.has(c.requestId)
+                ),
+            )
+            .map((c) => inheritRequestDefinitionIcon(c, requestDefinitionIcons))
+          const changed =
+            calls.length !== g.calls.length ||
+            calls.some((call, index) => call !== g.calls[index])
+          return !changed
             ? g
             : { ...g, calls, ...deriveToolGroupIdentity(calls) }
         })
@@ -167,7 +175,7 @@ export const ChatMessage = memo(function ChatMessage({
       if (groups.length > 0) out.push({ block: { ...block, groups }, index })
     })
     return out
-  }, [blocks, supersededRequests])
+  }, [blocks, supersededRequests, requestDefinitionIcons])
 
   const touchHoldEnabled = isUser && !!onEdit && !disabled && !isEditing
 

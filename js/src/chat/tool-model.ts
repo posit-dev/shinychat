@@ -385,6 +385,23 @@ export function supersededRequestIds(
   return ids
 }
 
+/**
+ * Definition icons keyed by the request that supplied them.
+ *
+ * Request and result blocks remain separate lifecycle calls so they can arrive
+ * in different messages. A result that omits an icon therefore needs this
+ * index to retain its tool's shared identity after the request is hidden.
+ */
+export function requestDefinitionIcons(
+  messages: ChatMessageData[],
+  streamingMessage: ChatMessageData | null,
+): Map<string, string> {
+  const icons = new Map<string, string>()
+  for (const msg of messages) collectRequestDefinitionIcons(msg, icons)
+  if (streamingMessage) collectRequestDefinitionIcons(streamingMessage, icons)
+  return icons
+}
+
 function collectResultIds(msg: ChatMessageData, into: Set<string>): void {
   if (msg.role === "user") return
 
@@ -399,5 +416,57 @@ function collectResultIds(msg: ChatMessageData, into: Set<string>): void {
         }
       }
     }
+  }
+}
+
+function collectRequestDefinitionIcons(
+  msg: ChatMessageData,
+  into: Map<string, string>,
+): void {
+  if (msg.role === "user") return
+
+  for (const block of msg.blocks) {
+    if (block.type !== "tool_loop") continue
+    for (const group of block.groups) {
+      for (const call of group.calls) {
+        if (
+          call.status === "running" &&
+          call.requestId &&
+          call.definitionIcon !== undefined &&
+          !into.has(call.requestId)
+        ) {
+          into.set(call.requestId, call.definitionIcon)
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Restore a settled call's definition icon from its matching request.
+ *
+ * An explicit result icon remains intact. Keeping both fields lets the
+ * presentation layer distinguish a result-specific icon from the tool's
+ * stable identity.
+ */
+export function inheritRequestDefinitionIcon(
+  call: ToolCallItem,
+  definitionIcons: ReadonlyMap<string, string>,
+): ToolCallItem {
+  if (call.status === "running" || !call.requestId) return call
+
+  const definitionIcon = definitionIcons.get(call.requestId)
+  if (definitionIcon === undefined) return call
+
+  const nextDefinitionIcon = call.definitionIcon ?? definitionIcon
+  const nextIcon = call.icon ?? definitionIcon
+  if (nextDefinitionIcon === call.definitionIcon && nextIcon === call.icon) {
+    return call
+  }
+
+  return {
+    ...call,
+    definitionIcon: nextDefinitionIcon,
+    icon: nextIcon,
   }
 }

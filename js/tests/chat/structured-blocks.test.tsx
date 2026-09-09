@@ -730,7 +730,12 @@ describe("structured tool_request block via message.segments", () => {
     const superseded = supersededRequestIds(state.messages, null)
     expect([...superseded]).toEqual(["call-1"])
     const { container } = render(
-      <ChatToolContext.Provider value={{ supersededRequests: superseded }}>
+      <ChatToolContext.Provider
+        value={{
+          supersededRequests: superseded,
+          requestDefinitionIcons: new Map(),
+        }}
+      >
         <ChatMessages messages={state.messages} inputId="test-input" />
       </ChatToolContext.Provider>,
     )
@@ -800,7 +805,12 @@ describe("structured tool_request block via block_insert mid-stream", () => {
     state = chatReducer(state, { type: "chunk_end" })
     const superseded = supersededRequestIds(state.messages, null)
     const { container } = render(
-      <ChatToolContext.Provider value={{ supersededRequests: superseded }}>
+      <ChatToolContext.Provider
+        value={{
+          supersededRequests: superseded,
+          requestDefinitionIcons: new Map(),
+        }}
+      >
         <ChatMessages messages={state.messages} inputId="test-input" />
       </ChatToolContext.Provider>,
     )
