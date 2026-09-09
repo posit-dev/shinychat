@@ -1,4 +1,4 @@
-# shinychat (development version)
+# shinychat 0.5.0
 
 ## API additions
 

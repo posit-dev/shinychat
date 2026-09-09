@@ -19,6 +19,7 @@ ignore_unused_imports <- function() {
   jsonlite::fromJSON
   fastmap::fastqueue
   ellmer::contents_html
+  R6::R6Class
 }
 
 release_bullets <- function() {

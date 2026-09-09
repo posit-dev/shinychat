@@ -355,11 +355,17 @@ $shiny-chat-tool-detail-rule: var(--bs-card-border-width, var(--bs-border-width,
   }
 }
 
-// A thinking block between two tool loops is another activity row in the same
-// stack, not a separate section — thinking is part of the flow of what the
-// assistant did, so it reads continuous with the calls around it. (A thinking
-// block always splits a loop in two, since it becomes its own message block, so
-// without this the split shows up as a 1em trench.)
+// Consecutive tool loops belong to the same activity stack. They can be direct
+// siblings when a thinking block between them is hidden by show_thinking_after_s.
+.shiny-chat-tool-loop:has(+ .shiny-chat-tool-loop) {
+  margin-bottom: 0;
+}
+
+.shiny-chat-tool-loop + .shiny-chat-tool-loop {
+  margin-top: 0;
+}
+
+// A visible thinking block between two tool loops belongs to that same stack.
 .shiny-chat-tool-loop:has(+ .shiny-chat-thinking) {
   margin-bottom: 0;
 }
