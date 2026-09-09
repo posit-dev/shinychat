@@ -299,9 +299,10 @@ derive_stored_ui_messages <- function(live_groups, tools, session = NULL) {
   messages
 }
 
-# Remove the model-facing representation of user attachments from stored UI.
-# Attachment metadata renders the rich preview, so the corresponding turn
-# content must not also appear in the message body.
+# Stopgap: turn-derived UI mixes model-facing attachment content into user
+# message bodies, so we re-serialize each attachment and subtract it here.
+# The feat/history-exchange-tree rewrite captures user messages as displayed
+# instead. Delete this and attachment_content_stripped when that lands.
 strip_stored_attachment_content <- function(message) {
   attachments <- message$attachments
   if (

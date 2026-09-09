@@ -2473,6 +2473,88 @@ async def test_replay_discards_old_format_ui_and_rederives_from_turns():
 
 
 @pytest.mark.anyio
+async def test_attachment_message_round_trips_through_history():
+    attachment = {
+        "mime": "text/plain",
+        "name": "notes.txt",
+        "size": 5,
+        "data_url": "data:text/plain;base64,aGVsbG8=",
+    }
+    store = InMemoryConversationStore()
+    partition = part()
+
+    chat = _TrackingChat()
+    adapter = _TrackingAdapter()
+    controller = HistoryController(
+        chat=chat,  # type: ignore[arg-type]
+        adapter=adapter,  # type: ignore[arg-type]
+        store=store,
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+    )
+    controller.partition = partition
+    adapter.turns = [
+        {
+            "role": "user",
+            "contents": [
+                {"content_type": "text", "text": "See attached"},
+                {
+                    "content_type": "text",
+                    "text": (
+                        '<file-attachment name="notes.txt" '
+                        'type="text/plain">\n'
+                        "hello\n"
+                        "</file-attachment>"
+                    ),
+                },
+            ],
+        },
+        {"role": "assistant", "content": "Thanks"},
+    ]
+    chat.messages_ = [
+        {
+            "role": "user",
+            "segments": [
+                {"content": "See attached", "content_type": "markdown"}
+            ],
+            "attachments": [attachment],
+        },
+        {
+            "role": "assistant",
+            "segments": [{"content": "Thanks", "content_type": "markdown"}],
+        },
+    ]
+
+    await controller.on_response()
+    conversations = await store.list(partition)
+    assert len(conversations) == 1
+
+    restored_chat = _TrackingChat()
+    restored = HistoryController(
+        chat=restored_chat,  # type: ignore[arg-type]
+        adapter=_TrackingAdapter(),  # type: ignore[arg-type]
+        store=store,
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+    )
+    restored.partition = partition
+    await restored.switch_to(conversations[0].id)
+
+    assert len(restored_chat.messages_) == 2
+    restored_user = restored_chat.messages_[0]
+    assert restored_user["role"] == "user"
+    assert restored_user["segments"] == [
+        {"content": "See attached", "content_type": "markdown"}
+    ]
+    assert restored_user["attachments"] == [attachment]
+    assert restored_chat.messages_[1]["segments"] == [
+        {"content": "Thanks", "content_type": "markdown"}
+    ]
+
+
+@pytest.mark.anyio
 async def test_replay_repairs_attachment_content_in_existing_record():
     attachment = {
         "mime": "text/plain",
