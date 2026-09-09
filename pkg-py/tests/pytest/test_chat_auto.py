@@ -349,6 +349,29 @@ def test_chat_ui_enable_cancel_unset_omits_attribute():
     assert "enable-cancel" not in html
 
 
+def test_chat_ui_show_thinking_after_s_attribute():
+    assert "show-thinking-after-s" not in chat_ui("myid").get_html_string()
+    assert (
+        'show-thinking-after-s="10"'
+        in chat_ui("myid", show_thinking_after_s=10).get_html_string()
+    )
+    assert (
+        'show-thinking-after-s="-1"'
+        in chat_ui("myid", show_thinking_after_s=-1).get_html_string()
+    )
+
+
+@pytest.mark.parametrize("value", [True, "10", float("nan"), float("inf")])
+def test_chat_ui_show_thinking_after_s_rejects_invalid_values(value: object):
+    with pytest.raises(TypeError, match="show_thinking_after_s"):
+        chat_ui("myid", show_thinking_after_s=value)  # type: ignore[arg-type]
+
+
+def test_chat_ui_show_thinking_after_s_rejects_values_above_one_minute():
+    with pytest.raises(ValueError, match="must not exceed 60"):
+        chat_ui("myid", show_thinking_after_s=61)
+
+
 def test_chat_ui_aside_favicon_env_unset_omits_attribute(
     monkeypatch: pytest.MonkeyPatch,
 ):

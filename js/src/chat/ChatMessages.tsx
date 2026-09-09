@@ -21,6 +21,7 @@ export interface ChatMessagesProps {
   uploadAccept?: string[]
   maxUploadSize?: number | null
   enableUpload?: boolean
+  thinkingShowAfter?: number
 }
 
 export const ChatMessages = memo(function ChatMessages({
@@ -35,6 +36,7 @@ export const ChatMessages = memo(function ChatMessages({
   uploadAccept,
   maxUploadSize,
   enableUpload,
+  thinkingShowAfter,
 }: ChatMessagesProps) {
   // Only one message can be edited at a time: opening edit on any message
   // overwrites this id, which implicitly closes whichever one was open. Keyed
@@ -64,6 +66,7 @@ export const ChatMessages = memo(function ChatMessages({
             uploadAccept={uploadAccept}
             maxUploadSize={maxUploadSize}
             enableUpload={enableUpload}
+            thinkingShowAfter={thinkingShowAfter}
             isEditing={msg.id === editingId}
             onStartEdit={handleStartEdit}
             onCancelEdit={handleCancelEdit}

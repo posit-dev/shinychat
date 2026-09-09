@@ -136,6 +136,7 @@ export interface ChatContainerProps {
   cancelId?: string
   enableCancel?: boolean
   enableUpload?: boolean
+  thinkingShowAfter?: number
   cancelRequested?: boolean
   toolbarEl?: Element
   footerEl?: Element
@@ -190,6 +191,7 @@ export const ChatContainer = forwardRef<
     cancelId,
     enableCancel,
     enableUpload,
+    thinkingShowAfter,
     cancelRequested,
     toolbarEl,
     footerEl,
@@ -1048,6 +1050,7 @@ export const ChatContainer = forwardRef<
                     uploadAccept={uploadAccept}
                     maxUploadSize={maxUploadSize}
                     enableUpload={enableUpload}
+                    thinkingShowAfter={thinkingShowAfter}
                   />
                 </div>
               </ChatScrollContext.Provider>

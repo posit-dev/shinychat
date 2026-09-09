@@ -12,9 +12,60 @@ const chevronDSIH = { __html: chevronDown }
 interface ThinkingDisplayProps {
   thinking: ThinkingBlock
   messageId: string
+  showAfter?: number
 }
 
 const TOPIC_MIN_DISPLAY_MS = 2500
+
+export function isThinkingVisible(
+  thinking: ThinkingBlock,
+  showAfter: number,
+): boolean {
+  if (showAfter < 0) return false
+  if (showAfter <= 0) return true
+
+  const thresholdMs = showAfter * 1000
+  if (!thinking.streaming) {
+    return (
+      thinking.durationMs !== undefined && thinking.durationMs >= thresholdMs
+    )
+  }
+  return (
+    thinking.startedAt !== undefined &&
+    Date.now() - thinking.startedAt >= thresholdMs
+  )
+}
+
+function useThinkingVisibility(
+  thinking: ThinkingBlock,
+  showAfter: number,
+): boolean {
+  const [, setVisibilityVersion] = useState(0)
+  const visible = isThinkingVisible(thinking, showAfter)
+
+  useEffect(() => {
+    if (
+      visible ||
+      showAfter <= 0 ||
+      !thinking.streaming ||
+      thinking.startedAt === undefined
+    ) {
+      return
+    }
+
+    const remainingMs = Math.max(
+      0,
+      showAfter * 1000 - (Date.now() - thinking.startedAt),
+    )
+    const timer = setTimeout(
+      () => setVisibilityVersion((version) => version + 1),
+      remainingMs,
+    )
+    return () => clearTimeout(timer)
+  }, [thinking.startedAt, thinking.streaming, showAfter, visible])
+
+  return visible
+}
 
 function useDisplayedTopic(topic: string | null | undefined): string | null {
   const [displayed, setDisplayed] = useState<string | null>(null)
@@ -70,11 +121,13 @@ function ThinkingGlyph() {
 export const ThinkingDisplay = memo(function ThinkingDisplay({
   thinking,
   messageId,
+  showAfter = 0,
 }: ThinkingDisplayProps) {
   const [expanded, setExpanded] = useState(false)
   const [userToggled, setUserToggled] = useState(false)
   const prevStreamingRef = useRef(thinking.streaming)
   const outerStopScroll = useChatStopScroll()
+  const visible = useThinkingVisibility(thinking, showAfter)
 
   const {
     scrollRef: innerScrollRef,
@@ -135,7 +188,7 @@ export const ThinkingDisplay = memo(function ThinkingDisplay({
   const headerText = getHeaderText(thinking, displayedTopic)
   const { visible: labelText, fading: labelFading } = useFadingText(headerText)
 
-  if (!thinking.streaming && !thinking.content.trim()) {
+  if (!visible || (!thinking.streaming && !thinking.content.trim())) {
     return null
   }
 

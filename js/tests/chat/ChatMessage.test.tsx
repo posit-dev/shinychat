@@ -508,6 +508,80 @@ describe("ChatMessage attachments", () => {
     }
   })
 
+  it("keeps threshold-hidden thinking in the pending state", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-09-09T12:00:00Z"))
+    try {
+      const { container } = render(
+        <ChatMessage
+          index={0}
+          message={{
+            ...userMessage({ content: "", blocks: [] }),
+            role: "assistant",
+            streaming: true,
+            icon: "",
+            blocks: [
+              {
+                type: "thinking",
+                content: "Reasoning",
+                streaming: true,
+                startedAt: Date.now(),
+              },
+            ],
+          }}
+          thinkingShowAfter={10}
+        />,
+      )
+      expect(container.querySelector(".shiny-chat-thinking")).toBeNull()
+
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
+      expect(
+        container.querySelector(".shiny-chat-pending-indicator"),
+      ).not.toBeNull()
+
+      act(() => {
+        vi.advanceTimersByTime(9500)
+      })
+      expect(container.querySelector(".shiny-chat-thinking")).not.toBeNull()
+      expect(
+        container.querySelector(".shiny-chat-pending-indicator"),
+      ).not.toBeNull()
+
+      act(() => {
+        vi.advanceTimersByTime(200)
+      })
+      expect(
+        container.querySelector(".shiny-chat-pending-indicator"),
+      ).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("omits a completed thinking-only response below the threshold", () => {
+    const { container } = render(
+      <ChatMessage
+        index={0}
+        message={{
+          ...userMessage({ content: "", blocks: [] }),
+          role: "assistant",
+          blocks: [
+            {
+              type: "thinking",
+              content: "Reasoning",
+              streaming: false,
+              durationMs: 100,
+            },
+          ],
+        }}
+        thinkingShowAfter={10}
+      />,
+    )
+    expect(container.querySelector(".shiny-chat-message")).toBeNull()
+  })
+
   it("lets a per-message icon override a suppressed container default", () => {
     const { container } = render(
       <ChatMessage

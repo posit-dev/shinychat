@@ -7,9 +7,13 @@
 chat_ui(
   id,
   ...,
-  messages = NULL,
   greeting = NULL,
   placeholder = "Enter a message...",
+  drawer = TRUE,
+  footer = NULL,
+  toolbar_input = NULL,
+  show_history = TRUE,
+  show_thinking_after_s = 0,
   width = "min(clamp(680px, 50vw, 760px), 100\%)",
   height = "auto",
   fill = TRUE,
@@ -18,11 +22,8 @@ chat_ui(
   enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
-  toolbar_input = NULL,
-  footer = NULL,
-  drawer = TRUE,
-  show_history = TRUE,
-  tool_grouping = c("tool", "none", "all")
+  tool_grouping = c("tool", "none", "all"),
+  messages = NULL
 )
 }
 \arguments{
@@ -30,38 +31,35 @@ chat_ui(
 
 \item{...}{Extra HTML attributes to include on the chat element}
 
-\item{messages}{Deprecated. A list of messages to prepopulate the chat with.
-Startup messages can't be recorded by the conversation-history feature.
-Use \code{greeting} for a startup message, \code{chat_append()} to replay messages
-from the server, or set \code{history = FALSE} in \code{\link[=chat_server]{chat_server()}} if you're
-managing conversation state yourself. Each message can be one of the following:
-\itemize{
-\item A string, which is interpreted as markdown and rendered to HTML on the
-client.
-\itemize{
-\item To prevent interpreting as markdown, mark the string as
-\code{\link[htmltools:HTML]{htmltools::HTML()}}.
-}
-\item A UI element.
-\itemize{
-\item This includes \code{\link[htmltools:tagList]{htmltools::tagList()}}, which takes UI elements
-(including strings) as children. Strings inside a tagList are
-literal text (HTML-escaped), not markdown. Use
-\code{\link[htmltools:HTML]{htmltools::HTML()}} for trusted raw HTML strings.
-}
-\item A named list of \code{content} and \code{role}. The \code{content} can contain content
-as described above, and the \code{role} can be "assistant" or "user".
-\item Advanced: a \code{list()} mixing bare strings and UI elements interleaves
-markdown and HTML in one message, in order. This API is provisional
-and may change in a future release.
-}}
-
 \item{greeting}{An optional greeting to display when the chat first loads.
 Can be a \code{\link[=chat_greeting]{chat_greeting()}} object, or a plain string (which is auto-wrapped
 with default options). The greeting is dismissed when the user sends their
 first message. For example: \code{greeting = chat_greeting("## Hello!\\n\\nHow can I help you today?")}}
 
 \item{placeholder}{The placeholder text for the chat's user input field}
+
+\item{drawer}{Whether to enable the drawer. \code{TRUE} (the default)
+enables an initially hidden panel with default options, \code{FALSE} omits it,
+and \code{\link[=chat_drawer]{chat_drawer()}} supplies its initial configuration.}
+
+\item{footer}{Optional HTML content to display in a bottom-pinned, full-width
+chat region.
+This can be any HTML content (tags, tag lists, or character strings).
+Useful for adding disclaimers, attribution, or other information.
+The footer text is styled slightly smaller and lighter than body text
+by default. Customize with CSS properties \code{--shiny-chat-footer-font-size}
+and \code{--shiny-chat-footer-color} on the chat container or footer element.}
+
+\item{toolbar_input}{Optional HTML content to display directly below the chat
+input. Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group toolbar controls.}
+
+\item{show_history}{Whether to show the built-in history selector. Defaults
+to \code{TRUE}; setting it to \code{FALSE} only hides its presentation.}
+
+\item{show_thinking_after_s}{The minimum number of seconds a contiguous
+thinking block must run before it is displayed. Defaults to \code{0}, which
+displays thinking immediately. Positive values hide shorter blocks;
+negative values always hide thinking. Values must not exceed 60 seconds.}
 
 \item{width}{The CSS width of the chat element}
 
@@ -124,24 +122,6 @@ variable (a raw byte count; defaults to approximately 30 MB). Files that
 would push the total over this cap are rejected in the browser with a
 notice.}
 
-\item{toolbar_input}{Optional HTML content to display directly below the chat
-input. Use \code{\link[bslib:toolbar]{bslib::toolbar()}} to group toolbar controls.}
-
-\item{footer}{Optional HTML content to display in a bottom-pinned, full-width
-chat region.
-This can be any HTML content (tags, tag lists, or character strings).
-Useful for adding disclaimers, attribution, or other information.
-The footer text is styled slightly smaller and lighter than body text
-by default. Customize with CSS properties \code{--shiny-chat-footer-font-size}
-and \code{--shiny-chat-footer-color} on the chat container or footer element.}
-
-\item{drawer}{Whether to enable the drawer. \code{TRUE} (the default)
-enables an initially hidden panel with default options, \code{FALSE} omits it,
-and \code{\link[=chat_drawer]{chat_drawer()}} supplies its initial configuration.}
-
-\item{show_history}{Whether to show the built-in history selector. Defaults
-to \code{TRUE}; setting it to \code{FALSE} only hides its presentation.}
-
 \item{tool_grouping}{Controls how tool calls are grouped together in the
 compact activity rows:
 \itemize{
@@ -163,6 +143,32 @@ can override \code{"tool"} or \code{"all"} via a top-level \code{grouping} tool
 annotation, e.g. \code{ellmer::tool(..., annotations = ellmer::tool_annotations(grouping = "all"))}. \code{tool_grouping = "none"}
 takes precedence over every annotation and disables grouping for the whole
 chat.}
+
+\item{messages}{Deprecated. A list of messages to prepopulate the chat with.
+Startup messages can't be recorded by the conversation-history feature.
+Use \code{greeting} for a startup message, \code{chat_append()} to replay messages
+from the server, or set \code{history = FALSE} in \code{\link[=chat_server]{chat_server()}} if you're
+managing conversation state yourself. Each message can be one of the following:
+\itemize{
+\item A string, which is interpreted as markdown and rendered to HTML on the
+client.
+\itemize{
+\item To prevent interpreting as markdown, mark the string as
+\code{\link[htmltools:HTML]{htmltools::HTML()}}.
+}
+\item A UI element.
+\itemize{
+\item This includes \code{\link[htmltools:tagList]{htmltools::tagList()}}, which takes UI elements
+(including strings) as children. Strings inside a tagList are
+literal text (HTML-escaped), not markdown. Use
+\code{\link[htmltools:HTML]{htmltools::HTML()}} for trusted raw HTML strings.
+}
+\item A named list of \code{content} and \code{role}. The \code{content} can contain content
+as described above, and the \code{role} can be "assistant" or "user".
+\item Advanced: a \code{list()} mixing bare strings and UI elements interleaves
+markdown and HTML in one message, in order. This API is provisional
+and may change in a future release.
+}}
 }
 \value{
 A Shiny tag object, suitable for inclusion in a Shiny UI
@@ -285,6 +291,13 @@ to indicate what you're currently reasoning about. For example:
 
 Topic labels are entirely optional. Without them, the thinking panel still
 works -- it just won't have sub-section headings.
+
+Set \code{show_thinking_after_s} in \code{\link[=chat_ui]{chat_ui()}} to delay the thinking panel until a
+contiguous thinking block has run for a minimum number of seconds. The
+default, \code{0}, displays thinking immediately; a negative value always hides
+it. Values greater than 60 seconds are not supported. Durations are measured
+in the browser while streaming, so preloaded or restored thinking is
+displayed only with the default.
 }
 }
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import math
 import os
 import re
 import warnings
@@ -2376,11 +2377,13 @@ class ChatExpress(Chat):
     def ui(
         self,
         *,
-        messages: Optional[
-            Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
-        ] = None,
         greeting: Optional[Union[str, HTML, Tag, TagList, ChatGreeting]] = None,
         placeholder: str = "Enter a message...",
+        drawer: bool | ChatDrawer = True,
+        footer: Optional[TagChild] = None,
+        toolbar_input: Optional[TagChild] = None,
+        show_history: bool = True,
+        show_thinking_after_s: float = 0,
         width: "CssUnit" = "min(clamp(680px, 50vw, 760px), 100%)",
         height: "CssUnit" = "auto",
         fill: bool = True,
@@ -2389,11 +2392,10 @@ class ChatExpress(Chat):
         enable_cancel: "bool | MISSING_TYPE" = MISSING,
         submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
         allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
-        toolbar_input: Optional[TagChild] = None,
-        footer: Optional[TagChild] = None,
         tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
-        drawer: bool | ChatDrawer = True,
-        show_history: bool = True,
+        messages: Optional[
+            Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
+        ] = None,
         **kwargs: TagAttrValue,
     ) -> Tag:
         """
@@ -2506,6 +2508,11 @@ class ChatExpress(Chat):
             configuration.
         show_history
             Whether to render the chat's built-in history selector.
+        show_thinking_after_s
+            Minimum seconds a contiguous thinking block must run before it is
+            displayed. ``0`` (the default) displays thinking immediately;
+            positive values hide shorter blocks, and negative values always
+            hide thinking. Values must not exceed 60 seconds.
         kwargs
             Additional attributes for the chat container element.
         """
@@ -2515,9 +2522,13 @@ class ChatExpress(Chat):
         # (see `_setup_client`). Forward the tri-state and let the client decide.
         return chat_ui(
             id=self.id,
-            messages=messages,
             greeting=greeting,
             placeholder=placeholder,
+            drawer=drawer,
+            footer=footer,
+            toolbar_input=toolbar_input,
+            show_history=show_history,
+            show_thinking_after_s=show_thinking_after_s,
             width=width,
             height=height,
             fill=fill,
@@ -2526,11 +2537,8 @@ class ChatExpress(Chat):
             enable_cancel=enable_cancel,
             submit_key=submit_key,
             allow_attachments=allow_attachments,
-            toolbar_input=toolbar_input,
-            footer=footer,
             tool_grouping=tool_grouping,
-            drawer=drawer,
-            show_history=show_history,
+            messages=messages,
             **kwargs,
         )
 
@@ -2638,11 +2646,13 @@ def _container_style(width: "str | None", height: "str | None") -> "str | None":
 def chat_ui(
     id: str,
     *,
-    messages: Optional[
-        Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
-    ] = None,
     greeting: Optional[Union[str, HTML, Tag, TagList, ChatGreeting]] = None,
     placeholder: str = "Enter a message...",
+    drawer: bool | ChatDrawer = True,
+    footer: Optional[TagChild] = None,
+    toolbar_input: Optional[TagChild] = None,
+    show_history: bool = True,
+    show_thinking_after_s: float = 0,
     width: "CssUnit" = "min(clamp(680px, 50vw, 760px), 100%)",
     height: "CssUnit" = "auto",
     fill: bool = True,
@@ -2651,11 +2661,10 @@ def chat_ui(
     enable_cancel: "bool | MISSING_TYPE" = MISSING,
     submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
     allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
-    toolbar_input: Optional[TagChild] = None,
-    footer: Optional[TagChild] = None,
     tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
-    drawer: bool | ChatDrawer = True,
-    show_history: bool = True,
+    messages: Optional[
+        Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
+    ] = None,
     **kwargs: TagAttrValue,
 ) -> Tag:
     """
@@ -2834,6 +2843,16 @@ def chat_ui(
         configuration.
     show_history
         Whether to render the chat's built-in history selector.
+    show_thinking_after_s
+        Minimum seconds a contiguous thinking block must run before it is
+        displayed. ``0`` (the default) displays thinking immediately. A
+        positive value delays display until the block reaches that duration;
+        shorter blocks remain hidden. A negative value always hides thinking.
+        Values must not exceed 60 seconds.
+
+        The duration is measured in the browser while a response streams.
+        Preloaded or restored thinking has no measured duration, so it is
+        displayed only when this value is ``0``.
     kwargs
         Additional attributes for the chat container element.
     """
@@ -2861,6 +2880,20 @@ def chat_ui(
         raise ValueError(
             '`tool_grouping` must be one of "none", "tool", or "all", '
             f"not {tool_grouping!r}."
+        )
+    if (
+        isinstance(show_thinking_after_s, bool)
+        or not isinstance(show_thinking_after_s, (int, float))
+        or not math.isfinite(show_thinking_after_s)
+    ):
+        raise TypeError(
+            "`show_thinking_after_s` must be a finite number of seconds, "
+            f"not {show_thinking_after_s!r}."
+        )
+    if show_thinking_after_s > 60:
+        raise ValueError(
+            "`show_thinking_after_s` must not exceed 60 seconds, "
+            f"not {show_thinking_after_s!r}."
         )
 
     if not isinstance(drawer, (bool, ChatDrawer)):
@@ -3012,6 +3045,9 @@ def chat_ui(
         icon_send=icon_send_attr,
         submit_key=submit_key if submit_key != "enter" else None,
         tool_grouping=tool_grouping if tool_grouping != "tool" else None,
+        show_thinking_after_s=(
+            str(show_thinking_after_s) if show_thinking_after_s != 0 else None
+        ),
         show_history="false" if not show_history else None,
         **kwargs,
     )
