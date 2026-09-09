@@ -366,7 +366,10 @@ describe("ChatMessage attachments", () => {
     }
     const { container } = render(
       <ChatToolContext.Provider
-        value={{ supersededRequests: new Set(["req-1"]) }}
+        value={{
+          supersededRequests: new Set(["req-1"]),
+          requestDefinitionIcons: new Map(),
+        }}
       >
         <ChatMessage index={0} message={message} />
       </ChatToolContext.Provider>,
@@ -419,7 +422,10 @@ describe("ChatMessage attachments", () => {
     }
     const { container } = render(
       <ChatToolContext.Provider
-        value={{ supersededRequests: new Set(["req-1"]) }}
+        value={{
+          supersededRequests: new Set(["req-1"]),
+          requestDefinitionIcons: new Map(),
+        }}
       >
         <ChatMessage index={0} message={message} />
       </ChatToolContext.Provider>,

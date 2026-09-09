@@ -139,6 +139,184 @@ describe("Tool component bridge rendering", () => {
     expect(resultDiv?.textContent).toContain("Sunny, 72°F")
   })
 
+  it("carries a shared request icon into results that omit it", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+
+    const folderIcon = '<svg class="request-folder-icon"></svg>'
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [
+            {
+              type: "tool_request",
+              version: 1,
+              request_id: "read-1",
+              tool_name: "read_file",
+              title: "Read file",
+              icon: folderIcon,
+              arguments: '{"path":"one.R"}',
+            },
+            {
+              type: "tool_request",
+              version: 1,
+              request_id: "read-2",
+              tool_name: "read_file",
+              title: "Read file",
+              icon: folderIcon,
+              arguments: '{"path":"two.R"}',
+            },
+            {
+              type: "tool_result",
+              version: 1,
+              request_id: "read-1",
+              tool_name: "read_file",
+              status: "success",
+              value: "one",
+              value_type: "text",
+            },
+            {
+              type: "tool_result",
+              version: 1,
+              request_id: "read-2",
+              tool_name: "read_file",
+              status: "success",
+              value: "two",
+              value_type: "text",
+            },
+          ],
+        },
+      })
+    })
+
+    const groupGlyph = document.querySelector(".shiny-chat-tool-group__glyph")
+    expect(groupGlyph?.querySelector(".request-folder-icon")).toBeTruthy()
+    expect(document.querySelector(".spinner-border")).toBeNull()
+  })
+
+  it("carries a request icon into a result in a later message", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [
+            {
+              type: "tool_request",
+              version: 1,
+              request_id: "read-later",
+              tool_name: "read_file",
+              icon: '<svg class="request-folder-icon"></svg>',
+              arguments: "{}",
+            },
+          ],
+        },
+      })
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [
+            {
+              type: "tool_result",
+              version: 1,
+              request_id: "read-later",
+              tool_name: "read_file",
+              status: "success",
+              value: "contents",
+              value_type: "text",
+            },
+          ],
+        },
+      })
+    })
+
+    expect(
+      document.querySelector(
+        ".shiny-chat-tool-group__glyph .request-folder-icon",
+      ),
+    ).toBeTruthy()
+  })
+
+  it("keeps an explicit result icon while retaining request identity", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "message",
+        message: {
+          role: "assistant",
+          segments: [
+            {
+              type: "tool_request",
+              version: 1,
+              request_id: "read-icon",
+              tool_name: "read_file",
+              icon: '<svg class="request-folder-icon"></svg>',
+              arguments: "{}",
+            },
+            {
+              type: "tool_result",
+              version: 1,
+              request_id: "read-icon",
+              tool_name: "read_file",
+              status: "success",
+              icon: '<svg class="result-document-icon"></svg>',
+              value: "contents",
+              value_type: "text",
+            },
+          ],
+        },
+      })
+    })
+
+    expect(
+      document.querySelector(
+        ".shiny-chat-tool-group__glyph .result-document-icon",
+      ),
+    ).toBeTruthy()
+
+    expandToolRow()
+    expect(
+      document.querySelector(
+        ".shiny-tool-card .tool-icon .result-document-icon",
+      ),
+    ).toBeTruthy()
+  })
+
   it("hides an existing tool request when a matching tool result arrives without an explicit hide action", () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()
