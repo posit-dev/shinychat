@@ -532,6 +532,7 @@ test_that("extend_record_linear() stores attachment previews without model conte
       content_type = "markdown"
     ))
   )
+  expect_true(stored$attachment_content_stripped)
 })
 
 test_that("strip_stored_attachment_content repairs existing stored UI", {
@@ -565,6 +566,7 @@ test_that("strip_stored_attachment_content repairs existing stored UI", {
       content_type = "markdown"
     ))
   )
+  expect_true(cleaned$attachment_content_stripped)
 })
 
 test_that("attachment-only stored UI retains an empty message segment", {
@@ -597,6 +599,7 @@ test_that("attachment-only stored UI retains an empty message segment", {
       content_type = "markdown"
     ))
   )
+  expect_true(cleaned$attachment_content_stripped)
 })
 
 test_that("extend_record_linear() derives UI with structured blocks from tool-call turns", {

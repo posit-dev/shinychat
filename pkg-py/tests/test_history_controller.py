@@ -183,6 +183,7 @@ def test_extend_preserves_attachment_without_model_content(
     assert stored[0]["segments"] == [
         {"content": "See attached", "content_type": "markdown"}
     ]
+    assert stored[0]["attachment_content_stripped"] is True
 
 
 def test_strip_attachment_content_repairs_existing_stored_ui():
@@ -214,6 +215,7 @@ def test_strip_attachment_content_repairs_existing_stored_ui():
     assert cleaned["segments"] == [
         {"content": "See attached", "content_type": "markdown"}
     ]
+    assert cleaned.get("attachment_content_stripped") is True
 
 
 def test_strip_attachment_content_keeps_empty_attachment_only_message():
@@ -248,6 +250,7 @@ def test_strip_attachment_content_keeps_empty_attachment_only_message():
     assert cleaned["segments"] == [
         {"content": "", "content_type": "markdown"}
     ]
+    assert cleaned.get("attachment_content_stripped") is True
 
 
 def test_extend_groups_tool_exchange_into_single_node():
@@ -2516,6 +2519,62 @@ async def test_replay_repairs_attachment_content_in_existing_record():
             ],
             "attachments": [attachment],
         }
+    ]
+
+
+@pytest.mark.anyio
+async def test_replay_preserves_cleaned_text_matching_pdf_filename():
+    attachment = {
+        "mime": "application/pdf",
+        "name": "report.pdf",
+        "size": 4,
+        "data_url": "data:application/pdf;base64,JVBERg==",
+    }
+    rec = new_conversation_record(title="t")
+    extend_record_linear(
+        rec,
+        [
+            [
+                {
+                    "role": "user",
+                    "contents": [
+                        {"content_type": "text", "text": "report.pdf"},
+                        {
+                            "content_type": "pdf",
+                            "data": "JVBERg==",
+                            "filename": "report.pdf",
+                        },
+                    ],
+                }
+            ]
+        ],
+        [
+            {
+                "role": "user",
+                "segments": [
+                    {"content": "report.pdf", "content_type": "markdown"}
+                ],
+                "attachments": [attachment],
+            }
+        ],
+        ui_offset=0,
+    )
+    stored = rec.nodes[rec.path_node_ids()[0]].ui
+    assert stored is not None
+    assert stored[0]["attachment_content_stripped"] is True
+
+    chat = _TrackingChat()
+    controller, _store = _make_controller()
+    controller.chat = chat  # type: ignore[assignment]
+
+    await controller.replay_ui(rec)
+    assert chat.messages_[0]["segments"] == [
+        {"content": "report.pdf", "content_type": "markdown"}
+    ]
+
+    await controller.replay_ui(rec)
+    assert chat.messages_[0]["segments"] == [
+        {"content": "report.pdf", "content_type": "markdown"}
     ]
 
 

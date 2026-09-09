@@ -304,7 +304,11 @@ derive_stored_ui_messages <- function(live_groups, tools, session = NULL) {
 # content must not also appear in the message body.
 strip_stored_attachment_content <- function(message) {
   attachments <- message$attachments
-  if (!identical(message$role, "user") || length(attachments) == 0) {
+  if (
+    !identical(message$role, "user") ||
+      length(attachments) == 0 ||
+      isTRUE(message$attachment_content_stripped)
+  ) {
     return(message)
   }
 
@@ -371,6 +375,7 @@ strip_stored_attachment_content <- function(message) {
   }
 
   message$segments <- segments
+  message$attachment_content_stripped <- TRUE
   message
 }
 

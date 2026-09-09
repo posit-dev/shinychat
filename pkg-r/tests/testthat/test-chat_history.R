@@ -155,6 +155,61 @@ test_that("replay_ui() repairs attachment content in existing records", {
   )
 })
 
+test_that("replay_ui() preserves cleaned text matching a PDF filename", {
+  spy <- history_mock_session_with_spy()
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  ctrl <- HistoryController$new(
+    chat_id = "chat",
+    client = client,
+    options = history_options(store = store, title = NULL),
+    session = spy$session
+  )
+
+  attachment <- list(
+    mime = "application/pdf",
+    name = "report.pdf",
+    size = 4L,
+    data_url = "data:application/pdf;base64,JVBERg=="
+  )
+  contents <- list(
+    ellmer::ContentText("report.pdf"),
+    content_from_attachment(attachment)
+  )
+  turns <- list(ellmer::contents_record(ellmer::UserTurn(contents)))
+  record <- extend_record_linear(
+    new_conversation_record("test"),
+    turns,
+    tools = list(),
+    attachments = list(attachment)
+  )
+  expect_true(
+    record$nodes$n_0001$ui[[1]]$attachment_content_stripped
+  )
+
+  ctrl$replay_ui(record)
+  ctrl$replay_ui(record)
+
+  message_actions <- Filter(
+    function(message) identical(message$message$action$type, "message"),
+    history_spy_messages(spy)
+  )
+  restored <- lapply(
+    message_actions,
+    function(action) action$message$action$message$segments
+  )
+  expect_equal(
+    restored,
+    rep(
+      list(list(list(
+        content = "report.pdf",
+        content_type = "markdown"
+      ))),
+      2L
+    )
+  )
+})
+
 test_that("HistoryController$on_response() creates record on first save", {
   store <- InMemoryConversationStore$new()
   client <- mock_chat_client()

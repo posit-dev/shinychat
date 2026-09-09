@@ -44,6 +44,7 @@ class StoredUiMessage(TypedDict):
     segments: list[StoredSegmentDict | StructuredBlock]
     version: int
     attachments: NotRequired[list[AttachmentDict]]
+    attachment_content_stripped: NotRequired[bool]
 
 
 def new_conversation_record(

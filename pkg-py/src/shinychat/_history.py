@@ -205,7 +205,11 @@ def _strip_attachment_content(
 ) -> StoredUiMessage:
     """Remove model-facing attachment content from stored user UI."""
     attachments = message.get("attachments")
-    if message.get("role") != "user" or not attachments:
+    if (
+        message.get("role") != "user"
+        or not attachments
+        or message.get("attachment_content_stripped") is True
+    ):
         return message
 
     segments = [dict(segment) for segment in message["segments"]]
@@ -261,6 +265,7 @@ def _strip_attachment_content(
 
     cleaned = dict(message)
     cleaned["segments"] = cast(Any, segments)
+    cleaned["attachment_content_stripped"] = True
     return cast(StoredUiMessage, cleaned)
 
 
@@ -751,7 +756,9 @@ class HistoryController:
                 _strip_attachment_content(message) for message in stored
             ]
             for message_dict in stored:
-                await self.chat._restore_bookmark_message(message_dict)
+                restored_message = dict(message_dict)
+                restored_message.pop("attachment_content_stripped", None)
+                await self.chat._restore_bookmark_message(restored_message)
                 restored_count += 1
         # The restored messages are already in the server-side accumulator, so
         # start the offset after the messages restored into the record.
