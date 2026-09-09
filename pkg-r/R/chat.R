@@ -463,9 +463,13 @@ chat_greeting <- function(
 chat_ui <- function(
   id,
   ...,
-  messages = NULL,
   greeting = NULL,
   placeholder = "Enter a message...",
+  drawer = TRUE,
+  footer = NULL,
+  toolbar_input = NULL,
+  show_history = TRUE,
+  show_thinking_after_s = 0,
   width = "min(clamp(680px, 50vw, 760px), 100%)",
   height = "auto",
   fill = TRUE,
@@ -474,12 +478,8 @@ chat_ui <- function(
   enable_cancel = NULL,
   submit_key = c("enter", "enter+modifier"),
   allow_attachments = NULL,
-  toolbar_input = NULL,
-  footer = NULL,
-  drawer = TRUE,
-  show_history = TRUE,
   tool_grouping = c("tool", "none", "all"),
-  show_thinking_after_s = 0
+  messages = NULL
 ) {
   submit_key <- rlang::arg_match(submit_key)
   tool_grouping <- rlang::arg_match(tool_grouping)
