@@ -102,5 +102,7 @@ reference:
 
 news:
   releases:
+  - text: "v0.5.0"
+    href: https://opensource.posit.co/blog/2026-09-15_shinychat-v0.5.0/
   - text: "v0.3.0"
     href: https://shiny.posit.co/blog/posts/shinychat-tool-ui/
