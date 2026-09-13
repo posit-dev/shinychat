@@ -2,6 +2,8 @@
 
 ## shinychat 0.5.0
 
+CRAN release: 2026-09-09
+
 ### API additions
 
 - Added
