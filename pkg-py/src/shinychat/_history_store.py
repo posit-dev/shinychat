@@ -11,7 +11,11 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Literal
 
-from ._history_bookmark import global_save_dir_fn
+from ._history_bookmark import (
+    BookmarkDirFn,
+    global_restore_dir_fn,
+    global_save_dir_fn,
+)
 from ._history_types import (
     ConversationMeta,
     ConversationNode,
@@ -633,8 +637,30 @@ async def resolve_history_dir() -> Path:
 
     save_dir_fn = global_save_dir_fn()
     if save_dir_fn is not None:
-        # set_global_save_dir_fn already wraps with wrap_async, so fn is async.
-        # Registrants may return str despite the Path annotation; coerce defensively.
-        return Path(await save_dir_fn(HISTORY_BOOKMARK_ID))
+        return await resolve_bookmark_history_dir(save_dir_fn)
 
     return Path(".shinychat") / "conversations"
+
+
+async def resolve_bookmark_history_dir(save_dir_fn: BookmarkDirFn) -> Path:
+    # Hosts treat bookmarks as write-once: Connect's save fn raises if the
+    # directory already exists, and its restore fn raises if it doesn't. Shiny
+    # itself only ever saves under a fresh random id, but history reuses one
+    # fixed id across every session, so look for an existing directory before
+    # asking the host to create it.
+    #
+    # Registrants may return str despite the Path annotation; coerce defensively.
+    restore_dir_fn = global_restore_dir_fn()
+    if restore_dir_fn is not None:
+        try:
+            return Path(await restore_dir_fn(HISTORY_BOOKMARK_ID))
+        except Exception:
+            pass
+    try:
+        return Path(await save_dir_fn(HISTORY_BOOKMARK_ID))
+    except Exception:
+        # A concurrent first session may have created the directory between
+        # our restore and save calls.
+        if restore_dir_fn is None:
+            raise
+        return Path(await restore_dir_fn(HISTORY_BOOKMARK_ID))
