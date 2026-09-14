@@ -1,5 +1,9 @@
 # shinychat (development version)
 
+## Bug fixes
+
+* Conversation history now actually uses Posit Connect's persistent bookmark storage when `CONNECT_CONTENT_DATA_DIR` is unavailable. Previously it read a Shiny option that nothing sets, so history silently landed in the app directory and was lost on redeploy. The fallback also respects Connect's write-once bookmark hooks, so every session after the first reuses the existing directory instead of failing to create it.
+
 # shinychat 0.5.0
 
 ## API additions

@@ -268,23 +268,66 @@ safe_conv_path <- function(scope_dir, conv_id) {
   file.path(scope_dir, conv_id)
 }
 
+HISTORY_BOOKMARK_ID <- "shinychat-conversations"
+
 resolve_history_dir <- function() {
   connect_dir <- Sys.getenv("CONNECT_CONTENT_DATA_DIR", "")
   if (nzchar(connect_dir)) {
-    return(file.path(connect_dir, "shinychat-conversations"))
+    return(file.path(connect_dir, HISTORY_BOOKMARK_ID))
   }
 
-  # server.bookmark.dir is how Posit Connect supplies a persistent dir
-  bookmark_fn <- shiny::getShinyOption("server.bookmark.dir", NULL)
-  if (is.function(bookmark_fn)) {
-    dir <- tryCatch(
-      bookmark_fn("shinychat-conversations"),
-      error = function(e) NULL
-    )
-    if (!is.null(dir)) return(dir)
+  save_interface <- shiny::getShinyOption("save.interface", NULL)
+  if (is.function(save_interface)) {
+    dir <- resolve_bookmark_history_dir(save_interface)
+    if (!is.null(dir)) {
+      return(dir)
+    }
   }
 
   file.path(".shinychat", "conversations")
+}
+
+# Hosts register `save.interface`/`load.interface` shiny options and treat
+# bookmarks as write-once: Connect's save fn errors if the directory already
+# exists, and its load fn errors if it doesn't. Shiny itself only ever saves
+# under a fresh random id, but history reuses one fixed id across every
+# session, so look for an existing directory before asking the host to create
+# it.
+resolve_bookmark_history_dir <- function(save_interface) {
+  load_interface <- shiny::getShinyOption("load.interface", NULL)
+
+  capture_dir <- function(interface) {
+    dir <- NULL
+    interface(HISTORY_BOOKMARK_ID, function(state_dir) dir <<- state_dir)
+    dir
+  }
+  try_capture_dir <- function(interface) {
+    if (!is.function(interface)) {
+      return(NULL)
+    }
+    tryCatch(capture_dir(interface), error = function(e) NULL)
+  }
+
+  dir <- try_capture_dir(load_interface)
+  if (!is.null(dir)) {
+    return(dir)
+  }
+
+  tryCatch(
+    capture_dir(save_interface),
+    error = function(e) {
+      # A concurrent first session may have created the directory between
+      # our load and save calls.
+      dir <- try_capture_dir(load_interface)
+      if (is.null(dir)) {
+        rlang::warn(c(
+          "Shiny bookmarking is registered but unusable for conversation history; falling back to the app directory, which may not survive redeploys.",
+          x = conditionMessage(e)
+        ))
+      }
+      dir
+    }
+  )
 }
 
 #' File-based conversation storage backend
