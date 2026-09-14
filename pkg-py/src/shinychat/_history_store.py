@@ -637,12 +637,16 @@ async def resolve_history_dir() -> Path:
 
     save_dir_fn = global_save_dir_fn()
     if save_dir_fn is not None:
-        return await resolve_bookmark_history_dir(save_dir_fn)
+        bookmark_dir = await resolve_bookmark_history_dir(save_dir_fn)
+        if bookmark_dir is not None:
+            return bookmark_dir
 
     return Path(".shinychat") / "conversations"
 
 
-async def resolve_bookmark_history_dir(save_dir_fn: BookmarkDirFn) -> Path:
+async def resolve_bookmark_history_dir(
+    save_dir_fn: BookmarkDirFn,
+) -> Path | None:
     # Hosts treat bookmarks as write-once: Connect's save fn raises if the
     # directory already exists, and its restore fn raises if it doesn't. Shiny
     # itself only ever saves under a fresh random id, but history reuses one
@@ -658,9 +662,18 @@ async def resolve_bookmark_history_dir(save_dir_fn: BookmarkDirFn) -> Path:
             pass
     try:
         return Path(await save_dir_fn(HISTORY_BOOKMARK_ID))
-    except Exception:
+    except Exception as save_err:
         # A concurrent first session may have created the directory between
         # our restore and save calls.
-        if restore_dir_fn is None:
-            raise
-        return Path(await restore_dir_fn(HISTORY_BOOKMARK_ID))
+        if restore_dir_fn is not None:
+            try:
+                return Path(await restore_dir_fn(HISTORY_BOOKMARK_ID))
+            except Exception:
+                pass
+        logger.warning(
+            "Shiny bookmarking is registered but unusable for conversation "
+            "history; falling back to the app directory, which may not "
+            "survive redeploys. (%s)",
+            save_err,
+        )
+        return None

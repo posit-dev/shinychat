@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -101,6 +102,28 @@ async def test_connect_like_hooks_survive_lost_creation_race(tmp_path: Path):
     set_global_restore_dir_fn(restore_dir)
 
     assert await resolve_history_dir() == target
+
+
+@pytest.mark.anyio
+async def test_falls_back_locally_when_host_disables_bookmarking(
+    caplog: pytest.LogCaptureFixture,
+):
+    from shiny.bookmark import set_global_restore_dir_fn, set_global_save_dir_fn
+
+    def not_configured(id: str) -> Path:
+        raise NotImplementedError(
+            "This server is not configured for saving sessions to disk."
+        )
+
+    set_global_save_dir_fn(not_configured)
+    set_global_restore_dir_fn(not_configured)
+
+    with caplog.at_level(logging.WARNING, logger="shinychat"):
+        assert (
+            await resolve_history_dir() == Path(".shinychat") / "conversations"
+        )
+
+    assert "not configured for saving sessions" in caplog.text
 
 
 @pytest.mark.anyio

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
-* Fixed conversation history crashing every Shiny session after the first on Posit Connect (`RuntimeError: Directory ... already exists; cannot overwrite existing bookmark directory`) when history falls back to the server's bookmark storage. Connect's bookmark save hook is write-once, so history now checks for an existing directory before asking the host to create one.
+* Fixed conversation history crashing every Shiny session after the first on Posit Connect (`RuntimeError: Directory ... already exists; cannot overwrite existing bookmark directory`) when history falls back to the server's bookmark storage. Connect's bookmark save hook is write-once, so history now checks for an existing directory before asking the host to create one. When the host has bookmarking disabled entirely, history now warns and falls back to the app directory instead of erroring, matching the R package.
 
 ## [0.7.1] - 2026-09-09
 
