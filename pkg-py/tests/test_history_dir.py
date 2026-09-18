@@ -18,11 +18,7 @@ def reset_globals(monkeypatch: pytest.MonkeyPatch):
 
 
 def register_connect_like_hooks(root: Path) -> None:
-    """
-    Mirror Posit Connect's `ShinyBookmarksSupport`: the save fn refuses to
-    return a directory that already exists (bookmarks are write-once), and the
-    restore fn refuses to return one that doesn't.
-    """
+    """Mirror Posit Connect's write-once save/restore bookmark hooks."""
     from shiny.bookmark import set_global_restore_dir_fn, set_global_save_dir_fn
 
     def save_dir(id: str) -> Path:
@@ -73,9 +69,6 @@ async def test_connect_like_hooks_survive_repeated_sessions(tmp_path: Path):
     register_connect_like_hooks(tmp_path / "bm")
 
     first = await resolve_history_dir()
-    # A second Shiny session constructs a fresh FileConversationStore and
-    # resolves the same fixed id again; Connect must not treat that as an
-    # attempt to overwrite an existing bookmark.
     second = await resolve_history_dir()
 
     assert first == second == tmp_path / "bm" / "shinychat-conversations"

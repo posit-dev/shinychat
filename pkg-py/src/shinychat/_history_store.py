@@ -647,11 +647,10 @@ async def resolve_history_dir() -> Path:
 async def resolve_bookmark_history_dir(
     save_dir_fn: BookmarkDirFn,
 ) -> Path | None:
-    # Hosts treat bookmarks as write-once: Connect's save fn raises if the
-    # directory already exists, and its restore fn raises if it doesn't. Shiny
-    # itself only ever saves under a fresh random id, but history reuses one
-    # fixed id across every session, so look for an existing directory before
-    # asking the host to create it.
+    # Connect's bookmark hooks are write-once (save errors if the dir exists,
+    # restore errors if it doesn't). Unlike Shiny's own bookmarking, which
+    # saves under a fresh id each time, history reuses one fixed id across
+    # sessions, so try restore before asking the host to create the dir.
     #
     # Registrants may return str despite the Path annotation; coerce defensively.
     restore_dir_fn = global_restore_dir_fn()
@@ -663,8 +662,7 @@ async def resolve_bookmark_history_dir(
     try:
         return Path(await save_dir_fn(HISTORY_BOOKMARK_ID))
     except Exception as save_err:
-        # A concurrent first session may have created the directory between
-        # our restore and save calls.
+        # A concurrent session may have created the dir since our restore call.
         if restore_dir_fn is not None:
             try:
                 return Path(await restore_dir_fn(HISTORY_BOOKMARK_ID))

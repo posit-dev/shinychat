@@ -287,12 +287,11 @@ resolve_history_dir <- function() {
   file.path(".shinychat", "conversations")
 }
 
-# Hosts register `save.interface`/`load.interface` shiny options and treat
-# bookmarks as write-once: Connect's save fn errors if the directory already
-# exists, and its load fn errors if it doesn't. Shiny itself only ever saves
-# under a fresh random id, but history reuses one fixed id across every
-# session, so look for an existing directory before asking the host to create
-# it.
+# Connect's save.interface/load.interface hooks are write-once (save errors
+# if the dir exists, load errors if it doesn't). Unlike Shiny's own
+# bookmarking, which saves under a fresh id each time, history reuses one
+# fixed id across sessions, so try load before asking the host to create the
+# dir.
 resolve_bookmark_history_dir <- function(save_interface) {
   load_interface <- shiny::getShinyOption("load.interface", NULL)
 
@@ -316,8 +315,7 @@ resolve_bookmark_history_dir <- function(save_interface) {
   tryCatch(
     capture_dir(save_interface),
     error = function(e) {
-      # A concurrent first session may have created the directory between
-      # our load and save calls.
+      # A concurrent session may have created the dir since our load call.
       dir <- try_capture_dir(load_interface)
       if (is.null(dir)) {
         rlang::warn(c(

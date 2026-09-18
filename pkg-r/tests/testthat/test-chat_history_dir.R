@@ -1,6 +1,4 @@
-# Mirror Posit Connect's `configureShinyBookmarking()`: save.interface stops if
-# the directory already exists (bookmarks are write-once), load.interface stops
-# if it doesn't.
+# Mirror Posit Connect's write-once save.interface/load.interface hooks.
 local_connect_like_hooks <- function(root, .env = parent.frame()) {
   save_interface <- function(id, callback) {
     dirname <- file.path(root, id)
@@ -60,8 +58,6 @@ test_that("Connect-like hooks survive repeated sessions", {
   local_connect_like_hooks(root)
 
   first <- resolve_history_dir()
-  # A second Shiny session constructs a fresh FileConversationStore and
-  # resolves the same fixed id again; that must reuse the existing directory.
   second <- resolve_history_dir()
 
   expect_equal(first, second)
