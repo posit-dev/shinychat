@@ -1,5 +1,9 @@
 # shinychat (development version)
 
+## Bug fixes
+
+* Fixed conversation history being silently lost on redeploy on Posit Connect when `CONNECT_CONTENT_DATA_DIR` is unavailable; it now correctly persists to Connect's bookmark storage instead.
+
 # shinychat 0.5.0
 
 ## API additions

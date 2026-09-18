@@ -11,7 +11,11 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Literal
 
-from ._history_bookmark import global_save_dir_fn
+from ._history_bookmark import (
+    BookmarkDirFn,
+    global_restore_dir_fn,
+    global_save_dir_fn,
+)
 from ._history_types import (
     ConversationMeta,
     ConversationNode,
@@ -633,8 +637,41 @@ async def resolve_history_dir() -> Path:
 
     save_dir_fn = global_save_dir_fn()
     if save_dir_fn is not None:
-        # set_global_save_dir_fn already wraps with wrap_async, so fn is async.
-        # Registrants may return str despite the Path annotation; coerce defensively.
-        return Path(await save_dir_fn(HISTORY_BOOKMARK_ID))
+        bookmark_dir = await resolve_bookmark_history_dir(save_dir_fn)
+        if bookmark_dir is not None:
+            return bookmark_dir
 
     return Path(".shinychat") / "conversations"
+
+
+async def resolve_bookmark_history_dir(
+    save_dir_fn: BookmarkDirFn,
+) -> Path | None:
+    # Connect's bookmark hooks are write-once (save errors if the dir exists,
+    # restore errors if it doesn't). Unlike Shiny's own bookmarking, which
+    # saves under a fresh id each time, history reuses one fixed id across
+    # sessions, so try restore before asking the host to create the dir.
+    #
+    # Registrants may return str despite the Path annotation; coerce defensively.
+    restore_dir_fn = global_restore_dir_fn()
+    if restore_dir_fn is not None:
+        try:
+            return Path(await restore_dir_fn(HISTORY_BOOKMARK_ID))
+        except Exception:
+            pass
+    try:
+        return Path(await save_dir_fn(HISTORY_BOOKMARK_ID))
+    except Exception as save_err:
+        # A concurrent session may have created the dir since our restore call.
+        if restore_dir_fn is not None:
+            try:
+                return Path(await restore_dir_fn(HISTORY_BOOKMARK_ID))
+            except Exception:
+                pass
+        logger.warning(
+            "Shiny bookmarking is registered but unusable for conversation "
+            "history; falling back to the app directory, which may not "
+            "survive redeploys. (%s)",
+            save_err,
+        )
+        return None
