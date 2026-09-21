@@ -163,4 +163,24 @@ describe("StreamSmoother pacing", () => {
     expect(pending).toBe(true)
     smoother.flush()
   })
+
+  it("accumulates elapsed time across stalls to eventually reach distant word boundaries", () => {
+    const onEmit = vi.fn()
+    const text = "a".repeat(1000) + " b"
+    const smoother = new StreamSmoother<null>({ onEmit })
+
+    smoother.push(text, null)
+
+    // Advance timers far longer than should ever be needed to reach the space at position 1000.
+    // With default drainRate (0.02), after ~17 ticks we should have budget >= 1000.
+    // Use 100 ticks (5 seconds) to be safe.
+    for (let i = 0; i < 100 && vi.getTimerCount() > 0; i++) {
+      vi.advanceTimersByTime(50)
+    }
+
+    // The text should have been emitted via the paced onEmit, not just by flush
+    expect(onEmit).toHaveBeenCalled()
+    const emitted = onEmit.mock.calls.map((c) => c[0]).join("")
+    expect(emitted).toContain(text)
+  })
 })

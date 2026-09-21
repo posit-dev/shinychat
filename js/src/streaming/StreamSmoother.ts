@@ -40,6 +40,7 @@ export class StreamSmoother<TMeta> {
   private timer: ReturnType<typeof setTimeout> | null = null
   private currentIntervalMs: number
   private nextTickAt = 0
+  private accumulatedElapsedMs = 0
 
   constructor(options: StreamSmootherOptions<TMeta>) {
     this.onEmit = options.onEmit
@@ -88,6 +89,7 @@ export class StreamSmoother<TMeta> {
       this.timer = null
     }
     this.currentIntervalMs = this.tickIntervalMs
+    this.accumulatedElapsedMs = 0
   }
 
   private tick(): void {
@@ -95,9 +97,25 @@ export class StreamSmoother<TMeta> {
 
     const now = Date.now()
     const overrunMs = Math.max(0, now - this.nextTickAt)
-    this.drainFor(this.currentIntervalMs + overrunMs)
+    const currentElapsedMs = this.currentIntervalMs + overrunMs
+    const totalElapsedMs = this.accumulatedElapsedMs + currentElapsedMs
 
-    if (this.queue.length === 0) return
+    // Measure queue length before draining to detect if progress was made
+    const queueLengthBefore = this.queue.reduce((n, e) => n + e.text.length, 0)
+    this.drainFor(totalElapsedMs)
+    const queueLengthAfter = this.queue.reduce((n, e) => n + e.text.length, 0)
+
+    if (this.queue.length === 0) {
+      this.accumulatedElapsedMs = 0
+      return
+    }
+
+    // If no progress was made (stalled on word boundary), accumulate time for next tick
+    if (queueLengthBefore === queueLengthAfter) {
+      this.accumulatedElapsedMs = totalElapsedMs
+    } else {
+      this.accumulatedElapsedMs = 0
+    }
 
     this.currentIntervalMs =
       overrunMs > 0
