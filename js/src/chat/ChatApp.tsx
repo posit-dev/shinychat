@@ -33,11 +33,14 @@ import {
 } from "./useSupersededRequests"
 import { ChatContainer, type ChatContainerHandle } from "./ChatContainer"
 import { acquireHistoryStore, getHistoryStore } from "./historyStore"
+import { StreamSmoother } from "../streaming/StreamSmoother"
 import type {
   ChatTransport,
   ShinyLifecycle,
   GreetingOptions,
+  ContentType,
 } from "../transport/types"
+import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 import type { AttachmentPayload } from "./attachments"
 
@@ -182,6 +185,21 @@ export function ChatApp({
   // The textarea is fully uncontrolled, so value/focus mutations go through
   // the imperative handle rather than the reducer.
   useEffect(() => {
+    const smoother = new StreamSmoother<{
+      content_type?: ContentType
+      html_deps?: HtmlDep[]
+    }>({
+      onEmit: (text, meta, isFirstSlice) => {
+        dispatch({
+          type: "chunk",
+          content: text,
+          operation: "append",
+          content_type: meta.content_type,
+          html_deps: isFirstSlice ? meta.html_deps : undefined,
+        })
+      },
+    })
+
     const unsubscribe = transport.onMessage(elementId, (action) => {
       if (action.type === "history_navigate") {
         setCurrentConversationId(elementId, action.active_id)
@@ -229,9 +247,46 @@ export function ChatApp({
         }
         return
       }
+      if (action.type === "chunk_start") {
+        // A prior stream's chunk_end already flushed; dispose defensively
+        // rather than flush, since a fresh stream has nothing worth keeping.
+        smoother.dispose()
+        dispatch(action)
+        return
+      }
+      if (action.type === "chunk") {
+        if (action.operation === "replace") {
+          // A replace chunk wipes the whole in-flight message, so anything
+          // still buffered from before it would just get wiped a moment
+          // later — discard rather than flush.
+          smoother.dispose()
+          dispatch(action)
+        } else {
+          smoother.push(action.content, {
+            content_type: action.content_type,
+            html_deps: action.html_deps,
+          })
+        }
+        return
+      }
+      if (action.type === "block_insert") {
+        // Preserve order: a block must render after any text pushed before
+        // it, even if that text hasn't paced out yet.
+        smoother.flush()
+        dispatch(action)
+        return
+      }
+      if (action.type === "chunk_end") {
+        smoother.flush()
+        dispatch(action)
+        return
+      }
       dispatch(action)
     })
-    return unsubscribe
+    return () => {
+      smoother.dispose()
+      unsubscribe()
+    }
   }, [transport, elementId, historyStore])
 
   // State-driven `<inputId>_greeting_requested` input.
