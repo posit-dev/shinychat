@@ -18,6 +18,7 @@ import {
 import { getShinyTransport } from "../transport/shiny-transport"
 import { parseJsonArray } from "../utils/json"
 import { DeferredTeardown } from "../utils/deferredTeardown"
+import { StreamSmoother } from "../streaming/StreamSmoother"
 import type { ContentType, StructuredBlock } from "../transport/types"
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
@@ -52,6 +53,10 @@ class MarkdownStreamElement extends HTMLElement {
   private api: MarkdownStreamApi | null = null
   private pendingMessages: (ContentMessage | IsStreamingMessage)[] = []
   private deferredTeardown = new DeferredTeardown()
+  private smoother: StreamSmoother<{
+    trusted: boolean
+    segmentStart: boolean
+  }> | null = null
 
   connectedCallback() {
     this.deferredTeardown.cancel()
@@ -97,7 +102,27 @@ class MarkdownStreamElement extends HTMLElement {
       this.reactRoot = null
       this.api = null
       this.pendingMessages = []
+      this.smoother?.dispose()
+      this.smoother = null
     })
+  }
+
+  private getSmoother(): StreamSmoother<{
+    trusted: boolean
+    segmentStart: boolean
+  }> {
+    if (!this.smoother) {
+      this.smoother = new StreamSmoother({
+        onEmit: (text, meta, isFirstSlice) => {
+          this.api!.appendContent(
+            text,
+            meta.trusted,
+            meta.segmentStart && isFirstSlice,
+          )
+        },
+      })
+    }
+    return this.smoother
   }
 
   handleMessage(message: ContentMessage | IsStreamingMessage) {
@@ -110,6 +135,9 @@ class MarkdownStreamElement extends HTMLElement {
 
   private dispatchMessage(message: ContentMessage | IsStreamingMessage) {
     if (isStreamingMessage(message)) {
+      if (message.isStreaming === false) {
+        this.smoother?.flush()
+      }
       this.api!.setStreaming(message.isStreaming)
       return
     }
@@ -118,8 +146,10 @@ class MarkdownStreamElement extends HTMLElement {
       const block = asStreamBlock(message.block)
       if (!block) return
       if (message.operation === "replace") {
+        this.smoother?.dispose()
         this.api!.replaceWithBlock(block)
       } else {
+        this.smoother?.flush()
         this.api!.appendBlock(block)
       }
       return
@@ -127,13 +157,13 @@ class MarkdownStreamElement extends HTMLElement {
 
     const content = message.content ?? ""
     if (message.operation === "replace") {
+      this.smoother?.dispose()
       this.api!.replaceContent(content, message.trusted === true)
     } else if (message.operation === "append") {
-      this.api!.appendContent(
-        content,
-        message.trusted === true,
-        message.segment_start === true,
-      )
+      this.getSmoother().push(content, {
+        trusted: message.trusted === true,
+        segmentStart: message.segment_start === true,
+      })
     }
   }
 }
