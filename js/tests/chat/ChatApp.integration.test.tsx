@@ -121,52 +121,61 @@ describe("ChatApp integration: full message flow", () => {
   })
 
   it("streaming dot appears during streaming and disappears after chunk_end", async () => {
-    const transport = createMockTransport()
-    const shinyLifecycle = createMockShinyLifecycle()
+    vi.useFakeTimers()
+    try {
+      const transport = createMockTransport()
+      const shinyLifecycle = createMockShinyLifecycle()
 
-    render(
-      <ChatApp
-        transport={transport}
-        shinyLifecycle={shinyLifecycle}
-        elementId="test-chat"
-        inputId="test-input"
-        uploadAccept={[
-          "image/png",
-          "image/jpeg",
-          "image/gif",
-          "image/webp",
-          "application/pdf",
-        ]}
-        maxUploadSize={30000000}
-        placeholder="Type..."
-      />,
-    )
+      render(
+        <ChatApp
+          transport={transport}
+          shinyLifecycle={shinyLifecycle}
+          elementId="test-chat"
+          inputId="test-input"
+          uploadAccept={[
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+            "image/webp",
+            "application/pdf",
+          ]}
+          maxUploadSize={30000000}
+          placeholder="Type..."
+        />,
+      )
 
-    await act(async () => {
-      transport.fire("test-chat", {
-        type: "chunk_start",
-        message: {
-          role: "assistant",
-          segments: [{ content: "", content_type: "markdown" }],
-        },
+      await act(async () => {
+        transport.fire("test-chat", {
+          type: "chunk_start",
+          message: {
+            role: "assistant",
+            segments: [{ content: "", content_type: "markdown" }],
+          },
+        })
       })
-    })
 
-    await act(async () => {
-      transport.fire("test-chat", {
-        type: "chunk",
-        content: "Streaming...",
-        operation: "append",
+      await act(async () => {
+        transport.fire("test-chat", {
+          type: "chunk",
+          content: "Streaming...",
+          operation: "append",
+        })
       })
-    })
 
-    expect(document.querySelector(".markdown-stream-dot")).not.toBeNull()
+      act(() => {
+        vi.advanceTimersByTime(100)
+      })
 
-    await act(async () => {
-      transport.fire("test-chat", { type: "chunk_end" })
-    })
+      expect(document.querySelector(".markdown-stream-dot")).not.toBeNull()
 
-    expect(document.querySelector(".markdown-stream-dot")).toBeNull()
+      await act(async () => {
+        transport.fire("test-chat", { type: "chunk_end" })
+      })
+
+      expect(document.querySelector(".markdown-stream-dot")).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("keeps web activity expanded when a streaming message settles", async () => {
