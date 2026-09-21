@@ -128,6 +128,10 @@ export class StreamSmoother<TMeta> {
       }
 
       const cut = this.snapToWordBoundary(entry.text, budget)
+      if (cut === 0) {
+        // No word boundary within budget; wait for next tick
+        break
+      }
       this.onEmit(entry.text.slice(0, cut), entry.meta, !entry.emittedAny)
       entry.emittedAny = true
       entry.text = entry.text.slice(cut)
@@ -137,14 +141,24 @@ export class StreamSmoother<TMeta> {
 
   /**
    * Finds the last whitespace at or before `maxLen`, so a synthetic pacing
-   * cut never lands mid-word. Falls back to `maxLen` for a single word
-   * longer than the whole budget, guaranteeing forward progress every tick.
+   * cut never lands mid-word. If no whitespace exists within the budget but
+   * one exists beyond it, returns 0 to wait for a larger budget. If no
+   * whitespace exists anywhere, returns `maxLen` to make progress.
    */
   private snapToWordBoundary(text: string, maxLen: number): number {
     if (maxLen >= text.length) return text.length
-    for (let i = maxLen; i > 0; i--) {
+
+    // Try to find whitespace within the budget
+    for (let i = maxLen - 1; i >= 0; i--) {
       if (/\s/.test(text[i])) return i + 1
     }
+
+    // No whitespace within budget; check if any exists beyond it
+    for (let i = maxLen; i < text.length; i++) {
+      if (/\s/.test(text[i])) return 0 // Wait for larger budget
+    }
+
+    // No whitespace anywhere; cut at budget to guarantee progress
     return maxLen
   }
 }
