@@ -7,8 +7,6 @@ import {
   useState,
   useCallback,
 } from "react"
-// @ts-expect-error - vitest import is only for detecting test mode
-import { vi } from "vitest"
 import {
   ShinyLifecycleContext,
   ChatToolContext,
@@ -186,8 +184,6 @@ export function ChatApp({
 
   // The textarea is fully uncontrolled, so value/focus mutations go through
   // the imperative handle rather than the reducer.
-  const isFirstChunkInStreamRef = useRef(false)
-
   useEffect(() => {
     const smoother = new StreamSmoother<{
       content_type?: ContentType
@@ -255,7 +251,6 @@ export function ChatApp({
         // A prior stream's chunk_end already flushed; dispose defensively
         // rather than flush, since a fresh stream has nothing worth keeping.
         smoother.dispose()
-        isFirstChunkInStreamRef.current = true
         dispatch(action)
         return
       }
@@ -265,26 +260,7 @@ export function ChatApp({
           // still buffered from before it would just get wiped a moment
           // later — discard rather than flush.
           smoother.dispose()
-          isFirstChunkInStreamRef.current = false
           dispatch(action)
-        } else if (isFirstChunkInStreamRef.current) {
-          isFirstChunkInStreamRef.current = false
-          // With real timers (production), dispatch the first chunk immediately so
-          // the streaming indicator (dot) appears. With fake timers (test mode),
-          // buffer all chunks for predictable pacing control.
-          try {
-            if (vi && typeof vi.isFakeTimers === "function" && vi.isFakeTimers()) {
-              smoother.push(action.content, {
-                content_type: action.content_type,
-                html_deps: action.html_deps,
-              })
-            } else {
-              dispatch(action)
-            }
-          } catch {
-            // If vitest is not available (production build), treat as real timers
-            dispatch(action)
-          }
         } else {
           smoother.push(action.content, {
             content_type: action.content_type,
