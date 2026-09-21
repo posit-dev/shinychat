@@ -684,3 +684,115 @@ describe("ChatApp integration: page-owned history presentation", () => {
     expect(page.querySelector(".shiny-chat-history-trigger")).toBeNull()
   })
 })
+
+describe("ChatApp integration: streaming smoothing", () => {
+  it("does not render chunk text before a pacing tick elapses", async () => {
+    vi.useFakeTimers()
+    try {
+      const transport = createMockTransport()
+      const shinyLifecycle = createMockShinyLifecycle()
+
+      render(
+        <ChatApp
+          transport={transport}
+          shinyLifecycle={shinyLifecycle}
+          elementId="test-chat"
+          inputId="test-input"
+          uploadAccept={["image/png"]}
+          maxUploadSize={30000000}
+          placeholder="Type..."
+        />,
+      )
+
+      act(() => {
+        transport.fire("test-chat", {
+          type: "chunk_start",
+          message: {
+            role: "assistant",
+            segments: [{ content: "", content_type: "markdown" }],
+          },
+        })
+      })
+
+      act(() => {
+        transport.fire("test-chat", {
+          type: "chunk",
+          content: "Hello world, this is a longer streamed sentence",
+          operation: "append",
+        })
+      })
+
+      expect(screen.queryByText(/Hello world/)).toBeNull()
+
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
+
+      expect(screen.getByText(/Hello world/)).toBeTruthy()
+
+      act(() => {
+        transport.fire("test-chat", { type: "chunk_end" })
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("flushes buffered text before a block_insert so ordering is preserved", async () => {
+    vi.useFakeTimers()
+    try {
+      const transport = createMockTransport()
+      const shinyLifecycle = createMockShinyLifecycle()
+
+      render(
+        <ChatApp
+          transport={transport}
+          shinyLifecycle={shinyLifecycle}
+          elementId="test-chat"
+          inputId="test-input"
+          uploadAccept={["image/png"]}
+          maxUploadSize={30000000}
+          placeholder="Type..."
+        />,
+      )
+
+      act(() => {
+        transport.fire("test-chat", {
+          type: "chunk_start",
+          message: {
+            role: "assistant",
+            segments: [{ content: "", content_type: "markdown" }],
+          },
+        })
+      })
+
+      act(() => {
+        transport.fire("test-chat", {
+          type: "chunk",
+          content: "before the block",
+          operation: "append",
+        })
+      })
+
+      // No tick has elapsed yet — the text is still buffered.
+      expect(screen.queryByText(/before the block/)).toBeNull()
+
+      act(() => {
+        transport.fire("test-chat", {
+          type: "block_insert",
+          block: { type: "html_block", version: 1, content: "<p>a block</p>" },
+        })
+      })
+
+      // The block_insert must flush the buffered text first, so it appears
+      // even though no timer has elapsed.
+      expect(screen.getByText(/before the block/)).toBeTruthy()
+
+      act(() => {
+        transport.fire("test-chat", { type: "chunk_end" })
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
