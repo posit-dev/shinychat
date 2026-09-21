@@ -138,6 +138,8 @@ export class StreamSmoother<TMeta> {
 
     while (budget > 0 && this.queue.length > 0) {
       const entry = this.queue[0]
+      if (!entry) break
+
       if (budget >= entry.text.length) {
         this.onEmit(entry.text, entry.meta, !entry.emittedAny)
         budget -= entry.text.length
@@ -168,12 +170,12 @@ export class StreamSmoother<TMeta> {
 
     // Try to find whitespace within the budget
     for (let i = maxLen - 1; i >= 0; i--) {
-      if (/\s/.test(text[i])) return i + 1
+      if (/\s/.test(text.charAt(i))) return i + 1
     }
 
     // No whitespace within budget; check if any exists beyond it
     for (let i = maxLen; i < text.length; i++) {
-      if (/\s/.test(text[i])) return 0 // Wait for larger budget
+      if (/\s/.test(text.charAt(i))) return 0 // Wait for larger budget
     }
 
     // No whitespace anywhere; cut at budget to guarantee progress

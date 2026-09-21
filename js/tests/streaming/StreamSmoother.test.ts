@@ -64,17 +64,13 @@ describe("StreamSmoother", () => {
     smoother.flush()
 
     const calls = onEmit.mock.calls
-    expect(calls.some(([, meta]) => meta.contentType === "thinking")).toBe(
-      true,
-    )
-    expect(calls.some(([, meta]) => meta.contentType === "markdown")).toBe(
-      true,
-    )
+    expect(calls.some(([, meta]) => meta.contentType === "thinking")).toBe(true)
+    expect(calls.some(([, meta]) => meta.contentType === "markdown")).toBe(true)
     // No emitted slice's text spans both pushes.
     for (const [text] of calls) {
-      expect("thinking text".includes(text) || "regular text".includes(text)).toBe(
-        true,
-      )
+      expect(
+        "thinking text".includes(text) || "regular text".includes(text),
+      ).toBe(true)
     }
   })
 })
@@ -118,9 +114,7 @@ describe("StreamSmoother pacing", () => {
 
     const firstSliceFlags = onEmit.mock.calls.map((c) => c[2])
     expect(firstSliceFlags[0]).toBe(true)
-    expect(firstSliceFlags.slice(1).every((flag) => flag === false)).toBe(
-      true,
-    )
+    expect(firstSliceFlags.slice(1).every((flag) => flag === false)).toBe(true)
   })
 
   it("drains a larger backlog faster (more chars) per tick than a small one", () => {
