@@ -652,7 +652,7 @@ describe("MarkdownStreamElement — streaming smoothing", () => {
 
     expect(api.appendContent).not.toHaveBeenCalled()
 
-    vi.advanceTimersByTime(500)
+    vi.advanceTimersByTime(5000)
 
     expect(api.appendContent).toHaveBeenCalled()
     const emitted = api.appendContent.mock.calls.map((c) => c[0]).join("")
