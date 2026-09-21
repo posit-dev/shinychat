@@ -1,5 +1,6 @@
 import { BuildOptions, build, type Metafile } from "esbuild"
 import { sassPlugin } from "esbuild-sass-plugin"
+import { generateLicenseFile } from "generate-license-file"
 import * as fs from "node:fs/promises"
 import { createRequire } from "node:module"
 
@@ -167,6 +168,10 @@ const entries: EntryConfig[] = [
     "src/chat/attachment-types.json",
     `${outDir}/attachment-types.json`,
   )
+
+  await generateLicenseFile("./package.json", `${outDir}/THIRDPARTY.txt`, {
+    lineEnding: "lf",
+  })
 
   if (metafile && allEsbuildMetadata.length > 0) {
     const mergedMetadata = mergeMetadatas(allEsbuildMetadata)
