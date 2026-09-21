@@ -107,6 +107,7 @@ export class StreamSmoother<TMeta> {
 
     if (this.queue.length === 0) {
       this.accumulatedElapsedMs = 0
+      this.currentIntervalMs = this.tickIntervalMs
       return
     }
 
@@ -117,13 +118,10 @@ export class StreamSmoother<TMeta> {
       this.accumulatedElapsedMs = 0
     }
 
-    this.currentIntervalMs =
-      overrunMs > 0
-        ? Math.min(
-            this.maxTickIntervalMs,
-            this.currentIntervalMs * this.overrunBackoffMultiplier,
-          )
-        : this.tickIntervalMs
+    this.currentIntervalMs = Math.min(
+      this.maxTickIntervalMs,
+      this.tickIntervalMs + this.overrunBackoffMultiplier * overrunMs,
+    )
     this.scheduleTick(this.currentIntervalMs)
   }
 

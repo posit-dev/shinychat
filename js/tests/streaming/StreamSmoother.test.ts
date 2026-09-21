@@ -136,8 +136,15 @@ describe("StreamSmoother pacing", () => {
     expect(bigDrained).toBeGreaterThan(smallDrained)
   })
 
-  it("backs off the tick interval after an observed overrun", () => {
+  // These tests decouple "when the fake-timer clock fires the pending
+  // setTimeout" from "what Date.now() reports at that moment", by spying on
+  // Date.now() directly. That lets us pin an exact, deterministic overrun
+  // (the gap between the mocked "now" and the scheduled deadline) without
+  // relying on vi.setSystemTime, which does not itself fire due timers.
+  it("backs off the next interval proportionally to the observed overrun (tickIntervalMs + multiplier * overrunMs), not multiplicatively", () => {
     const onEmit = vi.fn()
+    const setTimeoutSpy = vi.spyOn(global, "setTimeout")
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(1000)
     const smoother = new StreamSmoother<null>({
       onEmit,
       tickIntervalMs: 50,
@@ -145,17 +152,78 @@ describe("StreamSmoother pacing", () => {
       overrunBackoffMultiplier: 2,
     })
 
+    // Scheduled deadline (nextTickAt) is captured as Date.now() + 50 = 1050.
     smoother.push("x".repeat(1000), null)
-    // Simulate the first tick firing 100ms late (main-thread congestion).
-    vi.setSystemTime(new Date(Date.now() + 150))
-    vi.advanceTimersByTime(0)
+    // The tick fires 20ms late: Date.now() reports 1070 when tick() runs.
+    dateNowSpy.mockReturnValue(1070)
+    vi.advanceTimersByTime(50)
 
-    // The loop is still running (backlog remains) and the *next* scheduled
-    // delay should have backed off above the base 50ms tick.
-    expect(vi.getTimerCount()).toBe(1)
-    const pending = vi.getTimerCount() > 0
-    expect(pending).toBe(true)
+    // next interval = tickIntervalMs(50) + overrunBackoffMultiplier(2) * overrun(20) = 90
+    const lastCall = setTimeoutSpy.mock.calls.at(-1)
+    const scheduledDelay = lastCall?.[1]
+    expect(scheduledDelay).toBe(90)
+
     smoother.flush()
+    setTimeoutSpy.mockRestore()
+    dateNowSpy.mockRestore()
+  })
+
+  it("caps the backed-off interval at maxTickIntervalMs even under a large overrun", () => {
+    const onEmit = vi.fn()
+    const setTimeoutSpy = vi.spyOn(global, "setTimeout")
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(1000)
+    const smoother = new StreamSmoother<null>({
+      onEmit,
+      tickIntervalMs: 50,
+      maxTickIntervalMs: 250,
+      overrunBackoffMultiplier: 2,
+    })
+
+    // Scheduled deadline is 1050. Fire 200ms late (now = 1250), which would
+    // put the raw formula (50 + 2*200 = 450) well above the 250ms cap.
+    smoother.push("x".repeat(1000), null)
+    dateNowSpy.mockReturnValue(1250)
+    vi.advanceTimersByTime(50)
+
+    const lastCall = setTimeoutSpy.mock.calls.at(-1)
+    const scheduledDelay = lastCall?.[1]
+    expect(scheduledDelay).toBe(250)
+
+    smoother.flush()
+    setTimeoutSpy.mockRestore()
+    dateNowSpy.mockRestore()
+  })
+
+  it("resets the interval back to tickIntervalMs once the queue naturally drains", () => {
+    const onEmit = vi.fn()
+    const setTimeoutSpy = vi.spyOn(global, "setTimeout")
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(1000)
+    const smoother = new StreamSmoother<null>({
+      onEmit,
+      tickIntervalMs: 50,
+      maxTickIntervalMs: 250,
+      overrunBackoffMultiplier: 2,
+    })
+
+    // A short push that fully drains on the very first tick despite a
+    // large overrun: currentIntervalMs should reset to tickIntervalMs
+    // rather than staying backed off for the next unrelated burst.
+    smoother.push("hi", null)
+    dateNowSpy.mockReturnValue(1250)
+    vi.advanceTimersByTime(50)
+
+    expect(onEmit).toHaveBeenCalledWith("hi", null, true)
+    expect(vi.getTimerCount()).toBe(0)
+
+    // The next push should be scheduled at the base interval, not a
+    // leftover backed-off one.
+    smoother.push("next burst", null)
+    const lastCall = setTimeoutSpy.mock.calls.at(-1)
+    expect(lastCall?.[1]).toBe(50)
+
+    smoother.flush()
+    setTimeoutSpy.mockRestore()
+    dateNowSpy.mockRestore()
   })
 
   it("accumulates elapsed time across stalls to eventually reach distant word boundaries", () => {

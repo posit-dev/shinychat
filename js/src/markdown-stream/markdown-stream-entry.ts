@@ -137,6 +137,8 @@ class MarkdownStreamElement extends HTMLElement {
     if (isStreamingMessage(message)) {
       if (message.isStreaming === false) {
         this.smoother?.flush()
+      } else if (message.isStreaming === true) {
+        this.smoother?.dispose()
       }
       this.api!.setStreaming(message.isStreaming)
       return

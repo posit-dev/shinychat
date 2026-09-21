@@ -724,6 +724,33 @@ describe("MarkdownStreamElement — streaming smoothing", () => {
     expect(api.appendContent).not.toHaveBeenCalled()
     expect(api.replaceContent).toHaveBeenCalledWith("the real content", true)
   })
+
+  it("disposes stale buffered text when a new stream starts without a prior flush", () => {
+    const { el, simulateApiReady } = createElement_()
+    const api = createMockApi()
+    simulateApiReady(api)
+
+    const handle = el as unknown as {
+      handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+    }
+    handle.handleMessage({
+      id: "x",
+      content: "leftover from a stream that never signaled isStreaming: false",
+      operation: "append",
+      trusted: false,
+      segment_start: false,
+    })
+
+    expect(api.appendContent).not.toHaveBeenCalled()
+
+    // A new stream starts without the prior one ever flushing.
+    handle.handleMessage({ id: "x", isStreaming: true })
+
+    vi.advanceTimersByTime(5000)
+
+    expect(api.appendContent).not.toHaveBeenCalled()
+    expect(api.setStreaming).toHaveBeenCalledWith(true)
+  })
 })
 
 describe("MarkdownStreamElement — stream block allowlist pin", () => {
