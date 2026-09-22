@@ -250,9 +250,8 @@ export const AsideGroupView = memo(function AsideGroupView({
     : countMarker
       ? "shiny-aside-pill shiny-aside-pill--count"
       : "shiny-aside-pill"
-  const showPopoverLabel =
-    Boolean(current.label) &&
-    (numberMarker || entries.length > 1 || Boolean(current.url))
+  // The pill may truncate the label, so the popover always repeats it.
+  const showPopoverLabel = Boolean(current.label)
 
   return (
     <span className="shiny-aside-group">
