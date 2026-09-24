@@ -653,6 +653,22 @@ describe("greeting_dismissed Shiny input", () => {
 })
 
 describe("server-controlled cancel", () => {
+  function mountChatInModal() {
+    const modal = document.createElement("div")
+    modal.setAttribute("role", "dialog")
+    modal.dataset.testModal = ""
+    const chat = document.createElement("shiny-chat-container")
+    modal.append(chat)
+    document.body.append(modal)
+    return { modal, chat }
+  }
+
+  afterEach(() => {
+    document
+      .querySelectorAll("[data-test-modal]")
+      .forEach((modal) => modal.remove())
+  })
+
   function startStreaming(transport: ReturnType<typeof createMockTransport>) {
     act(() => {
       transport.fire("test-chat", {
@@ -765,23 +781,18 @@ describe("server-controlled cancel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Stop generating" }))
 
+    expect(transport.sendCancel).toHaveBeenCalledExactlyOnceWith(
+      "test-chat_cancel",
+    )
     expect(focusSpy).toHaveBeenCalled()
   })
 
-  it("does not steal focus from the open history drawer when Escape cancels a stream", () => {
-    // Regression test: cancelStream (above) is also wired to the container's
-    // Escape keydown listener, which fires whenever Escape reaches it -- even
-    // while focus is inside the history drawer, a role="dialog" that
-    // restores focus to its own trigger when it closes. cancelStream must
-    // leave that focus alone rather than pulling it into the chat input.
-    //
-    // The Escape listener only attaches when scrollRef resolves a
-    // shiny-chat-container ancestor via closest(), so (unlike the other
-    // tests in this file) ChatApp must be mounted inside a real one.
+  it("closes history before cancelling a stream, without closing a surrounding modal", () => {
     const transport = createMockTransport()
     const shinyLifecycle = createMockShinyLifecycle()
-    const chat = document.createElement("shiny-chat-container")
-    document.body.append(chat)
+    const { modal, chat } = mountChatInModal()
+    const modalEscape = vi.fn()
+    modal.addEventListener("keydown", modalEscape)
 
     render(
       <ChatApp
@@ -789,13 +800,7 @@ describe("server-controlled cancel", () => {
         shinyLifecycle={shinyLifecycle}
         elementId="test-chat"
         inputId="test-input"
-        uploadAccept={[
-          "image/png",
-          "image/jpeg",
-          "image/gif",
-          "image/webp",
-          "application/pdf",
-        ]}
+        uploadAccept={[]}
         maxUploadSize={30000000}
         cancelId="test-chat_cancel"
       />,
@@ -814,23 +819,179 @@ describe("server-controlled cancel", () => {
         enable_cancel: true,
       })
     })
-
     startStreaming(transport)
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /conversation history/i }),
-    )
+    const trigger = screen.getByRole("button", {
+      name: /conversation history/i,
+    })
+    fireEvent.click(trigger)
+    const drawer = screen.getByRole("dialog", { name: "Conversation history" })
+    expect(document.activeElement).toBe(drawer)
 
-    const dialog = chat.querySelector('[role="dialog"]')
-    expect(dialog).not.toBeNull()
-    // The drawer moves focus onto itself when it opens.
-    expect(document.activeElement).toBe(dialog)
+    const editor = screen.getByRole("textbox", { name: "Chat message" })
+    const focusSpy = vi.spyOn(editor, "focus")
 
-    const editorEl = screen.getByRole("textbox", { name: "Chat message" })
-    const focusSpy = vi.spyOn(editorEl, "focus")
-
-    fireEvent.keyDown(dialog as HTMLElement, { key: "Escape" })
-
+    fireEvent.keyDown(drawer, { key: "Escape" })
+    expect(transport.sendCancel).not.toHaveBeenCalled()
     expect(focusSpy).not.toHaveBeenCalled()
+    expect(modalEscape).not.toHaveBeenCalled()
+
+    fireEvent.animationEnd(drawer.querySelector(".shiny-chat-history-drawer")!)
+    expect(document.activeElement).toBe(trigger)
+
+    fireEvent.keyDown(trigger, { key: "Escape" })
+    expect(transport.sendCancel).toHaveBeenCalledExactlyOnceWith(
+      "test-chat_cancel",
+    )
+    expect(focusSpy).toHaveBeenCalled()
+    expect(modalEscape).not.toHaveBeenCalled()
+  })
+
+  it("closes history before cancelling when focus moves back into the chat", () => {
+    const transport = createMockTransport()
+    const { modal, chat } = mountChatInModal()
+    const modalEscape = vi.fn()
+    modal.addEventListener("keydown", modalEscape)
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={createMockShinyLifecycle()}
+        elementId="test-chat"
+        inputId="test-input"
+        uploadAccept={[]}
+        maxUploadSize={30000000}
+        cancelId="test-chat_cancel"
+      />,
+      { container: chat },
+    )
+    act(() => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+      transport.fire("test-chat", {
+        type: "update_cancel",
+        enable_cancel: true,
+      })
+    })
+    startStreaming(transport)
+
+    const trigger = screen.getByRole("button", {
+      name: /conversation history/i,
+    })
+    fireEvent.click(trigger)
+    trigger.focus()
+    fireEvent.keyDown(trigger, { key: "Escape" })
+
+    expect(transport.sendCancel).not.toHaveBeenCalled()
+    expect(modalEscape).not.toHaveBeenCalled()
+    expect(trigger.getAttribute("aria-expanded")).toBe("false")
+  })
+
+  it("refocuses the editor when Stop is clicked inside a modal", () => {
+    const transport = createMockTransport()
+    const { chat } = mountChatInModal()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={createMockShinyLifecycle()}
+        elementId="test-chat"
+        inputId="test-input"
+        uploadAccept={[]}
+        maxUploadSize={30000000}
+        cancelId="test-chat_cancel"
+      />,
+      { container: chat },
+    )
+    act(() => {
+      transport.fire("test-chat", {
+        type: "update_cancel",
+        enable_cancel: true,
+      })
+    })
+    startStreaming(transport)
+
+    const editor = screen.getByRole("textbox", { name: "Chat message" })
+    const focusSpy = vi.spyOn(editor, "focus")
+    fireEvent.click(screen.getByRole("button", { name: "Stop generating" }))
+
+    expect(transport.sendCancel).toHaveBeenCalledExactlyOnceWith(
+      "test-chat_cancel",
+    )
+    expect(focusSpy).toHaveBeenCalled()
+  })
+
+  it("cancels from the editor even when the editor prevents Escape by default", () => {
+    const transport = createMockTransport()
+    const { modal, chat } = mountChatInModal()
+    const modalEscape = vi.fn()
+    modal.addEventListener("keydown", modalEscape)
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={createMockShinyLifecycle()}
+        elementId="test-chat"
+        inputId="test-input"
+        uploadAccept={[]}
+        maxUploadSize={30000000}
+        cancelId="test-chat_cancel"
+      />,
+      { container: chat },
+    )
+    act(() => {
+      transport.fire("test-chat", {
+        type: "update_cancel",
+        enable_cancel: true,
+      })
+    })
+    startStreaming(transport)
+
+    const editor = screen.getByRole("textbox", { name: "Chat message" })
+    editor.addEventListener("keydown", (event) => event.preventDefault(), {
+      once: true,
+    })
+    fireEvent.keyDown(editor, { key: "Escape" })
+
+    expect(transport.sendCancel).toHaveBeenCalledExactlyOnceWith(
+      "test-chat_cancel",
+    )
+    expect(modalEscape).not.toHaveBeenCalled()
+  })
+
+  it("lets Escape reach the modal when there is no stream to cancel", () => {
+    const transport = createMockTransport()
+    const { modal, chat } = mountChatInModal()
+    const modalEscape = vi.fn()
+    modal.addEventListener("keydown", modalEscape)
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={createMockShinyLifecycle()}
+        elementId="test-chat"
+        inputId="test-input"
+        uploadAccept={[]}
+        maxUploadSize={30000000}
+        cancelId="test-chat_cancel"
+      />,
+      { container: chat },
+    )
+    act(() => {
+      transport.fire("test-chat", {
+        type: "update_cancel",
+        enable_cancel: true,
+      })
+    })
+
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Chat message" }), {
+      key: "Escape",
+    })
+    expect(transport.sendCancel).not.toHaveBeenCalled()
+    expect(modalEscape).toHaveBeenCalledOnce()
   })
 })
