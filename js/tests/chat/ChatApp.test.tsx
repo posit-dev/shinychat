@@ -725,4 +725,112 @@ describe("server-controlled cancel", () => {
 
     expect(screen.getByRole("button", { name: "Stop generating" })).toBeTruthy()
   })
+
+  it("moves focus to the chat input after clicking Stop generating", () => {
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
+        cancelId="test-chat_cancel"
+      />,
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "update_cancel",
+        enable_cancel: true,
+      })
+    })
+
+    startStreaming(transport)
+
+    const editorEl = screen.getByRole("textbox", { name: "Chat message" })
+    // jsdom does not implement focus for contenteditable elements via
+    // TipTap's editor.commands.focus(), so document.activeElement can't be
+    // used to observe the result. Spy on the editor's focus() instead.
+    const focusSpy = vi.spyOn(editorEl, "focus")
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop generating" }))
+
+    expect(focusSpy).toHaveBeenCalled()
+  })
+
+  it("does not steal focus from the open history drawer when Escape cancels a stream", () => {
+    // Regression test: cancelStream (above) is also wired to the container's
+    // Escape keydown listener, which fires whenever Escape reaches it -- even
+    // while focus is inside the history drawer, a role="dialog" that
+    // restores focus to its own trigger when it closes. cancelStream must
+    // leave that focus alone rather than pulling it into the chat input.
+    //
+    // The Escape listener only attaches when scrollRef resolves a
+    // shiny-chat-container ancestor via closest(), so (unlike the other
+    // tests in this file) ChatApp must be mounted inside a real one.
+    const transport = createMockTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+    const chat = document.createElement("shiny-chat-container")
+    document.body.append(chat)
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="test-input"
+        uploadAccept={[
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+        ]}
+        maxUploadSize={30000000}
+        cancelId="test-chat_cancel"
+      />,
+      { container: chat },
+    )
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+      transport.fire("test-chat", {
+        type: "update_cancel",
+        enable_cancel: true,
+      })
+    })
+
+    startStreaming(transport)
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /conversation history/i }),
+    )
+
+    const dialog = chat.querySelector('[role="dialog"]')
+    expect(dialog).not.toBeNull()
+    // The drawer moves focus onto itself when it opens.
+    expect(document.activeElement).toBe(dialog)
+
+    const editorEl = screen.getByRole("textbox", { name: "Chat message" })
+    const focusSpy = vi.spyOn(editorEl, "focus")
+
+    fireEvent.keyDown(dialog as HTMLElement, { key: "Escape" })
+
+    expect(focusSpy).not.toHaveBeenCalled()
+  })
 })

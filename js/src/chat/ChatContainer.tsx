@@ -637,6 +637,13 @@ export const ChatContainer = forwardRef<
     if (!enableCancel || !cancelId || !isStreaming || cancelRequested) return
     dispatch({ type: "CANCEL_REQUESTED" })
     transport.sendCancel(cancelId)
+    // Escape also routes here from the drawer's Escape handler (see the
+    // keydown listener below), and the drawer restores focus to its own
+    // trigger when it closes -- don't fight that by pulling focus into the
+    // input while a dialog (e.g. the history drawer) owns it.
+    if (!document.activeElement?.closest('[role="dialog"]')) {
+      chatInputRef.current?.focus()
+    }
   }, [
     enableCancel,
     cancelId,
