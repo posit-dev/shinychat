@@ -1420,23 +1420,37 @@ class Chat:
             icon=icon,
         )
 
+        started = False
+
         # Run the stream in the background to get non-blocking behavior
         @reactive.extended_task
         async def _stream_task():
+            nonlocal started
+            started = True
             return await self._append_message_stream(message, stream_id)
 
         _stream_task()
 
         self._latest_stream.set(_stream_task)
 
-        # Since the task runs in the background (outside/beyond the current context,
-        # if any), we need to manually raise any exceptions that occur
         @reactive.effect
-        async def _handle_error():
-            e = _stream_task.error()
-            if e:
-                await self._raise_exception(e)
-            _handle_error.destroy()  # type: ignore
+        async def _handle_done():
+            status = _stream_task.status()
+            if status == "running":
+                return
+            _handle_done.destroy()  # type: ignore
+            # Since the task runs in the background (outside/beyond the current
+            # context, if any), we need to manually raise any exceptions that occur
+            if status == "error":
+                await self._raise_exception(_stream_task.error())
+            # Cancelled before its first step, so _append_message_stream()'s
+            # `finally` never ran: end the stream here instead
+            elif status == "cancelled" and not started:
+                empty = ChatMessageDict(content="", role="assistant")
+                await self._append_message_chunk(
+                    empty, chunk="end", stream_id=stream_id
+                )
+                await self._flush_pending_messages()
 
         return _stream_task
 
