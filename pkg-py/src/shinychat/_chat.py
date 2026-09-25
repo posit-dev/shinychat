@@ -1410,10 +1410,20 @@ class Chat:
 
         message = _utils.wrap_async_iterable(message)
 
+        # Start the stream now, not when the task runs, so any append_message*()
+        # call made after this one is queued behind the stream (#417)
+        stream_id = _utils.private_random_id()
+        await self._append_message_chunk(
+            ChatMessageDict(content="", role="assistant"),
+            chunk="start",
+            stream_id=stream_id,
+            icon=icon,
+        )
+
         # Run the stream in the background to get non-blocking behavior
         @reactive.extended_task
         async def _stream_task():
-            return await self._append_message_stream(message, icon=icon)
+            return await self._append_message_stream(message, stream_id)
 
         _stream_task()
 
@@ -1462,15 +1472,9 @@ class Chat:
     async def _append_message_stream(
         self,
         message: AsyncIterable[Any],
-        icon: HTML | Tag | bool | None = None,
+        id: str,
     ):
-        id = _utils.private_random_id()
-
         empty = ChatMessageDict(content="", role="assistant")
-        await self._append_message_chunk(
-            empty, chunk="start", stream_id=id, icon=icon
-        )
-
         try:
             async for msg in message:
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)

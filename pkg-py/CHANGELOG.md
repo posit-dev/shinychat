@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug fixes
 
 * Stopping an in-progress response now returns focus to the chat input, even inside a Shiny modal. During streaming, Escape dismisses an open slash-command menu or history drawer first; a subsequent Escape cancels the response without closing the modal. (thanks @taekop, #416)
+* `Chat.append_message_stream()` now starts its stream before returning, so messages appended after it are shown after the stream instead of possibly jumping ahead of it. (#417)
 
 ## [0.7.2] - 2026-09-18
 

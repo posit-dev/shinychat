@@ -1004,6 +1004,33 @@ def test_thinking_stream_stores_segment_not_tags():
         assert all("<thinking>" not in a["content"] for a in chunk_actions)
 
 
+def test_append_message_after_stream_keeps_call_order():
+    # Regression (#417): a message appended right after append_message_stream()
+    # (before its task starts) must be queued behind the stream.
+    with session_context(test_session):
+        chat = Chat(id="chat")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _exercise() -> None:
+            await chat.append_message_stream(["THIRD"])
+            await chat.append_message("FOURTH")
+            for _ in range(100):
+                if len(sent) >= 4:
+                    break
+                await asyncio.sleep(0.01)
+
+        run_async(_exercise)
+
+        types = [a["type"] for a in sent]
+        assert types == ["chunk_start", "chunk", "chunk_end", "message"]
+        assert sent[-1]["message"]["segments"][0]["content"] == "FOURTH"
+
+
 def test_send_message_payload_has_segments_with_thinking():
     with session_context(test_session):
         chat = Chat(id="chat")
@@ -1147,7 +1174,7 @@ def test_append_message_stream_return_includes_tagged_thinking():
         result: list[str] = []
 
         async def _exercise() -> None:
-            result.append(await chat._append_message_stream(gen()))
+            result.append(await chat._append_message_stream(gen(), "s1"))
 
         run_async(_exercise)
         assert result[0] == "<thinking>\nreasoning\n</thinking>\n\nthe answer"
