@@ -509,10 +509,7 @@ test_that("extend_record_linear() stores attachment previews without model conte
   )
   contents <- c(
     list(ellmer::ContentText("See attached")),
-    lapply(attachments, function(attachment) {
-      content <- content_from_attachment(attachment)
-      if (is.character(content)) ellmer::ContentText(content) else content
-    })
+    lapply(attachments, content_from_attachment)
   )
   turns <- list(ellmer::contents_record(ellmer::UserTurn(contents)))
 
@@ -537,10 +534,10 @@ test_that("extend_record_linear() stores attachment previews without model conte
 
 test_that("strip_stored_attachment_content repairs existing stored UI", {
   attachment <- list(
-    mime = "text/plain",
-    name = "notes.txt",
-    size = 5L,
-    data_url = "data:text/plain;base64,aGVsbG8="
+    mime = "image/png",
+    name = "plot.png",
+    size = 3L,
+    data_url = "data:image/png;base64,QUJD"
   )
   stored <- list(
     version = STORED_UI_VERSION,
@@ -548,11 +545,9 @@ test_that("strip_stored_attachment_content repairs existing stored UI", {
     segments = list(list(
       content = paste0(
         "See attached\n\n",
-        "<file-attachment name=\"notes.txt\" type=\"text/plain\">\n",
-        "hello\n",
-        "</file-attachment>"
+        "<img src=\"data:image/png;base64,QUJD\">"
       ),
-      content_type = "markdown"
+      content_type = "html"
     )),
     attachments = list(attachment)
   )
@@ -563,7 +558,7 @@ test_that("strip_stored_attachment_content repairs existing stored UI", {
     cleaned$segments,
     list(list(
       content = "See attached",
-      content_type = "markdown"
+      content_type = "html"
     ))
   )
   expect_true(cleaned$attachment_content_stripped)
@@ -571,21 +566,17 @@ test_that("strip_stored_attachment_content repairs existing stored UI", {
 
 test_that("attachment-only stored UI retains an empty message segment", {
   attachment <- list(
-    mime = "text/plain",
-    name = "notes.txt",
-    size = 5L,
-    data_url = "data:text/plain;base64,aGVsbG8="
+    mime = "image/png",
+    name = "plot.png",
+    size = 3L,
+    data_url = "data:image/png;base64,QUJD"
   )
   stored <- list(
     version = STORED_UI_VERSION,
     role = "user",
     segments = list(list(
-      content = paste0(
-        "<file-attachment name=\"notes.txt\" type=\"text/plain\">\n",
-        "hello\n",
-        "</file-attachment>"
-      ),
-      content_type = "markdown"
+      content = "<img src=\"data:image/png;base64,QUJD\">",
+      content_type = "html"
     )),
     attachments = list(attachment)
   )

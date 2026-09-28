@@ -128,11 +128,10 @@ def test_extend_appends_only_new_groups_with_ui_by_role():
                 "data_url": "data:text/markdown;base64,IyBOb3Rlcw==",
             },
             {
-                "content_type": "text",
-                "text": (
-                    '<file-attachment name="notes.md" '
-                    'type="text/markdown">\n# Notes\n</file-attachment>'
-                ),
+                "content_type": "document",
+                "mime_type": "text/markdown",
+                "data": "IyBOb3Rlcw==",
+                "filename": "notes.md",
             },
         ),
         (
@@ -220,10 +219,10 @@ def test_strip_attachment_content_repairs_existing_stored_ui():
 
 def test_strip_attachment_content_keeps_empty_attachment_only_message():
     attachment = {
-        "mime": "text/plain",
-        "name": "notes.txt",
-        "size": 5,
-        "data_url": "data:text/plain;base64,aGVsbG8=",
+        "mime": "image/png",
+        "name": "plot.png",
+        "size": 3,
+        "data_url": "data:image/png;base64,QUJD",
     }
     stored = cast(
         StoredUiMessage,
@@ -232,13 +231,9 @@ def test_strip_attachment_content_keeps_empty_attachment_only_message():
             "role": "user",
             "segments": [
                 {
-                    "content": (
-                        '<file-attachment name="notes.txt" '
-                        'type="text/plain">\n'
-                        "hello\n"
-                        "</file-attachment>"
-                    ),
-                    "content_type": "markdown",
+                    "type": "html_block",
+                    "version": 1,
+                    "content": '<img src="data:image/png;base64,QUJD"/>',
                 }
             ],
             "attachments": [attachment],
@@ -2500,13 +2495,10 @@ async def test_attachment_message_round_trips_through_history():
             "contents": [
                 {"content_type": "text", "text": "See attached"},
                 {
-                    "content_type": "text",
-                    "text": (
-                        '<file-attachment name="notes.txt" '
-                        'type="text/plain">\n'
-                        "hello\n"
-                        "</file-attachment>"
-                    ),
+                    "content_type": "document",
+                    "mime_type": "text/plain",
+                    "data": "aGVsbG8=",
+                    "filename": "notes.txt",
                 },
             ],
         },
@@ -2557,10 +2549,10 @@ async def test_attachment_message_round_trips_through_history():
 @pytest.mark.anyio
 async def test_replay_repairs_attachment_content_in_existing_record():
     attachment = {
-        "mime": "text/plain",
-        "name": "notes.txt",
-        "size": 5,
-        "data_url": "data:text/plain;base64,aGVsbG8=",
+        "mime": "image/png",
+        "name": "plot.png",
+        "size": 3,
+        "data_url": "data:image/png;base64,QUJD",
     }
     rec = new_conversation_record(title="t")
     rec.append_linear(
@@ -2570,16 +2562,12 @@ async def test_replay_repairs_attachment_content_in_existing_record():
                 "version": STORED_UI_VERSION,
                 "role": "user",
                 "segments": [
+                    {"content": "See attached", "content_type": "markdown"},
                     {
-                        "content": (
-                            "See attached\n\n"
-                            '<file-attachment name="notes.txt" '
-                            'type="text/plain">\n'
-                            "hello\n"
-                            "</file-attachment>"
-                        ),
-                        "content_type": "markdown",
-                    }
+                        "type": "html_block",
+                        "version": 1,
+                        "content": '<img src="data:image/png;base64,QUJD"/>',
+                    },
                 ],
                 "attachments": [attachment],
             }

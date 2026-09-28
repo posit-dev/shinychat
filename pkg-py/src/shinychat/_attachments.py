@@ -13,7 +13,6 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from htmltools import html_escape
 from pydantic import BaseModel
 from typing_extensions import TypedDict
 
@@ -315,17 +314,13 @@ def attachment_to_content(att: Attachment) -> "Content":
         data = decode_data_url(att.data_url)
         return ContentPDF(data=data, filename=att.name or "document.pdf")
     if is_text_type(att.mime):
-        from chatlas.types import ContentText
+        from chatlas import content_document_url
 
         _require_data_url(att)
-        text = decode_data_url(att.data_url).decode("utf-8", errors="replace")
-        name = att.name or "file"
-        return ContentText(
-            text=(
-                f'<file-attachment name="{html_escape(name, attr=True)}" '
-                f'type="{html_escape(att.mime, attr=True)}">\n{text}\n</file-attachment>'
-            )
-        )
+        content = content_document_url(att.data_url, mime_type=att.mime)
+        if att.name:
+            content.filename = att.name
+        return content
     raise ValueError(f"Unsupported attachment type: {att.mime}")
 
 

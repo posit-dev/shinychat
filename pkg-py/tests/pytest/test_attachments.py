@@ -1,7 +1,7 @@
 import base64
 
 import pytest
-from chatlas.types import ContentPDF, ContentText
+from chatlas.types import ContentDocument, ContentPDF
 from shinychat._attachments import (
     DEFAULT_MAX_ATTACHMENT_SIZE,
     SUPPORTED_ATTACHMENT_TYPES,
@@ -146,7 +146,7 @@ def test_attachment_to_content_unsupported_type_raises():
         attachment_to_content(att)
 
 
-def test_attachment_to_content_text_wraps_in_file_attachment():
+def test_attachment_to_content_text_builds_document_content():
     md = "# Title\n\nbody"
     b64 = base64.b64encode(md.encode()).decode()
     att = Attachment(
@@ -155,36 +155,10 @@ def test_attachment_to_content_text_wraps_in_file_attachment():
         name="notes.md",
     )
     content = attachment_to_content(att)
-    assert isinstance(content, ContentText)
-    assert content.text == (
-        '<file-attachment name="notes.md" type="text/markdown">\n'
-        f"{md}\n"
-        "</file-attachment>"
-    )
-
-
-def test_attachment_to_content_text_escapes_attributes():
-    b64 = base64.b64encode(b"x").decode()
-    att = Attachment(
-        mime="text/plain",
-        data_url=f"data:text/plain;base64,{b64}",
-        name='a"&<b.txt',
-    )
-    content = attachment_to_content(att)
-    assert isinstance(content, ContentText)
-    assert 'name="a&quot;&amp;&lt;b.txt"' in content.text
-
-
-def test_attachment_to_content_text_non_utf8_does_not_raise():
-    b64 = base64.b64encode(b"\xff\xfe bad bytes").decode()
-    att = Attachment(
-        mime="text/plain",
-        data_url=f"data:text/plain;base64,{b64}",
-        name="weird.txt",
-    )
-    content = attachment_to_content(att)
-    assert isinstance(content, ContentText)
-    assert "�" in content.text
+    assert isinstance(content, ContentDocument)
+    assert content.mime_type == "text/markdown"
+    assert content.filename == "notes.md"
+    assert content.data == md.encode()
 
 
 def test_attachment_to_content_pdf_malformed_base64_raises_clean_error():

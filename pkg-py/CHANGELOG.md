@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### New features
+
+* Text file attachments are now sent to the model via chatlas's `content_document_url()` rather than a hand-assembled `<file-attachment>` text wrapper, so providers that handle documents natively receive a real document. (#415)
+
 ### Bug fixes
 
 * Stopping an in-progress response now returns focus to the chat input, even inside a Shiny modal. During streaming, Escape dismisses an open slash-command menu or history drawer first; a subsequent Escape cancels the response without closing the modal. (thanks @taekop, #416)
