@@ -116,22 +116,43 @@ async function readBundledPackageLicense(
     licenses?: Array<{ type: string }>
   }
 
-  const licenseFileName = (await fs.readdir(root))
+  const license =
+    pkg.license ?? pkg.licenses?.map((l) => l.type).join(" OR ") ?? "UNKNOWN"
+
+  const licenseFileNames = (await fs.readdir(root))
     .filter((name) => /^licen[sc]e/i.test(name))
-    .sort()[0]
+    .sort()
 
-  if (!licenseFileName) {
-    throw new Error(`No license file found for bundled package at ${root}`)
+  let licenseText: string
+  if (licenseFileNames.length === 0) {
+    // Don't fail the build over a package that only declares its license in
+    // package.json (or uses a nonstandard filename like COPYING) -- fall back
+    // to the declared license, but warn loudly so it can be audited.
+    console.warn(
+      `WARNING: No license file found for bundled package at ${root}. ` +
+        `Falling back to the license declared in its package.json (${license}).`,
+    )
+    licenseText =
+      license === "UNKNOWN"
+        ? "This package ships no license file and declares no license in its package.json."
+        : `This package ships no license file. Its package.json declares the license: ${license}`
+  } else {
+    const texts = await Promise.all(
+      licenseFileNames.map(async (fileName) => {
+        const text = (await fs.readFile(`${root}/${fileName}`, "utf-8")).trim()
+        // Label each file when a package ships more than one (e.g. dual-licensed
+        // packages with both LICENSE-APACHE and LICENSE-MIT).
+        return licenseFileNames.length > 1 ? `[${fileName}]\n${text}` : text
+      }),
+    )
+    licenseText = texts.join("\n\n")
   }
-
-  const licenseText = await fs.readFile(`${root}/${licenseFileName}`, "utf-8")
 
   return {
     name: pkg.name,
     version: pkg.version,
-    license:
-      pkg.license ?? pkg.licenses?.map((l) => l.type).join(" OR ") ?? "UNKNOWN",
-    licenseText: licenseText.trim(),
+    license,
+    licenseText,
   }
 }
 
