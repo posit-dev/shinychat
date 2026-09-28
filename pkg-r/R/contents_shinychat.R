@@ -145,11 +145,11 @@ method(contents_shinychat, ellmer::ContentText) <- function(content) {
   content@text
 }
 
-# Documents display as attachment chips on the message, not body content.
-# Pinned so a future ellmer renderer for ContentDocument can't leak file
-# contents into derived UI.
+# Documents render as their filename only: user attachments already display as
+# chips on the message, and pinning this keeps a future ellmer renderer for
+# ContentDocument from leaking file contents into derived UI.
 method(contents_shinychat, ellmer::ContentDocument) <- function(content) {
-  NULL
+  content@filename
 }
 
 method(contents_shinychat, ellmer::ContentThinking) <- function(content) {

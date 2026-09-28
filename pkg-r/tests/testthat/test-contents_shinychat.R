@@ -70,6 +70,15 @@ test_that("basic Content handling works", {
   expect_equal(contents_shinychat(text_content), "test")
 })
 
+test_that("ContentDocument renders as its filename only", {
+  doc <- ellmer::content_document_url(
+    "data:text/plain;base64,aGVsbG8=",
+    mime_type = "text/plain"
+  )
+  doc@filename <- "notes.txt"
+  expect_equal(contents_shinychat(doc), "notes.txt")
+})
+
 test_that("ContentToolRequest returns NULL when display is disabled", {
   # Should return NULL when display is none
   with_shinychat_tool_display(opt = "none", {
