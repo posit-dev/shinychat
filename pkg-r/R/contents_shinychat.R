@@ -145,6 +145,13 @@ method(contents_shinychat, ellmer::ContentText) <- function(content) {
   content@text
 }
 
+# Documents display as attachment chips on the message, not body content.
+# Pinned so a future ellmer renderer for ContentDocument can't leak file
+# contents into derived UI.
+method(contents_shinychat, ellmer::ContentDocument) <- function(content) {
+  NULL
+}
+
 method(contents_shinychat, ellmer::ContentThinking) <- function(content) {
   structure(content@thinking, class = "shinychat_thinking")
 }
