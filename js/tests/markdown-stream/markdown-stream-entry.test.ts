@@ -625,6 +625,134 @@ describe("MarkdownStreamElement — structured block messages", () => {
   })
 })
 
+describe("MarkdownStreamElement — streaming smoothing", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("does not call appendContent before a pacing tick elapses", () => {
+    const { el, simulateApiReady } = createElement_()
+    const api = createMockApi()
+    simulateApiReady(api)
+
+    const handle = el as unknown as {
+      handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+    }
+    handle.handleMessage({
+      id: "x",
+      content: "a longer streamed sentence to pace out",
+      operation: "append",
+      trusted: false,
+      segment_start: false,
+    })
+
+    expect(api.appendContent).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(5000)
+
+    expect(api.appendContent).toHaveBeenCalled()
+    const emitted = api.appendContent.mock.calls.map((c) => c[0]).join("")
+    expect(emitted).toBe("a longer streamed sentence to pace out")
+  })
+
+  it("flushes buffered text before an appendBlock so ordering is preserved", () => {
+    const { el, simulateApiReady } = createElement_()
+    const api = createMockApi()
+    simulateApiReady(api)
+
+    const handle = el as unknown as {
+      handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+    }
+    handle.handleMessage({
+      id: "x",
+      content: "before the block",
+      operation: "append",
+      trusted: false,
+      segment_start: false,
+    })
+
+    expect(api.appendContent).not.toHaveBeenCalled()
+
+    handle.handleMessage({
+      id: "x",
+      operation: "append",
+      trusted: false,
+      segment_start: false,
+      block: {
+        type: "html_block",
+        version: 1,
+        content: "<p>a block</p>",
+      } as StructuredBlock,
+    })
+
+    // The buffered text must have been flushed before the block landed.
+    expect(api.appendContent).toHaveBeenCalledWith(
+      "before the block",
+      false,
+      false,
+    )
+    expect(api.appendBlock).toHaveBeenCalled()
+  })
+
+  it("discards buffered text on replace instead of flushing it", () => {
+    const { el, simulateApiReady } = createElement_()
+    const api = createMockApi()
+    simulateApiReady(api)
+
+    const handle = el as unknown as {
+      handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+    }
+    handle.handleMessage({
+      id: "x",
+      content: "stale buffered text",
+      operation: "append",
+      trusted: false,
+      segment_start: false,
+    })
+    handle.handleMessage({
+      id: "x",
+      content: "the real content",
+      operation: "replace",
+      trusted: true,
+      segment_start: true,
+    })
+
+    expect(api.appendContent).not.toHaveBeenCalled()
+    expect(api.replaceContent).toHaveBeenCalledWith("the real content", true)
+  })
+
+  it("disposes stale buffered text when a new stream starts without a prior flush", () => {
+    const { el, simulateApiReady } = createElement_()
+    const api = createMockApi()
+    simulateApiReady(api)
+
+    const handle = el as unknown as {
+      handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+    }
+    handle.handleMessage({
+      id: "x",
+      content: "leftover from a stream that never signaled isStreaming: false",
+      operation: "append",
+      trusted: false,
+      segment_start: false,
+    })
+
+    expect(api.appendContent).not.toHaveBeenCalled()
+
+    // A new stream starts without the prior one ever flushing.
+    handle.handleMessage({ id: "x", isStreaming: true })
+
+    vi.advanceTimersByTime(5000)
+
+    expect(api.appendContent).not.toHaveBeenCalled()
+    expect(api.setStreaming).toHaveBeenCalledWith(true)
+  })
+})
+
 describe("MarkdownStreamElement — stream block allowlist pin", () => {
   it("accepts exactly the pinned set of stream block types", async () => {
     // This test pins the exact set of structured block types allowed in a
