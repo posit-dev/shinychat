@@ -2,6 +2,8 @@
 
 ## Bug fixes
 
+* Stopping an in-progress response now returns focus to the chat input, even inside a Shiny modal. During streaming, Escape dismisses an open slash-command menu or history drawer first; a subsequent Escape cancels the response without closing the modal. (thanks @taekop, #416)
+
 * Fixed conversation history being silently lost on redeploy on Posit Connect when `CONNECT_CONTENT_DATA_DIR` is unavailable; it now correctly persists to Connect's bookmark storage instead.
 
 # shinychat 0.5.0
