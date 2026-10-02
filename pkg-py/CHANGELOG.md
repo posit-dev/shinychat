@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Stopping an in-progress response now returns focus to the chat input, even inside a Shiny modal. During streaming, Escape dismisses an open slash-command menu or history drawer first; a subsequent Escape cancels the response without closing the modal. (thanks @taekop, #416)
 
+* Conversation history now makes changes to the active conversation one at a time. Before, app code that called `chat.history.save()` or `chat.client.new_chat()` while a response was being saved could interleave with the save, so the next conversation could skip messages. This matters more with py-shiny versions that run async effects concurrently (posit-dev/py-shiny#2549). (#422)
+
 ## [0.7.2] - 2026-09-18
 
 ### Bug fixes

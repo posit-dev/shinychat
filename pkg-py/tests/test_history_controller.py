@@ -2,6 +2,7 @@
 # is covered by Playwright e2e tests (Task 13). This file tests the pure
 # helpers that HistoryController delegates to.
 
+import asyncio
 import warnings
 from datetime import timedelta
 from typing import Any, Callable, cast
@@ -546,6 +547,46 @@ async def test_new_chat_notifies_settled_false():
     await controller.new_chat()
 
     assert calls == [False]
+
+
+class _GatedStore(_RecordingStore):
+    """Pauses the first put() until released, like a slow store write."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.first_put_started = asyncio.Event()
+        self.release_first_put = asyncio.Event()
+
+    async def put(self, partition: ConversationPartition, record: Any) -> None:
+        await super().put(partition, record)
+        if len(self.put_calls) == 1:
+            self.first_put_started.set()
+            await self.release_first_put.wait()
+
+
+@pytest.mark.anyio
+async def test_new_chat_waits_for_in_progress_on_response():
+    # App code can call new_chat() from an effect that isn't triggered by an
+    # input, so Shiny may start it while on_response() is paused at an await.
+    store = _GatedStore()
+    controller, _store = _make_controller(store=store)
+    fake_chat = cast(Any, controller.chat)
+    fake_chat._messages_for_bookmark = lambda: [
+        msg("user"),
+        msg("assistant"),
+    ]
+
+    saving = asyncio.create_task(controller.on_response())
+    await store.first_put_started.wait()
+    starting_new = asyncio.create_task(controller.new_chat())
+    await asyncio.sleep(0)
+    store.release_first_put.set()
+    await asyncio.gather(saving, starting_new)
+
+    # new_chat() ran after on_response() finished, so the new conversation
+    # starts empty instead of inheriting the old conversation's ui_offset.
+    assert controller.record is None
+    assert controller.ui_offset == 0
 
 
 @pytest.mark.anyio

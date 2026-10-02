@@ -2,8 +2,20 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import functools
 import warnings
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Awaitable,
+    Callable,
+    Concatenate,
+    Coroutine,
+    Literal,
+    ParamSpec,
+    TypeVar,
+    cast,
+)
 
 from ._attachments import (
     Attachment,
@@ -360,6 +372,25 @@ def extend_record_linear(
         node.ui = [*(node.ui or []), message]
 
 
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def _with_record_lock(
+    fn: Callable[Concatenate[HistoryController, _P], Coroutine[Any, Any, _R]],
+) -> Callable[Concatenate[HistoryController, _P], Coroutine[Any, Any, _R]]:
+    """Run a HistoryController method while holding its ``_record_lock``."""
+
+    @functools.wraps(fn)
+    async def wrapper(
+        self: HistoryController, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _R:
+        async with self._record_lock:
+            return await fn(self, *args, **kwargs)
+
+    return wrapper
+
+
 class HistoryController:
     """Session-scoped orchestrator for conversation history."""
 
@@ -429,6 +460,14 @@ class HistoryController:
         self.max_store_bytes: int | None = max_store_bytes
         self._title_task: asyncio.Task[None] | None = None
         self._over_budget_warned: bool = False
+        # Held by every operation that changes the active record or
+        # conversation, since each reads state and writes it back across
+        # awaits. App code can start save() and new_chat() from effects that
+        # Shiny runs while another operation is paused at an await. The lock
+        # isn't reentrant, so methods marked @_with_record_lock must not call
+        # each other; they share the unlocked helpers (save_current(),
+        # activate_record(), ...).
+        self._record_lock = asyncio.Lock()
 
     # -- active conversation identity --------------------------------------
 
@@ -505,15 +544,14 @@ class HistoryController:
 
     # -- save -----------------------------------------------------------
 
+    @_with_record_lock
     async def on_response(self) -> None:
         """Save trigger: a completed assistant response.
 
         The server-side message accumulator and recorded turns are read before
         writing the record. Reads and writes are separated by awaits
-        (``store.put``, eviction, bookmark mint), but this is safe without an
-        explicit lock because Shiny serializes reactive flushes behind a
-        single process-wide ``reactive.lock()`` for the full duration of
-        effect execution.
+        (``store.put``, eviction, bookmark mint); ``_record_lock`` keeps every
+        other change to the record out until this method finishes.
         """
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
@@ -594,18 +632,20 @@ class HistoryController:
         if target is None or target.title_source == "user":
             return
         title = await generate_title(self.title_fn, self.client, turns)
-        if (
-            title is None
-            or self.record is not target
-            or target.title_source == "user"
-        ):
-            return  # conversation switched away or user renamed mid-call
-        target.title = title
-        target.title_source = "llm"
-        if self.partition is None:
-            raise RuntimeError("HistoryController not initialized")
-        await self._put_record(self.partition, target)
-        await self.send_history_update()
+        # Not held during the slow title call above.
+        async with self._record_lock:
+            if (
+                title is None
+                or self.record is not target
+                or target.title_source == "user"
+            ):
+                return  # conversation switched away or user renamed mid-call
+            target.title = title
+            target.title_source = "llm"
+            if self.partition is None:
+                raise RuntimeError("HistoryController not initialized")
+            await self._put_record(self.partition, target)
+            await self.send_history_update()
 
     def cancel_pending(self) -> None:
         """Cancel in-flight background work (e.g. titling) at teardown."""
@@ -647,6 +687,7 @@ class HistoryController:
                 stacklevel=1,
             )
 
+    @_with_record_lock
     async def save(self) -> bool:
         """Persist app state for the active conversation."""
         if not await self.save_current():
@@ -690,6 +731,7 @@ class HistoryController:
 
     # -- switch / new ----------------------------------------------------
 
+    @_with_record_lock
     async def switch_to(self, conv_id: str) -> None:
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
@@ -713,6 +755,7 @@ class HistoryController:
         await self._send_sibling_metadata()
         await self.send_history_update()
 
+    @_with_record_lock
     async def new_chat(self, *, greeting: bool = False) -> None:
         """
         Start a new conversation.
@@ -770,6 +813,7 @@ class HistoryController:
 
     # -- list mutations ----------------------------------------------------
 
+    @_with_record_lock
     async def rename(self, conv_id: str, title: str) -> None:
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
@@ -788,6 +832,7 @@ class HistoryController:
         await self._put_record(self.partition, record)
         await self.send_history_update()
 
+    @_with_record_lock
     async def delete(self, conv_id: str) -> None:
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
@@ -830,6 +875,7 @@ class HistoryController:
             }
             await self.chat._send_action(action)
 
+    @_with_record_lock
     async def handle_navigate(self, message_index: int, direction: str) -> None:
         if direction not in ("prev", "next"):
             return
@@ -858,6 +904,7 @@ class HistoryController:
         await self._put_record(self.partition, self.record)
         await self.send_history_update()
 
+    @_with_record_lock
     async def handle_edit(
         self,
         message_index: int,
@@ -1299,6 +1346,10 @@ class ChatHistory:
 
         @reactive.effect
         async def _init_history():
+            async with controller._record_lock:
+                await _restore_active_conversation()
+
+        async def _restore_active_conversation():
             nonlocal initialized
             if initialized:
                 return
