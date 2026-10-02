@@ -511,9 +511,12 @@ class HistoryController:
         The server-side message accumulator and recorded turns are read before
         writing the record. Reads and writes are separated by awaits
         (``store.put``, eviction, bookmark mint), but this is safe without an
-        explicit lock because Shiny serializes reactive flushes behind a
-        single process-wide ``reactive.lock()`` for the full duration of
-        effect execution.
+        explicit lock. Shiny never starts a run of an effect while its previous
+        run is still going, so two calls from ``_save_on_response`` can't
+        overlap. The other effects that change ``self.record`` are triggered by
+        client inputs, and Shiny holds input changes until all of the session's
+        effects have finished, so they can't run while this one is paused at an
+        ``await``.
         """
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
