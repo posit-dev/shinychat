@@ -43,7 +43,7 @@ describe("StreamSmoother", () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it("never merges two separate pushes, even with identical metadata", () => {
+  it("never merges two separate pushes by default, even with identical metadata", () => {
     const onEmit = vi.fn()
     const smoother = new StreamSmoother<string>({ onEmit })
 
@@ -53,6 +53,62 @@ describe("StreamSmoother", () => {
 
     expect(onEmit).toHaveBeenNthCalledWith(1, "A", "meta", true)
     expect(onEmit).toHaveBeenNthCalledWith(2, "B", "meta", true)
+  })
+
+  it("merges consecutive pushes into one entry when canMerge allows", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<string>({
+      onEmit,
+      canMerge: (a, b) => a === b,
+    })
+
+    smoother.push("A", "meta")
+    smoother.push("B", "meta")
+    smoother.push("C", "other")
+    smoother.flush()
+
+    expect(onEmit.mock.calls).toEqual([
+      ["AB", "meta", true],
+      ["C", "other", true],
+    ])
+  })
+
+  it("merges into a partially emitted tail without re-flagging isFirstSlice", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({
+      onEmit,
+      canMerge: () => true,
+      drainRate: 0,
+      minCharsPerSecond: 60, // 3 chars per 50ms tick
+    })
+
+    smoother.push("abcdef", null)
+    vi.advanceTimersByTime(50)
+    smoother.push("ghi", null)
+    smoother.flush()
+
+    expect(onEmit.mock.calls).toEqual([
+      ["abc", null, true],
+      ["defghi", null, false],
+    ])
+  })
+
+  it("lets a paced slice span pushes once they are merged", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({
+      onEmit,
+      canMerge: () => true,
+      drainRate: 0,
+      minCharsPerSecond: 60, // 3 chars per 50ms tick
+    })
+
+    smoother.push("ab", null)
+    smoother.push("cd", null)
+    vi.advanceTimersByTime(50)
+
+    expect(onEmit).toHaveBeenCalledTimes(1)
+    expect(onEmit).toHaveBeenCalledWith("abc", null, true)
+    smoother.dispose()
   })
 
   it("keeps each push's own metadata distinct through pacing", () => {
@@ -76,7 +132,7 @@ describe("StreamSmoother", () => {
 })
 
 describe("StreamSmoother pacing", () => {
-  it("paces a single push across multiple ticks, reassembling to the original text with no mid-word cuts", () => {
+  it("paces a single push across multiple ticks at character granularity", () => {
     const onEmit = vi.fn()
     const text =
       "The quick brown fox jumps over the lazy dog while the smoother drains it"
@@ -88,12 +144,81 @@ describe("StreamSmoother pacing", () => {
     }
     smoother.flush()
 
-    const reassembled = onEmit.mock.calls.map((c) => c[0]).join("")
-    expect(reassembled).toBe(text)
+    const slices = onEmit.mock.calls.map((c) => c[0] as string)
+    expect(slices.join("")).toBe(text)
+    expect(slices.length).toBeGreaterThan(5)
+    // Cuts are not snapped to whitespace: some slice ends mid-word.
+    expect(slices.slice(0, -1).some((s) => /\S$/.test(s))).toBe(true)
+    // Paced slices (excluding the final flush) stay small.
+    const paced = slices.slice(0, -1)
+    expect(Math.max(...paced.map((s) => s.length))).toBeLessThan(10)
+  })
 
-    const nonFinalSlices = onEmit.mock.calls.slice(0, -1).map((c) => c[0])
-    for (const slice of nonFinalSlices) {
-      expect(slice.endsWith(" ")).toBe(true)
+  it("carries a fractional character budget across ticks", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({
+      onEmit,
+      drainRate: 0,
+      minCharsPerSecond: 10, // 0.5 chars per 50ms tick
+    })
+
+    smoother.push("abcd", null)
+    const emittedAfter = (ticks: number) => {
+      vi.advanceTimersByTime(50 * ticks)
+      return onEmit.mock.calls.map((c) => c[0]).join("")
+    }
+
+    expect(emittedAfter(1)).toBe("")
+    expect(emittedAfter(1)).toBe("a")
+    expect(emittedAfter(2)).toBe("ab")
+    expect(emittedAfter(4)).toBe("abcd")
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("never splits a UTF-16 surrogate pair", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({
+      onEmit,
+      drainRate: 0,
+      minCharsPerSecond: 20, // 1 char per 50ms tick
+    })
+
+    const text = "a😀b😀c"
+    smoother.push(text, null)
+    for (let i = 0; i < 20 && vi.getTimerCount() > 0; i++) {
+      vi.advanceTimersByTime(50)
+    }
+
+    const slices = onEmit.mock.calls.map((c) => c[0] as string)
+    expect(slices.join("")).toBe(text)
+    for (const slice of slices) {
+      // No lone high or low surrogate in any emitted slice.
+      expect(slice).not.toMatch(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/,
+      )
+    }
+  })
+
+  it("never splits a run of markdown marker characters", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({
+      onEmit,
+      drainRate: 0,
+      minCharsPerSecond: 20, // 1 char per 50ms tick
+    })
+
+    const text = "x\n```py\n**b** ~~~\n```"
+    smoother.push(text, null)
+    for (let i = 0; i < 50 && vi.getTimerCount() > 0; i++) {
+      vi.advanceTimersByTime(50)
+    }
+
+    const slices = onEmit.mock.calls.map((c) => c[0] as string)
+    expect(slices.join("")).toBe(text)
+    for (let i = 1; i < slices.length; i++) {
+      const prev = slices[i - 1]!.at(-1)!
+      const next = slices[i]![0]!
+      expect(prev === next && "`~*_".includes(next)).toBe(false)
     }
   })
 
@@ -152,7 +277,7 @@ describe("StreamSmoother pacing", () => {
       overrunBackoffMultiplier: 2,
     })
 
-    // Scheduled deadline (nextTickAt) is captured as Date.now() + 50 = 1050.
+    // Loop start (lastTickAt) is captured as Date.now() = 1000; deadline is 1050.
     smoother.push("x".repeat(1000), null)
     // The tick fires 20ms late: Date.now() reports 1070 when tick() runs.
     dateNowSpy.mockReturnValue(1070)
@@ -226,23 +351,104 @@ describe("StreamSmoother pacing", () => {
     dateNowSpy.mockRestore()
   })
 
-  it("accumulates elapsed time across stalls to eventually reach distant word boundaries", () => {
+  it("emits on every tick for long unbroken text instead of stalling", () => {
     const onEmit = vi.fn()
-    const text = "a".repeat(1000) + " b"
     const smoother = new StreamSmoother<null>({ onEmit })
 
-    smoother.push(text, null)
+    smoother.push("a".repeat(1000) + " b", null)
+    for (let i = 0; i < 10; i++) {
+      const before = onEmit.mock.calls.length
+      vi.advanceTimersByTime(50)
+      expect(onEmit.mock.calls.length).toBeGreaterThan(before)
+    }
+    smoother.dispose()
+  })
+})
 
-    // Advance timers far longer than should ever be needed to reach the space at position 1000.
-    // With default drainRate (0.02), after ~17 ticks we should have budget >= 1000.
-    // Use 100 ticks (5 seconds) to be safe.
-    for (let i = 0; i < 100 && vi.getTimerCount() > 0; i++) {
+describe("StreamSmoother finish()", () => {
+  const drainTicks = (max = 100) => {
+    for (let i = 0; i < max && vi.getTimerCount() > 0; i++) {
       vi.advanceTimersByTime(50)
     }
+  }
 
-    // The text should have been emitted via the paced onEmit, not just by flush
-    expect(onEmit).toHaveBeenCalled()
-    const emitted = onEmit.mock.calls.map((c) => c[0]).join("")
-    expect(emitted).toContain(text)
+  it("calls onDone synchronously when nothing is buffered", () => {
+    const onDone = vi.fn()
+    const smoother = new StreamSmoother<null>({ onEmit: vi.fn() })
+
+    smoother.finish(onDone)
+
+    expect(onDone).toHaveBeenCalledTimes(1)
+    expect(smoother.finishing).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("drains the tail over several ticks within finishDurationMs, then calls onDone", () => {
+    const events: string[] = []
+    const smoother = new StreamSmoother<null>({
+      onEmit: (text) => events.push(text),
+      finishDurationMs: 400,
+    })
+    const text = "x".repeat(300)
+
+    smoother.push(text, null)
+    smoother.finish(() => events.push("DONE"))
+    expect(smoother.finishing).toBe(true)
+    expect(events).toEqual([])
+
+    // Not dumped in one go...
+    vi.advanceTimersByTime(50)
+    expect(events.join("").length).toBeGreaterThan(0)
+    expect(events.join("").length).toBeLessThan(text.length)
+
+    // ...but done within the window (plus one tick of slack).
+    vi.advanceTimersByTime(400)
+    expect(events.at(-1)).toBe("DONE")
+    expect(events.slice(0, -1).join("")).toBe(text)
+    expect(smoother.finishing).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("drains faster than normal pacing", () => {
+    const run = (finish: boolean) => {
+      const emitted: string[] = []
+      const smoother = new StreamSmoother<null>({
+        onEmit: (t) => emitted.push(t),
+      })
+      smoother.push("x".repeat(300), null)
+      if (finish) smoother.finish(() => {})
+      vi.advanceTimersByTime(200)
+      smoother.dispose()
+      return emitted.join("").length
+    }
+    expect(run(true)).toBeGreaterThan(run(false))
+  })
+
+  it("flush() during a finish emits the rest and calls onDone once", () => {
+    const events: string[] = []
+    const smoother = new StreamSmoother<null>({
+      onEmit: (text) => events.push(text),
+    })
+
+    smoother.push("hello world", null)
+    smoother.finish(() => events.push("DONE"))
+    smoother.flush()
+    drainTicks()
+
+    expect(events).toEqual(["hello world", "DONE"])
+    expect(smoother.finishing).toBe(false)
+  })
+
+  it("dispose() during a finish cancels onDone", () => {
+    const onDone = vi.fn()
+    const smoother = new StreamSmoother<null>({ onEmit: vi.fn() })
+
+    smoother.push("hello world", null)
+    smoother.finish(onDone)
+    smoother.dispose()
+    drainTicks()
+
+    expect(onDone).not.toHaveBeenCalled()
+    expect(smoother.finishing).toBe(false)
   })
 })

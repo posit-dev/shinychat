@@ -120,6 +120,11 @@ class MarkdownStreamElement extends HTMLElement {
             meta.segmentStart && isFirstSlice,
           )
         },
+        // Merge consecutive chunks so pacing cuts land anywhere, not only at
+        // server chunk boundaries. A segment start keeps its own entry so
+        // the seam is preserved.
+        canMerge: (queued, incoming) =>
+          queued.trusted === incoming.trusted && !incoming.segmentStart,
       })
     }
     return this.smoother
@@ -134,13 +139,23 @@ class MarkdownStreamElement extends HTMLElement {
   }
 
   private dispatchMessage(message: ContentMessage | IsStreamingMessage) {
+    // Anything arriving while a finished stream's tail drains supersedes the
+    // drain: reveal the rest (and apply the deferred setStreaming(false)).
+    if (this.smoother?.finishing) this.smoother.flush()
+
     if (isStreamingMessage(message)) {
       if (message.isStreaming === false) {
-        this.smoother?.flush()
+        // Reveal the buffered tail quickly, then end the stream.
+        const api = this.api!
+        if (this.smoother) {
+          this.smoother.finish(() => api.setStreaming(false))
+        } else {
+          api.setStreaming(false)
+        }
       } else if (message.isStreaming === true) {
         this.smoother?.dispose()
+        this.api!.setStreaming(true)
       }
-      this.api!.setStreaming(message.isStreaming)
       return
     }
 

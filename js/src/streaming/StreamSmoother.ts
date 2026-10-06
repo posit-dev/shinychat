@@ -2,10 +2,25 @@ export interface StreamSmootherOptions<TMeta> {
   /**
    * Called once per paced emission with a slice of buffered text and the
    * metadata it was pushed with. `isFirstSlice` is true only for the first
-   * emission derived from a given `push()` call — use it to forward
-   * once-only metadata (e.g. html_deps) exactly once per push.
+   * emission derived from a given queue entry — use it to forward once-only
+   * metadata (e.g. html_deps) exactly once per entry.
    */
   onEmit: (text: string, meta: TMeta, isFirstSlice: boolean) => void
+  /**
+   * Whether an incoming push may be appended to the still-queued tail entry
+   * rather than becoming its own entry. Return true only when the two are
+   * interchangeable for rendering purposes and `incoming` carries no
+   * once-only metadata (it is dropped on merge). Without merging, every
+   * push boundary is also a forced cut point, so pacing would replay the
+   * source's chunking. Defaults to never merging.
+   */
+  canMerge?: (queued: TMeta, incoming: TMeta) => boolean
+  /**
+   * Upper bound on how long `finish()` takes to reveal whatever is still
+   * buffered when the source ends. The tail drains at whichever is faster:
+   * the normal pacing rate or the rate that empties it within this window.
+   */
+  finishDurationMs?: number
   tickIntervalMs?: number
   drainRate?: number
   minCharsPerSecond?: number
@@ -21,15 +36,24 @@ interface QueueEntry<TMeta> {
 
 const REFERENCE_FRAME_MS = 1000 / 60
 
+// Markdown markers whose meaning depends on run length (``` vs `, ** vs *).
+// A cut inside such a run would briefly render — or, for code fences, make
+// the chat reducer misclassify — a shorter marker, so cuts extend past them.
+const RUN_CHARS = new Set(["`", "~", "*", "_"])
+
 /**
  * Buffers pushed text and drains it on a timer at a rate proportional to
  * buffer backlog (with a floor), so a burst catches up quickly and a small
- * buffer never trickles at an unreadably slow pace. Each `push()` is queued
- * as its own entry — entries are never merged, so metadata boundaries
- * (content type, trust, html deps) are never split or blended across pushes.
+ * buffer never trickles at an unreadably slow pace. Text is revealed at
+ * character granularity, independent of how the source chunked it; a
+ * fractional character budget carries across ticks so slow rates still
+ * advance smoothly. Entries with different metadata (per `canMerge`) are
+ * never blended, so content type, trust, and html deps stay intact.
  */
 export class StreamSmoother<TMeta> {
   private readonly onEmit: StreamSmootherOptions<TMeta>["onEmit"]
+  private readonly canMerge: StreamSmootherOptions<TMeta>["canMerge"]
+  private readonly finishDurationMs: number
   private readonly tickIntervalMs: number
   private readonly drainRate: number
   private readonly minCharsPerSecond: number
@@ -39,11 +63,19 @@ export class StreamSmoother<TMeta> {
   private queue: QueueEntry<TMeta>[] = []
   private timer: ReturnType<typeof setTimeout> | null = null
   private currentIntervalMs: number
-  private nextTickAt = 0
-  private accumulatedElapsedMs = 0
+  // Start of the previous tick (or loop start). Elapsed time is measured
+  // from here so time spent in onEmit counts toward the next tick's budget.
+  private lastTickAt = 0
+  // Fractional characters earned but not yet emitted.
+  private budgetCarry = 0
+  // Set by finish(): called once the tail has drained (or been flushed).
+  private onFinished: (() => void) | null = null
+  private finishCharsPerMs = 0
 
   constructor(options: StreamSmootherOptions<TMeta>) {
     this.onEmit = options.onEmit
+    this.canMerge = options.canMerge
+    this.finishDurationMs = options.finishDurationMs ?? 400
     this.tickIntervalMs = options.tickIntervalMs ?? 50
     this.drainRate = options.drainRate ?? 0.02
     this.minCharsPerSecond = options.minCharsPerSecond ?? 30
@@ -54,32 +86,73 @@ export class StreamSmoother<TMeta> {
 
   push(text: string, meta: TMeta): void {
     if (text.length === 0) return
-    this.queue.push({ text, meta, emittedAny: false })
+    const tail = this.queue[this.queue.length - 1]
+    if (tail && this.canMerge?.(tail.meta, meta)) {
+      tail.text += text
+    } else {
+      this.queue.push({ text, meta, emittedAny: false })
+    }
+    this.ensureLoopRunning()
+  }
+
+  /** True between `finish()` and the tail fully draining (or flush/dispose). */
+  get finishing(): boolean {
+    return this.onFinished !== null
+  }
+
+  /**
+   * Signal that the source has ended: reveal the remaining buffer quickly
+   * (within `finishDurationMs`) rather than all at once, then call `onDone`.
+   * Calls `onDone` synchronously if nothing is buffered. A later `flush()`
+   * completes the finish immediately; `dispose()` cancels `onDone`.
+   */
+  finish(onDone: () => void): void {
+    if (this.queue.length === 0) {
+      this.stopLoop()
+      onDone()
+      return
+    }
+    this.onFinished = onDone
+    this.finishCharsPerMs = this.backlog() / this.finishDurationMs
     this.ensureLoopRunning()
   }
 
   /** Emit everything queued immediately, bypassing pacing, then stop. */
   flush(): void {
     this.stopLoop()
-    for (const entry of this.queue) {
+    const queue = this.queue
+    this.queue = []
+    for (const entry of queue) {
       this.onEmit(entry.text, entry.meta, !entry.emittedAny)
     }
-    this.queue = []
+    this.completeFinish()
   }
 
   /** Discard everything queued without emitting, then stop. */
   dispose(): void {
     this.stopLoop()
     this.queue = []
+    this.onFinished = null
+  }
+
+  private backlog(): number {
+    return this.queue.reduce((n, e) => n + e.text.length, 0)
+  }
+
+  private completeFinish(): void {
+    const onFinished = this.onFinished
+    this.onFinished = null
+    this.finishCharsPerMs = 0
+    onFinished?.()
   }
 
   private ensureLoopRunning(): void {
     if (this.timer !== null) return
+    this.lastTickAt = Date.now()
     this.scheduleTick(this.currentIntervalMs)
   }
 
   private scheduleTick(intervalMs: number): void {
-    this.nextTickAt = Date.now() + intervalMs
     this.timer = setTimeout(() => this.tick(), intervalMs)
   }
 
@@ -89,33 +162,25 @@ export class StreamSmoother<TMeta> {
       this.timer = null
     }
     this.currentIntervalMs = this.tickIntervalMs
-    this.accumulatedElapsedMs = 0
+    this.budgetCarry = 0
   }
 
   private tick(): void {
     this.timer = null
 
     const now = Date.now()
-    const overrunMs = Math.max(0, now - this.nextTickAt)
-    const currentElapsedMs = this.currentIntervalMs + overrunMs
-    const totalElapsedMs = this.accumulatedElapsedMs + currentElapsedMs
-
-    // Measure queue length before draining to detect if progress was made
-    const queueLengthBefore = this.queue.reduce((n, e) => n + e.text.length, 0)
-    this.drainFor(totalElapsedMs)
-    const queueLengthAfter = this.queue.reduce((n, e) => n + e.text.length, 0)
+    const elapsedMs = now - this.lastTickAt
+    this.lastTickAt = now
+    // Congestion signal: how much longer than scheduled this tick took to
+    // arrive, including the previous tick's own emit work.
+    const overrunMs = Math.max(0, elapsedMs - this.currentIntervalMs)
+    this.drainFor(elapsedMs)
 
     if (this.queue.length === 0) {
-      this.accumulatedElapsedMs = 0
+      this.budgetCarry = 0
       this.currentIntervalMs = this.tickIntervalMs
+      this.completeFinish()
       return
-    }
-
-    // If no progress was made (stalled on word boundary), accumulate time for next tick
-    if (queueLengthBefore === queueLengthAfter) {
-      this.accumulatedElapsedMs = totalElapsedMs
-    } else {
-      this.accumulatedElapsedMs = 0
     }
 
     this.currentIntervalMs = Math.min(
@@ -126,57 +191,66 @@ export class StreamSmoother<TMeta> {
   }
 
   private drainFor(elapsedMs: number): void {
-    const backlog = this.queue.reduce((n, e) => n + e.text.length, 0)
+    const backlog = this.backlog()
     if (backlog === 0) return
 
     const frames = elapsedMs / REFERENCE_FRAME_MS
-    const proportional = backlog * this.drainRate * frames
-    const floor = (this.minCharsPerSecond * elapsedMs) / 1000
-    let budget = Math.max(1, Math.round(Math.max(proportional, floor)))
+    const charsPerFrame = Math.max(
+      backlog * this.drainRate,
+      this.minCharsPerSecond / 60,
+    )
+    this.budgetCarry += Math.max(
+      charsPerFrame * frames,
+      this.finishCharsPerMs * elapsedMs,
+    )
+    // Epsilon absorbs float error (e.g. 50ms / (1000/60) is not exactly 3)
+    // so a whole character's worth of budget isn't floored a tick late.
+    let budget = Math.floor(this.budgetCarry + 1e-9)
 
     while (budget > 0 && this.queue.length > 0) {
-      const entry = this.queue[0]
-      if (!entry) break
+      const entry = this.queue[0]!
 
       if (budget >= entry.text.length) {
+        this.queue.shift()
         this.onEmit(entry.text, entry.meta, !entry.emittedAny)
         budget -= entry.text.length
-        this.queue.shift()
+        this.budgetCarry -= entry.text.length
         continue
       }
 
-      const cut = this.snapToWordBoundary(entry.text, budget)
-      if (cut === 0) {
-        // No word boundary within budget; wait for next tick
-        break
-      }
-      this.onEmit(entry.text.slice(0, cut), entry.meta, !entry.emittedAny)
+      const cut = safeCut(entry.text, budget)
+      const slice = entry.text.slice(0, cut)
+      const isFirst = !entry.emittedAny
       entry.emittedAny = true
       entry.text = entry.text.slice(cut)
+      if (entry.text.length === 0) this.queue.shift()
+      this.onEmit(slice, entry.meta, isFirst)
       budget -= cut
+      this.budgetCarry -= cut
     }
+
+    // A cut extended past the budget (see safeCut) borrows from future ticks.
+    this.budgetCarry = Math.max(0, this.budgetCarry)
   }
+}
 
-  /**
-   * Finds the last whitespace at or before `maxLen`, so a synthetic pacing
-   * cut never lands mid-word. If no whitespace exists within the budget but
-   * one exists beyond it, returns 0 to wait for a larger budget. If no
-   * whitespace exists anywhere, returns `maxLen` to make progress.
-   */
-  private snapToWordBoundary(text: string, maxLen: number): number {
-    if (maxLen >= text.length) return text.length
+/**
+ * Adjusts a cut position forward (never backward, so pacing never stalls)
+ * so it does not split a UTF-16 surrogate pair or a run of repeated
+ * markdown marker characters.
+ */
+function safeCut(text: string, cut: number): number {
+  if (cut >= text.length) return text.length
 
-    // Try to find whitespace within the budget
-    for (let i = maxLen - 1; i >= 0; i--) {
-      if (/\s/.test(text.charAt(i))) return i + 1
-    }
+  const code = text.charCodeAt(cut - 1)
+  if (code >= 0xd800 && code <= 0xdbff) cut++
 
-    // No whitespace within budget; check if any exists beyond it
-    for (let i = maxLen; i < text.length; i++) {
-      if (/\s/.test(text.charAt(i))) return 0 // Wait for larger budget
-    }
-
-    // No whitespace anywhere; cut at budget to guarantee progress
-    return maxLen
+  while (
+    cut < text.length &&
+    RUN_CHARS.has(text.charAt(cut)) &&
+    text.charAt(cut) === text.charAt(cut - 1)
+  ) {
+    cut++
   }
+  return cut
 }
