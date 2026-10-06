@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { render, screen, act, fireEvent } from "@testing-library/react"
 import { StrictMode } from "react"
 import { ChatApp } from "../../src/chat/ChatApp"
+import { STREAM_IDLE_MS } from "../../src/markdown/useStreamIdle"
 import {
   createMockTransport,
   createMockShinyLifecycle,
@@ -121,7 +122,7 @@ describe("ChatApp integration: full message flow", () => {
     expect(await screen.findByText("Hello world")).toBeTruthy()
   })
 
-  it("streaming dot appears during streaming and disappears after chunk_end", async () => {
+  it("streaming dot appears only when a stream stalls and disappears after chunk_end", async () => {
     vi.useFakeTimers()
     try {
       const transport = createMockTransport()
@@ -163,21 +164,47 @@ describe("ChatApp integration: full message flow", () => {
         })
       })
 
+      const dot = () => document.querySelector(".markdown-stream-dot")
+
+      // Text is arriving: no dot.
       act(() => {
         vi.advanceTimersByTime(100)
       })
+      expect(dot()).toBeNull()
 
-      expect(document.querySelector(".markdown-stream-dot")).not.toBeNull()
+      // The stream stalls (buffer drained, no new chunks): the dot appears.
+      // Separate acts so React commits the drained text (starting the idle
+      // clock) before time advances past the threshold.
+      act(() => {
+        vi.advanceTimersByTime(1000)
+      })
+      expect(dot()).toBeNull()
+      act(() => {
+        vi.advanceTimersByTime(STREAM_IDLE_MS + 100)
+      })
+      expect(dot()).not.toBeNull()
+
+      // Content resumes: the dot goes away as soon as new text is revealed.
+      await act(async () => {
+        transport.fire("test-chat", {
+          type: "chunk",
+          content: " more",
+          operation: "append",
+        })
+      })
+      act(() => {
+        vi.advanceTimersByTime(100)
+      })
+      expect(dot()).toBeNull()
 
       await act(async () => {
         transport.fire("test-chat", { type: "chunk_end" })
       })
-      // The stream stays live while its buffered tail drains.
       act(() => {
         vi.advanceTimersByTime(1000)
       })
 
-      expect(document.querySelector(".markdown-stream-dot")).toBeNull()
+      expect(dot()).toBeNull()
     } finally {
       vi.useRealTimers()
     }

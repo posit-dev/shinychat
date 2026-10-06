@@ -7,6 +7,7 @@ import {
   useMemo,
 } from "react"
 import { MarkdownContent } from "../markdown/MarkdownContent"
+import { StreamingDot } from "../markdown/StreamingDotIcon"
 import { useAutoScroll, findScrollableParent } from "../markdown/useAutoScroll"
 import { HtmlBlockContent } from "../chat/HtmlBlockContent"
 import type { HtmlBlock } from "../chat/html-block-model"
@@ -228,8 +229,18 @@ export function MarkdownStream({
     onApiReady?.(api)
   }, [api, onApiReady])
 
+  // With nothing to show yet, the dot is the only sign the stream is live.
+  // Once content exists, MarkdownContent shows it only when the stream stalls.
+  const awaitingContent =
+    streaming && segments.every((s) => !isBlockSegment(s) && !/\S/.test(s.text))
+
   return (
     <div ref={innerRef}>
+      {awaitingContent && (
+        <p>
+          <StreamingDot />
+        </p>
+      )}
       {segments.map((segment, index) =>
         isBlockSegment(segment) ? (
           segment.type === "web_activity" ? (

@@ -128,12 +128,12 @@ describe("MarkdownStreamElement — pending message queue", () => {
 
   it("treats presence boolean attributes as enabled on connect", async () => {
     const el = document.createElement("shiny-markdown-stream")
-    el.setAttribute("content", "streaming")
     el.setAttribute("streaming", "")
     await act(async () => {
       document.body.appendChild(el)
     })
 
+    // A streaming element with no content yet shows the waiting dot.
     await waitFor(() => {
       expect(el.querySelector(".markdown-stream-dot")).toBeTruthy()
     })

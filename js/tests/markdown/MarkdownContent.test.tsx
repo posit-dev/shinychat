@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { fireEvent, render, screen, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import * as markdownToReactModule from "../../src/markdown/markdownToReact"
 import { MarkdownContent } from "../../src/markdown/MarkdownContent"
+import { STREAM_IDLE_MS } from "../../src/markdown/useStreamIdle"
 import { EscapedIsland } from "../../src/markdown/EscapedIsland"
 import { chatTagToComponentMap } from "../../src/chat/chatTagToComponentMap"
 
@@ -131,15 +132,54 @@ describe("MarkdownContent (pure)", () => {
     expect(container.querySelector(".shiny-tool-card")).toBeNull()
   })
 
-  it("shows streaming dot when streaming=true", () => {
-    const { container } = render(
-      <MarkdownContent
-        content="hello"
-        contentType="markdown"
-        streaming={true}
-      />,
-    )
-    expect(container.querySelector(".markdown-stream-dot")).not.toBeNull()
+  it("shows the streaming dot only once streamed content stalls", () => {
+    vi.useFakeTimers()
+    try {
+      const dot = () => container.querySelector(".markdown-stream-dot")
+      const { container, rerender } = render(
+        <MarkdownContent
+          content="hello"
+          contentType="markdown"
+          streaming={true}
+        />,
+      )
+      // Actively streaming: the growing text is the signal, no dot.
+      expect(dot()).toBeNull()
+      act(() => {
+        vi.advanceTimersByTime(STREAM_IDLE_MS - 100)
+      })
+      expect(dot()).toBeNull()
+
+      // New content restarts the idle clock.
+      rerender(
+        <MarkdownContent
+          content="hello world"
+          contentType="markdown"
+          streaming={true}
+        />,
+      )
+      act(() => {
+        vi.advanceTimersByTime(STREAM_IDLE_MS - 100)
+      })
+      expect(dot()).toBeNull()
+
+      act(() => {
+        vi.advanceTimersByTime(200)
+      })
+      expect(dot()).not.toBeNull()
+
+      // More content hides it again in the same render.
+      rerender(
+        <MarkdownContent
+          content="hello world!"
+          contentType="markdown"
+          streaming={true}
+        />,
+      )
+      expect(dot()).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("hides streaming dot when streaming=false", () => {
