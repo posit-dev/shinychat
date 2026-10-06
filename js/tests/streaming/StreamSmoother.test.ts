@@ -452,3 +452,181 @@ describe("StreamSmoother finish()", () => {
     expect(smoother.finishing).toBe(false)
   })
 })
+
+describe("StreamSmoother tag boundaries", () => {
+  // drainRate 1 reveals the whole buffer each tick, isolating tag handling
+  // from pacing (as with the former StreamCoalescer).
+  const whole = { drainRate: 1 }
+  const joined = (fn: ReturnType<typeof vi.fn>) =>
+    fn.mock.calls.map((c) => c[0]).join("")
+
+  it("holds a partial tag at the end of the buffer until it completes", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({ onEmit, ...whole })
+
+    smoother.push("hello <sp", null)
+    vi.advanceTimersByTime(50)
+
+    expect(onEmit.mock.calls).toEqual([["hello ", null, true]])
+
+    smoother.push("an>world", null)
+    vi.advanceTimersByTime(50)
+
+    expect(onEmit).toHaveBeenNthCalledWith(2, "<sp", null, false)
+    expect(onEmit).toHaveBeenNthCalledWith(3, "an>world", null, true)
+    expect(joined(onEmit)).toBe("hello <span>world")
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("holds a bare trailing `<` as undecided", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({ onEmit, ...whole })
+
+    smoother.push("hello <", null)
+    vi.advanceTimersByTime(50)
+    expect(onEmit).toHaveBeenCalledWith("hello ", null, true)
+
+    // Turns out not to be a tag — the `<` goes out with the next tick.
+    smoother.push(" y", null)
+    vi.advanceTimersByTime(50)
+    expect(joined(onEmit)).toBe("hello < y")
+  })
+
+  it("holds a partial tag that spans two pushes", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({ onEmit, ...whole })
+
+    smoother.push("<sp", null)
+    smoother.push("an", null)
+    vi.advanceTimersByTime(50)
+    expect(onEmit).not.toHaveBeenCalled()
+
+    smoother.push(">", null)
+    vi.advanceTimersByTime(50)
+    expect(joined(onEmit)).toBe("<span>")
+  })
+
+  it("does not treat `<` followed by whitespace as a tag", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({ onEmit, ...whole })
+
+    smoother.push("if x < y then", null)
+    vi.advanceTimersByTime(50)
+
+    expect(onEmit).toHaveBeenCalledWith("if x < y then", null, true)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("emits anyway once a partial tag has stalled past maxTagHoldMs", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({
+      onEmit,
+      ...whole,
+      maxTagHoldMs: 120,
+    })
+
+    smoother.push("<b", null)
+    // Ticks at 50 (hold clock starts), 100, 150, 200 (150ms held >= 120).
+    vi.advanceTimersByTime(200)
+
+    expect(onEmit).toHaveBeenCalledWith("<b", null, true)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("does not trip the stall guard while text before the tag is still emitting", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({
+      onEmit,
+      ...whole,
+      maxTagHoldMs: 120,
+    })
+
+    smoother.push("pre <b", null)
+    vi.advanceTimersByTime(50) // emits "pre ", holds "<b"
+    smoother.push("> done", null)
+    vi.advanceTimersByTime(50)
+
+    expect(joined(onEmit)).toBe("pre <b> done")
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("can be disabled with tagBoundaries: false", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({
+      onEmit,
+      ...whole,
+      tagBoundaries: false,
+    })
+
+    smoother.push("hello <sp", null)
+    vi.advanceTimersByTime(50)
+
+    expect(onEmit).toHaveBeenCalledWith("hello <sp", null, true)
+  })
+
+  it("extends a paced cut past a tag that is already buffered", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({
+      onEmit,
+      drainRate: 0,
+      minCharsPerSecond: 20, // 1 char per 50ms tick
+    })
+
+    smoother.push("ab<span>cd", null)
+    for (let i = 0; i < 20 && vi.getTimerCount() > 0; i++) {
+      vi.advanceTimersByTime(50)
+    }
+
+    expect(onEmit.mock.calls.map((c) => c[0])).toEqual([
+      "a",
+      "b",
+      "<span>",
+      "c",
+      "d",
+    ])
+  })
+
+  it("does not bank budget while held, so text doesn't lurch when the tag closes", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({
+      onEmit,
+      drainRate: 0,
+      minCharsPerSecond: 20, // 1 char per 50ms tick
+    })
+
+    smoother.push("<b", null)
+    vi.advanceTimersByTime(500) // held for 10 ticks
+    expect(onEmit).not.toHaveBeenCalled()
+
+    smoother.push(">xyz", null)
+    vi.advanceTimersByTime(50)
+    // The tag is revealed whole, but not the text after it.
+    expect(joined(onEmit)).toBe("<b>")
+    smoother.dispose()
+  })
+
+  it("does not hold an unclosed tag while finishing (no more input is coming)", () => {
+    const events: string[] = []
+    const smoother = new StreamSmoother<null>({
+      onEmit: (t) => events.push(t),
+      ...whole,
+    })
+
+    smoother.push("tail <b", null)
+    smoother.finish(() => events.push("DONE"))
+    vi.advanceTimersByTime(50)
+
+    expect(events).toEqual(["tail <b", "DONE"])
+  })
+
+  it("flush() bypasses tag holds", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({ onEmit, ...whole })
+
+    smoother.push("x <b", null)
+    smoother.flush()
+
+    expect(onEmit).toHaveBeenCalledWith("x <b", null, true)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+})
