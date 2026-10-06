@@ -110,10 +110,11 @@ export function MarkdownStream({
     () => [segments, blockMounts],
     [segments, blockMounts],
   )
-  const { containerRef, scrollToBottom, repinIfAtBottom } = useAutoScroll({
-    streaming: autoScroll && streaming,
-    contentDependency: scrollContentDependency,
-  })
+  const { containerRef, scrollToBottom, repinIfAtBottom, stickToBottom } =
+    useAutoScroll({
+      streaming: autoScroll && streaming,
+      contentDependency: scrollContentDependency,
+    })
 
   useLayoutEffect(() => {
     if (!autoScroll || !innerRef.current) {
@@ -143,8 +144,18 @@ export function MarkdownStream({
     }
   }, [containerRef])
 
+  // Scroll while streaming, and once more when it ends: StreamSmoother flushes
+  // its remaining buffer in the same batch as setStreaming(false), which the
+  // content-change effect (streaming-gated) never scrolls for. stickToBottom
+  // is read via ref so a mid-stream scroll-away doesn't re-trigger the effect.
+  const stickToBottomRef = useRef(stickToBottom)
+  stickToBottomRef.current = stickToBottom
+  const wasStreamingRef = useRef(streaming)
   useEffect(() => {
-    if (streaming && autoScroll) {
+    const wasStreaming = wasStreamingRef.current
+    wasStreamingRef.current = streaming
+    if (!autoScroll) return
+    if (streaming || (wasStreaming && stickToBottomRef.current)) {
       scrollToBottom()
     }
   }, [streaming, autoScroll, scrollToBottom])
