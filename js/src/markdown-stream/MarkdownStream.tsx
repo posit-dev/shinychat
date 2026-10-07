@@ -7,6 +7,7 @@ import {
   useMemo,
 } from "react"
 import { MarkdownContent } from "../markdown/MarkdownContent"
+import { StreamingDot } from "../markdown/StreamingDotIcon"
 import { useAutoScroll, findScrollableParent } from "../markdown/useAutoScroll"
 import { HtmlBlockContent } from "../chat/HtmlBlockContent"
 import type { HtmlBlock } from "../chat/html-block-model"
@@ -110,10 +111,11 @@ export function MarkdownStream({
     () => [segments, blockMounts],
     [segments, blockMounts],
   )
-  const { containerRef, scrollToBottom, repinIfAtBottom } = useAutoScroll({
-    streaming: autoScroll && streaming,
-    contentDependency: scrollContentDependency,
-  })
+  const { containerRef, scrollToBottom, repinIfAtBottom, stickToBottom } =
+    useAutoScroll({
+      streaming: autoScroll && streaming,
+      contentDependency: scrollContentDependency,
+    })
 
   useLayoutEffect(() => {
     if (!autoScroll || !innerRef.current) {
@@ -143,8 +145,18 @@ export function MarkdownStream({
     }
   }, [containerRef])
 
+  // Scroll while streaming, and once more when it ends: StreamSmoother flushes
+  // its remaining buffer in the same batch as setStreaming(false), which the
+  // content-change effect (streaming-gated) never scrolls for. stickToBottom
+  // is read via ref so a mid-stream scroll-away doesn't re-trigger the effect.
+  const stickToBottomRef = useRef(stickToBottom)
+  stickToBottomRef.current = stickToBottom
+  const wasStreamingRef = useRef(streaming)
   useEffect(() => {
-    if (streaming && autoScroll) {
+    const wasStreaming = wasStreamingRef.current
+    wasStreamingRef.current = streaming
+    if (!autoScroll) return
+    if (streaming || (wasStreaming && stickToBottomRef.current)) {
       scrollToBottom()
     }
   }, [streaming, autoScroll, scrollToBottom])
@@ -217,8 +229,18 @@ export function MarkdownStream({
     onApiReady?.(api)
   }, [api, onApiReady])
 
+  // With nothing to show yet, the dot is the only sign the stream is live.
+  // Once content exists, MarkdownContent shows it only when the stream stalls.
+  const awaitingContent =
+    streaming && segments.every((s) => !isBlockSegment(s) && !/\S/.test(s.text))
+
   return (
     <div ref={innerRef}>
+      {awaitingContent && (
+        <p>
+          <StreamingDot />
+        </p>
+      )}
       {segments.map((segment, index) =>
         isBlockSegment(segment) ? (
           segment.type === "web_activity" ? (

@@ -122,7 +122,8 @@ export function parseHtml(
 /**
  * Stage 2 (cheap): Convert a HAST Root to React elements.
  *
- * When streaming=true a new tree is produced with the streaming dot appended,
+ * When streaming (and streamingDot) is true a new tree is produced with the
+ * streaming dot appended,
  * using an immutable path-copy (O(depth)) rather than a full structuredClone
  * (O(tree-size)). The original cached HAST is never mutated.
  *
@@ -134,13 +135,16 @@ export function hastToReact(
   options: {
     tagToComponentMap?: Record<string, ComponentType<unknown>>
     streaming?: boolean
+    /** Append the streaming dot. Defaults to `streaming`; ignored when not streaming. */
+    streamingDot?: boolean
   },
 ): ReactElement {
   const { tagToComponentMap, streaming } = options
+  const streamingDot = streaming && (options.streamingDot ?? true)
   const finalized = streaming
     ? hast
     : finalizePendingAsides(finalizePendingSuggestionLists(hast))
-  const tree = streaming ? withStreamingDot(finalized) : finalized
+  const tree = streamingDot ? withStreamingDot(finalized) : finalized
 
   return toJsxRuntime(tree, {
     Fragment,

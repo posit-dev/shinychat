@@ -26,6 +26,7 @@ import {
   type ChatDrawerState,
   type GreetingData,
   type ToolGrouping,
+  type AnyAction,
 } from "./state"
 import {
   useRequestDefinitionIcons,
@@ -33,13 +34,40 @@ import {
 } from "./useSupersededRequests"
 import { ChatContainer, type ChatContainerHandle } from "./ChatContainer"
 import { acquireHistoryStore, getHistoryStore } from "./historyStore"
+import { StreamSmoother } from "../streaming/StreamSmoother"
 import type {
   ChatTransport,
   ShinyLifecycle,
   GreetingOptions,
+  ContentType,
+  ChatAction,
 } from "../transport/types"
+import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 import type { AttachmentPayload } from "./attachments"
+
+interface ChunkMeta {
+  content_type?: ContentType
+  html_deps?: HtmlDep[]
+}
+
+// Actions that start new content or wipe the transcript. Arriving while a
+// finished stream's tail is draining, they complete the drain immediately
+// (the user or server has moved on). Everything else waits for the drain.
+const ENDS_DRAIN = new Set<ChatAction["type"]>([
+  "message",
+  "chunk_start",
+  "chunk",
+  "block_insert",
+  "chunk_end",
+  "clear",
+  "greeting",
+  "greeting_start",
+  "greeting_chunk",
+  "greeting_end",
+  "greeting_clear",
+  "history_navigate",
+])
 
 export interface InitialGreeting {
   content: string
@@ -175,6 +203,7 @@ export function ChatApp({
   }, [elementId, historyStore, transport])
 
   const containerRef = useRef<ChatContainerHandle>(null)
+  const smootherRef = useRef<StreamSmoother<ChunkMeta> | null>(null)
   const siblingNavigationPendingRef = useRef(false)
   const [siblingNavigationPending, setSiblingNavigationPending] =
     useState(false)
@@ -182,7 +211,32 @@ export function ChatApp({
   // The textarea is fully uncontrolled, so value/focus mutations go through
   // the imperative handle rather than the reducer.
   useEffect(() => {
-    const unsubscribe = transport.onMessage(elementId, (action) => {
+    const smoother = new StreamSmoother<ChunkMeta>({
+      onEmit: (text, meta, isFirstSlice) => {
+        dispatch({
+          type: "chunk",
+          content: text,
+          operation: "append",
+          content_type: meta.content_type,
+          html_deps: isFirstSlice ? meta.html_deps : undefined,
+        })
+      },
+      // Merge consecutive chunks so pacing cuts land anywhere, not only at
+      // server chunk boundaries. A chunk carrying html_deps starts its own
+      // entry so its deps are forwarded exactly once.
+      canMerge: (queued, incoming) =>
+        queued.content_type === incoming.content_type &&
+        !incoming.html_deps?.length,
+    })
+    smootherRef.current = smoother
+
+    // Actions that arrive while the tail of a finished stream is still
+    // draining. Most (history_update, update_siblings, ...) must apply after
+    // chunk_end lands, so they wait and replay in order rather than cutting
+    // the drain short.
+    let deferred: ChatAction[] = []
+
+    const handleAction = (action: ChatAction) => {
       if (action.type === "history_navigate") {
         setCurrentConversationId(elementId, action.active_id)
         navigateTo(action.url, action.reload === true)
@@ -229,10 +283,81 @@ export function ChatApp({
         }
         return
       }
+      if (action.type === "chunk_start") {
+        // A prior stream's tail was already completed on arrival (see
+        // ENDS_DRAIN); dispose defensively since a fresh stream has nothing
+        // worth keeping.
+        smoother.dispose()
+        dispatch(action)
+        return
+      }
+      if (action.type === "chunk") {
+        if (action.operation === "replace") {
+          // A replace chunk wipes the whole in-flight message, so anything
+          // still buffered from before it would just get wiped a moment
+          // later — discard rather than flush.
+          smoother.dispose()
+          dispatch(action)
+        } else {
+          smoother.push(action.content, {
+            content_type: action.content_type,
+            html_deps: action.html_deps,
+          })
+        }
+        return
+      }
+      if (action.type === "block_insert") {
+        // Preserve order: a block must render after any text pushed before
+        // it, even if that text hasn't paced out yet.
+        smoother.flush()
+        dispatch(action)
+        return
+      }
+      if (action.type === "chunk_end") {
+        // Reveal the buffered tail quickly, then end the stream.
+        smoother.finish(() => {
+          dispatch(action)
+          const pending = deferred
+          deferred = []
+          pending.forEach(handleAction)
+        })
+        return
+      }
       dispatch(action)
+    }
+
+    const unsubscribe = transport.onMessage(elementId, (action) => {
+      if (smoother.finishing) {
+        if (!ENDS_DRAIN.has(action.type)) {
+          deferred.push(action)
+          return
+        }
+        // Runs the deferred chunk_end and replays queued actions first.
+        smoother.flush()
+      }
+      handleAction(action)
     })
-    return unsubscribe
+    return () => {
+      smoother.dispose()
+      smootherRef.current = null
+      deferred = []
+      unsubscribe()
+    }
   }, [transport, elementId, historyStore])
+
+  // Stopping should stop the motion: reveal whatever is buffered at once. If
+  // the stream already ended and only its tail was draining, there is nothing
+  // left to cancel — completing the drain is the whole effect, and recording
+  // CANCEL_REQUESTED would leave a stale flag for the next stream.
+  const chatDispatch = useCallback((action: AnyAction) => {
+    if (action.type === "CANCEL_REQUESTED") {
+      const smoother = smootherRef.current
+      const wasFinishing = smoother?.finishing ?? false
+      smoother?.flush()
+      if (wasFinishing) return
+    }
+    dispatch(action)
+  }, [])
 
   // State-driven `<inputId>_greeting_requested` input.
   //
@@ -364,7 +489,7 @@ export function ChatApp({
     <ShinyLifecycleContext.Provider value={shinyLifecycle}>
       <ChatToolContext.Provider value={toolState}>
         <ToolGroupingContext.Provider value={state.toolGrouping}>
-          <ChatDispatchContext.Provider value={dispatch}>
+          <ChatDispatchContext.Provider value={chatDispatch}>
             <AsideFaviconContext.Provider value={asideFavicon}>
               <ChatContainer
                 ref={containerRef}

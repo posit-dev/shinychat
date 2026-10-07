@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, vi } from "vitest"
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { render, screen, act, fireEvent } from "@testing-library/react"
 import { StrictMode } from "react"
 import { ChatApp } from "../../src/chat/ChatApp"
+import { STREAM_IDLE_MS } from "../../src/markdown/useStreamIdle"
 import {
   createMockTransport,
   createMockShinyLifecycle,
@@ -117,56 +118,96 @@ describe("ChatApp integration: full message flow", () => {
       transport.fire("test-chat", { type: "chunk_end" })
     })
 
-    expect(screen.getByText("Hello world")).toBeTruthy()
+    // The buffered tail drains quickly after chunk_end rather than at once.
+    expect(await screen.findByText("Hello world")).toBeTruthy()
   })
 
-  it("streaming dot appears during streaming and disappears after chunk_end", async () => {
-    const transport = createMockTransport()
-    const shinyLifecycle = createMockShinyLifecycle()
+  it("streaming dot appears only when a stream stalls and disappears after chunk_end", async () => {
+    vi.useFakeTimers()
+    try {
+      const transport = createMockTransport()
+      const shinyLifecycle = createMockShinyLifecycle()
 
-    render(
-      <ChatApp
-        transport={transport}
-        shinyLifecycle={shinyLifecycle}
-        elementId="test-chat"
-        inputId="test-input"
-        uploadAccept={[
-          "image/png",
-          "image/jpeg",
-          "image/gif",
-          "image/webp",
-          "application/pdf",
-        ]}
-        maxUploadSize={30000000}
-        placeholder="Type..."
-      />,
-    )
+      render(
+        <ChatApp
+          transport={transport}
+          shinyLifecycle={shinyLifecycle}
+          elementId="test-chat"
+          inputId="test-input"
+          uploadAccept={[
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+            "image/webp",
+            "application/pdf",
+          ]}
+          maxUploadSize={30000000}
+          placeholder="Type..."
+        />,
+      )
 
-    await act(async () => {
-      transport.fire("test-chat", {
-        type: "chunk_start",
-        message: {
-          role: "assistant",
-          segments: [{ content: "", content_type: "markdown" }],
-        },
+      await act(async () => {
+        transport.fire("test-chat", {
+          type: "chunk_start",
+          message: {
+            role: "assistant",
+            segments: [{ content: "", content_type: "markdown" }],
+          },
+        })
       })
-    })
 
-    await act(async () => {
-      transport.fire("test-chat", {
-        type: "chunk",
-        content: "Streaming...",
-        operation: "append",
+      await act(async () => {
+        transport.fire("test-chat", {
+          type: "chunk",
+          content: "Streaming...",
+          operation: "append",
+        })
       })
-    })
 
-    expect(document.querySelector(".markdown-stream-dot")).not.toBeNull()
+      const dot = () => document.querySelector(".markdown-stream-dot")
 
-    await act(async () => {
-      transport.fire("test-chat", { type: "chunk_end" })
-    })
+      // Text is arriving: no dot.
+      act(() => {
+        vi.advanceTimersByTime(100)
+      })
+      expect(dot()).toBeNull()
 
-    expect(document.querySelector(".markdown-stream-dot")).toBeNull()
+      // The stream stalls (buffer drained, no new chunks): the dot appears.
+      // Separate acts so React commits the drained text (starting the idle
+      // clock) before time advances past the threshold.
+      act(() => {
+        vi.advanceTimersByTime(1000)
+      })
+      expect(dot()).toBeNull()
+      act(() => {
+        vi.advanceTimersByTime(STREAM_IDLE_MS + 100)
+      })
+      expect(dot()).not.toBeNull()
+
+      // Content resumes: the dot goes away as soon as new text is revealed.
+      await act(async () => {
+        transport.fire("test-chat", {
+          type: "chunk",
+          content: " more",
+          operation: "append",
+        })
+      })
+      act(() => {
+        vi.advanceTimersByTime(100)
+      })
+      expect(dot()).toBeNull()
+
+      await act(async () => {
+        transport.fire("test-chat", { type: "chunk_end" })
+      })
+      act(() => {
+        vi.advanceTimersByTime(1000)
+      })
+
+      expect(dot()).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("keeps web activity expanded when a streaming message settles", async () => {
@@ -682,5 +723,255 @@ describe("ChatApp integration: page-owned history presentation", () => {
     })
 
     expect(page.querySelector(".shiny-chat-history-trigger")).toBeNull()
+  })
+})
+
+describe("ChatApp integration: streaming smoothing", () => {
+  it("does not render chunk text before a pacing tick elapses", async () => {
+    vi.useFakeTimers()
+    try {
+      const transport = createMockTransport()
+      const shinyLifecycle = createMockShinyLifecycle()
+
+      render(
+        <ChatApp
+          transport={transport}
+          shinyLifecycle={shinyLifecycle}
+          elementId="test-chat"
+          inputId="test-input"
+          uploadAccept={["image/png"]}
+          maxUploadSize={30000000}
+          placeholder="Type..."
+        />,
+      )
+
+      act(() => {
+        transport.fire("test-chat", {
+          type: "chunk_start",
+          message: {
+            role: "assistant",
+            segments: [{ content: "", content_type: "markdown" }],
+          },
+        })
+      })
+
+      act(() => {
+        transport.fire("test-chat", {
+          type: "chunk",
+          content: "Hello world, this is a longer streamed sentence",
+          operation: "append",
+        })
+      })
+
+      expect(screen.queryByText(/Hello world/)).toBeNull()
+
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
+
+      expect(screen.getByText(/Hello world/)).toBeTruthy()
+
+      act(() => {
+        transport.fire("test-chat", { type: "chunk_end" })
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("flushes buffered text before a block_insert so ordering is preserved", async () => {
+    vi.useFakeTimers()
+    try {
+      const transport = createMockTransport()
+      const shinyLifecycle = createMockShinyLifecycle()
+
+      render(
+        <ChatApp
+          transport={transport}
+          shinyLifecycle={shinyLifecycle}
+          elementId="test-chat"
+          inputId="test-input"
+          uploadAccept={["image/png"]}
+          maxUploadSize={30000000}
+          placeholder="Type..."
+        />,
+      )
+
+      act(() => {
+        transport.fire("test-chat", {
+          type: "chunk_start",
+          message: {
+            role: "assistant",
+            segments: [{ content: "", content_type: "markdown" }],
+          },
+        })
+      })
+
+      act(() => {
+        transport.fire("test-chat", {
+          type: "chunk",
+          content: "before the block",
+          operation: "append",
+        })
+      })
+
+      // No tick has elapsed yet — the text is still buffered.
+      expect(screen.queryByText(/before the block/)).toBeNull()
+
+      act(() => {
+        transport.fire("test-chat", {
+          type: "block_insert",
+          block: { type: "html_block", version: 1, content: "<p>a block</p>" },
+        })
+      })
+
+      // The block_insert must flush the buffered text first, so it appears
+      // even though no timer has elapsed.
+      expect(screen.getByText(/before the block/)).toBeTruthy()
+
+      act(() => {
+        transport.fire("test-chat", { type: "chunk_end" })
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe("ChatApp integration: end-of-stream drain", () => {
+  const TAIL = Array.from({ length: 60 }, (_, i) => `w${i}`).join(" ")
+
+  function renderChat(props: Partial<Parameters<typeof ChatApp>[0]> = {}) {
+    const transport = createMockTransport()
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={createMockShinyLifecycle()}
+        elementId="test-chat"
+        inputId="test-input"
+        uploadAccept={["image/png"]}
+        maxUploadSize={30000000}
+        placeholder="Type..."
+        {...props}
+      />,
+    )
+    return transport
+  }
+
+  function streamThenEnd(
+    transport: ReturnType<typeof createMockTransport>,
+    content: string,
+  ) {
+    act(() => {
+      transport.fire("test-chat", {
+        type: "chunk_start",
+        message: {
+          role: "assistant",
+          segments: [{ content: "", content_type: "markdown" }],
+        },
+      })
+    })
+    act(() => {
+      transport.fire("test-chat", {
+        type: "chunk",
+        content,
+        operation: "append",
+      })
+    })
+    act(() => {
+      transport.fire("test-chat", { type: "chunk_end" })
+    })
+  }
+
+  const shownText = () =>
+    Array.from(document.querySelectorAll(".shiny-chat-message-content"))
+      .map((el) => el.textContent ?? "")
+      .join("\n")
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("reveals the buffered tail over a short window instead of all at once", () => {
+    const transport = renderChat()
+    streamThenEnd(transport, TAIL)
+
+    // Nothing paced out yet: chunk_end did not dump the buffer.
+    expect(shownText()).not.toContain("w59")
+
+    act(() => {
+      vi.advanceTimersByTime(100)
+    })
+    expect(shownText()).toContain("w0")
+    expect(shownText()).not.toContain("w59")
+
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    expect(shownText()).toContain(TAIL)
+  })
+
+  it("defers unrelated actions until the tail has drained, preserving order", () => {
+    const transport = renderChat()
+    streamThenEnd(transport, TAIL)
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "update_input",
+        placeholder: "Ask a follow-up",
+      })
+    })
+    const textbox = screen.getByRole("textbox", { name: "Chat message" })
+    expect(textbox.getAttribute("placeholder")).toBe("Type...")
+
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(shownText()).toContain(TAIL)
+    expect(textbox.getAttribute("placeholder")).toBe("Ask a follow-up")
+  })
+
+  it("completes the drain immediately when a new stream starts", () => {
+    const transport = renderChat()
+    streamThenEnd(transport, TAIL)
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "chunk_start",
+        message: {
+          role: "assistant",
+          segments: [{ content: "", content_type: "markdown" }],
+        },
+      })
+    })
+
+    expect(shownText()).toContain(TAIL)
+  })
+
+  it("Stop during the drain reveals the rest without marking the reply cancelled", () => {
+    const transport = renderChat({ cancelId: "test-chat_cancel" })
+    act(() => {
+      transport.fire("test-chat", {
+        type: "update_cancel",
+        enable_cancel: true,
+      })
+    })
+    streamThenEnd(transport, TAIL)
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop generating" }))
+
+    expect(shownText()).toContain(TAIL)
+    expect(document.querySelector(".shiny-chat-message-cancelled")).toBeNull()
+
+    // No stale cancel flag leaks into the next reply.
+    streamThenEnd(transport, "second reply")
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(shownText()).toContain("second reply")
+    expect(document.querySelector(".shiny-chat-message-cancelled")).toBeNull()
   })
 })

@@ -73,11 +73,25 @@ pre:has(.code-copy-button) {
   }
 }
 
+@keyframes markdown-stream-dot-appear {
+  to {
+    opacity: 1;
+  }
+}
+
 .markdown-stream-dot {
-  // The stream dot is appended with each streaming chunk update, so the pulse animation
-  // only shows up when streaming pauses but isn't complete.
-  animation: markdown-stream-dot-pulse 1.75s infinite cubic-bezier(0.18, 0.89, 0.32, 1.28);
-  animation-delay: 250ms;
+  // Only rendered while a stream has no content yet or has stalled (see
+  // useStreamIdle), so it mounts fresh each time: fade in, then pulse.
+  opacity: 0;
+  animation:
+    markdown-stream-dot-appear 0.3s ease forwards,
+    markdown-stream-dot-pulse 1.75s infinite cubic-bezier(0.18, 0.89, 0.32, 1.28) 0.3s;
   display: inline-block;
   transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markdown-stream-dot {
+    animation: markdown-stream-dot-appear 0.3s ease forwards;
+  }
 }
