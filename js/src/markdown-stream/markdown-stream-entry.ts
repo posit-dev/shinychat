@@ -120,9 +120,7 @@ class MarkdownStreamElement extends HTMLElement {
             meta.segmentStart && isFirstSlice,
           )
         },
-        // Merge consecutive chunks so pacing cuts land anywhere, not only at
-        // server chunk boundaries. A segment start keeps its own entry so
-        // the seam is preserved.
+        // A segment start keeps its own entry so the seam is preserved.
         canMerge: (queued, incoming) =>
           queued.trusted === incoming.trusted && !incoming.segmentStart,
       })

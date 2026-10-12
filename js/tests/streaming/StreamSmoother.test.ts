@@ -396,12 +396,12 @@ describe("StreamSmoother finish()", () => {
     expect(smoother.finishing).toBe(true)
     expect(events).toEqual([])
 
-    // Not dumped in one go...
+    // The tail does not drain in a single tick...
     vi.advanceTimersByTime(50)
     expect(events.join("").length).toBeGreaterThan(0)
     expect(events.join("").length).toBeLessThan(text.length)
 
-    // ...but done within the window (plus one tick of slack).
+    // ...but finishes within the window (plus one tick of slack).
     vi.advanceTimersByTime(400)
     expect(events.at(-1)).toBe("DONE")
     expect(events.slice(0, -1).join("")).toBe(text)
@@ -455,7 +455,7 @@ describe("StreamSmoother finish()", () => {
 
 describe("StreamSmoother tag boundaries", () => {
   // drainRate 1 reveals the whole buffer each tick, isolating tag handling
-  // from pacing (as with the former StreamCoalescer).
+  // from pacing.
   const whole = { drainRate: 1 }
   const joined = (fn: ReturnType<typeof vi.fn>) =>
     fn.mock.calls.map((c) => c[0]).join("")
@@ -486,7 +486,7 @@ describe("StreamSmoother tag boundaries", () => {
     vi.advanceTimersByTime(50)
     expect(onEmit).toHaveBeenCalledWith("hello ", null, true)
 
-    // Turns out not to be a tag — the `<` goes out with the next tick.
+    // The `<` is not a tag start, so it is emitted on the next tick.
     smoother.push(" y", null)
     vi.advanceTimersByTime(50)
     expect(joined(onEmit)).toBe("hello < y")

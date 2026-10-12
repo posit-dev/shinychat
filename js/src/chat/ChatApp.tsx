@@ -221,9 +221,8 @@ export function ChatApp({
           html_deps: isFirstSlice ? meta.html_deps : undefined,
         })
       },
-      // Merge consecutive chunks so pacing cuts land anywhere, not only at
-      // server chunk boundaries. A chunk carrying html_deps starts its own
-      // entry so its deps are forwarded exactly once.
+      // A chunk carrying html_deps starts its own entry so its deps are
+      // forwarded exactly once.
       canMerge: (queued, incoming) =>
         queued.content_type === incoming.content_type &&
         !incoming.html_deps?.length,
@@ -285,8 +284,7 @@ export function ChatApp({
       }
       if (action.type === "chunk_start") {
         // A prior stream's tail was already completed on arrival (see
-        // ENDS_DRAIN); dispose defensively since a fresh stream has nothing
-        // worth keeping.
+        // ENDS_DRAIN), and a fresh stream has nothing buffered worth keeping.
         smoother.dispose()
         dispatch(action)
         return
