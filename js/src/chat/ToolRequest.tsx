@@ -11,8 +11,6 @@ export interface ToolRequestProps {
   toolTitle?: string
   intent?: string
   arguments: string
-  /** Open the card body on mount (used under a Tier-2 row, which hides the
-   * card's own header and so its toggle). */
   expanded?: boolean
 }
 
