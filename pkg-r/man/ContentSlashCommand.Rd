@@ -4,14 +4,11 @@
 \alias{ContentSlashCommand}
 \title{Slash command content}
 \usage{
-ContentSlashCommand(
-  text = stop("Required"),
-  command = character(0),
-  user_text = ""
-)
+ContentSlashCommand(..., command = character(0), user_text = "")
 }
 \arguments{
-\item{text}{The text sent to the LLM. When constructed by the chat module,
+\item{...}{Arguments passed on to \link[ellmer:ContentText]{ellmer::ContentText}, including \code{text},
+the text sent to the LLM. When constructed by the chat module,
 this defaults to a descriptive string like
 \code{"The user entered the /greet slash command with arguments: world"}.
 Set it in the handler to control what the LLM actually sees.}
