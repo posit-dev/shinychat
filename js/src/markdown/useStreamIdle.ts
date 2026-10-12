@@ -21,7 +21,12 @@ export function useStreamIdle(
   const [idleOn, setIdleOn] = useState<{ activity: unknown } | null>(null)
 
   useEffect(() => {
-    if (!active) return
+    // Forget remembered idle activity while inactive so a resuming stream
+    // must wait out the full delay before reading as idle again.
+    if (!active) {
+      setIdleOn(null)
+      return
+    }
     const timer = setTimeout(() => setIdleOn({ activity }), delayMs)
     return () => clearTimeout(timer)
   }, [active, activity, delayMs])

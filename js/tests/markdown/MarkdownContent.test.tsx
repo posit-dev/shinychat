@@ -193,6 +193,53 @@ describe("MarkdownContent (pure)", () => {
     expect(container.querySelector(".markdown-stream-dot")).toBeNull()
   })
 
+  it("restarts the idle clock when streaming resumes after going inactive", () => {
+    vi.useFakeTimers()
+    try {
+      const dot = () => container.querySelector(".markdown-stream-dot")
+      const { container, rerender } = render(
+        <MarkdownContent
+          content="hello"
+          contentType="markdown"
+          streaming={true}
+        />,
+      )
+      // Stream stalls: the idle dot appears.
+      act(() => {
+        vi.advanceTimersByTime(STREAM_IDLE_MS + 100)
+      })
+      expect(dot()).not.toBeNull()
+
+      // Stream goes inactive, then resumes on the same content. The dot
+      // must wait out a fresh idle period rather than reappearing at once.
+      rerender(
+        <MarkdownContent
+          content="hello"
+          contentType="markdown"
+          streaming={false}
+        />,
+      )
+      rerender(
+        <MarkdownContent
+          content="hello"
+          contentType="markdown"
+          streaming={true}
+        />,
+      )
+      expect(dot()).toBeNull()
+      act(() => {
+        vi.advanceTimersByTime(STREAM_IDLE_MS - 100)
+      })
+      expect(dot()).toBeNull()
+      act(() => {
+        vi.advanceTimersByTime(200)
+      })
+      expect(dot()).not.toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("does not re-run parseMarkdown when only streaming changes", () => {
     const spy = vi.spyOn(markdownToReactModule, "parseMarkdown")
 

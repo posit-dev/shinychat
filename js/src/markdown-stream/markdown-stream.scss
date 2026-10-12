@@ -73,7 +73,7 @@ pre:has(.code-copy-button) {
   }
 }
 
-@keyframes markdown-stream-dot-appear {
+@keyframes shiny-chat-dot-appear {
   to {
     opacity: 1;
   }
@@ -84,7 +84,7 @@ pre:has(.code-copy-button) {
   // useStreamIdle), so it mounts fresh each time: fade in, then pulse.
   opacity: 0;
   animation:
-    markdown-stream-dot-appear 0.3s ease forwards,
+    shiny-chat-dot-appear 0.3s ease forwards,
     markdown-stream-dot-pulse 1.75s infinite cubic-bezier(0.18, 0.89, 0.32, 1.28) 0.3s;
   display: inline-block;
   transform-origin: center;
@@ -92,6 +92,6 @@ pre:has(.code-copy-button) {
 
 @media (prefers-reduced-motion: reduce) {
   .markdown-stream-dot {
-    animation: markdown-stream-dot-appear 0.3s ease forwards;
+    animation: shiny-chat-dot-appear 0.3s ease forwards;
   }
 }
