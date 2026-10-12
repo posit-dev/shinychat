@@ -76,6 +76,7 @@ function renderLeaf(item: ToolCallItem, open: boolean): ReactNode {
         toolTitle={item.title ?? item.definitionTitle}
         intent={item.intent}
         arguments={item.arguments ?? "{}"}
+        expanded={open}
       />
     )
   }

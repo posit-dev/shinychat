@@ -11,6 +11,9 @@ export interface ToolRequestProps {
   toolTitle?: string
   intent?: string
   arguments: string
+  /** Open the card body on mount (used under a Tier-2 row, which hides the
+   * card's own header and so its toggle). */
+  expanded?: boolean
 }
 
 /** Ports ShinyToolRequest from the Lit implementation. */
@@ -19,6 +22,7 @@ export const ToolRequest = memo(function ToolRequest({
   toolTitle,
   intent,
   arguments: toolArguments,
+  expanded,
 }: ToolRequestProps) {
   return (
     <ToolCard
@@ -27,6 +31,7 @@ export const ToolRequest = memo(function ToolRequest({
       intent={intent}
       icon={spinnerIcon}
       resetKey={toolArguments}
+      initialExpanded={expanded}
     >
       <div className="shiny-tool-request__arguments">
         <strong>Tool arguments</strong>

@@ -82,6 +82,32 @@ describe("ToolGroup", () => {
     expect(container.querySelector(".shiny-tool-card")).toBeTruthy()
   })
 
+  it("shows a running call's arguments when its row is expanded", () => {
+    // The detail hides the card's own header (and its toggle), so the
+    // request body has to open with the row.
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          calls: [
+            call({
+              requestId: "a",
+              status: "running",
+              arguments: '{"query": "glucose"}',
+            }),
+          ],
+        })}
+      />,
+    )
+    fireEvent.click(container.querySelector(".shiny-chat-tool-group__row")!)
+
+    const body = container.querySelector(
+      ".shiny-chat-tool-call-row__detail .shiny-tool-card > .card-body",
+    )!
+    expect(body.classList.contains("collapsed")).toBe(false)
+    expect(body.hasAttribute("inert")).toBe(false)
+    expect(body.textContent).toContain("glucose")
+  })
+
   it("frames an expanded successful single framed result", () => {
     const { container } = render(
       <ToolGroup
