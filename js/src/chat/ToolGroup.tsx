@@ -78,7 +78,7 @@ function renderLeaf(item: ToolCallItem): ReactNode {
         toolTitle={item.title ?? item.definitionTitle}
         intent={item.intent}
         arguments={item.arguments ?? "{}"}
-        expanded
+        initialExpanded
       />
     )
   }
@@ -93,7 +93,7 @@ function renderLeaf(item: ToolCallItem): ReactNode {
       requestCall={item.requestCall}
       showRequest={item.showRequest}
       fullScreen={item.fullScreen}
-      expanded
+      initialExpanded
       icon={item.icon}
       footer={item.footer}
       label={item.label}
