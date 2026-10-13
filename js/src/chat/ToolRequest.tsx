@@ -11,6 +11,7 @@ export interface ToolRequestProps {
   toolTitle?: string
   intent?: string
   arguments: string
+  initialExpanded?: boolean
 }
 
 /** Ports ShinyToolRequest from the Lit implementation. */
@@ -19,6 +20,7 @@ export const ToolRequest = memo(function ToolRequest({
   toolTitle,
   intent,
   arguments: toolArguments,
+  initialExpanded,
 }: ToolRequestProps) {
   return (
     <ToolCard
@@ -27,6 +29,7 @@ export const ToolRequest = memo(function ToolRequest({
       intent={intent}
       icon={spinnerIcon}
       resetKey={toolArguments}
+      initialExpanded={initialExpanded}
     >
       <div className="shiny-tool-request__arguments">
         <strong>Tool arguments</strong>

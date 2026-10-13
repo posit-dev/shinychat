@@ -69,7 +69,7 @@ export interface ToolResultProps {
   requestCall?: string
   showRequest?: boolean
   fullScreen?: boolean
-  expanded?: boolean
+  initialExpanded?: boolean
   icon?: string
   footer?: string
 }
@@ -85,7 +85,7 @@ export const ToolResult = memo(function ToolResult({
   requestCall,
   showRequest = false,
   fullScreen = false,
-  expanded = false,
+  initialExpanded = false,
   icon: iconProp,
   footer,
 }: ToolResultProps) {
@@ -108,7 +108,7 @@ export const ToolResult = memo(function ToolResult({
         classStatus={classStatus}
         statusNote={isError ? "failed" : undefined}
         fullScreen={fullScreen}
-        initialExpanded={expanded}
+        initialExpanded={initialExpanded}
         footer={footer}
         onEnterFullscreen={enterFullscreen}
         cardRef={cardRef}
