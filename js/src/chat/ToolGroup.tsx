@@ -67,8 +67,10 @@ function glyphHtml(glyph: ToolGlyph): string {
 }
 
 // The Tier-3 leaf: the full request/result card, reusing the existing tool
-// components. `open` forces the card body visible (used under a Tier-2 row).
-function renderLeaf(item: ToolCallItem, open: boolean): ReactNode {
+// components. The leaf only ever mounts under an open row (both call sites
+// gate on it), and the row hides the card's own header — so the body always
+// renders open and the row is the only toggle.
+function renderLeaf(item: ToolCallItem): ReactNode {
   if (item.status === "running") {
     return (
       <ToolRequest
@@ -76,7 +78,7 @@ function renderLeaf(item: ToolCallItem, open: boolean): ReactNode {
         toolTitle={item.title ?? item.definitionTitle}
         intent={item.intent}
         arguments={item.arguments ?? "{}"}
-        expanded={open}
+        expanded
       />
     )
   }
@@ -91,7 +93,7 @@ function renderLeaf(item: ToolCallItem, open: boolean): ReactNode {
       requestCall={item.requestCall}
       showRequest={item.showRequest}
       fullScreen={item.fullScreen}
-      expanded={open || item.expanded}
+      expanded
       icon={item.icon}
       footer={item.footer}
       label={item.label}
@@ -275,7 +277,7 @@ function ToolCallRow({
         className="shiny-chat-tool-call-row__detail"
         hidden={!open}
       >
-        {open && renderLeaf(item, true)}
+        {open && renderLeaf(item)}
       </div>
     </li>
   )
@@ -421,7 +423,7 @@ function ToolGroupRow({
           className="shiny-chat-tool-call-row__detail"
           hidden={!expanded}
         >
-          {expanded && renderLeaf(single, true)}
+          {expanded && renderLeaf(single)}
         </div>
       ) : (
         <ul
