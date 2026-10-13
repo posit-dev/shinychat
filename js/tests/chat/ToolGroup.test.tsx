@@ -108,6 +108,40 @@ describe("ToolGroup", () => {
     expect(body.textContent).toContain("glucose")
   })
 
+  it("shows a running call's arguments when its row is expanded in a multi-call group", () => {
+    // Same guarantee as the single-call case, through the Tier-2 row path.
+    const { container } = render(
+      <ToolGroup
+        group={group({
+          calls: [
+            call({
+              requestId: "a",
+              status: "running",
+              arguments: '{"query": "glucose"}',
+            }),
+            call({
+              requestId: "b",
+              status: "success",
+              value: "done",
+              valueType: "text",
+            }),
+          ],
+        })}
+      />,
+    )
+    fireEvent.click(container.querySelector(".shiny-chat-tool-group__row")!)
+    fireEvent.click(
+      container.querySelectorAll(".shiny-chat-tool-call-row__summary")[0]!,
+    )
+
+    const body = container.querySelector(
+      ".shiny-chat-tool-call-row__detail .shiny-tool-card > .card-body",
+    )!
+    expect(body.classList.contains("collapsed")).toBe(false)
+    expect(body.hasAttribute("inert")).toBe(false)
+    expect(body.textContent).toContain("glucose")
+  })
+
   it("frames an expanded successful single framed result", () => {
     const { container } = render(
       <ToolGroup
