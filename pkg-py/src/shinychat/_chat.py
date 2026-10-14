@@ -220,6 +220,15 @@ _STREAM_SUPPRESSED_MESSAGE = (
     "before its message iterable was consumed; it will not be replayed."
 )
 
+# Warned when a programmatic append is suppressed during the v2 initial history
+# decision window. The message is a module-level constant so callers can filter
+# on it; it names the consequence: the append was ignored, not sent, and will
+# not be replayed (D5, phase-5.6 mechanism).
+_SUPPRESSED_APPEND_WARNING = (
+    "The append was ignored because conversation history is still "
+    "initializing; it was not sent and will not be replayed."
+)
+
 
 class Chat:
     """
@@ -552,6 +561,7 @@ class Chat:
                 echo = bool(data.get("echo", True))
                 try:
                     if not self.history._history_action_admitted():
+                        warnings.warn(_SUPPRESSED_APPEND_WARNING, stacklevel=2)
                         return
                     if echo:
                         full_text = f"/{command} {user_text}".rstrip()
@@ -1166,6 +1176,7 @@ class Chat:
         transaction: object | None = None,
     ) -> None:
         if not self.history._history_action_admitted():
+            warnings.warn(_SUPPRESSED_APPEND_WARNING, stacklevel=2)
             return
         exchange_id = self._transcript.open_exchange_id
         transaction, release = self._transcript._use_transaction(
@@ -1364,6 +1375,7 @@ class Chat:
         # Normalize various message types into a ChatMessage()
         if chunk == "start":
             if not self.history._history_action_admitted():
+                warnings.warn(_SUPPRESSED_APPEND_WARNING, stacklevel=2)
                 return False
             exchange_id = self._transcript.open_exchange_id
             transaction = self._transcript._reserve_stream_start()

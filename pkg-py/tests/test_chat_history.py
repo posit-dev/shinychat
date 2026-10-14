@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import warnings
 from contextlib import nullcontext
 from copy import deepcopy
 from typing import Any, Awaitable, Callable, cast
@@ -509,13 +510,16 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
             ConversationPartition(chat_id=chat_id, scope="test")
         )
 
+        warnings.simplefilter("error")
         await chat._record_accepted_user_input_with_capture(
             ChatMessage(content="blocked input", role="user")
         )
-        await chat.append_message(object())
-        assert not await chat._append_message_chunk(
-            "", chunk="start", stream_id="blocked-stream"
-        )
+        with pytest.warns(UserWarning, match="The append was ignored because"):
+            await chat.append_message(object())
+        with pytest.warns(UserWarning, match="The append was ignored because"):
+            assert not await chat._append_message_chunk(
+                "", chunk="start", stream_id="blocked-stream"
+            )
         # Suppressed stream entry points now raise instead of silently
         # dismissing: the producer is unconsumed and the caller keeps
         # ownership of it (D1).
@@ -740,7 +744,8 @@ async def test_v2_successful_bookmark_pointer_suppresses_then_admits_root_append
         recorder = controller._exchange_recorder
         assert recorder is not None
 
-        await chat.append_message("suppressed bookmark append")
+        with pytest.warns(UserWarning, match="The append was ignored because"):
+            await chat.append_message("suppressed bookmark append")
         assert not chat.history._initial_history_initialized
         assert chat._transcript.read() == ()
         assert recorder.record is None
@@ -756,7 +761,9 @@ async def test_v2_successful_bookmark_pointer_suppresses_then_admits_root_append
         assert recorder.record.active_leaf == "n_0000"
         assert controller._active_id_now() == "c_target"
 
-        await chat.append_message("admitted bookmark append")
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            await chat.append_message("admitted bookmark append")
         assert recorder.record is not None
         active_leaf = recorder.record.active_leaf
         assert active_leaf is not None
