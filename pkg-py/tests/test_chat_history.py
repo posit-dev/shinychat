@@ -516,9 +516,13 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
         assert not await chat._append_message_chunk(
             "", chunk="start", stream_id="blocked-stream"
         )
-        async with chat.message_stream_context() as stream:
-            await stream.append("blocked stream append")
-            await stream.replace("blocked stream replace")
+        # Suppressed stream entry points now raise instead of silently
+        # dismissing: the producer is unconsumed and the caller keeps
+        # ownership of it (D1).
+        with pytest.raises(RuntimeError, match="chat history is still initializing"):
+            async with chat.message_stream_context() as stream:
+                await stream.append("blocked stream append")
+                await stream.replace("blocked stream replace")
 
         stream_started = False
 
@@ -532,7 +536,10 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
             "extended_task",
             wraps=reactive.extended_task,
         ) as extended_task:
-            assert await chat.append_message_stream(blocked_stream()) is None
+            with pytest.raises(
+                RuntimeError, match="chat history is still initializing"
+            ):
+                await chat.append_message_stream(blocked_stream())
         extended_task.assert_not_called()
         assert not stream_started
         assert chat._transcript.read() == ()

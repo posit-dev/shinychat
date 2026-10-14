@@ -209,6 +209,17 @@ class UserInput(NamedTuple):
 
 ChunkOption = Literal["start", "end", True, False]
 
+# Raised when a stream entry point is rejected because the v2 initial history
+# decision is still pending. The message names the consequence for the caller:
+# the producer was never consumed and nothing will be replayed later. Appends
+# stay silent (they are already-realized content); a stream is an unconsumed,
+# expensive producer, so it fails loudly instead (D1, phase-5.6 mechanism).
+_STREAM_SUPPRESSED_MESSAGE = (
+    "Cannot start a message stream while chat history is still initializing. "
+    "No accepted-transcript work can start yet, so the stream was rejected "
+    "before its message iterable was consumed; it will not be replayed."
+)
+
 
 class Chat:
     """
@@ -1250,6 +1261,10 @@ class Chat:
         `.replace("")` the stream back to it's initial state when ready to display the
         "final" content.
 
+        Starting a root stream while conversation history is still initializing
+        raises `RuntimeError` before any content is produced; nested streams are
+        unaffected.
+
         Note
         ----
         `.replace()` resets the stream to the checkpoint captured when this context was
@@ -1264,8 +1279,7 @@ class Chat:
         started = False
         if is_root_stream:
             if not self.history._history_action_admitted():
-                yield MessageStream(self, None)
-                return
+                raise RuntimeError(_STREAM_SUPPRESSED_MESSAGE)
             stream_id = _utils.private_random_id()
             try:
                 started = await self._append_message_chunk(
@@ -1663,6 +1677,13 @@ class Chat:
         specified in model's completion method.
         ```
 
+        Raises
+        ------
+        :
+            `RuntimeError` if conversation history is still initializing: the
+            stream is rejected before the message iterable is consumed and it
+            will not be replayed.
+
         Returns
         -------
         :
@@ -1673,7 +1694,10 @@ class Chat:
         from shiny import reactive
 
         if not self.history._history_action_admitted():
-            return None
+            # Rejected before the message iterable is wrapped or touched, so
+            # zero chunks are pulled and the caller keeps ownership of the
+            # (possibly expensive) producer to close or gate it.
+            raise RuntimeError(_STREAM_SUPPRESSED_MESSAGE)
 
         message = _utils.wrap_async_iterable(message)
 
