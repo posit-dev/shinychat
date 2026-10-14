@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import inspect
-import json
 import warnings
 from collections.abc import Mapping, Sequence
 from contextlib import asynccontextmanager, contextmanager
@@ -11,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, cast
 
 from pydantic import JsonValue
 
+from . import _history_plan
 from ._attachments import (
     Attachment,
     attachment_to_content,
@@ -35,11 +35,22 @@ from ._history_bookmark import delete_bookmark_state, extract_state_id
 from ._history_client import (
     TurnDict,
     TurnsAdapter,
-    _validate_mapping_keys,
     as_turns_adapter,
     normalize_turn_group,
     turn_dict_effective_role,
     turn_fallback_markdown,
+)
+from ._history_plan import (
+    CaptureContext,
+    CaptureHook,
+    CaptureReason,
+    RestoreHook,
+    RestorePlan,
+    RewindHook,
+    StatePathContext,
+    adapter_is_chatlas,
+    canonical_turns,
+    turn_entry_kind,
 )
 from ._history_store import (
     ConversationPartition,
@@ -82,35 +93,6 @@ if TYPE_CHECKING:
 
 
 _EXCHANGE_TREE_HISTORY_V2 = False
-
-
-CaptureReason = Literal["root_close", "stream_finish", "node_close"]
-CaptureHook = Callable[
-    ["CaptureContext"], Awaitable[StateEntry | None] | StateEntry | None
-]
-
-
-@dataclasses.dataclass(frozen=True)
-class CaptureContext:
-    node_id: str
-    reason: CaptureReason
-
-
-@dataclasses.dataclass(frozen=True)
-class StatePathContext:
-    conversation_id: str
-    active_leaf: str
-    node_ids: tuple[str, ...]
-    entries: tuple[tuple[str, StateEntry], ...]
-    bootstrap: Literal["recorded", "live"]
-    prepared_turns: list[dict[str, Any]] | None = None
-    turns_unavailable: bool = False
-
-
-RestoreHook = Callable[[StatePathContext], Awaitable[None] | None]
-RestorePlan = tuple[tuple[str, RestoreHook, StatePathContext], ...]
-RewindHook = Callable[[StatePathContext], Awaitable[None] | None]
-RewindPlan = tuple[tuple[str, RewindHook, StatePathContext], ...]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -471,18 +453,9 @@ class _ExchangeRecorder:
     def _canonical_turns(
         turns: Sequence[Mapping[str, Any]],
     ) -> tuple[list[dict[str, Any]], list[str]]:
-        for turn in turns:
-            _validate_mapping_keys(turn)
-        serialized = [
-            json.loads(json.dumps(turn, allow_nan=False, separators=(",", ":")))
-            for turn in turns
-        ]
-        return serialized, [
-            json.dumps(
-                turn, allow_nan=False, sort_keys=True, separators=(",", ":")
-            )
-            for turn in serialized
-        ]
+        # Kept as the recorder-facing name for the capture seam; the
+        # implementation lives once in `_history_plan.canonical_turns`.
+        return canonical_turns(turns)
 
     def _set_turn_baseline(self, turns: list[dict[str, Any]]) -> None:
         _, self._turn_baseline = self._canonical_turns(turns)
@@ -493,7 +466,7 @@ class _ExchangeRecorder:
 
     def _capture_turns(self, context: CaptureContext) -> StateEntry:
         adapter = self._controller.adapter
-        include_system_prompt = getattr(adapter, "is_chatlas", lambda: False)()
+        include_system_prompt = adapter_is_chatlas(adapter)
         turns, fingerprints = self._canonical_turns(
             adapter.get_turns_json(include_system_prompt=include_system_prompt)
         )
@@ -519,9 +492,7 @@ class _ExchangeRecorder:
             data = [*previous.data, *data]
             mode = previous.mode
         return StateEntry(
-            kind="chatlas"
-            if getattr(adapter, "is_chatlas", lambda: False)()
-            else "turns",
+            kind=turn_entry_kind(adapter),
             version=1,
             mode=mode,
             data=cast(JsonValue, data),
@@ -540,111 +511,6 @@ class _ExchangeRecorder:
             else:
                 node.state[name] = entry
 
-    @staticmethod
-    def _effective_turn_entries(
-        context: StatePathContext,
-    ) -> tuple[tuple[str, StateEntry], ...]:
-        last_snapshot = -1
-        for index, (_, entry) in enumerate(context.entries):
-            if entry.mode == "snapshot":
-                last_snapshot = index
-        return context.entries[last_snapshot if last_snapshot >= 0 else 0 :]
-
-    def _turn_entries_are_incompatible(
-        self, entries: tuple[tuple[str, StateEntry], ...]
-    ) -> bool:
-        expected_kind = (
-            "chatlas"
-            if getattr(self._controller.adapter, "is_chatlas", lambda: False)()
-            else "turns"
-        )
-        for _, entry in entries:
-            if entry.kind != expected_kind or entry.version != 1:
-                return True
-            if expected_kind == "chatlas":
-                from chatlas import Turn
-
-                try:
-                    for turn in cast(list[dict[str, Any]], entry.data):
-                        Turn.model_validate(turn)
-                except (TypeError, ValueError):
-                    return True
-        return False
-
-    def _turns_are_incompatible(self, context: StatePathContext) -> bool:
-        return self._turn_entries_are_incompatible(
-            self._effective_turn_entries(context)
-        )
-
-    def _validate_turn_entries(
-        self, entries: tuple[tuple[str, StateEntry], ...]
-    ) -> None:
-        for _, entry in entries:
-            if not isinstance(entry.data, list) or not all(
-                isinstance(turn, dict) for turn in entry.data
-            ):
-                raise ValueError(
-                    "Turn-state entries must contain a list of JSON objects."
-                )
-            self._canonical_turns(cast(list[dict[str, Any]], entry.data))
-
-    def _active_path_turns_are_incompatible(
-        self, record: ConversationRecordV2
-    ) -> bool:
-        if record.active_leaf is None:
-            raise ValueError("Exchange-tree record has no active leaf.")
-        node_ids = tuple(record.path_node_ids())
-        for node_id in node_ids:
-            for name, entry in record.nodes[node_id].state.items():
-                self._validate_restore_state_entry(name, entry)
-        entries = tuple(
-            (node_id, record.nodes[node_id].state["shinychat:turns"])
-            for node_id in node_ids
-            if "shinychat:turns" in record.nodes[node_id].state
-        )
-        self._validate_turn_entries(entries)
-        return self._turn_entries_are_incompatible(
-            self._effective_turn_entries(
-                StatePathContext(
-                    conversation_id=record.id,
-                    active_leaf=record.active_leaf,
-                    node_ids=node_ids,
-                    entries=entries,
-                    bootstrap="recorded",
-                )
-            )
-        )
-
-    def _materialize_restore_turns(
-        self, context: StatePathContext
-    ) -> tuple[list[dict[str, Any]], bool]:
-        adapter = self._controller.adapter
-        include_system_prompt = getattr(adapter, "is_chatlas", lambda: False)()
-        turns: list[Any] = (
-            adapter.get_turns_json(include_system_prompt=include_system_prompt)
-            if context.bootstrap == "live"
-            else []
-        )
-        root_id = context.node_ids[0]
-        self._validate_turn_entries(context.entries)
-        if self._turns_are_incompatible(context):
-            return self._canonical_turns(turns)[0], True
-
-        for node_id, entry in self._effective_turn_entries(context):
-            entry_turns = cast(list[dict[str, Any]], entry.data)
-            if (
-                context.bootstrap == "live"
-                and node_id == root_id
-                and entry.mode == "snapshot"
-            ):
-                continue
-            if entry.mode == "snapshot":
-                turns = list(entry_turns)
-            else:
-                turns.extend(entry_turns)
-
-        return self._canonical_turns(turns)[0], False
-
     async def _restore_turns(self, context: StatePathContext) -> None:
         if context.prepared_turns is None:
             raise RuntimeError("Turns must be materialized before restore.")
@@ -657,175 +523,6 @@ class _ExchangeRecorder:
             return
         adapter.set_turns_json(cast(list[TurnDict], turns))
         self._set_turn_baseline(turns)
-
-    @staticmethod
-    def _validate_restore_state_entry(name: str, entry: StateEntry) -> None:
-        if not isinstance(entry.kind, str) or not entry.kind:
-            raise ValueError(f"State entry {name!r} has an invalid kind.")
-        if (
-            not isinstance(entry.version, int)
-            or isinstance(entry.version, bool)
-            or entry.version < 1
-        ):
-            raise ValueError(f"State entry {name!r} has an invalid version.")
-        if not isinstance(entry.mode, str) or entry.mode not in (
-            "snapshot",
-            "delta",
-        ):
-            raise ValueError(f"State entry {name!r} has an invalid mode.")
-        try:
-            json.dumps(entry.data, allow_nan=False)
-        except (TypeError, ValueError) as e:
-            raise ValueError(
-                f"State entry {name!r} has invalid JSON data."
-            ) from e
-
-    def _preflight_restore_state(
-        self,
-        record: ConversationRecordV2,
-        node_ids: tuple[str, ...],
-        bootstrap: Literal["recorded", "live"],
-    ) -> RestorePlan:
-        if record.active_leaf is None:
-            raise ValueError("Exchange-tree record has no active leaf.")
-        for node_id in node_ids:
-            for name, entry in record.nodes[node_id].state.items():
-                if name not in self._restore_hooks:
-                    raise ValueError(
-                        f"Unsupported restore state entry {name!r}."
-                    )
-                self._validate_restore_state_entry(name, entry)
-
-        planned: list[tuple[str, RestoreHook, StatePathContext]] = []
-        for name, hook in self._restore_hooks.items():
-            entries = tuple(
-                (node_id, record.nodes[node_id].state[name])
-                for node_id in node_ids
-                if name in record.nodes[node_id].state
-            )
-            context = StatePathContext(
-                conversation_id=record.id,
-                active_leaf=record.active_leaf,
-                node_ids=node_ids,
-                entries=entries,
-                bootstrap=bootstrap,
-            )
-            if name == "shinychat:turns" and bootstrap == "recorded":
-                prepared_turns, turns_unavailable = (
-                    self._materialize_restore_turns(context)
-                )
-                context = dataclasses.replace(
-                    context,
-                    prepared_turns=prepared_turns,
-                    turns_unavailable=turns_unavailable,
-                )
-            planned.append((name, hook, context))
-        return tuple(planned)
-
-    def _materialize_live_restore_turns(
-        self, planned: RestorePlan
-    ) -> RestorePlan:
-        materialized: list[tuple[str, RestoreHook, StatePathContext]] = []
-        for name, hook, context in planned:
-            prepared_context = context
-            if name == "shinychat:turns":
-                prepared_turns, turns_unavailable = (
-                    self._materialize_restore_turns(context)
-                )
-                prepared_context = dataclasses.replace(
-                    context,
-                    prepared_turns=prepared_turns,
-                    turns_unavailable=turns_unavailable,
-                )
-            materialized.append((name, hook, prepared_context))
-        return tuple(materialized)
-
-    @staticmethod
-    def _turns_unavailable(planned: RestorePlan) -> bool:
-        return any(
-            name == "shinychat:turns" and context.turns_unavailable
-            for name, _, context in planned
-        )
-
-    async def _restore_state(self, planned: RestorePlan) -> None:
-        for _, hook, context in planned:
-            result = hook(context)
-            if inspect.isawaitable(result):
-                await result
-
-    def _preflight_rewind_state(
-        self,
-        record: ConversationRecordV2,
-        node_ids: tuple[str, ...],
-        *,
-        preserve_live_turns: bool = False,
-    ) -> RewindPlan:
-        if record.active_leaf is None:
-            raise ValueError("Exchange-tree record has no active leaf.")
-        for node_id in node_ids:
-            for name, entry in record.nodes[node_id].state.items():
-                if name not in self._rewind_hooks:
-                    raise ValueError(
-                        f"Unsupported rewind state entry {name!r}."
-                    )
-                self._validate_restore_state_entry(name, entry)
-
-        planned: list[tuple[str, RewindHook, StatePathContext]] = []
-        for name, hook in self._rewind_hooks.items():
-            entries = tuple(
-                (node_id, record.nodes[node_id].state[name])
-                for node_id in node_ids
-                if name in record.nodes[node_id].state
-            )
-            context = StatePathContext(
-                conversation_id=record.id,
-                active_leaf=record.active_leaf,
-                node_ids=node_ids,
-                entries=entries,
-                bootstrap="recorded",
-            )
-            if name == "shinychat:turns":
-                if preserve_live_turns:
-                    adapter = self._controller.adapter
-                    include_system_prompt = getattr(
-                        adapter, "is_chatlas", lambda: False
-                    )()
-                    prepared_turns = self._canonical_turns(
-                        adapter.get_turns_json(
-                            include_system_prompt=include_system_prompt
-                        )
-                    )[0]
-                    turns_unavailable = True
-                    context = dataclasses.replace(context, bootstrap="live")
-                else:
-                    prepared_turns, turns_unavailable = (
-                        self._materialize_restore_turns(context)
-                    )
-                    if turns_unavailable:
-                        raise ValueError(
-                            "Unsupported shinychat:turns state entry."
-                        )
-                context = dataclasses.replace(
-                    context,
-                    prepared_turns=prepared_turns,
-                    turns_unavailable=turns_unavailable,
-                )
-            planned.append((name, hook, context))
-        return tuple(planned)
-
-    async def _rewind_state(self, planned: RewindPlan) -> None:
-        for _, hook, context in planned:
-            result = hook(context)
-            if inspect.isawaitable(result):
-                await result
-
-    async def _rewind_non_turn_state(self, planned: RewindPlan) -> None:
-        for name, hook, context in planned:
-            if name == "shinychat:turns":
-                continue
-            result = hook(context)
-            if inspect.isawaitable(result):
-                await result
 
     def install_restored_record(self, record: ConversationRecordV2) -> None:
         self.record = record
@@ -1659,8 +1356,12 @@ class HistoryController:
         selected_bootstrap = (
             self.restore_bootstrap if bootstrap is None else bootstrap
         )
-        planned_state = recorder._preflight_restore_state(
-            target, node_ids, selected_bootstrap
+        planned_state = _history_plan.preflight_state(
+            target,
+            node_ids,
+            recorder._restore_hooks,
+            adapter=self.adapter,
+            bootstrap=selected_bootstrap,
         )
         return node_ids, planned_state, selected_bootstrap
 
@@ -1680,12 +1381,12 @@ class HistoryController:
             # Live bootstrap is intentionally captured only after admission
             # and recorder serialization, but before destructive effects.
             if bootstrap == "live":
-                planned_state = recorder._materialize_live_restore_turns(
-                    planned_state
+                planned_state = _history_plan.materialize_live_restore_turns(
+                    planned_state, adapter=self.adapter
                 )
             await self._replay_exchange_display(target, node_ids)
-            await recorder._restore_state(planned_state)
-            if recorder._turns_unavailable(planned_state):
+            await _history_plan.run_plan(planned_state)
+            if _history_plan.turns_unavailable(planned_state):
                 recorder._invalidate_turn_baseline()
 
             # `_ExchangeRecorder` remains the sole v2 record owner.
@@ -1700,7 +1401,7 @@ class HistoryController:
             self._restore_app_state(target.values or {})
             await self._send_exchange_metadata()
             await self._send_sibling_metadata()
-            if recorder._turns_unavailable(planned_state):
+            if _history_plan.turns_unavailable(planned_state):
                 await self._notify_turns_unavailable()
             await self.send_history_update()
         except BaseException:
@@ -1997,7 +1698,9 @@ class HistoryController:
                 raise ValueError("Only completed exchanges can be regenerated.")
         elif kind != "edit":
             raise ValueError(f"Unknown exchange resubmit kind {kind!r}.")
-        preserve_live_turns = recorder._active_path_turns_are_incompatible(record)
+        preserve_live_turns = _history_plan.active_path_turns_are_incompatible(
+            record, adapter=self.adapter
+        )
         submitted_input = self._normalize_resubmit_input(
             target.input if replacement_input is None else replacement_input
         )
@@ -2007,10 +1710,14 @@ class HistoryController:
         prefix = record.model_copy(deep=True)
         prefix.set_active_leaf(target.parent_id)
         node_ids = tuple(prefix.path_node_ids())
-        rewind_state = recorder._preflight_rewind_state(
+        rewind_state = _history_plan.preflight_state(
             prefix,
             node_ids,
+            recorder._rewind_hooks,
+            adapter=self.adapter,
             preserve_live_turns=preserve_live_turns,
+            reject_unavailable=True,
+            phase="rewind",
         )
 
         async with self._destructive_mutation(block_input=True):
@@ -2022,7 +1729,7 @@ class HistoryController:
                     # The failed target and its shared parent stay immutable.
                     # Non-turn hooks still rewind the ordinary parent prefix
                     # before the accepted input opens its sibling.
-                    await recorder._rewind_non_turn_state(rewind_state)
+                    await _history_plan.run_plan(rewind_state, skip_turns=True)
                     record.set_active_leaf(target.parent_id)
                     accepted_exchange_id = (
                         self.chat._transcript.record_accepted_input(submitted_input)
@@ -2064,7 +1771,7 @@ class HistoryController:
                 try:
                     record.set_active_leaf(target.parent_id)
                     await recorder._persist_record()
-                    await recorder._rewind_state(rewind_state)
+                    await _history_plan.run_plan(rewind_state)
                     action: HistoryEditProjectionAction = {
                         "type": "history_edit_projection",
                         "requestId": request_id,
@@ -2302,8 +2009,13 @@ class HistoryController:
             projection = record.model_copy(deep=True)
             projection.set_active_leaf(leaf)
             node_ids = tuple(projection.path_node_ids())
-            rewind_state = recorder._preflight_rewind_state(
-                projection, node_ids
+            rewind_state = _history_plan.preflight_state(
+                projection,
+                node_ids,
+                recorder._rewind_hooks,
+                adapter=self.adapter,
+                reject_unavailable=True,
+                phase="rewind",
             )
 
             async with self._destructive_mutation(block_input=True):
@@ -2318,7 +2030,7 @@ class HistoryController:
                         record.set_active_leaf(leaf)
                         await recorder._persist_record()
                         await self._replay_exchange_display(record, node_ids)
-                        await recorder._rewind_state(rewind_state)
+                        await _history_plan.run_plan(rewind_state)
                         await self._send_sibling_metadata()
                         await self._send_exchange_metadata()
                         await self.send_history_update()

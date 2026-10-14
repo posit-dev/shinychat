@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import shinychat._history as history_module
+import shinychat._history_plan as history_plan_module
 from shiny import reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
@@ -1110,7 +1111,6 @@ async def test_v2_initial_restore_preflight_failure_recovers(
 
     recorder = controller._exchange_recorder
     assert recorder is not None
-    recorder._preflight_restore_state = fail_preflight  # type: ignore[method-assign]
     settled: list[bool] = []
 
     async def on_settled(restored: bool) -> None:
@@ -1121,6 +1121,7 @@ async def test_v2_initial_restore_preflight_failure_recovers(
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
     with (
+        patch.object(history_plan_module, "preflight_state", fail_preflight),
         session_context(cast(Any, session)),
         reactive.isolate(),
         pytest.raises(ValueError) as raised,

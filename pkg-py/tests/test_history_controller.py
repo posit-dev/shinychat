@@ -12,7 +12,12 @@ import textwrap
 import warnings
 from collections import deque
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager, suppress
+from contextlib import (
+    AbstractContextManager,
+    asynccontextmanager,
+    nullcontext,
+    suppress,
+)
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable, Literal, cast
@@ -24,7 +29,7 @@ from pydantic import BaseModel
 from shiny import Inputs, reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
-from shinychat import Chat
+from shinychat import Chat, _history_plan
 from shinychat._attachments import Attachment
 from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
 from shinychat._chat_types import ChatMessage, StoredMessage, StoredSegment
@@ -32,12 +37,12 @@ from shinychat._history import (
     HistoryController,
     HistoryInputIds,
     HistoryOptions,
-    StatePathContext,
     _strip_attachment_content,
     do_bookmark_with_cleanup,
     extend_record_linear,
 )
 from shinychat._history_client import TurnDict, TurnsAdapter
+from shinychat._history_plan import StatePathContext
 from shinychat._history_store import (
     ConversationPartition,
     ConversationStore,
@@ -2880,7 +2885,9 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
     restore_set_calls = list(adapter.set_calls)
     original_node = target.nodes[exchange_id].model_dump_json()
     parent_before = target.nodes["n_0000"].model_copy(deep=True)
-    assert recorder._active_path_turns_are_incompatible(target)
+    assert _history_plan.active_path_turns_are_incompatible(
+        target, adapter=cast(TurnsAdapter, adapter)
+    )
     original_send_action = cast(_FakeChat, controller.chat)._send_action
     original_publish = cast(_FakeChat, controller.chat)._publish_accepted_user_input
 
@@ -3327,7 +3334,9 @@ async def test_v2_retry_rejects_incompatible_parent_superseded_by_target_snapsho
     recorder = controller._exchange_recorder
     assert recorder is not None
     chat = cast(_FakeChat, controller.chat)
-    assert not recorder._active_path_turns_are_incompatible(target)
+    assert not _history_plan.active_path_turns_are_incompatible(
+        target, adapter=cast(TurnsAdapter, adapter)
+    )
     assert adapter.turns == [{"role": "system", "content": "target snapshot"}]
     assert events == ["history_update"]
 
@@ -3545,7 +3554,7 @@ async def test_v2_live_restore_materialization_cancellation_cleans_up():
         finally:
             admission_held = False
 
-    def cancel_materialization(plan: Any) -> Any:
+    def cancel_materialization(plan: Any, **_kwargs: Any) -> Any:
         assert preflight_completed
         assert admission_held
         assert recorder._lock.locked()
@@ -3556,7 +3565,6 @@ async def test_v2_live_restore_materialization_cancellation_cleans_up():
 
     controller._prepare_exchange_restore = prepare_restore  # type: ignore[method-assign]
     fake_chat._destructive_history_mutation = observe_admission  # type: ignore[method-assign]
-    recorder._materialize_live_restore_turns = cancel_materialization  # type: ignore[method-assign]
     fake_chat.set_greeting = AsyncMock(  # type: ignore[method-assign]
         side_effect=RuntimeError("cleanup greeting failure")
     )
@@ -3564,7 +3572,12 @@ async def test_v2_live_restore_materialization_cancellation_cleans_up():
     notifier = AsyncMock()
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
-    with pytest.raises(asyncio.CancelledError) as raised:
+    with (
+        patch.object(
+            _history_plan, "materialize_live_restore_turns", cancel_materialization
+        ),
+        pytest.raises(asyncio.CancelledError) as raised,
+    ):
         await controller.replay_exchange_record(target)
 
     assert raised.value is original
@@ -5151,17 +5164,18 @@ async def test_v2_navigation_cancellation_clears_to_fresh_draft(
             raise asyncio.CancelledError()
 
         controller._replay_exchange_display = cancel_replay  # type: ignore[method-assign]
+        rewind_patch: AbstractContextManager[Any] = nullcontext()
     else:
-        original_rewind = recorder._rewind_state
+        original_rewind = _history_plan.run_plan
 
-        async def cancel_rewind(plan: Any) -> None:
+        async def cancel_rewind(plan: Any, **_kwargs: Any) -> None:
             await original_rewind(plan)
             replayed_display.extend(chat.messages)
             raise asyncio.CancelledError()
 
-        recorder._rewind_state = cancel_rewind  # type: ignore[method-assign]
+        rewind_patch = patch.object(_history_plan, "run_plan", cancel_rewind)
 
-    with pytest.raises(asyncio.CancelledError):
+    with rewind_patch, pytest.raises(asyncio.CancelledError):
         await controller.handle_navigate(2, "prev", request_id="navigation")
 
     assert store.put_calls[0][1].active_leaf == original
@@ -5384,14 +5398,16 @@ async def test_v2_resubmit_rejects_real_chat_input_until_replay_releases(
 
     rewind_started = asyncio.Event()
     release_rewind = asyncio.Event()
-    original_rewind_state = recorder._rewind_state
+    original_run_plan = _history_plan.run_plan
 
-    async def blocked_rewind_state(plan: Any) -> None:
+    async def blocked_run_plan(plan: Any, **_kwargs: Any) -> None:
         rewind_started.set()
         await release_rewind.wait()
-        await original_rewind_state(plan)
+        await original_run_plan(plan)
 
-    recorder._rewind_state = blocked_rewind_state  # type: ignore[method-assign]
+    rewind_patch = patch.object(_history_plan, "run_plan", blocked_run_plan)
+    rewind_patch.start()
+    request.addfinalizer(rewind_patch.stop)
     resubmit = asyncio.create_task(
         controller.resubmit(
             target, kind="retry", request_id="request", message_index=1
