@@ -257,6 +257,16 @@ except where a task says otherwise).
   reservation mechanism (5 findings): decision PATCH (chain converging
   High→Low, alternatives forbidden by §7.4), review flipped to batched
   range review (job 1570 on `006b58d..b095bd9e`).
+- 2026-10-14: P5.6.5 (`c4dx`) landed: `edd7e002` (planner →
+  `_history_plan.py`, 360 lines) + `83049007` (recorder →
+  `_history_recorder.py`, 482 lines; `_history.py` 3235→2507). Roborev
+  1572 enqueued. Accepted deviations: `preflight_state` gained a `phase=`
+  keyword (pinned error messages), six failure-injection tests moved
+  their monkeypatch seams, `_canonical_turns` stays recorder-side as a
+  delegating staticmethod. Incident: the delegated agent's experiment
+  harness committed two stray log commits (`.auto/`, `.agents`);
+  excised from history. Delegation briefs now forbid scratch commits.
+  P5.6.6 (`b0hf`) delegated.
 
 ## Handoff
 
