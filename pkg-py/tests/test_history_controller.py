@@ -5325,6 +5325,35 @@ async def test_v2_navigation_persistence_failure_clears_to_fresh_draft():
 
 
 @pytest.mark.anyio
+async def test_v2_navigation_update_failure_names_the_step():
+    controller, chat, _adapter, _store, _original, _replacement = (
+        _make_v2_navigation_controller()
+    )
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+    expected = RuntimeError("navigation update failed")
+
+    async def fail_update(*_args: Any, **_kwargs: Any) -> None:
+        raise expected
+
+    controller._send_sibling_metadata = fail_update  # type: ignore[method-assign]
+
+    with (
+        pytest.raises(RuntimeError, match="navigation update failed"),
+        pytest.warns(
+            UserWarning,
+            match=r"Chat history restore failed \(failed while sending the navigation update\)",
+        ),
+    ):
+        await controller.handle_navigate(2, "prev", request_id="navigation")
+
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=False,
+        detail="failed while sending the navigation update",
+    )
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("stage", ["replay", "rewind"])
 async def test_v2_navigation_cancellation_clears_to_fresh_draft(
     stage: str,
