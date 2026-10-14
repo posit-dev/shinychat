@@ -717,14 +717,14 @@ def _stored_message(role: str, content: str) -> StoredMessage:
 def test_v2_recorder_rejects_non_string_mapping_keys_recursively(
     turn: dict[Any, Any],
 ):
-    from shinychat._history import _ExchangeRecorder
+    from shinychat._history_recorder import _ExchangeRecorder
 
     with pytest.raises(ValueError, match="Non-string mapping key"):
         _ExchangeRecorder._canonical_turns([turn])
 
 
 def test_v2_recorder_string_key_reordering_keeps_a_stable_prefix():
-    from shinychat._history import _ExchangeRecorder
+    from shinychat._history_recorder import _ExchangeRecorder
 
     _, baseline = _ExchangeRecorder._canonical_turns(
         [{"one": "one", "two": {"nested": "value"}}]
@@ -740,7 +740,7 @@ def test_v2_recorder_string_key_reordering_keeps_a_stable_prefix():
 
 
 def test_v2_recorder_rejects_non_json_turn_values():
-    from shinychat._history import _ExchangeRecorder
+    from shinychat._history_recorder import _ExchangeRecorder
 
     with pytest.raises(TypeError):
         _ExchangeRecorder._canonical_turns([{"value": object()}])
@@ -7080,7 +7080,7 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
 
         from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
         from shinychat._chat_types import StoredMessage, StoredSegment
-        from shinychat._history import _ExchangeRecorder
+        from shinychat._history_recorder import _ExchangeRecorder
         from shinychat._history_store import ConversationPartition, FileConversationStore
 
         def message(role, content):
