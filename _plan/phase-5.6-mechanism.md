@@ -1,7 +1,7 @@
 # Phase 5.6 mechanism: main sync and Python pre-port pass
 
-**Status:** D1, D4, D6 signed off by the driver 2026-10-14; D3 pending
-research; D2/D5/D7 follow the plan §7.9 dispositions directly · 2026-10-14
+**Status:** COMPLETE 2026-10-14 — decisions D1–D7 signed off by the driver;
+all children closed; gates green · 2026-10-14
 **Phase:** plan.md §4, Phase 5.6; reset decisions plan.md §7 (2026-10-14)
 **Kata:** parent `shinychat#e1dv` under epic `shinychat#6d0d`
 **Context:** `phase-5-mechanism.md` is completed context only; its handoff

@@ -1,8 +1,8 @@
 # Plan: exchange-tree conversation history
 
-**Status:** committed · Phases 0–5 and 5.5 complete; reset after a pause on
-2026-10-14 (decisions in §7). Current phase: **5.6 — main sync and Python
-pre-port pass** · 2026-10-14
+**Status:** committed · Phases 0–5, 5.5, and 5.6 complete; reset after a pause
+on 2026-10-14 (decisions in §7). Current phase: **5.7 — retire v1 history
+(Python)** · 2026-10-14
 **Kata:** epic `shinychat#6d0d` · Phase 1 `g49a` · Phase 2 `kjyt` · Phase 3
 `qf2r` · Phase 4 `azvt` · Phase 5 `fg70` · Phase 5.5 `pa98` · Phase 5.6
 `e1dv` · Phase 5.7 `36z7` · Phase 6 `05vb` · Phase 7 `r0wj` · Phase 8
@@ -629,25 +629,36 @@ signed off by the driver before code (process.md §3.4).
   draft PR #379. The draft-PR approval gate (`73pm`) was superseded by the
   2026-10-14 reset: the preview review happened, and its dispositions are in
   §7.9.
-- **Phase 5.6 — main sync and Python pre-port pass (`e1dv`).**
+- **Phase 5.6 — main sync and Python pre-port pass (`e1dv`).** *Complete
+  2026-10-14.* See `phase-5.6-mechanism.md`.
   1. Merge `origin/main` (§7.2). In v1 history files, take `main`'s version
      over the branch's v1 rewrite (f4805798): it is the v1 the import must
-     reproduce. Rebuild assets; get CI green.
+     reproduce. Rebuild assets; get CI green. *(Landed `3a2e6208`.)*
   2. Delete the constructor-message suppression path made unreachable by
-     #381.
+     #381. *(Audit-no-change: already deleted in `5248eae6`.)*
   3. One admission predicate for every admission site; fix
      `append_message_stream` returning `None` instead of an `ExtendedTask`.
+     *(Landed: one predicate; suppressed stream entry points RAISE — driver
+     decision, amending the `| None` option.)*
   4. #417: reserve the stream synchronously in `append_message_stream()`
      through `ChatTranscript`, absorbing #418 (credited; held on `main`).
+     *(Landed, adapted to the branch's reject-don't-queue contract.)*
   5. Split `_ExchangeRecorder` by role; consolidate the restore/rewind
-     preflight and state helpers; name the baseline sentinel.
+     preflight and state helpers; name the baseline sentinel. *(Landed as
+     plan-functions `_history_plan.py` + `_history_recorder.py`, not three
+     role classes — coupling study, driver approved.)*
   6. Restore failures name the failing hook or step; fix navigate/resubmit
-     persisting the moved active leaf before rewind hooks run.
+     persisting the moved active leaf before rewind hooks run. *(Landed;
+     user notifications carry labels only, raw text goes to warnings.)*
   7. A constant warning when init-window appends or streams are suppressed.
+     *(Landed for `append_message()`; streams raise per item 3.)*
   8. Audit ordering assumptions against py-shiny concurrent effects
-     (py-shiny#2508).
+     (py-shiny#2508). *(Done; premise corrected — #2508 is closed-unmerged.
+     Audited against its head ref: all surfaces safe; backlog `3y6p`,
+     `k089`.)*
   9. Hygiene, and triage of the open critical-review items left under the
-     superseded epic `3403`.
+     superseded epic `3403`. *(Done; `3403` closed superseded by `6d0d`;
+     backlog `5qxa`, `x9fa`, `y5kr`, `bmqg`.)*
   *Done when:* the branch is merged with current `main`, CI is green, and
   each item has a commit or a recorded disposition.
 - **Phase 5.7 — retire v1 history (Python; `36z7`).**
