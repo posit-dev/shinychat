@@ -296,7 +296,7 @@ export function ChatApp({
         return
       }
       if (pacingBypassedRef.current) {
-        // Post-cancel stragglers: no pacing, no deferral, apply as-is.
+        // Post-cancel stragglers skip pacing *and* the drain deferral below.
         dispatch(action)
         return
       }
