@@ -98,7 +98,13 @@ class ChatClient:
         client_history: Literal["clear", "set", "append", "keep"] = "clear",
     ) -> None:
         """
-        Clear chat messages and optionally reset the client's turn history.
+        Clear the chat and optionally reset the client's turn history.
+
+        This is a lower-level operation for chats without conversation
+        history. ``client_history`` controls only the underlying client's
+        turns. When conversation history is enabled, use :meth:`new_chat`
+        instead so the rendered chat, client turns, and persisted conversation
+        remain synchronized.
 
         Parameters
         ----------
@@ -132,6 +138,12 @@ class ChatClient:
             raise ValueError(
                 f"`client_history={client_history!r}` is not valid. Expected "
                 'one of "clear", "set", "append", or "keep".'
+            )
+        history_controller = self._chat.history._controller
+        if history_controller is not None:
+            raise ValueError(
+                "Can't clear a chat with conversation history enabled; use "
+                "`await chat.client.new_chat()` to start a new conversation."
             )
         if client_history in ("set", "append") and messages is None:
             raise ValueError(
@@ -168,6 +180,49 @@ class ChatClient:
             turns = self._client.get_turns() + messages_to_turns(messages)
             self._client.set_turns(turns)
         # "keep" → do nothing
+
+    async def new_chat(self, *, greeting: bool = False) -> None:
+        """
+        Save the current conversation and start a new one.
+
+        This method is available only when conversation history is enabled.
+        It saves the current record, clears the client turns and rendered
+        messages, resets the active conversation ID, and updates the history
+        drawer.
+
+        Parameters
+        ----------
+        greeting
+            Passed to :meth:`~shinychat.Chat.clear_messages`. When ``True``,
+            also clears the greeting and resolves the configured greeting for
+            the new conversation.
+
+        Raises
+        ------
+        ValueError
+            If conversation history is not enabled.
+        shiny.types.NotifyException
+            If an assistant response is currently streaming. To avoid this
+            error, guard the call by checking
+            ``chat.latest_message_stream.status() != "running"`` before
+            calling :meth:`new_chat`.
+        """
+        history_controller = self._chat.history._controller
+        if history_controller is None:
+            raise ValueError(
+                "Can't start a new chat without conversation history enabled; "
+                "use `await chat.client.clear()` instead."
+            )
+        if self._chat.latest_message_stream.status() == "running":
+            from shiny.types import NotifyException
+
+            raise NotifyException(
+                "Can't start a new chat while a response is still being "
+                "generated. Please wait for it to finish or stop it first.",
+                sanitize=False,
+            )
+
+        await history_controller.new_chat(greeting=greeting)
 
 
 def messages_to_turns(

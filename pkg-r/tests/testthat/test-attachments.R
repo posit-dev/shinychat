@@ -223,6 +223,29 @@ test_that("user_input_contents builds a splat-ready, text-first content list", {
   expect_true(S7::S7_inherits(out[[2]], ellmer::ContentImage))
 })
 
+test_that("user_input_contents retains attachments for history restore", {
+  session <- new.env(parent = emptyenv())
+  session$userData <- new.env(parent = emptyenv())
+  session$ns <- identity
+  attachments <- list(list(
+    mime = "text/markdown",
+    data_url = "data:text/markdown;base64,IyBOb3Rlcw==",
+    name = "notes.md",
+    size = 7L
+  ))
+
+  user_input_contents(
+    list(text = "See attached", attachments = attachments),
+    session = session,
+    name = "chat_user_input:shinychat.userInput"
+  )
+
+  expect_equal(
+    get_session_chat_bookmark_info(session, "chat.pending-attachments"),
+    attachments
+  )
+})
+
 test_that("user_input_contents drops empty text (attachment-only message)", {
   png <- paste0(
     "data:image/png;base64,",

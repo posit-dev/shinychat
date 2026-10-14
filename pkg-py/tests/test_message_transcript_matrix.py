@@ -7,7 +7,7 @@ from typing import Any, cast
 
 import pytest
 from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
-from shinychat._chat_types import ContentSegment, StoredMessage
+from shinychat._chat_types import ContentSegment, StoredMessage, StoredSegment
 
 MATRIX_PATH = (
     Path(__file__).resolve().parents[2]
@@ -64,7 +64,7 @@ def fixture_wire_spec(entry: TranscriptEntry) -> dict[str, Any]:
                     else {}
                 ),
             }
-            for segment in message.segments
+            for segment in cast(list[StoredSegment], message.segments)
         ],
     }
     if message.attachments:
@@ -160,9 +160,10 @@ async def test_message_transcript_matrix(case: dict[str, Any]) -> None:
                     )
                 elif kind == "defensive-read":
                     projection = transcript.read()
-                    projection[cast(int, operation["entry"])].message.segments[
-                        0
-                    ].content = cast(str, operation["replacement"])
+                    cast(
+                        StoredSegment,
+                        projection[cast(int, operation["entry"])].message.segments[0],
+                    ).content = cast(str, operation["replacement"])
                 else:
                     raise AssertionError(
                         f"Unknown transcript operation: {kind}"

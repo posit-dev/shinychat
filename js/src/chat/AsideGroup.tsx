@@ -11,6 +11,7 @@ import { citationEntriesFromAsides, type CitationEntry } from "./citations"
 import { domainFromUrl } from "./domain"
 import { portalTheme } from "./portalTheme"
 import { useDismissiblePopover } from "./useDismissiblePopover"
+import { trustGatedEscapes } from "./trustGatedEscapes"
 
 export interface CitationMetadata {
   title?: string
@@ -29,11 +30,14 @@ export interface AsideEntry {
 
 interface AsideGroupProps {
   node?: HastElement
+  /** Set when the aside arrived in untrusted (model-authored) content. */
+  untrusted?: boolean
 }
 
 interface AsideGroupViewProps {
   entries: AsideEntry[]
   pending?: boolean
+  untrusted?: boolean
 }
 
 function prop(el: HastElement, name: string): string | undefined {
@@ -137,15 +141,29 @@ function NavArrowIcon({ direction }: { direction: "prev" | "next" }) {
   )
 }
 
-export const AsideGroup = memo(function AsideGroup({ node }: AsideGroupProps) {
+export const AsideGroup = memo(function AsideGroup({
+  node,
+  untrusted = false,
+}: AsideGroupProps) {
   const entries = parseAsideEntries(node)
   const pending = node?.properties?.[ASIDE_PENDING_ATTR] != null
-  return <AsideGroupView entries={entries} pending={pending} />
+  return (
+    <AsideGroupView entries={entries} pending={pending} untrusted={untrusted} />
+  )
+})
+
+export const UntrustedAsideGroup = memo(function UntrustedAsideGroup({
+  node,
+}: {
+  node?: HastElement
+}) {
+  return <AsideGroup node={node} untrusted />
 })
 
 export const AsideGroupView = memo(function AsideGroupView({
   entries,
   pending = false,
+  untrusted = false,
 }: AsideGroupViewProps) {
   const deriveFavicon = useAsideFavicon()
   const faceIndex = entries.findIndex((e) => e.label)
@@ -232,9 +250,8 @@ export const AsideGroupView = memo(function AsideGroupView({
     : countMarker
       ? "shiny-aside-pill shiny-aside-pill--count"
       : "shiny-aside-pill"
-  const showPopoverLabel =
-    Boolean(current.label) &&
-    (numberMarker || entries.length > 1 || Boolean(current.url))
+  // The pill may truncate the label, so the popover always repeats it.
+  const showPopoverLabel = Boolean(current.label)
 
   return (
     <span className="shiny-aside-group">
@@ -355,6 +372,9 @@ export const AsideGroupView = memo(function AsideGroupView({
                     content={current.body}
                     contentType="html"
                     streaming={false}
+                    tagToComponentMap={
+                      untrusted ? trustGatedEscapes : undefined
+                    }
                   />
                 </div>
               )}

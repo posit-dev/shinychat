@@ -159,6 +159,57 @@ describe("RawHTML", () => {
     expect(shiny.unbindAll).toHaveBeenCalledWith(div)
   })
 
+  it("renders a div by default and a span when as='span'", () => {
+    const { container, rerender } = render(<RawHTML html="hello" />)
+    expect(container.firstElementChild?.tagName).toBe("DIV")
+
+    rerender(<RawHTML html="hello" as="span" />)
+    const el = container.firstElementChild as HTMLElement
+    expect(el.tagName).toBe("SPAN")
+    expect(el.textContent).toBe("hello")
+  })
+
+  it("sets innerHTML but does not bind or unbind when bind is false", () => {
+    const shiny = mockShiny()
+    const { container, unmount } = render(
+      <ShinyLifecycleContext.Provider value={shiny}>
+        <RawHTML html="<p>hello</p>" bind={false} />
+      </ShinyLifecycleContext.Provider>,
+    )
+    const div = container.querySelector("div") as HTMLElement
+    expect(div.innerHTML).toBe("<p>hello</p>")
+    expect(shiny.bindAll).not.toHaveBeenCalled()
+    unmount()
+    expect(shiny.unbindAll).not.toHaveBeenCalled()
+  })
+
+  it("unbinds when bind flips to false and rebinds when it flips back", () => {
+    const shiny = mockShiny()
+    const { rerender, container } = render(
+      <ShinyLifecycleContext.Provider value={shiny}>
+        <RawHTML html="<p>hello</p>" bind={true} />
+      </ShinyLifecycleContext.Provider>,
+    )
+    const div = container.querySelector("div") as HTMLElement
+    expect(shiny.bindAll).toHaveBeenCalledWith(div)
+
+    rerender(
+      <ShinyLifecycleContext.Provider value={shiny}>
+        <RawHTML html="<p>hello</p>" bind={false} />
+      </ShinyLifecycleContext.Provider>,
+    )
+    expect(shiny.unbindAll).toHaveBeenCalledWith(div)
+    expect(vi.mocked(shiny.bindAll).mock.calls.length).toBe(1)
+
+    rerender(
+      <ShinyLifecycleContext.Provider value={shiny}>
+        <RawHTML html="<p>hello</p>" bind={true} />
+      </ShinyLifecycleContext.Provider>,
+    )
+    expect(vi.mocked(shiny.bindAll).mock.calls.length).toBe(2)
+    expect(vi.mocked(shiny.bindAll).mock.calls[1]![0]).toBe(div)
+  })
+
   it("calls unbindAll then bindAll when html changes", () => {
     const shiny = mockShiny()
     const { rerender, container } = render(

@@ -6,6 +6,18 @@ chat_app_html <- function(app) {
   app$httpHandler(chat_app_request())$content
 }
 
+test_that("chat_app() rejects startup messages while history is enabled", {
+  client <- mock_chat_client()
+  expect_snapshot(
+    error = TRUE,
+    chat_app(client, messages = list("Hi!"))
+  )
+  expect_no_error(chat_app(client, messages = NULL))
+  expect_no_error(suppressWarnings(
+    chat_app(client, messages = list("Hi!"), history = FALSE)
+  ))
+})
+
 test_that("chat_app() composes a page chat with client-derived titles", {
   client <- mock_chat_client()
   app <- chat_app(client)

@@ -46,6 +46,7 @@ const DEFAULT_DRAWER_LAYOUT_WIDTH = 400
 const MIN_DRAWER_LAYOUT_WIDTH = 240
 const MIN_CHAT_LAYOUT_WIDTH = 360
 const MAX_DRAWER_LAYOUT_GAP = 24
+const LAYOUT_RESIZE_SETTLE_DURATION = 120
 
 function openLink(url: string): void {
   window.open(url, "_blank", "noopener,noreferrer")
@@ -136,6 +137,7 @@ export interface ChatContainerProps {
   cancelId?: string
   enableCancel?: boolean
   enableUpload?: boolean
+  thinkingShowAfter?: number
   cancelRequested?: boolean
   toolbarEl?: Element
   footerEl?: Element
@@ -192,6 +194,7 @@ export const ChatContainer = forwardRef<
     cancelId,
     enableCancel,
     enableUpload,
+    thinkingShowAfter,
     cancelRequested,
     toolbarEl,
     footerEl,
@@ -232,6 +235,7 @@ export const ChatContainer = forwardRef<
   const [drawerTakeover, setDrawerTakeover] = useState(false)
   const [drawerPresented, setDrawerPresented] = useState(drawer.visible)
   const [drawerResizing, setDrawerResizing] = useState(false)
+  const [drawerLayoutResizing, setDrawerLayoutResizing] = useState(false)
   const [composerPosition, setComposerPosition] = useState<ComposerPosition>({
     centered: false,
     greetingOverflows: false,
@@ -444,7 +448,7 @@ export const ChatContainer = forwardRef<
       if (resizeSettleTimer) window.clearTimeout(resizeSettleTimer)
       resizeSettleTimer = window.setTimeout(
         () => setComposerResizing(false),
-        120,
+        LAYOUT_RESIZE_SETTLE_DURATION,
       )
     }
 
@@ -497,14 +501,33 @@ export const ChatContainer = forwardRef<
     updateDrawerLayoutWidth()
 
     const layout = drawerLayoutRef.current
-    if (!layout || typeof ResizeObserver === "undefined") return
-    const observer = new ResizeObserver(updateDrawerLayoutWidth)
+    if (!layout || !drawer.enabled || typeof ResizeObserver === "undefined") {
+      return
+    }
+    let receivedInitialResize = false
+    let resizeSettleTimer: number | undefined
+    const observer = new ResizeObserver(() => {
+      updateDrawerLayoutWidth()
+      if (receivedInitialResize) {
+        setDrawerLayoutResizing(true)
+        if (resizeSettleTimer) window.clearTimeout(resizeSettleTimer)
+        resizeSettleTimer = window.setTimeout(() => {
+          resizeSettleTimer = undefined
+          setDrawerLayoutResizing(false)
+        }, LAYOUT_RESIZE_SETTLE_DURATION)
+      }
+      receivedInitialResize = true
+    })
     observer.observe(layout)
     if (drawerWidthProbeRef.current) {
       observer.observe(drawerWidthProbeRef.current)
     }
-    return () => observer.disconnect()
-  }, [drawer.visible, updateDrawerLayoutWidth])
+    return () => {
+      if (resizeSettleTimer) window.clearTimeout(resizeSettleTimer)
+      setDrawerLayoutResizing(false)
+      observer.disconnect()
+    }
+  }, [drawer.enabled, drawer.visible, updateDrawerLayoutWidth])
 
   useEffect(() => {
     const layout = drawerLayoutRef.current
@@ -614,10 +637,14 @@ export const ChatContainer = forwardRef<
     [dispatch],
   )
 
-  const cancelStream = useCallback((): void => {
-    if (!enableCancel || !cancelId || !isStreaming || cancelRequested) return
+  const cancelStream = useCallback((): boolean => {
+    if (!enableCancel || !cancelId || !isStreaming || cancelRequested) {
+      return false
+    }
     dispatch({ type: "CANCEL_REQUESTED" })
     transport.sendCancel(cancelId)
+    chatInputRef.current?.focus()
+    return true
   }, [
     enableCancel,
     cancelId,
@@ -631,20 +658,35 @@ export const ChatContainer = forwardRef<
   cancelStreamRef.current = cancelStream
 
   useEffect(() => {
-    if (!enableCancel) return
+    if (!enableCancel && !historyOpen) return
 
     const container = scrollRef.current?.closest("shiny-chat-container")
     if (!container) return
 
     const handleKeyDown = (e: Event): void => {
-      if (e.defaultPrevented) return
       if ((e as KeyboardEvent).key !== "Escape") return
-      cancelStreamRef.current()
+      const fromEditor =
+        e.target instanceof Node &&
+        document.getElementById(inputId)?.contains(e.target)
+      if (e.defaultPrevented && !fromEditor) {
+        // A control within the chat handled Escape; don't let the modal
+        // containing the chat handle it a second time.
+        e.stopPropagation()
+        return
+      }
+      if (historyOpen) {
+        setHistoryOpen(false)
+        e.preventDefault()
+        e.stopPropagation()
+      } else if (cancelStreamRef.current()) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
     }
 
     container.addEventListener("keydown", handleKeyDown)
     return () => container.removeEventListener("keydown", handleKeyDown)
-  }, [enableCancel, scrollRef])
+  }, [enableCancel, historyOpen, inputId, scrollRef])
 
   useFillPaddingTransfer(scrollRef)
 
@@ -972,7 +1014,9 @@ export const ChatContainer = forwardRef<
         data-drawer-takeover={
           drawerTakeover && drawerPresented ? "" : undefined
         }
-        data-drawer-resizing={drawerResizing ? "" : undefined}
+        data-drawer-resizing={
+          drawerResizing || drawerLayoutResizing ? "" : undefined
+        }
         data-composer-centered={composerPosition.centered ? "" : undefined}
         data-greeting-overflow={
           composerPosition.greetingOverflows ? "" : undefined
@@ -1037,6 +1081,7 @@ export const ChatContainer = forwardRef<
                     uploadAccept={uploadAccept}
                     maxUploadSize={maxUploadSize}
                     enableUpload={enableUpload}
+                    thinkingShowAfter={thinkingShowAfter}
                   />
                 </div>
               </ChatScrollContext.Provider>

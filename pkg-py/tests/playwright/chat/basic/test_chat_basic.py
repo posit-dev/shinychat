@@ -39,8 +39,8 @@ def test_validate_chat_basic(page: Page, local_app: ShinyAppProc) -> None:
     chat.expect_user_input("")
     expect(chat.loc_input_button).to_be_disabled()
 
-    # `chat.ui(messages=...)` is render-only. The server transcript starts with
-    # accepted input, then includes output after it reaches the client.
+    # `.messages()` contains server-owned conversation messages. The initial
+    # UI seed is rendered in the browser but is not part of that state.
     message_state = controller.OutputCode(page, "message_state")
     message_state_expected = tuple(
         [

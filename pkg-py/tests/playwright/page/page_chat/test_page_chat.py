@@ -18,7 +18,11 @@ def open_page(
     toolbar_input: bool = False,
 ) -> tuple[ChatController, PageChatController]:
     page.set_viewport_size({"width": viewport[0], "height": viewport[1]})
-    url = f"{local_app.url}?toolbar_input=true" if toolbar_input else local_app.url
+    url = (
+        f"{local_app.url}?toolbar_input=true"
+        if toolbar_input
+        else local_app.url
+    )
     page.goto(url)
     chat = ChatController(page, "chat")
     page_chat = PageChatController(page, "chat")
@@ -66,7 +70,9 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     resizer = page_chat.loc.get_by_role("separator", name="Resize sidebar")
     expect(resizer).to_be_visible()
     resizer.press("End")
-    expect(resizer).to_have_attribute("aria-valuenow", "920")
+    expect(resizer).to_have_attribute(
+        "aria-valuenow", resizer.get_attribute("aria-valuemax")
+    )
     resizer.press("Home")
     expect(resizer).to_have_attribute("aria-valuenow", "150")
 
@@ -144,6 +150,23 @@ def test_explicit_theme_keeps_embedded_chat_composer_chrome(
     expect(input_area).to_have_css("padding-bottom", "48px")
 
 
+def test_page_chat_requests_standalone_mobile_app_display(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    chat, _ = open_page(page, local_app, viewport=(390, 760))
+
+    expect(
+        page.locator('meta[name="apple-mobile-web-app-capable"]')
+    ).to_have_attribute("content", "yes")
+    expect(
+        page.locator('meta[name="mobile-web-app-capable"]')
+    ).to_have_attribute("content", "yes")
+    expect(chat.loc.locator(".shiny-chat-input .tiptap")).to_have_css(
+        "font-size", "16px"
+    )
+
+
 def test_page_chat_toolbar_input_aligns_with_composer_and_footer_is_pinned(
     page: Page,
     local_app: ShinyAppProc,
@@ -176,7 +199,10 @@ def test_page_chat_toolbar_input_aligns_with_composer_and_footer_is_pinned(
     assert toolbar_box["x"] == pytest.approx(input_box["x"], abs=1)
     toolbar_gap = toolbar_box["y"] - (input_box["y"] + input_box["height"])
     assert 4 <= toolbar_gap <= 8
-    assert footer_box["y"] + footer_box["height"] <= chat_box["y"] + chat_box["height"]
+    assert (
+        footer_box["y"] + footer_box["height"]
+        <= chat_box["y"] + chat_box["height"]
+    )
     assert footer_box["y"] + footer_box["height"] >= (
         chat_box["y"] + chat_box["height"] - 32
     )
@@ -231,19 +257,15 @@ def test_desktop_header_keeps_controls_available(
     assert toolbar_box is not None
     assert toolbar_input_box is not None
 
-    title_cap_px = page.evaluate(
-        "12 * parseFloat(getComputedStyle(document.documentElement).fontSize)"
-    )
+    title_cap_px = header_box["width"] * 0.35
     header_right = header_box["x"] + header_box["width"]
     controls_mount_right = controls_mount_box["x"] + controls_mount_box["width"]
     identity_title_right = identity_title_box["x"] + identity_title_box["width"]
     toolbar_right = toolbar_box["x"] + toolbar_box["width"]
     toolbar_input_right = toolbar_input_box["x"] + toolbar_input_box["width"]
 
-    assert identity_box["width"] <= title_cap_px
-    if is_long_title:
-        assert identity_title_box["width"] >= 150
-    else:
+    assert identity_box["width"] <= title_cap_px + 1
+    if not is_long_title:
         assert identity_box["width"] < title_cap_px
     assert identity_title_right <= toolbar_box["x"]
     assert toolbar_box["x"] >= controls_mount_box["x"]
@@ -258,6 +280,64 @@ def test_desktop_header_keeps_controls_available(
     expect(controls_mount).to_have_css("overflow-x", "visible")
     expect(toolbar_sources).to_be_hidden()
     expect(toolbar_source).to_be_hidden()
+
+
+def test_mobile_header_title_uses_available_space(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    _, page_chat = open_page(page, local_app, viewport=(390, 760))
+    header = page_chat.loc_header
+    identity = page_chat.loc_identity
+    identity_title = page_chat.loc_identity_title
+    toggle = page_chat.loc_sidebar_toggle
+
+    identity_title.evaluate(
+        "(element) => { element.textContent = 'Research Assistant for "
+        "long-running analyses and multi-step investigations'; }"
+    )
+
+    header_box = header.bounding_box()
+    identity_box = identity.bounding_box()
+    toggle_box = toggle.bounding_box()
+    assert header_box is not None
+    assert identity_box is not None
+    assert toggle_box is not None
+
+    expect(identity_title).to_have_css("white-space", "nowrap")
+    expect(toggle).to_be_visible()
+    assert identity_box["width"] > header_box["width"] * 0.75
+    assert identity_box["x"] >= toggle_box["x"] + toggle_box["width"]
+    assert identity_box["x"] + identity_box["width"] <= (
+        header_box["x"] + header_box["width"]
+    )
+
+
+def test_wide_desktop_header_uses_space_for_the_title(
+    page: Page,
+    local_app: ShinyAppProc,
+) -> None:
+    page.set_viewport_size({"width": 1440, "height": 760})
+    page.goto(f"{local_app.url}?wide_title=true")
+    page_chat = PageChatController(page, "chat")
+    expect(page_chat.loc).to_be_visible(timeout=TIMEOUT)
+
+    identity = page_chat.loc_identity
+    identity_title = page_chat.loc_identity_title
+    controls_mount = page_chat.loc_controls_mount_desktop
+
+    identity_box = identity.bounding_box()
+    controls_mount_box = controls_mount.bounding_box()
+    title_size = identity_title.evaluate(
+        "(element) => ({ client: element.clientWidth, scroll: element.scrollWidth })"
+    )
+    assert identity_box is not None
+    assert controls_mount_box is not None
+
+    assert title_size["scroll"] <= title_size["client"]
+    assert identity_box["x"] + identity_box["width"] <= (
+        controls_mount_box["x"] + 4
+    )
 
 
 def test_single_page_title_is_not_truncated(
@@ -366,6 +446,8 @@ def test_mobile_moves_controls_and_manages_dialog_focus(
         )
     ).to_have_count(1)
     expect(page.locator("#toolbar_value")).to_have_count(1)
+    expect(toggle).to_have_css("width", "44px")
+    expect(toggle).to_have_css("height", "44px")
     expect(toggle).to_have_attribute("aria-expanded", "false")
 
     toggle.click()
@@ -730,9 +812,9 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
     assert footer_box is not None
     assert wrapper_box is not None
     assert composer_box["y"] >= greeting_box["y"] + greeting_box["height"]
-    assert composer_box["y"] - (
-        greeting_box["y"] + greeting_box["height"]
-    ) <= 16
+    assert (
+        composer_box["y"] - (greeting_box["y"] + greeting_box["height"]) <= 16
+    )
     assert toolbar_box["y"] >= composer_box["y"]
     assert footer_box["y"] >= composer_box["y"]
     group_center = (
@@ -749,7 +831,9 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
 
     chat.set_user_input("Move the composer")
     chat.send_user_input()
-    expect(layout).not_to_have_attribute("data-composer-centered", timeout=TIMEOUT)
+    expect(layout).not_to_have_attribute(
+        "data-composer-centered", timeout=TIMEOUT
+    )
     page.wait_for_timeout(400)
     composer_box = composer.bounding_box()
     chat_box = chat.loc.bounding_box()
@@ -761,10 +845,15 @@ def test_page_chat_centers_fitting_greeting_composer_and_pins_overflow(
 
     # A greeting taller than the chat region retains the usual bottom-pinned
     # composer instead of competing for the centered empty-state layout.
+    # Clear the stored browser token so the reload starts a fresh
+    # conversation instead of racing the history restore for the empty state.
+    page.evaluate("localStorage.clear()")
     page.reload()
     expect(layout).to_have_attribute("data-composer-centered", "")
     greeting.evaluate("(element) => { element.style.minHeight = '100vh'; }")
-    expect(layout).not_to_have_attribute("data-composer-centered", timeout=TIMEOUT)
+    expect(layout).not_to_have_attribute(
+        "data-composer-centered", timeout=TIMEOUT
+    )
     page.wait_for_timeout(400)
     composer_box = composer.bounding_box()
     chat_box = chat.loc.bounding_box()

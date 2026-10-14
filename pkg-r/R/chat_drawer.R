@@ -117,9 +117,11 @@ chat_drawer_action <- function(
   html_deps <- NULL
   if (!is.null(content)) {
     chat_validate_drawer_content(content)
-    ui <- process_ui(pre_process_ui(content), session)
-    action$content <- as.character(ui[["html"]])
-    html_deps <- ui[["deps"]]
+    # The drawer wire payload is a single string, so trusted content renders
+    # via the shared island derivation — no wrapper tags.
+    rendered <- render_island_string(content)
+    action$content <- rendered$html
+    html_deps <- serialize_html_deps(rendered$deps, session)
   }
   if (!is.null(title)) {
     action$title <- title

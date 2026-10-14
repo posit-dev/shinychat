@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 env:
-  UV_VERSION: "0.9.x"
+  UV_VERSION: "0.12.10"
   PYTHON_VERSION: 3.13
   QUARTO_VERSION: 1.7.31
 
@@ -24,7 +24,7 @@ jobs:
 
     steps:
     - name: Check out repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0 # full history needed for correct versioning of py pkg
 
@@ -34,9 +34,12 @@ jobs:
         version: ${{ env.QUARTO_VERSION }}
 
     - name: 🚀 Install uv
-      uses: astral-sh/setup-uv@v6.1.0
+      uses: astral-sh/setup-uv@v10.0.1
       with:
         version: ${{ env.UV_VERSION }}
+        # Distinct cache key so this job can't race (or share keys) with the
+        # concurrent py-check jobs when both workflows trigger on the same PR.
+        cache-suffix: quartodoc
 
     - name: 🐍 Set up Python ${{ env.PYTHON_VERSION }}
       run: uv python install ${{ env.PYTHON_VERSION }}
@@ -57,7 +60,7 @@ jobs:
 
     - name: 🚢 Deploy to GitHub pages
       if: github.event_name != 'pull_request'
-      uses: JamesIves/github-pages-deploy-action@v4.5.0
+      uses: JamesIves/github-pages-deploy-action@v4.9.0
       with:
         clean: false
         folder: docs

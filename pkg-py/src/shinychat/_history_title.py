@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import copy
 import warnings
-from typing import Any, Awaitable, Callable, Union
+from typing import Any, Awaitable, Callable, Union, cast
 
 from ._chat_bookmark import is_chatlas_chat_client
-from ._history_client import turn_fallback_markdown
+from ._history_client import TurnDict, turn_fallback_markdown
 from ._utils import wrap_async
 
 TitleFn = Callable[
@@ -24,7 +24,7 @@ MAX_FALLBACK_LEN = 50
 async def generate_title(
     title_fn: TitleFn | None,
     client: Any,
-    turns: list[dict[str, Any]],
+    turns: list[TurnDict],
 ) -> str | None:
     """
     Returns a generated title, or None on any failure (caller keeps the
@@ -33,7 +33,9 @@ async def generate_title(
     """
     try:
         if title_fn is not None:
-            title = await wrap_async(title_fn)(turns)
+            title = await wrap_async(title_fn)(
+                cast(list[dict[str, Any]], turns)
+            )
         else:
             title = await chatlas_one_shot_title(client, turns)
         if title is None:
@@ -47,7 +49,7 @@ async def generate_title(
         return None
 
 
-def fallback_title(turns: list[dict[str, Any]]) -> str:
+def fallback_title(turns: list[TurnDict]) -> str:
     for turn in turns:
         if turn.get("role") != "user":
             continue
@@ -61,7 +63,7 @@ def fallback_title(turns: list[dict[str, Any]]) -> str:
 
 
 async def chatlas_one_shot_title(
-    client: Any, turns: list[dict[str, Any]]
+    client: Any, turns: list[TurnDict]
 ) -> str | None:
     raw = getattr(client, "value", client)
     if raw is None or not is_chatlas_chat_client(raw):

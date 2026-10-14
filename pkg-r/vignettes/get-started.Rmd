@@ -2,6 +2,10 @@
 title: "Get started"
 resource_files:
   - images/
+vignette: >
+  %\VignetteIndexEntry{Get started}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
 ---
 
 <style>
@@ -58,9 +62,9 @@ knitr::opts_chunk$set(
 library(shinychat)
 ```
 
-This article will cover how to build a chatbot powered by a Large Language Model (LLM) using shinychat and [ellmer](https://ellmer.tidyverse.org/). ellmer will handle connecting to and communicating with the model, while shinychat will handle the user interface for your chatbot. 
+This article will cover how to build a chatbot powered by a Large Language Model (LLM) using shinychat and [ellmer](https://ellmer.tidyverse.org/). ellmer will handle connecting to and communicating with the model, while shinychat will handle the user interface for your chatbot.
 
-You will need to install both shinychat and ellmer. 
+You will need to install both shinychat and ellmer.
 
 ```r
 install.packages(c("shinychat", "ellmer"))
@@ -72,7 +76,7 @@ install.packages(c("shinychat", "ellmer"))
 
 First, choose a model to power your chatbot. ellmer and shinychat support a [wide variety](https://ellmer.tidyverse.org/#providers) of LLM providers including Anthropic, OpenAI, Vertex, Snowflake, Groq, Perplexity, and more.
 
-With ellmer, you specify the LLM provider by choosing the corresponding `chat_*()` function, e.g., `chat_anthropic()`,  `chat_openai()`, etc. This makes it easy to swap out the chat provider to a different one at any time. 
+With ellmer, you specify the LLM provider by choosing the corresponding `chat_*()` function, e.g., `chat_anthropic()`,  `chat_openai()`, etc. This makes it easy to swap out the chat provider to a different one at any time.
 
 Model providers also typically offer a variety of models. To specify a particular model, use the `chat_*()` function's `model` argument. For example:
 
@@ -80,12 +84,12 @@ Model providers also typically offer a variety of models. To specify a particula
 ellmer::chat_openai(model = "o3")
 ```
 
-If you don't specify the `model` argument, the `chat_*()` function will use a reasonable default. For more information, see the individual `chat_*()` function's [documentation](https://ellmer.tidyverse.org/reference/index.html#chatbots). 
+If you don't specify the `model` argument, the `chat_*()` function will use a reasonable default. For more information, see the individual `chat_*()` function's [documentation](https://ellmer.tidyverse.org/reference/index.html#chatbots).
 
 <div class="callout">
   <div class="title">Help me choose!</div>
   <div class="body">
-If you're not sure which provider to choose, ellmer provides a [guide](https://ellmer.tidyverse.org/#providermodel-choice) to help you decide. 
+If you're not sure which provider to choose, ellmer provides a [guide](https://ellmer.tidyverse.org/#providermodel-choice) to help you decide.
   </div>
 </div>
 
@@ -98,7 +102,7 @@ You can find some helpful links and tips for getting set up with credentials (e.
 
 ## Create a basic chatbot
 
-Once you've identified which model provider you want to use and set up the necessary credentials, you're ready to create a chatbot. The following code creates a basic chatbot in a Shiny app. 
+Once you've identified which model provider you want to use and set up the necessary credentials, you're ready to create a chatbot. The following code creates a basic chatbot in a Shiny app.
 
 Copy and paste the code into an R script, switching out `ellmer::chat_openai()` for your desired chat function. Save the file as `app.R` and then run the app.
 
@@ -112,7 +116,7 @@ ui <- bslib::page_fluid(
 
 server <- function(input, output, session) {
   chat <- ellmer::chat_openai()
-  
+
   observeEvent(input$chat_user_input, {
     stream <- chat$stream_async(input$chat_user_input)
     chat_append("chat", stream)
@@ -130,7 +134,7 @@ knitr::include_graphics("images/chat-quick-start.png")
 
 ### Inspect the code
 
-Let's take a closer look at the code in `app.R`. 
+Let's take a closer look at the code in `app.R`.
 
 ```r
 library(shiny)
@@ -144,7 +148,7 @@ ui <- bslib::page_fluid(
 server <- function(input, output, session) {
   # Initialize a chat with your chosen model provider
   chat <- ellmer::chat_openai(system_prompt = "You are a helpful assistant.")
-  
+
   # Listen for user input and communicate with the model
   observeEvent(input$chat_user_input, {
     stream <- chat$stream_async(input$chat_user_input)
@@ -159,7 +163,7 @@ A shinychat chatbot includes three core steps:
 
 1. **Create a chat UI element** with [`chat_ui()`](https://posit-dev.github.io/shinychat/reference/chat_ui.html).
 
-2. **Initialize a chat** with a `chat_*()` function, like `chat_openai()`, in the server function. Use a different `chat_*()` function (`chat_ollama()`, `chat_anthropic()`, etc.) to use a different model provider. You can also use the `system_prompt` argument to supply a [system prompt](https://ellmer.tidyverse.org/articles/prompt-design.html). 
+2. **Initialize a chat** with a `chat_*()` function, like `chat_openai()`, in the server function. Use a different `chat_*()` function (`chat_ollama()`, `chat_anthropic()`, etc.) to use a different model provider. You can also use the `system_prompt` argument to supply a [system prompt](https://ellmer.tidyverse.org/articles/prompt-design.html).
 
 3. **Set up a reactive listener** with `observeEvent()` that waits for the user to submit a message (`input$chat_user_input`). When a message is received:
 
@@ -168,7 +172,7 @@ A shinychat chatbot includes three core steps:
 
 ### Add a system prompt
 
-Use the `chat_*()` function's `system_prompt` argument to provide the LLM with more information about how you would like it to behave. 
+Use the `chat_*()` function's `system_prompt` argument to provide the LLM with more information about how you would like it to behave.
 
 ```r
 chat <- ellmer::chat_ollama(system_prompt = "You are a helpful assistant")
@@ -176,16 +180,16 @@ chat <- ellmer::chat_ollama(system_prompt = "You are a helpful assistant")
 
 To learn more about writing system prompts, see ellmer's [Prompt design](https://ellmer.tidyverse.org/articles/prompt-design.html) vignette. Generally, we recommend writing the system prompt in a separate markdown file, but if your prompt is short you can also supply it directly as a string to the `system_prompt` argument.
 
-### Add messages and suggestions 
+### Add greetings and suggestions
 
 #### On startup
 
-You can specify messages to show when the chat first loads by using `chat_ui()`'s `messages` argument. You can use markdown or HTML to format these messages.
+To show a greeting when the chat first loads, set the `greeting` argument of `chat_ui()` or `page_chat()`. You can format the greeting with markdown or HTML.
 
 ```r
 chat_ui(
     id = "chat",
-    messages = "**Hello!** How can I help you today?"
+    greeting = "**Hello!** How can I help you today?"
 )
 ```
 
@@ -193,10 +197,10 @@ chat_ui(
 knitr::include_graphics("images/chat-messages.png")
 ```
 
-You can also suggest inputs to the user by adding the `suggestion` CSS class to the relevant portions of the message. Similarly, use the `submit` class to make clicking on the suggestion submit the input automatically.
+You can also suggest inputs to the user by adding the `suggestion` CSS class to the relevant portions of the greeting. Similarly, use the `submit` class to make clicking on the suggestion submit the input automatically.
 
 ```r
-messages <-
+greeting <-
   '
   **Hello!** How can I help you today?
 
@@ -209,7 +213,7 @@ messages <-
 ui <- bslib::page_fillable(
   chat_ui(
     id = "chat",
-    messages = messages
+    greeting = greeting
   )
 )
 ```
@@ -220,7 +224,7 @@ knitr::include_graphics("images/chat-suggestions.png")
 
 A markdown list (`<ul>` or `<ol>`) in which every item contains a single suggestion element is automatically rendered as a grid of clickable cards instead of inline chips. Each suggestion accepts an optional `title` attribute (plain text), which becomes the card heading; the suggestion's body becomes the card description. For ordered lists (`<ol>`), the list-item number is included in the heading.
 
-Messages can also contain arbitrary Shiny UI [components](https://shiny.posit.co/r/components/), so you could even include something like a [tooltip](https://shiny.posit.co/r/components/display-messages/tooltips/) to provide additional details on demand.
+Greetings can also contain arbitrary Shiny UI [components](https://shiny.posit.co/r/components/). For example, include a [tooltip](https://shiny.posit.co/r/components/display-messages/tooltips/) to provide more details on demand.
 
 #### Mid-conversation
 
@@ -262,7 +266,7 @@ artifact_content <- function(label) {
 
 ui <- page_chat(
   "Assistant",
-  messages = "Welcome! Ask a question to get started.",
+  greeting = "Welcome! Ask a question to get started.",
   toolbar = bslib::toolbar(
     actionButton("show_preview", "Show preview")
   ),
@@ -339,7 +343,7 @@ content or when you need to compose the chat with an existing `bslib` layout.
 
 ```r
 ui <- bslib::page_fillable(
-  chat_ui("chat", messages = "Welcome!"),
+  chat_ui("chat", greeting = "Welcome!"),
   fillable_mobile = TRUE
 )
 ```
@@ -390,9 +394,7 @@ ui <- bslib::page_sidebar(
   sidebar = sidebar(
     chat_ui(
       "chat",
-      messages = list(
-        "Welcome! Here is a <span class='suggestion'>suggestion</span>."
-      ),
+      greeting = "Welcome! Here is a <span class='suggestion'>suggestion</span>.",
       height = "100%"
     ),
     width = 300,
@@ -404,7 +406,7 @@ ui <- bslib::page_sidebar(
 
 server <- function(input, output, session) {
   chat <- ellmer::chat_openai()
-  
+
   observeEvent(input$chat_user_input, {
     stream <- chat$stream_async(input$chat_user_input)
     chat_append("chat", stream)
@@ -437,7 +439,7 @@ ui <- page_fillable(
     ),
     chat_ui(
       id = "chat",
-      messages = "Hello! How can I help you today?"
+      greeting = "Hello! How can I help you today?"
     )
   ),
   fillable_mobile = TRUE
@@ -445,7 +447,7 @@ ui <- page_fillable(
 
 server <- function(input, output, session) {
   chat <- ellmer::chat_openai()
-  
+
   observeEvent(input$chat_user_input, {
     stream <- chat$stream_async(input$chat_user_input)
     chat_append("chat", stream)

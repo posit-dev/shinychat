@@ -49,107 +49,36 @@ test_that("check_schema_version() rejects non-scalar integer values", {
   }
 })
 
-test_that("messages_input_value() parses a decoded JSON payload into message lists", {
-  # Shape mirrors what shiny:::decodeMessage(simplifyVector = FALSE) produces
-  # for the client's `${id}_messages:shinychat.messages` payload.
-  value <- list(
-    list(
-      role = "user",
-      segments = list(list(content = "hi", content_type = "markdown"))
-    ),
-    list(
+test_that("is_stored_ui_versioned() requires an exact current-version match", {
+  message_with_version <- function(version) {
+    list(list(
+      version = version,
       role = "assistant",
-      segments = list(list(
-        content = "<div>widget</div>",
-        content_type = "html"
-      )),
-      htmlDeps = list(list(name = "widgetdep", version = "1.0.0"))
-    )
-  )
+      segments = list(list(content = "hi", content_type = "markdown"))
+    ))
+  }
 
-  parsed <- messages_input_value(value)
-
-  expect_length(parsed, 2)
-  expect_equal(parsed[[1]]$role, "user")
-  expect_equal(parsed[[1]]$segments[[1]]$content, "hi")
-  expect_null(parsed[[1]]$htmlDeps)
-  expect_equal(
-    parsed[[2]]$htmlDeps,
-    list(list(name = "widgetdep", version = "1.0.0"))
-  )
-})
-
-test_that("messages_input_value() carries attachments through when present", {
-  value <- list(
-    list(
-      role = "user",
-      segments = list(list(
-        content = "see attached",
-        content_type = "markdown"
-      )),
-      attachments = list(list(
-        mime = "image/png",
-        name = "a.png",
-        size = 1L,
-        data_url = "data:image/png;base64,AA=="
-      ))
-    )
-  )
-  parsed <- messages_input_value(value)
-  expect_equal(parsed[[1]]$attachments[[1]]$name, "a.png")
-})
-
-test_that("messages_input_value() omits attachments when empty", {
-  value <- list(list(
-    role = "user",
+  expect_false(is_stored_ui_versioned(NULL))
+  expect_false(is_stored_ui_versioned(list()))
+  expect_false(is_stored_ui_versioned("not a list"))
+  expect_false(is_stored_ui_versioned(list(list(
+    role = "assistant",
     segments = list(list(content = "hi", content_type = "markdown"))
-  ))
-  parsed <- messages_input_value(value)
-  expect_null(parsed[[1]]$attachments)
-})
+  ))))
 
-test_that("messages_input_value() rejects unsupported attachment MIME types", {
-  value <- list(
-    list(
-      role = "user",
-      segments = list(list(
-        content = "see attached",
-        content_type = "markdown"
-      )),
-      attachments = list(list(
-        mime = "application/octet-stream",
-        name = "x.bin",
-        size = 1L,
-        data_url = "data:application/octet-stream;base64,AA=="
-      ))
-    )
-  )
-  expect_error(messages_input_value(value), "unsupported MIME type")
-})
+  expect_false(is_stored_ui_versioned(message_with_version(0L)))
+  expect_false(is_stored_ui_versioned(message_with_version(
+    STORED_UI_VERSION + 1L
+  )))
 
-test_that("messages_input_value() rejects oversized attachment payloads", {
-  withr::local_envvar(SHINYCHAT_MAX_ATTACHMENT_SIZE = "3")
-  value <- list(
-    list(
-      role = "user",
-      segments = list(list(
-        content = "see attached",
-        content_type = "markdown"
-      )),
-      attachments = list(list(
-        mime = "text/plain",
-        name = "x.txt",
-        # Spoofed smaller size should not bypass server-side enforcement.
-        size = 1L,
-        data_url = "data:text/plain;base64,AQIDBA=="
-      ))
-    )
-  )
-  expect_error(messages_input_value(value), "maximum attachment size")
-})
+  expect_true(is_stored_ui_versioned(message_with_version(STORED_UI_VERSION)))
+  expect_true(is_stored_ui_versioned(message_with_version(as.numeric(
+    STORED_UI_VERSION
+  ))))
 
-test_that("messages_input_value() errors on a non-list payload", {
-  expect_error(messages_input_value("not a list"), "Expected a list")
+  expect_false(is_stored_ui_versioned(message_with_version(NA_integer_)))
+  expect_false(is_stored_ui_versioned(message_with_version("2")))
+  expect_false(is_stored_ui_versioned(message_with_version(c(2L, 2L))))
 })
 
 test_that("record_path_node_ids() walks parent chain", {
@@ -215,26 +144,6 @@ test_that("record_turn_count() sums turns across the path", {
 test_that("record_turn_count() is 0 for an empty record", {
   rec <- new_conversation_record("test")
   expect_equal(record_turn_count(rec), 0)
-})
-
-test_that("record_ui_count() sums ui messages across the path, treating NULL as 0", {
-  rec <- new_conversation_record("test")
-  rec$nodes <- list(
-    n_0001 = list(
-      parent = NULL,
-      children = list("n_0002"),
-      turns = list(list(role = "user")),
-      ui = list(list(role = "user", segments = list()))
-    ),
-    n_0002 = list(
-      parent = "n_0001",
-      children = list(),
-      turns = list(list(role = "assistant")),
-      ui = NULL
-    )
-  )
-  rec$current_leaf <- "n_0002"
-  expect_equal(record_ui_count(rec), 1)
 })
 
 test_that("record_children_of() returns root nodes sorted by sequence when node_id is NULL", {
@@ -534,8 +443,6 @@ test_that("extend_record_linear() appends new turn groups as nodes", {
   rec <- extend_record_linear(
     rec,
     turns,
-    ui_messages = list(),
-    ui_offset = 0,
     tools = list()
   )
 
@@ -545,99 +452,157 @@ test_that("extend_record_linear() appends new turn groups as nodes", {
   expect_equal(rec$current_leaf, "n_0002")
 })
 
-test_that("extend_record_linear() groups a tool-call round into a single node", {
-  rec <- new_conversation_record("test")
-  turns <- list(
-    user_turn_fixture("what's the weather?"),
-    tool_request_turn_fixture("Let me check."),
-    tool_result_turn_fixture(),
-    assistant_turn_fixture("It's sunny and 75F!")
-  )
-
-  rec <- extend_record_linear(
-    rec,
-    turns,
-    ui_messages = list(),
-    ui_offset = 0,
-    tools = list()
-  )
-
-  expect_equal(names(rec$nodes), c("n_0001", "n_0002"))
-  expect_length(rec$nodes$n_0001$turns, 1)
-  expect_length(rec$nodes$n_0002$turns, 3)
-})
-
-test_that("extend_record_linear() is idempotent for the same turns and messages", {
+test_that("extend_record_linear() is idempotent for same turns", {
   rec <- new_conversation_record("test")
   turns <- list(user_turn_fixture("hi"))
-  rec <- extend_record_linear(
-    rec,
-    turns,
-    ui_messages = list(),
-    ui_offset = 0,
-    tools = list()
-  )
+  rec <- extend_record_linear(rec, turns, tools = list())
 
-  rec2 <- extend_record_linear(
-    rec,
-    turns,
-    ui_messages = list(),
-    ui_offset = 0,
-    tools = list()
-  )
+  rec2 <- extend_record_linear(rec, turns, tools = list())
   expect_equal(length(rec2$nodes), 1)
 })
 
-test_that("extend_record_linear() appends only new turn groups", {
+test_that("extend_record_linear() appends only new turns", {
   rec <- new_conversation_record("test")
   turns1 <- list(user_turn_fixture("hi"))
-  rec <- extend_record_linear(
-    rec,
-    turns1,
-    ui_messages = list(),
-    ui_offset = 0,
-    tools = list()
-  )
+  rec <- extend_record_linear(rec, turns1, tools = list())
 
-  turns2 <- list(user_turn_fixture("hi"), assistant_turn_fixture("hello"))
-  rec <- extend_record_linear(
-    rec,
-    turns2,
-    ui_messages = list(),
-    ui_offset = 0,
-    tools = list()
+  turns2 <- list(
+    user_turn_fixture("hi"),
+    assistant_turn_fixture("hello")
   )
+  rec <- extend_record_linear(rec, turns2, tools = list())
   expect_equal(length(rec$nodes), 2)
   expect_equal(rec$current_leaf, "n_0002")
 })
-
-test_that("extend_record_linear() attaches a user message to the matching new user-turn node", {
+test_that("extend_record_linear() derives UI from turns and attaches to matching nodes", {
   rec <- new_conversation_record("test")
   turns <- list(user_turn_fixture("hi"), assistant_turn_fixture("hello"))
-  ui_messages <- list(
-    list(
-      role = "user",
-      segments = list(list(content = "hi", content_type = "markdown"))
-    ),
-    list(
-      role = "assistant",
-      segments = list(list(content = "hello", content_type = "markdown"))
-    )
-  )
 
   rec <- extend_record_linear(
     rec,
     turns,
-    ui_messages = ui_messages,
-    ui_offset = 0,
     tools = list()
   )
 
-  expect_equal(rec$nodes$n_0001$ui, list(ui_messages[[1]]))
-  expect_equal(rec$nodes$n_0002$ui, list(ui_messages[[2]]))
+  expect_equal(rec$nodes$n_0001$ui[[1]]$version, STORED_UI_VERSION)
+  expect_equal(rec$nodes$n_0001$ui[[1]]$role, "user")
+  expect_equal(rec$nodes$n_0001$ui[[1]]$segments[[1]]$content, "hi")
+  expect_equal(rec$nodes$n_0002$ui[[1]]$version, STORED_UI_VERSION)
+  expect_equal(rec$nodes$n_0002$ui[[1]]$role, "assistant")
+  expect_equal(rec$nodes$n_0002$ui[[1]]$segments[[1]]$content, "hello")
 })
 
-test_that("extend_record_linear() attaches non-user messages to the last new node", {
+test_that("extend_record_linear() stores attachment previews without model content", {
+  attachments <- list(
+    list(
+      mime = "image/png",
+      name = "plot.png",
+      size = 3L,
+      data_url = "data:image/png;base64,QUJD"
+    ),
+    list(
+      mime = "text/plain",
+      name = "notes.txt",
+      size = 5L,
+      data_url = "data:text/plain;base64,aGVsbG8="
+    )
+  )
+  contents <- c(
+    list(ellmer::ContentText("See attached")),
+    lapply(attachments, function(attachment) {
+      content <- content_from_attachment(attachment)
+      if (is.character(content)) ellmer::ContentText(content) else content
+    })
+  )
+  turns <- list(ellmer::contents_record(ellmer::UserTurn(contents)))
+
+  rec <- extend_record_linear(
+    new_conversation_record("test"),
+    turns,
+    tools = list(),
+    attachments = attachments
+  )
+
+  stored <- rec$nodes$n_0001$ui[[1]]
+  expect_equal(stored$attachments, attachments)
+  expect_equal(
+    stored$segments,
+    list(list(
+      content = "See attached",
+      content_type = "markdown"
+    ))
+  )
+  expect_true(stored$attachment_content_stripped)
+})
+
+test_that("strip_stored_attachment_content repairs existing stored UI", {
+  attachment <- list(
+    mime = "text/plain",
+    name = "notes.txt",
+    size = 5L,
+    data_url = "data:text/plain;base64,aGVsbG8="
+  )
+  stored <- list(
+    version = STORED_UI_VERSION,
+    role = "user",
+    segments = list(list(
+      content = paste0(
+        "See attached\n\n",
+        "<file-attachment name=\"notes.txt\" type=\"text/plain\">\n",
+        "hello\n",
+        "</file-attachment>"
+      ),
+      content_type = "markdown"
+    )),
+    attachments = list(attachment)
+  )
+
+  cleaned <- strip_stored_attachment_content(stored)
+
+  expect_equal(
+    cleaned$segments,
+    list(list(
+      content = "See attached",
+      content_type = "markdown"
+    ))
+  )
+  expect_true(cleaned$attachment_content_stripped)
+})
+
+test_that("attachment-only stored UI retains an empty message segment", {
+  attachment <- list(
+    mime = "text/plain",
+    name = "notes.txt",
+    size = 5L,
+    data_url = "data:text/plain;base64,aGVsbG8="
+  )
+  stored <- list(
+    version = STORED_UI_VERSION,
+    role = "user",
+    segments = list(list(
+      content = paste0(
+        "<file-attachment name=\"notes.txt\" type=\"text/plain\">\n",
+        "hello\n",
+        "</file-attachment>"
+      ),
+      content_type = "markdown"
+    )),
+    attachments = list(attachment)
+  )
+
+  cleaned <- strip_stored_attachment_content(stored)
+
+  expect_equal(
+    cleaned$segments,
+    list(list(
+      content = "",
+      content_type = "markdown"
+    ))
+  )
+  expect_true(cleaned$attachment_content_stripped)
+})
+
+test_that("extend_record_linear() derives UI with structured blocks from tool-call turns", {
   rec <- new_conversation_record("test")
   turns <- list(
     user_turn_fixture("weather?"),
@@ -645,78 +610,37 @@ test_that("extend_record_linear() attaches non-user messages to the last new nod
     tool_result_turn_fixture(),
     assistant_turn_fixture("sunny")
   )
-  ui_messages <- list(
-    list(
-      role = "user",
-      segments = list(list(content = "weather?", content_type = "markdown"))
-    ),
-    list(
-      role = "assistant",
-      segments = list(list(content = "[tool card]", content_type = "html"))
-    ),
-    list(
-      role = "assistant",
-      segments = list(list(content = "sunny", content_type = "markdown"))
-    )
-  )
 
   rec <- extend_record_linear(
     rec,
     turns,
-    ui_messages = ui_messages,
-    ui_offset = 0,
     tools = list()
   )
 
-  expect_equal(rec$nodes$n_0001$ui, list(ui_messages[[1]]))
-  expect_equal(rec$nodes$n_0002$ui, ui_messages[2:3])
-})
+  expect_equal(rec$nodes$n_0001$ui[[1]]$version, STORED_UI_VERSION)
+  expect_equal(rec$nodes$n_0001$ui[[1]]$role, "user")
+  expect_equal(rec$nodes$n_0001$ui[[1]]$segments[[1]]$content, "weather?")
 
-test_that("extend_record_linear() attaches a late-arriving message to the current leaf when no new node is created", {
-  rec <- new_conversation_record("test")
-  turns <- list(user_turn_fixture("hi"))
-  rec <- extend_record_linear(
-    rec,
-    turns,
-    ui_messages = list(list(
-      role = "user",
-      segments = list(list(content = "hi", content_type = "markdown"))
-    )),
-    ui_offset = 0,
-    tools = list()
+  expect_length(rec$nodes$n_0002$ui, 1)
+  derived <- rec$nodes$n_0002$ui[[1]]
+  expect_equal(derived$version, STORED_UI_VERSION)
+  expect_equal(derived$role, "assistant")
+  # Segments are interleaved: blocks inline, no parallel blocks field.
+  expect_null(derived$blocks)
+  expect_null(derived$block_positions)
+  block_segs <- Filter(function(s) "type" %in% names(s), derived$segments)
+  expect_true(length(block_segs) > 0)
+  block_types <- vapply(block_segs, function(s) s$type, character(1))
+  expect_true("tool_request" %in% block_types)
+  expect_true("tool_result" %in% block_types)
+  # Interleaving order: "checking" (request text), blocks, then "sunny".
+  seg_contents <- vapply(
+    Filter(function(s) !"type" %in% names(s), derived$segments),
+    function(s) s$content,
+    character(1)
   )
-
-  # Same turns (no new node), but one more ui message arrived (e.g. the
-  # client caught up after a streamed reply settled).
-  late_message <- list(
-    role = "assistant",
-    segments = list(list(content = "hello", content_type = "markdown"))
-  )
-  rec <- extend_record_linear(
-    rec,
-    turns,
-    ui_messages = list(
-      list(
-        role = "user",
-        segments = list(list(content = "hi", content_type = "markdown"))
-      ),
-      late_message
-    ),
-    ui_offset = 1,
-    tools = list()
-  )
-
-  expect_equal(length(rec$nodes), 1)
-  expect_equal(
-    rec$nodes$n_0001$ui,
-    list(
-      list(
-        role = "user",
-        segments = list(list(content = "hi", content_type = "markdown"))
-      ),
-      late_message
-    )
-  )
+  expect_equal(seg_contents[1], "checking")
+  expect_equal(seg_contents[length(seg_contents)], "sunny")
 })
 
 test_that("extend_record_linear() records children pointers", {
@@ -725,11 +649,122 @@ test_that("extend_record_linear() records children pointers", {
   rec <- extend_record_linear(
     rec,
     turns,
-    ui_messages = list(),
-    ui_offset = 0,
     tools = list()
   )
 
   expect_equal(rec$nodes$n_0001$children, list("n_0002"))
   expect_equal(rec$nodes$n_0002$children, list())
+})
+
+test_that("build_stored_message_from_content stores thinking as its own segment between markdown (no blocks)", {
+  thinking <- structure("my thoughts", class = "shinychat_thinking")
+  content <- list("before text", thinking, "after text")
+
+  msg <- build_stored_message_from_content(
+    role = "assistant",
+    content = content
+  )
+
+  expect_equal(msg$role, "assistant")
+  expect_equal(msg$version, STORED_UI_VERSION)
+  expect_length(msg$segments, 3)
+  expect_equal(msg$segments[[1]]$content, "before text")
+  expect_equal(msg$segments[[1]]$content_type, "markdown")
+  expect_equal(msg$segments[[2]]$content, "my thoughts")
+  expect_equal(msg$segments[[2]]$content_type, "thinking")
+  expect_equal(msg$segments[[3]]$content, "after text")
+  expect_equal(msg$segments[[3]]$content_type, "markdown")
+})
+
+test_that("build_stored_message_from_content coalesces adjacent markdown around thinking (no blocks)", {
+  thinking <- structure("hmm", class = "shinychat_thinking")
+  content <- list("a", "b", thinking, "c", "d")
+
+  msg <- build_stored_message_from_content(
+    role = "assistant",
+    content = content
+  )
+
+  expect_length(msg$segments, 3)
+  expect_equal(msg$segments[[1]]$content, "a\n\nb")
+  expect_equal(msg$segments[[1]]$content_type, "markdown")
+  expect_equal(msg$segments[[2]]$content, "hmm")
+  expect_equal(msg$segments[[2]]$content_type, "thinking")
+  expect_equal(msg$segments[[3]]$content, "c\n\nd")
+  expect_equal(msg$segments[[3]]$content_type, "markdown")
+})
+
+test_that("build_stored_message_from_content stores thinking alongside blocks", {
+  thinking <- structure("reasoning", class = "shinychat_thinking")
+  block <- new_web_block("web_search", query = "test")
+  content <- list("intro", thinking, block, "outro")
+
+  msg <- build_stored_message_from_content(
+    role = "assistant",
+    content = content
+  )
+
+  string_segs <- Filter(function(s) !"type" %in% names(s), msg$segments)
+  seg_types <- vapply(string_segs, function(s) s$content_type, character(1))
+  expect_true("thinking" %in% seg_types)
+  thinking_idx <- which(seg_types == "thinking")
+  expect_equal(string_segs[[thinking_idx]]$content, "reasoning")
+  # Blocks are interleaved in segments; no parallel blocks field.
+  expect_null(msg$blocks)
+  block_segs <- Filter(function(s) "type" %in% names(s), msg$segments)
+  expect_length(block_segs, 1)
+  expect_equal(block_segs[[1]]$type, "web_search")
+  # Interleaving order: "intro", thinking, web_search block, "outro".
+  expect_equal(msg$segments[[1]]$content, "intro")
+  expect_equal(msg$segments[[2]]$content, "reasoning")
+  expect_equal(msg$segments[[3]]$type, "web_search")
+  expect_equal(msg$segments[[4]]$content, "outro")
+})
+
+test_that("build_stored_message_from_content blocks-only message carries one leading empty string segment", {
+  block <- new_web_block("web_search", query = "test")
+  content <- list(block, block)
+
+  msg <- build_stored_message_from_content(
+    role = "assistant",
+    content = content
+  )
+
+  # The wire always carries at least one string segment.
+  expect_length(msg$segments, 3)
+  expect_equal(msg$segments[[1]]$content, "")
+  expect_equal(msg$segments[[1]]$content_type, "markdown")
+  expect_equal(msg$segments[[2]]$type, "web_search")
+  expect_equal(msg$segments[[3]]$type, "web_search")
+  expect_null(msg$blocks)
+  expect_null(msg$block_positions)
+})
+
+test_that("build_stored_message_from_content stores only-thinking + markdown (no blocks) round-trips", {
+  thinking <- structure("just thinking", class = "shinychat_thinking")
+  content <- list(thinking, "the answer")
+
+  msg <- build_stored_message_from_content(
+    role = "assistant",
+    content = content
+  )
+
+  expect_length(msg$segments, 2)
+  expect_equal(msg$segments[[1]]$content, "just thinking")
+  expect_equal(msg$segments[[1]]$content_type, "thinking")
+  expect_equal(msg$segments[[2]]$content, "the answer")
+  expect_equal(msg$segments[[2]]$content_type, "markdown")
+})
+
+test_that("build_stored_message_from_content without thinking still produces a single segment (no blocks)", {
+  content <- list("hello", "world")
+
+  msg <- build_stored_message_from_content(
+    role = "assistant",
+    content = content
+  )
+
+  expect_length(msg$segments, 1)
+  expect_equal(msg$segments[[1]]$content, "hello\n\nworld")
+  expect_equal(msg$segments[[1]]$content_type, "markdown")
 })

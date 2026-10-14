@@ -9,7 +9,7 @@ from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
 
 
-def test_browser_no_target_suppresses_unresolved_constructor_and_startup_append(
+def test_browser_no_target_suppresses_unresolved_startup_append(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     page.goto(local_app.url)
@@ -36,7 +36,6 @@ def test_url_target_restores_display_without_unresolved_startup_append(
     messages = page.locator(".shiny-chat-message, .shiny-chat-user-message")
     expect(messages).to_have_count(1, timeout=30_000)
     expect(messages.nth(0)).to_contain_text("restored input")
-    expect(page.get_by_text("constructor message", exact=True)).to_have_count(0)
     expect(page.get_by_text("startup append", exact=True)).to_have_count(0)
     controller.OutputText(page, "startup_exchange").expect_value(
         re.compile(r'"active_id": null, "parent_id": null, "messages": \[\]'),

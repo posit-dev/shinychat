@@ -1,6 +1,11 @@
-## revdepcheck results
+This is a resubmission of shinychat v0.5.0. Our initial submission revealed issues in reverse dependencies, which are fixed in this version.
 
-We checked 3 reverse dependencies, comparing R CMD check results across CRAN and dev versions of this package.
+## R CMD check results
 
- * We saw 0 new problems
- * We failed to check 0 packages
+0 errors ✔ | 0 warnings ✔ | 0 notes ✔
+
+* Checked locally on R 4.6.1 (macOS/arm64) and submitted to win-builder (R-devel).
+
+## Reverse dependencies
+
+* We separately submitted btw v0.1.5 with fixes for these issues and expect it to be compatible with shinychat v0.5.0.

@@ -14,15 +14,13 @@ import { remarkEscapeHtml } from "./plugins/remarkEscapeHtml"
 import { rehypeExternalLinks } from "./plugins/rehypeExternalLinks"
 import { rehypeUncontrolledInputs } from "./plugins/rehypeUncontrolledInputs"
 import {
-  rehypeDisguiseReservedIslands,
-  rehypeEscapeReservedIslands,
-} from "./plugins/rehypeEscapeReservedIslands"
+  rehypeDisguiseIslands,
+  rehypeNeutralizeIslands,
+} from "./plugins/rehypeNeutralizeIslands"
 import { rehypeUnwrapBlockCEs } from "./plugins/rehypeUnwrapBlockCEs"
-import { rehypeGroupWebActivity } from "./plugins/rehypeGroupWebActivity"
 import { rehypeAttachAsidesToPreviousParagraph } from "./plugins/rehypeAttachAsidesToPreviousParagraph"
 import { rehypeGroupAsides } from "./plugins/rehypeGroupAsides"
 import { rehypeGroundedAsides } from "./plugins/rehypeGroundedAsides"
-import { rehypeAttachCitedSources } from "./plugins/rehypeAttachCitedSources"
 import { rehypeMarkTrailingAsides } from "./plugins/markTrailingAsides"
 import { rehypeLazyContinuation } from "./plugins/rehypeLazyContinuation"
 import {
@@ -32,52 +30,34 @@ import {
 import { remarkNormalizeListItemAsides } from "./plugins/normalizeAsideMarkdown"
 
 /**
- * Frozen processor for markdown content.
- * Includes: GFM, raw HTML parsing, external links, syntax highlighting.
- *
- * No rehypeSanitize step: the output is converted to React elements via
- * toJsxRuntime (not innerHTML), so script tags and event-handler attributes
- * are inert.
+ * Frozen processor for assistant markdown content (trusted and untrusted).
+ * No rehypeSanitize. Output is converted to React elements via toJsxRuntime
+ * (not innerHTML), so script tags and event-handler attributes are inert.
+ * The disguise/neutralize pair around rehypeRaw is a spoof guard that
+ * reduces forged island tags to inert text (see rehypeNeutralizeIslands).
  */
-function makeMarkdownProcessor(escapeReservedIslands: boolean) {
-  let processor = unified()
-    .use(remarkParse)
-    .use(remarkGfm, remarkGfmOptions)
-    .use(remarkNormalizeListItemAsides)
-    .use(remarkRehype, { allowDangerousHtml: true })
-    .use(rehypeRewriteAsideToTemplate)
-
-  if (escapeReservedIslands) {
-    processor = processor.use(rehypeDisguiseReservedIslands)
-  }
-  processor = processor.use(rehypeRaw)
-  if (escapeReservedIslands) {
-    processor = processor.use(rehypeEscapeReservedIslands)
-  }
-
-  return processor
-    .use(rehypeRewriteAsideFromTemplate)
-    .use(rehypeLazyContinuation)
-    .use(rehypeUnwrapBlockCEs)
-    .use(rehypeGroupWebActivity)
-    .use(rehypeAttachAsidesToPreviousParagraph)
-    .use(rehypeGroundedAsides)
-    .use(rehypeGroupAsides)
-    .use(rehypeAttachCitedSources)
-    .use(rehypeMarkTrailingAsides)
-    .use(rehypeUncontrolledInputs)
-    .use(rehypeAccessibleSuggestions)
-    .use(rehypeSuggestionCards)
-    .use(rehypeExternalLinks)
-    .use(rehypeHighlight, { detect: false, ignoreMissing: true })
-    .freeze()
-}
-
-/** Assistant markdown: reserved raw-HTML islands render as literal text. */
-export const markdownProcessor = makeMarkdownProcessor(true)
-
-/** Server-authored markdown may instantiate raw-HTML islands. */
-export const trustedMarkdownProcessor = makeMarkdownProcessor(false)
+export const markdownProcessor = unified()
+  .use(remarkParse)
+  .use(remarkGfm, remarkGfmOptions)
+  .use(remarkNormalizeListItemAsides)
+  .use(remarkRehype, { allowDangerousHtml: true })
+  .use(rehypeRewriteAsideToTemplate)
+  .use(rehypeDisguiseIslands)
+  .use(rehypeRaw)
+  .use(rehypeNeutralizeIslands)
+  .use(rehypeRewriteAsideFromTemplate)
+  .use(rehypeLazyContinuation)
+  .use(rehypeUnwrapBlockCEs)
+  .use(rehypeAttachAsidesToPreviousParagraph)
+  .use(rehypeGroundedAsides)
+  .use(rehypeGroupAsides)
+  .use(rehypeMarkTrailingAsides)
+  .use(rehypeUncontrolledInputs)
+  .use(rehypeAccessibleSuggestions)
+  .use(rehypeSuggestionCards)
+  .use(rehypeExternalLinks)
+  .use(rehypeHighlight, { detect: false, ignoreMissing: true })
+  .freeze()
 
 /**
  * Frozen processor for raw HTML content.
@@ -89,11 +69,9 @@ export const trustedMarkdownProcessor = makeMarkdownProcessor(false)
  * parse5-parsed HTML fragment.
  */
 export const htmlProcessor = unified()
-  .use(rehypeGroupWebActivity)
   .use(rehypeAttachAsidesToPreviousParagraph)
   .use(rehypeGroundedAsides)
   .use(rehypeGroupAsides)
-  .use(rehypeAttachCitedSources)
   .use(rehypeMarkTrailingAsides)
   .use(rehypeUncontrolledInputs)
   .use(rehypeAccessibleSuggestions)

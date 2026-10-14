@@ -116,9 +116,11 @@ export function ChatHistoryDrawer({
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        // Scope Escape to whatever sub-state is active before closing the
-        // whole drawer. Inline history controls stop propagation when they
-        // need to consume Escape themselves.
+        // Also handle Escape dispatched on document (e.g. by integrations).
+        // Key events from within the drawer are consumed by its own handler.
+        if (e.defaultPrevented) return
+        e.preventDefault()
+        e.stopPropagation()
         handleClose()
         return
       }
@@ -166,6 +168,12 @@ export function ChatHistoryDrawer({
   return (
     <div
       ref={drawerRef}
+      onKeyDown={(e) => {
+        if (e.key !== "Escape") return
+        e.preventDefault()
+        e.stopPropagation()
+        handleClose()
+      }}
       className="shiny-chat-history"
       data-closing={closing || undefined}
       role="dialog"
@@ -253,6 +261,7 @@ export function ChatHistoryContent({
     if (!menuFor && !confirmingDelete) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
+      event.preventDefault()
       event.stopPropagation()
       handleEscape()
     }
@@ -265,6 +274,7 @@ export function ChatHistoryContent({
       ref={contentRef}
       onKeyDown={(event) => {
         if (event.key === "Escape" && handleEscape()) {
+          event.preventDefault()
           event.stopPropagation()
         }
       }}
@@ -433,8 +443,8 @@ function ConversationItem({
               return
             }
             if (e.key === "Escape") {
-              // Cancel the rename in place; don't let this bubble to the
-              // drawer's document-level Escape handler and close the drawer.
+              // Cancel the rename in place without closing the drawer.
+              e.preventDefault()
               e.stopPropagation()
               onCancelEdit()
             }

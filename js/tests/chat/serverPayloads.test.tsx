@@ -85,9 +85,19 @@ describe("server-shaped chat payloads", () => {
           role: "assistant",
           segments: [
             {
-              content:
-                '<shiny-tool-result data-shinychat-react request-id="req-empty-fields" tool-name="get_weather" tool-title="Get Weather" status="success" value="" value-type="text" request-call="" footer="" show-request full-screen expanded></shiny-tool-result>',
-              content_type: "html",
+              type: "tool_result",
+              version: 1,
+              request_id: "req-empty-fields",
+              tool_name: "get_weather",
+              title: "Get Weather",
+              status: "success",
+              value: "",
+              value_type: "text",
+              request_call: "",
+              footer: "",
+              show_request: true,
+              full_screen: true,
+              expanded: true,
             },
           ],
         },

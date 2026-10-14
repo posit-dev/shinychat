@@ -4,18 +4,40 @@ import type {
   ConversationMeta,
   MessagePayload,
   GreetingOptions,
+  SegmentPayload,
   SlashCommandDef,
+  StructuredBlock,
   HtmlDep,
+  HtmlBlock as HtmlBlockWire,
 } from "../transport/types"
 import type { AttachmentPayload } from "./attachments"
 import { uuid } from "../utils/uuid"
 import { codeRanges } from "./markdown-code-ranges"
-import { routeToolBlocks, supersededRequestIds } from "./tool-model"
+import {
+  appendToolLoopBlock,
+  regroupToolLoop,
+  structuredBlockToLoop,
+  supersededRequestIds,
+} from "./tool-model"
 import type { ToolLoopBlock, ToolGrouping } from "./tool-model"
+import {
+  appendWebActivityBlock,
+  asWebActivityWireBlock,
+  isWebActivityWireBlock,
+  isWhitespaceContentBlock,
+} from "./web-activity-model"
+import type {
+  WebActivityBlock,
+  WebActivityWireBlock,
+} from "./web-activity-model"
+import { asHtmlBlock, htmlBlockToRenderBlock } from "./html-block-model"
+import type { HtmlBlock } from "./html-block-model"
 
 export {
   deriveToolGroupIdentity,
-  routeToolBlocks,
+  inheritRequestDefinitionIcon,
+  requestDefinitionIcons,
+  structuredBlockToLoop,
   supersededRequestIds,
 } from "./tool-model"
 export type {
@@ -26,6 +48,10 @@ export type {
   ToolGrouping,
   ToolLoopBlock,
 } from "./tool-model"
+export type { WebActivityBlock, WebActivityItem } from "./web-activity-model"
+// Mirrors html-block-model.ts (shared with MarkdownStream).
+export { asHtmlBlock, htmlBlockToRenderBlock } from "./html-block-model"
+export type { HtmlBlock } from "./html-block-model"
 
 export interface ContentBlock {
   type: "content"
@@ -42,7 +68,12 @@ export interface ThinkingBlock {
   durationMs?: number
   streaming: boolean
 }
-export type MessageBlock = ContentBlock | ThinkingBlock | ToolLoopBlock
+export type RenderBlock =
+  | ContentBlock
+  | ThinkingBlock
+  | ToolLoopBlock
+  | WebActivityBlock
+  | HtmlBlock
 
 export interface ChatMessageData {
   id: string
@@ -56,7 +87,7 @@ export interface ChatMessageData {
   attachments?: AttachmentPayload[]
   /** Opaque serialized Shiny HTML dependencies received with this message; retained so the client can report them back for persistence/restore. */
   htmlDeps?: HtmlDep[]
-  blocks: MessageBlock[]
+  blocks: RenderBlock[]
   /** Tracks whether streaming content is inside an unclosed <thinking> tag */
   insideThinkingTag?: boolean
   /** Buffers partial tag text at chunk boundaries (e.g. "<thi" or "</thin") */
@@ -101,10 +132,12 @@ export interface ChatInputState {
  * Tool state shared with every message through context.
  *
  * `supersededRequests` is `supersededRequestIds`, derived from the
- * transcript — see there for how it decides a request is done.
+ * transcript. `requestDefinitionIcons` carries definition identity into
+ * results that omit it. See their source functions for the derivation rules.
  */
 export interface ChatToolState {
   supersededRequests: Set<string>
+  requestDefinitionIcons: ReadonlyMap<string, string>
 }
 
 export interface ChatHistoryState {
@@ -200,15 +233,60 @@ export const initialState: ChatState = {
   },
 }
 
-function messagePayloadToData(
+/** Discriminator: structured blocks carry `type`. String segments do not. */
+function isStructuredSegment(seg: SegmentPayload): seg is StructuredBlock {
+  return "type" in seg
+}
+
+// Tool UI and web activity are assistant-only. html_block is valid in any role.
+function blockAllowedForRole(
+  role: "user" | "assistant",
+  blockType: string,
+): boolean {
+  return role !== "user" || blockType === "html_block"
+}
+
+export function messagePayloadToData(
   msg: MessagePayload,
   grouping: ToolGrouping = "tool",
 ): ChatMessageData {
-  const rawBlocks: MessageBlock[] = []
+  let rawBlocks: RenderBlock[] = []
+  let htmlDeps: HtmlDep[] | undefined
   for (const seg of msg.segments) {
+    if (isStructuredSegment(seg)) {
+      if (!blockAllowedForRole(msg.role, seg.type)) {
+        console.warn(
+          "Ignoring non-html_block structured block in a user-role message",
+        )
+        continue
+      }
+      if (isWebActivityWireBlock(seg)) {
+        const webBlock = asWebActivityWireBlock(seg)
+        if (webBlock)
+          rawBlocks = appendWebActivityBlock(
+            rawBlocks,
+            webBlock,
+            isWhitespaceContentBlock,
+          )
+        continue
+      }
+      if (seg.type === "html_block") {
+        const htmlBlock = asHtmlBlock(seg)
+        if (htmlBlock) {
+          rawBlocks.push(htmlBlockToRenderBlock(htmlBlock))
+          htmlDeps = mergeHtmlDeps(htmlDeps, htmlBlock.html_deps)
+        }
+        continue
+      }
+      const loop = structuredBlockToLoop(seg, grouping)
+      if (loop) {
+        rawBlocks = appendToolLoopBlock(rawBlocks, loop, grouping)
+      }
+      continue
+    }
     rawBlocks.push(...splitThinkingBlocks(seg.content, seg.content_type))
   }
-  const blocks = routeToolBlocks(rawBlocks, grouping, msg.role)
+  const blocks = rawBlocks
   const attachments: AttachmentPayload[] = msg.attachments ?? []
   const contentOnly = contentFromBlocks(blocks)
 
@@ -219,6 +297,7 @@ function messagePayloadToData(
     streaming: false,
     icon: msg.icon,
     ...(attachments.length > 0 ? { attachments } : {}),
+    ...(htmlDeps ? { htmlDeps } : {}),
     blocks,
     siblings: msg.siblings,
   }
@@ -280,7 +359,7 @@ const THINKING_TAG_RE = /<thinking>\n?([\s\S]*?)\n?<\/thinking>\n*/g
 export function splitThinkingBlocks(
   content: string,
   contentType: ContentType,
-): MessageBlock[] {
+): RenderBlock[] {
   if (contentType === "thinking") {
     return [{ type: "thinking", content, streaming: false }]
   }
@@ -293,7 +372,7 @@ export function splitThinkingBlocks(
 
   const isInsideFence = codeRanges(content)
 
-  const blocks: MessageBlock[] = []
+  const blocks: RenderBlock[] = []
   let lastIndex = 0
 
   for (const match of content.matchAll(THINKING_TAG_RE)) {
@@ -322,7 +401,7 @@ export function splitThinkingBlocks(
   return blocks
 }
 
-export function contentFromBlocks(blocks: MessageBlock[]): string {
+export function contentFromBlocks(blocks: RenderBlock[]): string {
   return blocks
     .filter((b): b is ContentBlock => b.type === "content")
     .map((b) => b.content)
@@ -368,10 +447,17 @@ function buildFenceCloseRe(marker: string): RegExp {
 
 // Returns true if the last content block ends with a newline, or if blocks is empty / ends with
 // a thinking block (both are structural boundaries equivalent to a newline).
-function lastContentEndsWithNewline(blocks: MessageBlock[]): boolean {
+function lastContentEndsWithNewline(blocks: RenderBlock[]): boolean {
   if (blocks.length === 0) return true
   const last = blocks[blocks.length - 1]!
-  if (last.type === "thinking") return true
+  // thinking/web_activity/html_block blocks are structural boundaries,
+  // equivalent to a trailing newline.
+  if (
+    last.type === "thinking" ||
+    last.type === "web_activity" ||
+    last.type === "html_block"
+  )
+    return true
   return last.content === "" || last.content.endsWith("\n")
 }
 
@@ -633,7 +719,8 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     case "message": {
       const messages = removeLoadingMessage(state.messages)
       const data = messagePayloadToData(action.message, state.toolGrouping)
-      if (action.html_deps) data.htmlDeps = action.html_deps
+      if (action.html_deps)
+        data.htmlDeps = mergeHtmlDeps(data.htmlDeps, action.html_deps)
       return {
         ...state,
         messages: [...messages, data],
@@ -647,10 +734,13 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       const messages = removeLoadingMessage(state.messages)
       const newMsg = messagePayloadToData(action.message, state.toolGrouping)
       newMsg.streaming = true
-      newMsg.blocks = newMsg.blocks.map((b) =>
-        b.type === "thinking" ? { ...b, streaming: true } : b,
+      newMsg.blocks = newMsg.blocks.map((b, index, blocks) =>
+        index === blocks.length - 1 && b.type === "thinking"
+          ? { ...b, streaming: true, startedAt: Date.now() }
+          : b,
       )
-      if (action.html_deps) newMsg.htmlDeps = action.html_deps
+      if (action.html_deps)
+        newMsg.htmlDeps = mergeHtmlDeps(newMsg.htmlDeps, action.html_deps)
       return {
         ...state,
         messages,
@@ -663,6 +753,30 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     case "chunk": {
       const last = state.streamingMessage
       if (!last || !last.streaming) return state
+
+      // Uniform replace. A replace chunk supersedes the whole in-flight message
+      // (wipe all blocks, reset tag/fence state), then re-appends.
+      if (action.operation === "replace") {
+        const wipedState: ChatState = {
+          ...state,
+          streamingMessage: {
+            ...last,
+            content: "",
+            blocks: [],
+            insideThinkingTag: false,
+            tagBuffer: "",
+            insideFence: false,
+            fenceMarker: "",
+            htmlDeps: mergeHtmlDeps(last.htmlDeps, action.html_deps),
+          },
+        }
+        if (!action.content) return wipedState
+        return chatReducer(wipedState, {
+          ...action,
+          operation: "append",
+          html_deps: undefined,
+        })
+      }
 
       const explicitType = action.content_type
       const lastBlock = last.blocks[last.blocks.length - 1]
@@ -850,7 +964,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         }
       }
 
-      // Standard non-thinking content path
+      // Standard non-thinking content path (append)
       const blocks = [...last.blocks]
 
       // Finalize any trailing thinking block
@@ -866,38 +980,18 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         }
       }
 
-      if (action.operation === "replace") {
-        const newBlocks: MessageBlock[] = blocks.filter(
-          (b) => b.type === "thinking",
-        )
-        newBlocks.push({
+      const tail = blocks[blocks.length - 1]
+      if (tail?.type === "content" && tail.contentType === chunkType) {
+        blocks[blocks.length - 1] = {
+          ...tail,
+          content: tail.content + action.content,
+        }
+      } else {
+        blocks.push({
           type: "content",
           content: action.content,
           contentType: chunkType,
         })
-        return {
-          ...state,
-          streamingMessage: {
-            ...last,
-            content: action.content,
-            blocks: newBlocks,
-            htmlDeps: mergeHtmlDeps(last.htmlDeps, action.html_deps),
-          },
-        }
-      } else {
-        const tail = blocks[blocks.length - 1]
-        if (tail?.type === "content" && tail.contentType === chunkType) {
-          blocks[blocks.length - 1] = {
-            ...tail,
-            content: tail.content + action.content,
-          }
-        } else {
-          blocks.push({
-            type: "content",
-            content: action.content,
-            contentType: chunkType,
-          })
-        }
       }
 
       const content = blocks
@@ -914,6 +1008,74 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           insideThinkingTag: false,
           tagBuffer: "",
           htmlDeps: mergeHtmlDeps(last.htmlDeps, action.html_deps),
+        },
+      }
+    }
+
+    case "block_insert": {
+      const last = state.streamingMessage
+      if (!last || !last.streaming) {
+        console.warn(
+          "Ignoring block_insert action: no message stream is in flight",
+        )
+        return state
+      }
+      if (!blockAllowedForRole(last.role, action.block.type)) {
+        console.warn(
+          "Ignoring non-html_block block_insert for a user-role message",
+        )
+        return state
+      }
+
+      let webBlock: WebActivityWireBlock | null = null
+      let loop: ToolLoopBlock | null = null
+      let htmlBlock: HtmlBlockWire | null = null
+      if (isWebActivityWireBlock(action.block)) {
+        webBlock = asWebActivityWireBlock(action.block)
+      } else if (action.block.type === "html_block") {
+        htmlBlock = asHtmlBlock(action.block)
+      } else {
+        loop = structuredBlockToLoop(action.block, state.toolGrouping)
+      }
+      if (!webBlock && !loop && !htmlBlock) return state
+
+      let blocks = [...last.blocks]
+
+      // Finalize any trailing streaming thinking block (mirrors the "chunk" case).
+      const lastBlock = blocks[blocks.length - 1]
+      if (lastBlock?.type === "thinking" && lastBlock.streaming) {
+        blocks[blocks.length - 1] = {
+          ...lastBlock,
+          content: lastBlock.content + (lastBlock.topicBuffer ?? ""),
+          topicBuffer: "",
+          streaming: false,
+          durationMs: lastBlock.startedAt
+            ? Date.now() - lastBlock.startedAt
+            : undefined,
+        }
+      }
+
+      if (webBlock) {
+        blocks = appendWebActivityBlock(
+          blocks,
+          webBlock,
+          isWhitespaceContentBlock,
+        )
+      } else if (htmlBlock) {
+        blocks.push(htmlBlockToRenderBlock(htmlBlock))
+      } else if (loop) {
+        blocks = appendToolLoopBlock(blocks, loop, state.toolGrouping)
+      }
+
+      return {
+        ...state,
+        streamingMessage: {
+          ...last,
+          blocks,
+          htmlDeps: mergeHtmlDeps(
+            last.htmlDeps,
+            mergeHtmlDeps(htmlBlock?.html_deps, action.html_deps),
+          ),
         },
       }
     }
@@ -971,25 +1133,23 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     }
 
     case "SET_TOOL_GROUPING": {
-      // Re-routing the settled transcript is what makes `tool-grouping` a live
-      // attribute rather than one that only governs future messages: the router
-      // is a pure function of (blocks, grouping, role), so the same content
-      // regroups at the new mode. The streaming message needs nothing —
-      // ChatMessage routes it at render time off the context value.
-      //
-      // The no-op guard is load-bearing: ChatApp dispatches once on mount to
-      // adopt the prop, and re-routing there would throw away every group's
-      // expand state for no change in output.
+      // The no-op guard is load-bearing. ChatApp dispatches once on mount,
+      // and re-routing unchanged messages would drop every group's expand state.
       if (action.grouping === state.toolGrouping) return state
       return {
         ...state,
         toolGrouping: action.grouping,
         messages: state.messages.map((m) => rerouteMessage(m, action.grouping)),
+        streamingMessage: state.streamingMessage
+          ? rerouteMessage(state.streamingMessage, action.grouping)
+          : null,
       }
     }
 
     case "SET_DRAWER_WIDTH":
-      if (!state.drawer.enabled) return state
+      if (!state.drawer.enabled || state.drawer.width === action.width) {
+        return state
+      }
       return {
         ...state,
         drawer: { ...state.drawer, width: action.width },
@@ -1287,16 +1447,8 @@ function rerouteMessage(
   grouping: ToolGrouping,
 ): ChatMessageData {
   if (!msg.blocks.some((b) => b.type === "tool_loop")) return msg
-  const raw: MessageBlock[] = msg.blocks.map((b) =>
-    b.type === "tool_loop"
-      ? { type: "content", content: b.content, contentType: b.contentType }
-      : b,
-  )
-  const blocks = routeToolBlocks(
-    raw,
-    grouping,
-    msg.role,
-    msg.insideFence ?? false,
+  const blocks = msg.blocks.map((b) =>
+    b.type === "tool_loop" ? regroupToolLoop(b, grouping) : b,
   )
   return { ...msg, blocks, content: contentFromBlocks(blocks) }
 }
@@ -1305,7 +1457,7 @@ function finalizeMessage(
   msg: ChatMessageData,
   grouping: ToolGrouping = "tool",
 ): ChatMessageData {
-  const rebuilt: MessageBlock[] = []
+  const rebuilt: RenderBlock[] = []
   for (const block of msg.blocks) {
     if (block.type === "thinking" && block.streaming) {
       rebuilt.push({
@@ -1326,20 +1478,7 @@ function finalizeMessage(
     }
   }
 
-  // `msg.insideFence` is the streaming tag state machine's own flag, mirrored
-  // onto the message as chunks arrive. Still set here means the stream ended
-  // (cancelled, truncated, errored) with a code fence open, so keep shielding
-  // what follows that fence: a documented tool-tag example must not pop into
-  // live tool UI at the instant of finalization. Messages that never streamed
-  // — preloaded/restored transcripts — never have the flag, so they keep
-  // routing real tool elements even past a stray ``` (see `codeRanges`).
-  const blocks = routeToolBlocks(
-    rebuilt,
-    grouping,
-    msg.role,
-    msg.insideFence ?? false,
-  )
-  const content = contentFromBlocks(blocks)
+  const content = contentFromBlocks(rebuilt)
 
-  return { ...msg, content, streaming: false, blocks }
+  return { ...msg, content, streaming: false, blocks: rebuilt }
 }

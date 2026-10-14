@@ -56,6 +56,257 @@ test_that("chat_server() accepts history = FALSE", {
   )
 })
 
+clear_contract_turns <- function(user_text, assistant_text) {
+  list(
+    ellmer::UserTurn(
+      contents = list(ellmer::ContentText(user_text))
+    ),
+    ellmer::AssistantTurn(
+      contents = list(ellmer::ContentText(assistant_text))
+    )
+  )
+}
+
+test_that("chat_server new_chat saves and separates history conversations", {
+  skip_if_not_installed("ellmer")
+
+  store <- InMemoryConversationStore$new()
+  client <- mock_chat_client()
+  chat_module <- NULL
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = history_options(
+          store = store,
+          scope = "clear-test",
+          title = NULL,
+          restore_mode = "none"
+        ),
+        session = session
+      )
+    },
+    {
+      session$setInputs(chat_history_browser_token = "browser-token")
+      ctrl <- get_session_chat_bookmark_info(
+        session,
+        "chat.history-controller"
+      )
+      turns_one <- clear_contract_turns("first", "reply one")
+      client$set_turns(turns_one)
+      ctrl$on_response(lapply(turns_one, ellmer::contents_record))
+
+      first_id <- ctrl$record$id
+      first_record <- store$get(ctrl$partition, first_id)
+
+      chat_module$new_chat()
+
+      expect_null(ctrl$record)
+      expect_null(shiny::isolate(chat_module$history$conversation_id()))
+      expect_length(client$get_turns(), 0)
+      saved_first_record <- store$get(ctrl$partition, first_id)
+      first_record$updated_at <- NULL
+      saved_first_record_without_timestamp <- saved_first_record
+      saved_first_record_without_timestamp$updated_at <- NULL
+      expect_identical(
+        saved_first_record_without_timestamp,
+        first_record
+      )
+
+      turns_two <- clear_contract_turns("second", "reply two")
+      client$set_turns(turns_two)
+      ctrl$on_response(lapply(turns_two, ellmer::contents_record))
+
+      expect_false(identical(ctrl$record$id, first_id))
+      expect_identical(
+        store$get(ctrl$partition, first_id),
+        saved_first_record
+      )
+      expect_length(store$list(ctrl$partition), 2)
+    }
+  )
+})
+
+test_that("chat_server new_chat rejects an in-flight response", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+  chat_module <- NULL
+  resolve_stream <- NULL
+  client$stream_async <- function(...) {
+    promises::promise(function(resolve, reject) {
+      resolve_stream <<- resolve
+    })
+  }
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = history_options(store = "memory", title = NULL),
+        session = session
+      )
+    },
+    {
+      session$setInputs(
+        chat_history_browser_token = "browser-token",
+        chat_user_input = "first"
+      )
+      session$flushReact()
+
+      expect_identical(shiny::isolate(chat_module$status()), "streaming")
+      expect_error(
+        chat_module$new_chat(),
+        "Can't start a new chat while a response is still being generated"
+      )
+
+      resolve_stream("reply")
+      deadline <- Sys.time() + 5
+      while (
+        shiny::isolate(chat_module$status()) != "idle" &&
+          Sys.time() < deadline
+      ) {
+        later::run_now(0.05)
+        session$flushReact()
+      }
+      expect_identical(shiny::isolate(chat_module$status()), "idle")
+    }
+  )
+})
+
+test_that("chat_server new_chat(greeting = TRUE) forwards greeting clearing", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+  chat_module <- NULL
+  spy <- new.env(parent = emptyenv())
+  spy$messages <- list()
+
+  shiny::testServer(
+    function(input, output, session) {
+      session$sendCustomMessage <- function(type, message) {
+        spy$messages[[length(spy$messages) + 1L]] <<- list(
+          type = type,
+          message = message
+        )
+      }
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = history_options(store = "memory", title = NULL),
+        session = session
+      )
+    },
+    {
+      chat_module$new_chat(greeting = TRUE)
+
+      clear_messages <- Filter(
+        function(x) identical(x$message$action$type, "clear"),
+        spy$messages
+      )
+      expect_length(clear_messages, 1)
+      expect_true(clear_messages[[1]]$message$action$greeting)
+    }
+  )
+})
+
+test_that("history-enabled chat_server clear directs callers to new_chat", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+  chat_module <- NULL
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = history_options(store = "memory", title = NULL),
+        session = session
+      )
+    },
+    {
+      expect_error(
+        chat_module$clear(),
+        "Use `chat\\$new_chat\\(\\)`"
+      )
+      expect_error(
+        chat_module$clear(
+          messages = list(list(role = "assistant", content = "seed"))
+        ),
+        "Use `chat\\$new_chat\\(\\)`"
+      )
+      expect_error(
+        chat_module$clear(client_history = "set"),
+        "Use `chat\\$new_chat\\(\\)`"
+      )
+      expect_error(
+        chat_module$clear(client_history = "append"),
+        "Use `chat\\$new_chat\\(\\)`"
+      )
+      expect_error(
+        chat_module$clear(client_history = "keep"),
+        "Use `chat\\$new_chat\\(\\)`"
+      )
+    }
+  )
+})
+
+test_that("history-disabled chat_server new_chat errors", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client()
+  chat_module <- NULL
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = FALSE,
+        session = session
+      )
+    },
+    {
+      expect_error(
+        chat_module$new_chat(),
+        "without conversation history enabled"
+      )
+    }
+  )
+})
+
+test_that("history-disabled chat_server clear keeps client-history modes", {
+  skip_if_not_installed("ellmer")
+
+  client <- mock_chat_client(turns = list("existing"))
+  chat_module <- NULL
+
+  shiny::testServer(
+    function(input, output, session) {
+      chat_module <<- chat_server(
+        "chat",
+        client,
+        history = FALSE,
+        session = session
+      )
+    },
+    {
+      expect_no_error(chat_module$clear())
+      expect_length(client$get_turns(), 0)
+
+      expect_no_error(chat_module$clear(
+        messages = list(list(role = "assistant", content = "seed")),
+        client_history = "set"
+      ))
+      expect_length(client$get_turns(), 1)
+    }
+  )
+})
+
 test_that("chat_server() history save returns FALSE before a conversation exists", {
   skip_if_not_installed("ellmer")
 
@@ -569,8 +820,6 @@ test_that("FileConversationStore$total_size() does not overflow a 32-bit integer
 
   # as.integer(sum(file.size(files))) overflows past ~2GB and returns NA.
   # Stub file.size() to simulate a scope whose files exceed that threshold.
-  # Each conversation directory has 3 files (record.json, turns.jsonl,
-  # ui.jsonl), so the stubbed per-file size is summed 3x.
   testthat::local_mocked_bindings(
     file.size = function(...) 3e9,
     .package = "base"
@@ -677,6 +926,66 @@ test_that("bookmark startup restores history state after activating conversation
   })
 })
 
+test_that("bookmark startup restores history state in a module (namespaced stamp)", {
+  skip_if_not_installed("ellmer")
+
+  old_bookmark_store <- shiny::getShinyOption("bookmarkStore", NULL)
+  withr::defer(shiny::shinyOptions(bookmarkStore = old_bookmark_store))
+
+  client <- mock_chat_client()
+  root_session <- shiny::MockShinySession$new()
+  mod_session <- root_session$makeScope("mod")
+  store <- InMemoryConversationStore$new()
+  record <- new_conversation_record("Prior conversation")
+  record$values <- list(marker = "from-history")
+  store$put(
+    conversation_partition(mod_session$ns("chat"), "test-user"),
+    record
+  )
+  # Module onBookmark values are namespaced with session$ns() on write, and
+  # the restore context is the root context, so the stamp key arrives
+  # namespaced.
+  root_session$restoreContext <- list(
+    active = TRUE,
+    values = stats::setNames(
+      list(record$id),
+      mod_session$ns("chat_history_conversation_id")
+    )
+  )
+
+  restored_marker <- NULL
+  observed_id <- NULL
+  server <- function(input, output, session) {
+    shiny::shinyOptions(bookmarkStore = "server")
+    chat_enable_history(
+      "chat",
+      client,
+      on_restore = function(values) {
+        restored_marker <<- values$marker
+        ctrl <- get_session_chat_bookmark_info(
+          mod_session,
+          "chat.history-controller"
+        )
+        observed_id <<- ctrl$record$id
+      },
+      options = history_options(
+        restore_mode = "bookmark",
+        store = store,
+        scope = "test-user",
+        title = NULL
+      ),
+      session = mod_session
+    )
+  }
+
+  shiny::testServer(server, session = root_session, {
+    session$flushReact()
+
+    expect_identical(restored_marker, "from-history")
+    expect_identical(observed_id, record$id)
+  })
+})
+
 test_that("set_client() does not re-render the UI or double-fire on_restore (regression)", {
   # Regression: chat_enable_history() was re-run from scratch on every
   # set_client() swap, spinning up a fresh controller/init effect with no
@@ -729,6 +1038,7 @@ test_that("set_client() does not re-render the UI or double-fire on_restore (reg
 })
 
 test_that("set_client() seeds ui_offset from the restored record so a post-swap turn does not duplicate prior UI (regression)", {
+  skip("The ui_offset browser snapshot protocol was retired.")
   # Regression: init_effect()'s restore_ui = FALSE branch (used by
   # set_client() on every LLM-client/model swap) left ui_offset at its
   # HistoryController$new() default of 0 instead of seeding it from the
@@ -843,8 +1153,6 @@ test_that("set_client() seeds ui_offset from the restored record so a post-swap 
       conversation_partition(session$ns("chat"), "testuser"),
       ctrl$record$id
     )
-    expect_equal(record_ui_count(reloaded), 3)
-
     ui_texts <- unlist(
       lapply(
         record_path_node_ids(reloaded),
@@ -857,11 +1165,13 @@ test_that("set_client() seeds ui_offset from the restored record so a post-swap 
         }
       )
     )
+    expect_length(ui_texts, 3)
     expect_equal(ui_texts, c("hi", "hello", "again"))
   })
 })
 
 test_that("the client's `_messages` echo drives the save and preserves the displayed assistant UI", {
+  skip("The shinychat.messages browser snapshot protocol was retired.")
   # Regression for the save-timing bug: the save must be triggered by the
   # browser echoing its rendered `_messages` snapshot, not by server-side
   # stream completion. If it fired on completion, the just-finished assistant
@@ -955,6 +1265,7 @@ test_that("the client's `_messages` echo drives the save and preserves the displ
 })
 
 test_that("editing a message after the first forks at the correct node even when the client's UI echo lags the assistant turn (regression)", {
+  skip("The shinychat.messages browser snapshot protocol was retired.")
   # Regression: the history save trigger used to fire as soon as the
   # server-side stream finished (chained directly onto chat_append_stream()'s
   # promise), before the browser had echoed the just-completed assistant
@@ -1121,6 +1432,7 @@ test_that("file-backed turns survive restore, continuation, and a second restore
     )
 
     ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    ctrl$on_response(get_turns_recorded(client))
     saved_id <<- ctrl$record$id
   })
 
@@ -1174,6 +1486,9 @@ test_that("file-backed turns survive restore, continuation, and a second restore
         )
       )
     )
+    session$flushReact()
+    ctrl <- get_session_chat_bookmark_info(session, "chat.history-controller")
+    ctrl$on_response(get_turns_recorded(new_client))
     session$setInputs(
       chat_messages = list(
         make_ui_message("user", "hi"),

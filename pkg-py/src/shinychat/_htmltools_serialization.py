@@ -7,7 +7,7 @@ this boundary.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from htmltools import RenderedHTML, TagList, is_tag_child
 from pydantic_core import PydanticSerializationError
@@ -29,8 +29,14 @@ def render_htmltools(value: object) -> RenderedHTML:
     return TagList(value).tagify().render()
 
 
-def serialize_htmltools(value: object) -> SerializedHTML:
-    """Convert an htmltools node to shinychat's current JSON wire format."""
+def serialize_htmltools(value: object | None) -> Optional[SerializedHTML]:
+    """Convert an htmltools node to shinychat's JSON wire format.
+
+    ``None`` passes through unchanged so callers can forward optional
+    fields without a separate guard.
+    """
+    if value is None:
+        return None
     rendered = render_htmltools(value)
     return {
         "html": rendered["html"],

@@ -40,6 +40,7 @@ test_that("chat_drawer_show() serializes content, dependencies, and title", {
   message <- spy$messages()[[1]]$message
   expect_equal(message$action$type, "drawer_show")
   expect_match(message$action$content, "<div>Artifact</div>", fixed = TRUE)
+  expect_no_match(message$action$content, "shiny-chat-raw-html", fixed = TRUE)
   expect_equal(message$action$title, "Preview")
   expect_length(message$html_deps, 1)
   expect_equal(message$html_deps[[1]]$name, "artifact-dependency")
@@ -78,6 +79,45 @@ test_that("chat_drawer_update() changes supplied fields without visibility", {
   expect_equal(message$action$type, "drawer_update")
   expect_match(message$action$content, "<span>Updated</span>", fixed = TRUE)
   expect_equal(message$html_deps, list())
+})
+
+test_that("chat_drawer_show() mixed tagList content escapes bare string HTML", {
+  spy <- artifact_session_with_spy()
+  chat_drawer_show(
+    "chat",
+    content = htmltools::tagList(
+      "<img src=x onerror=alert(1)>",
+      htmltools::tags$b("bold")
+    ),
+    session = spy$session
+  )
+
+  message <- spy$messages()[[1]]$message
+  expect_equal(message$action$type, "drawer_show")
+  # The bare string is HTML-escaped — executable HTML is neutralized.
+  expect_match(message$action$content, "&lt;img", fixed = TRUE)
+  expect_no_match(message$action$content, "<img src=x onerror", fixed = TRUE)
+  # The tag portion is rendered as HTML.
+  expect_match(message$action$content, "<b>bold</b>", fixed = TRUE)
+  expect_no_match(message$action$content, "shiny-chat-raw-html", fixed = TRUE)
+})
+
+test_that("chat_drawer_update() mixed tagList content escapes bare string HTML", {
+  spy <- artifact_session_with_spy()
+  chat_drawer_update(
+    "chat",
+    content = htmltools::tagList(
+      "<img src=x onerror=alert(1)>",
+      htmltools::tags$span("tag")
+    ),
+    session = spy$session
+  )
+
+  message <- spy$messages()[[1]]$message
+  expect_equal(message$action$type, "drawer_update")
+  expect_match(message$action$content, "&lt;img", fixed = TRUE)
+  expect_no_match(message$action$content, "<img src=x onerror", fixed = TRUE)
+  expect_match(message$action$content, "<span>tag</span>", fixed = TRUE)
 })
 
 test_that("chat_drawer_update() sends a title-only update", {

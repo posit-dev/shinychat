@@ -79,6 +79,12 @@ test_that("chat_ui() tag greeting produces html content_type and attaches depend
   ui <- chat_ui("chat", greeting = tag_content)
   payload <- jsonlite::fromJSON(ui$attribs$greeting)
   expect_equal(payload$content_type, "html")
+  expect_match(
+    payload$content,
+    "<div class=\"greeting\">Hello</div>",
+    fixed = TRUE
+  )
+  expect_no_match(payload$content, "shiny-chat-raw-html", fixed = TRUE)
   deps <- htmltools::findDependencies(ui)
   dep_names <- vapply(deps, `[[`, character(1), "name")
   expect_true("shinychat" %in% dep_names)
@@ -156,6 +162,61 @@ test_that("chat_set_greeting() HTML() content sends html content_type", {
   expect_equal(action$content, "<b>hi</b>")
 })
 
+test_that("chat_set_greeting() tag content flattens to a trusted html string", {
+  spy <- mock_session_with_spy()
+  shiny::withReactiveDomain(spy$session, {
+    chat_set_greeting(
+      "chat",
+      tags$div("Welcome", class = "greeting"),
+      session = spy$session
+    )
+  })
+  msgs <- spy_messages(spy)
+  action <- msgs[[1]]$message$action
+  expect_equal(action$type, "greeting")
+  expect_equal(action$content_type, "html")
+  expect_match(
+    action$content,
+    "<div class=\"greeting\">Welcome</div>",
+    fixed = TRUE
+  )
+  expect_no_match(action$content, "shiny-chat-raw-html", fixed = TRUE)
+})
+
+test_that("chat_set_greeting() mixed tagList content escapes bare string HTML", {
+  spy <- mock_session_with_spy()
+  shiny::withReactiveDomain(spy$session, {
+    chat_set_greeting(
+      "chat",
+      tagList("<img src=x onerror=alert(1)>", tags$b("bold")),
+      session = spy$session
+    )
+  })
+  msgs <- spy_messages(spy)
+  action <- msgs[[1]]$message$action
+  expect_equal(action$type, "greeting")
+  expect_equal(action$content_type, "html")
+  # The bare string is HTML-escaped — executable HTML is neutralized.
+  expect_match(action$content, "&lt;img", fixed = TRUE)
+  expect_no_match(action$content, "<img src=x onerror", fixed = TRUE)
+  # The tag portion is rendered as HTML.
+  expect_match(action$content, "<b>bold</b>", fixed = TRUE)
+})
+
+test_that("chat_ui() mixed tagList greeting escapes bare string HTML", {
+  ui <- chat_ui(
+    "chat",
+    greeting = tagList("<img src=x onerror=alert(1)>", tags$b("x"))
+  )
+  payload <- jsonlite::fromJSON(ui$attribs$greeting)
+  expect_equal(payload$content_type, "html")
+  # Bare string is HTML-escaped, not raw.
+  expect_match(payload$content, "&lt;img", fixed = TRUE)
+  expect_no_match(payload$content, "<img src=x onerror", fixed = TRUE)
+  # Tag rendered.
+  expect_match(payload$content, "<b>x</b>", fixed = TRUE)
+})
+
 test_that("chat_set_greeting() generator sends greeting_start, greeting_chunk(s), greeting_end", {
   spy <- mock_session_with_spy()
   chunks <- c("He", "ll", "o")
@@ -167,17 +228,23 @@ test_that("chat_set_greeting() generator sends greeting_start, greeting_chunk(s)
   shiny::withReactiveDomain(spy$session, {
     p <- chat_set_greeting("chat", chat_greeting(gen()), session = spy$session)
     done <- FALSE
+    error <- NULL
     promises::then(
       p,
       function(x) {
         done <<- TRUE
       },
       function(e) {
+        error <<- e
         done <<- TRUE
       }
     )
-    while (!done) {
-      later::run_now(0.1)
+    wait_until(
+      function() done,
+      description = "greeting stream to finish"
+    )
+    if (!is.null(error)) {
+      stop(error)
     }
   })
   msgs <- spy_messages(spy)

@@ -1,3 +1,12 @@
+# chat_app() rejects startup messages while history is enabled
+
+    Code
+      chat_app(client, messages = list("Hi!"))
+    Condition
+      Error in `chat_app()`:
+      ! `chat_app(messages = ...)` requires `history = FALSE`: startup messages can't be recorded by the conversation-history feature.
+      Use the `greeting` argument for a startup message, or set `history = FALSE` if you're managing conversation state yourself.
+
 # chat_app() forwards app options and bookmark store
 
     Code

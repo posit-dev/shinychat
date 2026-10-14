@@ -17,10 +17,141 @@ export interface GreetingOptions {
   persistent?: boolean
 }
 
-export type MessagePayloadSegment = {
+export type StringSegment = {
   content: string
   content_type: ContentType
 }
+
+/** Per-call grouping override. */
+export type StructuredBlockGrouping = "none" | "tool" | "all"
+
+/**
+ * A tool call request from the server. HTML fields render through RawHTML;
+ * text fields are escaped. The client shows a `running` call when a request
+ * has no matching result.
+ */
+export type ToolRequestBlock = {
+  type: "tool_request"
+  version: 1
+  /** Correlates with the result. Keys transcript-wide request suppression. */
+  request_id: string
+  tool_name: string
+  /** HTML → RawHTML */
+  title?: string
+  /** HTML → RawHTML */
+  icon?: string
+  /** text → escaped */
+  intent?: string
+  /** JSON string, rendered as a markdown code block (escaped) */
+  arguments?: string
+  grouping?: StructuredBlockGrouping
+}
+
+/**
+ * The result of a completed tool call. HTML fields (`value` with
+ * `value_type: "html"`, `title`, `icon`, `footer`) render through RawHTML;
+ * text fields are escaped.
+ */
+export type ToolResultBlock = {
+  type: "tool_result"
+  version: 1
+  /** Correlates with the request. Keys transcript-wide request suppression. */
+  request_id: string
+  tool_name: string
+  status: "success" | "error"
+  value?: string
+  value_type?: "html" | "markdown" | "text" | "code" | "content_extra"
+  request_call?: string
+  /** HTML → RawHTML */
+  title?: string
+  /** HTML → RawHTML */
+  icon?: string
+  /** text → escaped */
+  intent?: string
+  /** text → escaped */
+  label?: string
+  /** text → escaped */
+  value_preview?: string
+  grouping?: StructuredBlockGrouping
+  show_request?: boolean
+  expanded?: boolean
+  open_style?: "minimal" | "framed"
+  full_screen?: boolean
+  /** Internal-only: set by wrap_custom_tool_result, never author-facing. */
+  custom_display?: boolean
+  /** HTML → RawHTML */
+  footer?: string
+}
+
+/** One source in a `web_search_results` block. */
+export type WebSearchSource = {
+  url: string
+  title?: string
+  domain?: string
+}
+
+/**
+ * A web search query. Consecutive `web_*` blocks group into one
+ * `web_activity` block on the client.
+ */
+export type WebSearchBlock = {
+  type: "web_search"
+  version: 1
+  query: string
+  /** Provider search id, when the provider supplies one. */
+  id?: string
+}
+
+/** Results paired with a preceding `web_search`. */
+export type WebSearchResultsBlock = {
+  type: "web_search_results"
+  version: 1
+  sources: WebSearchSource[]
+  /** `id` of the `web_search` these results answer, when known. */
+  search_id?: string
+}
+
+/**
+ * Citations for the most recent `web_search`. The client merges `sources`
+ * into the search and renders nothing for the block itself. Citations appear
+ * only while no provider results are attached.
+ */
+export type WebSearchCitationsBlock = {
+  type: "web_search_citations"
+  version: 1
+  sources: WebSearchSource[]
+}
+
+/** A fetched URL from a web search session. */
+export type WebFetchBlock = {
+  type: "web_fetch"
+  version: 1
+  url: string
+  status?: "success" | "error"
+}
+
+/** Trusted HTML rendered through RawHTML. */
+export type HtmlBlock = {
+  type: "html_block"
+  version: 1
+  /** Trusted HTML → RawHTML */
+  content: string
+  /** Dependencies rendered before the island's HTML mounts. */
+  html_deps?: HtmlDep[]
+}
+
+/** Structured blocks carried in segments or via block_insert. */
+export type StructuredBlock =
+  | ToolRequestBlock
+  | ToolResultBlock
+  | WebSearchBlock
+  | WebSearchResultsBlock
+  | WebSearchCitationsBlock
+  | WebFetchBlock
+  | HtmlBlock
+
+/** One entry of `MessagePayload.segments`: a string segment or a structured block. */
+export type SegmentPayload = StringSegment | StructuredBlock
 
 export interface SlashCommandDef {
   name: string
@@ -53,7 +184,7 @@ export type MessagePayload = {
   id?: string
   role: "user" | "assistant"
   icon?: string
-  segments: MessagePayloadSegment[]
+  segments: SegmentPayload[]
   attachments?: AttachmentPayload[]
   siblings?: { index: number; total: number }
 }
@@ -80,6 +211,12 @@ export type ChatAction =
       html_deps?: HtmlDep[]
     }
   | { type: "chunk_end" }
+  | {
+      /** Delivers one structured block mid-stream. The client appends it to the in-flight message's block list. */
+      type: "block_insert"
+      block: StructuredBlock
+      html_deps?: HtmlDep[]
+    }
   | { type: "clear"; greeting?: boolean }
   | {
       type: "update_input"

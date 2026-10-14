@@ -37,6 +37,9 @@ class _MockSession:
     def _increment_busy_count(self) -> None:
         pass
 
+    def _decrement_busy_count(self) -> None:
+        pass
+
     def is_stub_session(self) -> bool:
         return True
 
@@ -96,11 +99,16 @@ class _MockStreamTask:
         return self._status
 
 
+class _StubHistory:
+    _controller: object | None = None
+
+
 class _StubChat:
     def __init__(self, *, stream_status: str = "initial") -> None:
         self.latest_message_stream = _MockStreamTask(stream_status)
         self.clear_calls: list[bool] = []
         self.appended_messages: list[ChatMessageDict] = []
+        self.history = _StubHistory()
 
     async def clear_messages(self, *, greeting: bool = False) -> None:
         self.clear_calls.append(greeting)
@@ -348,6 +356,29 @@ def test_chat_ui_seeds_completion_v2_history_transition_protocol():
     html = chat_ui("myid").get_html_string()
     attr = 'data-shinychat-history-transition-protocol="completion-v2"'
     assert html.count(attr) == 1
+
+
+def test_chat_ui_show_thinking_after_s_attribute():
+    assert "show-thinking-after-s" not in chat_ui("myid").get_html_string()
+    assert (
+        'show-thinking-after-s="10"'
+        in chat_ui("myid", show_thinking_after_s=10).get_html_string()
+    )
+    assert (
+        'show-thinking-after-s="-1"'
+        in chat_ui("myid", show_thinking_after_s=-1).get_html_string()
+    )
+
+
+@pytest.mark.parametrize("value", [True, "10", float("nan"), float("inf")])
+def test_chat_ui_show_thinking_after_s_rejects_invalid_values(value: object):
+    with pytest.raises(TypeError, match="show_thinking_after_s"):
+        chat_ui("myid", show_thinking_after_s=value)  # type: ignore[arg-type]
+
+
+def test_chat_ui_show_thinking_after_s_rejects_values_above_one_minute():
+    with pytest.raises(ValueError, match="must not exceed 60"):
+        chat_ui("myid", show_thinking_after_s=61)
 
 
 def test_chat_ui_aside_favicon_env_unset_omits_attribute(

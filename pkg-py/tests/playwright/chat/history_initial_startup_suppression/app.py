@@ -90,7 +90,6 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     chat = Chat(
         "chat",
         client=EchoStreamChatClient(provider),
-        messages=["constructor message"],
         history=HistoryOptions(
             store=store,
             scope="test-user",
@@ -116,7 +115,9 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
             json.dumps(
                 {
                     "active_id": active_id,
-                    "parent_id": active.parent_id if active is not None else None,
+                    "parent_id": active.parent_id
+                    if active is not None
+                    else None,
                     "messages": [
                         message.as_stored_message().content
                         for message in active.messages

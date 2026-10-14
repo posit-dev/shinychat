@@ -4,8 +4,15 @@ import { ChatApp } from "./ChatApp"
 import type { ChatAppProps, InitialGreeting } from "./ChatApp"
 import { getShinyTransport } from "../transport/shiny-transport"
 import type { ChatDrawerState, ChatMessageData, ToolGrouping } from "./state"
-import type { ContentType, GreetingOptions } from "../transport/types"
+import { messagePayloadToData } from "./state"
+import type {
+  ContentType,
+  GreetingOptions,
+  MessagePayload,
+} from "../transport/types"
 import { uuid } from "../utils/uuid"
+import { parseJsonArray } from "../utils/json"
+import { DeferredTeardown } from "../utils/deferredTeardown"
 import { DEFAULT_UPLOAD_ACCEPT } from "./attachments"
 import {
   getCurrentConversationId,
@@ -44,8 +51,52 @@ const CHAT_MESSAGE_TAG = "shiny-chat-message"
 const CHAT_TOOLBAR_TAG = "shiny-chat-input-toolbar"
 const CHAT_FOOTER_TAG = "shiny-chat-footer"
 const CHAT_DRAWER_TAG = "shiny-chat-drawer"
+export const MAX_THINKING_SHOW_AFTER_S = 60
 
-function parseInitialMessages(container: HTMLElement): ChatMessageData[] {
+/**
+ * Parse the `data-initial-messages` attribute. A JSON array of message
+ * payloads the server embeds when any initial message carries structured
+ * blocks. Each entry replays through `messagePayloadToData()`. Returns null
+ * when malformed so the caller can fall back to static tags.
+ */
+function parseInitialMessagesAttr(
+  raw: string,
+  toolGrouping?: ToolGrouping,
+): ChatMessageData[] | null {
+  const parsed = parseJsonArray(raw, "data-initial-messages attribute")
+  if (parsed === null) return null
+
+  const messages: ChatMessageData[] = []
+  for (const entry of parsed) {
+    if (
+      typeof entry !== "object" ||
+      entry === null ||
+      !Array.isArray((entry as { segments?: unknown }).segments)
+    ) {
+      console.warn(
+        "Skipping malformed entry in data-initial-messages: expected an object with a segments array",
+      )
+      continue
+    }
+    messages.push(messagePayloadToData(entry as MessagePayload, toolGrouping))
+  }
+  return messages
+}
+
+function parseInitialMessages(
+  container: HTMLElement,
+  toolGrouping?: ToolGrouping,
+): ChatMessageData[] {
+  // When the server embeds initial messages as JSON (any message carries
+  // structured blocks), the attribute is authoritative and no static
+  // <shiny-chat-message> tags are emitted.
+  const attr = container.getAttribute("data-initial-messages")
+  if (attr !== null) {
+    const messages = parseInitialMessagesAttr(attr, toolGrouping)
+    if (messages) return messages
+    // Malformed payload: fall through to the static-tag path.
+  }
+
   const messageEls = container.querySelectorAll(CHAT_MESSAGE_TAG)
   const messages: ChatMessageData[] = []
 
@@ -57,14 +108,16 @@ function parseInitialMessages(container: HTMLElement): ChatMessageData[] {
       (el.getAttribute("content-type") as ContentType) ?? "markdown"
     const icon = el.getAttribute("icon") ?? undefined
 
-    messages.push({
-      id: uuid(),
-      role,
-      content,
-      streaming: false,
-      icon,
-      blocks: [{ type: "content", content, contentType }],
-    })
+    messages.push(
+      messagePayloadToData(
+        {
+          role,
+          icon,
+          segments: [{ content, content_type: contentType }],
+        },
+        toolGrouping,
+      ),
+    )
   })
 
   return messages
@@ -125,28 +178,33 @@ function parseToolGrouping(value: string | null): ToolGrouping | undefined {
     : undefined
 }
 
+export function parseShowThinkingAfterS(value: string | null): number {
+  if (value === null) return 0
+  const parsed = Number(value)
+  return Number.isFinite(parsed)
+    ? Math.min(parsed, MAX_THINKING_SHOW_AFTER_S)
+    : 0
+}
+
 class ChatContainerElement extends HTMLElement {
   private reactRoot: Root | null = null
   private toolbarEl: Element | null = null
   private footerEl: Element | null = null
   private drawerEl: Element | null = null
-  private pendingUnmount: ReturnType<typeof setTimeout> | null = null
+  private deferredTeardown = new DeferredTeardown()
   // Retained so an observed attribute can re-render with one field replaced
   // instead of rebuilding every prop (and re-parsing the initial messages,
   // which by then have been superseded by live reducer state).
   private appProps: ChatAppProps | null = null
 
-  static observedAttributes = ["tool-grouping", "show-history"]
+  static observedAttributes = [
+    "show-thinking-after-s",
+    "tool-grouping",
+    "show-history",
+  ]
 
   connectedCallback() {
-    // Moving the element in the DOM fires disconnectedCallback then
-    // connectedCallback synchronously in the same tick. The deferred unmount
-    // scheduled on disconnect hasn't run yet, so cancel it here to keep the
-    // live React root (and its rendered conversation) intact across the move.
-    if (this.pendingUnmount !== null) {
-      clearTimeout(this.pendingUnmount)
-      this.pendingUnmount = null
-    }
+    this.deferredTeardown.cancel()
 
     if (this.reactRoot) return
 
@@ -174,6 +232,9 @@ class ChatContainerElement extends HTMLElement {
       enableUploadAttr === null ? undefined : enableUploadAttr !== "false"
 
     const toolGrouping = parseToolGrouping(this.getAttribute("tool-grouping"))
+    const thinkingShowAfter = parseShowThinkingAfterS(
+      this.getAttribute("show-thinking-after-s"),
+    )
     const showHistory = this.getAttribute("show-history") !== "false"
     // When history is enabled and this browser has a current conversation
     // (localStorage in "browser" mode, query param in "url" mode), the server
@@ -204,7 +265,7 @@ class ChatContainerElement extends HTMLElement {
       ? parsedMax
       : null
 
-    const initialMessages = parseInitialMessages(this)
+    const initialMessages = parseInitialMessages(this, toolGrouping)
     const initialDrawer = parseInitialDrawer(this)
 
     if (!this.toolbarEl) {
@@ -285,6 +346,7 @@ class ChatContainerElement extends HTMLElement {
       showHistory,
       restorePending,
       toolGrouping,
+      thinkingShowAfter,
       toolbarEl: this.toolbarEl ?? undefined,
       footerEl: this.footerEl ?? undefined,
       slashCommandId,
@@ -303,7 +365,12 @@ class ChatContainerElement extends HTMLElement {
     next: string | null,
   ) {
     if (!this.reactRoot || !this.appProps) return
-    if (name === "tool-grouping") {
+    if (name === "show-thinking-after-s") {
+      this.appProps = {
+        ...this.appProps,
+        thinkingShowAfter: parseShowThinkingAfterS(next),
+      }
+    } else if (name === "tool-grouping") {
       this.appProps = {
         ...this.appProps,
         toolGrouping: parseToolGrouping(next),
@@ -317,15 +384,11 @@ class ChatContainerElement extends HTMLElement {
   }
 
   disconnectedCallback() {
-    // Defer teardown so a move (disconnect immediately followed by reconnect)
-    // can cancel it. If the element is genuinely removed, no reconnect cancels
-    // the timer and cleanup runs on the next tick.
-    this.pendingUnmount = setTimeout(() => {
+    this.deferredTeardown.schedule(() => {
       transport.unbindAll(this)
       this.reactRoot?.unmount()
       this.reactRoot = null
-      this.pendingUnmount = null
-    }, 0)
+    })
   }
 }
 

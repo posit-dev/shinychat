@@ -499,6 +499,7 @@ test_that("set_client() preserves the conversation ID", {
         session,
         "chat.history-controller"
       )
+      ctrl_before$on_response(cid_make_turns("hi", "response"))
 
       new_client <- mock_chat_client()
       new_client$stream_async <- function(...) "response"

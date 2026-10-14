@@ -38,18 +38,14 @@
 #'       card_header("Chat with Claude"),
 #'       chat_ui(
 #'         "claude",
-#'         messages = list(
-#'           "Hi! Use this chat interface to chat with Anthropic's `claude-3-5-sonnet`."
-#'         )
+#'         greeting = "Hi! Use this chat interface to chat with Anthropic's `claude-3-5-sonnet`."
 #'       )
 #'     ),
 #'     card(
 #'       card_header("Chat with ChatGPT"),
 #'       chat_ui(
 #'         "openai",
-#'         messages = list(
-#'           "Hi! Use this chat interface to chat with OpenAI's `gpt-4o`."
-#'         )
+#'         greeting = "Hi! Use this chat interface to chat with OpenAI's `gpt-4o`."
 #'       )
 #'     )
 #'   )
@@ -100,14 +96,23 @@
 #'     * `append()`: A function to append a new message to the chat UI. Takes
 #'       the same arguments as [chat_append()], except for `id` and `session`,
 #'       which are supplied automatically.
-#'     * `clear()`: A function to clear the chat history and the chat UI.
-#'       `clear()` takes an optional list of `messages` used to initialize the
-#'       chat after clearing. `messages` should be a list of messages, where
-#'       each message is a list with `role` and `content` fields. The
+#'     * `clear()`: A function to clear the chat client turns and the chat UI.
+#'       It optionally takes a list of `messages` used to initialize the chat
+#'       after clearing. `messages` should be a list of messages, where each
+#'       message is a list with `role` and `content` fields. The
 #'       `client_history` argument controls how the chat client's history is
 #'       updated after clearing. It can be one of: `"clear"` the chat history;
 #'       `"set"` the chat history to `messages`; `"append"` `messages` to the
 #'       existing chat history; or `"keep"` the existing chat history.
+#'       `clear()` is unavailable when conversation history is enabled; use
+#'       `new_chat()` instead.
+#'     * `new_chat()`: A function to save the current conversation and start a
+#'       new one by clearing the chat client's turns and chat UI, resetting the
+#'       active conversation, and updating the history drawer. It is available
+#'       only when conversation history is enabled. `new_chat(greeting = TRUE)`
+#'       also clears the greeting and requests a new one. `new_chat()` errors
+#'       while a response is streaming; wait for it to complete or stop it
+#'       first.
 #'     * `set_greeting()`: A function to set, stream, or clear the chat
 #'       greeting. Pass a [chat_greeting()] object, a plain string, or
 #'       `NULL` to clear. Streaming greetings run inside an
@@ -181,6 +186,12 @@ chat_app <- function(
   check_ellmer_chat(client)
   dots <- rlang::dots_list(...)
   check_chat_app_dots(dots)
+  if (!isFALSE(history) && !is.null(dots$messages)) {
+    cli::cli_abort(c(
+      "{.code chat_app(messages = ...)} requires {.code history = FALSE}: startup messages can't be recorded by the conversation-history feature.",
+      "Use the {.arg greeting} argument for a startup message, or set {.code history = FALSE} if you're managing conversation state yourself."
+    ))
+  }
   if (isFALSE(history) && !"sidebar" %in% rlang::names2(dots)) {
     dots$sidebar <- FALSE
   }
@@ -283,7 +294,7 @@ check_chat_app_dots <- function(dots) {
   cli::cli_abort(
     c(
       "{.fn chat_app} no longer passes {.arg ...} to {.fn shiny::shinyApp}.",
-      setNames(migration[legacy_args], rep("i", length(legacy_args)))
+      stats::setNames(migration[legacy_args], rep("i", length(legacy_args)))
     ),
     call = rlang::caller_env()
   )
@@ -520,17 +531,17 @@ chat_server <- function(
     }
     client <<- new_client
 
-    # Capture the active conversation identity before re-registering
-    # history, but only for unsaved drafts: seeding a saved conversation's
-    # ID when init won't restore its record (restore_mode = "none", failed
-    # restore) would make the next save overwrite the stored record. Saved
-    # conversations get their ID back from the restore, or a fresh one on
-    # the next submission.
+    config <- if (isTRUE(history)) history_options() else history
+
+    # Preserve the active conversation across the controller replacement.
+    # A completed response has already created a record, while an in-progress
+    # draft has only an allocated ID.
     old_ctrl <- get_session_chat_bookmark_info(
       session,
       paste0(id, ".history-controller")
     )
-    active_id <- if (!is.null(old_ctrl) && is.null(old_ctrl$record)) {
+    active_record <- if (!is.null(old_ctrl)) old_ctrl$record else NULL
+    active_id <- if (!is.null(old_ctrl) && is.null(active_record)) {
       shiny::isolate(old_ctrl$conversation_id())
     } else {
       NULL
@@ -541,7 +552,6 @@ chat_server <- function(
     }
 
     cancel_history <<- if (!isFALSE(history)) {
-      config <- if (isTRUE(history)) history_options() else history
       chat_enable_history(
         id,
         client,
@@ -568,7 +578,12 @@ chat_server <- function(
     )
     history_controller(new_ctrl)
     if (!is.null(new_ctrl)) {
-      if (!is.null(active_id)) {
+      if (
+        !is.null(active_record) &&
+          !identical(config$restore_mode, "none")
+      ) {
+        new_ctrl$activate_record(active_record)
+      } else if (!is.null(active_id)) {
         new_ctrl$seed_conversation_id(active_id)
       }
       for (fn in saved_on_save_fns) {
@@ -890,6 +905,19 @@ chat_server <- function(
   ) {
     client_history <- arg_match(client_history)
 
+    hist_ctrl <- history_controller()
+    if (!is.null(hist_ctrl)) {
+      cli::cli_abort(
+        "Can't clear a chat with conversation history enabled. Use {.code chat$new_chat()} to start a new conversation."
+      )
+    }
+
+    if (append_stream_task$status() == "running") {
+      cli::cli_abort(
+        "Can't clear the chat while a response is still being generated. Please wait for it to finish or stop it first."
+      )
+    }
+
     if (!is.null(messages)) {
       if (rlang::is_string(messages)) {
         # Promote strings to single assistant message
@@ -927,6 +955,25 @@ chat_server <- function(
     last_input(NULL)
   }
 
+  client_new_chat <- function(greeting = FALSE) {
+    hist_ctrl <- history_controller()
+    if (is.null(hist_ctrl)) {
+      cli::cli_abort(
+        "Can't start a new chat without conversation history enabled. Use {.code chat$clear()} instead."
+      )
+    }
+    if (append_stream_task$status() == "running") {
+      cli::cli_abort(
+        "Can't start a new chat while a response is still being generated. Please wait for it to finish or stop it first."
+      )
+    }
+
+    hist_ctrl$new_chat(greeting = greeting)
+    last_turn(NULL)
+    last_input(NULL)
+    invisible()
+  }
+
   ret <- new.env(parent = emptyenv())
   ret$last_turn <- shiny::reactive(last_turn(), label = "mod_last_turn")
   ret$last_input <- shiny::reactive(last_input(), label = "mod_last_input")
@@ -949,6 +996,7 @@ chat_server <- function(
   ret$append <- chat_append_mod
   ret$update_user_input <- chat_update_user_input
   ret$clear <- client_clear
+  ret$new_chat <- client_new_chat
   ret$set_greeting <- set_greeting_mod
   ret$set_client <- set_client
   ret$slash_command <- slash_command_method

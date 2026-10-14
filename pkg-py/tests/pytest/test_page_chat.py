@@ -20,6 +20,7 @@ from shinychat import (
 )
 from shinychat._utils_types import MISSING
 from shinychat.express import Chat as ExpressChat
+from shinychat.express import page_chat as express_page_chat
 from shinychat.types import ChatDrawer, ChatNavPanel, ChatSidebar
 
 
@@ -318,7 +319,6 @@ def test_page_chat_signature_makes_icon_keyword_only() -> None:
         "window_title",
         "lang",
         "theme",
-        "messages",
         "greeting",
         "placeholder",
         "width",
@@ -854,7 +854,6 @@ def test_page_chat_forwards_original_id_and_chat_options(
         page = page_chat(
             "Assistant",
             id="chat",
-            messages=["Hello"],
             greeting="Welcome",
             placeholder="Ask",
             width="40rem",
@@ -875,7 +874,6 @@ def test_page_chat_forwards_original_id_and_chat_options(
     assert options["height"] == "100%"
     assert options["fill"] is True
     assert options["show_history"] is True
-    assert options["messages"] == ["Hello"]
     assert options["greeting"] == "Welcome"
     assert options["placeholder"] == "Ask"
     assert options["width"] == "40rem"
@@ -887,6 +885,16 @@ def test_page_chat_forwards_original_id_and_chat_options(
     assert options["tool_grouping"] == "all"
     assert options["class_"] == "chat-attrs"
     assert 'data-chat-id="mod-chat"' in page.get_html_string()
+
+
+def test_page_chat_does_not_accept_messages() -> None:
+    assert "messages" not in inspect.signature(page_chat).parameters
+    assert "messages" not in inspect.signature(express_page_chat).parameters
+
+    with pytest.raises(TypeError, match="does not support `messages`"):
+        page_chat("Assistant", messages=["Hello"])
+    with pytest.raises(TypeError, match="does not support `messages`"):
+        express_page_chat("Assistant", messages=["Hello"])
 
 
 def test_page_chat_omits_document_title_for_non_string_title() -> None:

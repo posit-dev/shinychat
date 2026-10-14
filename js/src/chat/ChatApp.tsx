@@ -13,7 +13,6 @@ import {
   ChatToolContext,
   ChatDispatchContext,
   ToolGroupingContext,
-  ChatSubmitContext,
   AsideFaviconContext,
 } from "./context"
 import { setCurrentConversationId } from "./currentConversation"
@@ -21,7 +20,6 @@ import { navigateTo } from "../utils/navigate"
 import {
   chatReducer,
   initialState,
-  routeToolBlocks,
   splitThinkingBlocks,
   contentFromBlocks,
   type ChatMessageData,
@@ -30,7 +28,10 @@ import {
   type GreetingData,
   type ToolGrouping,
 } from "./state"
-import { useSupersededRequests } from "./useSupersededRequests"
+import {
+  useRequestDefinitionIcons,
+  useSupersededRequests,
+} from "./useSupersededRequests"
 import { ChatContainer, type ChatContainerHandle } from "./ChatContainer"
 import {
   acquireHistoryStore,
@@ -73,6 +74,7 @@ export interface ChatAppProps {
   asideFavicon?: boolean
   showHistory?: boolean
   toolGrouping?: ToolGrouping
+  thinkingShowAfter?: number
   toolbarEl?: Element
   footerEl?: Element
   slashCommandId?: string
@@ -127,27 +129,27 @@ export function ChatApp({
   asideFavicon = true,
   showHistory = true,
   toolGrouping,
+  thinkingShowAfter = 0,
   toolbarEl,
   footerEl,
   slashCommandId = "",
   submitKey,
 }: ChatAppProps) {
   const resolvedToolGrouping = toolGrouping ?? initialState.toolGrouping
-  // Put preloaded/restored messages through the same block-construction pass as
-  // live ones — thinking split first, then the content router — so a restored
-  // transcript carries identical ThinkingDisplay and tool_loop grouping.
+  // Put preloaded/restored messages through the same block-construction pass
+  // as live ones — thinking split first — so a restored transcript carries
+  // identical ThinkingDisplay blocks.
   const messages = useMemo(
     () =>
       (initialMessages ?? []).map((m) => {
-        const split = m.blocks.flatMap((b) =>
+        const blocks = m.blocks.flatMap((b) =>
           b.type === "content"
             ? splitThinkingBlocks(b.content, b.contentType)
             : [b],
         )
-        const blocks = routeToolBlocks(split, resolvedToolGrouping, m.role)
         return { ...m, blocks, content: contentFromBlocks(blocks) }
       }),
-    [initialMessages, resolvedToolGrouping],
+    [initialMessages],
   )
   const [state, dispatch] = useReducer(chatReducer, {
     ...initialState,
@@ -182,25 +184,6 @@ export function ChatApp({
   useEffect(() => {
     return acquireHistoryStore(elementId, transport).release
   }, [elementId, historyStore, transport])
-
-  const submitUserInput = useCallback(
-    (content: string, attachments: AttachmentPayload[]): boolean => {
-      if (isHistorySubmissionBlocked(historyStore.getSnapshot())) return false
-      // Optimistic UI update (adds user message + loading placeholder).
-      dispatch({
-        type: "INPUT_SENT",
-        content,
-        role: "user",
-        ...(attachments.length > 0 ? { attachments } : {}),
-      })
-      transport.sendInput(
-        inputId,
-        state.enableUpload ? { text: content, attachments } : content,
-      )
-      return true
-    },
-    [dispatch, historyStore, transport, inputId, state.enableUpload],
-  )
 
   const containerRef = useRef<ChatContainerHandle>(null)
   const siblingNavigationPendingRef = useRef(false)
@@ -473,9 +456,13 @@ export function ChatApp({
     state.messages,
     state.streamingMessage,
   )
+  const requestDefinitionIcons = useRequestDefinitionIcons(
+    state.messages,
+    state.streamingMessage,
+  )
   const toolState: ChatToolState = useMemo(
-    () => ({ supersededRequests }),
-    [supersededRequests],
+    () => ({ supersededRequests, requestDefinitionIcons }),
+    [supersededRequests, requestDefinitionIcons],
   )
 
   return (
@@ -483,44 +470,43 @@ export function ChatApp({
       <ChatToolContext.Provider value={toolState}>
         <ToolGroupingContext.Provider value={state.toolGrouping}>
           <ChatDispatchContext.Provider value={dispatch}>
-            <ChatSubmitContext.Provider value={submitUserInput}>
-              <AsideFaviconContext.Provider value={asideFavicon}>
-                <ChatContainer
-                  ref={containerRef}
-                  transport={transport}
-                  messages={state.messages}
-                  streamingMessage={state.streamingMessage}
-                  inputDisabled={state.inputDisabled}
-                  submissionBlocked={submissionBlocked}
-                  inputPlaceholder={state.inputPlaceholder}
-                  iconAssistant={iconAssistant}
-                  iconSend={iconSend}
-                  inputId={inputId}
-                  uploadAccept={uploadAccept}
-                  maxUploadSize={maxUploadSize}
-                  elementId={elementId}
-                  greeting={state.greeting}
-                  restoring={greetingIsHeld && showRestoring}
-                  cancelId={cancelId}
-                  enableCancel={state.enableCancel}
-                  enableUpload={state.enableUpload}
-                  cancelRequested={state.cancelRequested}
-                  toolbarEl={toolbarEl}
-                  footerEl={footerEl}
-                  slashCommands={state.slashCommands}
-                  slashCommandId={slashCommandId}
-                  submitKey={submitKey}
-                  historyStore={historyStore}
-                  onEdit={handleEdit}
-                  onNavigate={handleNavigate}
-                  onRetry={handleRetry}
-                  siblingNavigationPending={siblingNavigationPending}
-                  showHistory={showHistory}
-                  drawer={state.drawer}
-                  drawerSource={drawerSource}
-                />
-              </AsideFaviconContext.Provider>
-            </ChatSubmitContext.Provider>
+            <AsideFaviconContext.Provider value={asideFavicon}>
+              <ChatContainer
+                ref={containerRef}
+                transport={transport}
+                messages={state.messages}
+                streamingMessage={state.streamingMessage}
+                inputDisabled={state.inputDisabled}
+                submissionBlocked={submissionBlocked}
+                inputPlaceholder={state.inputPlaceholder}
+                iconAssistant={iconAssistant}
+                iconSend={iconSend}
+                inputId={inputId}
+                uploadAccept={uploadAccept}
+                maxUploadSize={maxUploadSize}
+                elementId={elementId}
+                greeting={state.greeting}
+                restoring={greetingIsHeld && showRestoring}
+                cancelId={cancelId}
+                enableCancel={state.enableCancel}
+                enableUpload={state.enableUpload}
+                thinkingShowAfter={thinkingShowAfter}
+                cancelRequested={state.cancelRequested}
+                toolbarEl={toolbarEl}
+                footerEl={footerEl}
+                slashCommands={state.slashCommands}
+                slashCommandId={slashCommandId}
+                submitKey={submitKey}
+                historyStore={historyStore}
+                onEdit={handleEdit}
+                onNavigate={handleNavigate}
+                onRetry={handleRetry}
+                siblingNavigationPending={siblingNavigationPending}
+                showHistory={showHistory}
+                drawer={state.drawer}
+                drawerSource={drawerSource}
+              />
+            </AsideFaviconContext.Provider>
           </ChatDispatchContext.Provider>
         </ToolGroupingContext.Provider>
       </ChatToolContext.Provider>

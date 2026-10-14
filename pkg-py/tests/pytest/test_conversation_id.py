@@ -126,11 +126,9 @@ class StubChat:
     def __init__(self) -> None:
         self.messages: list[dict[str, Any]] = []
         self.actions: list[dict[str, Any]] = []
+        self._session: Any = None
 
     def _messages_for_bookmark(self) -> list[dict[str, Any]]:
-        return self.messages
-
-    def _messages_for_history(self) -> list[dict[str, Any]]:
         return self.messages
 
     @asynccontextmanager

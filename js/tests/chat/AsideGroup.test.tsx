@@ -312,7 +312,8 @@ describe("AsideGroup", () => {
     expect(pill).not.toHaveClass("shiny-aside-pill--number")
   })
 
-  it("does not repeat an unlinked default aside's identity in its popover", async () => {
+  it("repeats an unlinked default aside's identity in its popover", async () => {
+    // The pill truncates long labels, so the popover always repeats the title.
     const user = userEvent.setup()
     renderMarkdown(
       'Claim<shiny-aside label="Verified answer" icon="trusted.svg">Governed result.</shiny-aside>.',
@@ -324,11 +325,36 @@ describe("AsideGroup", () => {
 
     await user.click(pill)
     const dialog = screen.getByRole("dialog", { name: "Verified answer" })
-    expect(
-      within(dialog).queryByText("Verified answer"),
-    ).not.toBeInTheDocument()
-    expect(dialog.querySelector("img")).toBeNull()
+    expect(within(dialog).getByText("Verified answer")).toBeInTheDocument()
+    expect(dialog.querySelector("img")).toHaveAttribute("src", "trusted.svg")
     expect(dialog).toHaveTextContent("Governed result.")
+  })
+
+  it("shows the title in a single citation's popover", async () => {
+    // Regression test for #412: a lone pill's label may be truncated by CSS,
+    // so its popover must repeat the full title, matching the multi-entry case.
+    const user = userEvent.setup()
+    renderMarkdown(
+      [
+        'Claim<shiny-aside label="From Programming Alone to Programming with LLMs">Tue 1:40 PM–2:00 PM · Ballroom H & K</shiny-aside>.',
+      ].join(""),
+    )
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "From Programming Alone to Programming with LLMs",
+      }),
+    )
+
+    const dialog = screen.getByRole("dialog", {
+      name: "From Programming Alone to Programming with LLMs",
+    })
+    expect(
+      within(dialog).getByText(
+        "From Programming Alone to Programming with LLMs",
+      ),
+    ).toBeInTheDocument()
+    expect(dialog).toHaveTextContent("Tue 1:40 PM–2:00 PM · Ballroom H & K")
   })
 
   it("keeps the label and icon in a compact aside's popover", async () => {

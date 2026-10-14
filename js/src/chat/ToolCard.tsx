@@ -1,8 +1,10 @@
-import { useState, useMemo, useId, type ReactNode, type Ref } from "react"
+import { useState, type ReactNode, type Ref } from "react"
+import { BlockErrorBoundary } from "./BlockErrorBoundary"
 import { bareDot, plus } from "../utils/icons"
 import { fullscreenEnter } from "./useFullscreen"
 import { RawHTML } from "./RawHTML"
 import { useChatStopScroll } from "./context"
+import { useToolUiId } from "./useToolUiId"
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -26,6 +28,12 @@ export interface ToolCardProps {
   footer?: string
   onEnterFullscreen?: (trigger: HTMLElement) => void
   cardRef?: Ref<HTMLDivElement>
+  /**
+   * Reset key for the card body's error boundary: pass the value the body
+   * derives from (e.g. the result value) so a contained error retries when
+   * new content arrives.
+   */
+  resetKey?: unknown
   children?: ReactNode
 }
 
@@ -42,31 +50,23 @@ export function ToolCard({
   footer,
   onEnterFullscreen,
   cardRef,
+  resetKey,
   children,
 }: ToolCardProps) {
   const [expanded, setExpanded] = useState(initialExpanded)
   const stopScroll = useChatStopScroll()
 
-  // Not derived from the tool's `request-id`: that is optional in routed
-  // content (anonymous calls get a loop-local synthetic id) and can repeat
-  // across messages, which would produce duplicate document ids.
-  const uid = useId()
-  const headerId = `tool-header${uid}`
-  const contentId = `tool-content${uid}`
+  const headerId = useToolUiId("tool-header")
+  const contentId = useToolUiId("tool-content")
   const iconHtml = icon || bareDot
-  const displayName = toolTitle || `${toolName}()`
+  // toolTitle is server-attested HTML (rendered raw). toolName is
+  // model-influenced text, so the fallback must be escaped before
+  // interpolation into the RawHTML title span.
+  const displayName = toolTitle || `${escapeHtml(toolName)}()`
   const labelPart = label
     ? `: <span class="tool-title-label">${escapeHtml(label)}</span>`
     : ""
   const formattedTitle = `<span class="tool-title-name">${displayName}</span>${labelPart}`
-
-  // Memoize dangerouslySetInnerHTML objects so React 19 sees stable
-  // references and skips unnecessary innerHTML resets on re-render.
-  const iconDSIH = useMemo(() => ({ __html: iconHtml }), [iconHtml])
-  const titleDSIH = useMemo(
-    () => ({ __html: formattedTitle }),
-    [formattedTitle],
-  )
 
   function handleClick(e: React.MouseEvent) {
     e.preventDefault()
@@ -97,13 +97,19 @@ export function ToolCard({
         aria-expanded={expanded}
         aria-controls={contentId}
       >
-        <div
+        {/* Spans, not divs: the header is a <button>, which only permits
+            phrasing content. */}
+        <RawHTML
+          html={iconHtml}
+          as="span"
           className={`tool-icon${classStatus ? ` ${classStatus}` : ""}`}
-          dangerouslySetInnerHTML={iconDSIH}
+          displayContents={false}
         />
-        <div
+        <RawHTML
+          html={formattedTitle}
+          as="span"
           className={`tool-title${classStatus ? ` ${classStatus}` : ""}`}
-          dangerouslySetInnerHTML={titleDSIH}
+          displayContents={false}
         />
         {statusNote && (
           <div
@@ -126,7 +132,12 @@ export function ToolCard({
         aria-labelledby={headerId}
         inert={!expanded || undefined}
       >
-        {children}
+        {/* The body carries user-controlled content (request call, result
+            value, custom displays): contain a render error here so the
+            header row and the rest of the message survive. */}
+        <BlockErrorBoundary context={`${toolName} details`} resetKey={resetKey}>
+          {children}
+        </BlockErrorBoundary>
         {fullScreen && onEnterFullscreen && (
           <button
             className="tool-fullscreen-toggle badge rounded-pill"
@@ -139,12 +150,18 @@ export function ToolCard({
         )}
       </div>
       {footer && (
-        <RawHTML
-          html={footer}
-          className="card-footer"
-          displayContents={false}
-          fillable={false}
-        />
+        <BlockErrorBoundary
+          context={`${toolName} footer`}
+          fallback={null}
+          resetKey={footer}
+        >
+          <RawHTML
+            html={footer}
+            className="card-footer"
+            displayContents={false}
+            fillable={false}
+          />
+        </BlockErrorBoundary>
       )}
     </div>
   )

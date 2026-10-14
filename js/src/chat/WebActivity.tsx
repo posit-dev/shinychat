@@ -1,106 +1,20 @@
 import { memo, useState } from "react"
-import type { Element, ElementContent } from "hast"
 import { externalLinkAttributes } from "../markdown/plugins/rehypeExternalLinks"
 import { isSafeUrl } from "../markdown/urlSanitize"
+import {
+  type WebActivityItem,
+  type WebActivitySearchItem,
+  type WebActivitySource,
+} from "./web-activity-model"
 import { ChevronIcon } from "./ChevronIcon"
 import { useAsideFavicon } from "./context"
 import { domainFromUrl } from "./domain"
 
-interface Source {
-  url: string
-  title?: string
-  domain?: string
-}
-
-interface SearchItem {
-  kind: "search"
-  query: string
-  sources: Source[] | null
-  citedSources: Source[]
-}
-
-interface FetchItem {
-  kind: "fetch"
-  url: string
-  status?: string
-}
-
-type Item = SearchItem | FetchItem
-
 interface WebActivityProps {
-  node?: Element
+  items: WebActivityItem[]
 }
 
-function prop(el: Element, name: string): string | undefined {
-  const v = el.properties?.[name]
-  return typeof v === "string" ? v : undefined
-}
-
-function parseSources(json?: string): Source[] {
-  if (!json) return []
-  try {
-    const arr: unknown = JSON.parse(json)
-    if (!Array.isArray(arr)) return []
-    const seen = new Set<string>()
-    return arr.filter((s): s is Source => {
-      if (!s || typeof (s as Source).url !== "string") return false
-      const url = (s as Source).url
-      if (seen.has(url)) return false
-      seen.add(url)
-      return true
-    })
-  } catch {
-    return []
-  }
-}
-
-function parseItems(node?: Element): Item[] {
-  if (!node) return []
-  const citedSources = parseSources(prop(node, "citedSources"))
-  const kids = (node.children ?? []).filter(
-    (c: ElementContent): c is Element => c.type === "element",
-  )
-  const items: Item[] = []
-  const pendingSearches: SearchItem[] = []
-  for (const el of kids) {
-    if (el.tagName === "shiny-web-search") {
-      const search: SearchItem = {
-        kind: "search",
-        query: prop(el, "query") ?? "",
-        sources: null,
-        citedSources: [],
-      }
-      items.push(search)
-      pendingSearches.push(search)
-    } else if (el.tagName === "shiny-web-search-results") {
-      const sources = parseSources(prop(el, "sources"))
-      const search = pendingSearches.shift()
-      if (search) {
-        search.sources = sources
-      } else {
-        items.push({
-          kind: "search",
-          query: "",
-          sources,
-          citedSources: [],
-        })
-      }
-    } else if (el.tagName === "shiny-web-fetch") {
-      const url = prop(el, "url")
-      if (url) items.push({ kind: "fetch", url, status: prop(el, "status") })
-    }
-  }
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index]!
-    if (item.kind === "search" && item.sources === null) {
-      item.citedSources = citedSources
-      break
-    }
-  }
-  return items
-}
-
-function domainOf(s: Source): string {
+function domainOf(s: WebActivitySource): string {
   return s.domain || domainFromUrl(s.url)
 }
 
@@ -110,12 +24,12 @@ function faviconUrl(domain: string): string {
   return `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`
 }
 
+/** Renders one web-activity burst (searches and fetches) as a collapsible timeline. */
 export const WebActivity = memo(function WebActivity({
-  node,
+  items,
 }: WebActivityProps) {
   const [expanded, setExpanded] = useState(false)
   const deriveFavicon = useAsideFavicon()
-  const items = parseItems(node)
   if (items.length === 0) return null
 
   const headerText = items.some((it) => it.kind === "search")
@@ -171,7 +85,7 @@ export const WebActivity = memo(function WebActivity({
                       </div>
                       {sources.length > 0 && (
                         <div className="shiny-web-activity__results">
-                          {sources.map((s, j) => {
+                          {sources.map((s) => {
                             const domain = domainOf(s)
                             const safe = isSafeUrl(s.url)
                             const Row = safe ? "a" : "span"

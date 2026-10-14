@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+from typing import cast
+
 import anyio
 import pytest
 from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
-from shinychat._chat_types import ChatMessage, ContentSegment, StoredMessage
+from shinychat._chat_types import (
+    ChatMessage,
+    ContentSegment,
+    StoredMessage,
+    StoredSegment,
+)
 
 
 def entry(
@@ -57,7 +64,7 @@ async def test_read_returns_a_defensive_copy() -> None:
     )
 
     projection = transcript.read()
-    projection[0].message.segments[0].content = "mutated"
+    cast(StoredSegment, projection[0].message.segments[0]).content = "mutated"
     projection[0].icon = "mutated"
 
     committed = transcript.read()[0]
@@ -296,7 +303,7 @@ async def test_append_commits_the_pre_send_snapshot() -> None:
     async with anyio.create_task_group() as task_group:
         task_group.start_soon(append)
         await send_started.wait()
-        source.message.segments[0].content = "mutated"
+        cast(StoredSegment, source.message.segments[0]).content = "mutated"
         source.icon = "<i>mutated</i>"
         release_send.set()
 
@@ -647,7 +654,9 @@ async def test_stream_replacement_commits_mixed_segments_and_nested_checkpoint()
     committed = transcript.read()[0]
     assert [
         (segment.content, segment.content_type)
-        for segment in transcript.stream_segments("stream")
+        for segment in cast(
+            list[ContentSegment], transcript.stream_segments("stream")
+        )
     ] == [("reasoning", "thinking"), ("answer", "markdown")]
     assert committed.message.content == "reasoninganswer"
 
@@ -797,7 +806,7 @@ async def test_clear_and_restore_reject_active_stream_and_defensive_projection()
     transcript = ChatTranscript()
     await start_stream(transcript)
     projection = transcript.read()
-    projection[0].message.segments[0].content = "mutated"
+    cast(StoredSegment, projection[0].message.segments[0]).content = "mutated"
 
     with pytest.raises(RuntimeError, match="clear or restore"):
         await transcript.clear(send=sent_action)

@@ -1,5 +1,9 @@
 import { useMemo, useRef } from "react"
-import { supersededRequestIds, type ChatMessageData } from "./state"
+import {
+  requestDefinitionIcons,
+  supersededRequestIds,
+  type ChatMessageData,
+} from "./state"
 
 /**
  * Every superseded request-id, derived from the transcript (see
@@ -21,6 +25,29 @@ export function useSupersededRequests(
     const next = supersededRequestIds(messages, streamingMessage)
     const prev = previous.current
     if (next.size === prev.size && [...next].every((id) => prev.has(id))) {
+      return prev
+    }
+    previous.current = next
+    return next
+  }, [messages, streamingMessage])
+}
+
+/**
+ * Definition icons keyed by request id, with a stable map identity when the
+ * transcript's icon metadata has not changed.
+ */
+export function useRequestDefinitionIcons(
+  messages: ChatMessageData[],
+  streamingMessage: ChatMessageData | null,
+): ReadonlyMap<string, string> {
+  const previous = useRef<Map<string, string>>(new Map())
+  return useMemo(() => {
+    const next = requestDefinitionIcons(messages, streamingMessage)
+    const prev = previous.current
+    if (
+      next.size === prev.size &&
+      [...next].every(([requestId, icon]) => prev.get(requestId) === icon)
+    ) {
       return prev
     }
     previous.current = next

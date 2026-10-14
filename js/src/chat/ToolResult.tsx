@@ -69,7 +69,7 @@ export interface ToolResultProps {
   requestCall?: string
   showRequest?: boolean
   fullScreen?: boolean
-  expanded?: boolean
+  initialExpanded?: boolean
   icon?: string
   footer?: string
 }
@@ -85,7 +85,7 @@ export const ToolResult = memo(function ToolResult({
   requestCall,
   showRequest = false,
   fullScreen = false,
-  expanded = false,
+  initialExpanded = false,
   icon: iconProp,
   footer,
 }: ToolResultProps) {
@@ -108,12 +108,21 @@ export const ToolResult = memo(function ToolResult({
         classStatus={classStatus}
         statusNote={isError ? "failed" : undefined}
         fullScreen={fullScreen}
-        initialExpanded={expanded}
+        initialExpanded={initialExpanded}
         footer={footer}
         onEnterFullscreen={enterFullscreen}
         cardRef={cardRef}
+        // Body errors can derive from any of these inputs. The boundary must
+        // retry when any of them changes, not just the result value.
+        resetKey={`${valueType}${showRequest}${requestCall}${value}`}
       >
-        {renderRequest(requestCall, showRequest, stopScroll)}
+        {/* A component (not an inline call) so a malformed requestCall throws
+            below ToolCard's body boundary and the card header survives. */}
+        <ToolRequestDetails
+          requestCall={requestCall}
+          showRequest={showRequest}
+          stopScroll={stopScroll}
+        />
         <ToolResultValue
           value={value}
           valueType={valueType}
@@ -125,11 +134,15 @@ export const ToolResult = memo(function ToolResult({
   )
 })
 
-function renderRequest(
-  requestCall: string | undefined,
-  showRequest: boolean,
-  stopScroll: ReturnType<typeof useChatStopScroll>,
-): React.ReactNode {
+function ToolRequestDetails({
+  requestCall,
+  showRequest,
+  stopScroll,
+}: {
+  requestCall: string | undefined
+  showRequest: boolean
+  stopScroll: ReturnType<typeof useChatStopScroll>
+}): React.ReactNode {
   if (!showRequest || !requestCall) {
     return null
   }

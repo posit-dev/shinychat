@@ -232,7 +232,7 @@ content_from_attachment <- function(att) {
 #     list of ellmer Content (text first, then one content per attachment),
 #     even when no files are attached.
 # This is what the registered "shinychat.userInput" handler returns.
-user_input_contents <- function(value) {
+user_input_contents <- function(value, session = NULL, name = NULL) {
   if (is.null(value)) {
     return(NULL)
   }
@@ -242,6 +242,15 @@ user_input_contents <- function(value) {
   text <- value[["text"]] %||% ""
   attachments <- value[["attachments"]]
   validate_attachments(attachments)
+  if (!is.null(session) && !is.null(name)) {
+    input_id <- sub(":.*$", "", name)
+    chat_id <- sub("_user_input$", "", input_id)
+    set_session_chat_bookmark_info(
+      session,
+      paste0(chat_id, ".pending-attachments"),
+      attachments
+    )
+  }
   contents <- contents_from_attachments(attachments)
   if (nzchar(text)) {
     contents <- c(list(text), contents)

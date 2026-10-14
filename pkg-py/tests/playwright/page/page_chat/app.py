@@ -69,6 +69,27 @@ def app_ui(request: Request) -> ui.Tag:
             drawer=False,
         )
 
+    if request.query_params.get("wide_title") == "true":
+        return page_chat(
+            "posit::conf(2026) Schedule",
+            id="chat",
+            pages_navbar=[
+                chat_nav_panel(
+                    "On Now",
+                    ui.div("Current conference sessions"),
+                    sidebar=False,
+                ),
+                chat_nav_panel(
+                    "Full Schedule",
+                    ui.div("Full conference schedule"),
+                    sidebar=False,
+                ),
+            ],
+            sidebar=chat_sidebar(open="open"),
+            drawer=False,
+            toolbar_global=None,
+        )
+
     if request.query_params.get("sidebarless") == "true":
         return page_chat(
             "Sidebarless Assistant",

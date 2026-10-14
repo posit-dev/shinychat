@@ -34,25 +34,4 @@ describe("markdownProcessor citation occurrences", () => {
     expect(html).toContain('data-grounding-id="aside-grounding-1"')
     expect(html).toContain('data-grounding-id="aside-grounding-2"')
   })
-
-  it("attaches fallback citations to their preceding activity burst", () => {
-    const firstUrl = "https://first.example/source"
-    const secondUrl = "https://second.example/source"
-    const sourceActivities = activities(
-      [
-        '<shiny-web-search query="first query"></shiny-web-search>',
-        `First answer${cite(firstUrl, "First source", "First answer")}.`,
-        '<shiny-web-search query="second query"></shiny-web-search>',
-        `Second answer${cite(secondUrl, "Second source", "Second answer")}.`,
-      ].join("\n\n"),
-    )
-
-    expect(sourceActivities).toHaveLength(2)
-    expect(sourceActivities[0]!.properties.citedSources).toBe(
-      JSON.stringify([{ url: firstUrl, title: "First source" }]),
-    )
-    expect(sourceActivities[1]!.properties.citedSources).toBe(
-      JSON.stringify([{ url: secondUrl, title: "Second source" }]),
-    )
-  })
 })

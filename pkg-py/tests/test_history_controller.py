@@ -33,10 +33,11 @@ from shinychat._history import (
     HistoryInputIds,
     HistoryOptions,
     StatePathContext,
+    _strip_attachment_content,
     do_bookmark_with_cleanup,
     extend_record_linear,
 )
-from shinychat._history_client import TurnsAdapter
+from shinychat._history_client import TurnDict, TurnsAdapter
 from shinychat._history_store import (
     ConversationPartition,
     ConversationStore,
@@ -49,11 +50,13 @@ from shinychat._history_types import (
     HISTORY_ERROR_STREAM_START,
     HISTORY_ERROR_STREAM_TERMINAL,
     MAX_SCHEMA_VERSION,
+    STORED_UI_VERSION,
     CapturedMessage,
     ConversationRecord,
     ConversationRecordV2,
     ErrorEntry,
     StateEntry,
+    StoredUiMessage,
     UnsupportedSchemaVersionError,
     new_conversation_record,
     new_conversation_record_v2,
@@ -69,6 +72,39 @@ def msg(role: str) -> dict[str, object]:
     }
 
 
+def derived(role: str, content: str) -> dict[str, object]:
+    """The stored UI message a plain-text turn group derives to."""
+    return {
+        "role": role,
+        "segments": [{"content": content, "content_type": "markdown"}],
+        "version": STORED_UI_VERSION,
+    }
+
+
+def chatlas_tool_group() -> list[Any]:
+    """A serialized chatlas tool-call exchange (request, result, final text),
+    round-tripped through JSON dicts exactly as the history store persists
+    them."""
+    from chatlas import Turn
+    from chatlas.types import (
+        ContentText,
+        ContentToolRequest,
+        ContentToolResult,
+    )
+    from shinychat._chat_bookmark import serialize_chatlas_turn
+
+    req = ContentToolRequest(
+        id="x", name="get_weather", arguments={"city": "Duluth"}
+    )
+    res = ContentToolResult(value="Sunny", request=req)
+    turns = [
+        Turn(role="assistant", contents=[req]),
+        Turn(role="user", contents=[res]),
+        Turn(role="assistant", contents=[ContentText(text="It's sunny.")]),
+    ]
+    return [serialize_chatlas_turn(t) for t in turns]
+
+
 def part(
     *, chat_id: str = "chat", scope: str = "test-scope"
 ) -> ConversationPartition:
@@ -77,61 +113,195 @@ def part(
 
 def test_extend_appends_only_new_groups_with_ui_by_role():
     rec = new_conversation_record(title="t")
-    groups = [
+    groups: list[list[TurnDict]] = [
         [{"role": "user", "content": "q1"}],
         [{"role": "assistant", "content": "a1"}],
     ]
-    extend_record_linear(rec, groups, [msg("user"), msg("assistant")])
+    extend_record_linear(
+        rec, groups, [msg("user"), msg("assistant")], ui_offset=0
+    )
     assert len(rec.nodes) == 2
     path = rec.path_node_ids()
     assert rec.nodes[path[0]].turns == [{"role": "user", "content": "q1"}]
-    assert rec.nodes[path[0]].ui == [msg("user")]
-    assert rec.nodes[path[1]].ui == [msg("assistant")]
+    assert rec.nodes[path[0]].ui == [derived("user", "q1")]
+    assert rec.nodes[path[1]].ui == [derived("assistant", "a1")]
 
-    groups += [
-        [{"role": "user", "content": "q2"}],
-        [{"role": "assistant", "content": "a2"}],
-    ]
+    groups.extend(
+        [
+            [{"role": "user", "content": "q2"}],
+            [{"role": "assistant", "content": "a2"}],
+        ]
+    )
     all_msgs = [msg("user"), msg("assistant"), msg("user"), msg("assistant")]
-    extend_record_linear(rec, groups, all_msgs)
+    extend_record_linear(rec, groups, all_msgs, ui_offset=2)
     assert len(rec.nodes) == 4
-    assert rec.nodes[rec.path_node_ids()[2]].ui == [msg("user")]
+    assert rec.nodes[rec.path_node_ids()[2]].ui == [derived("user", "q2")]
+
+
+@pytest.mark.parametrize(
+    ("attachment", "turn_content"),
+    [
+        (
+            {
+                "mime": "image/png",
+                "name": "plot.png",
+                "size": 3,
+                "data_url": "data:image/png;base64,QUJD",
+            },
+            {
+                "content_type": "image_inline",
+                "image_content_type": "image/png",
+                "data": "QUJD",
+            },
+        ),
+        (
+            {
+                "mime": "text/markdown",
+                "name": "notes.md",
+                "size": 7,
+                "data_url": "data:text/markdown;base64,IyBOb3Rlcw==",
+            },
+            {
+                "content_type": "text",
+                "text": (
+                    '<file-attachment name="notes.md" '
+                    'type="text/markdown">\n# Notes\n</file-attachment>'
+                ),
+            },
+        ),
+        (
+            {
+                "mime": "application/pdf",
+                "name": "report.pdf",
+                "size": 4,
+                "data_url": "data:application/pdf;base64,JVBERg==",
+            },
+            {
+                "content_type": "pdf",
+                "data": "JVBERg==",
+                "filename": "report.pdf",
+            },
+        ),
+    ],
+)
+def test_extend_preserves_attachment_without_model_content(
+    attachment: dict[str, object],
+    turn_content: dict[str, object],
+):
+    rec = new_conversation_record(title="t")
+    user_message = {
+        "role": "user",
+        "segments": [{"content": "See attached", "content_type": "markdown"}],
+        "attachments": [attachment],
+    }
+    extend_record_linear(
+        rec,
+        [
+            [
+                {
+                    "role": "user",
+                    "contents": [
+                        {"content_type": "text", "text": "See attached"},
+                        turn_content,
+                    ],
+                }
+            ]
+        ],
+        [user_message],
+        ui_offset=0,
+    )
+
+    stored = rec.nodes[rec.path_node_ids()[0]].ui
+    assert stored is not None
+    assert stored[0]["attachments"] == [attachment]
+    assert stored[0]["segments"] == [
+        {"content": "See attached", "content_type": "markdown"}
+    ]
+    assert stored[0]["attachment_content_stripped"] is True
+
+
+def test_strip_attachment_content_repairs_existing_stored_ui():
+    attachment = {
+        "mime": "image/png",
+        "name": "plot.png",
+        "size": 3,
+        "data_url": "data:image/png;base64,QUJD",
+    }
+    stored = cast(
+        StoredUiMessage,
+        {
+            "version": STORED_UI_VERSION,
+            "role": "user",
+            "segments": [
+                {"content": "See attached", "content_type": "markdown"},
+                {
+                    "type": "html_block",
+                    "version": 1,
+                    "content": '<img src="data:image/png;base64,QUJD"/>',
+                },
+            ],
+            "attachments": [attachment],
+        },
+    )
+
+    cleaned = _strip_attachment_content(stored)
+
+    assert cleaned["segments"] == [
+        {"content": "See attached", "content_type": "markdown"}
+    ]
+    assert cleaned.get("attachment_content_stripped") is True
+
+
+def test_strip_attachment_content_keeps_empty_attachment_only_message():
+    attachment = {
+        "mime": "text/plain",
+        "name": "notes.txt",
+        "size": 5,
+        "data_url": "data:text/plain;base64,aGVsbG8=",
+    }
+    stored = cast(
+        StoredUiMessage,
+        {
+            "version": STORED_UI_VERSION,
+            "role": "user",
+            "segments": [
+                {
+                    "content": (
+                        '<file-attachment name="notes.txt" '
+                        'type="text/plain">\n'
+                        "hello\n"
+                        "</file-attachment>"
+                    ),
+                    "content_type": "markdown",
+                }
+            ],
+            "attachments": [attachment],
+        },
+    )
+
+    cleaned = _strip_attachment_content(stored)
+
+    assert cleaned["segments"] == [
+        {"content": "", "content_type": "markdown"}
+    ]
+    assert cleaned.get("attachment_content_stripped") is True
 
 
 def test_extend_groups_tool_exchange_into_single_node():
-    user_turn = {
+    user_turn: TurnDict = {
         "role": "user",
         "contents": [{"content_type": "text", "text": "weather?"}],
     }
-    asst_req = {
-        "role": "assistant",
-        "contents": [
-            {
-                "content_type": "tool_request",
-                "id": "x",
-                "name": "get_weather",
-                "arguments": {},
-            }
-        ],
-    }
-    user_res = {
-        "role": "user",
-        "contents": [
-            {"content_type": "tool_result", "id": "x", "value": "Sunny"}
-        ],
-    }
-    asst_final = {
-        "role": "assistant",
-        "contents": [{"content_type": "text", "text": "It's sunny."}],
-    }
+    tool_group = chatlas_tool_group()
+    asst_req, user_res, asst_final = tool_group
 
-    groups = [
+    groups: list[list[TurnDict]] = [
         [user_turn],
-        [asst_req, user_res, asst_final],
+        tool_group,
     ]
     msgs = [msg("user"), msg("assistant")]
     rec = new_conversation_record(title="t")
-    extend_record_linear(rec, groups, msgs)
+    extend_record_linear(rec, groups, msgs, ui_offset=0)
 
     assert len(rec.nodes) == 2
     path = rec.path_node_ids()
@@ -141,37 +311,44 @@ def test_extend_groups_tool_exchange_into_single_node():
 
     assert len(user_node.turns) == 1
     assert len(asst_node.turns) == 3
-    assert user_node.ui == [msg("user")]
-    assert asst_node.ui == [msg("assistant")]
+    assert user_node.ui == [derived("user", "weather?")]
 
-    # path_turns() must flatten back to all 4 original turns
+    assert asst_node.ui is not None and len(asst_node.ui) == 1
+    asst_ui = asst_node.ui[0]
+    assert asst_ui["version"] == STORED_UI_VERSION
+    assert asst_ui["role"] == "assistant"
+    block_types = [s["type"] for s in asst_ui["segments"] if "type" in s]
+    assert block_types == ["tool_request", "tool_result"]
+    assert asst_ui["segments"][0]["request_id"] == "x"
+    assert asst_ui["segments"][1]["value"] == "Sunny"
+    assert asst_ui["segments"][2] == {
+        "content": "It's sunny.",
+        "content_type": "markdown",
+    }
+
     assert rec.path_turns() == [user_turn, asst_req, user_res, asst_final]
 
 
 def test_extend_attaches_extra_assistant_msgs_to_last_node():
     rec = new_conversation_record(title="t")
-    groups = [
+    groups: list[list[TurnDict]] = [
         [{"role": "user", "content": "q"}],
         [{"role": "assistant", "content": "a"}],
     ]
+    oob_ui = msg("assistant")
     msgs = [
         msg("user"),
         msg("assistant"),
-        msg("assistant"),
+        oob_ui,
     ]
-    extend_record_linear(rec, groups, msgs)
+    extend_record_linear(rec, groups, msgs, ui_offset=0)
     path = rec.path_node_ids()
-    assert rec.nodes[path[1]].ui == [msg("assistant"), msg("assistant")]
+    assert rec.nodes[path[1]].ui == [derived("assistant", "a"), oob_ui]
 
 
 def test_extend_attaches_late_ui_message_when_turn_groups_already_caught_up():
-    # Simulates: append_message() (non-streamed) followed by a streamed
-    # reply, both saved to history. Save #1 creates the user/assistant
-    # nodes from the turn groups. By save #2, chatlas turns have already
-    # caught up (streaming adds no *new* turn group), but a new UI message
-    # (the streamed reply) has arrived and must not be dropped.
     rec = new_conversation_record(title="t")
-    groups = [
+    groups: list[list[TurnDict]] = [
         [{"role": "user", "content": "q"}],
         [{"role": "assistant", "content": "a"}],
     ]
@@ -180,68 +357,50 @@ def test_extend_attaches_late_ui_message_when_turn_groups_already_caught_up():
     streamed_ui = msg("assistant")
 
     # Save #1: two new turn groups, two UI messages.
-    extend_record_linear(rec, groups, [user_ui, oob_ui])
+    extend_record_linear(rec, groups, [user_ui, oob_ui], ui_offset=0)
     assert len(rec.nodes) == 2
 
-    # Save #2 reconstructs the active path from the whole server transcript.
-    extend_record_linear(rec, groups, [user_ui, oob_ui, streamed_ui])
+    # Save #2: same turn groups (streaming added no new turn), but one more
+    # UI message has arrived since the last save.
+    extend_record_linear(
+        rec, groups, [user_ui, oob_ui, streamed_ui], ui_offset=2
+    )
 
     all_ui = [
         m
         for node_id in rec.path_node_ids()
         for m in (rec.nodes[node_id].ui or [])
     ]
-    assert all_ui == [user_ui, oob_ui, streamed_ui]
-
-
-def test_extend_rebuilds_without_duplicate_ui_when_groups_are_unchanged():
-    rec = new_conversation_record(title="t")
-    groups = [[{"role": "user", "content": "q"}]]
-    message = msg("user")
-    extend_record_linear(rec, groups, [message])
-    extend_record_linear(rec, groups, [message])
-    assert rec.nodes[rec.path_node_ids()[0]].ui == [message]
-
-
-def test_extend_rebuilds_each_response_under_its_own_user_turn():
-    rec = new_conversation_record(title="t")
-    groups = [
-        [{"role": "user", "content": "q1"}],
-        [{"role": "assistant", "content": "a1"}],
-        [{"role": "user", "content": "q2"}],
-        [{"role": "assistant", "content": "a2"}],
+    assert all_ui == [
+        derived("user", "q"),
+        derived("assistant", "a"),
+        streamed_ui,
     ]
-    q1 = msg("user")
-    a1 = msg("assistant")
-    q2 = msg("user")
-    a2 = msg("assistant")
-
-    extend_record_linear(rec, groups, [q1, a1, q2, a2])
-
-    path = rec.path_node_ids()
-    assert rec.nodes[path[0]].ui == [q1]
-    assert rec.nodes[path[1]].ui == [a1]
-    assert rec.nodes[path[2]].ui == [q2]
-    assert rec.nodes[path[3]].ui == [a2]
 
 
-def test_extend_with_ui_messages_reconstructs_them():
+def test_extend_noop_when_no_new_groups():
     rec = new_conversation_record(title="t")
-    groups = [
+    groups: list[list[TurnDict]] = [[{"role": "user", "content": "q"}]]
+    extend_record_linear(rec, groups, [msg("user")], ui_offset=0)
+    before = rec.model_dump()
+    extend_record_linear(rec, groups, [msg("user")], ui_offset=1)
+    assert rec.model_dump() == before
+
+
+def test_extend_derives_ui_even_without_client_messages():
+    rec = new_conversation_record(title="t")
+    groups: list[list[TurnDict]] = [
         [{"role": "user", "content": "q"}],
         [{"role": "assistant", "content": "a"}],
     ]
-    msgs = [msg("user"), msg("assistant")]
-    extend_record_linear(rec, groups, msgs)
+    extend_record_linear(rec, groups, [], ui_offset=0)
     assert len(rec.nodes) == 2
-    assert [
-        message
-        for node_id in rec.path_node_ids()
-        for message in (rec.nodes[node_id].ui or [])
-    ] == msgs
+    path = rec.path_node_ids()
+    assert rec.nodes[path[0]].ui == [derived("user", "q")]
+    assert rec.nodes[path[1]].ui == [derived("assistant", "a")]
 
 
-# --- response settlement persistence (unit-level, no Shiny session needed) ---
+# --- content-idempotent save guard (unit-level, no Shiny session needed) ----
 
 
 class _InactiveMessageStream:
@@ -261,17 +420,15 @@ class _FakeChat:
         self.published_inputs: list[StoredMessage] = []
         self._transcript = ChatTranscript()
         self.latest_message_stream = _InactiveMessageStream()
+        self._session = None
 
     def _messages_for_bookmark(self) -> list[Any]:
         return self.messages
 
-    def _messages_for_history(self) -> list[Any]:
-        return self._messages_for_bookmark()
-
     async def _send_action(self, action: Any) -> None:
         self.actions.append(action)
 
-    async def clear_messages(self) -> None:
+    async def clear_messages(self, *, greeting: bool = False) -> None:
         self.clear_messages_calls += 1
         self.messages.clear()
         self._transcript.replace([])
@@ -450,6 +607,11 @@ class _RecordingStore(ConversationStore):
         self, partition: ConversationPartition, conv_id: str
     ) -> None:
         pass
+
+
+class _FailingStore(_RecordingStore):
+    async def put(self, partition: ConversationPartition, record: Any) -> None:
+        raise OSError("disk full")
 
 
 class _PartitionCaptureStore(ConversationStore):
@@ -1971,7 +2133,7 @@ async def test_v2_switch_rejects_active_attached_provider_without_mutating_sourc
             (message["role"], message["content"])
             for message in source_display
         ] == [("user", "source"), ("assistant", "")]
-        assert [turn["role"] for turn in source_turns] == [
+        assert [turn.get("role") for turn in source_turns] == [
             "user",
             "assistant",
         ]
@@ -7208,7 +7370,7 @@ async def test_namespaced_chat_ids_are_distinct_partitions():
 
 
 @pytest.mark.anyio
-async def test_each_response_settlement_captures_current_app_state():
+async def test_on_response_no_new_data_does_not_overwrite_saved_values():
     controller, store = _make_controller()
     accent = "info"
 
@@ -7223,8 +7385,8 @@ async def test_each_response_settlement_captures_current_app_state():
     accent = "danger"
     await controller.on_response()
 
-    assert len(store.put_calls) == 2
-    assert controller.record.values["accent"] == "danger"
+    assert len(store.put_calls) == 1, "no-op flush should not persist again"
+    assert controller.record.values["accent"] == "info"
 
 
 class _ReplayFakeChat(_FakeChat):
@@ -7237,7 +7399,7 @@ class _ReplayFakeChat(_FakeChat):
     def _messages_for_bookmark(self) -> list[Any]:
         return self.messages
 
-    async def clear_messages(self) -> None:
+    async def clear_messages(self, *, greeting: bool = False) -> None:
         self.messages = []
 
     async def _restore_bookmark_message(
@@ -7246,49 +7408,58 @@ class _ReplayFakeChat(_FakeChat):
         self.messages.append(message_dict)
 
 
-class _OwnerHistoryFakeChat(_FakeChat):
-    def _messages_for_bookmark(self) -> list[Any]:
-        return [msg("user"), msg("assistant")]
-
-    def _messages_for_history(self) -> list[Any]:
-        return [
-            {
-                "role": "user",
-                "segments": [
-                    {"content": "accepted", "content_type": "markdown"}
-                ],
-            },
-            {
-                "role": "assistant",
-                "segments": [
-                    {"content": "emitted", "content_type": "markdown"}
-                ],
-            },
-        ]
-
-
 @pytest.mark.anyio
-async def test_on_response_persists_server_owned_messages():
-    controller, _store = _make_controller()
-    controller.chat = _OwnerHistoryFakeChat()  # type: ignore[assignment]
-
-    await controller.on_response()
-
-    assert controller.record is not None
-    stored = [
-        message
-        for node_id in controller.record.path_node_ids()
-        for message in (controller.record.nodes[node_id].ui or [])
-    ]
-    assert stored == controller.chat._messages_for_history()
-
-
-@pytest.mark.anyio
-async def test_replay_ui_reconstructs_saved_server_transcript():
+async def test_replay_rereport_does_not_resave_or_truncate():
     controller, store = _make_controller()
     chat = _ReplayFakeChat()
     controller.chat = chat  # type: ignore[assignment]
 
+    chat.messages = [msg("user"), msg("assistant")]
+    await controller.on_response()
+    assert len(store.put_calls) == 1
+    record = controller.record
+    assert record is not None
+    saved_node_count = len(record.path_node_ids())
+    saved_ui = [
+        m
+        for nid in record.path_node_ids()
+        for m in (record.nodes[nid].ui or [])
+    ]
+
+    await controller.replay_ui(record)
+    assert chat.messages == saved_ui, "replay must reconstruct the full UI"
+
+    # Client re-reports the exact restored snapshot (same length/content).
+    await controller.on_response()
+
+    assert len(store.put_calls) == 1, "re-report must not trigger another save"
+    assert controller.record is record, (
+        "restore re-report must not swap records"
+    )
+    assert len(record.path_node_ids()) == saved_node_count, (
+        "restored conversation must not be truncated"
+    )
+
+
+@pytest.mark.anyio
+async def test_replay_rereport_then_new_turn_does_not_duplicate_ui():
+    store = _RecordingStore()
+    chat = _ReplayFakeChat()
+    adapter = _GrowingFakeAdapter()
+    controller = HistoryController(
+        chat=chat,  # type: ignore[arg-type]
+        adapter=adapter,  # type: ignore[arg-type]
+        store=store,  # type: ignore[arg-type]
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+    )
+    controller.partition = part()
+
+    adapter.turns = [
+        {"role": "user", "content": "q1"},
+        {"role": "assistant", "content": "a1"},
+    ]
     chat.messages = [msg("user"), msg("assistant")]
     await controller.on_response()
     assert len(store.put_calls) == 1
@@ -7299,9 +7470,94 @@ async def test_replay_ui_reconstructs_saved_server_transcript():
         for nid in record.path_node_ids()
         for m in (record.nodes[nid].ui or [])
     ]
+    assert len(saved_ui) == 2
+    assert controller.ui_offset == 2
 
     await controller.replay_ui(record)
     assert chat.messages == saved_ui, "replay must reconstruct the full UI"
+    controller.ui_offset = 0
+    await controller.on_response()
+    assert len(store.put_calls) == 1, "re-report must not trigger another save"
+    assert controller.ui_offset == 2, (
+        "ui_offset must advance past the re-reported snapshot"
+    )
+
+    chat.messages = [msg("user")]
+    await controller.on_response()
+    assert len(store.put_calls) == 1
+    assert controller.ui_offset == 2, "partial report must not rewind ui_offset"
+
+    adapter.turns += [
+        {"role": "user", "content": "q2"},
+        {"role": "assistant", "content": "a2"},
+    ]
+    chat.messages = [
+        msg("user"),
+        msg("assistant"),
+        msg("user"),
+        msg("assistant"),
+    ]
+    await controller.on_response()
+    assert len(store.put_calls) == 2
+
+    all_ui = [
+        m
+        for nid in record.path_node_ids()
+        for m in (record.nodes[nid].ui or [])
+    ]
+    assert len(all_ui) == 4, (
+        f"expected 4 stored UI messages, got {len(all_ui)}: {all_ui}"
+    )
+    assert all_ui == [
+        derived("user", "q1"),
+        derived("assistant", "a1"),
+        derived("user", "q2"),
+        derived("assistant", "a2"),
+    ]
+
+
+# --- ui_offset atomicity (not advanced when store.put raises) ----------------
+
+
+def _make_failing_controller() -> HistoryController:
+    store = _FailingStore()
+    controller = HistoryController(
+        chat=_FakeChat(),  # type: ignore[arg-type]
+        adapter=_FakeAdapter(),  # type: ignore[arg-type]
+        store=store,  # type: ignore[arg-type]
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+    )
+    controller.partition = part()
+    return controller
+
+
+@pytest.mark.anyio
+async def test_ui_offset_unchanged_when_on_response_store_put_raises():
+    controller = _make_failing_controller()
+    initial_offset = controller.ui_offset
+
+    with pytest.raises(OSError):
+        await controller.on_response()
+
+    assert controller.ui_offset == initial_offset, (
+        "ui_offset must not advance when store.put() raises"
+    )
+
+
+@pytest.mark.anyio
+async def test_ui_offset_unchanged_when_save_current_store_put_raises():
+    controller = _make_failing_controller()
+    controller.record = new_conversation_record(title="t")
+    initial_offset = controller.ui_offset
+
+    with pytest.raises(OSError):
+        await controller.save()
+
+    assert controller.ui_offset == initial_offset, (
+        "ui_offset must not advance when store.put() raises"
+    )
 
 
 @pytest.mark.anyio
@@ -7400,7 +7656,7 @@ class _NavFakeChat(_FakeChat):
     async def _send_action(self, action: Any) -> None:
         self.actions.append(dict(action))
 
-    async def clear_messages(self) -> None:
+    async def clear_messages(self, *, greeting: bool = False) -> None:
         self.cleared += 1
 
     async def _restore_bookmark_message(
@@ -8319,27 +8575,6 @@ async def test_on_response_saved_fires_when_new_data_is_saved():
 
 
 @pytest.mark.anyio
-async def test_switch_new_and_delete_do_not_settle_response_for_another_record():
-    controller, store, _chat = _make_nav_controller()
-    active = new_conversation_record(title="active")
-    target = new_conversation_record(title="target")
-    store.records[target.id] = target
-    controller.record = active
-    settled: list[str] = []
-
-    async def on_response_saved(record: ConversationRecord) -> None:
-        settled.append(record.id)
-
-    controller.on_response_saved = on_response_saved
-
-    await controller.switch_to(target.id)
-    await controller.new_chat()
-    await controller.delete(active.id)
-
-    assert settled == []
-
-
-@pytest.mark.anyio
 async def test_on_pre_switch_true_skips_in_session_swap():
     controller, store, chat = _make_nav_controller()
     target = new_conversation_record(title="other")
@@ -8456,6 +8691,7 @@ class _TrackingChat:
         self.actions: list[dict[str, Any]] = []
         self.cleared: bool = False
         self.set_greeting_calls: list[Any] = []
+        self._session = None
 
     def _messages_for_bookmark(self) -> list[dict[str, Any]]:
         return list(self.messages_)
@@ -8463,7 +8699,7 @@ class _TrackingChat:
     async def _send_action(self, action: Any) -> None:
         self.actions.append(action)
 
-    async def clear_messages(self) -> None:
+    async def clear_messages(self, *, greeting: bool = False) -> None:
         self.messages_ = []
         self.cleared = True
 
@@ -8480,15 +8716,15 @@ class _TrackingChat:
 
 class _TrackingAdapter:
     def __init__(self) -> None:
-        self.turns: list[dict[str, Any]] = []
+        self.turns: list[TurnDict] = []
 
-    def get_turns_json(self) -> list[dict[str, Any]]:
+    def get_turns_json(self) -> list[TurnDict]:
         return list(self.turns)
 
-    def get_turns_grouped(self) -> list[list[dict[str, Any]]]:
+    def get_turns_grouped(self) -> list[list[TurnDict]]:
         return [[t] for t in self.turns]
 
-    def set_turns_json(self, turns: list[dict[str, Any]]) -> None:
+    def set_turns_json(self, turns: list[TurnDict]) -> None:
         self.turns = list(turns)
 
     def client_info(self) -> dict[str, str]:
@@ -8546,13 +8782,11 @@ def _make_branched_controller() -> tuple[
 async def test_handle_navigate_switches_to_prev_sibling():
     controller, chat, adapter, store = _make_branched_controller()
 
-    # Message index 2 = n_0005 (the edited user message, sibling 2/2)
-    # Navigate "prev" -> switch to n_0003's branch
     await controller.handle_navigate(2, "prev")
 
     assert controller.record is not None
     assert controller.record.current_leaf == "n_0004"
-    assert [t["content"] for t in adapter.turns] == ["q1", "a1", "q2", "a2"]
+    assert [t.get("content") for t in adapter.turns] == ["q1", "a1", "q2", "a2"]
     assert chat.cleared
     assert len(chat.messages_) == 4
     assert len(store.put_calls) == 1
@@ -8566,12 +8800,11 @@ async def test_handle_navigate_switches_to_next_sibling():
     chat.cleared = False
     store.put_calls.clear()
 
-    # Now message index 2 = n_0003 (sibling 1/2); "next" -> back to n_0005's branch
     await controller.handle_navigate(2, "next")
 
     assert controller.record is not None
     assert controller.record.current_leaf == "n_0006"
-    assert [t["content"] for t in adapter.turns] == [
+    assert [t.get("content") for t in adapter.turns] == [
         "q1",
         "a1",
         "q2-edited",
@@ -8583,7 +8816,6 @@ async def test_handle_navigate_switches_to_next_sibling():
 async def test_handle_navigate_noop_at_boundary():
     controller, chat, adapter, store = _make_branched_controller()
 
-    # n_0005 is already the last sibling; "next" should be a no-op
     await controller.handle_navigate(2, "next")
 
     assert not chat.cleared
@@ -8657,33 +8889,28 @@ def _make_triple_branched_controller() -> tuple[
 async def test_handle_navigate_cycles_through_three_siblings():
     controller, chat, adapter, store = _make_triple_branched_controller()
 
-    # Message index 2 = n_0007 (3rd/last sibling, "q2-e2"). "prev" -> n_0005 ("q2-e1").
     await controller.handle_navigate(2, "prev")
     assert controller.record is not None
     assert controller.record.current_leaf == "n_0006"
-    assert [t["content"] for t in adapter.turns] == [
+    assert [t.get("content") for t in adapter.turns] == [
         "q1",
         "a1",
         "q2-e1",
         "a2-e1",
     ]
 
-    # From n_0005 (1st sibling), "prev" -> n_0003 ("q2", the original).
     await controller.handle_navigate(2, "prev")
     assert controller.record.current_leaf == "n_0004"
-    assert [t["content"] for t in adapter.turns] == ["q1", "a1", "q2", "a2"]
+    assert [t.get("content") for t in adapter.turns] == ["q1", "a1", "q2", "a2"]
 
-    # n_0003 is the first sibling: "prev" here must be a no-op.
     store.put_calls.clear()
     await controller.handle_navigate(2, "prev")
     assert controller.record.current_leaf == "n_0004"
     assert store.put_calls == []
 
-    # "next" twice walks back through n_0005 to n_0007, without corrupting
-    # either earlier branch's content.
     await controller.handle_navigate(2, "next")
     assert controller.record.current_leaf == "n_0006"
-    assert [t["content"] for t in adapter.turns] == [
+    assert [t.get("content") for t in adapter.turns] == [
         "q1",
         "a1",
         "q2-e1",
@@ -8692,14 +8919,13 @@ async def test_handle_navigate_cycles_through_three_siblings():
 
     await controller.handle_navigate(2, "next")
     assert controller.record.current_leaf == "n_0008"
-    assert [t["content"] for t in adapter.turns] == [
+    assert [t.get("content") for t in adapter.turns] == [
         "q1",
         "a1",
         "q2-e2",
         "a2-e2",
     ]
 
-    # n_0007 is the last (3rd) sibling: "next" here must be a no-op.
     store.put_calls.clear()
     await controller.handle_navigate(2, "next")
     assert controller.record.current_leaf == "n_0008"
@@ -8716,12 +8942,11 @@ async def test_handle_edit_truncates_and_signals_resubmit():
         msg("assistant"),
     ]
 
-    # Edit message at index 2 (n_0005) -> truncate to n_0002, signal resubmit
     await controller.handle_edit(2, "q2-re-edited")
 
     assert controller.record is not None
     assert controller.record.current_leaf == "n_0002"
-    assert [t["content"] for t in adapter.turns] == ["q1", "a1"]
+    assert [t.get("content") for t in adapter.turns] == ["q1", "a1"]
     assert chat.cleared
     assert len(chat.messages_) == 2
     update_actions = [
@@ -8804,21 +9029,17 @@ async def test_handle_edit_forks_from_a_multi_turn_tool_call_node():
         msg("assistant"),
     ]
 
-    # Message index 2 = n_0003 ("thanks"); its parent is n_0002, the
-    # 3-turn tool-call node.
     await controller.handle_edit(2, "thanks a lot")
 
     assert controller.record.current_leaf == "n_0002"
-    # All 4 turns from n_0001 + n_0002 must survive -- not just n_0002's
-    # last turn -- since path_turns() flattens per-node, not per-turn.
-    assert [t["content"] for t in adapter.turns] == [
+    assert [t.get("content") for t in adapter.turns] == [
         "weather?",
         "tool_request",
         "tool_result",
         "sunny",
     ]
     assert chat.cleared
-    assert len(chat.messages_) == 2  # n_0001's + n_0002's UI messages
+    assert len(chat.messages_) == 2
     update_actions = [
         a for a in chat.actions if a.get("type") == "update_input"
     ]
@@ -8961,3 +9182,462 @@ async def test_switch_to_resends_sibling_metadata_for_branched_conversation():
     assert len(sibling_actions) == 1
     # n_0005 (message index 2) is the active branch's fork point: 2nd of 2 siblings.
     assert sibling_actions[0]["data"] == {2: {"index": 1, "total": 2}}
+
+
+# ---------------------------------------------------------------------------
+# Turns-based restore
+# ---------------------------------------------------------------------------
+
+
+def _user_turn_dict(text: str) -> dict[str, Any]:
+    return {
+        "role": "user",
+        "contents": [{"content_type": "text", "text": text}],
+    }
+
+
+class _ToolTurnsAdapter:
+    """Adapter over a fixed chatlas tool-call exchange (user question, then
+    an assistant-request/user-result/assistant-final group)."""
+
+    def __init__(self) -> None:
+        self.user_turn = _user_turn_dict("weather?")
+        self.tool_group = chatlas_tool_group()
+
+    def get_turns_json(self) -> list[Any]:
+        return [self.user_turn, *self.tool_group]
+
+    def get_turns_grouped(self) -> list[list[Any]]:
+        return [[self.user_turn], self.tool_group]
+
+    def set_turns_json(self, turns: list[Any]) -> None:
+        pass
+
+    def client_info(self) -> dict[str, Any]:
+        return {}
+
+
+@pytest.mark.anyio
+async def test_on_response_stores_derived_ui_with_structured_blocks():
+    controller, _store = _make_controller()
+    controller.adapter = _ToolTurnsAdapter()  # type: ignore[assignment]
+
+    await controller.on_response()
+
+    record = controller.record
+    assert record is not None
+    path = record.path_node_ids()
+    assert len(path) == 2
+
+    asst_ui = record.nodes[path[1]].ui
+    assert asst_ui is not None and len(asst_ui) == 1
+    stored = asst_ui[0]
+    assert stored["version"] == STORED_UI_VERSION
+    assert stored["role"] == "assistant"
+    assert [s["type"] for s in stored["segments"] if "type" in s] == [
+        "tool_request",
+        "tool_result",
+    ]
+    assert stored["segments"][0]["tool_name"] == "get_weather"
+    assert stored["segments"][1]["value"] == "Sunny"
+    assert stored["segments"][2] == {
+        "content": "It's sunny.",
+        "content_type": "markdown",
+    }
+
+
+@pytest.mark.anyio
+async def test_replay_emits_derived_blocks_inline_in_segments():
+    from shiny.express._stub_session import ExpressStubSession
+    from shiny.session import session_context
+    from shinychat import Chat
+
+    with session_context(ExpressStubSession()):
+        chat = Chat(id="chat_replay_blocks")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        controller = HistoryController(
+            chat=chat,  # type: ignore[arg-type]
+            adapter=_ToolTurnsAdapter(),  # type: ignore[arg-type]
+            store=_RecordingStore(),
+            title_fn=None,
+            title_enabled=False,
+            client=None,
+        )
+        controller.partition = part()
+
+        await controller.on_response()
+        record = controller.record
+        assert record is not None
+
+        sent.clear()
+        await controller.replay_ui(record)
+
+    message_actions = [a for a in sent if a["type"] == "message"]
+    assert len(message_actions) == 2
+
+    asst_segments = message_actions[1]["message"]["segments"]
+    kinds = [s.get("type", "string") for s in asst_segments]
+    assert kinds == ["tool_request", "tool_result", "string"]
+    assert asst_segments[0]["request_id"] == "x"
+    assert asst_segments[1]["status"] == "success"
+    assert asst_segments[2] == {
+        "content": "It's sunny.",
+        "content_type": "markdown",
+    }
+
+
+@pytest.mark.anyio
+async def test_replay_discards_old_format_ui_and_rederives_from_turns():
+    rec = new_conversation_record(title="t")
+    rec.append_linear([_user_turn_dict("weather?")], ui=[msg("user")])
+    rec.append_linear(
+        chatlas_tool_group(),
+        ui=[
+            {
+                "role": "assistant",
+                "segments": [
+                    {"content": "It's sunny.", "content_type": "markdown"}
+                ],
+            }
+        ],
+    )
+
+    chat = _TrackingChat()
+    controller, _store = _make_controller()
+    controller.chat = chat  # type: ignore[assignment]
+
+    await controller.replay_ui(rec)
+
+    assert len(chat.messages_) == 2
+    assert chat.messages_[0]["version"] == STORED_UI_VERSION
+    assert chat.messages_[0]["segments"] == [
+        {"content": "weather?", "content_type": "markdown"}
+    ]
+    asst = chat.messages_[1]
+    assert asst["version"] == STORED_UI_VERSION
+    assert [s["type"] for s in asst["segments"] if "type" in s] == [
+        "tool_request",
+        "tool_result",
+    ]
+
+
+@pytest.mark.anyio
+async def test_attachment_message_round_trips_through_history():
+    attachment = {
+        "mime": "text/plain",
+        "name": "notes.txt",
+        "size": 5,
+        "data_url": "data:text/plain;base64,aGVsbG8=",
+    }
+    store = InMemoryConversationStore()
+    partition = part()
+
+    chat = _TrackingChat()
+    adapter = _TrackingAdapter()
+    controller = HistoryController(
+        chat=chat,  # type: ignore[arg-type]
+        adapter=adapter,  # type: ignore[arg-type]
+        store=store,
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+    )
+    controller.partition = partition
+    adapter.turns = [
+        {
+            "role": "user",
+            "contents": [
+                {"content_type": "text", "text": "See attached"},
+                {
+                    "content_type": "text",
+                    "text": (
+                        '<file-attachment name="notes.txt" '
+                        'type="text/plain">\n'
+                        "hello\n"
+                        "</file-attachment>"
+                    ),
+                },
+            ],
+        },
+        {"role": "assistant", "content": "Thanks"},
+    ]
+    chat.messages_ = [
+        {
+            "role": "user",
+            "segments": [
+                {"content": "See attached", "content_type": "markdown"}
+            ],
+            "attachments": [attachment],
+        },
+        {
+            "role": "assistant",
+            "segments": [{"content": "Thanks", "content_type": "markdown"}],
+        },
+    ]
+
+    await controller.on_response()
+    conversations = await store.list(partition)
+    assert len(conversations) == 1
+
+    restored_chat = _TrackingChat()
+    restored = HistoryController(
+        chat=restored_chat,  # type: ignore[arg-type]
+        adapter=_TrackingAdapter(),  # type: ignore[arg-type]
+        store=store,
+        title_fn=None,
+        title_enabled=False,
+        client=None,
+    )
+    restored.partition = partition
+    await restored.switch_to(conversations[0].id)
+
+    assert len(restored_chat.messages_) == 2
+    restored_user = restored_chat.messages_[0]
+    assert restored_user["role"] == "user"
+    assert restored_user["segments"] == [
+        {"content": "See attached", "content_type": "markdown"}
+    ]
+    assert restored_user["attachments"] == [attachment]
+    assert restored_chat.messages_[1]["segments"] == [
+        {"content": "Thanks", "content_type": "markdown"}
+    ]
+
+
+@pytest.mark.anyio
+async def test_replay_repairs_attachment_content_in_existing_record():
+    attachment = {
+        "mime": "text/plain",
+        "name": "notes.txt",
+        "size": 5,
+        "data_url": "data:text/plain;base64,aGVsbG8=",
+    }
+    rec = new_conversation_record(title="t")
+    rec.append_linear(
+        [],
+        ui=[
+            {
+                "version": STORED_UI_VERSION,
+                "role": "user",
+                "segments": [
+                    {
+                        "content": (
+                            "See attached\n\n"
+                            '<file-attachment name="notes.txt" '
+                            'type="text/plain">\n'
+                            "hello\n"
+                            "</file-attachment>"
+                        ),
+                        "content_type": "markdown",
+                    }
+                ],
+                "attachments": [attachment],
+            }
+        ],
+    )
+
+    chat = _TrackingChat()
+    controller, _store = _make_controller()
+    controller.chat = chat  # type: ignore[assignment]
+
+    await controller.replay_ui(rec)
+
+    assert chat.messages_ == [
+        {
+            "version": STORED_UI_VERSION,
+            "role": "user",
+            "segments": [
+                {"content": "See attached", "content_type": "markdown"}
+            ],
+            "attachments": [attachment],
+        }
+    ]
+
+
+@pytest.mark.anyio
+async def test_replay_preserves_cleaned_text_matching_pdf_filename():
+    attachment = {
+        "mime": "application/pdf",
+        "name": "report.pdf",
+        "size": 4,
+        "data_url": "data:application/pdf;base64,JVBERg==",
+    }
+    rec = new_conversation_record(title="t")
+    extend_record_linear(
+        rec,
+        [
+            [
+                {
+                    "role": "user",
+                    "contents": [
+                        {"content_type": "text", "text": "report.pdf"},
+                        {
+                            "content_type": "pdf",
+                            "data": "JVBERg==",
+                            "filename": "report.pdf",
+                        },
+                    ],
+                }
+            ]
+        ],
+        [
+            {
+                "role": "user",
+                "segments": [
+                    {"content": "report.pdf", "content_type": "markdown"}
+                ],
+                "attachments": [attachment],
+            }
+        ],
+        ui_offset=0,
+    )
+    stored = rec.nodes[rec.path_node_ids()[0]].ui
+    assert stored is not None
+    assert stored[0]["attachment_content_stripped"] is True
+
+    chat = _TrackingChat()
+    controller, _store = _make_controller()
+    controller.chat = chat  # type: ignore[assignment]
+
+    await controller.replay_ui(rec)
+    assert chat.messages_[0]["segments"] == [
+        {"content": "report.pdf", "content_type": "markdown"}
+    ]
+
+    await controller.replay_ui(rec)
+    assert chat.messages_[0]["segments"] == [
+        {"content": "report.pdf", "content_type": "markdown"}
+    ]
+
+
+@pytest.mark.anyio
+async def test_replay_falls_back_to_text_when_turns_missing():
+    rec = new_conversation_record(title="t")
+    node_id = rec.append_linear([], ui=None)
+
+    chat = _TrackingChat()
+    controller, _store = _make_controller()
+    controller.chat = chat  # type: ignore[assignment]
+
+    await controller.replay_ui(rec)
+
+    assert chat.messages_ == [
+        {
+            "version": STORED_UI_VERSION,
+            "role": "assistant",
+            "segments": [{"content": "", "content_type": "markdown"}],
+        }
+    ]
+    assert rec.nodes[node_id].ui is None
+
+
+@pytest.mark.anyio
+async def test_replay_rederives_text_only_when_ui_missing():
+    rec = new_conversation_record(title="t")
+    rec.append_linear([_user_turn_dict("hi")], ui=None)
+    rec.append_linear(
+        [
+            {
+                "role": "assistant",
+                "contents": [{"content_type": "text", "text": "hello"}],
+            }
+        ],
+        ui=None,
+    )
+
+    chat = _TrackingChat()
+    controller, _store = _make_controller()
+    controller.chat = chat  # type: ignore[assignment]
+
+    await controller.replay_ui(rec)
+
+    assert chat.messages_ == [
+        derived("user", "hi"),
+        derived("assistant", "hello"),
+    ]
+
+
+@pytest.mark.anyio
+async def test_out_of_band_message_survives_save_and_replay():
+    controller, _store = _make_controller()
+    chat = _TrackingChat()
+    controller.chat = chat  # type: ignore[assignment]
+    adapter = _ToolTurnsAdapter()
+    controller.adapter = adapter  # type: ignore[assignment]
+
+    note = {
+        "role": "assistant",
+        "segments": [
+            {
+                "content": "Note: rate limit reset.",
+                "content_type": "markdown",
+            }
+        ],
+    }
+    chat.messages_ = [msg("user"), msg("assistant"), note]
+
+    await controller.on_response()
+
+    record = controller.record
+    assert record is not None
+    path = record.path_node_ids()
+    leaf_ui = record.nodes[path[1]].ui
+    assert leaf_ui is not None and len(leaf_ui) == 2
+    assert leaf_ui[0]["version"] == STORED_UI_VERSION
+    assert leaf_ui[1] == note
+
+    chat.messages_ = []
+    await controller.replay_ui(record)
+
+    assert len(chat.messages_) == 3
+    assert chat.messages_[2] == note
+    assert [
+        s["type"] for s in chat.messages_[1]["segments"] if "type" in s
+    ] == [
+        "tool_request",
+        "tool_result",
+    ]
+
+
+@pytest.mark.anyio
+async def test_save_replay_continue_save_bookkeeping():
+    controller, store = _make_controller()
+    chat = _ReplayFakeChat()
+    controller.chat = chat  # type: ignore[assignment]
+    adapter = _GrowingFakeAdapter()
+    controller.adapter = adapter  # type: ignore[assignment]
+    adapter.turns = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+    ]
+
+    await controller.on_response()
+    assert len(store.put_calls) == 1
+    record = controller.record
+    assert record is not None
+
+    await controller.replay_ui(record)
+    assert controller.ui_offset == 2
+
+    await controller.on_response()
+    assert len(store.put_calls) == 1
+
+    adapter.turns += [
+        {"role": "user", "content": "more"},
+        {"role": "assistant", "content": "sure"},
+    ]
+    chat.messages = [
+        *chat.messages,
+        msg("user"),
+        msg("assistant"),
+    ]
+    await controller.on_response()
+    assert len(store.put_calls) == 2
+    assert len(record.path_node_ids()) == 4
+    new_node = record.nodes[record.path_node_ids()[3]]
+    assert new_node.ui == [derived("assistant", "sure")]

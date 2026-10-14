@@ -1,15 +1,16 @@
 import pytest
+from shinychat._history_client import TurnDict
 from shinychat._history_title import fallback_title, generate_title
 
 
 def test_fallback_title_truncates_first_user_message():
-    turns = [{"role": "user", "content": "x" * 100}]
+    turns: list[TurnDict] = [{"role": "user", "content": "x" * 100}]
     t = fallback_title(turns)
     assert t == "x" * 47 + "..."
 
 
 def test_fallback_title_chatlas_shape():
-    turns = [
+    turns: list[TurnDict] = [
         {
             "role": "user",
             "contents": [{"content_type": "text", "text": "show me penguins"}],
@@ -19,7 +20,7 @@ def test_fallback_title_chatlas_shape():
 
 
 def test_fallback_title_skips_non_user_and_empty_turns():
-    turns = [
+    turns: list[TurnDict] = [
         {"role": "assistant", "content": "hi there"},
         {"role": "user", "content": ""},
         {"role": "user", "content": "real question"},

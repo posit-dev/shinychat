@@ -936,6 +936,52 @@ describe("ChatDrawer", () => {
     }
   })
 
+  it("does not persist intermediate widths while the grid track animates", async () => {
+    const shell = document.createElement("shiny-chat-container")
+    const layout = document.createElement("div")
+    layout.className = "shiny-chat-layout"
+    shell.append(layout)
+    document.body.append(shell)
+    Object.defineProperty(shell, "getBoundingClientRect", {
+      value: () => ({ width: 1200 }),
+    })
+    Object.defineProperty(layout, "getBoundingClientRect", {
+      value: () => ({ width: 1200 }),
+    })
+    ResizeObserverStub.reset()
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub)
+
+    try {
+      const onWidthChange = vi.fn()
+      render(
+        <ShinyLifecycleContext.Provider value={lifecycle()}>
+          <ChatDrawer
+            drawer={drawer({ width: "400px" })}
+            titleId="drawer-title"
+            takeover={false}
+            closeButtonRef={createRef<HTMLButtonElement>()}
+            onClose={vi.fn()}
+            onWidthChange={onWidthChange}
+          />
+        </ShinyLifecycleContext.Provider>,
+        { container: layout },
+      )
+      const panel = screen.getByRole("complementary")
+      Object.defineProperty(panel, "getBoundingClientRect", {
+        value: () => ({ width: 320 }),
+      })
+
+      await act(async () => {
+        ResizeObserverStub.resize(layout, 1200)
+      })
+
+      expect(panel.style.getPropertyValue("--_drawer-width")).toBe("400px")
+      expect(onWidthChange).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it("does not clamp a CSS-takeover measurement before parent state updates", async () => {
     let layoutWidth = 1500
     const original = Object.getOwnPropertyDescriptor(

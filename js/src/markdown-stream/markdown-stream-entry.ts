@@ -2,12 +2,23 @@ import { createRoot, type Root } from "react-dom/client"
 import { createElement } from "react"
 import {
   MarkdownStream,
+  isWhitespaceTextSegment,
   type ContentSegment,
   type MarkdownStreamApi,
+  type StreamBlock,
+  type StreamSegment,
 } from "./MarkdownStream"
 import { ShinyLifecycleContext } from "../chat/context"
+import { asHtmlBlock, htmlBlockToRenderBlock } from "../chat/html-block-model"
+import {
+  appendWebActivityBlock,
+  asWebActivityWireBlock,
+  isWebActivityWireBlock,
+} from "../chat/web-activity-model"
 import { getShinyTransport } from "../transport/shiny-transport"
-import type { ContentType } from "../transport/types"
+import { parseJsonArray } from "../utils/json"
+import { DeferredTeardown } from "../utils/deferredTeardown"
+import type { ContentType, StructuredBlock } from "../transport/types"
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
 // Single shared transport instance for standalone markdown-stream usage
@@ -15,11 +26,14 @@ const transport = getShinyTransport()
 
 type ContentMessage = {
   id: string
-  content: string
+  /** String content. Absent when the message carries a structured `block`. */
+  content?: string
   operation: "append" | "replace"
   html_deps?: HtmlDep[]
   trusted: boolean
   segment_start: boolean
+  /** A structured block payload (a message carries `content` XOR `block`). */
+  block?: StructuredBlock
 }
 
 type IsStreamingMessage = {
@@ -37,17 +51,10 @@ class MarkdownStreamElement extends HTMLElement {
   private reactRoot: Root | null = null
   private api: MarkdownStreamApi | null = null
   private pendingMessages: (ContentMessage | IsStreamingMessage)[] = []
-  private pendingUnmount: ReturnType<typeof setTimeout> | null = null
+  private deferredTeardown = new DeferredTeardown()
 
   connectedCallback() {
-    // Moving the element in the DOM fires disconnectedCallback then
-    // connectedCallback synchronously in the same tick. The deferred teardown
-    // scheduled on disconnect hasn't run yet, so cancel it here to keep the
-    // live React root (and any streamed content) intact across the move.
-    if (this.pendingUnmount !== null) {
-      clearTimeout(this.pendingUnmount)
-      this.pendingUnmount = null
-    }
+    this.deferredTeardown.cancel()
 
     if (this.reactRoot) return
 
@@ -85,16 +92,12 @@ class MarkdownStreamElement extends HTMLElement {
   }
 
   disconnectedCallback() {
-    // Defer teardown so a move (disconnect immediately followed by reconnect)
-    // can cancel it. If the element is genuinely removed, no reconnect cancels
-    // the timer and cleanup runs on the next tick.
-    this.pendingUnmount = setTimeout(() => {
+    this.deferredTeardown.schedule(() => {
       this.reactRoot?.unmount()
       this.reactRoot = null
       this.api = null
       this.pendingMessages = []
-      this.pendingUnmount = null
-    }, 0)
+    })
   }
 
   handleMessage(message: ContentMessage | IsStreamingMessage) {
@@ -111,11 +114,23 @@ class MarkdownStreamElement extends HTMLElement {
       return
     }
 
+    if (message.block !== undefined) {
+      const block = asStreamBlock(message.block)
+      if (!block) return
+      if (message.operation === "replace") {
+        this.api!.replaceWithBlock(block)
+      } else {
+        this.api!.appendBlock(block)
+      }
+      return
+    }
+
+    const content = message.content ?? ""
     if (message.operation === "replace") {
-      this.api!.replaceContent(message.content, message.trusted === true)
+      this.api!.replaceContent(content, message.trusted === true)
     } else if (message.operation === "append") {
       this.api!.appendContent(
-        message.content,
+        content,
         message.trusted === true,
         message.segment_start === true,
       )
@@ -123,31 +138,74 @@ class MarkdownStreamElement extends HTMLElement {
   }
 }
 
+/** Validate and convert a structured block to the form the stream API accepts. */
+// Exported for tests: the stream-block allowlist test pins the exact set of
+// types this function accepts.
+export function asStreamBlock(block: StructuredBlock): StreamBlock | null {
+  if (isWebActivityWireBlock(block)) {
+    return asWebActivityWireBlock(block)
+  }
+  if ((block as { type?: unknown }).type === "html_block") {
+    const wire = asHtmlBlock(block)
+    return wire ? htmlBlockToRenderBlock(wire) : null
+  }
+  console.warn(
+    `Ignoring unsupported structured block in a markdown stream: ${String(
+      (block as { type?: unknown }).type,
+    )}`,
+  )
+  return null
+}
+
+/** Parse the `content-segments` attribute (JSON array of text/block entries). */
 function readInitialSegments(
   el: HTMLElement,
   fallbackContent: string,
-): ContentSegment[] | undefined {
+): StreamSegment[] | undefined {
   const encoded = el.getAttribute("content-segments")
   if (encoded === null) return undefined
 
-  try {
-    const value: unknown = JSON.parse(encoded)
-    if (
-      Array.isArray(value) &&
-      value.every(
-        (segment) =>
-          typeof segment === "object" &&
-          segment !== null &&
-          typeof (segment as Record<string, unknown>).text === "string" &&
-          typeof (segment as Record<string, unknown>).trusted === "boolean",
-      )
-    ) {
-      return value as ContentSegment[]
+  const value = parseJsonArray(encoded, "content-segments attribute")
+  // Malformed provenance. Fall back to the untrusted content.
+  if (value === null) return [{ text: fallbackContent, trusted: false }]
+
+  let segments: StreamSegment[] = []
+  for (const entry of value) {
+    if (isTextSegmentEntry(entry)) {
+      segments.push(entry)
+      continue
     }
-  } catch {
-    // Malformed provenance must fail closed.
+    if (isBlockEntry(entry)) {
+      const block = asStreamBlock(entry.block)
+      if (block) {
+        segments =
+          block.type === "html_block"
+            ? [...segments, block]
+            : appendWebActivityBlock(segments, block, isWhitespaceTextSegment)
+        continue
+      }
+    }
+    return [{ text: fallbackContent, trusted: false }]
   }
-  return [{ text: fallbackContent, trusted: false }]
+  return segments
+}
+
+function isTextSegmentEntry(value: unknown): value is ContentSegment {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).text === "string" &&
+    typeof (value as Record<string, unknown>).trusted === "boolean"
+  )
+}
+
+function isBlockEntry(value: unknown): value is { block: StructuredBlock } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).block === "object" &&
+    (value as Record<string, unknown>).block !== null
+  )
 }
 
 function attributeToPropertyName(name: string): string {

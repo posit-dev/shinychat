@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import math
 import os
 import re
 import warnings
@@ -57,7 +58,7 @@ from ._chat_normalize import (
     normalize_message_chunk,
 )
 from ._chat_segments import (
-    append_to_segments,
+    append_chunk_segments,
     has_mixed_content_types,
     segments_content,
     segments_deps,
@@ -74,10 +75,22 @@ from ._chat_types import (
     SerializedDep,
     SlashCommandDef,
     StoredMessage,
+    StoredSegment,
+    StringSegment,
+    _assemble_stored_message,
     chat_greeting,
+    flatten_segments_content,
+    initial_message_payload,
+    is_structured_segment,
+    serialize_html_deps,
 )
 from ._drawer import ChatDrawerController
 from ._history import ChatHistory, HistoryOptions
+from ._history_client import (
+    TurnsAdapter,
+    as_turns_adapter,
+    normalize_turn_group,
+)
 from ._history_types import (
     HISTORY_ERROR_STREAM_START,
     HISTORY_ERROR_STREAM_TERMINAL,
@@ -305,7 +318,12 @@ class Chat:
         client with empty turns is passed so the greeting can be LLM-generated
         without polluting conversation history.
     messages
-        Deprecated. Use `chat.ui(messages=...)` instead.
+        Deprecated. When non-empty startup messages are provided, they can't be
+        recorded by the conversation-history feature, so ``messages`` requires
+        ``history=False``. Use the ``greeting`` parameter for a startup
+        message, use ``.append_message()`` to replay messages from the server, or
+        set ``history=False`` if you're managing conversation state
+        yourself.
     on_error
         How to handle errors that occur in response to user input. When `"unhandled"`,
         the app will stop running when an error occurs. Otherwise, a notification
@@ -340,8 +358,18 @@ class Chat:
             raise TypeError("`id` must be a string.")
 
         if messages:
+            if history is not False:
+                raise ValueError(
+                    "`Chat(messages=...)` requires `history=False`: startup "
+                    "messages can't be recorded by the conversation-history "
+                    "feature. Use the `greeting` parameter for a startup "
+                    "message, use `.append_message()` to replay messages from the "
+                    "server, or set `history=False` if you're managing "
+                    "conversation state yourself."
+                )
             warn_deprecated(
-                "`Chat(messages=...)` is deprecated. Use `.ui(messages=...)` instead."
+                "`Chat(messages=...)` is deprecated and will be removed in a "
+                "future release. Use `.append_message()` instead."
             )
 
         if not isinstance(tokenizer, DEPRECATED_TYPE):
@@ -1002,9 +1030,11 @@ class Chat:
                 * To prevent interpreting as markdown, mark the string as
                   :class:`~shiny.ui.HTML`.
             * A UI element (specifically, a :class:`~shiny.ui.TagChild`).
-                * This includes :class:`~shiny.ui.TagList`, which take UI elements
-                  (including strings) as children. In this case, strings are still
-                  interpreted as markdown as long as they're not inside HTML.
+                * This includes :class:`~shiny.ui.TagList`, which takes UI elements
+                  (including strings) as children. TagList content is treated as
+                  HTML: strings inside it are literal text (HTML-escaped), not
+                  markdown. Use :class:`~shiny.ui.HTML` for trusted raw HTML
+                  strings.
             * A dictionary with `content` and `role` keys. The `content` key can contain
               content as described above, and the `role` key can be "assistant" or
               "user".
@@ -1395,7 +1425,6 @@ class Chat:
                 self._transcript._release_transaction(transaction)
 
         msg = normalize_message_chunk(message)
-        chunk_deps = msg.html_deps or []
         current_segments = self._transcript.stream_segments(stream_id)
 
         if operation == "replace":
@@ -1411,11 +1440,8 @@ class Chat:
                 )
             current_segments = self._transcript.stream_checkpoint(stream_id)
 
-        append_to_segments(
-            current_segments,
-            msg.content,
-            msg.content_type,
-            chunk_deps or None,
+        append_chunk_segments(
+            current_segments, msg, self._serialize_html_deps
         )
 
         stream_content = segments_content(current_segments)
@@ -1454,7 +1480,12 @@ class Chat:
             serialized_deps = self._serialize_html_deps(stream_deps)
             # A transformed chunk replaces the visible stream content, so its
             # wire spec owns every dependency accumulated by the source stream.
-            if serialized_deps and msg.segments:
+            string_segments = [
+                segment
+                for segment in msg.segments
+                if isinstance(segment, StoredSegment)
+            ]
+            if serialized_deps and string_segments:
                 transformed_deps = msg.html_deps or []
                 merged_deps = [
                     *serialized_deps,
@@ -1464,9 +1495,9 @@ class Chat:
                         if dep not in serialized_deps
                     ),
                 ]
-                for segment in msg.segments:
+                for segment in string_segments:
                     segment.html_deps = None
-                msg.segments[0].html_deps = merged_deps
+                string_segments[0].html_deps = merged_deps
 
         stored = self._as_stored_message(msg)
 
@@ -1482,7 +1513,10 @@ class Chat:
             # A terminal transformed message is a separate observable chunk
             # send. Commit it before sending chunk_end so a failed close cannot
             # erase content that reached the browser.
-            if any(segment.content for segment in stored.segments):
+            if any(
+                isinstance(segment, dict) or segment.content
+                for segment in stored.segments
+            ):
                 await self._transcript.transition_stream(
                     stream_id=stream_id,
                     source_segments=current_segments,
@@ -1530,9 +1564,11 @@ class Chat:
                 * To prevent interpreting as markdown, mark the string as
                   :class:`~shiny.ui.HTML`.
             * A UI element (specifically, a :class:`~shiny.ui.TagChild`).
-                * This includes :class:`~shiny.ui.TagList`, which take UI elements
-                  (including strings) as children. In this case, strings are still
-                  interpreted as markdown as long as they're not inside HTML.
+                * This includes :class:`~shiny.ui.TagList`, which takes UI elements
+                  (including strings) as children. TagList content is treated as
+                  HTML: strings inside it are literal text (HTML-escaped), not
+                  markdown. Use :class:`~shiny.ui.HTML` for trusted raw HTML
+                  strings.
             * A dictionary with `content` and `role` keys. The `content` key can contain
               content as described above, and the `role` key can be "assistant" or
               "user".
@@ -1742,9 +1778,10 @@ class Chat:
                 return ""
             async for msg in message:
                 await self._append_message_chunk(msg, chunk=True, stream_id=id)
-            # The string returned to the caller mirrors StoredMessage.content
-            # (thinking wrapped in <thinking> tags), not segments_content's bare join.
-            return "".join(str(s) for s in self._transcript.stream_segments(id))
+            # Same string spelling as the stored message's .content
+            return flatten_segments_content(
+                self._transcript.stream_segments(id)
+            )
         except asyncio.CancelledError:
             status = "cancelled"
             started = started or self._transcript.active_stream_id == id
@@ -1806,17 +1843,6 @@ class Chat:
         if message.role == "system":
             return False
 
-        # Bare segment content (no <thinking> wrapping): on the wire, thinking
-        # travels as raw text paired with content_type="thinking", and the
-        # client builds the thinking block from that type. StoredMessage.content
-        # is the flat-string form that re-wraps thinking in tags instead.
-        content = "".join(s.content for s in message.segments)
-        content_type = (
-            message.segments[-1].content_type
-            if message.segments
-            else "markdown"
-        )
-
         msg_payload: MessagePayload = {
             "role": message.role,
             "segments": message.wire_segments(),
@@ -1833,27 +1859,62 @@ class Chat:
             action: ChatAction = {"type": "chunk_start", "message": msg_payload}
             await self._send_action(action, message.html_deps)
         elif chunk == "end":
-            if content:
-                chunk_action: ChatAction = {
-                    "type": "chunk",
-                    "content": content,
-                    "operation": operation,
-                    "content_type": content_type,
-                }
-                await self._send_action(chunk_action, message.html_deps)
+            await self._send_wire_segment_actions(message, operation)
             await self._send_action({"type": "chunk_end"})
         elif chunk is True:
-            chunk_action = {
-                "type": "chunk",
-                "content": content,
-                "operation": operation,
-                "content_type": content_type,
-            }
-            await self._send_action(chunk_action, message.html_deps)
+            await self._send_wire_segment_actions(message, operation)
         else:
             action = {"type": "message", "message": msg_payload}
             await self._send_action(action, message.html_deps)
         return True
+
+    async def _send_block_inserts(self, message: StoredMessage) -> None:
+        """Send one ``block_insert`` action per structured block in the message."""
+        for block in message.blocks:
+            action: ChatAction = {"type": "block_insert", "block": block}
+            await self._send_action(action, message.html_deps)
+
+    async def _send_wire_segment_actions(
+        self,
+        message: StoredMessage,
+        operation: Literal["append", "replace"],
+    ) -> None:
+        """Send a message's wire segments as ordered actions.
+
+        String segments go as ``chunk`` actions, structured blocks as
+        ``block_insert`` actions. Segments are never collapsed into one
+        chunk: mixed content types must keep per-segment types, since one
+        chunk would stamp the whole concatenation with a single type.
+
+        Under replace semantics, a replace chunk supersedes the whole
+        in-flight message, so a leading empty replace chunk (the wipe) is
+        sent before all segments are emitted as appends."""
+        if operation == "replace":
+            wipe_action: ChatAction = {
+                "type": "chunk",
+                "content": "",
+                "operation": "replace",
+                "content_type": "markdown",
+            }
+            await self._send_action(wipe_action, message.html_deps)
+            operation = "append"
+        for seg in message.wire_segments():
+            if is_structured_segment(seg):
+                block_action: ChatAction = {
+                    "type": "block_insert",
+                    "block": seg,
+                }
+                await self._send_action(block_action, message.html_deps)
+            else:
+                string_seg = cast(StringSegment, seg)
+                if string_seg["content"]:
+                    chunk_action: ChatAction = {
+                        "type": "chunk",
+                        "content": string_seg["content"],
+                        "operation": operation,
+                        "content_type": string_seg["content_type"],
+                    }
+                    await self._send_action(chunk_action, message.html_deps)
 
     def _messages_for_bookmark(self) -> list[dict[str, Any]]:
         """Return server-owned message specs for bookmark persistence."""
@@ -1864,10 +1925,6 @@ class Chat:
                 message.pop("attachments", None)
             dumps.append(message)
         return dumps
-
-    def _messages_for_history(self) -> list[dict[str, Any]]:
-        """Return server-owned message specs for history persistence."""
-        return self._messages_for_bookmark()
 
     def _on_response_settled(
         self, callback: ResponseSettlementCallback
@@ -2089,6 +2146,32 @@ class Chat:
                 transaction=transaction,
             )
 
+    async def _restore_turns_ui(self, adapter: "TurnsAdapter") -> None:
+        """Re-derive and append UI messages from the client's current turns.
+
+        Each turn group is merged and run through ``normalize_message``, so
+        structured blocks are reconstructed from the turns rather than
+        re-parsed from persisted UI markup. ``transform_assistant_response``
+        does not run on restore.
+        """
+        for group in adapter.get_turns_grouped():
+            msg = normalize_turn_group(group)
+            if msg is None:
+                continue
+            stored = self._as_stored_message(msg)
+            async with self._destructive_history_mutation() as transaction:
+                entry = TranscriptEntry(message=stored)
+
+                async def send(stored: StoredMessage = stored) -> bool:
+                    return await self._send_append_message(stored)
+
+                await self._transcript.append(
+                    entry,
+                    exchange_id=self._transcript.open_exchange_id,
+                    send=send,
+                    transaction=transaction,
+                )
+
     def transform_user_input(self, *args: object, **kwargs: object) -> object:
         raise TypeError(
             "`.transform_user_input()` has been removed. "
@@ -2184,11 +2267,14 @@ class Chat:
         if content is None:
             return None
 
+        # Reuse res.blocks: its html_deps are already session-processed,
+        # unlike message.blocks (raw as_dict() deps).
         return StoredMessage.from_chat_message(
             ChatMessage(
                 content=content,
                 role=res.role,
                 attachments=message.attachments,
+                blocks=list(res.blocks),
             ),
             html_deps=res.html_deps,
         )
@@ -2202,12 +2288,7 @@ class Chat:
     def _serialize_html_deps(
         self, deps: list[HTMLDependency] | None
     ) -> list[SerializedDep] | None:
-        if not deps:
-            return None
-        if self._session is None:
-            return None
-        processed = self._session._process_ui(TagList(*deps))
-        return cast(list[SerializedDep], processed["deps"])
+        return serialize_html_deps(deps, self._session)
 
     def _as_stored_message(
         self,
@@ -2216,8 +2297,7 @@ class Chat:
         if isinstance(message, StoredMessage):
             return message
 
-        html_deps = self._serialize_html_deps(message.html_deps)
-        return StoredMessage.from_chat_message(message, html_deps=html_deps)
+        return _assemble_stored_message(message, self._serialize_html_deps)
 
     def _record_accepted_user_input(
         self,
@@ -2395,7 +2475,13 @@ class Chat:
 
     async def clear_messages(self, *, greeting: bool = False):
         """
-        Clear all chat messages.
+        Clear all rendered chat messages.
+
+        This is a UI-level primitive. It does not reset the underlying
+        client's turns or the conversation-history controller. When a chat
+        was created with a client and conversation history is enabled, use
+        ``await chat.client.new_chat()`` for a coordinated new-conversation
+        reset.
 
         Parameters
         ----------
@@ -2722,6 +2808,14 @@ class Chat:
                 "`async def set_state(self, value: Jsonifiable)` (which should restore the `client=`'s state given the `state=`)."
             )
 
+        # Turns-capable clients re-derive the UI from the client's turns on
+        # restore; persisted UI state in old bookmarks is ignored.
+        turns_adapter: TurnsAdapter | None = None
+        try:
+            turns_adapter = as_turns_adapter(client)
+        except ValueError:
+            turns_adapter = None
+
         # Reset prior bookmarking hooks
         self._destroy_bookmarking()
 
@@ -2787,6 +2881,9 @@ class Chat:
 
         @root_session.bookmark.on_bookmark
         def _on_bookmark_ui(state: BookmarkState):
+            if turns_adapter is not None:
+                # UI is re-derived from the client's turns on restore.
+                return
             if resolved_bookmark_id_msgs_str in state.values:
                 raise ValueError(
                     f'Bookmark value with id (`"{resolved_bookmark_id_msgs_str}"`) already exists.'
@@ -2823,6 +2920,14 @@ class Chat:
             # calling `self._init_chat.destroy()` above
 
             async with self._destructive_history_mutation() as transaction:
+                if turns_adapter is not None:
+                    # Re-derive the UI from the client's turns.
+                    if resolved_bookmark_id_str not in state.values:
+                        await self._append_init_messages(transaction)
+                        return
+                    await self._restore_turns_ui(turns_adapter)
+                    return
+
                 if resolved_bookmark_id_msgs_str not in state.values:
                     # If no messages to restore, display the `__init__(messages=)` messages
                     await self._append_init_messages(transaction)
@@ -2867,11 +2972,13 @@ class ChatExpress(Chat):
     def ui(
         self,
         *,
-        messages: Optional[
-            Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
-        ] = None,
         greeting: Optional[Union[str, HTML, Tag, TagList, ChatGreeting]] = None,
         placeholder: str = "Enter a message...",
+        drawer: bool | ChatDrawer = True,
+        footer: Optional[TagChild] = None,
+        toolbar_input: Optional[TagChild] = None,
+        show_history: bool = True,
+        show_thinking_after_s: float = 0,
         width: "CssUnit" = "min(clamp(680px, 50vw, 760px), 100%)",
         height: "CssUnit" = "auto",
         fill: bool = True,
@@ -2880,11 +2987,10 @@ class ChatExpress(Chat):
         enable_cancel: "bool | MISSING_TYPE" = MISSING,
         submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
         allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
-        toolbar_input: Optional[TagChild] = None,
-        footer: Optional[TagChild] = None,
         tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
-        drawer: bool | ChatDrawer = True,
-        show_history: bool = True,
+        messages: Optional[
+            Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
+        ] = None,
         **kwargs: TagAttrValue,
     ) -> Tag:
         """
@@ -2893,10 +2999,7 @@ class ChatExpress(Chat):
         Parameters
         ----------
         messages
-            A sequence of messages to display in the chat. Each message can be either a
-            string or a dictionary with `content` and `role` keys. The `content` key
-            should contain the message text, and the `role` key can be "assistant" or
-            "user".
+            Deprecated.
         greeting
             An optional greeting to display at the top of the chat before any conversation
             messages. Can be a markdown string or a :func:`~shinychat.chat_greeting`
@@ -3000,6 +3103,11 @@ class ChatExpress(Chat):
             configuration.
         show_history
             Whether to render the chat's built-in history selector.
+        show_thinking_after_s
+            Minimum seconds a contiguous thinking block must run before it is
+            displayed. ``0`` (the default) displays thinking immediately;
+            positive values hide shorter blocks, and negative values always
+            hide thinking. Values must not exceed 60 seconds.
         kwargs
             Additional attributes for the chat container element.
         """
@@ -3009,9 +3117,13 @@ class ChatExpress(Chat):
         # (see `_setup_client`). Forward the tri-state and let the client decide.
         return chat_ui(
             id=self.id,
-            messages=messages,
             greeting=greeting,
             placeholder=placeholder,
+            drawer=drawer,
+            footer=footer,
+            toolbar_input=toolbar_input,
+            show_history=show_history,
+            show_thinking_after_s=show_thinking_after_s,
             width=width,
             height=height,
             fill=fill,
@@ -3020,11 +3132,8 @@ class ChatExpress(Chat):
             enable_cancel=enable_cancel,
             submit_key=submit_key,
             allow_attachments=allow_attachments,
-            toolbar_input=toolbar_input,
-            footer=footer,
             tool_grouping=tool_grouping,
-            drawer=drawer,
-            show_history=show_history,
+            messages=messages,
             **kwargs,
         )
 
@@ -3132,11 +3241,13 @@ def _container_style(width: "str | None", height: "str | None") -> "str | None":
 def chat_ui(
     id: str,
     *,
-    messages: Optional[
-        Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
-    ] = None,
     greeting: Optional[Union[str, HTML, Tag, TagList, ChatGreeting]] = None,
     placeholder: str = "Enter a message...",
+    drawer: bool | ChatDrawer = True,
+    footer: Optional[TagChild] = None,
+    toolbar_input: Optional[TagChild] = None,
+    show_history: bool = True,
+    show_thinking_after_s: float = 0,
     width: "CssUnit" = "min(clamp(680px, 50vw, 760px), 100%)",
     height: "CssUnit" = "auto",
     fill: bool = True,
@@ -3145,11 +3256,10 @@ def chat_ui(
     enable_cancel: "bool | MISSING_TYPE" = MISSING,
     submit_key: 'Literal["enter", "enter+modifier"]' = "enter",
     allow_attachments: "bool | list[str] | MISSING_TYPE" = MISSING,
-    toolbar_input: Optional[TagChild] = None,
-    footer: Optional[TagChild] = None,
     tool_grouping: 'Literal["none", "tool", "all"]' = "tool",
-    drawer: bool | ChatDrawer = True,
-    show_history: bool = True,
+    messages: Optional[
+        Iterable[str | TagChild | ChatMessageDict | ChatMessage | Any]
+    ] = None,
     **kwargs: TagAttrValue,
 ) -> Tag:
     """
@@ -3164,18 +3274,30 @@ def chat_ui(
     id
         A unique identifier for the chat UI.
     messages
-        A sequence of messages to display in the chat. A given message can be one of the
-        following:
+        Deprecated. Non-empty startup messages can't be recorded by the
+        conversation-history feature. Use ``greeting`` for a startup message,
+        use ``.append_message()`` to replay messages from the server, or set
+        ``history=False`` on the server-side :class:`~shinychat.Chat` if
+        you're managing conversation state yourself.
+
+        A sequence of messages to display in the chat. A given message can be
+        one of the following:
 
         * A string, which is interpreted as markdown and rendered to HTML on the client.
             * To prevent interpreting as markdown, mark the string as
               :class:`~shiny.ui.HTML`.
         * A UI element (specifically, a :class:`~shiny.ui.TagChild`).
-            * This includes :class:`~shiny.ui.TagList`, which take UI elements
-              (including strings) as children. In this case, strings are still
-              interpreted as markdown as long as they're not inside HTML.
+            * This includes :class:`~shiny.ui.TagList`, which takes UI elements
+              (including strings) as children. TagList content is treated as
+              HTML: strings inside it are literal text (HTML-escaped), not
+              markdown. Use :class:`~shiny.ui.HTML` for trusted raw HTML strings.
         * A dictionary with `content` and `role` keys. The `content` key can contain a
           content as described above, and the `role` key can be "assistant" or "user".
+        * Advanced: to interleave markdown and UI in one message, construct a
+          :class:`~shinychat.types.ChatMessage` with ``parts=[...]`` — an
+          ordered list of bare strings (markdown segments) and structured
+          block dicts. This segment API is provisional and may change in a
+          future release.
         * More generally, any type registered with :func:`shinychat.message_content`.
 
         **NOTE:** content may include specially formatted **input suggestion** links
@@ -3217,7 +3339,7 @@ def chat_ui(
         container or any ancestor:
 
         * ``--shiny-chat-btn-send-size`` -- button width and height (default ``24px``)
-        * ``--shiny-chat-input-icon-size`` -- icon size, shared with the attach button (default ``18px``)
+        * ``--shiny-chat-input-icon-size`` -- icon size, shared with the attach button (default ``22px``)
         * ``--shiny-chat-btn-send-bg`` -- button background (default: state color)
         * ``--shiny-chat-btn-send-color`` -- icon color (default: ``#fff``)
         * ``--shiny-chat-btn-send-border`` -- button border (default: ``none``)
@@ -3316,12 +3438,33 @@ def chat_ui(
         configuration.
     show_history
         Whether to render the chat's built-in history selector.
+    show_thinking_after_s
+        Minimum seconds a contiguous thinking block must run before it is
+        displayed. ``0`` (the default) displays thinking immediately. A
+        positive value delays display until the block reaches that duration;
+        shorter blocks remain hidden. A negative value always hides thinking.
+        Values must not exceed 60 seconds.
+
+        The duration is measured in the browser while a response streams.
+        Preloaded or restored thinking has no measured duration, so it is
+        displayed only when this value is ``0``.
     kwargs
         Additional attributes for the chat container element.
     """
+    from shiny._deprecated import warn_deprecated
     from shiny.module import resolve_id
     from shiny.ui.css import as_css_unit
     from shiny.ui.fill import as_fill_item, as_fillable_container
+
+    if messages:
+        warn_deprecated(
+            "`chat_ui(messages=...)` is deprecated. Startup messages can't "
+            "be recorded by the conversation-history feature. Use "
+            "`greeting=` for a startup message, `Chat.append_message()` to replay "
+            "messages from the server, or set `history=False` on "
+            "the server-side `Chat` if you're managing conversation state "
+            "yourself."
+        )
 
     id = resolve_id(id)
 
@@ -3332,6 +3475,20 @@ def chat_ui(
         raise ValueError(
             '`tool_grouping` must be one of "none", "tool", or "all", '
             f"not {tool_grouping!r}."
+        )
+    if (
+        isinstance(show_thinking_after_s, bool)
+        or not isinstance(show_thinking_after_s, (int, float))
+        or not math.isfinite(show_thinking_after_s)
+    ):
+        raise TypeError(
+            "`show_thinking_after_s` must be a finite number of seconds, "
+            f"not {show_thinking_after_s!r}."
+        )
+    if show_thinking_after_s > 60:
+        raise ValueError(
+            "`show_thinking_after_s` must not exceed 60 seconds, "
+            f"not {show_thinking_after_s!r}."
         )
 
     if not isinstance(drawer, (bool, ChatDrawer)):
@@ -3361,22 +3518,37 @@ def chat_ui(
         icon_send_deps = icon_send.get_dependencies()
 
     message_tags: list[Tag] = []
+    initial_messages_attr: Optional[str] = None
+    initial_message_deps: list[HTMLDependency] = []
     if messages is None:
         messages = []
-    for x in messages:
-        msg = normalize_message(x)
-        message_tags.append(
-            Tag(
-                "shiny-chat-message",
-                *msg.html_deps,
-                content=msg.content,
-                # The assistant default must not leak onto user messages, which
-                # render `message.icon` directly (no assistant fallback chain).
-                icon=icon_attr if msg.role != "user" else None,
-                data_role=msg.role,
-                content_type=msg.content_type,
+    normalized_messages = [normalize_message(x) for x in messages]
+    if any(msg.blocks for msg in normalized_messages):
+        # Block-carrying messages can't use static <shiny-chat-message> tags;
+        # embed the whole list as JSON in `data-initial-messages` so the
+        # client replays it through the same path as server-sent messages.
+        # Html deps attach to the container tag below, not the JSON.
+        initial_entries: list[dict[str, Any]] = []
+        for msg in normalized_messages:
+            entry, deps = initial_message_payload(msg)
+            # The assistant-icon default must not leak onto user messages.
+            if msg.role != "user" and icon_attr is not None:
+                entry["icon"] = icon_attr
+            initial_entries.append(entry)
+            initial_message_deps.extend(deps)
+        initial_messages_attr = json.dumps(initial_entries)
+    else:
+        for msg in normalized_messages:
+            message_tags.append(
+                Tag(
+                    "shiny-chat-message",
+                    *msg.html_deps,
+                    content=msg.content,
+                    icon=icon_attr if msg.role != "user" else None,
+                    data_role=msg.role,
+                    content_type=msg.content_type,
+                )
             )
-        )
 
     toolbar_tag = None
     if toolbar_input is not None:
@@ -3438,6 +3610,7 @@ def chat_ui(
     res = Tag(
         "shiny-chat-container",
         *greeting_deps,
+        *initial_message_deps,
         Tag("shiny-chat-messages", *message_tags),
         Tag(
             "shiny-chat-input",
@@ -3455,6 +3628,7 @@ def chat_ui(
         placeholder=placeholder,
         fill=fill,
         greeting=greeting_attr,
+        data_initial_messages=initial_messages_attr,
         aside_favicon=aside_favicon_attr,
         enable_cancel=enable_cancel_attr,
         allow_attachments=allow_attachments_attr,
@@ -3467,6 +3641,9 @@ def chat_ui(
         icon_send=icon_send_attr,
         submit_key=submit_key if submit_key != "enter" else None,
         tool_grouping=tool_grouping if tool_grouping != "tool" else None,
+        show_thinking_after_s=(
+            str(show_thinking_after_s) if show_thinking_after_s != 0 else None
+        ),
         show_history="false" if not show_history else None,
         **kwargs,
     )

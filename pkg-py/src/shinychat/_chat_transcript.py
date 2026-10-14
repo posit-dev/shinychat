@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from typing import Literal
 
 from . import _utils
-from ._chat_segments import copy_segments
-from ._chat_types import ContentSegment, StoredMessage, StoredSegment
+from ._chat_segments import StreamSegment, copy_segments
+from ._chat_types import StoredMessage, StoredSegment
 
 AsyncCommitSend = Callable[[], Awaitable[bool]]
 AsyncActionSend = Callable[[], Awaitable[None]]
@@ -48,8 +48,8 @@ class TranscriptEntry:
 class _InFlightStream:
     id: str
     entry: TranscriptEntry
-    source_segments: list[ContentSegment]
-    checkpoint: list[ContentSegment]
+    source_segments: list[StreamSegment]
+    checkpoint: list[StreamSegment]
     owner_task: object | None
 
 
@@ -205,18 +205,18 @@ class ChatTranscript:
             if release:
                 self._release_transaction(transaction)
 
-    def stream_segments(self, stream_id: str) -> list[ContentSegment]:
+    def stream_segments(self, stream_id: str) -> list[StreamSegment]:
         """Return a defensive source-segment snapshot for an active stream."""
         stream = self._require_stream(stream_id)
         return copy_segments(stream.source_segments)
 
-    def stream_checkpoint(self, stream_id: str) -> list[ContentSegment]:
+    def stream_checkpoint(self, stream_id: str) -> list[StreamSegment]:
         """Return a defensive replacement checkpoint for an active stream."""
         stream = self._require_stream(stream_id)
         return copy_segments(stream.checkpoint)
 
     def set_stream_checkpoint(
-        self, stream_id: str, checkpoint: list[ContentSegment]
+        self, stream_id: str, checkpoint: Sequence[StreamSegment]
     ) -> None:
         """Set the replacement checkpoint for an active stream context."""
         stream = self._require_stream(stream_id)
@@ -229,7 +229,7 @@ class ChatTranscript:
         self,
         *,
         stream_id: str,
-        source_segments: list[ContentSegment],
+        source_segments: Sequence[StreamSegment],
         message: StoredMessage,
         operation: Literal["append", "replace"],
         send: AsyncCommitSend,
@@ -253,7 +253,7 @@ class ChatTranscript:
             self._release_transaction(transaction)
 
     def commit_stream_source(
-        self, stream_id: str, source_segments: list[ContentSegment]
+        self, stream_id: str, source_segments: Sequence[StreamSegment]
     ) -> None:
         """Commit transformed-away source without changing the displayed entry."""
         stream = self._require_stream(stream_id)
@@ -269,7 +269,7 @@ class ChatTranscript:
         status: StreamStatus | None,
         error: str | None,
         send: AsyncCommitSend,
-        source_segments: list[ContentSegment] | None = None,
+        source_segments: Sequence[StreamSegment] | None = None,
         message: StoredMessage | None = None,
         operation: Literal["append", "replace"] = "append",
     ) -> bool:
@@ -467,27 +467,37 @@ class ChatTranscript:
                 *prior_deps,
                 *(dep for dep in replacement_deps if dep not in prior_deps),
             ]
-            if merged_deps and message.segments:
-                for segment in message.segments:
+            string_segments = [
+                segment
+                for segment in message.segments
+                if isinstance(segment, StoredSegment)
+            ]
+            if merged_deps and string_segments:
+                for segment in string_segments:
                     segment.html_deps = None
-                message.segments[0].html_deps = merged_deps
+                string_segments[0].html_deps = merged_deps
             entry.message = message
             return
 
         target = entry.message
+        first = target.segments[0] if target.segments else None
         if (
             len(target.segments) == 1
-            and target.segments[0].content == ""
+            and isinstance(first, StoredSegment)
+            and first.content == ""
             and not target.attachments
         ):
             target.segments = []
         for segment in message.segments:
-            if (
-                target.segments
-                and target.segments[-1].content_type == segment.content_type
-                and target.segments[-1].html_deps == segment.html_deps
+            last = target.segments[-1] if target.segments else None
+            if not isinstance(segment, StoredSegment):
+                target.segments.append(segment)
+            elif (
+                isinstance(last, StoredSegment)
+                and last.content_type == segment.content_type
+                and last.html_deps == segment.html_deps
             ):
-                target.segments[-1].content += segment.content
+                last.content += segment.content
             else:
                 target.segments.append(
                     StoredSegment(

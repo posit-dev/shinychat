@@ -34,11 +34,7 @@ import {
   processFile,
   type AttachmentPayload,
 } from "../../src/chat/attachments"
-import {
-  ChatDispatchContext,
-  ChatSubmitContext,
-  type SubmitUserInput,
-} from "../../src/chat/context"
+import { ChatDispatchContext } from "../../src/chat/context"
 import type { ChatTransport } from "../../src/transport/types"
 import { HistoryStore } from "../../src/chat/historyStore"
 import { createRef, type RefObject } from "react"
@@ -69,32 +65,6 @@ function createMockTransport(): ChatTransport {
   }
 }
 
-// Mirrors ChatApp's real submitUserInput: dispatches INPUT_SENT and sends the
-// wire-shaped input via transport.sendInput. Tests assert against `dispatch`
-// and `transport.sendInput`, so this stub must match production behavior
-// closely enough for those assertions to hold without re-deriving ChatApp
-// state here.
-function makeSubmitUserInput(
-  dispatch: (action: unknown) => void,
-  transport: ChatTransport,
-  inputId: string,
-  enableUpload: boolean,
-): SubmitUserInput {
-  return (content: string, attachments: AttachmentPayload[]): boolean => {
-    dispatch({
-      type: "INPUT_SENT",
-      content,
-      role: "user",
-      ...(attachments.length > 0 ? { attachments } : {}),
-    })
-    transport.sendInput(
-      inputId,
-      enableUpload ? { text: content, attachments } : content,
-    )
-    return true
-  }
-}
-
 function renderChatInput(
   props: Partial<{
     inputId: string
@@ -112,7 +82,6 @@ function renderChatInput(
     isStreaming: boolean
     onCancel: () => void
     iconSend: string
-    submitUserInput: SubmitUserInput
     slashCommandId: string
     slashCommands: Array<{
       name: string
@@ -128,43 +97,38 @@ function renderChatInput(
   const inputId = props.inputId ?? "test-input"
   const enableUpload = props.enableUpload ?? true
   const historyStore = props.historyStore ?? new HistoryStore(inputId)
-  const submitUserInput =
-    props.submitUserInput ??
-    makeSubmitUserInput(dispatch, transport, inputId, enableUpload)
 
   const result = render(
     <ChatDispatchContext.Provider value={dispatch}>
-      <ChatSubmitContext.Provider value={submitUserInput}>
-        <ChatInput
-          ref={internalRef}
-          transport={transport}
-          inputId={inputId}
-          uploadAccept={
-            props.uploadAccept ?? [
-              "image/png",
-              "image/jpeg",
-              "image/gif",
-              "image/webp",
-              "application/pdf",
-            ]
-          }
-          maxUploadSize={props.maxUploadSize ?? 30_000_000}
-          disabled={props.disabled ?? false}
-          historyStore={historyStore}
-          submissionBlocked={props.submissionBlocked}
-          placeholder={props.placeholder ?? "Type here..."}
-          onSend={props.onSend}
-          userMessages={props.userMessages ?? []}
-          enableCancel={props.enableCancel}
-          enableUpload={enableUpload}
-          cancelRequested={props.cancelRequested}
-          isStreaming={props.isStreaming}
-          onCancel={props.onCancel}
-          iconSend={props.iconSend}
-          slashCommandId={props.slashCommandId}
-          slashCommands={props.slashCommands}
-        />
-      </ChatSubmitContext.Provider>
+      <ChatInput
+        ref={internalRef}
+        transport={transport}
+        inputId={inputId}
+        uploadAccept={
+          props.uploadAccept ?? [
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+            "image/webp",
+            "application/pdf",
+          ]
+        }
+        maxUploadSize={props.maxUploadSize ?? 30_000_000}
+        disabled={props.disabled ?? false}
+        historyStore={historyStore}
+        submissionBlocked={props.submissionBlocked}
+        placeholder={props.placeholder ?? "Type here..."}
+        onSend={props.onSend}
+        userMessages={props.userMessages ?? []}
+        enableCancel={props.enableCancel}
+        enableUpload={enableUpload}
+        cancelRequested={props.cancelRequested}
+        isStreaming={props.isStreaming}
+        onCancel={props.onCancel}
+        iconSend={props.iconSend}
+        slashCommandId={props.slashCommandId}
+        slashCommands={props.slashCommands}
+      />
     </ChatDispatchContext.Provider>,
   )
 
@@ -266,9 +230,9 @@ describe("ChatInput", () => {
 
   it("preserves draft and attachments when live submission admission rejects", async () => {
     const onSend = vi.fn()
-    const submitUserInput = vi.fn<SubmitUserInput>(() => false)
-    const { editorEl, ref } = renderChatInput({
-      submitUserInput,
+    const historyStore = new HistoryStore("live-admission")
+    const { editorEl, ref, dispatch, transport } = renderChatInput({
+      historyStore,
       onSend,
     })
 
@@ -290,11 +254,11 @@ describe("ChatInput", () => {
       })
     })
 
+    historyStore.seedCompletionV2TransitionProtocol()
     fireEvent.click(screen.getByRole("button", { name: "Send message" }))
 
-    expect(submitUserInput).toHaveBeenCalledWith("draft", [
-      expect.objectContaining({ name: "draft.png", mime: "image/png" }),
-    ])
+    expect(dispatch).not.toHaveBeenCalled()
+    expect(transport.sendInput).not.toHaveBeenCalled()
     expect(editorEl.textContent).toBe("draft")
     expect(
       screen.getByRole("img", { name: "Attached image: draft.png" }),
@@ -500,34 +464,25 @@ describe("ChatInput", () => {
       const ref = createRef<ChatInputHandle>()
       const dispatch = vi.fn()
       const transport = createMockTransport()
-      const submitUserInput = makeSubmitUserInput(
-        dispatch,
-        transport,
-        "test-input",
-        false,
-      )
-
       const { rerender } = render(
         <ChatDispatchContext.Provider value={dispatch}>
-          <ChatSubmitContext.Provider value={submitUserInput}>
-            <ChatInput
-              ref={ref}
-              transport={transport}
-              inputId="test-input"
-              historyStore={new HistoryStore("test-input")}
-              uploadAccept={[
-                "image/png",
-                "image/jpeg",
-                "image/gif",
-                "image/webp",
-                "application/pdf",
-              ]}
-              maxUploadSize={30_000_000}
-              disabled={true}
-              placeholder="Type here..."
-              userMessages={[]}
-            />
-          </ChatSubmitContext.Provider>
+          <ChatInput
+            ref={ref}
+            transport={transport}
+            inputId="test-input"
+            historyStore={new HistoryStore("test-input")}
+            uploadAccept={[
+              "image/png",
+              "image/jpeg",
+              "image/gif",
+              "image/webp",
+              "application/pdf",
+            ]}
+            maxUploadSize={30_000_000}
+            disabled={true}
+            placeholder="Type here..."
+            userMessages={[]}
+          />
         </ChatDispatchContext.Provider>,
       )
 
@@ -538,25 +493,23 @@ describe("ChatInput", () => {
 
       rerender(
         <ChatDispatchContext.Provider value={dispatch}>
-          <ChatSubmitContext.Provider value={submitUserInput}>
-            <ChatInput
-              ref={ref}
-              transport={transport}
-              inputId="test-input"
-              historyStore={new HistoryStore("test-input")}
-              uploadAccept={[
-                "image/png",
-                "image/jpeg",
-                "image/gif",
-                "image/webp",
-                "application/pdf",
-              ]}
-              maxUploadSize={30_000_000}
-              disabled={false}
-              placeholder="Type here..."
-              userMessages={[]}
-            />
-          </ChatSubmitContext.Provider>
+          <ChatInput
+            ref={ref}
+            transport={transport}
+            inputId="test-input"
+            historyStore={new HistoryStore("test-input")}
+            uploadAccept={[
+              "image/png",
+              "image/jpeg",
+              "image/gif",
+              "image/webp",
+              "application/pdf",
+            ]}
+            maxUploadSize={30_000_000}
+            disabled={false}
+            placeholder="Type here..."
+            userMessages={[]}
+          />
         </ChatDispatchContext.Provider>,
       )
 
@@ -805,7 +758,9 @@ describe("ChatInput", () => {
 
     it("uses the default arrow icon when iconSend is not provided", () => {
       renderChatInput()
-      expect(sendButton().querySelector("svg.bi-arrow-up-short")).toBeTruthy()
+      expect(
+        sendButton().querySelector("svg.shiny-chat-icon-arrow-up"),
+      ).toBeTruthy()
     })
 
     it("renders a custom iconSend in the ready/empty states only", () => {
@@ -826,7 +781,9 @@ describe("ChatInput", () => {
         enableCancel: true,
       })
       expect(sendButton().querySelector("svg.custom-send")).toBeNull()
-      expect(sendButton().querySelector("svg.bi-stop-fill")).toBeTruthy()
+      expect(
+        sendButton().querySelector("svg.shiny-chat-icon-stop"),
+      ).toBeTruthy()
     })
   })
 

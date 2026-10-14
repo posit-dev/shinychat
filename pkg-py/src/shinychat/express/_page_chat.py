@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Any, Optional, Sequence, Union
 
 from htmltools import HTML, MetadataNode, Tag, TagChild, TagList
 
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from shiny.ui._html_deps_external import ThemeProvider
     from shiny.ui.css import CssUnit
 
-    from .._chat_types import ChatGreeting, ChatMessage, ChatMessageDict
+    from .._chat_types import ChatGreeting
 
 _OWNERSHIP_ERROR = (
     "shinychat.express.page_chat() owns the page layout; "
@@ -44,9 +44,6 @@ def page_chat(
     window_title: str | None = None,
     lang: str | None = None,
     theme: str | Path | Theme | ThemeProvider | None = None,
-    messages: Optional[
-        Iterable[str | TagChild | "ChatMessageDict" | "ChatMessage" | Any]
-    ] = None,
     greeting: Optional[Union[str, HTML, Tag, TagList, "ChatGreeting"]] = None,
     placeholder: str = "Enter a message...",
     width: "CssUnit" = "min(clamp(680px, 50vw, 760px), 100%)",
@@ -125,8 +122,6 @@ def page_chat(
         Theme accepted by :func:`shiny.express.ui.page_opts`. By default,
         :func:`~shinychat.page_chat_theme` layers page-chat tokens over the
         ``"shiny"`` preset.
-    messages
-        Initial chat messages. See :meth:`shinychat.express.Chat.ui`.
     greeting
         Optional initial chat greeting. See :func:`~shinychat.chat_greeting`.
     placeholder
@@ -189,7 +184,6 @@ def page_chat(
     chat_root = _create_page_chat_root(
         id=id,
         drawer=drawer,
-        messages=messages,
         greeting=greeting,
         placeholder=placeholder,
         width=width,

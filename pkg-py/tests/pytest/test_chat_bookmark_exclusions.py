@@ -44,6 +44,9 @@ class _Session:
     def _increment_busy_count(self) -> None:
         pass
 
+    def _decrement_busy_count(self) -> None:
+        pass
+
     async def send_custom_message(self, type: str, message: Any) -> None:
         pass
 

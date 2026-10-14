@@ -1,21 +1,26 @@
 import { memo, useMemo, useState, useRef, useCallback, useEffect } from "react"
+import { BlockErrorBoundary } from "./BlockErrorBoundary"
 import {
   deriveToolGroupIdentity,
-  routeToolBlocks,
+  inheritRequestDefinitionIcon,
   type ChatMessageData,
-  type MessageBlock,
+  type ContentBlock,
+  type RenderBlock,
 } from "./state"
 import { MarkdownContent } from "../markdown/MarkdownContent"
-import { ThinkingDisplay } from "./ThinkingDisplay"
+import { ThinkingDisplay, isThinkingVisible } from "./ThinkingDisplay"
 import { ToolGroup } from "./ToolGroup"
-import { robot, dots_fade, arrowUpShort, pencil } from "../utils/icons"
+import { WebActivity } from "./WebActivity"
+import { HtmlBlockContent } from "./HtmlBlockContent"
+import { robot, dots_fade, arrowUp, pencil } from "../utils/icons"
 import {
   chatTagToComponentMap,
   untrustedChatTagToComponentMap,
 } from "./chatTagToComponentMap"
 import { useSlashCommands, useToolGrouping, useChatToolState } from "./context"
 import { CommandChip } from "./CommandChip"
-import type { SlashCommandDef, ContentType } from "../transport/types"
+import type { SlashCommandDef } from "../transport/types"
+import type { ComponentType } from "react"
 import {
   attachmentBadgeLabel,
   attachmentFamily,
@@ -30,6 +35,32 @@ import { useAttachmentStaging } from "./useAttachmentStaging"
 import { AttachmentTray } from "./AttachmentTray"
 import { CitationCollectorProvider } from "./citationCollector"
 import { SourcesSummary } from "./SourcesSummary"
+
+type TagComponentMap = Record<string, ComponentType<unknown>>
+
+interface TrustedContentBlock extends ContentBlock {
+  trusted: true
+  tagMap: TagComponentMap
+}
+
+interface UntrustedContentBlock extends ContentBlock {
+  trusted: false
+  tagMap: TagComponentMap | undefined
+}
+
+type ClassifiedContentBlock = TrustedContentBlock | UntrustedContentBlock
+
+function classifyContentBlock(
+  block: ContentBlock,
+  isUser: boolean,
+): ClassifiedContentBlock {
+  if (isUser) {
+    return { ...block, trusted: false, tagMap: undefined }
+  }
+  return block.contentType === "html"
+    ? { ...block, trusted: true, tagMap: chatTagToComponentMap }
+    : { ...block, trusted: false, tagMap: untrustedChatTagToComponentMap }
+}
 
 const TOUCH_HOLD_MS = 500
 const TOUCH_MOVE_CANCEL_PX = 10
@@ -78,6 +109,7 @@ interface ChatMessageProps {
   uploadAccept?: string[]
   maxUploadSize?: number | null
   enableUpload?: boolean
+  thinkingShowAfter?: number
 }
 
 export const ChatMessage = memo(function ChatMessage({
@@ -97,10 +129,11 @@ export const ChatMessage = memo(function ChatMessage({
   uploadAccept = [],
   maxUploadSize = null,
   enableUpload,
+  thinkingShowAfter = 0,
 }: ChatMessageProps) {
   const slashCommands = useSlashCommands()
   const toolGrouping = useToolGrouping()
-  const { supersededRequests } = useChatToolState()
+  const { supersededRequests, requestDefinitionIcons } = useChatToolState()
   const [lightbox, setLightbox] = useState<{
     src: string
     name: string
@@ -110,53 +143,16 @@ export const ChatMessage = memo(function ChatMessage({
   const editRef = useRef<TiptapInputHandle>(null)
   const isUser = message.role === "user"
 
-  // Finalized messages already carry routed tool_loop blocks (built in the
-  // reducer). While streaming, tool elements still live in content blocks, so
-  // route them at render time — with the same grouping — so tool calls show
-  // the Tier UI live and don't pop into it on finalize. An incomplete trailing
-  // tool element stays as prose (the router leaves it) until it closes, and so
-  // does everything after a code fence that has not been closed yet.
-  const blocks = useMemo(
-    () =>
-      message.streaming
-        ? routeToolBlocks(message.blocks, toolGrouping, message.role, true)
-        : message.blocks,
-    [message.streaming, message.blocks, message.role, toolGrouping],
-  )
-
-  // Tool UI is never legitimate in a user message, so don't hand the bridges to
-  // one. Defense in depth alongside the router's role gate: an html-typed user
-  // block skips the router entirely and goes through `htmlProcessor` — no
-  // remarkEscapeHtml, no rehypeSanitize — so without this the tags would still
-  // resolve to real tool cards. Withholding the map leaves them inert elements.
-  //
-  // The same reasoning applies per content type: markdown-typed blocks are
-  // model-authored (untrusted), so they get a map whose tool tags render as
-  // escaped, inert text — closing the fallback path that would otherwise let a
-  // forged <shiny-tool-result value-type="html"> reach innerHTML without ever
-  // being routed. Only html-typed blocks (server-authored) get the real
-  // bridges, as a fallback for tool elements the router left behind.
-  const mapForContentType = (contentType: ContentType) =>
-    isUser
-      ? undefined
-      : contentType === "html"
-        ? chatTagToComponentMap
-        : untrustedChatTagToComponentMap
+  const blocks = message.blocks
 
   // Drop running requests whose result has rendered elsewhere in the transcript
   // (the router can only pair the two within one content string), then any group
-  // left empty. Done here rather than in the render pass so `hasContent` — and
-  // the decision to render a row at all — reflect what is actually visible. The
-  // original block index is kept so React keys stay stable when a block drops
-  // out.
-  //
-  // A group that loses a call this way rederives its whole identity from the
-  // survivors rather than patching `count` alone: the row must describe the
-  // calls it actually renders, and title/segments/icon are just as call-shaped
-  // as count is. Patching one field while leaving the rest is exactly what let
-  // a filtered group keep naming a tool it no longer shows.
+  // left empty. Done here so `hasContent` reflects what is actually visible.
+  // Original block indices are kept for stable React keys. A group that loses
+  // a call rederives its whole identity (title, segments, icon, count) from the
+  // survivors so the row describes what it renders.
   const visibleBlocks = useMemo(() => {
-    const out: { block: MessageBlock; index: number }[] = []
+    const out: { block: RenderBlock; index: number }[] = []
     blocks.forEach((block, index) => {
       if (block.type !== "tool_loop") {
         out.push({ block, index })
@@ -164,11 +160,18 @@ export const ChatMessage = memo(function ChatMessage({
       }
       const groups = block.groups
         .map((g) => {
-          const calls = g.calls.filter(
-            (c) =>
-              !(c.status === "running" && supersededRequests.has(c.requestId)),
-          )
-          return calls.length === g.calls.length
+          const calls = g.calls
+            .filter(
+              (c) =>
+                !(
+                  c.status === "running" && supersededRequests.has(c.requestId)
+                ),
+            )
+            .map((c) => inheritRequestDefinitionIcon(c, requestDefinitionIcons))
+          const changed =
+            calls.length !== g.calls.length ||
+            calls.some((call, index) => call !== g.calls[index])
+          return !changed
             ? g
             : { ...g, calls, ...deriveToolGroupIdentity(calls) }
         })
@@ -176,7 +179,37 @@ export const ChatMessage = memo(function ChatMessage({
       if (groups.length > 0) out.push({ block: { ...block, groups }, index })
     })
     return out
-  }, [blocks, supersededRequests])
+  }, [blocks, supersededRequests, requestDefinitionIcons])
+
+  // Hidden thinking must not make an otherwise-empty assistant message look
+  // complete. Re-render at the next streaming threshold so the icon and
+  // pending indicator switch to the thinking panel in the same render.
+  const [, setThinkingVisibilityVersion] = useState(0)
+  useEffect(() => {
+    if (thinkingShowAfter <= 0) return
+
+    const remainingMs = visibleBlocks.flatMap(({ block }) => {
+      if (
+        block.type !== "thinking" ||
+        !block.streaming ||
+        block.startedAt === undefined ||
+        isThinkingVisible(block, thinkingShowAfter)
+      ) {
+        return []
+      }
+      return [
+        Math.max(0, thinkingShowAfter * 1000 - (Date.now() - block.startedAt)),
+      ]
+    })
+    const delay = Math.min(...remainingMs)
+    if (!Number.isFinite(delay)) return
+
+    const timer = setTimeout(
+      () => setThinkingVisibilityVersion((version) => version + 1),
+      delay,
+    )
+    return () => clearTimeout(timer)
+  }, [visibleBlocks, thinkingShowAfter])
 
   const touchHoldEnabled = isUser && !!onEdit && !disabled && !isEditing
 
@@ -301,7 +334,12 @@ export const ChatMessage = memo(function ChatMessage({
   const hasContent =
     message.content.trim() !== "" ||
     visibleBlocks.some(
-      ({ block }) => block.type === "thinking" || block.type === "tool_loop",
+      ({ block }) =>
+        (block.type === "thinking" &&
+          isThinkingVisible(block, thinkingShowAfter)) ||
+        block.type === "tool_loop" ||
+        block.type === "web_activity" ||
+        block.type === "html_block",
     ) ||
     (message.attachments?.length ?? 0) > 0 ||
     message.cancelled
@@ -430,13 +468,20 @@ export const ChatMessage = memo(function ChatMessage({
       </div>
     ) : null
 
-  const messageBlocks = visibleBlocks.map(({ block, index: i }) => {
+  // Each block renders inside its own error boundary so a block that throws
+  // (e.g. malformed server-provided tool metadata) degrades to an inline
+  // notice instead of taking the whole message down with it.
+  const renderMessageBlock = (
+    block: RenderBlock,
+    i: number,
+  ): React.ReactNode => {
     if (block.type === "thinking") {
       return (
         <ThinkingDisplay
           key={i}
           thinking={block}
           messageId={`${message.id}-${i}`}
+          showAfter={thinkingShowAfter}
         />
       )
     }
@@ -452,11 +497,32 @@ export const ChatMessage = memo(function ChatMessage({
       )
     }
 
+    // A structured web activity renders directly — no markdown-pipeline
+    // round-trip.
+    if (block.type === "web_activity") {
+      return <WebActivity key={i} items={block.items} />
+    }
+
+    // A structured raw-HTML island: server-authored trusted HTML rendered
+    // directly through the shared RawHTML sink.
+    if (block.type === "html_block") {
+      return (
+        <HtmlBlockContent
+          key={i}
+          content={block.content}
+          htmlDeps={block.htmlDeps}
+        />
+      )
+    }
+
+    if (block.type !== "content") return null
+    const cb = classifyContentBlock(block, isUser)
+
     if (leadingCommand && i === 0) {
       const chip = <CommandChip name={leadingCommand.commandName} />
       const content = leadingCommand.remainingText || ""
 
-      if (block.contentType === "text") {
+      if (cb.contentType === "text") {
         return (
           <div key={i} className="content-type-text">
             {chip}
@@ -471,10 +537,10 @@ export const ChatMessage = memo(function ChatMessage({
         <MarkdownContent
           key={i}
           content={content}
-          contentType={block.contentType}
+          contentType={cb.contentType}
           role={message.role}
           streaming={message.streaming && isLast}
-          tagToComponentMap={mapForContentType(block.contentType)}
+          tagToComponentMap={cb.tagMap}
           prefix={chip}
         />
       )
@@ -483,14 +549,14 @@ export const ChatMessage = memo(function ChatMessage({
     const el = (
       <MarkdownContent
         key={i}
-        content={block.content}
-        contentType={block.contentType}
+        content={cb.content}
+        contentType={cb.contentType}
         role={message.role}
         streaming={message.streaming && isLast}
-        tagToComponentMap={mapForContentType(block.contentType)}
+        tagToComponentMap={cb.tagMap}
       />
     )
-    if (block.contentType === "text") {
+    if (cb.contentType === "text") {
       return (
         <div key={i} className="content-type-text">
           {el}
@@ -498,7 +564,28 @@ export const ChatMessage = memo(function ChatMessage({
       )
     }
     return el
-  })
+  }
+
+  const messageBlocks = visibleBlocks.map(({ block, index: i }) => (
+    <BlockErrorBoundary
+      key={i}
+      context={`${block.type} block`}
+      // Block object identity: the reducer preserves references for blocks an
+      // update didn't touch, so a contained error retries exactly when the
+      // failing block's data changes.
+      resetKey={block}
+      fallback={
+        // Markdown rendering failing doesn't make the text itself useless.
+        block.type === "content" ? (
+          <div className="shiny-chat-block-error" role="alert">
+            <pre>{block.content}</pre>
+          </div>
+        ) : undefined
+      }
+    >
+      {renderMessageBlock(block, i)}
+    </BlockErrorBoundary>
+  ))
 
   const lightboxPortal = lightbox && (
     <AttachmentLightbox
@@ -576,7 +663,7 @@ export const ChatMessage = memo(function ChatMessage({
                 }}
                 aria-label="Save and resend"
                 title="Save and resend"
-                dangerouslySetInnerHTML={{ __html: arrowUpShort }}
+                dangerouslySetInnerHTML={{ __html: arrowUp }}
               />
             </div>
             <button

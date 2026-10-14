@@ -30,7 +30,9 @@ def _run_page_chat_source(tmp_path: Path, top_level_ui: str) -> Tag | TagList:
         textwrap.dedent(_APP_IMPORTS) + "\n" + textwrap.dedent(top_level_ui),
         encoding="utf-8",
     )
-    return run_express(app)
+    result = run_express(app)
+    assert isinstance(result, (Tag, TagList))
+    return result
 
 
 def test_express_page_chat_signature_matches_core() -> None:

@@ -5,12 +5,18 @@ import dataclasses
 import inspect
 import json
 import warnings
+from collections.abc import Mapping, Sequence
 from contextlib import asynccontextmanager, contextmanager
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, cast
 
 from pydantic import JsonValue
 
-from ._attachments import Attachment, validate_attachments
+from ._attachments import (
+    Attachment,
+    attachment_to_content,
+    validate_attachments,
+)
+from ._chat_normalize import normalize_message
 from ._chat_transcript import TranscriptEntry
 from ._chat_types import (
     ExchangeMetadata,
@@ -23,12 +29,16 @@ from ._chat_types import (
     UpdateExchangeMetadataAction,
     UpdateInputAction,
     UpdateSiblingsAction,
+    as_stored_message,
 )
 from ._history_bookmark import delete_bookmark_state, extract_state_id
 from ._history_client import (
+    TurnDict,
     TurnsAdapter,
     _validate_mapping_keys,
     as_turns_adapter,
+    normalize_turn_group,
+    turn_dict_effective_role,
     turn_fallback_markdown,
 )
 from ._history_store import (
@@ -46,11 +56,14 @@ from ._history_title import (
 # NB: shiny is imported lazily inside methods throughout this module; a
 # top-level import would be circular (shiny.ui._chat imports shinychat).
 from ._history_types import (
+    STORED_UI_VERSION,
     CapturedMessage,
     ConversationRecord,
     ConversationRecordV2,
     StateEntry,
+    StoredUiMessage,
     check_schema_version,
+    is_stored_ui_versioned,
     new_conversation_id,
     new_conversation_record,
     new_conversation_record_v2,
@@ -62,6 +75,7 @@ if TYPE_CHECKING:
     from shiny import reactive
     from shiny.module import ResolvedId
     from shiny.reactive._reactives import Effect_
+    from shiny.session import Session
 
     from ._chat import Chat
     from ._chat_types import ChatGreeting
@@ -218,55 +232,192 @@ class HistoryOptions:
         )
 
 
+def _stored_ui_dict(stored: StoredMessage) -> StoredUiMessage:
+    """Serialize a StoredMessage for persistence in a node's ``ui`` list.
+
+    Adds the version marker and drops empty ``attachments`` so text-only
+    messages keep their previous shape.
+    """
+    d = stored.model_dump(exclude_none=True)
+    if not d.get("attachments"):
+        d.pop("attachments", None)
+    d["version"] = STORED_UI_VERSION
+    return cast(StoredUiMessage, d)
+
+
+def derive_stored_ui_message(
+    group: list[TurnDict],
+    session: Session | None = None,
+) -> StoredUiMessage | None:
+    """Derive one stored UI message from a turn group.
+
+    The group is merged and normalized through ``normalize_turn_group``,
+    so the result's ``segments`` interleave string segments and structured
+    blocks. Returns ``None`` when the group has nothing to display.
+    """
+    msg = normalize_turn_group(group)
+    if msg is None:
+        return None
+    return _stored_ui_dict(as_stored_message(msg, session))
+
+
+# Stopgap: turn-derived UI mixes model-facing attachment content into user
+# message bodies, so we re-serialize each attachment and subtract it here.
+# The feat/history-exchange-tree rewrite captures user messages as displayed
+# instead. Delete this and attachment_content_stripped when that lands.
+def _strip_attachment_content(
+    message: StoredUiMessage,
+) -> StoredUiMessage:
+    """Remove model-facing attachment content from stored user UI."""
+    attachments = message.get("attachments")
+    if (
+        message.get("role") != "user"
+        or not attachments
+        or message.get("attachment_content_stripped") is True
+    ):
+        return message
+
+    segments = [dict(segment) for segment in message["segments"]]
+    attachment_segments: list[dict[str, Any]] = []
+    try:
+        for value in attachments:
+            attachment = Attachment.model_validate(value)
+            attachment_message = normalize_message(
+                attachment_to_content(attachment)
+            )
+            stored = _stored_ui_dict(
+                as_stored_message(attachment_message, session=None)
+            )
+            attachment_segments.extend(
+                cast(list[dict[str, Any]], stored["segments"])
+            )
+    except Exception:
+        # StoredMessage validation reports malformed attachments later. Do not
+        # make replay more fragile while cleaning records from older versions.
+        return message
+
+    for attachment_segment in reversed(attachment_segments):
+        if "type" in attachment_segment:
+            for index in range(len(segments) - 1, -1, -1):
+                if segments[index] == attachment_segment:
+                    segments.pop(index)
+                    break
+            continue
+
+        suffix = str(attachment_segment.get("content", ""))
+        if not suffix:
+            continue
+        for index in range(len(segments) - 1, -1, -1):
+            segment = segments[index]
+            if "type" in segment:
+                continue
+            content = str(segment.get("content", ""))
+            if content == suffix:
+                segment["content"] = ""
+                break
+            separator_suffix = f"\n\n{suffix}"
+            if content.endswith(separator_suffix):
+                segment["content"] = content[: -len(separator_suffix)]
+                break
+
+    segments = [
+        segment
+        for segment in segments
+        if "type" in segment or segment.get("content") != ""
+    ]
+    if not any("type" not in segment for segment in segments):
+        segments.insert(0, {"content": "", "content_type": "markdown"})
+
+    cleaned = dict(message)
+    cleaned["segments"] = cast(Any, segments)
+    cleaned["attachment_content_stripped"] = True
+    return cast(StoredUiMessage, cleaned)
+
+
+def derive_node_ui(
+    turns: list[TurnDict],
+    session: Session | None = None,
+) -> list[StoredUiMessage]:
+    """Re-derive a node's stored UI from its turns.
+
+    Called at replay time when the stored UI is missing or predates the
+    structured format (no version marker). Old persisted UI is discarded,
+    never re-parsed. A node holds one turn group, so this derives at most
+    one message. Falls back to a text-only message when the turns are
+    missing or normalize to nothing.
+    """
+    derived = (
+        derive_stored_ui_message(turns, session=session) if turns else None
+    )
+    if derived is not None:
+        return [derived]
+    if turns:
+        last = turns[-1]
+        role = turn_dict_effective_role(last)
+        content = turn_fallback_markdown(last)
+    else:
+        role, content = "assistant", ""
+    return [
+        cast(
+            StoredUiMessage,
+            {
+                "version": STORED_UI_VERSION,
+                "role": role,
+                "segments": [{"content": content, "content_type": "markdown"}],
+            },
+        )
+    ]
+
+
 def extend_record_linear(
     record: ConversationRecord,
-    turn_groups: list[list[dict[str, Any]]],
+    turn_groups: list[list[TurnDict]],
     ui_messages: list[dict[str, Any]],
+    *,
+    ui_offset: int,
+    session: Session | None = None,
 ) -> None:
     """
-    Append turn groups beyond the record's current path, then reconstruct the
-    active path's UI from the server-owned transcript. Each user message goes
-    to the next user-turn node; later UI-only messages stay with the first
-    response node after that input.
+    Append turn groups beyond the record's current path as new linear nodes,
+    deriving each new node's stored UI server-side from its turn group.
 
-    Each group is one or more turns that form a single exchange unit — e.g. a
-    tool-call round (assistant-request, user-result, assistant-text) is one
-    group, matching the single combined UI message produced by streaming.
+    Each group is one or more turns that form a single exchange unit. The
+    i-th derived message attaches to the i-th new node. ``ui_messages`` is
+    the server-side stored-message snapshot (from
+    ``Chat._messages_for_bookmark()``) and serves bookkeeping and
+    out-of-band messages only: derived messages consume the first
+    ``n_derived`` not-yet-saved stored messages, and any extras (e.g.
+    ``append_message()`` calls outside the turn flow) attach to the last
+    appended node.
     """
     existing = len(record.path_node_ids())
     new_groups = turn_groups[existing:]
 
-    for group in new_groups:
-        record.append_linear(group)
-    path = record.path_node_ids()
-    fallback = path[-1] if path else None
+    new_node_ids: list[str] = []
+    n_derived = 0
+    new_stored_messages = ui_messages[ui_offset:]
+    for g in new_groups:
+        node_id = record.append_linear(cast(list[dict[str, Any]], g))
+        new_node_ids.append(node_id)
+        derived = derive_stored_ui_message(g, session=session)
+        if derived is not None:
+            source = (
+                new_stored_messages[n_derived]
+                if n_derived < len(new_stored_messages)
+                else None
+            )
+            if source and source.get("attachments"):
+                derived["attachments"] = source["attachments"]
+                derived = _strip_attachment_content(derived)
+            record.nodes[node_id].ui = cast(list[dict[str, Any]], [derived])
+            n_derived += 1
+
+    fallback = new_node_ids[-1] if new_node_ids else record.current_leaf
     if fallback is None:
         return
 
-    for node_id in path:
-        record.nodes[node_id].ui = None
-
-    next_user_index = 0
-    response_node_id = fallback
-    for message in ui_messages:
-        if message.get("role") == "user":
-            for index in range(next_user_index, len(path)):
-                node_id = path[index]
-                if record.nodes[node_id].turns[0].get("role") != "user":
-                    continue
-                target = node_id
-                next_user_index = index + 1
-                response_node_id = fallback
-                for response_id in path[next_user_index:]:
-                    if record.nodes[response_id].turns[0].get("role") != "user":
-                        response_node_id = response_id
-                        break
-                break
-            else:
-                target = response_node_id
-        else:
-            target = response_node_id
-        node = record.nodes[target]
+    for message in new_stored_messages[n_derived:]:
+        node = record.nodes[fallback]
         node.ui = [*(node.ui or []), message]
 
 
@@ -318,7 +469,7 @@ class _ExchangeRecorder:
 
     @staticmethod
     def _canonical_turns(
-        turns: list[dict[str, Any]],
+        turns: Sequence[Mapping[str, Any]],
     ) -> tuple[list[dict[str, Any]], list[str]]:
         for turn in turns:
             _validate_mapping_keys(turn)
@@ -469,7 +620,7 @@ class _ExchangeRecorder:
     ) -> tuple[list[dict[str, Any]], bool]:
         adapter = self._controller.adapter
         include_system_prompt = getattr(adapter, "is_chatlas", lambda: False)()
-        turns = (
+        turns: list[Any] = (
             adapter.get_turns_json(include_system_prompt=include_system_prompt)
             if context.bootstrap == "live"
             else []
@@ -504,7 +655,7 @@ class _ExchangeRecorder:
                 adapter.set_turns_json([])
             self._set_turn_baseline(turns)
             return
-        adapter.set_turns_json(turns)
+        adapter.set_turns_json(cast(list[TurnDict], turns))
         self._set_turn_baseline(turns)
 
     @staticmethod
@@ -1046,6 +1197,7 @@ class HistoryController:
         from shiny import reactive
 
         self._active_id: "reactive.Value[str | None]" = reactive.Value(None)
+        self.ui_offset = 0  # messages already attached to nodes
         # Set by enable() when restore_mode="url"; called with the new
         # conversation id (or None) after any switch that changes the active
         # conversation.
@@ -1227,9 +1379,31 @@ class HistoryController:
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
         turn_groups = self.adapter.get_turns_grouped()
-        messages = self.chat._messages_for_history()
+        messages = self.chat._messages_for_bookmark()
 
         first_save = self.record is None
+        if not first_save:
+            record = self.record
+            if record is None:
+                raise RuntimeError("HistoryController not initialized")
+            stored_ui = [
+                m
+                for nid in record.path_node_ids()
+                for m in (record.nodes[nid].ui or [])
+            ]
+            # Idempotent + truncation guard. A restore may trigger the
+            # response effect while the server still has the restored
+            # conversation. Never let that state overwrite the record. Skip
+            # when there are no new turn groups and the server message list is
+            # no longer than what's already stored.
+            if len(turn_groups) <= len(record.path_node_ids()) and len(
+                messages
+            ) <= len(stored_ui):
+                # Advance ui_offset monotonically so a later save doesn't
+                # reprocess these as out-of-band extras.
+                self.ui_offset = max(self.ui_offset, len(messages))
+                return
+
         if first_save:
             turns_flat = self.adapter.get_turns_json()
             # Adopt the active ID allocated at submission time (or allocate
@@ -1245,13 +1419,20 @@ class HistoryController:
         record = self.record
         if record is None:
             raise RuntimeError("HistoryController not initialized")
-        extend_record_linear(record, turn_groups, messages)
+        extend_record_linear(
+            record,
+            turn_groups,
+            messages,
+            ui_offset=self.ui_offset,
+            session=self.chat._session,
+        )
         record.response_count += 1
         self._capture_app_state(record)
         await self._put_record(self.partition, record)
         await self._evict_if_needed()
         if self.on_response_saved is not None:
             await self.on_response_saved(record)
+        self.ui_offset = len(messages)
         await self.send_history_update()
         await self._send_sibling_metadata()
 
@@ -1269,7 +1450,7 @@ class HistoryController:
             self._title_task = asyncio.create_task(self.retitle(turns_flat))
             self._title_task.add_done_callback(title_task_done)
 
-    async def retitle(self, turns: list[dict[str, Any]]) -> None:
+    async def retitle(self, turns: list[TurnDict]) -> None:
         target = self.record  # capture before the slow LLM call
         if target is None or target.title_source == "user":
             return
@@ -1357,9 +1538,16 @@ class HistoryController:
             return False
         turn_groups = self.adapter.get_turns_grouped()
         messages = self.chat._messages_for_bookmark()
-        extend_record_linear(self.record, turn_groups, messages)
+        extend_record_linear(
+            self.record,
+            turn_groups,
+            messages,
+            ui_offset=self.ui_offset,
+            session=self.chat._session,
+        )
         self._capture_app_state(self.record)
         await self._put_record(self.partition, self.record)
+        self.ui_offset = len(messages)
         return True
 
     def _capture_app_state(self, record: ConversationRecord) -> None:
@@ -1680,7 +1868,16 @@ class HistoryController:
             await self._send_sibling_metadata()
             await self.send_history_update()
 
-    async def new_chat(self) -> None:
+    async def new_chat(self, *, greeting: bool = False) -> None:
+        """
+        Start a new conversation.
+
+        The current conversation is saved before the client turns, rendered
+        messages, active ID, and history drawer state are reset. ``greeting``
+        is forwarded to :meth:`Chat.clear_messages`; when ``True``, the
+        greeting is cleared and the configured greeting is resolved again
+        after the new-chat transition settles.
+        """
         async with self._destructive_mutation():
             async with self._exchange_mutation():
                 if self._exchange_recorder is not None:
@@ -1688,7 +1885,8 @@ class HistoryController:
                 else:
                     await self.save_current()
                 self.adapter.set_turns_json([])
-                await self.chat.clear_messages()
+                await self.chat.clear_messages(greeting=greeting)
+                self.ui_offset = 0
                 # Announce the cleared state even when the active ID is already None:
                 # in URL/bookmark restore modes the browser may still carry a stale
                 # conversation param (e.g. after a failed restore) that only
@@ -1710,23 +1908,29 @@ class HistoryController:
             # A restored conversation is never a "new chat" — the app's
             # greeting doesn't belong here, regardless of `persistent`.
             await self.chat.set_greeting(None)
+            restored_count = 0
             for node_id in record.path_node_ids():
                 node = record.nodes[node_id]
-                stored = node.ui or [
-                    {
-                        "role": node.turns[-1].get("role", "assistant"),
-                        "segments": [
-                            {
-                                "content": turn_fallback_markdown(
-                                    node.turns[-1]
-                                ),
-                                "content_type": "markdown",
-                            }
-                        ],
-                    }
+                stored = node.ui
+                # Old-format stored UI (no version marker) is discarded and
+                # re-derived from the node's stored turns, never re-parsed.
+                if stored is None or not is_stored_ui_versioned(stored):
+                    stored = derive_node_ui(
+                        cast(list[TurnDict], node.turns),
+                        session=self.chat._session,
+                    )
+                stored = [
+                    _strip_attachment_content(message) for message in stored
                 ]
                 for message_dict in stored:
-                    await self.chat._restore_bookmark_message(message_dict)
+                    restored_message = dict(message_dict)
+                    restored_message.pop("attachment_content_stripped", None)
+                    await self.chat._restore_bookmark_message(restored_message)
+                    restored_count += 1
+            # The restored messages are already in the server-side
+            # accumulator, so start the offset after the messages restored
+            # into the record.
+            self.ui_offset = restored_count
 
     @staticmethod
     def _normalize_resubmit_input(message: StoredMessage) -> StoredMessage:
@@ -1968,6 +2172,7 @@ class HistoryController:
                     await self.clear_active()
                     self.adapter.set_turns_json([])
                     await self.chat.clear_messages()
+                    self.ui_offset = 0
                     if self.on_active_id_change is not None:
                         await self.on_active_id_change(None)
                 await self.send_history_update()

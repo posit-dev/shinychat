@@ -19,10 +19,12 @@ ignore_unused_imports <- function() {
   jsonlite::fromJSON
   fastmap::fastqueue
   ellmer::contents_html
+  R6::R6Class
 }
 
 release_bullets <- function() {
   c(
-    "Check that shinychat js assets are up-to-date (`make js-build && make r-update-dist`)"
+    "Check that shinychat js assets are up-to-date (`make js-build && make r-update-dist`)",
+    "Run `make r-vignette-screenshots` to refresh the tool-ui vignette screenshots so they match the current UI"
   )
 }

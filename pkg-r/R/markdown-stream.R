@@ -35,35 +35,62 @@ output_markdown_stream <- function(
   width = "min(680px, 100%)",
   height = "auto"
 ) {
-  segments <- lapply(split_content_by_trust(content), function(segment) {
+  rendered_segments <- list()
+  dependencies <- list()
+  for (segment in split_content_by_trust(content)) {
     if (segment$trusted) {
-      ui <- with_current_theme({
-        htmltools::renderTags(pre_process_ui(segment$content))
-      })
+      # No session at UI-construction time; block deps use the static
+      # serialization and also propagate as page-level dependencies.
+      for (part in derive_island_parts(segment$content)) {
+        if (inherits(part, "shinychat_island_block_part")) {
+          block <- list(
+            type = "html_block",
+            version = 1L,
+            content = part$html
+          )
+          if (length(part$deps) > 0) {
+            block$html_deps <- serialize_html_deps_static(part$deps)
+          }
+          rendered_segments[[length(rendered_segments) + 1]] <- list(
+            block = block
+          )
+        } else {
+          rendered_segments[[length(rendered_segments) + 1]] <- list(
+            text = part$html,
+            trusted = TRUE
+          )
+        }
+        dependencies <- c(dependencies, part$deps)
+      }
     } else {
-      ui <- list(
-        html = as.character(segment$content),
-        dependencies = list()
+      rendered_segments[[length(rendered_segments) + 1]] <- list(
+        text = as.character(segment$content),
+        trusted = FALSE
       )
     }
-    list(
-      text = ui[["html"]],
-      trusted = segment$trusted,
-      dependencies = ui[["dependencies"]]
-    )
-  })
+  }
+
+  # The fallback `content` attribute carries every segment's HTML so a
+  # client that fails closed on the provenance array still shows the
+  # content, escaped and untrusted.
   rendered_content <- paste0(
-    vapply(segments, `[[`, character(1), "text"),
+    vapply(
+      rendered_segments,
+      function(segment) {
+        if ("text" %in% names(segment)) {
+          as.character(segment$text)
+        } else {
+          as.character(segment$block$content)
+        }
+      },
+      character(1)
+    ),
     collapse = ""
   )
-  dependencies <- unlist(
-    lapply(segments, `[[`, "dependencies"),
-    recursive = FALSE
-  )
-  fallback_trusted <- length(segments) == 1 && isTRUE(segments[[1]]$trusted)
-  encoded_segments <- lapply(segments, function(segment) {
-    list(text = segment$text, trusted = segment$trusted)
-  })
+  # A block entry is never a trusted fallback: the fail-closed path must
+  # not render fallback content as trusted.
+  fallback_trusted <- length(rendered_segments) == 1 &&
+    isTRUE(rendered_segments[[1]]$trusted)
 
   htmltools::tag(
     "shiny-markdown-stream",
@@ -77,7 +104,7 @@ output_markdown_stream <- function(
       content = rendered_content,
       "content-type" = content_type,
       "content-segments" = jsonlite::toJSON(
-        encoded_segments,
+        rendered_segments,
         auto_unbox = TRUE
       ),
       "content-trusted" = if (fallback_trusted) "true" else "false",
@@ -101,6 +128,15 @@ output_markdown_stream <- function(
 #' @param content_stream A string generator (e.g., [coro::generator()] or
 #' [coro::async_generator()]), a string promise (e.g., [promises::promise()]),
 #' or a string promise generator.
+#'
+#'   An item may also be a structured content block (a
+#'   `shinychat_block` such as a `web_search`, `web_search_results`, or `web_fetch`
+#'   block of the kind ellmer content normalization produces for
+#'   [chat_append()]). Each block is sent as one complete, append-only
+#'   structured block message. The client validates, groups, and renders it.
+#'   Only the block types the stream client supports are accepted.
+#'   `html_block` and the `web_*` family. Any other block type (e.g. a tool
+#'   block, which the client would drop with a warning) raises an error.
 #' @param operation The operation to perform on the markdown stream. The default,
 #' `"replace"`, will replace the current content with the new content stream.
 #' The other option, `"append"`, will append the new content stream to the
@@ -108,7 +144,8 @@ output_markdown_stream <- function(
 #'
 #' @param session The Shiny session object.
 #'
-#' @return NULL
+#' @return A promise that resolves to the accumulated stream content as a
+#'   single string. Structured blocks contribute nothing to the string.
 #'
 #' @export
 #' @examplesIf interactive()
@@ -159,7 +196,12 @@ markdown_stream <- function(
 
   operation <- match.arg(operation)
 
-  result <- markdown_stream_impl(id, stream, operation, session)
+  # A coroutine that fails before its first await throws synchronously,
+  # so wrap in tryCatch to convert it to a rejected promise.
+  result <- tryCatch(
+    markdown_stream_impl(id, stream, operation, session),
+    error = function(cnd) promises::promise_reject(cnd)
+  )
   result <- chat_update_bookmark(id, result, session = session)
 
   # Handle erroneous result...
@@ -183,20 +225,102 @@ markdown_stream <- function(
   result
 }
 
+# Structured block types the client's markdown-stream wire supports.
+# Mirrors `asStreamBlock` in js/src/markdown-stream/markdown-stream-entry.ts.
+# Anything else is dropped by the client with a warning, so reject here.
+STREAM_BLOCK_TYPES <- c(
+  "html_block",
+  "web_search",
+  "web_search_results",
+  "web_search_citations",
+  "web_fetch"
+)
+
+# Send one trusted content segment as island parts; returns the run's HTML.
+# Trusted content walks the shared island derivation: non-React runs ship as
+# structured html_block messages; bare data-shinychat-react elements stay
+# trusted residual string segments. The run's deps are aggregated onto the
+# first outbound envelope so every dep loads before any part mounts.
+send_trusted_segment <- function(
+  segment_content,
+  session,
+  send_content_message,
+  send_block_message
+) {
+  parts <- derive_island_parts(segment_content)
+  run_deps <- serialize_html_deps(
+    unlist(lapply(parts, function(part) part$deps), recursive = FALSE),
+    session
+  )
+  html <- ""
+  for (part_index in seq_along(parts)) {
+    part <- parts[[part_index]]
+    envelope_deps <- list()
+    if (part_index == 1) {
+      envelope_deps <- run_deps
+    }
+    html <- paste0(html, part$html)
+    if (inherits(part, "shinychat_island_block_part")) {
+      block <- new_html_block(part$html)
+      if (length(part$deps) > 0) {
+        attr(block, "shinychat_html_deps") <- part$deps
+      }
+      block <- process_block_deps(block, session)$block
+      send_block_message(block, envelope_deps)
+    } else {
+      send_content_message(
+        part$html,
+        "append",
+        envelope_deps,
+        trusted = TRUE,
+        segment_start = TRUE
+      )
+    }
+  }
+  html
+}
+
 markdown_stream_impl <- NULL
 rlang::on_load(
   markdown_stream_impl <- coro::async(function(id, stream, operation, session) {
+    # A message carries `content` XOR `block`. Blocks arrive complete and
+    # append-only.
     send_stream_message <- function(...) {
       session$sendCustomMessage(
         "shinyMarkdownStreamMessage",
         rlang::list2(id = id, ...)
       )
     }
+    send_content_message <- function(
+      content,
+      operation,
+      html_deps,
+      trusted,
+      segment_start
+    ) {
+      send_stream_message(
+        content = content,
+        operation = operation,
+        html_deps = html_deps,
+        trusted = trusted,
+        segment_start = segment_start
+      )
+    }
+    send_block_message <- function(block, html_deps) {
+      send_stream_message(
+        operation = "append",
+        html_deps = html_deps,
+        trusted = TRUE,
+        segment_start = TRUE,
+        block = block
+      )
+    }
 
     if (operation == "replace") {
-      send_stream_message(
-        content = "",
-        operation = "replace",
+      send_content_message(
+        "",
+        "replace",
+        list(),
         trusted = FALSE,
         segment_start = TRUE
       )
@@ -208,6 +332,7 @@ rlang::on_load(
       send_stream_message(isStreaming = FALSE)
     })
 
+    result <- ""
     for (msg in stream) {
       if (promises::is.promising(msg)) {
         msg <- await(msg)
@@ -216,27 +341,54 @@ rlang::on_load(
         break
       }
 
+      if (inherits(msg, "shinychat_block")) {
+        # An already-structured block ships as one complete block message.
+        # Reject unsupported block types rather than silently discarding.
+        block_type <- msg$type
+        if (!isTRUE(block_type %in% STREAM_BLOCK_TYPES)) {
+          rlang::abort(paste0(
+            "Unsupported structured block in a markdown stream: ",
+            if (is.null(block_type)) "NULL" else sprintf("'%s'", block_type),
+            ". `markdown_stream()` accepts only html_block and web_* blocks ",
+            "(web_search, web_search_results, web_search_citations, ",
+            "web_fetch); other block types ",
+            "(e.g. tool blocks) are dropped by the client and so are ",
+            "rejected here."
+          ))
+        }
+        send_block_message(msg, list())
+        next
+      }
+
       segments <- split_content_by_trust(msg)
       composite <- !(is.character(msg) && !inherits(msg, "html")) ||
         length(segments) > 1
       for (index in seq_along(segments)) {
         segment <- segments[[index]]
         if (segment$trusted) {
-          ui <- process_ui(pre_process_ui(segment$content), session)
+          result <- paste0(
+            result,
+            send_trusted_segment(
+              segment$content,
+              session,
+              send_content_message,
+              send_block_message
+            )
+          )
         } else {
-          ui <- list(html = as.character(segment$content), deps = "[]")
+          text <- as.character(segment$content)
+          result <- paste0(result, text)
+          send_content_message(
+            text,
+            "append",
+            list(),
+            trusted = FALSE,
+            segment_start = composite || index > 1
+          )
         }
-
-        send_stream_message(
-          content = ui[["html"]],
-          operation = "append",
-          html_deps = ui[["deps"]],
-          trusted = segment$trusted,
-          segment_start = composite || index > 1
-        )
       }
     }
 
-    invisible(NULL)
+    result
   })
 )

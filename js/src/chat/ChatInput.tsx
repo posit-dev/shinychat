@@ -6,13 +6,13 @@ import {
   useImperativeHandle,
   memo,
 } from "react"
-import { useChatDispatch, useChatSubmit } from "./context"
+import { useChatDispatch } from "./context"
 import type {
   ChatTransport,
   SlashCommandDef,
   SlashCommandEventDetail,
 } from "../transport/types"
-import { arrowUpShort, spinnerArc, stopFill } from "../utils/icons"
+import { arrowUp, spinnerArc, stopFill } from "../utils/icons"
 import { TiptapInput, type TiptapInputHandle } from "./TiptapInput"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 import { type AttachmentPayload } from "./attachments"
@@ -99,7 +99,6 @@ export const ChatInput = memo(
     ref,
   ) {
     const dispatch = useChatDispatch()
-    const submitUserInput = useChatSubmit()
     const tiptapRef = useRef<TiptapInputHandle>(null)
     const [hasText, setHasText] = useState(false)
     const focusEditor = useCallback(() => tiptapRef.current?.focus(), [])
@@ -173,12 +172,17 @@ export const ChatInput = memo(
             )
           }
         } else {
-          const submitted = submitUserInput(content, payloads)
-          if (submitted) {
-            resetAll()
-            onSend?.()
-          }
-          return submitted
+          dispatch({
+            type: "INPUT_SENT",
+            content,
+            role: "user",
+            ...(payloads.length > 0 ? { attachments: payloads } : {}),
+          })
+          transport.sendInput(
+            inputId,
+            enableUpload ? { text: content, attachments: payloads } : content,
+          )
+          resetAll()
         }
         onSend?.()
         return true
@@ -193,7 +197,7 @@ export const ChatInput = memo(
         onSend,
         slashCommands,
         slashCommandId,
-        submitUserInput,
+        enableUpload,
         getPayloads,
         resetAll,
       ],
@@ -238,7 +242,10 @@ export const ChatInput = memo(
             return true
           }
 
-          if (submissionBlocked) {
+          if (
+            submissionBlocked ||
+            isHistorySubmissionBlocked(historyStore.getSnapshot())
+          ) {
             if (focus) tiptap.focus()
             return false
           }
@@ -262,8 +269,20 @@ export const ChatInput = memo(
             // commands submitted programmatically still execute.
             submitted = submitValue(submitContent)
           } else if (!disabled && submitAttachments.length > 0) {
-            submitted = submitUserInput(submitContent, submitAttachments)
-            if (submitted) onSend?.()
+            dispatch({
+              type: "INPUT_SENT",
+              content: submitContent,
+              role: "user",
+              attachments: submitAttachments,
+            })
+            transport.sendInput(
+              inputId,
+              enableUpload
+                ? { text: submitContent, attachments: submitAttachments }
+                : submitContent,
+            )
+            submitted = true
+            onSend?.()
           }
 
           if (newValue !== undefined) {
@@ -282,10 +301,14 @@ export const ChatInput = memo(
       }),
       [
         disabled,
+        historyStore,
         submissionBlocked,
+        dispatch,
+        transport,
+        inputId,
+        enableUpload,
         onSend,
         submitValue,
-        submitUserInput,
         applyPayloads,
         getPayloads,
         clearAttachments,
@@ -315,7 +338,7 @@ export const ChatInput = memo(
         ? stopFill
         : sendButtonState === "pending" || sendButtonState === "cancelling"
           ? spinnerArc
-          : (iconSend ?? arrowUpShort)
+          : (iconSend ?? arrowUp)
 
     const sendButtonLabel =
       sendButtonState === "cancel"

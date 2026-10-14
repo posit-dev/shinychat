@@ -88,6 +88,7 @@ version-file = "pkg-py/src/shinychat/__version.py"
 [tool.pyright]
 include = ["pkg-py"]
 exclude = ["pkg-py/_dev"]
+pythonVersion = "3.10"
 
 [tool.pytest.ini_options]
 testpaths = ["pkg-py/tests"]

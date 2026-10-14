@@ -309,14 +309,17 @@ async def test_file_store_round_trips_dict_tool_result_display(
     adapter = as_turns_adapter(client)
 
     rec = new_conversation_record(title="Widget")
-    rec.append_linear(adapter.get_turns_json())
+    # The record model persists turns as plain dicts; TurnDicts are dicts
+    # at runtime.
+    rec.append_linear(cast(list[dict[str, Any]], adapter.get_turns_json()))
 
     await store.put(part(), rec)
     restored = await store.get(part(), rec.id)
 
     assert restored is not None
     adapter.set_turns_json(restored.path_turns())
-    display = adapter.get_turns_json()[0]["contents"][0]["extra"]["display"]
+    restored_turn = cast(dict[str, Any], adapter.get_turns_json()[0])
+    display = restored_turn["contents"][0]["extra"]["display"]
     assert display["html"]["html"] == "<div>Widget output</div>"
     assert display["html"]["dependencies"][0]["name"] == "my-dep"
 

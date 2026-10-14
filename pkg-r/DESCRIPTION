@@ -1,6 +1,6 @@
 Package: shinychat
 Title: Chat UI Component for 'shiny'
-Version: 0.4.0.9000
+Version: 0.5.0.9000
 Authors@R: c(
     person("Joe", "Cheng", , "joe@posit.co", role = "aut"),
     person("Carson", "Sievert", , "carson@posit.co", role = "aut"),
@@ -39,12 +39,16 @@ Suggests:
     covr,
     knitr,
     later,
+    rmarkdown,
     shinytest2,
     testthat (>= 3.0.0),
     withr
+VignetteBuilder: 
+    knitr,
+    rmarkdown
 Config/Needs/website: tidyverse/tidytemplate, rmarkdown, weathR, gt, glue,
-    bsicons
-Config/roxygen2/version: 8.1.0
+    bsicons, reactable, htmlwidgets
+Config/roxygen2/version: 8.1.1
 Config/testthat/edition: 3
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

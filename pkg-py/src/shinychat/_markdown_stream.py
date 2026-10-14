@@ -1,12 +1,22 @@
 import json
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, AsyncIterable, Iterable, Literal, Union
+from typing import TYPE_CHECKING, Any, AsyncIterable, Iterable, Literal, Union
 
-from htmltools import RenderedHTML, Tag, TagChild, TagList, css
+from htmltools import Tag, TagChild, css
 
+from ._chat_types import (
+    StreamBlock,
+    StructuredBlock,
+    html_block,
+    serialize_html_deps,
+)
 from ._html_deps_py_shiny import shinychat_dependency
-from ._html_islands import split_content_by_trust, split_html_islands
-from ._typing_extensions import TypedDict
+from ._html_islands import (
+    IslandBlockPart,
+    derive_island_parts,
+    split_content_by_trust,
+)
+from ._typing_extensions import NotRequired, TypedDict
 
 if TYPE_CHECKING:
     from shiny import reactive
@@ -24,14 +34,28 @@ StreamingContentType = Literal[
     "text",
 ]
 
+# Mirrors `asStreamBlock` in js/src/markdown-stream/markdown-stream-entry.ts.
+# The client drops other types with a warning, so reject server-side.
+_STREAM_BLOCK_TYPES = frozenset(
+    {
+        "html_block",
+        "web_search",
+        "web_search_results",
+        "web_search_citations",
+        "web_fetch",
+    }
+)
+
 
 class ContentMessage(TypedDict):
     id: str
-    content: str
     operation: Literal["append", "replace"]
-    html_deps: list[dict[str, str]]
+    html_deps: list[dict[str, Any]]
     trusted: bool
     segment_start: bool
+    # A message carries `content` XOR `block`.
+    content: NotRequired[str]
+    block: NotRequired[StructuredBlock]
 
 
 class isStreamingMessage(TypedDict):
@@ -104,7 +128,10 @@ class MarkdownStream:
 
     async def stream(
         self,
-        content: Union[Iterable[TagChild], AsyncIterable[TagChild]],
+        content: Union[
+            Iterable[Union[TagChild, StreamBlock]],
+            AsyncIterable[Union[TagChild, StreamBlock]],
+        ],
         clear: bool = True,
     ):
         """
@@ -118,6 +145,14 @@ class MarkdownStream:
             The content to stream. This can be a Iterable or an AsyncIterable of strings.
             Note that this includes synchronous and asynchronous generators, which is
             a useful way to stream content in as it arrives (e.g. from a LLM).
+
+            An item may also be an already-structured content block dict (e.g. a
+            `web_search`/`web_search_results`/`web_fetch` block of the kind
+            chatlas normalization produces for `Chat`). Each block dict is sent
+            as one complete, append-only structured block message; the client
+            validates, groups, and renders it. Only the block types the stream
+            client supports are accepted — `html_block` and the `web_*`
+            family; any other block type raises a `ValueError`.
         clear
             Whether to clear the existing content before streaming the new content.
 
@@ -134,7 +169,6 @@ class MarkdownStream:
             stream.
         """
         from shiny import _utils, reactive
-        from shiny.session._utils import RenderedDeps
 
         content = _utils.wrap_async_iterable(content)
 
@@ -152,26 +186,38 @@ class MarkdownStream:
             result = ""
             async with self._streaming_dot():
                 async for x in content:
+                    if isinstance(x, dict):
+                        # An already-structured block ships as one complete
+                        # block message.
+                        block_type = x.get("type")
+                        if block_type not in _STREAM_BLOCK_TYPES:
+                            raise ValueError(
+                                "Unsupported structured block in a markdown "
+                                f"stream: {block_type!r}. "
+                                "MarkdownStream.stream() accepts only "
+                                "html_block and web_* blocks (web_search, "
+                                "web_search_results, web_search_citations, "
+                                "web_fetch); other block "
+                                "types (e.g. tool blocks) are dropped by the "
+                                "client and so are rejected here."
+                            )
+                        await self._send_block_message(x, [])
+                        continue
                     segments = split_content_by_trust(x)
                     composite = not isinstance(x, str) or len(segments) > 1
                     for index, (trusted, segment) in enumerate(segments):
                         if trusted:
-                            split = split_html_islands(segment)
-                            ui = self._session._process_ui(TagList(*split))
+                            result += await self._send_trusted_segment(segment)
                         else:
-                            ui: RenderedDeps = {
-                                "html": str(segment),
-                                "deps": [],
-                            }
-
-                        result += ui["html"]
-                        await self._send_content_message(
-                            ui["html"],
-                            "append",
-                            ui["deps"],
-                            trusted=trusted,
-                            segment_start=composite or index > 0,
-                        )
+                            text = str(segment)
+                            result += text
+                            await self._send_content_message(
+                                text,
+                                "append",
+                                [],
+                                trusted=False,
+                                segment_start=composite or index > 0,
+                            )
 
             return result
 
@@ -189,6 +235,42 @@ class MarkdownStream:
             _handle_error.destroy()  # type: ignore
 
         return _task
+
+    async def _send_trusted_segment(self, segment: TagChild) -> str:
+        """Send one trusted content segment as island parts. Return its HTML.
+
+        Non-React runs ship as ``html_block`` messages. Bare
+        ``data-shinychat-react`` elements stay as trusted residual string
+        segments. The run's deps are aggregated onto the first outbound
+        envelope so every dep loads before any part mounts.
+        """
+        parts = list(derive_island_parts(segment))
+        run_deps = (
+            serialize_html_deps(
+                [dep for part in parts for dep in part.deps],
+                self._session,
+            )
+            or []
+        )
+        html = ""
+        for part_index, part in enumerate(parts):
+            envelope_deps = run_deps if part_index == 0 else []
+            if isinstance(part, IslandBlockPart):
+                block = html_block(
+                    part.html, serialize_html_deps(part.deps, self._session)
+                )
+                html += part.html
+                await self._send_block_message(block, envelope_deps)
+            else:
+                html += part.html
+                await self._send_content_message(
+                    part.html,
+                    "append",
+                    envelope_deps,
+                    trusted=True,
+                    segment_start=True,
+                )
+        return html
 
     @property
     def latest_stream(self):
@@ -251,7 +333,7 @@ class MarkdownStream:
         self,
         content: str,
         operation: Literal["append", "replace"],
-        html_deps: list[dict[str, str]],
+        html_deps: list[dict[str, Any]],
         *,
         trusted: bool,
         segment_start: bool,
@@ -263,6 +345,25 @@ class MarkdownStream:
             "html_deps": html_deps,
             "trusted": trusted,
             "segment_start": segment_start,
+        }
+        await self._send_custom_message(msg)
+
+    async def _send_block_message(
+        self, block: StreamBlock, html_deps: list[dict[str, Any]]
+    ):
+        """Send one structured block.
+
+        The block's own ``html_deps`` carry its dependencies for its mount
+        gate. The envelope's ``html_deps`` carry the aggregated deps of the
+        block's whole trusted run, empty for later parts.
+        """
+        msg: ContentMessage = {
+            "id": self.id,
+            "operation": "append",
+            "html_deps": html_deps,
+            "trusted": True,
+            "segment_start": True,
+            "block": block,
         }
         await self._send_custom_message(msg)
 
@@ -382,21 +483,41 @@ def output_markdown_stream(
     from shiny.module import resolve_id
     from shiny.ui.css import as_css_unit
 
-    rendered_segments: list[dict[str, str | bool]] = []
+    rendered_segments: list[dict[str, Any]] = []
     dependencies = []
     for trusted, segment in split_content_by_trust(content):
         if trusted:
-            ui = TagList(*split_html_islands(segment)).render()
+            # Trusted UI walks the shared island derivation: non-React runs
+            # become {block: html_block} entries; bare data-shinychat-react
+            # elements stay trusted residual text segments. No session exists
+            # at UI-construction time, so block deps carry raw as_dict() dicts.
+            for part in derive_island_parts(segment):
+                if isinstance(part, IslandBlockPart):
+                    block = html_block(
+                        part.html,
+                        [d.as_dict() for d in part.deps] if part.deps else None,
+                    )
+                    rendered_segments.append({"block": block})
+                else:
+                    rendered_segments.append(
+                        {"text": part.html, "trusted": True}
+                    )
+                dependencies.extend(part.deps)
         else:
-            ui = RenderedHTML(html=str(segment), dependencies=[])
-        rendered_segments.append({"text": ui["html"], "trusted": trusted})
-        dependencies.extend(ui["dependencies"])
+            rendered_segments.append({"text": str(segment), "trusted": False})
 
+    # The fallback `content` attribute carries every segment's HTML so a
+    # client that fails closed on the provenance array still shows the
+    # content, escaped and untrusted.
     rendered_content = "".join(
-        str(segment["text"]) for segment in rendered_segments
+        str(seg["text"]) if "text" in seg else str(seg["block"]["content"])
+        for seg in rendered_segments
     )
-    fallback_trusted = len(rendered_segments) == 1 and bool(
-        rendered_segments[0]["trusted"]
+    # A block entry is never a trusted fallback: the fail-closed path must
+    # not render fallback content as trusted.
+    fallback_trusted = (
+        len(rendered_segments) == 1
+        and rendered_segments[0].get("trusted") is True
     )
 
     return Tag(

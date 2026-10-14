@@ -109,10 +109,7 @@ chat_restore <- function(
         "_cancel",
         "_slash_command",
         "_greeting_requested",
-        "_greeting_dismissed",
-        # Carries StoredMessage-like list objects, which aren't
-        # JSON-serializable for Shiny's bookmark input.json.
-        "_messages"
+        "_greeting_dismissed"
       )
     ),
     excluded_names
@@ -260,6 +257,9 @@ chat_update_bookmark <- function(
     promises::then(stream_promise, function(stream) {
       # Force a bookmark update when the stream ends!
       shiny::isolate(session$doBookmark())
+      # Preserve the stream's accumulated result value rather than
+      # doBookmark()'s return value.
+      stream
     })
 
   return(prom)

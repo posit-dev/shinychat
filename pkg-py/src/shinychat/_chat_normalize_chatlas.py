@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, Union
 
 from htmltools import (
     HTML,
+    HTMLDependency,
     MetadataNode,
     RenderedHTML,
     ReprHtml,
@@ -15,11 +16,10 @@ from htmltools import (
     Tagifiable,
     TagList,
 )
-from packaging import version
 from pydantic import BaseModel, field_serializer, field_validator
 from typing_extensions import TypeAliasType
 
-from ._chat_types import ChatMessage
+from ._chat_types import ChatMessage, ToolRequestBlock, ToolResultBlock
 from ._htmltools_serialization import SerializedHTML, serialize_htmltools
 
 if TYPE_CHECKING:
@@ -70,7 +70,7 @@ class ToolCardComponent(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     @field_serializer("icon")
-    def _serialize_icon(self, value: TagChild) -> SerializedHTML:
+    def _serialize_icon(self, value: TagChild) -> Optional[SerializedHTML]:
         return serialize_htmltools(value)
 
     @field_validator("icon", mode="before")
@@ -385,7 +385,7 @@ class ToolResultDisplay(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     @field_serializer("html", "icon", "footer")
-    def _serialize_html_icon(self, value: TagChild) -> SerializedHTML:
+    def _serialize_html_icon(self, value: TagChild) -> Optional[SerializedHTML]:
         return serialize_htmltools(value)
 
     @field_validator("html", "icon", "footer", mode="before")
@@ -437,14 +437,11 @@ def resolve_tool_annotations(tool: Any) -> ResolvedToolAnnotations:
     )
 
 
-def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
+def tool_request_contents(
+    x: "ContentToolRequest",
+) -> Optional[ToolRequestComponent]:
     if tool_display_override() == "none":
-        return TagList()
-
-    # These content objects do have tagify() methods,
-    # but that's for legacy behavior
-    if is_legacy():
-        return x
+        return None
 
     intent = None
     if isinstance(x.arguments, dict):
@@ -473,14 +470,11 @@ def tool_request_contents(x: "ContentToolRequest") -> Tagifiable:
     )
 
 
-def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
+def tool_result_contents(
+    x: "ContentToolResult",
+) -> Optional[ToolResultComponent]:
     if tool_display_override() == "none":
-        return TagList()
-
-    # These content objects do have tagify() methods,
-    # but that's the legacy behavior
-    if is_legacy():
-        return x
+        return None
 
     if x.request is None:
         raise ValueError(
@@ -536,14 +530,126 @@ def tool_result_contents(x: "ContentToolResult") -> Tagifiable:
     )
 
 
-def tool_result_message(result: Tagifiable) -> ChatMessage:
+def tool_request_block(
+    component: ToolRequestComponent,
+) -> "tuple[ToolRequestBlock, list[HTMLDependency]]":
+    """Build a ``tool_request`` wire block from a card component.
+
+    Produces the typed block instead of the markup that
+    ``ToolRequestComponent.tagify()`` renders.
+    """
+    deps: list[HTMLDependency] = []
+
+    block: ToolRequestBlock = {
+        "type": "tool_request",
+        "version": 1,
+        "request_id": component.request_id,
+        "tool_name": component.tool_name,
+    }
+
+    if component.tool_title is not None:
+        block["title"] = component.tool_title
+    if component.intent is not None:
+        block["intent"] = component.intent
+    if component.arguments:
+        block["arguments"] = component.arguments
+    if component.grouping is not None:
+        block["grouping"] = component.grouping
+
+    # Icon strings are HTML and never get escaped
+    if component.icon is not None:
+        icon_ui = TagList(component.icon).render()
+        block["icon"] = str(icon_ui["html"])
+        deps.extend(icon_ui["dependencies"])
+
+    return block, deps
+
+
+def tool_request_message(
+    request: Optional[ToolRequestComponent],
+) -> ChatMessage:
+    """Wrap a tool-request card in a message that carries a structured block."""
+    if request is None:
+        return ChatMessage(content=TagList())
+    block, deps = tool_request_block(request)
+    msg = ChatMessage(content="", blocks=[block])
+    msg.html_deps = deps + msg.html_deps
+    return msg
+
+
+def tool_result_block(
+    component: ToolResultComponent,
+) -> "tuple[ToolResultBlock, list[HTMLDependency]]":
+    """Build a ``tool_result`` wire block from a card component.
+
+    Produces the typed block instead of the markup that
+    ``ToolResultComponent.tagify()`` renders.
+    """
+    deps: list[HTMLDependency] = []
+
+    block: ToolResultBlock = {
+        "type": "tool_result",
+        "version": 1,
+        "request_id": component.request_id,
+        "tool_name": component.tool_name,
+        "status": component.status,
+        "value_type": component.value_type,
+        "show_request": component.show_request,
+    }
+
+    if component.tool_title is not None:
+        block["title"] = component.tool_title
+    if component.intent is not None:
+        block["intent"] = component.intent
+    if component.request_call:
+        block["request_call"] = component.request_call
+    if component.label is not None:
+        block["label"] = component.label
+    if component.value_preview is not None:
+        block["value_preview"] = component.value_preview
+    if component.grouping is not None:
+        block["grouping"] = component.grouping
+    if component.expanded:
+        block["expanded"] = True
+    if component.full_screen:
+        block["full_screen"] = True
+    if component.custom_display:
+        block["custom_display"] = True
+    if component.open_style == "framed":
+        block["open_style"] = "framed"
+
+    # Icon strings are HTML and never get escaped
+    if component.icon is not None:
+        icon_ui = TagList(component.icon).render()
+        block["icon"] = str(icon_ui["html"])
+        deps.extend(icon_ui["dependencies"])
+
+    if component.value is not None:
+        if component.value_type == "html":
+            value_ui = TagList(component.value).render()
+            block["value"] = str(value_ui["html"])
+            deps.extend(value_ui["dependencies"])
+        else:
+            block["value"] = str(component.value)
+
+    if component.footer is not None:
+        footer_ui = TagList(component.footer).render()
+        block["footer"] = str(footer_ui["html"])
+        deps.extend(footer_ui["dependencies"])
+
+    return block, deps
+
+
+def tool_result_message(
+    result: Optional[ToolResultComponent],
+) -> ChatMessage:
     """Wrap shinychat's rich tool card in a marker message."""
-    cls = (
-        ShinyToolCardMessage
-        if isinstance(result, ToolResultComponent)
-        else ChatMessage
-    )
-    return cls(content=result)
+    if result is None:
+        return ChatMessage(content=TagList())
+    block, deps = tool_result_block(result)
+    msg = ShinyToolCardMessage(content="", blocks=[block])
+    msg.html_deps = deps + msg.html_deps
+    return msg
 
 
 def wrap_custom_tool_result(
@@ -559,12 +665,8 @@ def wrap_custom_tool_result(
     value: Union[Tagifiable, str],
     value_type: ValueType,
     grouping: Optional[GroupingValue],
-) -> Tagifiable:
-    """Build the `<shiny-tool-result>` wrapper for an author's custom result UI.
-
-    Kept as a factory here so the caller only sees the opaque `Tagifiable`
-    return type.
-    """
+) -> ToolResultComponent:
+    """Build the `<shiny-tool-result>` wrapper for an author's custom result UI."""
     return ToolResultComponent(
         request_id=request_id,
         tool_name=tool_name,
@@ -639,15 +741,6 @@ def tool_result_display(
         return json.dumps(items), "content_extra"
 
     return str(x.get_model_value()), "code"
-
-
-# Tools started getting added to ContentToolRequest staring with 0.11.1
-def is_legacy():
-    import chatlas
-
-    v = chatlas._version.version_tuple
-    ver = f"{v[0]}.{v[1]}.{v[2]}"
-    return version.parse(ver) < version.parse("0.11.1")
 
 
 def tool_display_override() -> Literal["none", "basic", "rich"]:

@@ -165,6 +165,8 @@ export function createSuggestionRender({ paletteId }: SuggestionRenderProps) {
         return true
       }
       if (event.key === "Escape") {
+        event.preventDefault()
+        event.stopPropagation()
         return true
       }
       return false

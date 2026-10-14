@@ -3,7 +3,6 @@ import type { ShinyLifecycle, SlashCommandDef } from "../transport/types"
 import type { ChatToolState, AnyAction, ToolGrouping } from "./state"
 import { initialState } from "./state"
 import type { StopScroll } from "use-stick-to-bottom"
-import type { AttachmentPayload } from "./attachments"
 
 export const ShinyLifecycleContext = createContext<ShinyLifecycle | null>(null)
 
@@ -16,6 +15,7 @@ export function useChatStopScroll(): StopScroll | null {
 // Nothing is superseded until a transcript exists to derive it from.
 const initialToolState: ChatToolState = {
   supersededRequests: new Set(),
+  requestDefinitionIcons: new Map(),
 }
 
 export const ChatToolContext = createContext<ChatToolState>(initialToolState)
@@ -31,13 +31,6 @@ export function useToolGrouping(): ToolGrouping {
 export const ChatDispatchContext = createContext<Dispatch<AnyAction> | null>(
   null,
 )
-
-export type SubmitUserInput = (
-  content: string,
-  attachments: AttachmentPayload[],
-) => boolean
-
-export const ChatSubmitContext = createContext<SubmitUserInput | null>(null)
 
 export const SlashCommandsContext = createContext<SlashCommandDef[]>([])
 
@@ -62,16 +55,6 @@ export function useChatDispatch(): Dispatch<AnyAction> {
   if (!ctx) {
     throw new Error(
       "useChatDispatch must be used within a ChatDispatchContext.Provider",
-    )
-  }
-  return ctx
-}
-
-export function useChatSubmit(): SubmitUserInput {
-  const ctx = useContext(ChatSubmitContext)
-  if (ctx === null) {
-    throw new Error(
-      "useChatSubmit must be used within a ChatSubmitContext.Provider",
     )
   }
   return ctx
