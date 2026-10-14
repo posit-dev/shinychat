@@ -3139,8 +3139,10 @@ def test_stream_closed_in_flight_before_worker_starts_still_settles():
             pulled.append("never sent")
             yield "never sent"
 
+        producer = _producer()
+
         async def _body() -> None:
-            task = await chat.append_message_stream(_producer())
+            task = await chat.append_message_stream(producer)
             stream_id = chat._transcript.active_stream_id
             assert stream_id is not None
             await chat._transcript.abort_stream(stream_id, status="cancelled")
@@ -3162,10 +3164,9 @@ def test_stream_closed_in_flight_before_worker_starts_still_settles():
 
         run_async(lambda: _run_stream_test(sent, 2, _after))
 
-    # The producer was never advanced (aclose on an unstarted generator does
-    # not run its finally, so `closed` stays False — there was nothing to
-    # clean up).
+    # The producer was never advanced, and the worker closed it.
     assert pulled == []
+    assert producer.ag_frame is None  # type: ignore[attr-defined]
     types = [action["type"] for action in sent if action["type"] != "history_update"]
     assert types[-1] == "message"
     assert sent[-1]["message"]["segments"][0]["content"] == "after"

@@ -1695,7 +1695,10 @@ class Chat:
         :
             An extended task that represents the streaming task. The `.result()` method
             of the task can be called in a reactive context to get the final state of the
-            stream.
+            stream. The result is an empty string when the stream produced no
+            content, including when the reserved stream was closed before the
+            task's first step (the transcript's terminal status carries the
+            reason; the task itself completes successfully).
         """
         from shiny import reactive
 
