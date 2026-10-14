@@ -225,6 +225,14 @@ except where a task says otherwise).
   Playwright dirs deleted (P5.6.9 partial). Delegated and running:
   P5.6.8 audit (`xgzh`), P5.6.3+4 (`e431`+`3y60`, wave 2), `h94s`
   verification pass (read-only, under `49b6`).
+- 2026-10-14: P5.6.8 (`xgzh`) closed. **Premise correction: py-shiny#2508
+  is CLOSED-unmerged; main still flushes sequentially.** Audited against
+  the #2508 head ref anyway: all surfaces safe under both models; findings
+  filed as backlog `3y6p` (mock session contract) and `k089`
+  (concurrent-model tests); #422 docstring amendment folded into `49b6`;
+  v1 no-lock `on_response` moot (5.7 retires v1). `h94s` verification
+  complete: 6 moot, item 4 corrected to v1-only (v2 already guards),
+  backlog `5qxa`/`x9fa`/`y5kr` filed; `h94s` closed.
 
 ## Handoff
 
