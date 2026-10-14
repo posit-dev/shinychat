@@ -63,7 +63,11 @@ from ._chat_segments import (
     segments_content,
     segments_deps,
 )
-from ._chat_transcript import ChatTranscript, TranscriptEntry
+from ._chat_transcript import (
+    _STREAM_UNOWNED,
+    ChatTranscript,
+    TranscriptEntry,
+)
 from ._chat_types import (
     ChatAction,
     ChatGreeting,
@@ -1866,7 +1870,7 @@ class Chat:
                 # message_stream_context() entered here before the worker
                 # runs deterministically raises instead of being misread as
                 # a nested stream (roborev 1565).
-                self._transcript.claim_stream(stream_id, None)
+                self._transcript.claim_stream(stream_id, _STREAM_UNOWNED)
             return started
         except asyncio.CancelledError:
             status = "cancelled"
@@ -1908,14 +1912,17 @@ class Chat:
         before invoking this worker; ``append_message_stream()`` does so
         synchronously in its prologue.
         """
-        # The stream was reserved in the caller's task (with no owner); this
+        # The stream was reserved in the caller's task (unowned); this
         # worker consumes it, so nested message_stream_context() checks must
-        # see this task as the owner. Skip the claim if the stream was
-        # already closed or replaced in flight — the chunk sends below then
-        # fail through the worker's normal error/end-recovery path instead
-        # of an unhandled raise here (roborev 1565).
-        if self._transcript.active_stream_id == stream_id:
-            self._transcript.claim_stream(stream_id, asyncio.current_task())
+        # see this task as the owner. If the stream was already closed or
+        # replaced in flight, don't pull from a producer whose output can no
+        # longer be sent — close it and settle empty (roborev 1565/1567).
+        if self._transcript.active_stream_id != stream_id:
+            aclose = getattr(message, "aclose", None)
+            if aclose is not None:
+                await aclose()
+            return ""
+        self._transcript.claim_stream(stream_id, asyncio.current_task())
         empty = ChatMessageDict(content="", role="assistant")
         # The stream was open when this worker started. Keep the end chunk
         # flowing even if an in-flight transition somehow closed it first.

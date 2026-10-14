@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from . import _utils
 from ._chat_segments import StreamSegment, copy_segments
@@ -42,6 +42,13 @@ class TranscriptEntry:
             error=dict(self.error) if self.error is not None else None,
             exchange_id=self.exchange_id,
         )
+
+
+# Marker for a reserved-but-unclaimed stream: append_message_stream()
+# reserves in the caller's task and its worker claims the stream when it
+# starts. Distinct from None because asyncio.current_task() can itself
+# return None in loop-callback contexts (roborev 1567).
+_STREAM_UNOWNED: Any = object()
 
 
 @dataclass

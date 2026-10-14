@@ -3120,21 +3120,27 @@ def test_stream_context_after_append_message_stream_raises_deterministically():
 
 
 def test_stream_closed_in_flight_before_worker_starts_still_settles():
-    # Regression (roborev 1565): if the reserved stream is closed before the
-    # worker's first step, the worker must skip its ownership claim and fail
-    # through its normal error path — not raise from the claim itself and
-    # leave the generator unclosed and _handle_done with nothing to do.
+    # Regression (roborev 1565/1567): if the reserved stream is closed before
+    # the worker's first step, the worker must not pull from a producer whose
+    # output can no longer be sent — it closes the producer and settles
+    # empty. Discriminates against the old shape, where the ownership claim
+    # itself raised and the task ended in error.
     with session_context(test_session):
         chat = Chat(id="stream_closed_in_flight", history=False)
         sent: list[dict[str, Any]] = []
+        pulled: list[str] = []
 
         async def _capture(action: Any, deps: Any = None) -> None:
             sent.append(action)
 
         chat._send_action = _capture  # type: ignore[method-assign]
 
+        async def _producer():
+            pulled.append("never sent")
+            yield "never sent"
+
         async def _body() -> None:
-            task = await chat.append_message_stream(["never sent"])
+            task = await chat.append_message_stream(_producer())
             stream_id = chat._transcript.active_stream_id
             assert stream_id is not None
             await chat._transcript.abort_stream(stream_id, status="cancelled")
@@ -3142,8 +3148,10 @@ def test_stream_closed_in_flight_before_worker_starts_still_settles():
 
             for _ in range(100):
                 with reactive.isolate():
-                    done = task.status() != "running"
-                if done:
+                    status = task.status()
+                if status != "running":
+                    # Old shape: the claim raised, so the task ends in error.
+                    assert status == "success"
                     break
                 await asyncio.sleep(0.01)
 
@@ -3154,6 +3162,10 @@ def test_stream_closed_in_flight_before_worker_starts_still_settles():
 
         run_async(lambda: _run_stream_test(sent, 2, _after))
 
+    # The producer was never advanced (aclose on an unstarted generator does
+    # not run its finally, so `closed` stays False — there was nothing to
+    # clean up).
+    assert pulled == []
     types = [action["type"] for action in sent if action["type"] != "history_update"]
     assert types[-1] == "message"
     assert sent[-1]["message"]["segments"][0]["content"] == "after"
