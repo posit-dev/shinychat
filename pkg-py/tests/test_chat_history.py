@@ -510,10 +510,14 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
             ConversationPartition(chat_id=chat_id, scope="test")
         )
 
-        warnings.simplefilter("error")
-        await chat._record_accepted_user_input_with_capture(
-            ChatMessage(content="blocked input", role="user")
-        )
+        with warnings.catch_warnings():
+            # User-input recording stays silent (direct submissions have the
+            # P5.4 rejection path); scope the filter so only this call's
+            # warnings become errors.
+            warnings.simplefilter("error")
+            await chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="blocked input", role="user")
+            )
         with pytest.warns(UserWarning, match="The append was ignored because"):
             await chat.append_message(object())
         with pytest.warns(UserWarning, match="The append was ignored because"):
@@ -546,6 +550,7 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
                 await chat.append_message_stream(blocked_stream())
         extended_task.assert_not_called()
         assert not stream_started
+
         assert chat._transcript.read() == ()
         assert chat._transcript.active_stream_id is None
         assert recorder.record is None
@@ -555,6 +560,26 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
         assert (
             await store.list(ConversationPartition(chat_id=chat_id, scope="test"))
         ) == stored_before
+
+        # Client-triggered slash commands during the window are dropped
+        # silently (like user input): the handler does not run and no
+        # warning fires. (The effect's finally still clears the client's
+        # loading indicator — pre-existing UX, not a transcript write.)
+        slash_calls: list[str] = []
+
+        @chat.slash_command("blocked", "Blocked command")
+        async def _(user_text: str) -> None:
+            slash_calls.append(user_text)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            cast(
+                Any, session.input[chat._slash_command_id]
+            )._set({"command": "blocked", "userText": "nope", "echo": True})
+            with session_context(cast(Any, session)), reactive.isolate():
+                await handlers["_on_slash_command"]()
+        assert slash_calls == []
+        assert chat._transcript.read() == ()
 
         with session_context(cast(Any, session)), reactive.isolate():
             await handlers["_init_history"]()
@@ -571,6 +596,15 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
             message.as_stored_message().content
             for message in cast(Any, root).messages
         ] == ["root captured append"]
+
+        # Post-admission, the same slash command runs — proving the earlier
+        # suppression was the admission guard, not a dead handler.
+        cast(
+            Any, session.input[chat._slash_command_id]
+        )._set({"command": "blocked", "userText": "works", "echo": True})
+        with session_context(cast(Any, session)), reactive.isolate():
+            await handlers["_on_slash_command"]()
+        assert slash_calls == ["works"]
     finally:
         chat.destroy()
 

@@ -561,7 +561,9 @@ class Chat:
                 echo = bool(data.get("echo", True))
                 try:
                     if not self.history._history_action_admitted():
-                        warnings.warn(_SUPPRESSED_APPEND_WARNING, stacklevel=2)
+                        # Client-triggered, not a programmatic append; direct
+                        # user actions have their own rejection path (P5.4),
+                        # so this stays silent like the user-input sites.
                         return
                     if echo:
                         full_text = f"/{command} {user_text}".rstrip()
@@ -1165,6 +1167,12 @@ class Chat:
         similar) is specified in model's completion method.
         :::
         """
+        if not self.history._history_action_admitted():
+            # Warn here, at the public entry point, so stacklevel=2 names the
+            # caller; internal callers of _append_complete_message (init
+            # seeding, restore replay) stay silent.
+            warnings.warn(_SUPPRESSED_APPEND_WARNING, stacklevel=2)
+            return
         await self._append_complete_message(message, icon=icon, settle=True)
 
     async def _append_complete_message(
@@ -1176,7 +1184,6 @@ class Chat:
         transaction: object | None = None,
     ) -> None:
         if not self.history._history_action_admitted():
-            warnings.warn(_SUPPRESSED_APPEND_WARNING, stacklevel=2)
             return
         exchange_id = self._transcript.open_exchange_id
         transaction, release = self._transcript._use_transaction(
@@ -1672,7 +1679,12 @@ class Chat:
         :
             `RuntimeError` if conversation history is still initializing: the
             stream is rejected before the message iterable is consumed and it
-            will not be replayed.
+            will not be replayed. `RuntimeError` if another message stream is
+            active (this package rejects a second stream at the call site
+            rather than queueing it). Errors from starting the stream (a
+            message-transform failure, or a send/persist failure on the start
+            chunk) propagate from this call rather than surfacing through the
+            returned task.
 
         Returns
         -------

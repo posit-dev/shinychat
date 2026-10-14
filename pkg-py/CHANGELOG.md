@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Programmatic appends suppressed while conversation history is still initializing (`Chat.append_message()`, message chunk starts, slash-command echoes) now emit a `UserWarning` instead of failing silently: the append was ignored, was not sent, and will not be replayed.
 
-* `Chat.append_message_stream()` now starts its stream before returning, so messages appended right after it land behind the stream instead of possibly jumping ahead of it. Cancelling the stream's task before its body starts now also ends the stream, so later messages are not stuck behind a dead stream. (#417, #418; thanks @schloerke)
+* `Chat.append_message_stream()` now starts its stream before returning, so it can no longer be overtaken by later work. An `append_message()` — or a second `append_message_stream()` — while the stream is active now raises `RuntimeError` at the call site instead of possibly jumping ahead of the stream; wait for the stream to finish (e.g. via `latest_message_stream`) before appending. Cancelling the stream's task before its body starts now also ends the stream, so later messages are not stuck behind a dead stream. (#417, #418; thanks @schloerke)
 
 ## [0.7.2] - 2026-09-18
 
