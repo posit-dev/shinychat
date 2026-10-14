@@ -213,6 +213,19 @@ Each task: small conventional commits with kata refs in the body, roborev
 review on the task's commits, gates green (`make py-check`, JS untouched
 except where a task says otherwise).
 
+## Progress log
+
+- 2026-10-14: note approved (D1–D7). Suite baseline green (JS 1407; py unit
+  1095; Playwright 224 + known environmental `cancel_in_modal` red per
+  `ftz9`). P5.6.10 (`2ym2`) triage complete: `3403`'s 8 open findings
+  disposed (2 re-parented, 5 superseded, 1 obsolete), epic `3403` closed.
+  P5.6.2 (`zdec`) closed audit-no-change: the constructor-specific
+  suppression was already deleted in `5248eae6`; the `ftz9` handoff note
+  claiming production code remained was inaccurate. `__pycache__`-only
+  Playwright dirs deleted (P5.6.9 partial). Delegated and running:
+  P5.6.8 audit (`xgzh`), P5.6.3+4 (`e431`+`3y60`, wave 2), `h94s`
+  verification pass (read-only, under `49b6`).
+
 ## Handoff
 
 (appended at phase exit — what landed, what's next, provisional decisions)
