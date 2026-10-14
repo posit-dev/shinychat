@@ -3056,6 +3056,42 @@ async def _run_stream_test(sent: list[Any], n: int, body: Any) -> None:
         await asyncio.sleep(0.01)
 
 
+def test_nested_stream_context_inside_append_message_stream_works():
+    # Regression: append_message_stream() reserves the stream in the
+    # caller's task, but the worker consuming the generator runs in the
+    # ExtendedTask's task. A nested message_stream_context() inside the
+    # generator checks stream ownership against the current task, so the
+    # worker must claim the stream — otherwise the nested context raises
+    # "Cannot start a second message stream while a message stream is
+    # active" (caught by the message_stream_context Playwright app).
+    with session_context(test_session):
+        chat = Chat(id="stream_nested_ctx", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _outer():
+            yield "outer start"
+            async with chat.message_stream_context() as inner:
+                await inner.append("inner")
+            yield "outer end"
+
+        async def _body() -> None:
+            await chat.append_message_stream(_outer())
+
+        run_async(lambda: _run_stream_test(sent, 4, _body))
+
+    types = [action["type"] for action in sent if action["type"] != "history_update"]
+    assert types[0] == "chunk_start" and types[-1] == "chunk_end"
+    contents = [
+        entry.message.content for entry in chat._transcript.read()
+    ]
+    assert len(contents) == 1 and "inner" in contents[0]
+
+
 def test_append_message_during_active_stream_raises_then_lands_after_stream():
     # Regression (#417): append_message_stream() reserves its stream
     # synchronously, so a complete append in the same async body can no

@@ -96,6 +96,17 @@ class ChatTranscript:
         stream = self._require_stream()
         return stream.owner_task is owner_task
 
+    def claim_stream(self, stream_id: str, owner_task: object | None) -> None:
+        """Transfer stream ownership to the task consuming the stream.
+
+        `append_message_stream()` reserves the stream in the caller's task
+        (so later work cannot overtake it), but the consuming worker runs in
+        a different task; the worker claims the stream when it starts so
+        nested `message_stream_context()` checks see the true consumer.
+        """
+        stream = self._require_stream(stream_id)
+        stream.owner_task = owner_task
+
     async def append(
         self,
         entry: TranscriptEntry,

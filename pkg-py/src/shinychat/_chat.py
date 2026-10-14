@@ -1888,6 +1888,10 @@ class Chat:
         before invoking this worker; ``append_message_stream()`` does so
         synchronously in its prologue.
         """
+        # The stream was reserved in the caller's task; this worker consumes
+        # it, so nested message_stream_context() checks must see this task
+        # as the owner.
+        self._transcript.claim_stream(stream_id, asyncio.current_task())
         empty = ChatMessageDict(content="", role="assistant")
         # The stream was open when this worker started. Keep the end chunk
         # flowing even if an in-flight transition somehow closed it first.
