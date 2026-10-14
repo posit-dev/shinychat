@@ -55,6 +55,23 @@ StateHook = RestoreHook | RewindHook
 StatePlan = RestorePlan | RewindPlan
 
 
+class StateHookError(RuntimeError):
+    """A planned state entry failed to apply while a plan was executed.
+
+    Names the failing entry (e.g. ``shinychat:turns``) so restore and
+    rewind failures can identify the hook that failed in user-facing
+    warnings. The hook's own error stays chained as ``__cause__``;
+    cancellations are never wrapped, so ``CancelledError`` keeps its
+    identity.
+    """
+
+    entry_name: str
+
+    def __init__(self, entry_name: str, error: Exception) -> None:
+        super().__init__(f"Failed to apply state entry {entry_name!r}: {error}")
+        self.entry_name = entry_name
+
+
 def adapter_is_chatlas(adapter: TurnsAdapter) -> bool:
     return bool(getattr(adapter, "is_chatlas", lambda: False)())
 
@@ -350,11 +367,17 @@ async def run_plan(
     """Execute a planned state-path application hook by hook.
 
     ``skip_turns=True`` drops the ``shinychat:turns`` entry: the
-    degraded-resubmit path keeps live turns and rewinds only the rest.
+    degraded-resubmit path keeps live turns and rewinds only the rest. A
+    hook that raises wraps its error in :class:`StateHookError`, which
+    names the entry; cancellation (any other ``BaseException``)
+    propagates unchanged.
     """
     for name, hook, context in planned:
         if skip_turns and name == "shinychat:turns":
             continue
-        result = hook(context)
-        if inspect.isawaitable(result):
-            await result
+        try:
+            result = hook(context)
+            if inspect.isawaitable(result):
+                await result
+        except Exception as error:
+            raise StateHookError(name, error) from error

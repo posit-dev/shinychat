@@ -4,8 +4,16 @@ import asyncio
 import dataclasses
 import inspect
 import warnings
-from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, cast
+from contextlib import asynccontextmanager, contextmanager
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Awaitable,
+    Callable,
+    Iterator,
+    Literal,
+    cast,
+)
 
 from . import _history_plan
 from ._attachments import (
@@ -480,6 +488,10 @@ class HistoryController:
         self.restore_bootstrap: Literal["recorded", "live"] = restore_bootstrap
         self._title_task: asyncio.Task[None] | None = None
         self._over_budget_warned: bool = False
+        # In-flight restore step, remembered only when that step fails, so
+        # `_clear_failed_restore` can name where a restore broke in its
+        # user-facing notification. See `_restore_step`.
+        self._restore_failure_step: str | None = None
         self._exchange_recorder = (
             _ExchangeRecorder(self) if use_exchange_tree else None
         )
@@ -816,16 +828,20 @@ class HistoryController:
             cb(values)
 
     async def _notify_restore_failure(
-        self, *, recovery_incomplete: bool
+        self, *, recovery_incomplete: bool, detail: str | None = None
     ) -> None:
         from shiny import ui as shiny_ui
         from shiny.session import session_context
 
-        message = (
-            "Could not restore conversation. Recovery was incomplete; reload "
-            "before starting a new chat."
+        message = "Could not restore conversation."
+        if detail:
+            # `detail` names the failing hook (state entry) or restore step;
+            # it carries no trailing period so the sentence composes.
+            message = f"Could not restore conversation: {detail.rstrip('.')}."
+        message += (
+            " Recovery was incomplete; reload before starting a new chat."
             if recovery_incomplete
-            else "Could not restore conversation. A fresh chat is ready."
+            else " A fresh chat is ready."
         )
         with session_context(self.chat._session):
             shiny_ui.notification_show(
@@ -843,9 +859,52 @@ class HistoryController:
                 type="warning",
             )
 
-    async def _clear_failed_restore(self) -> None:
+    def _restore_failure_detail(
+        self, failure: BaseException | None
+    ) -> str | None:
+        """Name the failing hook or step for the restore-failure warning.
+
+        Prefers the failing state entry (``StateHookError`` names its
+        hook); otherwise the labeled in-flight step; otherwise the error's
+        own text (preflight and materialization validation errors already
+        name the offending entry). Cancellation keeps the generic message:
+        its identity is the outcome, not a diagnostic.
+        """
+        if not isinstance(failure, Exception):
+            return None
+        step = self._restore_failure_step
+        self._restore_failure_step = None
+        if isinstance(failure, _history_plan.StateHookError):
+            cause = failure.__cause__
+            suffix = f": {cause}" if cause is not None else ""
+            return f"the {failure.entry_name!r} state entry failed to apply{suffix}"
+        text = str(failure).rstrip(".")
+        if step is not None:
+            return f"failed while {step}: {text}" if text else f"failed while {step}"
+        return text or None
+
+    @contextmanager
+    def _restore_step(self, step: str) -> Iterator[None]:
+        """Label the in-flight restore step for the failure warning.
+
+        The step is remembered only when the wrapped block fails, so a
+        later ``_clear_failed_restore`` can name where the restore broke;
+        successful steps leave nothing behind.
+        """
+        try:
+            yield
+        except BaseException:
+            self._restore_failure_step = step
+            raise
+
+    async def _clear_failed_restore(
+        self, failure: BaseException | None = None
+    ) -> None:
         recorder = self._exchange_recorder
         assert recorder is not None
+
+        detail = self._restore_failure_detail(failure)
+        self._restore_failure_step = None
 
         # Local ownership is cleared synchronously before any cleanup can
         # suspend, so a subsequent accepted input always creates a fresh draft.
@@ -881,7 +940,7 @@ class HistoryController:
                 history._initial_history_initialized = True
         try:
             await self._notify_restore_failure(
-                recovery_incomplete=bool(cleanup_failures)
+                recovery_incomplete=bool(cleanup_failures), detail=detail
             )
         except BaseException:
             # The original restore error or cancellation remains the outcome.
@@ -938,32 +997,43 @@ class HistoryController:
         try:
             # Live bootstrap is intentionally captured only after admission
             # and recorder serialization, but before destructive effects.
-            if bootstrap == "live":
-                planned_state = _history_plan.materialize_live_restore_turns(
-                    planned_state, adapter=self.adapter
-                )
-            await self._replay_exchange_display(target, node_ids)
-            await _history_plan.run_plan(planned_state)
+            with self._restore_step("materializing the restored turns"):
+                if bootstrap == "live":
+                    planned_state = (
+                        _history_plan.materialize_live_restore_turns(
+                            planned_state, adapter=self.adapter
+                        )
+                    )
+            with self._restore_step("replaying the conversation display"):
+                await self._replay_exchange_display(target, node_ids)
+            with self._restore_step("applying the recorded state entries"):
+                await _history_plan.run_plan(planned_state)
             if _history_plan.turns_unavailable(planned_state):
                 recorder._invalidate_turn_baseline()
 
             # `_ExchangeRecorder` remains the sole v2 record owner.
             # The controller only sequences its installation after
             # display and state consumers have accepted the target.
-            self.record = None
-            recorder.install_restored_record(target)
-            await self._set_active_id(target.id)
-            recorder.mark_active_id_published(target)
-            if persist_active_pointer:
-                await recorder._persist_record()
-            self._restore_app_state(target.values or {})
-            await self._send_exchange_metadata()
-            await self._send_sibling_metadata()
-            if _history_plan.turns_unavailable(planned_state):
-                await self._notify_turns_unavailable()
-            await self.send_history_update()
-        except BaseException:
-            await self._clear_failed_restore()
+            with self._restore_step("installing the restored record"):
+                self.record = None
+                recorder.install_restored_record(target)
+                await self._set_active_id(target.id)
+                recorder.mark_active_id_published(target)
+            with self._restore_step("persisting the restored record"):
+                if persist_active_pointer:
+                    await recorder._persist_record()
+            with self._restore_step("restoring the app state"):
+                self._restore_app_state(target.values or {})
+            with self._restore_step(
+                "sending the restored conversation metadata"
+            ):
+                await self._send_exchange_metadata()
+                await self._send_sibling_metadata()
+                if _history_plan.turns_unavailable(planned_state):
+                    await self._notify_turns_unavailable()
+                await self.send_history_update()
+        except BaseException as error:
+            await self._clear_failed_restore(error)
             raise
 
     async def _replay_exchange_display(
@@ -1023,10 +1093,10 @@ class HistoryController:
             node_ids, planned_state, bootstrap = (
                 self._prepare_exchange_restore(selected)
             )
-        except BaseException:
+        except BaseException as error:
             # Initial restore has no surrounding transaction to recover a
             # failed preflight. Keep the shared restore methods fail-closed.
-            await self._clear_failed_restore()
+            await self._clear_failed_restore(error)
             raise
 
         restore_body_entered = False
@@ -1041,9 +1111,9 @@ class HistoryController:
                         bootstrap=bootstrap,
                         persist_active_pointer=persist_active_pointer,
                     )
-        except BaseException:
+        except BaseException as error:
             if not restore_body_entered:
-                await self._clear_failed_restore()
+                await self._clear_failed_restore(error)
             raise
 
     async def restore_bookmark_pointer(
@@ -1327,9 +1397,15 @@ class HistoryController:
                     return
                 await recorder._capture_state(current_leaf, "node_close")
                 try:
+                    # Rewind hooks run before the leaf move is persisted, so a
+                    # hook failure leaves the store pointing at the leaf the
+                    # user still sees and the fail-to-fresh-draft recovery
+                    # below is the only thing that changed. The plan was
+                    # preflighted against a deep copy above, so nothing here
+                    # mutates until the hooks have accepted the rewind.
+                    await _history_plan.run_plan(rewind_state)
                     record.set_active_leaf(target.parent_id)
                     await recorder._persist_record()
-                    await _history_plan.run_plan(rewind_state)
                     action: HistoryEditProjectionAction = {
                         "type": "history_edit_projection",
                         "requestId": request_id,
@@ -1346,8 +1422,8 @@ class HistoryController:
                         ],
                     }
                     await self.chat._send_action(action)
-                except BaseException:
-                    await self._clear_failed_restore()
+                except BaseException as error:
+                    await self._clear_failed_restore(error)
                     raise
 
     async def retry(
@@ -1585,15 +1661,24 @@ class HistoryController:
                         )
                     await recorder._capture_state(current_leaf, "node_close")
                     try:
+                        # Rewind hooks run before the leaf move is persisted,
+                        # so a hook failure leaves the store pointing at the
+                        # leaf the user still sees and the fail-to-fresh-draft
+                        # recovery below is the only thing that changed. The
+                        # plan was preflighted against a deep-copied projection
+                        # above, so nothing here mutates until the hooks have
+                        # accepted the rewind; the display replay reads only
+                        # node content by id, so it does not depend on the
+                        # record's leaf pointer.
+                        await _history_plan.run_plan(rewind_state)
                         record.set_active_leaf(leaf)
                         await recorder._persist_record()
                         await self._replay_exchange_display(record, node_ids)
-                        await _history_plan.run_plan(rewind_state)
                         await self._send_sibling_metadata()
                         await self._send_exchange_metadata()
                         await self.send_history_update()
-                    except BaseException:
-                        await self._clear_failed_restore()
+                    except BaseException as error:
+                        await self._clear_failed_restore(error)
                         raise
             return
 

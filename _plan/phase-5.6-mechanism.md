@@ -267,6 +267,14 @@ except where a task says otherwise).
   harness committed two stray log commits (`.auto/`, `.agents`);
   excised from history. Delegation briefs now forbid scratch commits.
   P5.6.6 (`b0hf`) delegated.
+- 2026-10-14: batched range review (1570) Pass; its 2 live findings fixed
+  in `6a2eaf1b` (producer closed on early cancel; internal chunk-start
+  guard raises consistently). 1569's findings fixed in `7e10cad0`.
+  `e431`, `3y60`, `4ec9` closed with evidence. Driver decision: push to
+  origin (and CI) waits for phase exit. `b0hf` agent hit its turn limit
+  at ~70% (implementation verified coherent by coordinator: StateHookError
+  + step labeling + rewind-before-persist reorder; 25 test failures are
+  expected contract changes); completion delegated.
 
 ## Handoff
 

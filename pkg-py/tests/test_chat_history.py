@@ -688,7 +688,10 @@ async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> N
         assert controller.record is None
         assert controller._active_id_now() is None
         assert _history_updates(session) == []
-        notifier.assert_awaited_once_with(recovery_incomplete=True)
+        notifier.assert_awaited_once_with(
+            recovery_incomplete=True,
+            detail="failed while replaying the conversation display: restore failed",
+        )
     finally:
         chat.destroy()
 
@@ -1148,7 +1151,9 @@ async def test_v2_initial_restore_preflight_failure_recovers(
     assert updates[0]["active_id"] is None
     assert updates[0]["transition_protocol"] == "completion-v2"
     assert chat.history._initial_history_initialized
-    notifier.assert_awaited_once_with(recovery_incomplete=False)
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=False, detail="initial preflight failed"
+    )
     with session_context(cast(Any, session)), reactive.isolate():
         await chat._record_accepted_user_input_with_capture(
             ChatMessage(content="fresh after preflight failure", role="user")
@@ -1228,7 +1233,8 @@ async def test_v2_initial_restore_preflight_cancellation_recovers_once() -> None
     assert updates[0]["active_id"] is None
     assert updates[0]["transition_protocol"] == "completion-v2"
     assert chat.history._initial_history_initialized
-    notifier.assert_awaited_once_with(recovery_incomplete=False)
+    # Cancellation keeps the generic message: no detail to attribute.
+    notifier.assert_awaited_once_with(recovery_incomplete=False, detail=None)
 
     with session_context(cast(Any, session)), reactive.isolate():
         await handlers["_init_history"]()
@@ -1330,7 +1336,8 @@ async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> No
     assert len(updates) == 1
     assert updates[0]["active_id"] is None
     assert chat.history._initial_history_initialized
-    notifier.assert_awaited_once_with(recovery_incomplete=False)
+    # Cancellation keeps the generic message: no detail to attribute.
+    notifier.assert_awaited_once_with(recovery_incomplete=False, detail=None)
 
     with (
         session_context(cast(Any, session)),

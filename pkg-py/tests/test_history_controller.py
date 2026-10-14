@@ -3088,12 +3088,14 @@ async def test_v2_degraded_resubmit_rewind_failure_precedes_sibling_mutation():
 
     recorder._register_rewind_hook("parent", fail_rewind)
 
-    with pytest.raises(RuntimeError) as raised:
+    with pytest.raises(_history_plan.StateHookError) as raised:
         await controller.resubmit(
             target, kind="retry", request_id="retry", message_index=1
         )
 
-    assert raised.value is error
+    # The hook's own error stays chained; the wrapper names the entry.
+    assert raised.value.entry_name == "parent"
+    assert raised.value.__cause__ is error
     assert record.model_dump() == before
     assert chat._transcript.read() == transcript_before
     assert adapter.turns == turns_before
@@ -3408,7 +3410,9 @@ async def test_v2_initial_bookmark_projection_failure_recovers() -> None:
     ]
     assert len(history_updates) == 1
     assert history_updates[0]["active_id"] is None
-    notifier.assert_awaited_once_with(recovery_incomplete=False)
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=False, detail="Dangling parent reference at 'missing'"
+    )
 
 
 @pytest.mark.anyio
@@ -3450,7 +3454,11 @@ async def test_v2_initial_restore_admission_failure_recovers(
     ]
     assert len(history_updates) == 1
     assert history_updates[0]["active_id"] is None
-    notifier.assert_awaited_once_with(recovery_incomplete=False)
+    # Cancellation keeps the generic message: no detail to attribute.
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=False,
+        detail=str(failure) if isinstance(failure, Exception) else None,
+    )
 
 
 @pytest.mark.anyio
@@ -3507,7 +3515,13 @@ async def test_v2_live_restore_malformed_effective_turns_becomes_fresh_draft():
     assert len(history_updates) == 1
     assert history_updates[0]["active_id"] is None
     assert history_updates[0]["transition_protocol"] == "completion-v2"
-    notifier.assert_awaited_once_with(recovery_incomplete=False)
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=False,
+        detail=(
+            "failed while materializing the restored turns: "
+            "Turn-state entries must contain a list of JSON objects"
+        ),
+    )
 
 
 @pytest.mark.anyio
@@ -3596,7 +3610,8 @@ async def test_v2_live_restore_materialization_cancellation_cleans_up():
     assert len(history_updates) == 1
     assert history_updates[0]["active_id"] is None
     assert history_updates[0]["transition_protocol"] == "completion-v2"
-    notifier.assert_awaited_once_with(recovery_incomplete=True)
+    # Cancellation keeps the generic message: no detail to attribute.
+    notifier.assert_awaited_once_with(recovery_incomplete=True, detail=None)
 
 
 @pytest.mark.anyio
@@ -3728,7 +3743,8 @@ async def test_v2_restore_cancellation_preserves_outcome_after_cleanup_failure()
     assert recorder is not None
     assert recorder.record is None
     assert controller._active_id_now() is None
-    notifier.assert_awaited_once_with(recovery_incomplete=True)
+    # Cancellation keeps the generic message: no detail to attribute.
+    notifier.assert_awaited_once_with(recovery_incomplete=True, detail=None)
 
 
 @pytest.mark.anyio
@@ -3793,7 +3809,8 @@ async def test_v2_restore_notification_cancellation_preserves_original_instance(
         await controller.replay_exchange_record(target)
 
     assert raised.value is original
-    notifier.assert_awaited_once_with(recovery_incomplete=False)
+    # Cancellation keeps the generic message: no detail to attribute.
+    notifier.assert_awaited_once_with(recovery_incomplete=False, detail=None)
 
 
 @pytest.mark.anyio
@@ -3865,7 +3882,11 @@ async def test_v2_restore_cleanup_failures_are_secondary_and_reported(
     assert recorder is not None
     assert recorder.record is None
     assert controller._active_id_now() is None
-    notifier.assert_awaited_once_with(recovery_incomplete=True)
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=True,
+        detail="failed while replaying the conversation display: "
+        "original restore failure",
+    )
 
 
 @pytest.mark.anyio
@@ -3910,7 +3931,7 @@ async def test_v2_restore_cleanup_continues_after_earlier_failure():
     async def metadata() -> None:
         events.append("metadata")
 
-    async def notify(*, recovery_incomplete: bool) -> None:
+    async def notify(*, recovery_incomplete: bool, detail: str | None = None) -> None:
         assert recovery_incomplete
         events.append("notification")
 
@@ -3969,6 +3990,51 @@ async def test_notify_restore_failure_emits_recovery_message(
     with patch("shiny.ui.notification_show") as notification_show:
         await controller._notify_restore_failure(
             recovery_incomplete=recovery_incomplete
+        )
+
+    notification_show.assert_called_once_with(expected_message, type="error")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("recovery_incomplete", "detail", "expected_message"),
+    [
+        (
+            False,
+            "the 'shinychat:turns' state entry failed to apply: hook blew up",
+            "Could not restore conversation: the 'shinychat:turns' state "
+            "entry failed to apply: hook blew up. A fresh chat is ready.",
+        ),
+        (
+            False,
+            "failed while replaying the conversation display: boom",
+            "Could not restore conversation: failed while replaying the "
+            "conversation display: boom. A fresh chat is ready.",
+        ),
+        (
+            True,
+            "failed while materializing the restored turns: bad turns",
+            "Could not restore conversation: failed while materializing the "
+            "restored turns: bad turns. Recovery was incomplete; reload "
+            "before starting a new chat.",
+        ),
+    ],
+)
+async def test_notify_restore_failure_names_failing_hook_or_step(
+    recovery_incomplete: bool, detail: str, expected_message: str
+) -> None:
+    from shiny.module import ResolvedId
+
+    class _NotificationSession:
+        ns = ResolvedId("")
+
+    controller, _ = _make_controller(use_exchange_tree=True)
+    fake_chat = cast(_FakeChat, controller.chat)
+    cast(Any, fake_chat)._session = _NotificationSession()
+
+    with patch("shiny.ui.notification_show") as notification_show:
+        await controller._notify_restore_failure(
+            recovery_incomplete=recovery_incomplete, detail=detail
         )
 
     notification_show.assert_called_once_with(expected_message, type="error")
@@ -5123,7 +5189,9 @@ async def test_v2_navigation_persistence_failure_clears_to_fresh_draft():
             "transition_protocol": "completion-v2",
         }
     ]
-    notifier.assert_awaited_once_with(recovery_incomplete=False)
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=False, detail="navigation persistence failed"
+    )
 
 
 @pytest.mark.anyio
@@ -5168,9 +5236,11 @@ async def test_v2_navigation_cancellation_clears_to_fresh_draft(
     else:
         original_rewind = _history_plan.run_plan
 
-        async def cancel_rewind(plan: Any, **_kwargs: Any) -> None:
-            await original_rewind(plan)
-            replayed_display.extend(chat.messages)
+        # The rewind stage runs before any display replay, so there is
+        # nothing to capture from the display; the assertions below pin
+        # that no replay ever happened.
+        async def cancel_rewind(plan: Any, **kwargs: Any) -> None:
+            await original_rewind(plan, **kwargs)
             raise asyncio.CancelledError()
 
         rewind_patch = patch.object(_history_plan, "run_plan", cancel_rewind)
@@ -5178,13 +5248,25 @@ async def test_v2_navigation_cancellation_clears_to_fresh_draft(
     with rewind_patch, pytest.raises(asyncio.CancelledError):
         await controller.handle_navigate(2, "prev", request_id="navigation")
 
-    assert store.put_calls[0][1].active_leaf == original
-    assert replayed_display == [
-        _stored_message("user", "first").model_dump(mode="json"),
-        _stored_message("assistant", "custom prefix").model_dump(mode="json"),
-        _stored_message("user", "original").model_dump(mode="json"),
-        _stored_message("assistant", "original reply").model_dump(mode="json"),
-    ]
+    # The rewind stage now cancels before the leaf move: nothing was
+    # persisted and the display was never replayed.
+    if stage == "replay":
+        assert store.put_calls[0][1].active_leaf == original
+        assert replayed_display == [
+            _stored_message("user", "first").model_dump(mode="json"),
+            _stored_message("assistant", "custom prefix").model_dump(mode="json"),
+            _stored_message("user", "original").model_dump(mode="json"),
+            _stored_message("assistant", "original reply").model_dump(mode="json"),
+        ]
+        assert chat.clear_messages_calls == 2
+        assert chat.set_greeting_calls == [None, None]
+    else:
+        assert store.put_calls == []
+        assert replayed_display == []
+        # No display replay ran, so only the fail-to-fresh-draft cleanup
+        # cleared the chat.
+        assert chat.clear_messages_calls == 1
+        assert chat.set_greeting_calls == [None]
     assert recorder.record is None
     assert controller.record is None
     assert controller._active_id_now() is None
@@ -5192,8 +5274,6 @@ async def test_v2_navigation_cancellation_clears_to_fresh_draft(
     assert adapter.turns == []
     assert chat.messages == []
     assert chat._transcript.read() == ()
-    assert chat.clear_messages_calls == 2
-    assert chat.set_greeting_calls == [None, None]
     assert chat.actions == [
         {
             "type": "history_update",
@@ -5203,7 +5283,77 @@ async def test_v2_navigation_cancellation_clears_to_fresh_draft(
             "transition_protocol": "completion-v2",
         }
     ]
-    notifier.assert_awaited_once_with(recovery_incomplete=False)
+    # Cancellation keeps the generic message: no detail to attribute.
+    notifier.assert_awaited_once_with(recovery_incomplete=False, detail=None)
+
+
+@pytest.mark.anyio
+async def test_v2_navigation_rewind_hook_failure_keeps_persisted_leaf() -> None:
+    controller, chat, adapter, store, original, replacement = (
+        _make_v2_navigation_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    seeded = record.model_copy(deep=True)
+    await store.put(part(), seeded)
+    error = RuntimeError("navigation rewind failed")
+
+    async def fail_rewind(_context: StatePathContext) -> None:
+        raise error
+
+    # A custom entry on the navigation target makes the rewind plan fail
+    # at a known hook; the built-in turns rewind still runs first.
+    record.nodes[original].state["test:rewind"] = StateEntry(
+        kind="test",
+        version=1,
+        mode="snapshot",
+        data={},
+    )
+    recorder._register_rewind_hook("test:rewind", fail_rewind)
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+
+    with pytest.raises(_history_plan.StateHookError) as raised:
+        await controller.handle_navigate(2, "prev", request_id="navigation")
+
+    # The hook's own error stays chained; the wrapper names the entry.
+    assert raised.value.entry_name == "test:rewind"
+    assert raised.value.__cause__ is error
+    # The rewind hooks run before the leaf move is persisted: only the
+    # seeded record reached the store, and it still points at the leaf
+    # the user sees.
+    assert len(store.put_calls) == 1
+    assert store.put_calls[0][1].active_leaf == replacement
+    assert record.active_leaf == replacement
+    # Fail-to-fresh-draft applies: memory is cleared even though the
+    # store was never moved.
+    assert recorder.record is None
+    assert controller.record is None
+    assert controller._active_id_now() is None
+    assert recorder._turn_baseline == []
+    assert adapter.turns == []
+    assert chat.messages == []
+    assert chat._transcript.read() == ()
+    assert chat.clear_messages_calls == 1
+    assert chat.set_greeting_calls == [None]
+    assert chat.actions == [
+        {
+            "type": "history_update",
+            "enabled": True,
+            "conversations": [],
+            "active_id": None,
+            "transition_protocol": "completion-v2",
+        }
+    ]
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=False,
+        detail=(
+            "the 'test:rewind' state entry failed to apply: "
+            "navigation rewind failed"
+        ),
+    )
 
 
 @pytest.mark.anyio
@@ -5400,10 +5550,10 @@ async def test_v2_resubmit_rejects_real_chat_input_until_replay_releases(
     release_rewind = asyncio.Event()
     original_run_plan = _history_plan.run_plan
 
-    async def blocked_run_plan(plan: Any, **_kwargs: Any) -> None:
+    async def blocked_run_plan(plan: Any, **kwargs: Any) -> None:
         rewind_started.set()
         await release_rewind.wait()
-        await original_run_plan(plan)
+        await original_run_plan(plan, **kwargs)
 
     rewind_patch = patch.object(_history_plan, "run_plan", blocked_run_plan)
     rewind_patch.start()
@@ -5423,12 +5573,16 @@ async def test_v2_resubmit_rejects_real_chat_input_until_replay_releases(
         await chat._record_accepted_user_input_with_capture(
             ChatMessage(content="competing input", role="user")
         )
-    assert record.active_leaf == first
+    # The rewind hooks run before the leaf move is persisted: while they
+    # are blocked the record still points at the leaf the user sees.
+    assert record.active_leaf == target
     assert record.children_of(first) == [target]
 
     release_rewind.set()
     await resubmit
 
+    # Only after the rewind accepted does the leaf move to the parent.
+    assert record.active_leaf == first
     assert not chat._destructive_history_blocks_input
     await chat._record_accepted_user_input_with_capture(
         ChatMessage(content="second", role="user")
@@ -5618,7 +5772,6 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
     assert recorder is not None
     record = recorder.record
     assert record is not None
-    live_turns = list(adapter.turns)
     chat.messages = [
         _stored_message("user", "first"),
         _stored_message("user", "second"),
@@ -5629,9 +5782,10 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
     cleanup_entry: list[tuple[Any, ...]] = []
     original_clear_failed_restore = controller._clear_failed_restore
 
-    async def capture_cleanup_entry() -> None:
+    async def capture_cleanup_entry(failure: BaseException | None = None) -> None:
         cleanup_entry.append(
             (
+                failure,
                 recorder.record,
                 controller.record,
                 controller._active_id_now(),
@@ -5640,7 +5794,7 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
                 list(adapter.turns),
             )
         )
-        await original_clear_failed_restore()
+        await original_clear_failed_restore(failure)
 
     controller._clear_failed_restore = capture_cleanup_entry  # type: ignore[method-assign]
     put_attempts: list[ConversationRecordV2] = []
@@ -5660,8 +5814,15 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
 
     assert raised.value is expected
     assert put_attempts == [record]
+    # The rewind hooks ran before the failed persist, so the cleanup
+    # snapshot sees the rewound parent-prefix turns, not the live ones.
+    rewound_turns = [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+    ]
     assert cleanup_entry == [
         (
+            expected,
             record,
             None,
             record.id,
@@ -5670,7 +5831,7 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
                 _stored_message("user", "first"),
                 _stored_message("user", "second"),
             ],
-            live_turns,
+            rewound_turns,
         )
     ]
     assert recorder.record is None
@@ -5690,7 +5851,79 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
             "transition_protocol": "completion-v2",
         }
     ]
-    notifier.assert_awaited_once_with(recovery_incomplete=False)
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=False, detail="resubmit persistence failed"
+    )
+
+
+@pytest.mark.anyio
+async def test_v2_resubmit_rewind_hook_failure_keeps_persisted_leaf() -> None:
+    controller, chat, adapter, store, first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    seeded = record.model_copy(deep=True)
+    await store.put(part(), seeded)
+    error = RuntimeError("resubmit rewind failed")
+
+    async def fail_rewind(_context: StatePathContext) -> None:
+        raise error
+
+    # A custom entry on the rewind prefix makes the rewind plan fail at a
+    # known hook; the built-in turns rewind still runs first.
+    record.nodes[first].state["test:rewind"] = StateEntry(
+        kind="test",
+        version=1,
+        mode="snapshot",
+        data={},
+    )
+    recorder._register_rewind_hook("test:rewind", fail_rewind)
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+
+    with pytest.raises(_history_plan.StateHookError) as raised:
+        await controller.resubmit(
+            target, kind="retry", request_id="request", message_index=1
+        )
+
+    # The hook's own error stays chained; the wrapper names the entry.
+    assert raised.value.entry_name == "test:rewind"
+    assert raised.value.__cause__ is error
+    # The rewind hooks run before the leaf move is persisted: only the
+    # seeded record reached the store, and it still points at the leaf
+    # the user sees.
+    assert len(store.put_calls) == 1
+    assert store.put_calls[0][1].active_leaf == target
+    assert record.active_leaf == target
+    # Fail-to-fresh-draft applies: memory is cleared even though the
+    # store was never moved.
+    assert recorder.record is None
+    assert controller.record is None
+    assert controller._active_id_now() is None
+    assert recorder._turn_baseline == []
+    assert adapter.turns == []
+    assert chat.messages == []
+    assert chat.clear_messages_calls == 1
+    assert chat.set_greeting_calls == [None]
+    assert chat.actions == [
+        {
+            "type": "history_update",
+            "enabled": True,
+            "conversations": [],
+            "active_id": None,
+            "transition_protocol": "completion-v2",
+        }
+    ]
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=False,
+        detail=(
+            "the 'test:rewind' state entry failed to apply: "
+            "resubmit rewind failed"
+        ),
+    )
 
 
 @pytest.mark.anyio

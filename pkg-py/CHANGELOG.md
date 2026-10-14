@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * A programmatic `Chat.append_message()` suppressed while conversation history is still initializing now emits a `UserWarning` instead of failing silently: the append was ignored, was not sent, and will not be replayed. Client-triggered actions (user submissions, slash commands) attempted during that window are still rejected silently through their own path.
 
+* Restore-failure notifications now name the failing state entry (e.g. `shinychat:turns`) or the restore step that failed, instead of a generic message. Cancellations keep the generic message. And when navigating between exchanges or resubmitting, a failure in a state-rewind hook no longer leaves the stored conversation pointing at the new exchange: the stored record now only moves after the rewind succeeds.
+
 * `Chat.append_message_stream()` now starts its stream before returning, so it can no longer be overtaken by later work. An `append_message()` — or a second `append_message_stream()` — while the stream is active now raises `RuntimeError` at the call site instead of possibly jumping ahead of the stream; wait for the stream to finish (e.g. via `latest_message_stream`) before appending. Cancelling the stream's task before its body starts now also ends the stream, so later messages are not stuck behind a dead stream. (#417, #418; thanks @schloerke)
 
 ## [0.7.2] - 2026-09-18
