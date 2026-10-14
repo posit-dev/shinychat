@@ -1,7 +1,7 @@
 """
-Regression app for server-owned transcript reconstruction after restore (see
-`replay_ui` in `_history.py`). The next response must rebuild the active path
-from the server transcript without duplicating prior UI or losing rich HTML.
+Regression app for the v2 engine: restoring a conversation and then taking
+another turn must not duplicate prior UI or lose rich HTML. The directory name
+is historical (it began as a v1 `ui_offset` test); this app runs under v2.
 
 Each assistant reply carries a distinctive rich-UI marker (a styled
 `<div>` with an HTMLDependency-provided border color) keyed to the turn
