@@ -521,8 +521,12 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
             )
         with pytest.warns(UserWarning, match="The append was ignored because"):
             await chat.append_message(object())
-        with pytest.warns(UserWarning, match="The append was ignored because"):
-            assert not await chat._append_message_chunk(
+        # The internal chunk-start guard is defense in depth for private
+        # misuse; like the public stream entry points, it raises.
+        with pytest.raises(
+            RuntimeError, match="chat history is still initializing"
+        ):
+            await chat._append_message_chunk(
                 "", chunk="start", stream_id="blocked-stream"
             )
         # Suppressed stream entry points now raise instead of silently

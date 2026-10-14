@@ -3225,8 +3225,13 @@ def test_stream_cancelled_before_body_starts_still_ends():
 
         chat._send_action = _capture  # type: ignore[method-assign]
 
+        async def _producer():
+            yield "never sent"
+
+        producer = _producer()
+
         async def _body() -> None:
-            task = await chat.append_message_stream(["never sent"])
+            task = await chat.append_message_stream(producer)
             task.cancel()
 
         run_async(lambda: _run_stream_test(sent, 2, _body))
@@ -3241,6 +3246,8 @@ def test_stream_cancelled_before_body_starts_still_ends():
     assert sent[-1]["message"]["segments"][0]["content"] == "after"
     entry = chat._transcript.read()[0]
     assert entry.status == "cancelled"
+    # The done-effect closed the never-started producer (roborev 1570).
+    assert producer.ag_frame is None  # type: ignore[attr-defined]
 
 
 def test_nested_message_stream_context_restores_outer_checkpoint():

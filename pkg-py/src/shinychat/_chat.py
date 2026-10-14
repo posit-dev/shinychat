@@ -1386,8 +1386,10 @@ class Chat:
         # Normalize various message types into a ChatMessage()
         if chunk == "start":
             if not self.history._history_action_admitted():
-                warnings.warn(_SUPPRESSED_APPEND_WARNING, stacklevel=2)
-                return False
+                # Defense in depth: the public stream entry points raise
+                # before reaching this, so only private misuse lands here —
+                # make it loud like the public paths (roborev 1570).
+                raise RuntimeError(_STREAM_SUPPRESSED_MESSAGE)
             exchange_id = self._transcript.open_exchange_id
             transaction = self._transcript._reserve_stream_start()
             try:
@@ -1747,9 +1749,14 @@ class Chat:
             elif status == "cancelled" and not body_started and started:
                 # Cancelled before the body's first step, so the worker's
                 # `finally` never ran: the stream this method opened
-                # synchronously is still reserved. End it through the
+                # synchronously is still reserved. Close the producer — in
+                # the auto-wired path it may hold an open upstream request
+                # (roborev 1570) — then end the stream through the
                 # transcript's end/abort path so later work is not stuck
                 # behind a dead stream.
+                aclose = getattr(message, "aclose", None)
+                if aclose is not None:
+                    await aclose()
                 empty = ChatMessageDict(content="", role="assistant")
                 try:
                     await self._append_message_chunk(
