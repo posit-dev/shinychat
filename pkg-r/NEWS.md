@@ -1,5 +1,9 @@
 # shinychat (development version)
 
+## New features and improvements
+
+* Streamed responses now reveal smoothly at a typing-like pace instead of in abrupt server-sized chunks, with far fewer re-renders along the way. Bursts of text catch up quickly, the reveal never flashes a partial HTML tag, and stopping a response reveals any buffered text immediately. The trailing dot now appears only once a stream has stalled (or before any text has arrived), rather than hopping along with every update. (#411)
+
 ## Bug fixes
 
 * Stopping an in-progress response now returns focus to the chat input, even inside a Shiny modal. During streaming, Escape dismisses an open slash-command menu or history drawer first; a subsequent Escape cancels the response without closing the modal. (thanks @taekop, #416)

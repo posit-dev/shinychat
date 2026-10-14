@@ -204,6 +204,10 @@ export function ChatApp({
 
   const containerRef = useRef<ChatContainerHandle>(null)
   const smootherRef = useRef<StreamSmoother<ChunkMeta> | null>(null)
+  // Set on CANCEL_REQUESTED: providers can keep sending chunks after a
+  // cancel, and those must append raw rather than pace in — stopping should
+  // stop the motion. Cleared when the next stream starts.
+  const pacingBypassedRef = useRef(false)
   const siblingNavigationPendingRef = useRef(false)
   const [siblingNavigationPending, setSiblingNavigationPending] =
     useState(false)
@@ -228,6 +232,7 @@ export function ChatApp({
         !incoming.html_deps?.length,
     })
     smootherRef.current = smoother
+    pacingBypassedRef.current = false
 
     // Actions that arrive while the tail of a finished stream is still
     // draining. Most (history_update, update_siblings, ...) must apply after
@@ -286,6 +291,12 @@ export function ChatApp({
         // A prior stream's tail was already completed on arrival (see
         // ENDS_DRAIN), and a fresh stream has nothing buffered worth keeping.
         smoother.dispose()
+        pacingBypassedRef.current = false
+        dispatch(action)
+        return
+      }
+      if (pacingBypassedRef.current) {
+        // Post-cancel stragglers: no pacing, no deferral, apply as-is.
         dispatch(action)
         return
       }
@@ -352,6 +363,7 @@ export function ChatApp({
       const smoother = smootherRef.current
       const wasFinishing = smoother?.finishing ?? false
       smoother?.flush()
+      pacingBypassedRef.current = true
       if (wasFinishing) return
     }
     dispatch(action)

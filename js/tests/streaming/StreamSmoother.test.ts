@@ -629,4 +629,46 @@ describe("StreamSmoother tag boundaries", () => {
     expect(onEmit).toHaveBeenCalledWith("x <b", null, true)
     expect(vi.getTimerCount()).toBe(0)
   })
+
+  it("does not close a tag at a `>` inside a quoted attribute value", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({
+      onEmit,
+      // 320 chars/s over a 50ms tick earns exactly 16 characters. A
+      // quote-blind scan closes the tag at the quoted `>` (index 13) and
+      // emits `<div class="a>b` — the literal partial tag this guards
+      // against.
+      drainRate: 0,
+      minCharsPerSecond: 320,
+    })
+
+    smoother.push('<div class="a>b">HELLO', null)
+    vi.advanceTimersByTime(50)
+
+    expect(onEmit).toHaveBeenNthCalledWith(1, '<div class="a>b">', null, true)
+    smoother.dispose()
+  })
+
+  it("holds an inline-code tag mention with no `>` for maxTagHoldMs, then resumes", () => {
+    const onEmit = vi.fn()
+    const smoother = new StreamSmoother<null>({
+      onEmit,
+      ...whole,
+      maxTagHoldMs: 120,
+    })
+
+    // Streamed markdown like "the `<div` element": `<` followed by a letter
+    // reads as a tag start, and no `>` ever arrives, so the reveal freezes
+    // at the `<` until the stall guard lets it through. (The default hold
+    // equals STREAM_IDLE_MS, so in the chat UI the stalled-stream dot
+    // appears right as the hold releases.)
+    smoother.push("the `<div` element", null)
+
+    vi.advanceTimersByTime(50)
+    expect(joined(onEmit)).toBe("the `")
+
+    vi.advanceTimersByTime(200)
+    expect(joined(onEmit)).toBe("the `<div` element")
+    expect(vi.getTimerCount()).toBe(0)
+  })
 })

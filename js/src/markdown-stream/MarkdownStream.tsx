@@ -8,6 +8,7 @@ import {
 } from "react"
 import { MarkdownContent } from "../markdown/MarkdownContent"
 import { StreamingDot } from "../markdown/StreamingDotIcon"
+import { useStreamIdle } from "../markdown/useStreamIdle"
 import { useAutoScroll, findScrollableParent } from "../markdown/useAutoScroll"
 import { HtmlBlockContent } from "../chat/HtmlBlockContent"
 import type { HtmlBlock } from "../chat/html-block-model"
@@ -234,9 +235,20 @@ export function MarkdownStream({
   const awaitingContent =
     streaming && segments.every((s) => !isBlockSegment(s) && !/\S/.test(s.text))
 
+  // ...but whitespace-only content can satisfy both conditions at once: the
+  // trailing MarkdownContent shows its own stalled-stream dot, so stand down
+  // rather than render a second one.
+  const lastSegment = segments[segments.length - 1]
+  const lastText =
+    lastSegment && !isBlockSegment(lastSegment) ? lastSegment.text : null
+  const trailingDotShown = useStreamIdle(
+    streaming && contentType !== "text" && lastText !== null,
+    lastText,
+  )
+
   return (
     <div ref={innerRef}>
-      {awaitingContent && (
+      {awaitingContent && !trailingDotShown && (
         <p>
           <StreamingDot />
         </p>

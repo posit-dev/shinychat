@@ -285,7 +285,9 @@ export class StreamSmoother<TMeta> {
     const lt = text.lastIndexOf("<", cut - 1)
     if (lt === -1) return cut
 
-    const gt = text.indexOf(">", lt)
+    // Quote-aware: a `>` inside a quoted attribute value (`<div
+    // class="a>b">`) does not close the tag.
+    const gt = findTagClose(text, lt + 1)
     if (gt !== -1 && gt < cut) return cut
 
     const next = text.charAt(lt + 1)
@@ -303,6 +305,27 @@ export class StreamSmoother<TMeta> {
     }
     return lt
   }
+}
+
+/**
+ * Finds the `>` closing a tag open at or before `from`, skipping any `>`
+ * inside a quoted attribute value. Returns -1 while the tag is still
+ * arriving (or when a quote never balances, which the `maxTagHoldMs` stall
+ * guard bounds).
+ */
+function findTagClose(text: string, from: number): number {
+  let quote: string | null = null
+  for (let i = from; i < text.length; i++) {
+    const ch = text.charAt(i)
+    if (quote !== null) {
+      if (ch === quote) quote = null
+    } else if (ch === '"' || ch === "'") {
+      quote = ch
+    } else if (ch === ">") {
+      return i
+    }
+  }
+  return -1
 }
 
 /**

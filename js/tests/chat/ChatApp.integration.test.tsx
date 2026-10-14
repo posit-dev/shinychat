@@ -974,4 +974,55 @@ describe("ChatApp integration: end-of-stream drain", () => {
     expect(shownText()).toContain("second reply")
     expect(document.querySelector(".shiny-chat-message-cancelled")).toBeNull()
   })
+
+  it("chunks arriving after Stop are appended immediately, not paced in", () => {
+    const transport = renderChat({ cancelId: "test-chat_cancel" })
+    act(() => {
+      transport.fire("test-chat", {
+        type: "update_cancel",
+        enable_cancel: true,
+      })
+    })
+    act(() => {
+      transport.fire("test-chat", {
+        type: "chunk_start",
+        message: {
+          role: "assistant",
+          segments: [{ content: "", content_type: "markdown" }],
+        },
+      })
+    })
+    act(() => {
+      transport.fire("test-chat", {
+        type: "chunk",
+        content: "before stop",
+        operation: "append",
+      })
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop generating" }))
+    // Cancel flushes whatever was still buffered.
+    expect(shownText()).toContain("before stop")
+
+    // Providers can over-send after cancellation; those chunks must appear
+    // at once rather than keep "typing" in at pacing speed.
+    act(() => {
+      transport.fire("test-chat", {
+        type: "chunk",
+        content: " after stop",
+        operation: "append",
+      })
+    })
+    expect(shownText()).toContain("after stop")
+    act(() => {
+      transport.fire("test-chat", { type: "chunk_end" })
+    })
+
+    // A fresh stream paces normally again.
+    streamThenEnd(transport, "next reply")
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(shownText()).toContain("next reply")
+  })
 })
