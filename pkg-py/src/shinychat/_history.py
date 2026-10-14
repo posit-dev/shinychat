@@ -876,7 +876,7 @@ class HistoryController:
         The returned detail is safe for end users: it names the failing
         state entry (``StateHookError`` names its hook) or the labeled
         in-flight step, and never carries raw exception text, which can
-        hold internal details from app hooks or the store (roborev 1573).
+        hold internal details from app hooks or the store.
         Cancellation keeps the generic message: its identity is the
         outcome, not a diagnostic.
         """
@@ -894,7 +894,7 @@ class HistoryController:
 
     @contextmanager
     def _restore_step(self, step: str) -> Iterator[None]:
-        """Label the in-flight restore step for the failure warning.
+        """Label the in-flight restore step for the failure detail.
 
         The step is remembered only when the wrapped block fails, so a
         later ``_clear_failed_restore`` can name where the restore broke;
@@ -916,7 +916,7 @@ class HistoryController:
         if isinstance(failure, Exception):
             # The user-facing notification carries only the safe detail;
             # developers get the full error, including any raw exception
-            # text from app hooks or the store (roborev 1573).
+            # text from app hooks or the store.
             warnings.warn(
                 f"Chat history restore failed ({detail or 'no detail'}): "
                 f"{failure!r}",
@@ -1103,13 +1103,14 @@ class HistoryController:
         selected = target
         persist_active_pointer = False
         try:
-            if node_id is not None:
-                selected = target.model_copy(deep=True)
-                selected.set_active_leaf(node_id)
-                persist_active_pointer = target.active_leaf != node_id
-            node_ids, planned_state, bootstrap = (
-                self._prepare_exchange_restore(selected)
-            )
+            with self._restore_step("validating the saved conversation"):
+                if node_id is not None:
+                    selected = target.model_copy(deep=True)
+                    selected.set_active_leaf(node_id)
+                    persist_active_pointer = target.active_leaf != node_id
+                node_ids, planned_state, bootstrap = (
+                    self._prepare_exchange_restore(selected)
+                )
         except BaseException as error:
             # Initial restore has no surrounding transaction to recover a
             # failed preflight. Keep the shared restore methods fail-closed.
@@ -1118,16 +1119,17 @@ class HistoryController:
 
         restore_body_entered = False
         try:
-            async with self._destructive_mutation():
-                async with self._exchange_mutation():
-                    restore_body_entered = True
-                    await self._restore_exchange_record_locked(
-                        selected,
-                        node_ids=node_ids,
-                        planned_state=planned_state,
-                        bootstrap=bootstrap,
-                        persist_active_pointer=persist_active_pointer,
-                    )
+            with self._restore_step("admitting the restored conversation"):
+                async with self._destructive_mutation():
+                    async with self._exchange_mutation():
+                        restore_body_entered = True
+                        await self._restore_exchange_record_locked(
+                            selected,
+                            node_ids=node_ids,
+                            planned_state=planned_state,
+                            bootstrap=bootstrap,
+                            persist_active_pointer=persist_active_pointer,
+                        )
         except BaseException as error:
             if not restore_body_entered:
                 await self._clear_failed_restore(error)
@@ -1420,9 +1422,10 @@ class HistoryController:
                     # below is the only thing that changed. The plan was
                     # preflighted against a deep copy above, so nothing here
                     # mutates until the hooks have accepted the rewind.
-                    await _history_plan.run_plan(rewind_state)
-                    record.set_active_leaf(target.parent_id)
-                    await recorder._persist_record()
+                    with self._restore_step("saving the resubmission"):
+                        await _history_plan.run_plan(rewind_state)
+                        record.set_active_leaf(target.parent_id)
+                        await recorder._persist_record()
                     action: HistoryEditProjectionAction = {
                         "type": "history_edit_projection",
                         "requestId": request_id,
@@ -1687,9 +1690,10 @@ class HistoryController:
                         # accepted the rewind; the display replay reads only
                         # node content by id, so it does not depend on the
                         # record's leaf pointer.
-                        await _history_plan.run_plan(rewind_state)
-                        record.set_active_leaf(leaf)
-                        await recorder._persist_record()
+                        with self._restore_step("saving the navigation change"):
+                            await _history_plan.run_plan(rewind_state)
+                            record.set_active_leaf(leaf)
+                            await recorder._persist_record()
                         await self._replay_exchange_display(record, node_ids)
                         await self._send_sibling_metadata()
                         await self._send_exchange_metadata()

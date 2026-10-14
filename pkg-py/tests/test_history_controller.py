@@ -3397,7 +3397,7 @@ async def test_v2_initial_bookmark_projection_failure_recovers() -> None:
         pytest.raises(ValueError, match="Dangling parent reference"),
         pytest.warns(
             UserWarning,
-            match=r"Chat history restore failed \(no detail\): "
+            match=r"Chat history restore failed \(failed while validating the saved conversation\): "
             r"ValueError\(\"Dangling parent reference at 'missing'\"\)",
         ),
     ):
@@ -3418,7 +3418,8 @@ async def test_v2_initial_bookmark_projection_failure_recovers() -> None:
     assert len(history_updates) == 1
     assert history_updates[0]["active_id"] is None
     notifier.assert_awaited_once_with(
-        recovery_incomplete=False, detail=None
+        recovery_incomplete=False,
+        detail="failed while validating the saved conversation",
     )
 
 
@@ -3450,7 +3451,7 @@ async def test_v2_initial_restore_admission_failure_recovers(
     if isinstance(failure, Exception):
         warn_ctx: AbstractContextManager[Any] = pytest.warns(
             UserWarning,
-            match=r"Chat history restore failed \(no detail\): "
+            match=r"Chat history restore failed \(failed while admitting the restored conversation\): "
             r"RuntimeError\('initial admission failed'\)",
         )
     else:
@@ -3470,7 +3471,14 @@ async def test_v2_initial_restore_admission_failure_recovers(
     assert len(history_updates) == 1
     assert history_updates[0]["active_id"] is None
     # Cancellation keeps the generic message: no detail to attribute.
-    notifier.assert_awaited_once_with(recovery_incomplete=False, detail=None)
+    expected_detail = (
+        "failed while admitting the restored conversation"
+        if isinstance(failure, Exception)
+        else None
+    )
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=False, detail=expected_detail
+    )
 
 
 @pytest.mark.anyio
@@ -5276,7 +5284,8 @@ async def test_v2_navigation_persistence_failure_clears_to_fresh_draft():
         }
     ]
     notifier.assert_awaited_once_with(
-        recovery_incomplete=False, detail=None
+        recovery_incomplete=False,
+        detail="failed while saving the navigation change",
     )
 
 
@@ -5944,7 +5953,8 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
         }
     ]
     notifier.assert_awaited_once_with(
-        recovery_incomplete=False, detail=None
+        recovery_incomplete=False,
+        detail="failed while saving the resubmission",
     )
 
 

@@ -1388,7 +1388,7 @@ class Chat:
             if not self.history._history_action_admitted():
                 # Defense in depth: the public stream entry points raise
                 # before reaching this, so only private misuse lands here —
-                # make it loud like the public paths (roborev 1570).
+                # make it loud like the public paths.
                 raise RuntimeError(_STREAM_SUPPRESSED_MESSAGE)
             exchange_id = self._transcript.open_exchange_id
             transaction = self._transcript._reserve_stream_start()
@@ -1751,7 +1751,7 @@ class Chat:
                 # `finally` never ran: the stream this method opened
                 # synchronously is still reserved. Close the producer — in
                 # the auto-wired path it may hold an open upstream request
-                # (roborev 1570) — then end the stream through the
+                # — then end the stream through the
                 # transcript's end/abort path so later work is not stuck
                 # behind a dead stream.
                 aclose = getattr(message, "aclose", None)
@@ -1879,7 +1879,7 @@ class Chat:
                 # stream when it starts). Leave no owner until then, so a
                 # message_stream_context() entered here before the worker
                 # runs deterministically raises instead of being misread as
-                # a nested stream (roborev 1565).
+                # a nested stream.
                 self._transcript.claim_stream(stream_id, _STREAM_UNOWNED)
             return started
         except asyncio.CancelledError:
@@ -1926,7 +1926,7 @@ class Chat:
         # worker consumes it, so nested message_stream_context() checks must
         # see this task as the owner. If the stream was already closed or
         # replaced in flight, don't pull from a producer whose output can no
-        # longer be sent — close it and settle empty (roborev 1565/1567).
+        # longer be sent — close it and settle empty.
         if self._transcript.active_stream_id != stream_id:
             aclose = getattr(message, "aclose", None)
             if aclose is not None:

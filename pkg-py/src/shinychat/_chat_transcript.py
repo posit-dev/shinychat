@@ -47,7 +47,7 @@ class TranscriptEntry:
 # Marker for a reserved-but-unclaimed stream: append_message_stream()
 # reserves in the caller's task and its worker claims the stream when it
 # starts. Distinct from None because asyncio.current_task() can itself
-# return None in loop-callback contexts (roborev 1567).
+# return None in loop-callback contexts.
 _STREAM_UNOWNED: Any = object()
 
 

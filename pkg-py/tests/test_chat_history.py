@@ -1140,7 +1140,7 @@ async def test_v2_initial_restore_preflight_failure_recovers(
         pytest.raises(ValueError) as raised,
         pytest.warns(
             UserWarning,
-            match=r"Chat history restore failed \(no detail\): "
+            match=r"Chat history restore failed \(failed while validating the saved conversation\): "
             r"ValueError\('initial preflight failed'\)",
         ),
     ):
@@ -1163,7 +1163,8 @@ async def test_v2_initial_restore_preflight_failure_recovers(
     assert updates[0]["transition_protocol"] == "completion-v2"
     assert chat.history._initial_history_initialized
     notifier.assert_awaited_once_with(
-        recovery_incomplete=False, detail=None
+        recovery_incomplete=False,
+        detail="failed while validating the saved conversation",
     )
     with session_context(cast(Any, session)), reactive.isolate():
         await chat._record_accepted_user_input_with_capture(

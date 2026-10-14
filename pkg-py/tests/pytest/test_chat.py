@@ -3093,7 +3093,7 @@ def test_nested_stream_context_inside_append_message_stream_works():
 
 
 def test_stream_context_after_append_message_stream_raises_deterministically():
-    # Regression (roborev 1565): a stream reserved by append_message_stream()
+    # Regression: a stream reserved by append_message_stream()
     # has no owner until its worker claims it. A message_stream_context()
     # entered in the caller's task before the worker runs must raise "Cannot
     # start a second message stream" — not be misread as a nested stream
@@ -3120,7 +3120,7 @@ def test_stream_context_after_append_message_stream_raises_deterministically():
 
 
 def test_stream_closed_in_flight_before_worker_starts_still_settles():
-    # Regression (roborev 1565/1567): if the reserved stream is closed before
+    # Regression: if the reserved stream is closed before
     # the worker's first step, the worker must not pull from a producer whose
     # output can no longer be sent — it closes the producer and settles
     # empty. Discriminates against the old shape, where the ownership claim
@@ -3246,7 +3246,7 @@ def test_stream_cancelled_before_body_starts_still_ends():
     assert sent[-1]["message"]["segments"][0]["content"] == "after"
     entry = chat._transcript.read()[0]
     assert entry.status == "cancelled"
-    # The done-effect closed the never-started producer (roborev 1570).
+    # The done-effect closed the never-started producer.
     assert producer.ag_frame is None  # type: ignore[attr-defined]
 
 
