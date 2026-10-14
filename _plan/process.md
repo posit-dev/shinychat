@@ -1,6 +1,6 @@
 # Process: how agents work through this plan
 
-**Companion to:** [plan.md](plan.md) · 2026-08-26
+**Companion to:** [plan.md](plan.md) · 2026-08-26 · §8 revised 2026-10-14
 **Status:** normative for this effort. If scratch docs contradict this
 document, this document wins; if this document contradicts plan.md, plan.md
 wins — amend whichever is wrong rather than forking the truth.
@@ -143,16 +143,15 @@ to an unmergeable whole. The defense: **every landed unit leaves the work
 strictly better and mergeable** — so stopping at any point leaves value,
 not wreckage.
 
-1. **Phase 1 lands as independent PRs on `main`. Phases 2+ live on one
-   long-running feature branch, worked as stacked PRs.** Each unit of work
-   is a small, independently reviewable PR in the stack (each based on its
-   predecessor) — never loose commits reviewed as one monolithic branch
-   diff. Keep the stack rebased on `main`; drift is a finding. Settled
-   segments merge from the bottom of the stack to `main` at phase
-   boundaries, flag-guarded where the feature is incomplete, so finished
-   value reaches the trunk instead of accumulating in the branch. A stack
-   segment sitting unreviewed for more than a few sessions is itself a
-   finding — stop and settle it.
+1. **Implement on one branch; review as a stack** (revised 2026-10-14,
+   plan.md §7.1). Phase 1 landed as independent PRs on `main`. Phases 2+
+   are implemented on the one feature branch, in small conventional commits
+   grouped by subsystem so the final diff can be cut cleanly. Bring `main`
+   in by merge at least at every phase boundary; unresolved drift is a
+   finding. The review stack is cut in Phase 8 and merges together. (The
+   original rule, one small stacked PR per unit of work with settled
+   segments merging at phase boundaries, caused friction in Phases 2–5 and
+   is retired.)
 2. **Slice vertically, not horizontally.** Within a phase, build one thin
    end-to-end case first (one submit → one captured node → one stored
    record → one restored display), then widen to more cases. Do not build
@@ -179,8 +178,8 @@ not wreckage.
    effort halts right after each phase: after Phase 1, security and
    durability fixes shipped; after Phase 2, the echo and its bug class are
    gone; after Phases 3–4, Python has the feature; after Phase 6, parity.
-   This is why settled stack segments merge at phase boundaries (§8.1):
-   every phase boundary remains an acceptable permanent stopping point,
-   and the ordering exists so the most valuable-if-stranded work happens
-   first. Value still sitting in the unmerged stack when the effort halts
-   is not stranded value — it is wreckage.
+   Because the stack is cut only at the end (§8.1), the branch must stay
+   green and merged with `main` at every phase boundary, so that it could be
+   cut into a stack at any boundary if the effort halts. A branch that cannot
+   be cut cleanly when the effort halts is not stranded value — it is
+   wreckage.

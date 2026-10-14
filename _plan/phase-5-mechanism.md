@@ -854,3 +854,9 @@ one existing skip; 1,274 JS tests with 23 skips; 425 R history/shared-client
 tests with no skips. Ruff, repository format, Pyright, JS lint/build,
 distributed asset rebuild/currentness, and worktree diff checks pass. Phase 5
 is shape-stable, review-clean, committed, and complete.
+
+## Handoff (2026-10-14)
+
+Landed: Phase 5 complete (2026-09-02); Phase 5.5 complete in the 2026-10-14 reset.
+Next: Phase 5.6 (`e1dv`) per plan.md §4 and §7, starting with the `main` merge (`ftz9`).
+Provisional: none; the reset decisions are recorded in plan.md §7.

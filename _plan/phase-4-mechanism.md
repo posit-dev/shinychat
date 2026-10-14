@@ -1,5 +1,9 @@
 # Phase 4 mechanism: restore, branching, and bookmark pointer (Python)
 
+> **Historical (marked 2026-10-14):** this note is completed context. In-body
+> status lines such as "parked", "blocked", "claimed", or "not begun" are
+> superseded; Phase 4 closed 2026-09-01. Current status lives in plan.md.
+
 **Status (current and authoritative):** Phase 4 is complete.
 Restore/continuation, branching/edit/navigation, retry/regenerate,
 pointer-only bookmarks, final acceptance, and the deletion/scope audit are

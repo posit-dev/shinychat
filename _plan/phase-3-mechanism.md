@@ -708,5 +708,5 @@ review remains.
 ## Final handoff
 
 Landed: `c22ea1ad` and `00e0b5e4` complete the Phase 3 acceptance fixture and production-path test matrix.
-Next: human review of `shinychat#nr6k`, then Phase 4 may consume the v2 replay/state contracts.
+Next: human review of `shinychat#nr6k`, then Phase 4 may consume the v2 replay/state contracts. *(Stale as of 2026-10-14: `nr6k` and Phase 4 are closed.)*
 Boundary: Phase 3 adds no restore/branch/rewind/bookmark, init guard, degradation, public hook, legacy, JS/SCSS, R, queue, or reconciliation work.

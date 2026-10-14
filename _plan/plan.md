@@ -1,12 +1,12 @@
 # Plan: exchange-tree conversation history
 
-**Status:** committed · Phase 0 complete, Phase 1 in review, Phases 2–4
-complete; Phase 5 mechanism approved, with Q1 selecting
-disabled-until-restore-decision plus suppression of unadmitted startup work;
-Q2 selects single-document atomic layout after split rejection · 2026-09-02
-**Kata:** epic `shinychat#6d0d` · Phase 1 `shinychat#g49a` · Phase 2
-`shinychat#kjyt` · Phase 3 `shinychat#qf2r` · Phase 4 `shinychat#azvt`
-· Phase 5 `shinychat#fg70` (the `kata` CLI issue tracker).
+**Status:** committed · Phases 0–5 and 5.5 complete; reset after a pause on
+2026-10-14 (decisions in §7). Current phase: **5.6 — main sync and Python
+pre-port pass** · 2026-10-14
+**Kata:** epic `shinychat#6d0d` · Phase 1 `g49a` · Phase 2 `kjyt` · Phase 3
+`qf2r` · Phase 4 `azvt` · Phase 5 `fg70` · Phase 5.5 `pa98` · Phase 5.6
+`e1dv` · Phase 5.7 `36z7` · Phase 6 `05vb` · Phase 7 `r0wj` · Phase 8
+`9xgn` (the `kata` CLI issue tracker).
 All abbreviated Kata IDs below belong to the `shinychat` project;
 planning history in closed issue `kvhc`
 **Predecessor:** `feat/turn-history-sync-redesign` (stopped; see the
@@ -127,7 +127,8 @@ an active-leaf pointer. This evolves `main`'s existing v1 node record — it
 already has the graph and positional navigation — rather than introducing a
 parallel schema with migration machinery. Legacy v1 history records exist in
 the wild (Python released, plus internal dev users), so legacy handling is a
-committed read-gate import (Phase 7), decided 2026-08-27.
+committed read-gate import, decided 2026-08-27; moved to Phase 5.7 by the
+2026-10-14 reset (§7.3–7.6).
 
 `ExchangeNode` envelope:
 
@@ -273,8 +274,8 @@ registered automatically when a chat has an ellmer/chatlas client attached —
 records the client's turns under the `shinychat:turns` entry:
 
 - **Delta by default.** When capture fires, compare the recorded baseline
-  (turn count + cheap identity check as of the last capture on the active
-  path) against the client's current turns. If the baseline is still a
+  (per-turn canonical fingerprints across the whole prefix, as of the last
+  capture on the active path) against the client's current turns. If the baseline is still a
   prefix, record only the new turns as a `mode: "delta"` entry.
 - **Snapshot fallback.** If the baseline is no longer a prefix — the app
   rewrote client history (e.g. via `set_turns()`) between inputs — record
@@ -565,14 +566,15 @@ signed off by the driver before code (process.md §3.4).
   and fixture value-class coverage is an acceptance criterion of kata
   `bxwf`.)
   *Done when:* the three PRs merged (or in review) on `main`.
+  *Complete:* #358, #359, and #360 merged (2026-08-27 to 2026-09-03).
 - **Phase 2 — server-authoritative core (Python; complete 2026-08-28).**
   Echo deletion,
   transactional send-then-commit, synchronous `messages()` — #311's core,
   re-derived cleanly from the draft's design (decided: no rebase attempt).
   Land the exchange-open signal and stream attribution here. The client
-  source and `js/dist` advance, but only the Python package receives the
-  new bundle (`make js-build py-update-dist`); R keeps its existing packaged
-  bundle and echo until its Phase 6 port. The shared transcript fixture is
+  source and `js/dist` advance; since Phase 4 `make update-dist` updates both
+  packages' bundles, and R keeps its echo-era server path until its Phase 6
+  port (`main` #380 later moved R to server-owned messages). The shared transcript fixture is
   re-derived and revised, not copied unchanged: admitted user intent is not
   rejected by an active stream, and cancellation/error preserve content
   already sent. See `phase-2-mechanism.md`.
@@ -584,8 +586,8 @@ signed off by the driver before code (process.md §3.4).
   complete and closed 2026-08-31).**
   Node schema,
   choke-point capture, baseline snapshot at first input, delta/snapshot
-  turn capture, eager writes + lazy close, statuses, incremental atomic
-  saves. Q2 selected single-document atomic persistence after rejecting split
+  turn capture, eager writes + lazy close, statuses, single-document
+  atomic rewrites. Q2 selected single-document atomic persistence after rejecting split
   recovery. Keystone commit first: one flag-guarded path
   from submit → captured node → stored record → restored display, however
   ugly.
@@ -606,7 +608,7 @@ signed off by the driver before code (process.md §3.4).
   *Done when:* the ported suite is green (or Q3's narrow upgrade is scoped);
   edit, retry, and regenerate all go through the one sibling primitive; a
   restored client continues the conversation correctly (turn count and
-  content verified).
+  content verified). *Complete 2026-09-01.*
 - **Phase 5 — hard core + adversarial review (Python; `shinychat#fg70`).**
   Q1 is resolved: P5.0's selected disabled-until-restore-decision guard
   proceeds under `shinychat#fbhe` by suppressing capture-eligible startup
@@ -614,26 +616,82 @@ signed off by the driver before code (process.md §3.4).
   premature server submissions. Suppressed work is never replayed after
   initialization. The
   one-shot barrier, reactive-context adapter, defer-one-submission, and
-  ambient `_capture_admission` predicate are rejected. Later children remain
-  blocked.
+  ambient `_capture_admission` predicate are rejected. *Complete
+  2026-09-02.*
   Then audit clear/switch/abort, unreplayable-turn
   degradation, and the error-on-reload affordance, followed by one adversarial
   review pass in the critical-review format on exactly this subsystem. See
   `phase-5-mechanism.md`; Phase 4's mechanism note is completed context only.
   *Done when:* the audit checklist has a test or a recorded decision per
   item, and the adversarial pass's P1s are fixed or dispositioned.
-- **Phase 6 — R port.** After Python shape-stability (reviewed, chains
-  terminated). Shared JSON fixture matrices + structurally parallel error
-  messages as the parity contract. R stream-correlation work lands here (or
-  earlier if the R port of Phase 2 needs it).
+- **Phase 5.5 — review readiness (Python; `pa98`; complete).** Ledger
+  reconciliation, architecture and R-port parity audit, test-quality audit,
+  draft PR #379. The draft-PR approval gate (`73pm`) was superseded by the
+  2026-10-14 reset: the preview review happened, and its dispositions are in
+  §7.9.
+- **Phase 5.6 — main sync and Python pre-port pass (`e1dv`).**
+  1. Merge `origin/main` (§7.2). In v1 history files, take `main`'s version
+     over the branch's v1 rewrite (f4805798): it is the v1 the import must
+     reproduce. Rebuild assets; get CI green.
+  2. Delete the constructor-message suppression path made unreachable by
+     #381.
+  3. One admission predicate for every admission site; fix
+     `append_message_stream` returning `None` instead of an `ExtendedTask`.
+  4. #417: reserve the stream synchronously in `append_message_stream()`
+     through `ChatTranscript`, absorbing #418 (credited; held on `main`).
+  5. Split `_ExchangeRecorder` by role; consolidate the restore/rewind
+     preflight and state helpers; name the baseline sentinel.
+  6. Restore failures name the failing hook or step; fix navigate/resubmit
+     persisting the moved active leaf before rewind hooks run.
+  7. A constant warning when init-window appends or streams are suppressed.
+  8. Audit ordering assumptions against py-shiny concurrent effects
+     (py-shiny#2508).
+  9. Hygiene, and triage of the open critical-review items left under the
+     superseded epic `3403`.
+  *Done when:* the branch is merged with current `main`, CI is green, and
+  each item has a commit or a recorded disposition.
+- **Phase 5.7 — retire v1 history (Python; `36z7`).**
+  1. v2 parity gaps: LLM auto-titling, bookmark-mode `on_pre_switch`
+     navigation, `new_chat(greeting=)` and `clear()` gating (#399), #373
+     structured blocks in captured messages, #394/#401 attachment
+     semantics, `list()` ordering (#372), bookmark-mode eviction.
+  2. Versioned record types with upgrade-on-read (§7.6).
+  3. The v1→v2 import (§7.3–7.5), with a fixture for each released form:
+     py 0.6.x unversioned UI, py 0.7.0 versioned UI, py 0.7.1+ attachments,
+     and R 0.5.0 (shared for Phase 6).
+  4. The legacy v1 bookmark stamp key (§7.8).
+  5. Delete the v1 runtime, the `use_exchange_tree` flag, and the Python
+     `completion-v1` branch. The JS `completion-v1` path stays until R
+     emits `completion-v2`.
+  6. The #421 shared fixture passes in Python; migration notes for custom
+     store authors.
+  *Done when:* no v1 runtime path remains in Python, every released v1 form
+  imports in a fixture, and v2 is the only history engine.
+- **Phase 6 — R port (`05vb`).** After Phase 5.7. Shared JSON fixture
+  matrices + structurally parallel error messages as the parity contract.
+  `main` #380 already moved R to server-owned messages, so the R port of the
+  Phase 2 core starts from there. Scope: the transcript owner and stream
+  correlation, the exchange tree, S7 versioned record classes with list
+  serialization at the store boundary (§7.7), the R 0.5.0 v1 import, the
+  legacy bookmark stamp, the #421 fixture, and the R acceptance items from
+  the `qtcx` audit. R emits `completion-v2`; the JS `completion-v1` path is
+  then deleted.
   *Done when:* shared fixture matrices pass in both languages with
   structurally parallel errors; the R port introduces no mechanism absent
-  from Python.
-- **Phase 7 — legacy and release.** Legacy-record import at the read gate
-  (committed 2026-08-27: v1 records exist in the wild): v1 nodes map to
-  exchange nodes (`ui` → messages via re-render, turns carried over).
+  from Python; R has no v1 runtime path.
+- **Phase 7 — legacy deprecations, docs, and release (`r0wj`).**
   Deprecations (`chat_restore`, echo-dependent APIs, URL-encoded bookmark
-  state, §3.8 — with user way-pointing). Docs.
+  state, §3.8 — with user way-pointing). Public hook exposure (§3.7). The
+  remaining `mcbp` scope. Docs, NEWS, CHANGELOG. Decide whether conversation
+  forking (§3.6) is in scope or backlog.
+  *Done when:* deprecations ship with way-pointing, docs describe only v2,
+  and `_plan/` is ready for removal.
+- **Phase 8 — cut the review stack (`9xgn`).** Cut the final diff into
+  stacked PRs along subsystem seams: JS transcript and protocol; Python
+  transcript owner; record, store, and import; restore and branching; R
+  port; legacy and docs. Each PR is independently reviewable; the stack
+  merges together. Delete `_plan/` in the final PR. Draft #379 closes when
+  the stack opens.
 
 ## 5. Open questions and cheapest checks
 
@@ -641,7 +699,7 @@ signed off by the driver before code (process.md §3.4).
 |---|---|---|
 | Q1 | **Resolved 2026-09-01; simplified 2026-09-02:** disabled-until-restore-decision. Defer-one-submission and delayed startup appends are rejected because they require prohibited retained payload, continuation, barrier, or scheduling state. The browser preserves draft and attachments while blocked; premature server input is rejected; capture-eligible startup appends are suppressed while authoritative initialization is incomplete and are never replayed after it completes. The earlier barrier probes remain historical evidence for why delayed delivery was deleted. | Replacement P5.0 implementation under `shinychat#fbhe`; see `phase-5-mechanism.md`. |
 | Q2 | Resolved 2026-08-28: single-document atomic layout; split rejected on coherent-recovery failure (§3.10). | 153,348-token deterministic workload; 25 repetitions after three warm-ups. Split met latency thresholds (minimum 6.90x median, 2.50x p95; cold reads 1.38x slower) but failed interrupted-append recovery. |
-| Q3 | Does the *client wire* need node ids, or does `main`'s positional edit/navigate addressing survive adversarial use? (Record nodes have ids regardless.) | Port the predecessor branch's edit/navigate Playwright tests; upgrade the wire narrowly only on red. |
+| Q3 | **Resolved in Phase 4:** positional client addressing retained (no red evidence). Does the *client wire* need node ids, or does `main`'s positional edit/navigate addressing survive adversarial use? (Record nodes have ids regardless.) | Port the predecessor branch's edit/navigate Playwright tests; upgrade the wire narrowly only on red. |
 | Q4 | **Resolved 2026-09-03:** ellmer/chatlas turn records must replay across adjacent releases of the same provider. Upstream owns that continuity contract; it is not a shinychat validation gate. Shinychat retains its existing degrade-with-warning behavior for genuinely incompatible stored entries. | No local compatibility experiment required. |
 
 Four further questions were resolved during Phase 0 (2026-08-27) and are
@@ -660,3 +718,65 @@ effort. Headlines: requirements (§2) are the boundary with "real, out of
 scope → backlog" as a standing disposition; keystone-first per phase;
 Python to shape-stability before the R port; three findings against one
 mechanism forces a shape consult; no feature code on unverified instruments.
+
+## 7. Reset decisions (2026-10-14)
+
+Recorded when work resumed after a six-week pause. They amend the phase
+list (§4) and process.md §8.
+
+1. **Work organization.** Implementation continues on the one feature branch
+   `feat/history-exchange-tree`. The per-unit stacked-PR workflow caused
+   friction during Phases 2–5 and is retired (process.md §8.1). Review
+   happens at the end: Phase 8 cuts the finished branch into a stack of
+   reviewable PRs along subsystem seams, and the stack merges together.
+2. **Main sync by merge.** Bring `main` in with merge commits, not rebases.
+   Branch history is disposable because Phase 8 rebuilds the stack from the
+   final diff. Sync at least at every phase boundary.
+3. **Retire the v1 runtime before the R port.** Python deletes its v1
+   runtime path, the `use_exchange_tree` flag, and the `completion-v1`
+   protocol branch before Phase 6, so R ports one engine. The legacy import
+   moves from Phase 7 to Phase 5.7.
+4. **Import fidelity.** A v1 record imports to display what released 0.7.2
+   shows for it: no better, no worse. F3-class artifacts already present in
+   stored records are carried over, not repaired.
+5. **Lazy conversion.** v1 records are upgraded in memory on read and
+   written as v2 on their next write. There is no bulk store migration.
+   NEWS and CHANGELOG state that downgrading hides converted conversations.
+6. **Python record types.** Versioned typed models: `ConversationRecordV1`,
+   `ConversationRecordV2`, and future `ConversationRecordVN`.
+   `ConversationRecord` names the current version and upgrades older
+   versions on validation (a `mode="before"` validator runs the import), so
+   existing custom stores that call `ConversationRecord.model_validate*`
+   keep working. The controller also accepts a `ConversationRecordV1`
+   instance from a store. The import is a pure data transform: no session,
+   no I/O. The conversation metadata fields (`id`, `title`, `created_at`,
+   `updated_at`) keep their names in every version; `put()` gains no meta
+   argument.
+7. **R record types.** S7 versioned classes with validators. The v1→v2
+   import is an S7 `convert()` method. A method turns a record object into a
+   serializable R list; the store boundary carries those lists, so existing
+   custom R stores keep working.
+8. **v1 bookmark URLs.** v2 reads the legacy `{id}_history_conversation_id`
+   stamp and opens that conversation at its active leaf.
+9. **Review dispositions** (cpsievert preview review on #379, non-binding):
+   - #1 `Chat(messages=)`: resolved on `main` by #381; delete the
+     now-unreachable constructor-message suppression path after sync.
+     Accepted secondary: a short constant warning when a programmatic
+     append or stream is suppressed during the init window (amends the
+     Phase 5 silent-suppression choice).
+   - #2 admission guard: accepted. All admission sites use one predicate.
+   - #3/#4 recorder concentration, turn baseline: accepted. Split
+     `_ExchangeRecorder` by role before the port, consolidate the preflight
+     and state helpers, and name the baseline sentinel. "Never recoverable"
+     was inaccurate; the snapshot escape hatch stays.
+   - #5 restore failure: minimum accepted. Identify the failing hook or
+     step; fail-to-fresh-draft (approved 2026-09-01) stays. Per-entry
+     degradation declined.
+   - #6 `ui_message_count`: declined; v1-only code deleted in Phase 5.7.
+   - #7 JS projection helper: optional, low priority.
+10. **Issues pulled in.** #417 (synchronous stream reservation, Phase 5.6;
+    #418 is held on `main` and absorbed here, credited) and #421 (turn
+    rewrite skips responses; fixed by v2 snapshot capture, pinned by a
+    shared fixture in Phases 5.7 and 6).
+11. **Draft PR #379** stays open as the branch pointer and closes when the
+    Phase 8 stack opens.
