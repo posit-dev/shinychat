@@ -9,7 +9,7 @@ import warnings
 from contextvars import copy_context
 from datetime import datetime
 from types import SimpleNamespace
-from typing import Any, Callable, cast
+from typing import Any, AsyncIterable, Callable, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -56,6 +56,7 @@ class _MockSession:
         from shiny import Inputs
 
         self.input = Inputs({}, ns=ResolvedId)
+        self._unhandled_errors: list[Exception] = []
 
     def on_ended(self, callback: object) -> Callable[[], None]:
         return lambda: None
@@ -68,6 +69,12 @@ class _MockSession:
 
     def _decrement_busy_count(self) -> None:
         pass
+
+    async def _unhandled_error(self, e: Exception) -> None:
+        # py-shiny 1.7.0 routes effect errors here instead of killing the
+        # flush. Record them so a leftover broken effect from another test
+        # (e.g. a replaced `_send_action`) can't abort this test's flush.
+        self._unhandled_errors.append(e)
 
     async def send_custom_message(self, type: str, message: Any) -> None:
         pass
@@ -148,6 +155,21 @@ def run_async_result(coro_fn: Any) -> Any:
 
     run_async(capture)
     return result[0]
+
+
+async def _start_and_stream(
+    chat: Chat, message: AsyncIterable[Any], stream_id: str = "stream"
+) -> str:
+    """Open a stream, then stream its content through the worker.
+
+    `Chat._append_message_stream()` only sends content and end chunks; the
+    caller must have sent the start chunk first, as `append_message_stream()`
+    now does synchronously in its prologue.
+    """
+    started = await chat._start_message_stream(stream_id)
+    if not started:
+        return ""
+    return await chat._append_message_stream(message, stream_id)
 
 
 def stored_message(content: str, role: Role) -> StoredMessage:
@@ -1878,7 +1900,7 @@ def test_response_settlement_runs_after_terminal_stream_send_failure():
             yield "partial"
 
         with pytest.raises(RuntimeError, match="terminal send failed"):
-            run_async(lambda: chat._append_message_stream(stream()))
+            run_async(lambda: _start_and_stream(chat, stream()))
         run_async(reactive.flush)
 
     assert settled == ["settled"]
@@ -3018,6 +3040,93 @@ def test_message_stream_context_rejects_complete_appends():
         ]
 
 
+async def _run_stream_test(sent: list[Any], n: int, body: Any) -> None:
+    # Shiny's global reactive lock binds to the first event loop that
+    # contends for it; each run_async() is a fresh loop, so start with a
+    # fresh lock (same approach as the upstream #418 test helper).
+    from shiny.reactive._core import _reactive_environment as renv
+
+    renv._lock = None
+    await body()
+    # Wait for n actions and for any ExtendedTask done-callback to release
+    # the lock, so this loop doesn't exit while still holding it.
+    for _ in range(100):
+        if len(sent) >= n and not renv.lock.locked():
+            break
+        await asyncio.sleep(0.01)
+
+
+def test_append_message_during_active_stream_raises_then_lands_after_stream():
+    # Regression (#417): append_message_stream() reserves its stream
+    # synchronously, so a complete append in the same async body can no
+    # longer overtake the stream. This branch does not queue complete
+    # appends: it rejects the append while the stream is active, and the
+    # append lands after the stream once it settles.
+    with session_context(test_session):
+        chat = Chat(id="stream_then_append", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _body() -> None:
+            await chat.append_message_stream(["THIRD"])
+            with pytest.raises(RuntimeError, match="stream is active"):
+                await chat.append_message("FOURTH")
+
+        run_async(lambda: _run_stream_test(sent, 3, _body))
+
+        async def _after() -> None:
+            await chat.append_message("FOURTH")
+
+        run_async(lambda: _run_stream_test(sent, 4, _after))
+
+    types = [action["type"] for action in sent if action["type"] != "history_update"]
+    assert types == ["chunk_start", "chunk", "chunk_end", "message"]
+    chunk_actions = [action for action in sent if action["type"] == "chunk"]
+    assert [action["content"] for action in chunk_actions] == ["THIRD"]
+    assert sent[-1]["message"]["segments"][0]["content"] == "FOURTH"
+    assert [entry.message.content for entry in chat._transcript.read()] == [
+        "THIRD",
+        "FOURTH",
+    ]
+
+
+def test_stream_cancelled_before_body_starts_still_ends():
+    # Regression (#418, adapted): a stream cancelled before its task body
+    # runs never reaches the worker's end-chunk cleanup, so the stream it
+    # reserved synchronously must be ended by the done-effect -- through
+    # the transcript's end path, not around it -- or every later message
+    # would stay stuck behind a dead stream.
+    with session_context(test_session):
+        chat = Chat(id="stream_early_cancel", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _body() -> None:
+            task = await chat.append_message_stream(["never sent"])
+            task.cancel()
+
+        run_async(lambda: _run_stream_test(sent, 2, _body))
+
+        async def _after() -> None:
+            await chat.append_message("after")
+
+        run_async(lambda: _run_stream_test(sent, 3, _after))
+
+    types = [action["type"] for action in sent if action["type"] != "history_update"]
+    assert types == ["chunk_start", "chunk_end", "message"]
+    assert sent[-1]["message"]["segments"][0]["content"] == "after"
+    entry = chat._transcript.read()[0]
+    assert entry.status == "cancelled"
+
+
 def test_nested_message_stream_context_restores_outer_checkpoint():
     with session_context(test_session):
         chat = Chat(id="nested_stream", history=False)
@@ -3054,7 +3163,7 @@ def test_stream_preserves_sent_partial_on_chunk_failure():
             yield "lost"
 
         with pytest.raises(RuntimeError, match="chunk send failed"):
-            run_async(lambda: chat._append_message_stream(_stream()))
+            run_async(lambda: _start_and_stream(chat, _stream()))
 
     entry = chat._transcript.read()[0]
     assert entry.message.content == "kept"
@@ -3085,7 +3194,7 @@ def test_stream_start_send_failure_does_not_commit():
             yield "not sent"
 
         with pytest.raises(RuntimeError, match="start send failed"):
-            run_async(lambda: chat._append_message_stream(_stream()))
+            run_async(lambda: _start_and_stream(chat, _stream()))
 
     assert chat._transcript.read() == ()
     assert chat._transcript.active_stream_id is None
@@ -3117,7 +3226,7 @@ def test_stream_start_persistence_failure_closes_sent_stream():
             yield "not reached"
 
         with pytest.raises(RuntimeError, match="start persistence failed"):
-            run_async(lambda: chat._append_message_stream(_stream()))
+            run_async(lambda: _start_and_stream(chat, _stream()))
 
     entry = chat._transcript.read()[0]
     assert entry.status == "error"
@@ -3152,7 +3261,7 @@ def test_stream_finish_persistence_failure_preserves_the_callback_error():
             yield "kept"
 
         with pytest.raises(RuntimeError, match="finish persistence failed"):
-            run_async(lambda: chat._append_message_stream(_stream()))
+            run_async(lambda: _start_and_stream(chat, _stream()))
 
     assert chat._transcript.read()[0].message.content == "kept"
     assert chat._transcript.active_stream_id is None
@@ -3173,7 +3282,7 @@ def test_stream_preserves_sent_partial_when_terminal_send_fails():
             yield "kept"
 
         with pytest.raises(RuntimeError, match="end send failed"):
-            run_async(lambda: chat._append_message_stream(_stream()))
+            run_async(lambda: _start_and_stream(chat, _stream()))
 
     entry = chat._transcript.read()[0]
     assert entry.message.content == "kept"
@@ -3203,7 +3312,7 @@ def test_stream_success_reports_ok_without_error():
         async def _stream():
             yield "completed"
 
-    run_async(lambda: chat._append_message_stream(_stream()))
+    run_async(lambda: _start_and_stream(chat, _stream()))
 
     entry = chat._transcript.read()[0]
     assert entry.error is None
@@ -3228,7 +3337,7 @@ def test_stream_commits_final_transformed_content_before_chunk_end_failure():
             yield "partial"
 
         with pytest.raises(RuntimeError, match="end send failed"):
-            run_async(lambda: chat._append_message_stream(_stream()))
+            run_async(lambda: _start_and_stream(chat, _stream()))
 
     entry = chat._transcript.read()[0]
     assert entry.message.content == "partial final"
@@ -3256,7 +3365,7 @@ def test_stream_transform_error_best_effort_closes_the_wire_and_owner():
             yield "kept"
 
         with pytest.raises(RuntimeError, match="terminal transform failed"):
-            run_async(lambda: chat._append_message_stream(_stream()))
+            run_async(lambda: _start_and_stream(chat, _stream()))
 
     entry = chat._transcript.read()[0]
     assert entry.message.content == "kept"
@@ -3281,7 +3390,7 @@ def test_stream_generator_error_survives_terminal_cleanup_failure():
             raise RuntimeError("generator failed")
 
         with pytest.raises(RuntimeError, match="generator failed"):
-            run_async(lambda: chat._append_message_stream(_stream()))
+            run_async(lambda: _start_and_stream(chat, _stream()))
 
     entry = chat._transcript.read()[0]
     assert entry.message.content == "kept"
@@ -3305,7 +3414,7 @@ def test_stream_generator_empty_error_survives_terminal_cleanup_failure():
             raise RuntimeError("")
 
         with pytest.raises(RuntimeError, match="^$"):
-            run_async(lambda: chat._append_message_stream(_stream()))
+            run_async(lambda: _start_and_stream(chat, _stream()))
 
     entry = chat._transcript.read()[0]
     assert entry.message.content == "kept"
@@ -3329,7 +3438,7 @@ def test_stream_generator_cancellation_survives_terminal_cleanup_failure():
             raise asyncio.CancelledError()
 
         with pytest.raises(asyncio.CancelledError):
-            run_async(lambda: chat._append_message_stream(_stream()))
+            run_async(lambda: _start_and_stream(chat, _stream()))
 
     entry = chat._transcript.read()[0]
     assert entry.message.content == "kept"
@@ -3352,7 +3461,7 @@ def test_stream_terminal_cancellation_aborts_without_error():
             yield "kept"
 
         with pytest.raises(asyncio.CancelledError):
-            run_async(lambda: chat._append_message_stream(_stream()))
+            run_async(lambda: _start_and_stream(chat, _stream()))
 
     entry = chat._transcript.read()[0]
     assert entry.message.content == "kept"
@@ -3483,7 +3592,7 @@ def test_stream_final_display_error_best_effort_closes_the_wire_and_owner():
             yield "kept"
 
         with pytest.raises(RuntimeError, match="terminal display failed"):
-            run_async(lambda: chat._append_message_stream(_stream()))
+            run_async(lambda: _start_and_stream(chat, _stream()))
 
     entry = chat._transcript.read()[0]
     assert entry.message.content == "kept"
@@ -3512,7 +3621,7 @@ def test_stream_suppressed_terminal_transform_closes_and_preserves_content():
         async def _stream():
             yield "kept"
 
-        run_async(lambda: chat._append_message_stream(_stream()))
+        run_async(lambda: _start_and_stream(chat, _stream()))
 
     entry = chat._transcript.read()[0]
     assert entry.message.content == "kept"
@@ -3536,7 +3645,7 @@ def test_suppressed_chunk_commits_source_without_mutating_display():
             yield "hidden"
             yield "shown"
 
-        run_async(lambda: chat._append_message_stream(_stream()))
+        run_async(lambda: _start_and_stream(chat, _stream()))
 
     assert chat._transcript.read()[0].message.content == "hiddenshown"
 
@@ -3572,7 +3681,7 @@ def test_transformed_replacement_keeps_dependencies_from_suppressed_chunks():
             visible.html_deps = [visible_dep]
             yield visible
 
-        run_async(lambda: chat._append_message_stream(_stream()))
+        run_async(lambda: _start_and_stream(chat, _stream()))
 
     expected_deps = [
         {"name": "hidden", "version": "1.0"},
@@ -3619,7 +3728,7 @@ def test_terminal_transformed_replacement_keeps_suppressed_dependencies():
             hidden.html_deps = [hidden_dep]
             yield hidden
 
-        run_async(lambda: chat._append_message_stream(_stream()))
+        run_async(lambda: _start_and_stream(chat, _stream()))
 
     expected_deps = [{"name": "hidden", "version": "1.0"}]
     entry = chat._transcript.read()[0]
@@ -3654,7 +3763,7 @@ def test_suppressed_terminal_transform_surfaces_end_send_failure():
             yield "kept"
 
         with pytest.raises(RuntimeError, match="end send failed"):
-            run_async(lambda: chat._append_message_stream(_stream()))
+            run_async(lambda: _start_and_stream(chat, _stream()))
 
     entry = chat._transcript.read()[0]
     assert entry.message.content == "kept"
@@ -3672,7 +3781,7 @@ def test_stream_cancellation_preserves_sent_partial():
             raise asyncio.CancelledError()
 
         with pytest.raises(asyncio.CancelledError):
-            run_async(lambda: chat._append_message_stream(_stream()))
+            run_async(lambda: _start_and_stream(chat, _stream()))
 
     entry = chat._transcript.read()[0]
     assert entry.message.content == "kept"
@@ -4097,7 +4206,7 @@ def test_append_message_stream_return_includes_tagged_thinking():
         result: list[str] = []
 
         async def _exercise() -> None:
-            result.append(await chat._append_message_stream(gen()))
+            result.append(await _start_and_stream(chat, gen()))
 
         run_async(_exercise)
         assert result[0] == "<thinking>\nreasoning\n</thinking>\n\nthe answer"

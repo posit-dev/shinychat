@@ -183,9 +183,9 @@ _ResponseSettlementDelivery = tuple[
 
 _ResponseSettlementDeliveries = tuple[_ResponseSettlementDelivery, ...]
 
-_response_settlement_deliveries: ContextVar[
-    _ResponseSettlementDeliveries
-] = ContextVar("_response_settlement_deliveries", default=())
+_response_settlement_deliveries: ContextVar[_ResponseSettlementDeliveries] = (
+    ContextVar("_response_settlement_deliveries", default=())
+)
 
 
 def _consume_task_result(task: asyncio.Future[Any]) -> None:
@@ -587,8 +587,8 @@ class Chat:
         if instance is not None:
             instance.destroy()
         CHAT_INSTANCES[instance_id] = self
-        self._cancel_session_end: CancelCallback | None = self._session.on_ended(
-            self.destroy
+        self._cancel_session_end: CancelCallback | None = (
+            self._session.on_ended(self.destroy)
         )
 
         self.client: "ChatClient | None" = None
@@ -1343,32 +1343,12 @@ class Chat:
                         error=error,
                     )
                 except BaseException as terminal_error:
-                    if self._transcript.active_stream_id == stream_id:
-                        try:
-                            await self._send_action({"type": "chunk_end"})
-                        except BaseException:
-                            pass
-                        terminal_status = (
-                            "cancelled"
-                            if status is None
-                            and isinstance(terminal_error, asyncio.CancelledError)
-                            else status or "error"
-                        )
-                        await self._transcript.abort_stream(
-                            stream_id,
-                            status=terminal_status,
-                            error=(
-                                None
-                                if terminal_status == "cancelled"
-                                else (
-                                    error
-                                    if error is not None
-                                    else HISTORY_ERROR_STREAM_TERMINAL
-                                )
-                            ),
-                        )
-                    if status is None:
-                        raise
+                    await self._recover_failed_stream_end(
+                        stream_id,
+                        status=status,
+                        error=error,
+                        terminal_error=terminal_error,
+                    )
 
     async def _append_message_chunk(
         self,
@@ -1434,9 +1414,7 @@ class Chat:
                 )
             current_segments = self._transcript.stream_checkpoint(stream_id)
 
-        append_chunk_segments(
-            current_segments, msg, self._serialize_html_deps
-        )
+        append_chunk_segments(current_segments, msg, self._serialize_html_deps)
 
         stream_content = segments_content(current_segments)
 
@@ -1701,23 +1679,61 @@ class Chat:
 
         message = _utils.wrap_async_iterable(message)
 
+        # Start the stream now, not when the task runs, so any work started
+        # after this call (e.g. an append_message()) cannot overtake the
+        # stream (#417).
+        stream_id = _utils.private_random_id()
+        started = await self._start_message_stream(stream_id, icon=icon)
+
+        body_started = False
+
         # Run the stream in the background to get non-blocking behavior
         @reactive.extended_task
         async def _stream_task():
-            return await self._append_message_stream(message, icon=icon)
+            nonlocal body_started
+            body_started = True
+            if not started:
+                return ""
+            return await self._append_message_stream(message, stream_id)
 
         _stream_task()
 
         self._latest_stream.set(_stream_task)
 
-        # Since the task runs in the background (outside/beyond the current context,
-        # if any), we need to manually raise any exceptions that occur
         @reactive.effect
-        async def _handle_error():
-            e = _stream_task.error()
-            if e:
-                await self._raise_exception(e)
-            _handle_error.destroy()  # type: ignore
+        async def _handle_done():
+            status = _stream_task.status()
+            if status == "running":
+                return
+            _handle_done.destroy()  # type: ignore
+            # Since the task runs in the background (outside/beyond the current
+            # context, if any), we need to manually raise any exceptions that
+            # occur
+            if status == "error":
+                e = _stream_task.error()
+                if e:
+                    await self._raise_exception(e)
+            elif status == "cancelled" and not body_started and started:
+                # Cancelled before the body's first step, so the worker's
+                # `finally` never ran: the stream this method opened
+                # synchronously is still reserved. End it through the
+                # transcript's end/abort path so later work is not stuck
+                # behind a dead stream.
+                empty = ChatMessageDict(content="", role="assistant")
+                try:
+                    await self._append_message_chunk(
+                        empty,
+                        chunk="end",
+                        stream_id=stream_id,
+                        status="cancelled",
+                    )
+                except BaseException as terminal_error:
+                    await self._recover_failed_stream_end(
+                        stream_id,
+                        status="cancelled",
+                        error=None,
+                        terminal_error=terminal_error,
+                    )
 
         return _stream_task
 
@@ -1750,46 +1766,138 @@ class Chat:
         """
         return self._latest_stream()
 
-    async def _append_message_stream(
+    async def _recover_failed_stream_end(
         self,
-        message: AsyncIterable[Any],
-        icon: HTML | Tag | bool | None = None,
-    ):
-        id = _utils.private_random_id()
+        stream_id: str,
+        *,
+        status: Literal["cancelled", "error"] | None,
+        error: str | None,
+        terminal_error: BaseException,
+    ) -> None:
+        """Close a stream whose ``chunk="end"`` send failed.
 
+        Sends a best-effort raw ``chunk_end`` action, then settles the stream
+        through ``ChatTranscript.abort_stream``, so capture and response
+        settlement still observe a finished stream. Re-raises ``terminal_error``
+        when the stream body itself had completed normally (``status is None``)
+        so the terminal failure is not swallowed; when the body already failed
+        or was cancelled, the in-flight exception keeps propagating.
+        """
+        if self._transcript.active_stream_id == stream_id:
+            try:
+                await self._send_action({"type": "chunk_end"})
+            except BaseException:
+                pass
+            terminal_status = (
+                "cancelled"
+                if status is None
+                and isinstance(terminal_error, asyncio.CancelledError)
+                else status or "error"
+            )
+            await self._transcript.abort_stream(
+                stream_id,
+                status=terminal_status,
+                error=(
+                    None
+                    if terminal_status == "cancelled"
+                    else (
+                        error
+                        if error is not None
+                        else HISTORY_ERROR_STREAM_TERMINAL
+                    )
+                ),
+            )
+        if status is None:
+            raise terminal_error
+
+    async def _start_message_stream(
+        self,
+        stream_id: str,
+        *,
+        icon: HTML | Tag | bool | None = None,
+    ) -> bool:
+        """Open a stream synchronously: send the start chunk, reserving the
+        stream before any task runs so work started after this call cannot
+        overtake it (#417).
+
+        A failed start is classified as a stream-start failure
+        (``HISTORY_ERROR_STREAM_START``) and, when the transcript still holds
+        the reserved stream, closed through the end/abort path before
+        re-raising. Returns whether the stream started; ``False`` means the
+        start chunk was dropped (e.g. by a message transform) and no stream
+        is open.
+        """
         empty = ChatMessageDict(content="", role="assistant")
         started = False
         status: Literal["cancelled", "error"] | None = None
         error: str | None = None
         try:
-            try:
-                started = await self._append_message_chunk(
-                    empty, chunk="start", stream_id=id, icon=icon
+            started = await self._append_message_chunk(
+                empty, chunk="start", stream_id=stream_id, icon=icon
+            )
+            return started
+        except asyncio.CancelledError:
+            status = "cancelled"
+            raise
+        except BaseException:
+            status = "error"
+            error = HISTORY_ERROR_STREAM_START
+            raise
+        finally:
+            if status is not None:
+                started = (
+                    started or self._transcript.active_stream_id == stream_id
                 )
-            except asyncio.CancelledError:
-                raise
-            except BaseException:
-                status = "error"
-                error = HISTORY_ERROR_STREAM_START
-                started = started or self._transcript.active_stream_id == id
-                raise
-            if not started:
-                return ""
+                if started:
+                    try:
+                        await self._append_message_chunk(
+                            empty,
+                            chunk="end",
+                            stream_id=stream_id,
+                            status=status,
+                            error=error,
+                        )
+                    except BaseException as terminal_error:
+                        await self._recover_failed_stream_end(
+                            stream_id,
+                            status=status,
+                            error=error,
+                            terminal_error=terminal_error,
+                        )
+
+    async def _append_message_stream(
+        self,
+        message: AsyncIterable[Any],
+        stream_id: str,
+    ):
+        """Send a stream's content chunks, then its end chunk.
+
+        The caller must have opened the stream with ``_start_message_stream()``
+        before invoking this worker; ``append_message_stream()`` does so
+        synchronously in its prologue.
+        """
+        empty = ChatMessageDict(content="", role="assistant")
+        # The stream was open when this worker started. Keep the end chunk
+        # flowing even if an in-flight transition somehow closed it first.
+        started = True
+        status: Literal["cancelled", "error"] | None = None
+        error: str | None = None
+        try:
             async for msg in message:
-                await self._append_message_chunk(msg, chunk=True, stream_id=id)
+                await self._append_message_chunk(
+                    msg, chunk=True, stream_id=stream_id
+                )
             # Same string spelling as the stored message's .content
             return flatten_segments_content(
-                self._transcript.stream_segments(id)
+                self._transcript.stream_segments(stream_id)
             )
         except asyncio.CancelledError:
             status = "cancelled"
-            started = started or self._transcript.active_stream_id == id
             raise
         except BaseException as e:
             status = "error"
             if error is None:
                 error = str(e)
-            started = started or self._transcript.active_stream_id == id
             raise
         finally:
             if started:
@@ -1797,37 +1905,17 @@ class Chat:
                     await self._append_message_chunk(
                         empty,
                         chunk="end",
-                        stream_id=id,
+                        stream_id=stream_id,
                         status=status,
                         error=error,
                     )
                 except BaseException as terminal_error:
-                    if self._transcript.active_stream_id == id:
-                        try:
-                            await self._send_action({"type": "chunk_end"})
-                        except BaseException:
-                            pass
-                        terminal_status = (
-                            "cancelled"
-                            if status is None
-                            and isinstance(terminal_error, asyncio.CancelledError)
-                            else status or "error"
-                        )
-                        await self._transcript.abort_stream(
-                            id,
-                            status=terminal_status,
-                            error=(
-                                None
-                                if terminal_status == "cancelled"
-                                else (
-                                    error
-                                    if error is not None
-                                    else HISTORY_ERROR_STREAM_TERMINAL
-                                )
-                            ),
-                        )
-                    if status is None:
-                        raise
+                    await self._recover_failed_stream_end(
+                        stream_id,
+                        status=status,
+                        error=error,
+                        terminal_error=terminal_error,
+                    )
 
     # Send a message to the UI
     async def _send_append_message(

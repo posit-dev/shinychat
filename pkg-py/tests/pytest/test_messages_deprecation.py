@@ -31,6 +31,11 @@ class _MockSession:
     def _decrement_busy_count(self) -> None:
         pass
 
+    async def _unhandled_error(self, e: Exception) -> None:
+        # py-shiny 1.7.0 routes effect errors here instead of killing the
+        # flush; swallow in the mock (a real session logs and closes).
+        pass
+
     async def send_custom_message(self, type: str, message: Any) -> None:
         pass
 

@@ -2260,8 +2260,9 @@ async def test_v2_real_stream_failure_preserves_capture_matrix(
             yield "sent"
         raise original
 
+    await chat._start_message_stream("stream")
     with pytest.raises(type(original)) as raised:
-        await chat._append_message_stream(stream())
+        await chat._append_message_stream(stream(), "stream")
 
     assert raised.value is original
     assert recorder.record is not None
