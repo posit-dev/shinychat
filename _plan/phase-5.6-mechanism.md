@@ -233,6 +233,20 @@ except where a task says otherwise).
   v1 no-lock `on_response` moot (5.7 retires v1). `h94s` verification
   complete: 6 moot, item 4 corrected to v1-only (v2 already guards),
   backlog `5qxa`/`x9fa`/`y5kr` filed; `h94s` closed.
+- 2026-10-14: P5.6.3+4 landed: `80aeb5e1` (one admission predicate),
+  `9390de71` (D1 raise on suppressed stream entry points), `8bb9e830`
+  (D2 synchronous reservation, absorbing #418; plus `_unhandled_error`
+  added to the test-session mocks after a leftover armed settlement
+  callback polluted later flushes — same mock-contract gap as backlog
+  `3y6p`, now fixed for 1.7.0). Unit 1097 green; ruff/pyright green.
+  Incident: a resume-error led to a duplicate delegation; the original
+  agent had landed two commits before dying at its turn limit mid-
+  commit-3; the work was verified and completed by the coordinator.
+  Approved deviation (orchestrator): #418's verbatim test assertions do
+  not port — this branch rejects mid-stream appends rather than queueing
+  them (pinned contract; process.md §7.4 forbids the queue), so the
+  regression pins the raise plus post-settle ordering. Roborev job 1564
+  enqueued on the three commits. P5.6.7 (`4ec9`) delegated.
 
 ## Handoff
 
