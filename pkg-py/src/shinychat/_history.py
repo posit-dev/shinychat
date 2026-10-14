@@ -2504,7 +2504,9 @@ class ChatHistory:
             cfg.restore_bootstrap
         )
         # This is the initial history effect's existing completion fact. V2
-        # admission reads it synchronously at its three entry points.
+        # admission reads it synchronously at every guard site, through
+        # `_history_action_admitted()` (the history input effects in this
+        # module and the entry points in `_chat.py`).
         self._initial_history_initialized = False
 
     def enable(self) -> None:
