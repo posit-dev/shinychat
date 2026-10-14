@@ -275,6 +275,16 @@ except where a task says otherwise).
   at ~70% (implementation verified coherent by coordinator: StateHookError
   + step labeling + rewind-before-persist reorder; 25 test failures are
   expected contract changes); completion delegated.
+- 2026-10-14: P5.6.6 (`b0hf`) landed: `7ab34db7` (StateHookError names
+  the failing entry; restore steps labeled; resubmit/navigate run rewind
+  hooks before set_active_leaf + persist — committed as one commit, the
+  two parts entangled at the except blocks) + `73ae308c` (#422 docstring
+  absorbed with the audit's amended rationale) + `284b57a9` (roborev
+  1573's Medium: raw exception text moved from user notification to
+  developer warning; 16 test pins updated + restore-hook test added).
+  `c4dx`, `49b6` closed. Only `b0hf` open, pending roborev 1574.
+  Incident note: 1Password signing outage mid-session (driver restarted);
+  a staged docs edit rode along in `7ab34db7` (harmless, noted).
 
 ## Handoff
 
