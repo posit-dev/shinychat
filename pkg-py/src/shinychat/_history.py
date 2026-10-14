@@ -1133,6 +1133,11 @@ class HistoryController:
         except BaseException as error:
             if not restore_body_entered:
                 await self._clear_failed_restore(error)
+            else:
+                # The restore body already ran its own attribution and
+                # cleanup; don't let the admission label above leak into a
+                # later, unrelated failure.
+                self._restore_failure_step = None
             raise
 
     async def restore_bookmark_pointer(
@@ -1441,7 +1446,8 @@ class HistoryController:
                             for attachment in submitted_input.attachments
                         ],
                     }
-                    await self.chat._send_action(action)
+                    with self._restore_step("sending the resubmission"):
+                        await self.chat._send_action(action)
                 except BaseException as error:
                     await self._clear_failed_restore(error)
                     raise
@@ -1694,10 +1700,16 @@ class HistoryController:
                             await _history_plan.run_plan(rewind_state)
                             record.set_active_leaf(leaf)
                             await recorder._persist_record()
-                        await self._replay_exchange_display(record, node_ids)
-                        await self._send_sibling_metadata()
-                        await self._send_exchange_metadata()
-                        await self.send_history_update()
+                        with self._restore_step(
+                            "replaying the conversation display"
+                        ):
+                            await self._replay_exchange_display(
+                                record, node_ids
+                            )
+                        with self._restore_step("sending the navigation update"):
+                            await self._send_sibling_metadata()
+                            await self._send_exchange_metadata()
+                            await self.send_history_update()
                     except BaseException as error:
                         await self._clear_failed_restore(error)
                         raise

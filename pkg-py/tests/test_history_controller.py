@@ -3482,6 +3482,41 @@ async def test_v2_initial_restore_admission_failure_recovers(
 
 
 @pytest.mark.anyio
+async def test_v2_initial_restore_body_failure_leaves_no_stale_step_label():
+    # The restore body consumes its own step attribution on failure; the
+    # admission label wrapping it must not be re-armed on the re-raise, or a
+    # later unrelated failure would misreport it.
+    controller, _ = _make_controller(use_exchange_tree=True)
+    target = _restore_target()
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+    body_error = RuntimeError("body replay failed")
+
+    async def fail_replay(*_args: Any, **_kwargs: Any) -> None:
+        raise body_error
+
+    controller._replay_exchange_display = fail_replay  # type: ignore[method-assign]
+
+    with (
+        pytest.raises(RuntimeError, match="body replay failed"),
+        pytest.warns(
+            UserWarning,
+            match=r"Chat history restore failed \(failed while replaying the conversation display\): "
+            r"RuntimeError\('body replay failed'\)",
+        ),
+    ):
+        await controller._restore_initial_exchange_record(target)
+
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=False,
+        detail="failed while replaying the conversation display",
+    )
+    # Discriminating: on the buggy shape the admission label was re-armed
+    # here and a later unlabeled failure would have reported it.
+    assert controller._restore_failure_step is None
+
+
+@pytest.mark.anyio
 async def test_v2_live_restore_malformed_effective_turns_becomes_fresh_draft():
     store = InMemoryConversationStore()
     adapter = _TrackingFakeAdapter()
