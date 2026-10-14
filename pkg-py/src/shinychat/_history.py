@@ -263,8 +263,8 @@ def derive_stored_ui_message(
 
 # Stopgap: turn-derived UI mixes model-facing attachment content into user
 # message bodies, so we re-serialize each attachment and subtract it here.
-# The feat/history-exchange-tree rewrite captures user messages as displayed
-# instead. Delete this and attachment_content_stripped when that lands.
+# v2 records capture user messages as displayed, so this only serves v1
+# records. Delete it and attachment_content_stripped when v1 is retired.
 def _strip_attachment_content(
     message: StoredUiMessage,
 ) -> StoredUiMessage:
