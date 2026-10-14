@@ -678,6 +678,12 @@ async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> N
             session_context(cast(Any, session)),
             reactive.isolate(),
             pytest.raises(RuntimeError) as raised,
+            pytest.warns(
+                UserWarning,
+                match=r"Chat history restore failed "
+                r"\(failed while replaying the conversation display\): "
+                r"RuntimeError\('restore failed'\)",
+            ),
         ):
             await handlers["_init_history"]()
 
@@ -690,7 +696,7 @@ async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> N
         assert _history_updates(session) == []
         notifier.assert_awaited_once_with(
             recovery_incomplete=True,
-            detail="failed while replaying the conversation display: restore failed",
+            detail="failed while replaying the conversation display",
         )
     finally:
         chat.destroy()
@@ -1132,6 +1138,11 @@ async def test_v2_initial_restore_preflight_failure_recovers(
         session_context(cast(Any, session)),
         reactive.isolate(),
         pytest.raises(ValueError) as raised,
+        pytest.warns(
+            UserWarning,
+            match=r"Chat history restore failed \(no detail\): "
+            r"ValueError\('initial preflight failed'\)",
+        ),
     ):
         await handlers["_init_history"]()
 
@@ -1152,7 +1163,7 @@ async def test_v2_initial_restore_preflight_failure_recovers(
     assert updates[0]["transition_protocol"] == "completion-v2"
     assert chat.history._initial_history_initialized
     notifier.assert_awaited_once_with(
-        recovery_incomplete=False, detail="initial preflight failed"
+        recovery_incomplete=False, detail=None
     )
     with session_context(cast(Any, session)), reactive.isolate():
         await chat._record_accepted_user_input_with_capture(

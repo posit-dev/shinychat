@@ -3393,7 +3393,14 @@ async def test_v2_initial_bookmark_projection_failure_recovers() -> None:
     notifier = AsyncMock()
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
-    with pytest.raises(ValueError, match="Dangling parent reference"):
+    with (
+        pytest.raises(ValueError, match="Dangling parent reference"),
+        pytest.warns(
+            UserWarning,
+            match=r"Chat history restore failed \(no detail\): "
+            r"ValueError\(\"Dangling parent reference at 'missing'\"\)",
+        ),
+    ):
         await controller._restore_initial_exchange_record(
             target, node_id="n_0000"
         )
@@ -3411,7 +3418,7 @@ async def test_v2_initial_bookmark_projection_failure_recovers() -> None:
     assert len(history_updates) == 1
     assert history_updates[0]["active_id"] is None
     notifier.assert_awaited_once_with(
-        recovery_incomplete=False, detail="Dangling parent reference at 'missing'"
+        recovery_incomplete=False, detail=None
     )
 
 
@@ -3440,9 +3447,17 @@ async def test_v2_initial_restore_admission_failure_recovers(
 
     fake_chat._destructive_history_mutation = fail_admission  # type: ignore[method-assign]
 
-    with pytest.raises(type(failure)) as raised:
-        await controller._restore_initial_exchange_record(target)
+    if isinstance(failure, Exception):
+        warn_ctx: AbstractContextManager[Any] = pytest.warns(
+            UserWarning,
+            match=r"Chat history restore failed \(no detail\): "
+            r"RuntimeError\('initial admission failed'\)",
+        )
+    else:
+        warn_ctx = nullcontext()
 
+    with warn_ctx, pytest.raises(type(failure)) as raised:
+        await controller._restore_initial_exchange_record(target)
     assert raised.value is failure
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -3455,10 +3470,7 @@ async def test_v2_initial_restore_admission_failure_recovers(
     assert len(history_updates) == 1
     assert history_updates[0]["active_id"] is None
     # Cancellation keeps the generic message: no detail to attribute.
-    notifier.assert_awaited_once_with(
-        recovery_incomplete=False,
-        detail=str(failure) if isinstance(failure, Exception) else None,
-    )
+    notifier.assert_awaited_once_with(recovery_incomplete=False, detail=None)
 
 
 @pytest.mark.anyio
@@ -3491,8 +3503,16 @@ async def test_v2_live_restore_malformed_effective_turns_becomes_fresh_draft():
     notifier = AsyncMock()
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
-    with pytest.raises(
-        ValueError, match="Turn-state entries must contain a list of JSON objects"
+    with (
+        pytest.raises(
+            ValueError, match="Turn-state entries must contain a list of JSON objects"
+        ),
+        pytest.warns(
+            UserWarning,
+            match=r"Chat history restore failed "
+            r"\(failed while materializing the restored turns\): "
+            r"ValueError\('Turn-state entries must contain a list of JSON objects",
+        ),
     ):
         await controller.replay_exchange_record(target)
 
@@ -3517,10 +3537,69 @@ async def test_v2_live_restore_malformed_effective_turns_becomes_fresh_draft():
     assert history_updates[0]["transition_protocol"] == "completion-v2"
     notifier.assert_awaited_once_with(
         recovery_incomplete=False,
-        detail=(
-            "failed while materializing the restored turns: "
-            "Turn-state entries must contain a list of JSON objects"
+        detail="failed while materializing the restored turns",
+    )
+
+
+@pytest.mark.anyio
+async def test_v2_restore_hook_failure_names_entry_and_clears_to_fresh_draft():
+    controller, _ = _make_controller(use_exchange_tree=True)
+    _install_live_v2_record(controller)
+    target = _restore_target()
+    target.nodes["n_0000"].state["test:restore"] = StateEntry(
+        kind="test", version=1, mode="snapshot", data={}
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    expected = RuntimeError("injected restore hook failure")
+
+    def fail_restore(_context: StatePathContext) -> None:
+        raise expected
+
+    recorder._register_restore_hook("test:restore", fail_restore)
+    fake_chat = cast(_FakeChat, controller.chat)
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+    released_ids: list[str | None] = []
+
+    async def release_active_id(id: str | None) -> None:
+        released_ids.append(id)
+
+    controller.on_active_id_change = release_active_id
+
+    with (
+        pytest.raises(_history_plan.StateHookError) as raised,
+        pytest.warns(
+            UserWarning,
+            match=r"Chat history restore failed "
+            r"\(the 'test:restore' state entry failed to apply\): "
+            r"StateHookError\(\"Failed to apply state entry "
+            r"'test:restore': injected restore hook failure\"\)",
         ),
+    ):
+        await controller.replay_exchange_record(target)
+
+    # The hook's own error stays chained; the wrapper names the entry.
+    assert raised.value.entry_name == "test:restore"
+    assert raised.value.__cause__ is expected
+    # Fail-to-fresh-draft cleanup: the record is dropped and the UI is
+    # cleared, even though the display may have been partially restored.
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    assert recorder.record is None
+    assert controller.record is None
+    assert controller._active_id_now() is None
+    assert released_ids == [None]
+    history_updates = [
+        action for action in fake_chat.actions if action["type"] == "history_update"
+    ]
+    assert len(history_updates) == 1
+    assert history_updates[0]["active_id"] is None
+    # The entry name takes precedence over any step label, and the raw
+    # error text goes to developers via the warning, not the notification.
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=False,
+        detail="the 'test:restore' state entry failed to apply",
     )
 
 
@@ -3875,7 +3954,15 @@ async def test_v2_restore_cleanup_failures_are_secondary_and_reported(
     notifier = AsyncMock()
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
-    with pytest.raises(RuntimeError, match="original restore failure"):
+    with (
+        pytest.raises(RuntimeError, match="original restore failure"),
+        pytest.warns(
+            UserWarning,
+            match=r"Chat history restore failed "
+            r"\(failed while replaying the conversation display\): "
+            r"RuntimeError\('original restore failure'\)",
+        ),
+    ):
         await controller.replay_exchange_record(target)
 
     recorder = controller._exchange_recorder
@@ -3884,8 +3971,7 @@ async def test_v2_restore_cleanup_failures_are_secondary_and_reported(
     assert controller._active_id_now() is None
     notifier.assert_awaited_once_with(
         recovery_incomplete=True,
-        detail="failed while replaying the conversation display: "
-        "original restore failure",
+        detail="failed while replaying the conversation display",
     )
 
 
@@ -5190,7 +5276,7 @@ async def test_v2_navigation_persistence_failure_clears_to_fresh_draft():
         }
     ]
     notifier.assert_awaited_once_with(
-        recovery_incomplete=False, detail="navigation persistence failed"
+        recovery_incomplete=False, detail=None
     )
 
 
@@ -5315,7 +5401,16 @@ async def test_v2_navigation_rewind_hook_failure_keeps_persisted_leaf() -> None:
     notifier = AsyncMock()
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
-    with pytest.raises(_history_plan.StateHookError) as raised:
+    with (
+        pytest.raises(_history_plan.StateHookError) as raised,
+        pytest.warns(
+            UserWarning,
+            match=r"Chat history restore failed "
+            r"\(the 'test:rewind' state entry failed to apply\): "
+            r"StateHookError\(\"Failed to apply state entry "
+            r"'test:rewind': navigation rewind failed\"\)",
+        ),
+    ):
         await controller.handle_navigate(2, "prev", request_id="navigation")
 
     # The hook's own error stays chained; the wrapper names the entry.
@@ -5349,10 +5444,7 @@ async def test_v2_navigation_rewind_hook_failure_keeps_persisted_leaf() -> None:
     ]
     notifier.assert_awaited_once_with(
         recovery_incomplete=False,
-        detail=(
-            "the 'test:rewind' state entry failed to apply: "
-            "navigation rewind failed"
-        ),
+        detail="the 'test:rewind' state entry failed to apply",
     )
 
 
@@ -5852,7 +5944,7 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
         }
     ]
     notifier.assert_awaited_once_with(
-        recovery_incomplete=False, detail="resubmit persistence failed"
+        recovery_incomplete=False, detail=None
     )
 
 
@@ -5884,7 +5976,16 @@ async def test_v2_resubmit_rewind_hook_failure_keeps_persisted_leaf() -> None:
     notifier = AsyncMock()
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
-    with pytest.raises(_history_plan.StateHookError) as raised:
+    with (
+        pytest.raises(_history_plan.StateHookError) as raised,
+        pytest.warns(
+            UserWarning,
+            match=r"Chat history restore failed "
+            r"\(the 'test:rewind' state entry failed to apply\): "
+            r"StateHookError\(\"Failed to apply state entry "
+            r"'test:rewind': resubmit rewind failed\"\)",
+        ),
+    ):
         await controller.resubmit(
             target, kind="retry", request_id="request", message_index=1
         )
@@ -5919,10 +6020,7 @@ async def test_v2_resubmit_rewind_hook_failure_keeps_persisted_leaf() -> None:
     ]
     notifier.assert_awaited_once_with(
         recovery_incomplete=False,
-        detail=(
-            "the 'test:rewind' state entry failed to apply: "
-            "resubmit rewind failed"
-        ),
+        detail="the 'test:rewind' state entry failed to apply",
     )
 
 

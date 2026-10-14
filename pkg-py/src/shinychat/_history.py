@@ -871,26 +871,26 @@ class HistoryController:
     def _restore_failure_detail(
         self, failure: BaseException | None
     ) -> str | None:
-        """Name the failing hook or step for the restore-failure warning.
+        """Name the failing hook or step for the restore-failure notification.
 
-        Prefers the failing state entry (``StateHookError`` names its
-        hook); otherwise the labeled in-flight step; otherwise the error's
-        own text (preflight and materialization validation errors already
-        name the offending entry). Cancellation keeps the generic message:
-        its identity is the outcome, not a diagnostic.
+        The returned detail is safe for end users: it names the failing
+        state entry (``StateHookError`` names its hook) or the labeled
+        in-flight step, and never carries raw exception text, which can
+        hold internal details from app hooks or the store (roborev 1573).
+        Cancellation keeps the generic message: its identity is the
+        outcome, not a diagnostic.
         """
-        if not isinstance(failure, Exception):
+        try:
+            if not isinstance(failure, Exception):
+                return None
+            step = self._restore_failure_step
+            if isinstance(failure, _history_plan.StateHookError):
+                return f"the {failure.entry_name!r} state entry failed to apply"
+            if step is not None:
+                return f"failed while {step}"
             return None
-        step = self._restore_failure_step
-        self._restore_failure_step = None
-        if isinstance(failure, _history_plan.StateHookError):
-            cause = failure.__cause__
-            suffix = f": {cause}" if cause is not None else ""
-            return f"the {failure.entry_name!r} state entry failed to apply{suffix}"
-        text = str(failure).rstrip(".")
-        if step is not None:
-            return f"failed while {step}: {text}" if text else f"failed while {step}"
-        return text or None
+        finally:
+            self._restore_failure_step = None
 
     @contextmanager
     def _restore_step(self, step: str) -> Iterator[None]:
@@ -913,7 +913,15 @@ class HistoryController:
         assert recorder is not None
 
         detail = self._restore_failure_detail(failure)
-        self._restore_failure_step = None
+        if isinstance(failure, Exception):
+            # The user-facing notification carries only the safe detail;
+            # developers get the full error, including any raw exception
+            # text from app hooks or the store (roborev 1573).
+            warnings.warn(
+                f"Chat history restore failed ({detail or 'no detail'}): "
+                f"{failure!r}",
+                stacklevel=2,
+            )
 
         # Local ownership is cleared synchronously before any cleanup can
         # suspend, so a subsequent accepted input always creates a fresh draft.
