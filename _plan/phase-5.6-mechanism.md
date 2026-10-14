@@ -247,6 +247,16 @@ except where a task says otherwise).
   them (pinned contract; process.md §7.4 forbids the queue), so the
   regression pins the raise plus post-settle ordering. Roborev job 1564
   enqueued on the three commits. P5.6.7 (`4ec9`) delegated.
+- 2026-10-14: P5.6.7 landed (`ce93c76e`). Roborev chain on P5.6.3/4/7:
+  1564 (F), 1565 (F), 1566 (F), 1567 (P + 3 low), 1568 (P + 1 low) — all
+  findings fixed in `d19a0aec` (worker claims stream ownership),
+  `f4a671a6` (ownerless-until-claim), `9200ab39` (warn at public entry;
+  slash-command silent; docstring/changelog truth), `58906277`
+  (`_STREAM_UNOWNED` sentinel; dead streams close their producer),
+  `b095bd9e` (changelog scoping). Escalation valve fired on the
+  reservation mechanism (5 findings): decision PATCH (chain converging
+  High→Low, alternatives forbidden by §7.4), review flipped to batched
+  range review (job 1570 on `006b58d..b095bd9e`).
 
 ## Handoff
 
