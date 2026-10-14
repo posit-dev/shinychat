@@ -3209,6 +3209,46 @@ async def test_v2_resubmit_accepts_active_path_ancestor_for_edit():
 
 
 @pytest.mark.anyio
+async def test_v2_resubmit_projection_failure_names_the_step():
+    controller, chat, _adapter, _store, first, _target = (
+        _make_v2_resubmit_controller()
+    )
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+    expected = RuntimeError("projection send failed")
+
+    original_send = chat._send_action
+
+    async def fail_projection_send(action: dict[str, Any], *args: Any, **kwargs: Any) -> Any:
+        if action.get("type") == "history_edit_projection":
+            raise expected
+        return await original_send(action, *args, **kwargs)
+
+    chat._send_action = fail_projection_send  # type: ignore[method-assign]
+
+    with (
+        pytest.raises(RuntimeError, match="projection send failed"),
+        pytest.warns(
+            UserWarning,
+            match=r"Chat history restore failed \(failed while sending the resubmission\)",
+        ),
+    ):
+        await controller.resubmit(
+            first,
+            _stored_message("user", "first replacement"),
+            kind="edit",
+            request_id="edit-ancestor",
+            message_index=0,
+        )
+
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=False,
+        detail="failed while sending the resubmission",
+    )
+    assert controller._restore_failure_step is None
+
+
+@pytest.mark.anyio
 async def test_v2_resubmit_rejects_off_path_target_before_mutation():
     controller, chat, adapter, store, first, target = (
         _make_v2_resubmit_controller()
@@ -5325,32 +5365,42 @@ async def test_v2_navigation_persistence_failure_clears_to_fresh_draft():
 
 
 @pytest.mark.anyio
-async def test_v2_navigation_update_failure_names_the_step():
+@pytest.mark.parametrize(
+    "step,fail_on",
+    [
+        ("replaying the conversation display", "_replay_exchange_display"),
+        ("sending the navigation update", "_send_sibling_metadata"),
+    ],
+)
+async def test_v2_navigation_update_failure_names_the_step(
+    step: str, fail_on: str
+) -> None:
     controller, chat, _adapter, _store, _original, _replacement = (
         _make_v2_navigation_controller()
     )
     notifier = AsyncMock()
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
-    expected = RuntimeError("navigation update failed")
+    expected = RuntimeError("navigation post-persist failure")
 
-    async def fail_update(*_args: Any, **_kwargs: Any) -> None:
+    async def fail_step(*_args: Any, **_kwargs: Any) -> None:
         raise expected
 
-    controller._send_sibling_metadata = fail_update  # type: ignore[method-assign]
+    setattr(controller, fail_on, fail_step)
 
     with (
-        pytest.raises(RuntimeError, match="navigation update failed"),
+        pytest.raises(RuntimeError, match="navigation post-persist failure"),
         pytest.warns(
             UserWarning,
-            match=r"Chat history restore failed \(failed while sending the navigation update\)",
+            match=rf"Chat history restore failed \(failed while {step}\)",
         ),
     ):
         await controller.handle_navigate(2, "prev", request_id="navigation")
 
     notifier.assert_awaited_once_with(
         recovery_incomplete=False,
-        detail="failed while sending the navigation update",
+        detail=f"failed while {step}",
     )
+    assert controller._restore_failure_step is None
 
 
 @pytest.mark.anyio
