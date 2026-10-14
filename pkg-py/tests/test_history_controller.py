@@ -7516,6 +7516,35 @@ async def test_replay_rereport_then_new_turn_does_not_duplicate_ui():
     ]
 
 
+class _DroppingSystemReplayChat(_ReplayFakeChat):
+    async def _restore_bookmark_message(
+        self, message_dict: Any, *, icon: str | None = None
+    ) -> None:
+        if message_dict.get("role") == "system":
+            return
+        await super()._restore_bookmark_message(message_dict, icon=icon)
+
+
+@pytest.mark.anyio
+async def test_replay_ui_offset_counts_only_committed_messages():
+    controller, _store = _make_controller()
+    chat = _DroppingSystemReplayChat()
+    controller.chat = chat  # type: ignore[assignment]
+    record = new_conversation_record(title="t")
+    record.append_linear(
+        [{"role": "user", "content": "q"}],
+        ui=[
+            {**msg("system"), "version": STORED_UI_VERSION},
+            {**msg("user"), "version": STORED_UI_VERSION},
+        ],
+    )
+
+    await controller.replay_ui(record)
+
+    assert len(chat.messages) == 1
+    assert controller.ui_offset == 1
+
+
 # --- ui_offset atomicity (not advanced when store.put raises) ----------------
 
 

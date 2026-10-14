@@ -1908,7 +1908,6 @@ class HistoryController:
             # A restored conversation is never a "new chat" — the app's
             # greeting doesn't belong here, regardless of `persistent`.
             await self.chat.set_greeting(None)
-            restored_count = 0
             for node_id in record.path_node_ids():
                 node = record.nodes[node_id]
                 stored = node.ui
@@ -1926,11 +1925,9 @@ class HistoryController:
                     restored_message = dict(message_dict)
                     restored_message.pop("attachment_content_stripped", None)
                     await self.chat._restore_bookmark_message(restored_message)
-                    restored_count += 1
-            # The restored messages are already in the server-side
-            # accumulator, so start the offset after the messages restored
-            # into the record.
-            self.ui_offset = restored_count
+            # Count what the chat actually committed: messages it declines to
+            # store (e.g. system role) must not advance the offset.
+            self.ui_offset = len(self.chat._messages_for_bookmark())
 
     @staticmethod
     def _normalize_resubmit_input(message: StoredMessage) -> StoredMessage:
