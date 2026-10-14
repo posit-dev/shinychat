@@ -630,6 +630,15 @@ class HistoryController:
         It fires after a completed assistant append or a stream terminal
         outcome, so replay, clear, accepted input, and partial chunks do not
         settle history.
+
+        Safe without additional locking (P5.6.8 audit, superseding the stale
+        process-wide ``reactive.lock()`` argument): every recorder mutation
+        takes the recorder's ``asyncio.Lock``; the response-settlement pump
+        is single-flight (one runner task, FIFO); and
+        ``ChatTranscript.end_stream`` awaits the capture callbacks before
+        scheduling settlement, so a settlement always observes a finished
+        exchange. These properties hold under both py-shiny's sequential
+        flush and the proposed concurrent-effects model.
         """
         recorder = self._exchange_recorder
         if recorder is not None:
