@@ -1847,6 +1847,14 @@ class Chat:
             started = await self._append_message_chunk(
                 empty, chunk="start", stream_id=stream_id, icon=icon
             )
+            if started:
+                # The start ran in the caller's task, but the caller does not
+                # consume the stream — the worker task does (it claims the
+                # stream when it starts). Leave no owner until then, so a
+                # message_stream_context() entered here before the worker
+                # runs deterministically raises instead of being misread as
+                # a nested stream (roborev 1565).
+                self._transcript.claim_stream(stream_id, None)
             return started
         except asyncio.CancelledError:
             status = "cancelled"
@@ -1888,10 +1896,14 @@ class Chat:
         before invoking this worker; ``append_message_stream()`` does so
         synchronously in its prologue.
         """
-        # The stream was reserved in the caller's task; this worker consumes
-        # it, so nested message_stream_context() checks must see this task
-        # as the owner.
-        self._transcript.claim_stream(stream_id, asyncio.current_task())
+        # The stream was reserved in the caller's task (with no owner); this
+        # worker consumes it, so nested message_stream_context() checks must
+        # see this task as the owner. Skip the claim if the stream was
+        # already closed or replaced in flight — the chunk sends below then
+        # fail through the worker's normal error/end-recovery path instead
+        # of an unhandled raise here (roborev 1565).
+        if self._transcript.active_stream_id == stream_id:
+            self._transcript.claim_stream(stream_id, asyncio.current_task())
         empty = ChatMessageDict(content="", role="assistant")
         # The stream was open when this worker started. Keep the end chunk
         # flowing even if an in-flight transition somehow closed it first.

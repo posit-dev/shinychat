@@ -3092,6 +3092,73 @@ def test_nested_stream_context_inside_append_message_stream_works():
     assert len(contents) == 1 and "inner" in contents[0]
 
 
+def test_stream_context_after_append_message_stream_raises_deterministically():
+    # Regression (roborev 1565): a stream reserved by append_message_stream()
+    # has no owner until its worker claims it. A message_stream_context()
+    # entered in the caller's task before the worker runs must raise "Cannot
+    # start a second message stream" — not be misread as a nested stream
+    # owned by the caller.
+    with session_context(test_session):
+        chat = Chat(id="stream_ctx_race", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _body() -> None:
+            await chat.append_message_stream(["stream"])
+            with pytest.raises(RuntimeError, match="second message stream"):
+                async with chat.message_stream_context():
+                    pass
+
+        run_async(lambda: _run_stream_test(sent, 3, _body))
+
+    types = [action["type"] for action in sent if action["type"] != "history_update"]
+    assert types == ["chunk_start", "chunk", "chunk_end"]
+
+
+def test_stream_closed_in_flight_before_worker_starts_still_settles():
+    # Regression (roborev 1565): if the reserved stream is closed before the
+    # worker's first step, the worker must skip its ownership claim and fail
+    # through its normal error path — not raise from the claim itself and
+    # leave the generator unclosed and _handle_done with nothing to do.
+    with session_context(test_session):
+        chat = Chat(id="stream_closed_in_flight", history=False)
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        async def _body() -> None:
+            task = await chat.append_message_stream(["never sent"])
+            stream_id = chat._transcript.active_stream_id
+            assert stream_id is not None
+            await chat._transcript.abort_stream(stream_id, status="cancelled")
+            from shiny import reactive
+
+            for _ in range(100):
+                with reactive.isolate():
+                    done = task.status() != "running"
+                if done:
+                    break
+                await asyncio.sleep(0.01)
+
+        run_async(lambda: _run_stream_test(sent, 1, _body))
+
+        async def _after() -> None:
+            await chat.append_message("after")
+
+        run_async(lambda: _run_stream_test(sent, 2, _after))
+
+    types = [action["type"] for action in sent if action["type"] != "history_update"]
+    assert types[-1] == "message"
+    assert sent[-1]["message"]["segments"][0]["content"] == "after"
+
+
 def test_append_message_during_active_stream_raises_then_lands_after_stream():
     # Regression (#417): append_message_stream() reserves its stream
     # synchronously, so a complete append in the same async body can no
