@@ -727,6 +727,48 @@ async def test_list_order_stable_after_update(store: FileConversationStore):
 
 
 @pytest.mark.anyio
+async def test_v2_list_order_stable_after_warm_cache_update(
+    store: FileConversationStore,
+):
+    """v2 writes keep list()'s created_at-newest-first contract (#372).
+
+    ``_put_v2`` once re-sorted the warm meta cache by ``updated_at``, so a
+    freshly-saved old conversation jumped the queue while a cold ``list()``
+    still read ``created_at`` order — two different orderings for one
+    store. ``list()``'s documented contract (newest-first by
+    ``created_at``) wins on every cache/write path.
+    """
+    a = new_conversation_record_v2(title="older", client_info={})
+    b = new_conversation_record_v2(title="newer", client_info={})
+    b.created_at = b.created_at + timedelta(seconds=1)
+    await store.put(part(scope="alice"), a)
+    await store.put(part(scope="alice"), b)
+    await store.list(part(scope="alice"))  # warm the meta cache
+    # Re-save the older conversation with a much newer updated_at.
+    a.updated_at = a.updated_at + timedelta(seconds=10)
+    await store.put(part(scope="alice"), a)
+    metas = await store.list(part(scope="alice"))
+    assert [m.title for m in metas] == ["newer", "older"]
+
+
+@pytest.mark.anyio
+async def test_memory_v2_list_order_stable_after_warm_cache_update(
+    mem_store: InMemoryConversationStore,
+):
+    """InMemoryConversationStore keeps the same contract on v2 writes."""
+    a = new_conversation_record_v2(title="older", client_info={})
+    b = new_conversation_record_v2(title="newer", client_info={})
+    b.created_at = b.created_at + timedelta(seconds=1)
+    await mem_store.put(part(scope="alice"), a)
+    await mem_store.put(part(scope="alice"), b)
+    await mem_store.list(part(scope="alice"))  # warm the meta cache
+    a.updated_at = a.updated_at + timedelta(seconds=10)
+    await mem_store.put(part(scope="alice"), a)
+    metas = await mem_store.list(part(scope="alice"))
+    assert [m.title for m in metas] == ["newer", "older"]
+
+
+@pytest.mark.anyio
 async def test_scopes_are_isolated(store: FileConversationStore):
     rec = new_conversation_record(title="private")
     await store.put(part(scope="alice"), rec)

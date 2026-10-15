@@ -544,7 +544,10 @@ class FileConversationStore(ConversationStore):
                 m for m in self._meta_cache[partition] if m.id != record.id
             ]
             updated.append(record.meta(size_bytes=size_bytes))
-            updated.sort(key=lambda m: m.updated_at, reverse=True)
+            # list() is documented newest-first by created_at (#372); a
+            # warm cache must not reorder on updated_at when a save touches
+            # an older conversation.
+            updated.sort(key=lambda m: m.created_at, reverse=True)
             self._meta_cache[partition] = updated
 
     async def delete(
