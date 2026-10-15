@@ -431,6 +431,13 @@ commits, three-findings escalation valve per mechanism.
   children closed; `4b9z` (v1 runtime deletion) is the last child and
   is unblocked — delegating next.
 
+- 2026-10-15: `4b9z` CLOSED (roborev 1591's 2 Lows fixed `07295d7e`:
+  no-store-mutation + no-install pins on the rejection paths). 11/11
+  children closed. Phase-exit gates: py unit 1120 passed/0 xfailed,
+  pyright 0, ruff clean, full Playwright 225/226 (only the
+  dispositioned `ftz9` local red; the resume-day flake did not recur),
+  JS 1407 (23 skipped), R 2123/0 fail. `origin/main` unmoved — no
+  boundary merge needed. plan.md status header + §4 marked complete.
 - 2026-10-15: `4b9z` landed (agent hit its turn cap with the tree
   uncommitted; resumed with a commit-first steer). `668921d5` (v1
   runtime + flag deleted in `_history.py`), `0187217c` (v1-runtime
@@ -454,4 +461,30 @@ commits, three-findings escalation valve per mechanism.
 
 ## Handoff
 
-(appended at phase exit — what landed, what's next, provisional decisions)
+- **What landed:** Phase 5.7 complete — v2 parity gaps closed (titling,
+  bookmark-mode in-place switch, new_chat/clear gating, structured
+  blocks, attachments/list-ordering/eviction), the v1→v2 import for all
+  four released forms with a shared fixture matrix, versioned record
+  types with upgrade-on-read and lazy conversion (v1 writes back as v2),
+  legacy bookmark stamp read-gate, store write guards pinned, and the
+  v1 runtime + `use_exchange_tree` flag + Python `completion-v1` branch
+  deleted. Python has exactly one history engine; v1 survives only as
+  import input (`ConversationRecordV1` + `_history_import.py` + disk
+  read) plus the legacy stamp read-gate. Branch: 476 commits ahead of
+  `origin/main` (unmoved), green modulo the dispositioned `ftz9`
+  Playwright local red.
+- **What's next:** Phase 6 (`05vb`) — the R port of the single engine:
+  transcript owner, exchange tree, S7 versioned records, R 0.5.0
+  import, legacy bookmark stamp, the shared fixtures (turn-rewrite and
+  v1-import matrices ready now; the cross-language behavior matrix
+  needs re-derivation for the v2 engine — the Python harness died with
+  the v1 runtime). Also queued for the driver: push/CI (branch is ~476
+  commits unpushed; 5.6 deferred this to phase exit) and the roborev
+  1587-F1 disposition (phase-intermediate default-config regression,
+  eliminated by `4b9z`'s deletion).
+- **Provisional decisions:** the D4 read-gate lives in the controller
+  (`_get_record`), not the stores, so stores stay mode-agnostic and the
+  import-matrix harness pins production `FileConversationStore.get()`
+  returning schema_version 1 — revisit if Phase 6 wants the gate in the
+  R store. `115q` (R migration marker) must consume any marker only
+  after writes succeed (8ec9 audit conclusion).
