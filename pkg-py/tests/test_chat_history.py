@@ -692,7 +692,6 @@ async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> N
         assert not chat.history._initial_history_initialized
         assert settled == [False]
         assert recorder.record is None
-        assert controller.record is None
         assert controller._active_id_now() is None
         assert _history_updates(session) == []
         notifier.assert_awaited_once_with(
@@ -1018,7 +1017,6 @@ async def test_v2_stale_server_bookmark_pointer_notifies_and_keeps_draft() -> No
     controller = chat.history._controller
     assert controller is not None
     assert controller._active_id_now() is None
-    assert controller.record is None
     assert controller._exchange_recorder is not None
     assert controller._exchange_recorder.record is None
     assert chat.history._initial_history_initialized
@@ -1129,7 +1127,6 @@ async def test_v2_initial_restore_preflight_failure_recovers(
 
     assert raised.value is expected
     assert settled == [False]
-    assert controller.record is None
     assert controller._active_id_now() is None
     assert recorder.record is None
     assert target.model_dump(mode="json") == target_before
@@ -1215,7 +1212,6 @@ async def test_v2_initial_restore_preflight_cancellation_recovers_once() -> None
     assert preflight.call_count == 1
     replay.assert_not_awaited()
     assert settled == [False]
-    assert controller.record is None
     assert controller._active_id_now() is None
     assert recorder.record is None
     assert target.model_dump(mode="json") == target_before
@@ -1315,7 +1311,6 @@ async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> No
         await handlers["_init_history"]()
 
     assert raised.value is original
-    assert controller.record is None
     assert controller._active_id_now() is None
     assert recorder.record is None
     assert settled == [False]
@@ -1497,7 +1492,7 @@ async def test_v2_bookmark_eviction_clears_bookmark_state_for_v2_records():
     """Bookmark-mode _on_evict clears evicted v2 records' bookmark state.
 
     Pins the existing eviction contract (gwg3): the wired on_evict finds the
-    record's bookmark_state_id — via the active controller.record when set,
+    record's bookmark_state_id — via the active recorder record when set,
     else through _get_record — and deletes that server bookmark state. A v2
     record without a state id evicts without deleting anything. Under v2 the
     recorder owns the active record, so even the active conversation goes
@@ -1537,7 +1532,7 @@ async def test_v2_bookmark_eviction_clears_bookmark_state_for_v2_records():
     inactive.bookmark_state_id = "state-inactive"
     await store.put(partition, inactive)
 
-    # The active v2 record: the recorder owns it, controller.record is None.
+    # The active v2 record: the recorder owns it.
     active = new_conversation_record_v2(
         title="active", id="c_active", client_info={}
     )

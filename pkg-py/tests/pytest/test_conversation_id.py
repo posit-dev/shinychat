@@ -101,8 +101,6 @@ def make_turns(
     ]
 
 
-
-
 class MockClient:
     """Minimal non-chatlas client: turns are plain JSON dicts."""
 
@@ -173,8 +171,6 @@ def make_controller(
     return ctrl
 
 
-
-
 def active_id(ctrl: HistoryController) -> str | None:
     return ctrl._active_id_now()
 
@@ -187,7 +183,7 @@ def active_id(ctrl: HistoryController) -> str | None:
 def test_new_controller_has_no_conversation_id():
     ctrl = make_controller()
     assert active_id(ctrl) is None
-    assert ctrl.record is None
+    assert ctrl._exchange_recorder.record is None
 
 
 def test_ensure_conversation_id_allocates_once_and_is_stable():
@@ -202,30 +198,12 @@ def test_ensure_conversation_id_allocates_once_and_is_stable():
         # An identified draft has no record and leaks nothing into the
         # store, even when no save ever happens (model call failed or was
         # cancelled).
-        assert ctrl.record is None
+        assert ctrl._exchange_recorder.record is None
         assert ctrl.partition is not None
         assert await ctrl.store.get(ctrl.partition, id) is None
         assert await store.list(ctrl.partition) == []
 
     run_async(main)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def test_new_chat_announces_cleared_id_even_from_empty_draft():

@@ -121,8 +121,6 @@ def part(
     return ConversationPartition(chat_id=chat_id, scope=scope)
 
 
-
-
 def test_strip_attachment_content_repairs_existing_stored_ui():
     attachment = {
         "mime": "image/png",
@@ -188,16 +186,6 @@ def test_strip_attachment_content_keeps_empty_attachment_only_message():
         {"content": "", "content_type": "markdown"}
     ]
     assert cleaned.get("attachment_content_stripped") is True
-
-
-
-
-
-
-
-
-
-
 
 
 class _InactiveMessageStream:
@@ -463,8 +451,6 @@ def _make_controller(
     return controller, resolved_store
 
 
-
-
 @pytest.mark.anyio
 async def test_v2_history_update_advertises_completion_v2() -> None:
     controller, _ = _make_controller()
@@ -669,7 +655,6 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
 
     record = recorder.record
     assert isinstance(record, ConversationRecordV2)
-    assert controller.record is None
     assert record.nodes["n_0000"].status == "ok"
     node = record.nodes[exchange_id]
     assert node.status == "ok"
@@ -1813,7 +1798,6 @@ async def test_v2_restore_materializes_turn_path_once_and_resets_baseline():
     assert adapter.set_calls == [expected]
     assert adapter.turns == expected
     assert recorder.record is record
-    assert controller.record is None
 
     adapter.turns.append({"role": "assistant", "content": "next delta"})
     await recorder.accepted_input("n_0004", _stored_message("user", "next"))
@@ -4144,7 +4128,6 @@ async def test_v2_live_restore_malformed_effective_turns_becomes_fresh_draft():
     recorder = controller._exchange_recorder
     assert recorder is not None
     assert recorder.record is None
-    assert controller.record is None
     assert controller._active_id_now() is None
     assert released_ids == [None]
     assert fake_chat.clear_messages_calls == 1
@@ -4212,7 +4195,6 @@ async def test_v2_restore_hook_failure_names_entry_and_clears_to_fresh_draft():
     recorder = controller._exchange_recorder
     assert recorder is not None
     assert recorder.record is None
-    assert controller.record is None
     assert controller._active_id_now() is None
     assert released_ids == [None]
     history_updates = [
@@ -4299,7 +4281,6 @@ async def test_v2_live_restore_materialization_cancellation_cleans_up():
 
     assert raised.value is original
     assert recorder.record is None
-    assert controller.record is None
     assert controller._active_id_now() is None
     assert released_ids == [None]
     assert fake_chat.clear_messages_calls == 1
@@ -5244,7 +5225,6 @@ async def test_active_delete_clears_local_state_before_callback_failure(
         await controller.delete(active_id)
 
     assert await store.get(part(), active_id) is None
-    assert controller.record is None
     assert controller._active_id_now() is None
     assert controller.adapter.get_turns_json() == []
     assert fake_chat.messages == []
@@ -5855,7 +5835,6 @@ async def test_v2_navigation_persistence_failure_clears_to_fresh_draft():
         persisted_attempts[0].nodes["exchange-first"].selected_child == original
     )
     assert recorder.record is None
-    assert controller.record is None
     assert controller._active_id_now() is None
     assert recorder._turn_baseline == []
     assert adapter.turns == []
@@ -5991,7 +5970,6 @@ async def test_v2_navigation_cancellation_clears_to_fresh_draft(
         assert chat.clear_messages_calls == 1
         assert chat.set_greeting_calls == [None]
     assert recorder.record is None
-    assert controller.record is None
     assert controller._active_id_now() is None
     assert recorder._turn_baseline == []
     assert adapter.turns == []
@@ -6062,7 +6040,6 @@ async def test_v2_navigation_rewind_hook_failure_keeps_persisted_leaf() -> None:
     # Fail-to-fresh-draft applies: memory is cleared even though the
     # store was never moved.
     assert recorder.record is None
-    assert controller.record is None
     assert controller._active_id_now() is None
     assert recorder._turn_baseline == []
     assert adapter.turns == []
@@ -6487,7 +6464,6 @@ async def test_v2_edit_projection_delivery_failure_clears_to_fresh_draft() -> No
 
     assert recorder.record is None
     assert controller._active_id_now() is None
-    assert controller.record is None
     assert adapter.turns == []
     assert chat.clear_messages_calls == 1
 
@@ -6516,7 +6492,6 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
             (
                 failure,
                 recorder.record,
-                controller.record,
                 controller._active_id_now(),
                 record.active_leaf,
                 list(chat.messages),
@@ -6553,7 +6528,6 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
         (
             expected,
             record,
-            None,
             record.id,
             _first,
             [
@@ -6564,7 +6538,6 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
         )
     ]
     assert recorder.record is None
-    assert controller.record is None
     assert controller._active_id_now() is None
     assert recorder._turn_baseline == []
     assert adapter.turns == []
@@ -6640,7 +6613,6 @@ async def test_v2_resubmit_rewind_hook_failure_keeps_persisted_leaf() -> None:
     # Fail-to-fresh-draft applies: memory is cleared even though the
     # store was never moved.
     assert recorder.record is None
-    assert controller.record is None
     assert controller._active_id_now() is None
     assert recorder._turn_baseline == []
     assert adapter.turns == []
@@ -8172,8 +8144,6 @@ async def _sent() -> bool:
     return True
 
 
-
-
 @pytest.mark.anyio
 async def test_v2_response_settlement_writes_through_recorder_once():
     store = _RecordingStore()
@@ -8231,8 +8201,6 @@ async def test_v2_response_persistence_does_not_depend_on_bookmark_settlement() 
     active_input = persisted.nodes[persisted.active_leaf].input
     assert active_input is not None
     assert active_input.content == "durable before bookmark"
-
-
 
 
 @pytest.mark.anyio
@@ -8329,24 +8297,6 @@ async def test_namespaced_chat_ids_are_distinct_partitions():
 
     assert await store.get(ns1, rec.id) is rec
     assert await store.get(ns2, rec.id) is None
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 @pytest.mark.anyio
@@ -8528,19 +8478,23 @@ def _nav_actions(chat: _FakeChat) -> list[dict[str, Any]]:
     return [a for a in chat.actions if a["type"] == "history_navigate"]
 
 
-
-
-
-
 @pytest.mark.anyio
 @pytest.mark.parametrize("operation", ["new_chat", "delete"])
 async def test_active_stream_rejects_destructive_history_paths_before_mutation(
     operation: str,
 ):
     controller, store, chat = _make_nav_controller()
-    active = new_conversation_record(title="active")
-    controller.record = active
-    store.records[active.id] = active
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "hello")
+    )
+    active = recorder.record
+    assert active is not None
+    active_id = active.id
+    assert controller._active_id_now() == active_id
+    assert store.put_calls[-1][1] is active
 
     @asynccontextmanager
     async def reject_active_stream():
@@ -8555,14 +8509,13 @@ async def test_active_stream_rejects_destructive_history_paths_before_mutation(
         if operation == "new_chat":
             await controller.new_chat()
         else:
-            await controller.delete(active.id)
+            await controller.delete(active_id)
 
-    assert controller.record is active
-    assert store.records[active.id] is active
+    assert recorder.record is active
+    assert controller._active_id_now() == active_id
+    assert store.put_calls[-1][1] is active
     assert cast(_NavFakeAdapter, controller.adapter).set_calls == []
     assert chat.cleared == 0
-
-
 
 
 @pytest.mark.anyio
@@ -8608,8 +8561,6 @@ async def test_switch_to_rejects_record_with_unsupported_schema_version():
 
     with pytest.raises(UnsupportedSchemaVersionError):
         await controller.switch_to("c_future")
-
-    assert controller.record is None
 
 
 @pytest.mark.anyio
@@ -8704,14 +8655,6 @@ async def test_delete_inactive_does_not_navigate():
     assert _nav_actions(chat) == []
 
 
-
-
-
-
-
-
-
-
 class _BookmarkStub:
     def __init__(self, *, fail: bool = False) -> None:
         self.fail = fail
@@ -8756,26 +8699,6 @@ async def test_do_bookmark_with_cleanup_cancels_on_failure():
 
     assert bookmark.on_bookmarked_calls == 1
     assert bookmark.cancel_calls == 1
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def _make_v2_deferred_title_controller(
@@ -9034,12 +8957,6 @@ async def test_v2_retitle_not_rescheduled_at_third_input_exchange():
 # --- save/restore callbacks --------------------------------------------------
 
 
-
-
-
-
-
-
 @pytest.mark.anyio
 async def test_evict_if_needed_noop_when_no_limit():
     store = InMemoryConversationStore()
@@ -9255,10 +9172,6 @@ async def test_on_response_saved_fires_when_new_data_is_saved():
     assert fired[0] == fired[1]  # same conversation id both times
 
 
-
-
-
-
 @pytest.mark.anyio
 async def test_on_evict_fires_before_store_delete_in_evict_one():
     store = InMemoryConversationStore()
@@ -9325,64 +9238,11 @@ async def test_on_evict_fires_before_store_delete_in_delete():
 # ---------------------------------------------------------------------------
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def _user_turn_dict(text: str) -> dict[str, Any]:
     return {
         "role": "user",
         "contents": [{"content_type": "text", "text": text}],
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 _MATRIX_PATH = (
