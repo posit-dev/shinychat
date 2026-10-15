@@ -12,8 +12,8 @@ from shiny import App, Inputs, Outputs, Session, reactive, render, ui
 from shinychat import Chat, chat_ui
 from shinychat.types import FileConversationStore, HistoryOptions
 
-# Regression app for content-idempotent history save: after a restore,
-# replay_ui re-renders the stored conversation without settling another server
+# Regression app for content-idempotent history save: the exchange restore
+# replays the stored conversation's display without settling another server
 # response. save_count (driven by chat.history.on_save, which only fires on an
 # actual store.put) must not increase, and the stored conversation must stay
 # intact.

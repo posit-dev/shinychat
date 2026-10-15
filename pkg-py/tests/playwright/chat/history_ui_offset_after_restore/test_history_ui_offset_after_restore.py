@@ -48,10 +48,10 @@ def test_new_turn_ui_survives_second_restore(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     """
-    Regression test (v2 engine) for transcript reconstruction after
-    `replay_ui`. A response after a switch must replace the active path's UI
-    from the server transcript, so it cannot duplicate restored messages or
-    lose the rich content of the new turn.
+    Regression test (v2 engine) for transcript reconstruction after an
+    exchange restore. A response after a switch must replace the active
+    path's UI from the server transcript, so it cannot duplicate restored
+    messages or lose the rich content of the new turn.
 
     Sequence:
       1. Conversation A: submit "q1" -> rich reply with marker #1. Wait for
