@@ -1,5 +1,6 @@
 import pytest
 from _history_test_helpers import branch_from
+from shinychat._attachments import Attachment
 from shinychat._chat_types import StoredMessage, StoredSegment
 from shinychat._history_types import (
     CapturedMessage,
@@ -58,6 +59,33 @@ def test_v2_record_tracks_an_exchange_path_with_captured_messages():
     assert node.input == input_message
     assert node.messages[0].as_stored_message() == response
     assert node.messages[0].icon == "bot"
+
+
+def test_captured_message_round_trips_attachments_for_display():
+    """The capture seam keeps attachments for display and drops nothing else.
+
+    Pins main #394/#401 semantics at the seam level (gwg3): a captured
+    message round-trips its attachments verbatim, and the model-facing
+    attachment text — which only ever lives in the adapter's turns — never
+    enters the capture in the first place.
+    """
+    stored = StoredMessage(
+        role="user",
+        segments=[
+            StoredSegment(content="See attached", content_type="markdown")
+        ],
+        attachments=[
+            Attachment(
+                mime="text/plain",
+                name="notes.txt",
+                size=5,
+                data_url="data:text/plain;base64,aGVsbG8=",
+            )
+        ],
+    )
+    captured = CapturedMessage.from_stored_message(stored, icon=None)
+    assert captured.attachments == stored.attachments
+    assert captured.as_stored_message() == stored
 
 
 def _v2_user_message(content: str) -> StoredMessage:

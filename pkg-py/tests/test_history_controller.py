@@ -4,6 +4,7 @@
 
 import asyncio
 import copy
+import json
 import os
 import signal
 import subprocess
@@ -926,6 +927,171 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
         for message in fake_chat.restored_messages
     ] == ["hello", "hi"]
     assert fake_chat.restored_icons == [None, "<i>bot</i>"]
+
+
+# ---------------------------------------------------------------------------
+# v2 attachment capture semantics (main #394/#401 parity, gwg3)
+# ---------------------------------------------------------------------------
+
+
+_MODEL_ATTACHMENT_TURN = (
+    '<file-attachment name="notes.txt" type="text/plain">\n'
+    "hello\n"
+    "</file-attachment>"
+)
+# Quote-free marker: survives json.dumps escaping of the turn above.
+_MODEL_ATTACHMENT_MARKER = "</file-attachment>"
+
+
+def _attachment_input() -> StoredMessage:
+    """A user input carrying one text attachment, as the chat displays it."""
+    return StoredMessage(
+        role="user",
+        segments=[
+            StoredSegment(content="See attached", content_type="markdown")
+        ],
+        attachments=[
+            Attachment(
+                mime="text/plain",
+                name="notes.txt",
+                size=5,
+                data_url="data:text/plain;base64,aGVsbG8=",
+            )
+        ],
+    )
+
+
+def _attachment_dict() -> dict[str, Any]:
+    return {
+        "mime": "text/plain",
+        "name": "notes.txt",
+        "size": 5,
+        "data_url": "data:text/plain;base64,aGVsbG8=",
+    }
+
+
+def _display_layer_json(record: ConversationRecordV2) -> str:
+    """Serialize every node's input and response display content."""
+    return json.dumps(
+        [
+            {
+                "input": (
+                    node.input.model_dump(mode="json")
+                    if node.input is not None
+                    else None
+                ),
+                "messages": [
+                    message.as_stored_message().model_dump(mode="json")
+                    for message in node.messages
+                ],
+            }
+            for node in record.nodes.values()
+        ]
+    )
+
+
+def _turns_layer_json(record: ConversationRecordV2) -> str:
+    """Serialize every node's recorded state entries (the model layer)."""
+    return json.dumps(
+        {
+            node_id: {name: entry.model_dump(mode="json") for name, entry in node.state.items()}
+            for node_id, node in record.nodes.items()
+        }
+    )
+
+
+@pytest.mark.anyio
+async def test_v2_attachment_input_captures_display_and_strips_model_text(
+    tmp_path: Path,
+):
+    """v2 input capture matches main #394/#401 (pinned, gwg3).
+
+    Attachments stay on the captured ``ExchangeNode.input`` for display,
+    while the model-facing attachment text (the ``<file-attachment>`` block
+    the chatlas adapter received) never enters the stored display layer —
+    it belongs only to the turns state entries the adapter restores from.
+    """
+    adapter = _FakeAdapter()
+    adapter.turns = [
+        {
+            "role": "user",
+            "contents": [
+                {"content_type": "text", "text": "See attached"},
+                {"content_type": "text", "text": _MODEL_ATTACHMENT_TURN},
+            ],
+        },
+        {"role": "assistant", "content": "Thanks"},
+    ]
+    store = FileConversationStore(tmp_path)
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+        adapter=adapter,
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+    )
+    first = await transcript.record_accepted_input_and_notify(
+        _attachment_input()
+    )
+    await transcript.append(
+        TranscriptEntry(message=_stored_message("assistant", "Thanks")),
+        exchange_id=first,
+        send=_sent,
+    )
+    # A second accepted input closes the first exchange's node and captures
+    # its turns state, completing the record for the assertions below.
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "next question")
+    )
+
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    node = record.nodes[first]
+    assert node.input is not None
+    # Attachments are displayed: the captured input keeps them verbatim.
+    assert node.input.content == "See attached"
+    assert node.input.attachments == [
+        Attachment.model_validate(_attachment_dict())
+    ]
+    assert [
+        message.as_stored_message().content for message in node.messages
+    ] == ["Thanks"]
+    # Model-facing attachment text is stripped from the display layer...
+    assert _MODEL_ATTACHMENT_MARKER not in _display_layer_json(record)
+    # ...but the model layer (turns state) still carries it for restore.
+    assert _MODEL_ATTACHMENT_MARKER in _turns_layer_json(record)
+
+    # The persisted record keeps the same split: display stripped on disk.
+    stored = await store.get(part(), record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    stored_node = stored.nodes[first]
+    assert stored_node.input is not None
+    assert stored_node.input.content == "See attached"
+    assert stored_node.input.attachments == [
+        Attachment.model_validate(_attachment_dict())
+    ]
+    assert "file-attachment" not in _display_layer_json(stored)
+    assert _MODEL_ATTACHMENT_MARKER in _turns_layer_json(stored)
+
+    # Replay shows the attachment chips with the clean body text.
+    restored, _ = _make_controller(store=store, use_exchange_tree=True)
+    await restored.replay_exchange_record(stored)
+    fake_chat = cast(_FakeChat, restored.chat)
+    restored_user = fake_chat.restored_messages[0]
+    assert restored_user["role"] == "user"
+    assert restored_user["segments"] == [
+        {
+            "content": "See attached",
+            "content_type": "markdown",
+            "html_deps": None,
+        }
+    ]
+    assert restored_user["attachments"] == [_attachment_dict()]
 
 
 # ---------------------------------------------------------------------------
