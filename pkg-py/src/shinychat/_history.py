@@ -193,7 +193,6 @@ class HistoryOptions:
         )
 
 
-
 def _history_transition_request_id(value: Any) -> str | None:
     if not isinstance(value, dict):
         return None
