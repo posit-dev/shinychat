@@ -21,8 +21,9 @@ from shiny import Inputs, Session, reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat
-from shinychat._history import HistoryController, HistoryOptions
+from shinychat._history import HistoryOptions
 from shinychat._history_client import TurnsAdapter
+from shinychat._history_controller import HistoryController
 from shinychat._history_store import (
     ConversationPartition,
     InMemoryConversationStore,

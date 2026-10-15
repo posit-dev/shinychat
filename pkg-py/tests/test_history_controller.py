@@ -39,12 +39,12 @@ from shinychat._chat_types import (
     StructuredBlock,
 )
 from shinychat._history import (
-    HistoryController,
     HistoryInputIds,
     HistoryOptions,
     do_bookmark_with_cleanup,
 )
 from shinychat._history_client import TurnsAdapter
+from shinychat._history_controller import HistoryController
 from shinychat._history_plan import StatePathContext, canonical_turns
 from shinychat._history_store import (
     ConversationPartition,

@@ -7,8 +7,9 @@ import pytest
 from shiny.types import NotifyException
 from shinychat._chat_client import ChatClient, messages_to_turns
 from shinychat._chat_types import ChatMessageDict
-from shinychat._history import ChatHistory, HistoryController
+from shinychat._history import ChatHistory
 from shinychat._history_client import TurnsAdapter
+from shinychat._history_controller import HistoryController
 from shinychat._history_store import (
     ConversationPartition,
     InMemoryConversationStore,
