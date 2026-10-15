@@ -152,7 +152,9 @@ method(contents_shinychat, ellmer::ContentText) <- function(content) {
 # (e.g., a download card) -- this method can't distinguish user content from
 # assistant content, so a bare filename can't serve both cases.
 method(contents_shinychat, ellmer::ContentDocument) <- function(content) {
-  content@filename
+  # Fall back on an empty filename for parity with Python's
+  # `message.filename or "document"` rendering.
+  if (nzchar(content@filename)) content@filename else "document"
 }
 
 method(contents_shinychat, ellmer::ContentThinking) <- function(content) {

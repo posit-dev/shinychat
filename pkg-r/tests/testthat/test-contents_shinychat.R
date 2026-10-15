@@ -77,6 +77,9 @@ test_that("ContentDocument renders as its filename only", {
   )
   doc@filename <- "notes.txt"
   expect_equal(contents_shinychat(doc), "notes.txt")
+
+  doc@filename <- ""
+  expect_equal(contents_shinychat(doc), "document")
 })
 
 test_that("ContentToolRequest returns NULL when display is disabled", {
