@@ -5,7 +5,7 @@ import secrets
 import time
 import unicodedata
 from datetime import datetime, timezone
-from typing import Any, Literal, cast
+from typing import Any, Iterator, Literal, cast
 
 from pydantic import BaseModel, Field, JsonValue, model_validator
 
@@ -526,18 +526,29 @@ class ConversationRecordV2(BaseModel):
                 key=lambda item: (self.nodes[item[1]].created_at, item[0]),
             )[1]
 
-    def exchange_id_for_user_message_index(self, index: int) -> str:
-        if index < 0:
-            raise IndexError(f"Message index {index} out of range")
+    def iter_visible_inputs(self) -> Iterator[tuple[str, int]]:
+        """Yield ``(exchange id, display index)`` for each input-bearing
+        exchange on the active path, in display order.
 
+        The display index is the position of the exchange's input message
+        in the rendered transcript: an input occupies one slot, and each
+        of the exchange's messages occupies one.
+        """
         displayed_index = 0
         for node_id in self.path_node_ids():
             node = self.nodes[node_id]
             if node.input is not None:
-                if displayed_index == index:
-                    return node_id
+                yield node_id, displayed_index
                 displayed_index += 1
             displayed_index += len(node.messages)
+
+    def exchange_id_for_user_message_index(self, index: int) -> str:
+        if index < 0:
+            raise IndexError(f"Message index {index} out of range")
+
+        for node_id, displayed_index in self.iter_visible_inputs():
+            if displayed_index == index:
+                return node_id
         raise IndexError(f"Message index {index} out of range")
 
     def path_sibling_metadata(self) -> dict[str, tuple[int, int]]:

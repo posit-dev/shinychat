@@ -1201,15 +1201,10 @@ class HistoryController:
             # clear — empty here always means the client already shows none.
             return
         data: dict[int, dict[str, int]] = {}
-        msg_idx = 0
-        for node_id in record.path_node_ids():
-            node = record.nodes[node_id]
-            if node.input is not None:
-                if node_id in sibling_meta:
-                    idx, total = sibling_meta[node_id]
-                    data[msg_idx] = {"index": idx, "total": total}
-                msg_idx += 1
-            msg_idx += len(node.messages)
+        for node_id, msg_idx in record.iter_visible_inputs():
+            if node_id in sibling_meta:
+                idx, total = sibling_meta[node_id]
+                data[msg_idx] = {"index": idx, "total": total}
         if data:
             action: UpdateSiblingsAction = {
                 "type": "update_siblings",
@@ -1223,21 +1218,17 @@ class HistoryController:
             return
 
         data: dict[int, ExchangeMetadata] = {}
-        message_index = 0
-        for node_id in recorder.record.path_node_ids():
+        for node_id, message_index in recorder.record.iter_visible_inputs():
             node = recorder.record.nodes[node_id]
-            if node.input is not None:
-                metadata: ExchangeMetadata = {
-                    "status": node.status,
-                    "retryable": node.status in ("pending", "error", "cancelled"),
-                }
-                if node.status == "error" and node.input is not None:
-                    metadata["error_message"] = project_history_error_message(
-                        node.error.message if node.error is not None else None
-                    )
-                data[message_index] = metadata
-                message_index += 1
-            message_index += len(node.messages)
+            metadata: ExchangeMetadata = {
+                "status": node.status,
+                "retryable": node.status in ("pending", "error", "cancelled"),
+            }
+            if node.status == "error":
+                metadata["error_message"] = project_history_error_message(
+                    node.error.message if node.error is not None else None
+                )
+            data[message_index] = metadata
         if data:
             action: UpdateExchangeMetadataAction = {
                 "type": "update_exchange_metadata",
