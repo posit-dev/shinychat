@@ -658,9 +658,9 @@ class ConversationRecord(ConversationRecordV2):
     @model_validator(mode="before")
     @classmethod
     def _upgrade_v1(cls, data: Any) -> Any:
-        # Deferred import: _history_import imports this module, so a
+        # Deferred import: _history_v1 imports this module, so a
         # top-level import would be circular.
-        from ._history_import import import_v1_record
+        from ._history_v1 import import_v1_record
 
         if isinstance(data, ConversationRecordV1):
             # The import yields a ConversationRecordV2, which pydantic will

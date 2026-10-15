@@ -42,7 +42,6 @@ from shinychat._history import (
     HistoryController,
     HistoryInputIds,
     HistoryOptions,
-    _strip_attachment_content,
     do_bookmark_with_cleanup,
 )
 from shinychat._history_client import TurnsAdapter
@@ -74,6 +73,7 @@ from shinychat._history_types import (
     normalize_history_error_message,
     project_history_error_message,
 )
+from shinychat._history_v1 import _strip_attachment_content
 
 
 def msg(role: str) -> dict[str, object]:

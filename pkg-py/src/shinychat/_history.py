@@ -18,10 +18,8 @@ from typing import (
 from . import _history_plan
 from ._attachments import (
     Attachment,
-    attachment_to_content,
     validate_attachments,
 )
-from ._chat_normalize import normalize_message
 from ._chat_types import (
     ExchangeMetadata,
     HistoryAcceptedInputProjectionAction,
@@ -32,18 +30,13 @@ from ._chat_types import (
     StoredSegment,
     UpdateExchangeMetadataAction,
     UpdateSiblingsAction,
-    as_stored_message,
 )
 from ._history_bookmark import delete_bookmark_state, extract_state_id
 from ._history_client import (
     TurnDict,
     TurnsAdapter,
     as_turns_adapter,
-    normalize_turn_group,
-    turn_dict_effective_role,
-    turn_fallback_markdown,
 )
-from ._history_import import import_v1_record_with_warnings
 from ._history_plan import (
     RestorePlan,
 )
@@ -62,21 +55,19 @@ from ._history_title import (
 # NB: shiny is imported lazily inside methods throughout this module; a
 # top-level import would be circular (shiny.ui._chat imports shinychat).
 from ._history_types import (
-    STORED_UI_VERSION,
     ConversationRecordV1,
     ConversationRecordV2,
-    StoredUiMessage,
     check_schema_version,
     new_conversation_id,
     project_history_error_message,
 )
+from ._history_v1 import import_v1_record_with_warnings
 
 if TYPE_CHECKING:
     from htmltools import HTML, Tag, TagList
     from shiny import reactive
     from shiny.module import ResolvedId
     from shiny.reactive._reactives import Effect_
-    from shiny.session import Session
 
     from ._chat import Chat
     from ._chat_types import ChatGreeting
@@ -201,142 +192,6 @@ class HistoryOptions:
             restore_bootstrap
         )
 
-
-def _stored_ui_dict(stored: StoredMessage) -> StoredUiMessage:
-    """Serialize a StoredMessage for persistence in a node's ``ui`` list.
-
-    Adds the version marker and drops empty ``attachments`` so text-only
-    messages keep their previous shape.
-    """
-    d = stored.model_dump(exclude_none=True)
-    if not d.get("attachments"):
-        d.pop("attachments", None)
-    d["version"] = STORED_UI_VERSION
-    return cast(StoredUiMessage, d)
-
-
-def derive_stored_ui_message(
-    group: list[TurnDict],
-    session: Session | None = None,
-) -> StoredUiMessage | None:
-    """Derive one stored UI message from a turn group.
-
-    The group is merged and normalized through ``normalize_turn_group``,
-    so the result's ``segments`` interleave string segments and structured
-    blocks. Returns ``None`` when the group has nothing to display.
-    """
-    msg = normalize_turn_group(group)
-    if msg is None:
-        return None
-    return _stored_ui_dict(as_stored_message(msg, session))
-
-
-# Stopgap: turn-derived UI mixes model-facing attachment content into user
-# message bodies, so we re-serialize each attachment and subtract it here.
-# v2 records capture user messages as displayed, so this only serves v1
-# records. Delete it and attachment_content_stripped when v1 is retired.
-def _strip_attachment_content(
-    message: StoredUiMessage,
-) -> StoredUiMessage:
-    """Remove model-facing attachment content from stored user UI."""
-    attachments = message.get("attachments")
-    if (
-        message.get("role") != "user"
-        or not attachments
-        or message.get("attachment_content_stripped") is True
-    ):
-        return message
-
-    segments = [dict(segment) for segment in message["segments"]]
-    attachment_segments: list[dict[str, Any]] = []
-    try:
-        for value in attachments:
-            attachment = Attachment.model_validate(value)
-            attachment_message = normalize_message(
-                attachment_to_content(attachment)
-            )
-            stored = _stored_ui_dict(
-                as_stored_message(attachment_message, session=None)
-            )
-            attachment_segments.extend(
-                cast(list[dict[str, Any]], stored["segments"])
-            )
-    except Exception:
-        # StoredMessage validation reports malformed attachments later. Do not
-        # make replay more fragile while cleaning records from older versions.
-        return message
-
-    for attachment_segment in reversed(attachment_segments):
-        if "type" in attachment_segment:
-            for index in range(len(segments) - 1, -1, -1):
-                if segments[index] == attachment_segment:
-                    segments.pop(index)
-                    break
-            continue
-
-        suffix = str(attachment_segment.get("content", ""))
-        if not suffix:
-            continue
-        for index in range(len(segments) - 1, -1, -1):
-            segment = segments[index]
-            if "type" in segment:
-                continue
-            content = str(segment.get("content", ""))
-            if content == suffix:
-                segment["content"] = ""
-                break
-            separator_suffix = f"\n\n{suffix}"
-            if content.endswith(separator_suffix):
-                segment["content"] = content[: -len(separator_suffix)]
-                break
-
-    segments = [
-        segment
-        for segment in segments
-        if "type" in segment or segment.get("content") != ""
-    ]
-    if not any("type" not in segment for segment in segments):
-        segments.insert(0, {"content": "", "content_type": "markdown"})
-
-    cleaned = dict(message)
-    cleaned["segments"] = cast(Any, segments)
-    cleaned["attachment_content_stripped"] = True
-    return cast(StoredUiMessage, cleaned)
-
-
-def derive_node_ui(
-    turns: list[TurnDict],
-    session: Session | None = None,
-) -> list[StoredUiMessage]:
-    """Re-derive a node's stored UI from its turns.
-
-    Called at replay time when the stored UI is missing or predates the
-    structured format (no version marker). Old persisted UI is discarded,
-    never re-parsed. A node holds one turn group, so this derives at most
-    one message. Falls back to a text-only message when the turns are
-    missing or normalize to nothing.
-    """
-    derived = (
-        derive_stored_ui_message(turns, session=session) if turns else None
-    )
-    if derived is not None:
-        return [derived]
-    if turns:
-        last = turns[-1]
-        role = turn_dict_effective_role(last)
-        content = turn_fallback_markdown(last)
-    else:
-        role, content = "assistant", ""
-    return [
-        cast(
-            StoredUiMessage,
-            {
-                "version": STORED_UI_VERSION,
-                "role": role,
-                "segments": [{"content": content, "content_type": "markdown"}],
-            },
-        )
-    ]
 
 
 def _history_transition_request_id(value: Any) -> str | None:

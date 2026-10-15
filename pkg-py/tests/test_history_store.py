@@ -13,7 +13,6 @@ import shinychat._history_store as history_store_module
 from htmltools import HTMLDependency, tags
 from shinychat._chat_types import StoredMessage, StoredSegment
 from shinychat._history_client import as_turns_adapter
-from shinychat._history_import import import_v1_record
 from shinychat._history_store import (
     ConversationPartition,
     FileConversationStore,
@@ -31,6 +30,7 @@ from shinychat._history_types import (
     new_conversation_record,
     new_conversation_record_v2,
 )
+from shinychat._history_v1 import import_v1_record
 
 
 @pytest.fixture

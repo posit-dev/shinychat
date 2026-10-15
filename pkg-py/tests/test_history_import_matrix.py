@@ -1,5 +1,5 @@
 # Unit tests for the pure v1 -> v2 conversation-record import
-# (`shinychat._history_import.import_v1_record`), plus the per-released-form
+# (`shinychat._history_v1.import_v1_record`), plus the per-released-form
 # fixture matrix harness further below.
 #
 # The matrix cases live in tests/shared/history-v1-import-matrix.json (one case
@@ -15,10 +15,6 @@ from typing import Any, cast
 
 import pytest
 from shinychat._chat_types import StoredMessage
-from shinychat._history_import import (
-    import_v1_record,
-    import_v1_record_with_warnings,
-)
 from shinychat._history_store import (
     ConversationPartition,
     FileConversationStore,
@@ -29,6 +25,10 @@ from shinychat._history_types import (
     ConversationRecordV1,
     ConversationRecordV2,
     new_conversation_record,
+)
+from shinychat._history_v1 import (
+    import_v1_record,
+    import_v1_record_with_warnings,
 )
 
 NOW = datetime(2026, 10, 15, 12, 0, 0, tzinfo=timezone.utc)
