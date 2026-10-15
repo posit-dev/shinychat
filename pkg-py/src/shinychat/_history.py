@@ -1287,7 +1287,15 @@ class HistoryController:
             # query) without a reload. A failed or blocked switch raises
             # above, leaving the URL matching the still-active conversation.
             if self.on_switch_restored is not None:
-                await self.on_switch_restored(cast(ConversationRecord, target))
+                try:
+                    await self.on_switch_restored(cast(ConversationRecord, target))
+                except Exception as exc:
+                    # The restore already committed; a best-effort URL update
+                    # failure (e.g. session closing) must not make callers
+                    # treat the succeeded switch as failed.
+                    warnings.warn(
+                        f"on_switch_restored hook failed: {exc}", stacklevel=1
+                    )
             return
 
         async with self._destructive_mutation():
@@ -2272,8 +2280,8 @@ class ChatHistory:
             # history_navigate action WITHOUT reload (a soft replaceState,
             # like the post-response-save mint). No state id (the target
             # never had a response saved) -> url=None clears the stale query.
-            # replaceState never, pushState (would mutate server-side
-            # clientdata mid-session).
+            # Uses replaceState, never pushState (pushState would mutate
+            # server-side clientdata mid-session).
             async def _on_switch_restored(record: ConversationRecord) -> None:
                 state_id = record.bookmark_state_id
                 url = f"?_state_id_={state_id}" if state_id is not None else None

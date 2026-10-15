@@ -2134,6 +2134,36 @@ async def test_v2_switch_fires_on_switch_restored_after_successful_restore():
 
 
 @pytest.mark.anyio
+async def test_v2_switch_hook_failure_is_swallowed_with_warning():
+    """A raising on_switch_restored must not fail an already-committed switch."""
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    existing = new_conversation_record_v2(
+        title="existing",
+        id="c_existing",
+        client_info={},
+    )
+    target = _v2_switch_target("state_target")
+    await store.put(part(), target)
+    recorder.record = existing
+    controller._active_id.set(existing.id)
+
+    async def hook(record: ConversationRecord) -> None:
+        raise RuntimeError("session closing")
+
+    controller.on_switch_restored = hook
+
+    with pytest.warns(UserWarning, match="on_switch_restored hook failed"):
+        await controller.switch_to(target.id)
+
+    # The restore committed: the active record switched to the target.
+    assert recorder.record is target
+    assert controller._active_id_now() == target.id
+
+
+@pytest.mark.anyio
 async def test_v2_switch_without_hook_emits_no_navigate():
     """Non-bookmark modes never wire the hook: no URL update on switch."""
     store = InMemoryConversationStore()
