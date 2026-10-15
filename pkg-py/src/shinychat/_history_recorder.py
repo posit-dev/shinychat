@@ -37,6 +37,7 @@ from ._history_plan import (
 )
 from ._history_title import fallback_title_from_text
 from ._history_types import (
+    TURNS_STATE_KEY,
     CapturedMessage,
     ConversationRecordV2,
     StateEntry,
@@ -69,9 +70,9 @@ class _ExchangeRecorder:
         self._rewind_hooks: dict[str, RewindHook] = {}
         self._turn_baseline: list[str] = []
         self._active_id_published_for: ConversationRecordV2 | None = None
-        self._register_capture_hook("shinychat:turns", self._capture_turns)
-        self._register_restore_hook("shinychat:turns", self._restore_turns)
-        self._register_rewind_hook("shinychat:turns", self._restore_turns)
+        self._register_capture_hook(TURNS_STATE_KEY, self._capture_turns)
+        self._register_restore_hook(TURNS_STATE_KEY, self._restore_turns)
+        self._register_rewind_hook(TURNS_STATE_KEY, self._restore_turns)
 
     def _register_capture_hook(self, name: str, hook: CaptureHook) -> None:
         self._capture_hooks[name] = hook
@@ -116,7 +117,7 @@ class _ExchangeRecorder:
         self._turn_baseline = fingerprints
         assert self.record is not None
         previous = self.record.nodes[context.node_id].state.get(
-            "shinychat:turns"
+            TURNS_STATE_KEY
         )
         if mode == "delta" and previous is not None:
             if not isinstance(previous.data, list):
@@ -381,7 +382,7 @@ class _ExchangeRecorder:
             raise RuntimeError("No exchange-tree conversation is active")
         self.record.open_exchange(exchange_id, message)
         self._invalidate_turn_baseline()
-        self.record.nodes[exchange_id].state["shinychat:turns"] = (
+        self.record.nodes[exchange_id].state[TURNS_STATE_KEY] = (
             self._capture_turns(
                 CaptureContext(node_id=exchange_id, reason="node_close")
             )

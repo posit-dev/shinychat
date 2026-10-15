@@ -21,7 +21,7 @@ from ._history_client import (
     TurnsAdapter,
     _validate_mapping_keys,
 )
-from ._history_types import ConversationRecordV2, StateEntry
+from ._history_types import TURNS_STATE_KEY, ConversationRecordV2, StateEntry
 
 CaptureReason = Literal["root_close", "stream_finish", "node_close"]
 CaptureHook = Callable[
@@ -190,9 +190,9 @@ def active_path_turns_are_incompatible(
         for name, entry in record.nodes[node_id].state.items():
             _validate_restore_state_entry(name, entry)
     entries = tuple(
-        (node_id, record.nodes[node_id].state["shinychat:turns"])
+        (node_id, record.nodes[node_id].state[TURNS_STATE_KEY])
         for node_id in node_ids
-        if "shinychat:turns" in record.nodes[node_id].state
+        if TURNS_STATE_KEY in record.nodes[node_id].state
     )
     _validate_turn_entries(entries)
     return _turn_entries_are_incompatible(
@@ -262,7 +262,7 @@ def materialize_live_restore_turns(
     materialized: list[tuple[str, RestoreHook, StatePathContext]] = []
     for name, hook, context in planned:
         prepared_context = context
-        if name == "shinychat:turns":
+        if name == TURNS_STATE_KEY:
             prepared_turns, unavailable = materialize_restore_turns(
                 context, adapter=adapter
             )
@@ -277,7 +277,7 @@ def materialize_live_restore_turns(
 
 def turns_unavailable(planned: StatePlan) -> bool:
     return any(
-        name == "shinychat:turns" and context.turns_unavailable
+        name == TURNS_STATE_KEY and context.turns_unavailable
         for name, _, context in planned
     )
 
@@ -328,7 +328,7 @@ def preflight_state(
             entries=entries,
             bootstrap=bootstrap,
         )
-        if name == "shinychat:turns":
+        if name == TURNS_STATE_KEY:
             if preserve_live_turns:
                 include_system_prompt = adapter_is_chatlas(adapter)
                 prepared_turns = canonical_turns(
@@ -373,7 +373,7 @@ async def run_plan(
     propagates unchanged.
     """
     for name, hook, context in planned:
-        if skip_turns and name == "shinychat:turns":
+        if skip_turns and name == TURNS_STATE_KEY:
             continue
         try:
             result = hook(context)

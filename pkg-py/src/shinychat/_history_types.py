@@ -38,6 +38,9 @@ class TurnDict(TypedDict):
 
 TitleSource = Literal["llm", "user"]
 
+# The blessed state-entry name for the turn-state capture/restore hooks.
+TURNS_STATE_KEY = "shinychat:turns"
+
 MAX_HISTORY_ERROR_MESSAGE = 256
 HISTORY_ERROR_GENERIC = "The response could not be completed."
 HISTORY_ERROR_STREAM_START = "The response stream could not be started."

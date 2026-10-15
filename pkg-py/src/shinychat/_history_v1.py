@@ -50,6 +50,7 @@ from ._history_client import (
 )
 from ._history_types import (
     STORED_UI_VERSION,
+    TURNS_STATE_KEY,
     CapturedMessage,
     ConversationNode,
     ConversationRecordV1,
@@ -63,9 +64,6 @@ from ._history_types import (
 
 if TYPE_CHECKING:
     from shiny.session import Session
-
-# The blessed state-entry name; mirrors `_history_recorder`.
-_TURNS_STATE_KEY = "shinychat:turns"
 
 # Node classes, decided by a node's first display message.
 _INPUT = "input"
@@ -272,7 +270,7 @@ def import_v1_record_with_warnings(
         # v1 never stored the system prompt, so the record carries per-
         # exchange deltas and no root snapshot: folding the chain from
         # entry 0 reproduces v1's path_turns() exactly.
-        exchanges[nid].state[_TURNS_STATE_KEY] = StateEntry(
+        exchanges[nid].state[TURNS_STATE_KEY] = StateEntry(
             kind=turn_kind,
             version=1,
             mode="delta",
