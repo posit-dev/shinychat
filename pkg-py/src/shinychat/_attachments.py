@@ -10,6 +10,7 @@ import base64
 import json
 import mimetypes
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -182,6 +183,9 @@ def resolve_max_attachment_size() -> int:
     return DEFAULT_MAX_ATTACHMENT_SIZE
 
 
+_BASE64_PAYLOAD_RE = re.compile(r"^[A-Za-z0-9+/]*={0,2}$")
+
+
 def data_url_payload_size(data_url: str) -> int:
     """Return the decoded payload size (bytes) of a base64 data URL."""
     comma = data_url.find(",")
@@ -191,7 +195,7 @@ def data_url_payload_size(data_url: str) -> int:
     payload_len = len(payload)
     if payload_len == 0:
         return 0
-    if payload_len % 4 != 0:
+    if payload_len % 4 != 0 or not _BASE64_PAYLOAD_RE.match(payload):
         raise ValueError("Malformed base64 payload in data URL")
     padding = 0
     if payload.endswith("=="):

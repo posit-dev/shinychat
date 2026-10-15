@@ -59,7 +59,10 @@ data_url_payload_size <- function(data_url) {
   if (payload_len == 0L) {
     return(0)
   }
-  if (payload_len %% 4L != 0L) {
+  if (
+    payload_len %% 4L != 0L ||
+      !grepl("^[A-Za-z0-9+/]*={0,2}$", payload)
+  ) {
     cli::cli_abort("Malformed base64 payload in data URL")
   }
   padding <- if (endsWith(payload, "==")) {

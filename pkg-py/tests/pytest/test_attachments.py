@@ -259,6 +259,24 @@ def test_validate_attachments_rejects_malformed_data_url_header(
         validate_attachments([attachment])
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "abc",  # valid characters, invalid length
+        "a@bc",  # valid length and padding, invalid characters
+    ],
+)
+def test_validate_attachments_rejects_malformed_base64_payload(payload: str):
+    attachment = Attachment(
+        mime="text/plain",
+        data_url=f"data:text/plain;base64,{payload}",
+        name="bad.txt",
+    )
+
+    with pytest.raises(ValueError, match="Malformed base64 payload"):
+        validate_attachments([attachment])
+
+
 def test_validate_attachments_preserves_remote_url():
     attachment = Attachment.from_url(
         "https://example.com/report.pdf",

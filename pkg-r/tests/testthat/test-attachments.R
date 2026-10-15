@@ -95,6 +95,10 @@ test_that("user_input_contents rejects malformed base64 payloads", {
     )
   )
   expect_error(user_input_contents(value), "Malformed base64 payload")
+
+  # Valid length and padding, but invalid base64 characters.
+  value$attachments[[1]]$data_url <- "data:text/plain;base64,a@bc"
+  expect_error(user_input_contents(value), "Malformed base64 payload")
 })
 
 test_that("contents_from_attachments deterministically names unnamed attachments", {
