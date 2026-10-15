@@ -193,6 +193,25 @@ class HistoryOptions:
         )
 
 
+# Exchange statuses from which a retry (or a fresh resubmit) is allowed.
+_RETRYABLE_STATUSES = ("pending", "error", "cancelled")
+
+
+def _attachment_projection(
+    attachments: list[Attachment],
+) -> list[dict[str, Any]]:
+    """The wire shape for attachments on resubmit projection actions."""
+    return [
+        {
+            "mime": attachment.mime,
+            "data_url": attachment.data_url,
+            "name": attachment.name,
+            "size": attachment.size,
+        }
+        for attachment in attachments
+    ]
+
+
 def _history_transition_request_id(value: Any) -> str | None:
     if not isinstance(value, dict):
         return None
@@ -1065,15 +1084,9 @@ class HistoryController:
                         "type": "history_accepted_input_projection",
                         "index": message_index,
                         "content": str(submitted_input.content),
-                        "attachments": [
-                            {
-                                "mime": attachment.mime,
-                                "data_url": attachment.data_url,
-                                "name": attachment.name,
-                                "size": attachment.size,
-                            }
-                            for attachment in submitted_input.attachments
-                        ],
+                        "attachments": _attachment_projection(
+                            submitted_input.attachments
+                        ),
                     }
                     projection_error: BaseException | None = None
                     try:
@@ -1108,15 +1121,9 @@ class HistoryController:
                         "requestId": request_id,
                         "index": message_index,
                         "content": str(submitted_input.content),
-                        "attachments": [
-                            {
-                                "mime": attachment.mime,
-                                "data_url": attachment.data_url,
-                                "name": attachment.name,
-                                "size": attachment.size,
-                            }
-                            for attachment in submitted_input.attachments
-                        ],
+                        "attachments": _attachment_projection(
+                            submitted_input.attachments
+                        ),
                     }
                     with self._restore_step("sending the resubmission"):
                         await self.chat._send_action(action)
@@ -1222,7 +1229,7 @@ class HistoryController:
             node = recorder.record.nodes[node_id]
             metadata: ExchangeMetadata = {
                 "status": node.status,
-                "retryable": node.status in ("pending", "error", "cancelled"),
+                "retryable": node.status in _RETRYABLE_STATUSES,
             }
             if node.status == "error":
                 metadata["error_message"] = project_history_error_message(
