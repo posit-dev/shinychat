@@ -453,7 +453,7 @@ def test_node_id_for_message_index_simple():
 
 def test_node_id_for_message_index_counts_empty_ui_nodes_as_one():
     # A node with ui=None still renders one fabricated message on restore
-    # (replay_ui's `node.ui or [fallback]`), so it occupies one client message
+    # (`node.ui or [fallback]`), so it occupies one client message
     # slot here too — the mapping must not skip it, or client indices would
     # disagree with the server.
     rec = new_conversation_record(title="t")
