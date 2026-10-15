@@ -184,6 +184,128 @@ async def do_bookmark_with_cleanup(
         cancel()
 
 
+@dataclasses.dataclass(frozen=True)
+class _RestoreModeHooks:
+    """The controller callback slots one restore mode wires up.
+
+    ``HistoryController`` owns the slots; a restore mode's factory fills
+    in the ones it needs, and ``apply`` installs them on the controller.
+    """
+
+    # Called with the new conversation id (or None) after any switch that
+    # changes the active conversation.
+    on_active_id_change: (
+        Callable[[str | None], Awaitable[None]] | None
+    ) = None
+    # Fired after every save with the v2 record the exchange recorder
+    # owns; bookmark mode uses it to mint a fresh server bookmark.
+    on_response_saved: (
+        Callable[[ConversationRecordV2], Awaitable[None]] | None
+    ) = None
+    # Fired only after a v2 in-place switch_to restore succeeds; a failed
+    # or blocked switch never fires it, so the URL keeps matching the
+    # still-active conversation. Bookmark mode uses it to point the URL at
+    # the restored conversation's bookmark state id without a reload (a
+    # soft replaceState, the same mechanism the post-response-save mint
+    # uses).
+    on_switch_restored: (
+        Callable[[ConversationRecordV2], Awaitable[None]] | None
+    ) = None
+    # Fired before a conversation is removed from the store.
+    on_evict: Callable[[str], Awaitable[None]] | None = None
+
+    def apply(self, controller: HistoryController) -> None:
+        controller.on_active_id_change = self.on_active_id_change
+        controller.on_response_saved = self.on_response_saved
+        controller.on_switch_restored = self.on_switch_restored
+        controller.on_evict = self.on_evict
+
+
+def _url_restore_hooks(controller: HistoryController) -> _RestoreModeHooks:
+    """url mode's slots: every switch that changes the active conversation
+    rewrites the ``?shinychat_conversation_id=`` query parameter to match."""
+
+    async def _update_url(conv_id: str | None) -> None:
+        url = (
+            f"?shinychat_conversation_id={conv_id}"
+            if conv_id is not None
+            else None
+        )
+        await controller.send_navigate(url, conv_id)
+
+    return _RestoreModeHooks(on_active_id_change=_update_url)
+
+
+def _bookmark_restore_hooks(
+    controller: HistoryController, bookmark: Any
+) -> _RestoreModeHooks:
+    """bookmark mode's slots: after every save a fresh server bookmark is
+    minted and the address bar updates to its ``?_state_id_=...`` URL; an
+    in-session switch soft-updates the address bar to the restored
+    conversation's bookmark state id without a reload (a target with no
+    saved state id gets url=None, clearing any stale query)."""
+
+    async def _on_response_saved(record: ConversationRecordV2) -> None:
+        recorder = controller._exchange_recorder
+        pointer = await recorder.bookmark_pointer(
+            cast(ConversationRecordV2, record)
+        )
+        if pointer is None:
+            return
+        conversation_id, node_id = pointer
+
+        async def _on_bookmarked(url: str) -> None:
+            new_state_id = extract_state_id(url)
+            if new_state_id is None:
+                return
+            try:
+                current, cleanup_state_id = (
+                    await recorder.settle_bookmark_state_id(
+                        conversation_id, node_id, new_state_id
+                    )
+                )
+            except BaseException:
+                await delete_bookmark_state(new_state_id)
+                raise
+            if cleanup_state_id is not None:
+                await delete_bookmark_state(cleanup_state_id)
+            if current:
+                await controller.send_navigate(
+                    f"?_state_id_={new_state_id}", conversation_id
+                )
+
+        await do_bookmark_with_cleanup(bookmark, _on_bookmarked)
+
+    # Uses replaceState, never pushState (pushState would mutate
+    # server-side clientdata mid-session).
+    async def _on_switch_restored(record: ConversationRecordV2) -> None:
+        state_id = record.bookmark_state_id
+        url = f"?_state_id_={state_id}" if state_id is not None else None
+        await controller.send_navigate(url, record.id)
+
+    async def _on_evict(conv_id: str) -> None:
+        if controller.partition is None:
+            rec = None
+        else:
+            rec = await controller._get_record(
+                controller.partition, conv_id
+            )
+        state_id = rec.bookmark_state_id if rec is not None else None
+        if state_id is not None:
+            await delete_bookmark_state(state_id)
+
+    async def _update_url_bookmark(conv_id: str | None) -> None:
+        if conv_id is None:
+            await controller.send_navigate(None, None, reload=True)
+
+    return _RestoreModeHooks(
+        on_active_id_change=_update_url_bookmark,
+        on_response_saved=_on_response_saved,
+        on_switch_restored=_on_switch_restored,
+        on_evict=_on_evict,
+    )
+
+
 class ChatHistory:
     """Namespace for chat history configuration and lifecycle on a `Chat` instance."""
 
@@ -405,94 +527,16 @@ class ChatHistory:
         )
 
         if restore_mode == "url":
-
-            async def _update_url(conv_id: str | None) -> None:
-                url = (
-                    f"?shinychat_conversation_id={conv_id}"
-                    if conv_id is not None
-                    else None
-                )
-                await controller.send_navigate(url, conv_id)
-
-            controller.on_active_id_change = _update_url
+            _url_restore_hooks(controller).apply(controller)
 
         if restore_mode == "bookmark":
             if root_session.bookmark.store != "server":
                 raise ValueError(
                     "restore_mode='bookmark' requires bookmark_store='server' in the Shiny app."
                 )
-
-            async def _on_response_saved(
-                record: ConversationRecordV2,
-            ) -> None:
-                recorder = controller._exchange_recorder
-                pointer = await recorder.bookmark_pointer(
-                    cast(ConversationRecordV2, record)
-                )
-                if pointer is None:
-                    return
-                conversation_id, node_id = pointer
-
-                async def _on_bookmarked(url: str) -> None:
-                    new_state_id = extract_state_id(url)
-                    if new_state_id is None:
-                        return
-                    try:
-                        current, cleanup_state_id = (
-                            await recorder.settle_bookmark_state_id(
-                                conversation_id, node_id, new_state_id
-                            )
-                        )
-                    except BaseException:
-                        await delete_bookmark_state(new_state_id)
-                        raise
-                    if cleanup_state_id is not None:
-                        await delete_bookmark_state(cleanup_state_id)
-                    if current:
-                        await controller.send_navigate(
-                            f"?_state_id_={new_state_id}", conversation_id
-                        )
-
-                await do_bookmark_with_cleanup(
-                    root_session.bookmark, _on_bookmarked
-                )
-
-            controller.on_response_saved = _on_response_saved
-
-            # D5: after a v2 in-place switch restores, point the URL at the
-            # restored conversation's bookmark state id via the existing
-            # history_navigate action WITHOUT reload (a soft replaceState,
-            # like the post-response-save mint). No state id (the target
-            # never had a response saved) -> url=None clears the stale query.
-            # Uses replaceState, never pushState (pushState would mutate
-            # server-side clientdata mid-session).
-            async def _on_switch_restored(record: ConversationRecordV2) -> None:
-                state_id = record.bookmark_state_id
-                url = f"?_state_id_={state_id}" if state_id is not None else None
-                await controller.send_navigate(url, record.id)
-
-            controller.on_switch_restored = _on_switch_restored
-
-            async def _on_evict(conv_id: str) -> None:
-                if controller.partition is None:
-                    rec = None
-                else:
-                    rec = await controller._get_record(
-                        controller.partition, conv_id
-                    )
-                state_id = (
-                    rec.bookmark_state_id if rec is not None else None
-                )
-                if state_id is not None:
-                    await delete_bookmark_state(state_id)
-
-            controller.on_evict = _on_evict
-
-            async def _update_url_bookmark(conv_id: str | None) -> None:
-                if conv_id is None:
-                    await controller.send_navigate(None, None, reload=True)
-
-            controller.on_active_id_change = _update_url_bookmark
+            _bookmark_restore_hooks(
+                controller, root_session.bookmark
+            ).apply(controller)
 
         stamp_key = f"{chat.id}_history_exchange_pointer"
         # Legacy v1 bookmark stamp: a v1 server stamped only the conversation

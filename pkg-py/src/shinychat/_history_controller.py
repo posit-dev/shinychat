@@ -211,33 +211,16 @@ class HistoryController:
         from shiny import reactive
 
         self._active_id: "reactive.Value[str | None]" = reactive.Value(None)
-        # Set by enable() when restore_mode="url"; called with the new
-        # conversation id (or None) after any switch that changes the active
-        # conversation.
         self.on_active_id_change: (
             Callable[[str | None], Awaitable[None]] | None
         ) = None
-        # Internal hook: fired after every save. bookmark mode uses it to mint.
-        # Receives the v2 record the exchange recorder owns.
         self.on_response_saved: (
             Callable[[ConversationRecordV2], Awaitable[None]] | None
         ) = None
-        # Internal hook: fired after a v2 in-place switch_to restore
-        # succeeds. Bookmark mode uses it to point the URL at the restored
-        # conversation's bookmark state id without a reload (a soft
-        # replaceState, the same mechanism the post-response-save mint
-        # uses); a failed or blocked switch never fires it, so the URL
-        # keeps matching the still-active conversation.
         self.on_switch_restored: (
             Callable[[ConversationRecordV2], Awaitable[None]] | None
         ) = None
-        # Internal hook: fired before a conversation is removed from the store.
         self.on_evict: Callable[[str], Awaitable[None]] | None = None
-        # Internal hook: fired whenever it's known whether the active
-        # conversation is a restore (True) or a fresh/new one (False) - at
-        # the initial restore decision, and again on every new_chat(). Lets
-        # greeting generation defer to this instead of racing the client's
-        # independent `{id}_greeting_requested` request.
         self.on_settled: Callable[[bool], Awaitable[None]] | None = None
         self.max_store_bytes: int | None = max_store_bytes
         self.restore_bootstrap: Literal["recorded", "live"] = restore_bootstrap
@@ -428,7 +411,14 @@ class HistoryController:
             self._title_task.cancel()
 
     async def notify_settled(self, restored: bool) -> None:
-        """Called whenever it's known whether the active conversation is a restore."""
+        """Fires the ``on_settled`` hook.
+
+        Called whenever it's known whether the active conversation is a
+        restore (True) or a fresh/new one (False) - at the initial restore
+        decision, and again on every ``new_chat()``. The greeting wiring
+        relies on this to defer greeting generation instead of racing the
+        client's independent ``{id}_greeting_requested`` request.
+        """
         if self.on_settled is not None:
             await self.on_settled(restored)
 
@@ -780,10 +770,6 @@ class HistoryController:
                     planned_state=planned_state,
                     bootstrap=bootstrap,
                 )
-        # Only after a successful restore: bookmark mode points the URL
-        # at the restored conversation's state id (or clears a stale
-        # query) without a reload. A failed or blocked switch raises
-        # above, leaving the URL matching the still-active conversation.
         if self.on_switch_restored is not None:
             try:
                 await self.on_switch_restored(target)
