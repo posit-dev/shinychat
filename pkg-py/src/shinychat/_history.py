@@ -419,7 +419,7 @@ class HistoryController:
 
     @asynccontextmanager
     async def _exchange_mutation(self):
-        async with self._exchange_recorder._lock:
+        async with self._exchange_recorder.lock:
             yield
 
     # -- save -----------------------------------------------------------
@@ -730,7 +730,7 @@ class HistoryController:
         planned_state = _history_plan.preflight_state(
             target,
             node_ids,
-            recorder._restore_hooks,
+            recorder.restore_hooks,
             adapter=self.adapter,
             bootstrap=selected_bootstrap,
         )
@@ -762,7 +762,7 @@ class HistoryController:
             with self._restore_step("applying the recorded state entries"):
                 await _history_plan.run_plan(planned_state)
             if _history_plan.turns_unavailable(planned_state):
-                recorder._invalidate_turn_baseline()
+                recorder.invalidate_turn_baseline()
 
             # `_ExchangeRecorder` remains the sole v2 record owner.
             # The controller only sequences its installation after
@@ -773,7 +773,7 @@ class HistoryController:
                 recorder.mark_active_id_published(target)
             with self._restore_step("persisting the restored record"):
                 if persist_active_pointer:
-                    await recorder._persist_record()
+                    await recorder.persist_record_locked()
             with self._restore_step("restoring the app state"):
                 self._restore_app_state(target.values or {})
             with self._restore_step(
@@ -1073,7 +1073,7 @@ class HistoryController:
         rewind_state = _history_plan.preflight_state(
             prefix,
             node_ids,
-            recorder._rewind_hooks,
+            recorder.rewind_hooks,
             adapter=self.adapter,
             preserve_live_turns=preserve_live_turns,
             reject_unavailable=True,
@@ -1128,7 +1128,7 @@ class HistoryController:
             current_leaf = record.active_leaf
             if current_leaf is None:
                 raise ValueError("Exchange-tree record has no active leaf.")
-            await recorder._capture_state(current_leaf, "node_close")
+            await recorder.capture_state_locked(current_leaf, "node_close")
             try:
                 # Rewind hooks run before the leaf move is persisted, so a
                 # hook failure leaves the store pointing at the leaf the
@@ -1139,7 +1139,7 @@ class HistoryController:
                 with self._restore_step(save_step):
                     await _history_plan.run_plan(rewind_state)
                     record.set_active_leaf(leaf)
-                    await recorder._persist_record()
+                    await recorder.persist_record_locked()
                 await send()
             except BaseException as error:
                 await self._clear_failed_restore(error)
@@ -1166,7 +1166,7 @@ class HistoryController:
             accepted_exchange_id = (
                 self.chat._transcript.record_accepted_input(submitted_input)
             )
-            await recorder._accepted_resubmit_input_locked(
+            await recorder.accepted_resubmit_input_locked(
                 accepted_exchange_id, submitted_input
             )
             accepted_input_action: HistoryAcceptedInputProjectionAction = {
@@ -1359,7 +1359,7 @@ class HistoryController:
         rewind_state = _history_plan.preflight_state(
             projection,
             node_ids,
-            recorder._rewind_hooks,
+            recorder.rewind_hooks,
             adapter=self.adapter,
             reject_unavailable=True,
             phase="rewind",

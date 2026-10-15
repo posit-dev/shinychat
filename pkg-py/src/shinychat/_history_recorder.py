@@ -22,6 +22,7 @@ from typing import (
     Any,
     Callable,
     Literal,
+    Mapping,
     Protocol,
     cast,
 )
@@ -100,7 +101,7 @@ class _ExchangeRecorder:
         self._host = host
         self.record: ConversationRecordV2 | None = None
         self._stream_exchanges: dict[str, str] = {}
-        self._lock = asyncio.Lock()
+        self.lock = asyncio.Lock()
         self._capture_hooks: dict[str, CaptureHook] = {}
         self._restore_hooks: dict[str, RestoreHook] = {}
         self._rewind_hooks: dict[str, RewindHook] = {}
@@ -109,6 +110,16 @@ class _ExchangeRecorder:
         self._register_capture_hook(TURNS_STATE_KEY, self._capture_turns)
         self._register_restore_hook(TURNS_STATE_KEY, self._restore_turns)
         self._register_rewind_hook(TURNS_STATE_KEY, self._restore_turns)
+
+    @property
+    def restore_hooks(self) -> Mapping[str, RestoreHook]:
+        """The restore hook registry, exposed read-only for preflights."""
+        return self._restore_hooks
+
+    @property
+    def rewind_hooks(self) -> Mapping[str, RewindHook]:
+        """The rewind hook registry, exposed read-only for preflights."""
+        return self._rewind_hooks
 
     def _register_capture_hook(self, name: str, hook: CaptureHook) -> None:
         self._capture_hooks[name] = hook
@@ -122,7 +133,7 @@ class _ExchangeRecorder:
     def _set_turn_baseline(self, turns: list[dict[str, Any]]) -> None:
         _, self._turn_baseline = canonical_turns(turns)
 
-    def _invalidate_turn_baseline(self) -> None:
+    def invalidate_turn_baseline(self) -> None:
         self._turn_baseline = list(_TURN_BASELINE_INVALID)
 
     def _capture_turns(self, context: CaptureContext) -> StateEntry:
@@ -159,7 +170,7 @@ class _ExchangeRecorder:
             data=cast(JsonValue, data),
         )
 
-    async def _capture_state(self, node_id: str, reason: CaptureReason) -> None:
+    async def capture_state_locked(self, node_id: str, reason: CaptureReason) -> None:
         assert self.record is not None
         node = self.record.nodes[node_id]
         context = CaptureContext(node_id=node_id, reason=reason)
@@ -242,7 +253,7 @@ class _ExchangeRecorder:
                 on_stream_finished=self.stream_finished,
             )
 
-    async def _persist_record(self) -> None:
+    async def persist_record_locked(self) -> None:
         record = self.record
         assert record is not None
         record_id = record.id
@@ -268,23 +279,23 @@ class _ExchangeRecorder:
         self.record.values = values
 
     async def save_current(self) -> bool:
-        async with self._lock:
+        async with self.lock:
             return await self.save_current_locked()
 
     async def save_current_locked(self) -> bool:
         if self.record is None or self._host.partition is None:
             return False
         self._capture_app_state()
-        await self._persist_record()
+        await self.persist_record_locked()
         return True
 
     async def response_settled(self) -> bool:
-        async with self._lock:
+        async with self.lock:
             if self.record is None or self._host.partition is None:
                 return False
             self._capture_app_state()
             self.record.response_count += 1
-            await self._persist_record()
+            await self.persist_record_locked()
             return True
 
     async def rename_active_locked(self, conv_id: str, title: str) -> bool:
@@ -296,14 +307,14 @@ class _ExchangeRecorder:
             return False
         self.record.title = title
         self.record.title_source = "user"
-        await self._persist_record()
+        await self.persist_record_locked()
         return True
 
     async def bookmark_pointer(
         self, record: ConversationRecordV2 | None = None
     ) -> tuple[str, str] | None:
         """Return one atomic pointer snapshot for a live v2 record."""
-        async with self._lock:
+        async with self.lock:
             active = self.record
             if (
                 active is None
@@ -321,7 +332,7 @@ class _ExchangeRecorder:
         The returned state id is safe to delete: it is either the replaced URL
         after a successful update or the newly minted stale URL.
         """
-        async with self._lock:
+        async with self.lock:
             record = self.record
             if (
                 record is None
@@ -333,7 +344,7 @@ class _ExchangeRecorder:
             old_state_id = record.bookmark_state_id
             record.bookmark_state_id = state_id
             try:
-                await self._persist_record()
+                await self.persist_record_locked()
             except BaseException:
                 record.bookmark_state_id = old_state_id
                 raise
@@ -361,7 +372,7 @@ class _ExchangeRecorder:
         if self._host.partition is None:
             return
 
-        async with self._lock:
+        async with self.lock:
             created = False
             if self.record is None:
                 title = fallback_title_from_text(message.content)
@@ -371,20 +382,20 @@ class _ExchangeRecorder:
                 node.input is not None for node in self.record.nodes.values()
             )
             if is_first_input:
-                await self._capture_state(
+                await self.capture_state_locked(
                     self.record.root_id, "root_close"
                 )
                 self._close_root_if_inactive()
             else:
                 active_leaf = self.record.active_leaf
                 assert active_leaf is not None
-                await self._capture_state(active_leaf, "node_close")
+                await self.capture_state_locked(active_leaf, "node_close")
             self.record.open_exchange(exchange_id, message)
-            await self._persist_record()
+            await self.persist_record_locked()
             if created:
                 await self._host.send_history_update()
 
-    async def _accepted_resubmit_input_locked(
+    async def accepted_resubmit_input_locked(
         self, exchange_id: str, message: StoredMessage
     ) -> None:
         """Open a degraded-resubmit sibling without closing its shared parent."""
@@ -394,13 +405,13 @@ class _ExchangeRecorder:
         if self.record is None:
             raise RuntimeError("No exchange-tree conversation is active")
         self.record.open_exchange(exchange_id, message)
-        self._invalidate_turn_baseline()
+        self.invalidate_turn_baseline()
         self.record.nodes[exchange_id].state[TURNS_STATE_KEY] = (
             self._capture_turns(
                 CaptureContext(node_id=exchange_id, reason="node_close")
             )
         )
-        await self._persist_record()
+        await self.persist_record_locked()
 
     async def message_committed(
         self, exchange_id: str | None, entry: TranscriptEntry
@@ -427,7 +438,7 @@ class _ExchangeRecorder:
         if self._host.partition is None:
             return
 
-        async with self._lock:
+        async with self.lock:
             target, created = await self._content_exchange(exchange_id)
             if target is None:
                 return
@@ -440,7 +451,7 @@ class _ExchangeRecorder:
             else:
                 self._stream_exchanges[stream_id] = target
                 self.record.append_stream_message(target, captured)
-            await self._persist_record()
+            await self.persist_record_locked()
             if created:
                 await self._host.send_history_update()
 
@@ -450,7 +461,7 @@ class _ExchangeRecorder:
         if self._host.partition is None:
             return
 
-        async with self._lock:
+        async with self.lock:
             exchange_id = self._stream_exchanges.get(stream_id)
             if exchange_id is None or self.record is None:
                 return
@@ -460,7 +471,7 @@ class _ExchangeRecorder:
                     entry.message, icon=entry.icon
                 ),
             )
-            await self._persist_record()
+            await self.persist_record_locked()
 
     async def stream_finished(
         self,
@@ -471,11 +482,11 @@ class _ExchangeRecorder:
         if self._host.partition is None:
             return
 
-        async with self._lock:
+        async with self.lock:
             exchange_id = self._stream_exchanges.get(stream_id)
             if exchange_id is None or self.record is None:
                 return
-            await self._capture_state(exchange_id, "stream_finish")
+            await self.capture_state_locked(exchange_id, "stream_finish")
             self.record.finish_exchange(exchange_id, status, error)
-            await self._persist_record()
+            await self.persist_record_locked()
             self._stream_exchanges.pop(stream_id, None)

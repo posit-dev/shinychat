@@ -1876,7 +1876,7 @@ async def test_v2_restore_live_bootstrap_waits_for_admission_and_recorder_lock()
     recorder = controller._exchange_recorder
     assert recorder is not None
     observed_lock = _ObservedRestoreLock()
-    recorder._lock = observed_lock  # type: ignore[assignment]
+    recorder.lock = observed_lock  # type: ignore[assignment]
     original_get_turns = adapter.get_turns_json
     capture_after_restore_lock: list[bool] = []
 
@@ -1911,7 +1911,7 @@ async def test_v2_restore_live_bootstrap_waits_for_admission_and_recorder_lock()
         yield
 
     fake_chat._destructive_history_mutation = blocked_admission  # type: ignore[method-assign]
-    await recorder._lock.acquire()
+    await recorder.lock.acquire()
     try:
         restore_task = asyncio.create_task(
             controller.replay_exchange_record(record)
@@ -3280,7 +3280,7 @@ async def test_v2_restore_degrades_effective_turns_and_keeps_exchange_usable(
     adapter.turns = [{"role": "user", "content": "continued"}]
     if incompatibility == "content":
         adapter.system_turns = list(adapter.turns)
-    await recorder._capture_state(exchange_id, "node_close")
+    await recorder.capture_state_locked(exchange_id, "node_close")
     continued = target.nodes[exchange_id].state["shinychat:turns"]
     assert continued.mode == "snapshot"
     assert continued.data == [{"role": "user", "content": "continued"}]
@@ -3844,7 +3844,7 @@ async def test_v2_resubmit_rejects_malformed_target_turn_data_before_mutation(
     target_state.kind = "unsupported"
     target_state.data = data  # type: ignore[assignment]
     capture_state = AsyncMock()
-    recorder._capture_state = capture_state  # type: ignore[method-assign]
+    recorder.capture_state_locked = capture_state  # type: ignore[method-assign]
     active_leaf = record.active_leaf
     turns_before = list(adapter.turns)
 
@@ -4245,7 +4245,7 @@ async def test_v2_live_restore_materialization_cancellation_cleans_up():
     def cancel_materialization(plan: Any, **_kwargs: Any) -> Any:
         assert preflight_completed
         assert admission_held
-        assert recorder._lock.locked()
+        assert recorder.lock.locked()
         raise original
 
     async def release_active_id(id: str | None) -> None:
@@ -5391,7 +5391,7 @@ async def test_v2_recorder_runs_ordered_hooks_with_explicit_ids_and_removes_stat
     assert root.state["second"].data == {"node": "n_0000"}
 
     recorder._register_capture_hook("first", lambda _context: None)
-    await recorder._capture_state("n_0000", "node_close")
+    await recorder.capture_state_locked("n_0000", "node_close")
     assert "first" not in root.state
     assert root.state["second"].data == {"node": "n_0000"}
 
@@ -8334,14 +8334,14 @@ async def test_explicit_save_captures_state_without_counting_response():
     response_count = recorder.record.response_count
 
     put_count = 0
-    original_persist = recorder._persist_record
+    original_persist = recorder.persist_record_locked
 
     async def persist() -> None:
         nonlocal put_count
         await original_persist()
         put_count += 1
 
-    recorder._persist_record = persist
+    recorder.persist_record_locked = persist
 
     assert await controller.save() is True
     assert recorder.record.response_count == response_count
@@ -8388,7 +8388,7 @@ async def test_explicit_save_runs_history_lifecycle_after_persist():
     assert recorder.record is not None
     events: list[str] = []
 
-    original_persist = recorder._persist_record
+    original_persist = recorder.persist_record_locked
 
     async def persist() -> None:
         await original_persist()
@@ -8397,7 +8397,7 @@ async def test_explicit_save_runs_history_lifecycle_after_persist():
     async def bookmark(record: ConversationRecordV2) -> None:
         events.append("bookmark")
 
-    recorder._persist_record = persist
+    recorder.persist_record_locked = persist
     controller.on_response_saved = bookmark
     controller._evict_if_needed = AsyncMock(
         side_effect=lambda: events.append("evict")
@@ -8923,7 +8923,7 @@ async def test_v2_titling_not_rescheduled_for_sibling_after_llm_title():
     # another response: the tree-aware count stays at 2 and the LLM title
     # must not be recomputed.
     sibling_id = "sibling-resubmit"
-    await recorder._accepted_resubmit_input_locked(
+    await recorder.accepted_resubmit_input_locked(
         sibling_id, _stored_message("user", "second question edited")
     )
     await transcript.append(
