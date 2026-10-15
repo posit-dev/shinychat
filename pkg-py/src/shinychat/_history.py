@@ -138,10 +138,11 @@ class HistoryOptions:
         ``"bookmark"`` participates in Shiny server bookmarking: after every
         LLM response a fresh server bookmark is minted and the address bar
         updates to ``?_state_id_=...``. Requires ``bookmark_store="server"``
-        in the Shiny app. On in-session conversation switches, navigates to
-        the target conversation's bookmark URL if one exists. Use this mode
-        when the app uses Shiny bookmarks to capture full input state
-        alongside the chat.
+        in the Shiny app. On in-session conversation switches, the switch
+        happens in place (no page reload) and the address bar soft-updates
+        to the target conversation's ``?_state_id_=...`` URL if one exists.
+        Use this mode when the app uses Shiny bookmarks to capture full
+        input state alongside the chat.
 
         The ``values`` dict captured by ``@chat.history.on_save`` callbacks
         is restored by ``@chat.history.on_restore`` in every restore mode,
