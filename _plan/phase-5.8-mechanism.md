@@ -327,3 +327,13 @@ review unit; the orchestrator requests one roborev range review per unit
   `_history.py` D8). New backlog `7yc1`: page_chat desktop-navigation
   Playwright flake (one failure under full history-filter load, solo
   pass; same family as `c87g`/`bmqg`).
+- 2026-10-15: Unit 7 (`mvyc`) landed — `_history.py` split into wiring
+  (`_history.py`, 880 lines) + orchestration (`_history_controller.py`,
+  1253 lines) in 4 commits (`2db0b23d` pure move, `558b7181`
+  `_run_history_transition`, `442f0572` `_RestoreModeHooks` strategy,
+  `e67b0b6c` `finish_initial` fold); roborev 1601 clean pass, zero
+  findings. Public exports unchanged; 1126 green. Next: unit 8
+  (`fsj3`, test-only surface D9). New backlog `rxmj`: pre-existing
+  test-order isolation failure (`test_history_controller.py` before
+  `test_chat_history.py` breaks the history-disabled withdrawal test;
+  full suite green, alphabetical order masks it).
