@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Conversation history
+
+* Legacy v1 conversation records are now upgraded to the current v2 format in memory when read, and written back as v2 on their next save (there is no bulk migration). Custom `ConversationStore` implementations keep working: `ConversationRecord.model_validate*` on a v1 record returns an upgraded v2 record, and a store whose `get()` still returns a v1 record is upgraded by the controller. Note that downgrading the package afterwards hides conversations that were converted on save — their records are v2, which the older version cannot read.
+
 ### Bug fixes
 
 * Expanding a running tool call's row in a tool group now shows its arguments. Previously the panel stayed empty until the call finished. (#424)
