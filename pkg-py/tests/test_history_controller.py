@@ -1075,7 +1075,7 @@ async def test_v2_attachment_input_captures_display_and_strips_model_text(
     assert stored_node.input.attachments == [
         Attachment.model_validate(_attachment_dict())
     ]
-    assert "file-attachment" not in _display_layer_json(stored)
+    assert _MODEL_ATTACHMENT_MARKER not in _display_layer_json(stored)
     assert _MODEL_ATTACHMENT_MARKER in _turns_layer_json(stored)
 
     # Replay shows the attachment chips with the clean body text.

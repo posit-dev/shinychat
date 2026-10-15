@@ -1631,10 +1631,11 @@ async def test_v2_bookmark_eviction_clears_bookmark_state_for_v2_records():
         "until the lazy v1->v2 import read-gate lands (shinychat#e0x2; "
         "import transform shinychat#by2p). Once records upgrade on read, "
         "evicting a v1 record must clear its bookmark state exactly like a "
-        "v2 record. Pinned as xfail so the gap is visible, never a silent "
-        "pass."
+        "v2 record. Pinned as strict xfail so the gap is visible and never "
+        "silently passes: once the read-gate lands (XPASS), this test must "
+        "fail until the marker is removed."
     ),
-    strict=False,
+    strict=True,
 )
 @pytest.mark.anyio
 async def test_v2_bookmark_eviction_of_v1_record_clears_state():

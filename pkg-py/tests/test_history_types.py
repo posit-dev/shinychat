@@ -65,9 +65,8 @@ def test_captured_message_round_trips_attachments_for_display():
     """The capture seam keeps attachments for display and drops nothing else.
 
     Pins main #394/#401 semantics at the seam level (gwg3): a captured
-    message round-trips its attachments verbatim, and the model-facing
-    attachment text — which only ever lives in the adapter's turns — never
-    enters the capture in the first place.
+    message round-trips its attachments verbatim. (Controller-level tests
+    cover that the model-facing attachment text never enters the capture.)
     """
     stored = StoredMessage(
         role="user",
