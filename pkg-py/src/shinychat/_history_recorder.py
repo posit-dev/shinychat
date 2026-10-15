@@ -66,7 +66,7 @@ class RecorderHost(Protocol):
     during display replay), app-state save callbacks, active-id access and
     publish, conversation-id allocation, and ``send_history_update``. Any
     test double for the recorder's host must provide all of them; there are
-    no optional fallbacks. The R port mirrors this boundary.
+    no optional fallbacks.
     """
 
     adapter: TurnsAdapter
@@ -85,14 +85,6 @@ class RecorderHost(Protocol):
 
     async def send_history_update(self) -> None: ...
 
-# Invalidated-turn-baseline sentinel. Canonical turn fingerprints are JSON
-# encodings of dicts, so a real fingerprint is never ""; the sentinel is
-# therefore never a prefix of a real fingerprint list, which forces
-# snapshot mode on the next capture (the escape hatch from delta mode).
-# Assign copies of it, never the list itself: reset() clears the current
-# baseline in place and must not be able to reach this constant.
-_TURN_BASELINE_INVALID: list[str] = [""]
-
 
 class _ExchangeRecorder:
     """Private v2 capture owner for one history controller session."""
@@ -105,7 +97,10 @@ class _ExchangeRecorder:
         self._capture_hooks: dict[str, CaptureHook] = {}
         self._restore_hooks: dict[str, RestoreHook] = {}
         self._rewind_hooks: dict[str, RewindHook] = {}
-        self._turn_baseline: list[str] = []
+        # None means the baseline is invalid: the next capture must take
+        # a snapshot (the escape hatch from delta mode), because the
+        # adapter's turns no longer extend what was last captured.
+        self._turn_baseline: list[str] | None = []
         self._active_id_published_for: ConversationRecordV2 | None = None
         self._register_capture_hook(TURNS_STATE_KEY, self._capture_turns)
         self._register_restore_hook(TURNS_STATE_KEY, self._restore_turns)
@@ -134,7 +129,7 @@ class _ExchangeRecorder:
         _, self._turn_baseline = canonical_turns(turns)
 
     def invalidate_turn_baseline(self) -> None:
-        self._turn_baseline = list(_TURN_BASELINE_INVALID)
+        self._turn_baseline = None
 
     def _capture_turns(self, context: CaptureContext) -> StateEntry:
         adapter = self._host.adapter
@@ -142,16 +137,19 @@ class _ExchangeRecorder:
         turns, fingerprints = canonical_turns(
             adapter.get_turns_json(include_system_prompt=include_system_prompt)
         )
+        baseline = self._turn_baseline
         is_prefix = (
-            len(self._turn_baseline) <= len(fingerprints)
-            and self._turn_baseline == fingerprints[: len(self._turn_baseline)]
+            baseline is not None
+            and len(baseline) <= len(fingerprints)
+            and baseline == fingerprints[: len(baseline)]
         )
         if context.reason == "root_close" or not is_prefix:
             mode: Literal["delta", "snapshot"] = "snapshot"
             data = turns
         else:
+            assert baseline is not None  # is_prefix implies a valid baseline
             mode = "delta"
-            data = turns[len(self._turn_baseline) :]
+            data = turns[len(baseline) :]
 
         self._turn_baseline = fingerprints
         assert self.record is not None
@@ -229,7 +227,10 @@ class _ExchangeRecorder:
     def reset(self) -> None:
         self.record = None
         self._stream_exchanges.clear()
-        self._turn_baseline.clear()
+        # Back to a valid empty baseline (not None): the next capture on a
+        # fresh record is a root-close snapshot either way, matching the
+        # pre-sentinel behavior of the in-place clear.
+        self._turn_baseline = []
         self._active_id_published_for = None
 
     @contextmanager
