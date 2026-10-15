@@ -208,7 +208,10 @@ content_from_attachment <- function(att) {
     content <- if (is_pdf) {
       ellmer::content_pdf_url(data_url)
     } else {
-      ellmer::content_document_url(data_url, mime_type = mime)
+      # `mime_type` is intentionally not passed: ellmer ignores it for data:
+      # URLs (the URL header's type wins), and validation already pins the
+      # header to `mime`.
+      ellmer::content_document_url(data_url)
     }
     # Unnamed attachments get a deterministic fallback: the constructors
     # auto-name from a process-global counter (document_001.txt,
