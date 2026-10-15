@@ -1,5 +1,9 @@
 # shinychat (development version)
 
+## New features and improvements
+
+* Streamed responses now reveal smoothly at a typing-like pace instead of in abrupt server-sized chunks, with far fewer re-renders along the way. Bursts of text catch up quickly, the reveal never flashes a partial HTML tag, and stopping a response reveals any buffered text immediately. The trailing dot now appears only once a stream has stalled (or before any text has arrived), rather than hopping along with every update. (#411)
+
 ## Bug fixes
 
 * Expanding a running tool call's row in a tool group now shows its arguments. Previously the panel stayed empty until the call finished. (#424)

@@ -128,18 +128,18 @@ describe("MarkdownStreamElement — pending message queue", () => {
 
   it("treats presence boolean attributes as enabled on connect", async () => {
     const el = document.createElement("shiny-markdown-stream")
-    el.setAttribute("content", "streaming")
     el.setAttribute("streaming", "")
     await act(async () => {
       document.body.appendChild(el)
     })
 
+    // A streaming element with no content yet shows the waiting dot.
     await waitFor(() => {
       expect(el.querySelector(".markdown-stream-dot")).toBeTruthy()
     })
   })
 
-  it("queues messages when api is null and dispatches them in order on API ready", () => {
+  it("queues messages when api is null and dispatches them in order on API ready", async () => {
     const { el, simulateApiReady } = createElement_()
     const api = createMockApi()
 
@@ -172,9 +172,15 @@ describe("MarkdownStreamElement — pending message queue", () => {
     simulateApiReady(api)
 
     expect(internals(el).pendingMessages).toHaveLength(0)
-    expect(api.appendContent).toHaveBeenNthCalledWith(1, "hello", false, false)
-    expect(api.appendContent).toHaveBeenNthCalledWith(2, " world", false, false)
-    expect(api.setStreaming).toHaveBeenCalledWith(false)
+    // The buffered text drains (quickly) before streaming ends.
+    await waitFor(() => {
+      expect(api.setStreaming).toHaveBeenCalledWith(false)
+    })
+    const texts = api.appendContent.mock.calls.map((c) => c[0] as string)
+    expect(texts.join("")).toBe("hello world")
+    for (const call of api.appendContent.mock.calls) {
+      expect(call.slice(1)).toEqual([false, false])
+    }
   })
 
   it("dispatches messages immediately when api is already set", () => {
@@ -622,6 +628,173 @@ describe("MarkdownStreamElement — structured block messages", () => {
     } finally {
       warn.mockRestore()
     }
+  })
+})
+
+describe("MarkdownStreamElement — streaming smoothing", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("does not call appendContent before a pacing tick elapses", () => {
+    const { el, simulateApiReady } = createElement_()
+    const api = createMockApi()
+    simulateApiReady(api)
+
+    const handle = el as unknown as {
+      handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+    }
+    handle.handleMessage({
+      id: "x",
+      content: "a longer streamed sentence to pace out",
+      operation: "append",
+      trusted: false,
+      segment_start: false,
+    })
+
+    expect(api.appendContent).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(5000)
+
+    expect(api.appendContent).toHaveBeenCalled()
+    const emitted = api.appendContent.mock.calls.map((c) => c[0]).join("")
+    expect(emitted).toBe("a longer streamed sentence to pace out")
+  })
+
+  it("flushes buffered text before an appendBlock so ordering is preserved", () => {
+    const { el, simulateApiReady } = createElement_()
+    const api = createMockApi()
+    simulateApiReady(api)
+
+    const handle = el as unknown as {
+      handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+    }
+    handle.handleMessage({
+      id: "x",
+      content: "before the block",
+      operation: "append",
+      trusted: false,
+      segment_start: false,
+    })
+
+    expect(api.appendContent).not.toHaveBeenCalled()
+
+    handle.handleMessage({
+      id: "x",
+      operation: "append",
+      trusted: false,
+      segment_start: false,
+      block: {
+        type: "html_block",
+        version: 1,
+        content: "<p>a block</p>",
+      } as StructuredBlock,
+    })
+
+    // The buffered text must have been flushed before the block landed.
+    expect(api.appendContent).toHaveBeenCalledWith(
+      "before the block",
+      false,
+      false,
+    )
+    expect(api.appendBlock).toHaveBeenCalled()
+  })
+
+  it("does not merge appends across a trust change or a segment start", () => {
+    const { el, simulateApiReady } = createElement_()
+    const api = createMockApi()
+    simulateApiReady(api)
+
+    const handle = el as unknown as {
+      handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+    }
+    const append = (
+      content: string,
+      trusted: boolean,
+      segment_start: boolean,
+    ) =>
+      handle.handleMessage({
+        id: "x",
+        content,
+        operation: "append",
+        trusted,
+        segment_start,
+      })
+
+    append("a", false, false)
+    append("b", false, false)
+    append("c", true, false)
+    append("d", true, true)
+    append("e", true, false)
+    handle.handleMessage({ id: "x", isStreaming: false })
+    // A new stream starting mid-drain completes the drain first: the rest is
+    // revealed and the deferred setStreaming(false) lands before (true).
+    handle.handleMessage({ id: "x", isStreaming: true })
+
+    expect(api.setStreaming.mock.calls).toEqual([[false], [true]])
+    expect(api.appendContent.mock.calls).toEqual([
+      ["ab", false, false],
+      ["c", true, false],
+      ["de", true, true],
+    ])
+  })
+
+  it("discards buffered text on replace instead of flushing it", () => {
+    const { el, simulateApiReady } = createElement_()
+    const api = createMockApi()
+    simulateApiReady(api)
+
+    const handle = el as unknown as {
+      handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+    }
+    handle.handleMessage({
+      id: "x",
+      content: "stale buffered text",
+      operation: "append",
+      trusted: false,
+      segment_start: false,
+    })
+    handle.handleMessage({
+      id: "x",
+      content: "the real content",
+      operation: "replace",
+      trusted: true,
+      segment_start: true,
+    })
+
+    expect(api.appendContent).not.toHaveBeenCalled()
+    expect(api.replaceContent).toHaveBeenCalledWith("the real content", true)
+  })
+
+  it("disposes stale buffered text when a new stream starts without a prior flush", () => {
+    const { el, simulateApiReady } = createElement_()
+    const api = createMockApi()
+    simulateApiReady(api)
+
+    const handle = el as unknown as {
+      handleMessage: (m: ContentMessage | IsStreamingMessage) => void
+    }
+    handle.handleMessage({
+      id: "x",
+      content: "leftover from a stream that never signaled isStreaming: false",
+      operation: "append",
+      trusted: false,
+      segment_start: false,
+    })
+
+    expect(api.appendContent).not.toHaveBeenCalled()
+
+    // A new stream starts without the prior one ever flushing.
+    handle.handleMessage({ id: "x", isStreaming: true })
+
+    vi.advanceTimersByTime(5000)
+
+    expect(api.appendContent).not.toHaveBeenCalled()
+    expect(api.setStreaming).toHaveBeenCalledWith(true)
   })
 })
 
