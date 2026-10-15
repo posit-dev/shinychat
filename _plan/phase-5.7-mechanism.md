@@ -360,6 +360,18 @@ commits, three-findings escalation valve per mechanism.
   (strict-xfail so XPASS forces marker removal at `e0x2`; docstring;
   sentinel), 1 declined (parametrization churn).
 
+- 2026-10-15: phase RESUMED after clean pause. Baseline re-verified
+  before changes: py unit 1185 passed + 2 xfailed (the two strict pins
+  awaiting `e0x2`), pyright 0, JS 1407 passed (23 skipped), Playwright
+  224/226 — `cancel_in_modal` still the dispositioned `ftz9` red;
+  `page_chat::test_desktop_navigation_streaming_and_history_auto_open`
+  failed once (sidebar resizer aria-valuenow timing) and PASSED on
+  isolated re-run — classified flake, watch for recurrence at phase exit.
+  Wave 2/3 delegated in parallel with disjoint write scopes: `e0x2`
+  (versioned record types + read-gate, medium) and `t21d` fixture half
+  (#421 shared fixture, medium; CHANGELOG migration notes held by
+  coordinator to avoid the shared-file conflict with `e0x2`).
+
 ## Handoff
 
 (appended at phase exit — what landed, what's next, provisional decisions)
