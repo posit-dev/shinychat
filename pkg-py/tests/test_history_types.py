@@ -681,7 +681,6 @@ def test_conversation_record_still_upgrades_markerless_v1_shapes():
     assert imported.id == expected_id
 
 
-
 def test_conversation_record_accepts_a_plain_v2_instance():
     """A plain ConversationRecordV2 validates as the current version.
 
