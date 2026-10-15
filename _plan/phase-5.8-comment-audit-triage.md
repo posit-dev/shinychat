@@ -32,7 +32,7 @@ call), 10 rejected as unrealistic or already-structural, 1 driver call.
 | `_history.py` | 63 (+1 implicit) | 64 | 6 (2 partial) | 41 | 6 | 14 | 3 |
 | `_history_types.py` | 25 | 25 | 15 | 8 | 15 | 2 | 0 |
 | `_history_store.py` | 13 | 13 | 5 | 7 | 5 | 0 | 1 |
-| `_history_import.py` | 20 | 20 | 0 | 15 | 0 | 4 | 1 |
+| `_history_v1.py` | 20 | 20 | 0 | 15 | 0 | 4 | 1 |
 | `_history_recorder.py` | 4 | 4 | 0 | 1 | 0 | 3 | 1 |
 | `_history_plan.py` | 4 | 4 | 0 | 3 | 0 | 0 | 1 |
 | `_history_client.py` | 3 | 3 | 0 | 3 | 0 | 0 | 0 |
@@ -253,7 +253,7 @@ swallow (raised only as MUST KILL) — see §5.
 - L713 `"auto"` branch narration.
 - L789 concurrent-session race narration.
 
-### 2.4 `_history_import.py` (T4) — 20 flags
+### 2.4 `_history_v1.py` (T4) — 20 flags
 
 **KEEP (auditor-kept, confirmed):** module docstring fidelity paragraph
 (L9–13) — exception 2 (pins display behavior to released py 0.7.2 output);
@@ -272,8 +272,8 @@ contracts). All confirmed against code.
 - L380–381 active-path-walk narration — **5.8 unit 3** (D4: one ancestor-walk
   helper covers "the importer's active-path walk").
 - L480 lazy `from ._history import ...` — **5.8 unit 2** (D2 moves
-  `_strip_attachment_content`/`derive_node_ui` into `_history_import`,
-  "deleting the `_history_import → _history` lazy import cycle").
+  `_strip_attachment_content`/`derive_node_ui` into `_history_v1`,
+  "deleting the `_history_v1 → _history` lazy import cycle").
 
 **DELETE:**
 - L1 title clause "(plan sections 7.3-7.5)".
@@ -354,10 +354,10 @@ D-numbers, kata ids, dated driver sign-offs, or phase ids:
 | 10 | `_history_types.py:649–50` | plan section 7.6, decision D1 | DELETE clause |
 | 11 | `_history_store.py:418–22` | plan section 7.5, mechanism D4 | DELETE (whole comment) |
 | 12 | `_history_store.py:662–64` | plan section 7.5, mechanism D4 | DELETE (whole comment) |
-| 13 | `_history_import.py:1` | plan sections 7.3–7.5 | DELETE clause |
-| 14 | `_history_import.py:9` | plan section 7.4 | DELETE clause |
-| 15 | `_history_import.py:245–47` | Driver-approved synthesis (2026-10-15) | DELETE (whole comment) |
-| 16 | `_history_import.py:319–25` | "section 7.4 fidelity contract" | DELETE (whole comment) |
+| 13 | `_history_v1.py:1` | plan sections 7.3–7.5 | DELETE clause |
+| 14 | `_history_v1.py:9` | plan section 7.4 | DELETE clause |
+| 15 | `_history_v1.py:245–47` | Driver-approved synthesis (2026-10-15) | DELETE (whole comment) |
+| 16 | `_history_v1.py:319–25` | "section 7.4 fidelity contract" | DELETE (whole comment) |
 | 17 | (none further — grep-verified complete) | | |
 
 Rule applied: where the referenced decision genuinely constrains the code,
@@ -384,7 +384,7 @@ only if they explain a constraint code cannot express — driver confirm in §5.
 | T2 | `_on_switch_restored` D5 note | **Unit 6** (naming; constraint clause kept under exception 2) |
 | T3 | `ConversationNode.ui_message_count` mirror invariant | **Unit 3** (D4 iterator) + **Unit 8** (stale `replay_ui` ref; confirmed gone) |
 | T4 | `_TURNS_STATE_KEY` duplicated constant | **Unit 3** (verbatim in the mechanism note) |
-| T4 | `_history_import → _history` lazy-import cycle | **Unit 2** (D2 deletes the cycle) |
+| T4 | `_history_v1 → _history` lazy-import cycle | **Unit 2** (D2 deletes the cycle) |
 | T4 | `_ExchangeRecorder._lock` no-split directive | **Unit 4** (D6 routes mutations through recorder methods) |
 
 ### Realistic, not covered by 5.8 → new work (8, +1 contingent)
@@ -490,7 +490,7 @@ See §4 and §5.
    principle. Keep the comment as the constraint carrier and reject the MUST
    KILL, or narrow the catch (new work)?
 4. **Import module docstring "Structure mapping" paragraph
-   (`_history_import.py:14–25`).** Twelve lines of transform algebra that
+   (`_history_v1.py:14–25`).** Twelve lines of transform algebra that
    duplicate the code below — but the module is a radon-E(38) pure transform
    that the R port must mirror and that 5.8 explicitly defers rewriting. Is
    this architecture-overview documentation (keep, minus the plan pointers)
@@ -541,3 +541,60 @@ See §4 and §5.
 - One tranche-4 "keep" deserves a caveat: `restore_bookmark_pointer`
   docstring (T1, L995) is kept under exception 4 but the symbol is test-only
   surface — 5.8 unit 7 (D9) folds it into tests, where the docstring follows.
+
+---
+
+## 7. Addendum — unit 6 (comment hygiene) execution, 2026-10-15
+
+Applied mechanically by phase 5.8 unit 6 (`shinychat#yp75`, D10). All sites
+were located by content: the triage's line numbers were stale against the
+unit-6 HEAD (units 1–5 moved code, `_history_import.py` was renamed to
+`_history_v1.py` by unit 2, and the four tranches were taken against
+different HEADs — e.g. `_history_types.py` "L30/L58" never resolves to a
+single commit). File-name references above were updated to
+`_history_v1.py`; original line numbers are left as historical anchors.
+
+**Deleted this unit** (triage §2 DELETE entries still present): 34 sites in
+`_history.py` (aliasing/isolate/single-writer narration, six section
+banners, the `on_response` concurrency paragraph, retitle-path inline
+comments, the deduped rewind-hooks comment — unit 4's `_rewind_locked`
+collapsed the two triaged sites into one, detail-composition, info-split,
+sync-clear, except-pass, validate-path, live-bootstrap, sole-v2-record-owner
+(prose left behind by unit 4's structural invariant), no-transaction,
+load-before-mutate, best-effort-URL, announce-cleared, fresh-chat,
+preflight-on-copy, no-clear-badges, `_effects`/`_initial_history_initialized`
+narration, `_history_action_admitted` docstring, bookmark-stamp,
+finish_initial, settlement-advisory, `owner_scope` inline, Priority-1 label,
+Priority-2 label + readiness sentence (SilentException sentence kept),
+session-end consumed-registration); 6 in `_history_types.py`; 5 in
+`_history_store.py`; 12 in `_history_v1.py`; 1 in `_history_recorder.py`
+(class docstring); 3 in `_history_plan.py`; 2 in `_history_client.py`; 2 in
+`_history_title.py`. Ref-strips per §2.10: #6–8 (kata ids and `plan §`
+pointers stripped from the kept legacy-v1 constraint comments), #9–16
+(clause/whole-comment deletions), the three "R port mirrors" notes
+(`_history_recorder.py` module docstring sentence + per-role-locks directive
+clause, keeping the `_exchange_mutation` re-entry sentence;
+`_history_plan.py` module docstring sentence; `_history_client.py`
+`ellmer_turn_effective_role` comment).
+
+**Verified already-gone** (died with units 1–5; not re-done): `_get_record`
+read-gate prose (unit 1 rewrote it); `_restore_step` docstring,
+`restore_body_entered` attribution, `_restore_failure_step` slot (unit 5;
+the module-level replacements' fresh comments stay); `_TURNS_STATE_KEY`
+mirror comment, `_history_v1 → _history` lazy import (units 2/3);
+`_TURN_BASELINE_INVALID` sentinel comment and `_canonical_turns` wrapper
+(units 3/4); the resubmit sibling-open narration (unit 4's shared
+`_rewind_locked`); the file-store lazy-conversion comment (§2.10 #11 —
+unit 3's `_check_overwrite` extraction replaced it with a ref-free function
+contract). Two unit-3 REWRITE-AS-CODE sites keep their prose: the
+synthesized-root collision comment (unit 3 kept the loop as a naming site)
+and the active-path-walk comment (now documents the `_ancestor_path` call).
+
+**Deferred** (die with later units `mvyc`/`fsj3`/`c1ht`): the five `on_*`
+hook comments and hook-timing comment, the `_on_new` mirror comment, and
+the `_on_switch_restored` "D5:" prefix (unit 6, D8 — the replaceState
+constraint clause stays); the `_schedule_exchange_retitle`/`retitle_v2`
+docstring planning-ref clauses (units 7/8); the identity-invariant comment
+in `HistoryController.__init__` (unit 8); the `ui_message_count` comment in
+`_history_types.py` (unit 8); all §3 "new work" items, including the
+`new_conversation_id` collision caveat.
