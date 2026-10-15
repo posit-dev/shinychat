@@ -263,6 +263,13 @@ commits, three-findings escalation valve per mechanism.
   driver-approved D2 synthesis rules. `fn6m`'s finding: the 5.6 merge
   already widened `CapturedMessage.segments` to
   `StoredSegment | StructuredBlock` — remaining work is mostly coverage.
+- 2026-10-15: `fn6m` landed `09dff1bb` (v2 structured-block round-trip
+  pins: all 7 #373 block types through capture → FileConversationStore →
+  replay; unknown block warns and continues) + `c29c0a96` (pyright
+  narrowing fix from `a1d51d9a`, caught at the gate). Production path
+  traced already-sound end to end; `message-transcript-matrix.json`
+  rejected as the fixture vehicle (its harness is StoredSegment-only).
+  Roborev 1579 enqueued. `221w` delegated (D7 new_chat/clear gating).
 
 ## Handoff
 
