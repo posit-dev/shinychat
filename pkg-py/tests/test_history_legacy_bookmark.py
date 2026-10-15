@@ -15,7 +15,6 @@ from typing import Any, Awaitable, Callable, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-import shinychat._history as history_module
 from shiny import reactive
 from shiny.session import session_context
 from shinychat import Chat
@@ -75,7 +74,6 @@ async def _make_legacy_bookmark_chat(
     )
     handlers: dict[str, Callable[[], Awaitable[None]]] = {}
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", _capture_history_effects(handlers)),
         session_context(cast(Any, session)),
     ):

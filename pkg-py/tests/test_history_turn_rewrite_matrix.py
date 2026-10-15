@@ -105,11 +105,8 @@ async def test_turn_rewrite_scenario(
     adapter = _FakeAdapter()
     adapter.turns = []  # fresh client context, like a real first exchange
     store = FileConversationStore(tmp_path)
-    controller, _ = _make_controller(
-        store=store, use_exchange_tree=True, adapter=adapter
-    )
+    controller, _ = _make_controller(store=store, adapter=adapter)
     recorder = controller._exchange_recorder
-    assert recorder is not None, "v2 exchange-tree history must be enabled"
     transcript = ChatTranscript(
         on_accepted_input=recorder.accepted_input,
         on_stream_started=recorder.stream_started,

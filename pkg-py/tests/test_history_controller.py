@@ -25,7 +25,6 @@ from typing import Any, Callable, Literal, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
-from _history_test_helpers import branch_from
 from pydantic import BaseModel
 from shiny import Inputs, reactive
 from shiny.module import ResolvedId
@@ -45,9 +44,8 @@ from shinychat._history import (
     HistoryOptions,
     _strip_attachment_content,
     do_bookmark_with_cleanup,
-    extend_record_linear,
 )
-from shinychat._history_client import TurnDict, TurnsAdapter
+from shinychat._history_client import TurnsAdapter
 from shinychat._history_plan import StatePathContext
 from shinychat._history_store import (
     ConversationPartition,
@@ -123,113 +121,6 @@ def part(
     return ConversationPartition(chat_id=chat_id, scope=scope)
 
 
-def test_extend_appends_only_new_groups_with_ui_by_role():
-    rec = new_conversation_record(title="t")
-    groups: list[list[TurnDict]] = [
-        [{"role": "user", "content": "q1"}],
-        [{"role": "assistant", "content": "a1"}],
-    ]
-    extend_record_linear(
-        rec, groups, [msg("user"), msg("assistant")], ui_offset=0
-    )
-    assert len(rec.nodes) == 2
-    path = rec.path_node_ids()
-    assert rec.nodes[path[0]].turns == [{"role": "user", "content": "q1"}]
-    assert rec.nodes[path[0]].ui == [derived("user", "q1")]
-    assert rec.nodes[path[1]].ui == [derived("assistant", "a1")]
-
-    groups.extend(
-        [
-            [{"role": "user", "content": "q2"}],
-            [{"role": "assistant", "content": "a2"}],
-        ]
-    )
-    all_msgs = [msg("user"), msg("assistant"), msg("user"), msg("assistant")]
-    extend_record_linear(rec, groups, all_msgs, ui_offset=2)
-    assert len(rec.nodes) == 4
-    assert rec.nodes[rec.path_node_ids()[2]].ui == [derived("user", "q2")]
-
-
-@pytest.mark.parametrize(
-    ("attachment", "turn_content"),
-    [
-        (
-            {
-                "mime": "image/png",
-                "name": "plot.png",
-                "size": 3,
-                "data_url": "data:image/png;base64,QUJD",
-            },
-            {
-                "content_type": "image_inline",
-                "image_content_type": "image/png",
-                "data": "QUJD",
-            },
-        ),
-        (
-            {
-                "mime": "text/markdown",
-                "name": "notes.md",
-                "size": 7,
-                "data_url": "data:text/markdown;base64,IyBOb3Rlcw==",
-            },
-            {
-                "content_type": "text",
-                "text": (
-                    '<file-attachment name="notes.md" '
-                    'type="text/markdown">\n# Notes\n</file-attachment>'
-                ),
-            },
-        ),
-        (
-            {
-                "mime": "application/pdf",
-                "name": "report.pdf",
-                "size": 4,
-                "data_url": "data:application/pdf;base64,JVBERg==",
-            },
-            {
-                "content_type": "pdf",
-                "data": "JVBERg==",
-                "filename": "report.pdf",
-            },
-        ),
-    ],
-)
-def test_extend_preserves_attachment_without_model_content(
-    attachment: dict[str, object],
-    turn_content: dict[str, object],
-):
-    rec = new_conversation_record(title="t")
-    user_message = {
-        "role": "user",
-        "segments": [{"content": "See attached", "content_type": "markdown"}],
-        "attachments": [attachment],
-    }
-    extend_record_linear(
-        rec,
-        [
-            [
-                {
-                    "role": "user",
-                    "contents": [
-                        {"content_type": "text", "text": "See attached"},
-                        turn_content,
-                    ],
-                }
-            ]
-        ],
-        [user_message],
-        ui_offset=0,
-    )
-
-    stored = rec.nodes[rec.path_node_ids()[0]].ui
-    assert stored is not None
-    assert stored[0]["attachments"] == [attachment]
-    assert stored[0]["segments"] == [
-        {"content": "See attached", "content_type": "markdown"}
-    ]
-    assert stored[0]["attachment_content_stripped"] is True
 
 
 def test_strip_attachment_content_repairs_existing_stored_ui():
@@ -299,120 +190,14 @@ def test_strip_attachment_content_keeps_empty_attachment_only_message():
     assert cleaned.get("attachment_content_stripped") is True
 
 
-def test_extend_groups_tool_exchange_into_single_node():
-    user_turn: TurnDict = {
-        "role": "user",
-        "contents": [{"content_type": "text", "text": "weather?"}],
-    }
-    tool_group = chatlas_tool_group()
-    asst_req, user_res, asst_final = tool_group
-
-    groups: list[list[TurnDict]] = [
-        [user_turn],
-        tool_group,
-    ]
-    msgs = [msg("user"), msg("assistant")]
-    rec = new_conversation_record(title="t")
-    extend_record_linear(rec, groups, msgs, ui_offset=0)
-
-    assert len(rec.nodes) == 2
-    path = rec.path_node_ids()
-
-    user_node = rec.nodes[path[0]]
-    asst_node = rec.nodes[path[1]]
-
-    assert len(user_node.turns) == 1
-    assert len(asst_node.turns) == 3
-    assert user_node.ui == [derived("user", "weather?")]
-
-    assert asst_node.ui is not None and len(asst_node.ui) == 1
-    asst_ui = asst_node.ui[0]
-    assert asst_ui["version"] == STORED_UI_VERSION
-    assert asst_ui["role"] == "assistant"
-    block_types = [s["type"] for s in asst_ui["segments"] if "type" in s]
-    assert block_types == ["tool_request", "tool_result"]
-    assert asst_ui["segments"][0]["request_id"] == "x"
-    assert asst_ui["segments"][1]["value"] == "Sunny"
-    assert asst_ui["segments"][2] == {
-        "content": "It's sunny.",
-        "content_type": "markdown",
-    }
-
-    assert rec.path_turns() == [user_turn, asst_req, user_res, asst_final]
 
 
-def test_extend_attaches_extra_assistant_msgs_to_last_node():
-    rec = new_conversation_record(title="t")
-    groups: list[list[TurnDict]] = [
-        [{"role": "user", "content": "q"}],
-        [{"role": "assistant", "content": "a"}],
-    ]
-    oob_ui = msg("assistant")
-    msgs = [
-        msg("user"),
-        msg("assistant"),
-        oob_ui,
-    ]
-    extend_record_linear(rec, groups, msgs, ui_offset=0)
-    path = rec.path_node_ids()
-    assert rec.nodes[path[1]].ui == [derived("assistant", "a"), oob_ui]
 
 
-def test_extend_attaches_late_ui_message_when_turn_groups_already_caught_up():
-    rec = new_conversation_record(title="t")
-    groups: list[list[TurnDict]] = [
-        [{"role": "user", "content": "q"}],
-        [{"role": "assistant", "content": "a"}],
-    ]
-    user_ui = msg("user")
-    oob_ui = msg("assistant")
-    streamed_ui = msg("assistant")
-
-    # Save #1: two new turn groups, two UI messages.
-    extend_record_linear(rec, groups, [user_ui, oob_ui], ui_offset=0)
-    assert len(rec.nodes) == 2
-
-    # Save #2: same turn groups (streaming added no new turn), but one more
-    # UI message has arrived since the last save.
-    extend_record_linear(
-        rec, groups, [user_ui, oob_ui, streamed_ui], ui_offset=2
-    )
-
-    all_ui = [
-        m
-        for node_id in rec.path_node_ids()
-        for m in (rec.nodes[node_id].ui or [])
-    ]
-    assert all_ui == [
-        derived("user", "q"),
-        derived("assistant", "a"),
-        streamed_ui,
-    ]
 
 
-def test_extend_noop_when_no_new_groups():
-    rec = new_conversation_record(title="t")
-    groups: list[list[TurnDict]] = [[{"role": "user", "content": "q"}]]
-    extend_record_linear(rec, groups, [msg("user")], ui_offset=0)
-    before = rec.model_dump()
-    extend_record_linear(rec, groups, [msg("user")], ui_offset=1)
-    assert rec.model_dump() == before
 
 
-def test_extend_derives_ui_even_without_client_messages():
-    rec = new_conversation_record(title="t")
-    groups: list[list[TurnDict]] = [
-        [{"role": "user", "content": "q"}],
-        [{"role": "assistant", "content": "a"}],
-    ]
-    extend_record_linear(rec, groups, [], ui_offset=0)
-    assert len(rec.nodes) == 2
-    path = rec.path_node_ids()
-    assert rec.nodes[path[0]].ui == [derived("user", "q")]
-    assert rec.nodes[path[1]].ui == [derived("assistant", "a")]
-
-
-# --- content-idempotent save guard (unit-level, no Shiny session needed) ----
 
 
 class _InactiveMessageStream:
@@ -662,7 +447,6 @@ def _make_controller(
     store: ConversationStore | None = None,
     save_callbacks: list[Callable[[dict[str, Any]], None]] | None = None,
     *,
-    use_exchange_tree: bool = False,
     adapter: _FakeAdapter | None = None,
 ) -> tuple[HistoryController, Any]:
     resolved_store = store if store is not None else _RecordingStore()
@@ -674,32 +458,16 @@ def _make_controller(
         title_enabled=False,
         client=None,
         save_callbacks=save_callbacks,
-        use_exchange_tree=use_exchange_tree,
     )
     controller.partition = part()
     return controller, resolved_store
 
 
-@pytest.mark.anyio
-async def test_history_update_advertises_completion_v1() -> None:
-    controller, _ = _make_controller()
-
-    await controller.send_history_update()
-
-    assert cast(_FakeChat, controller.chat).actions == [
-        {
-            "type": "history_update",
-            "enabled": True,
-            "conversations": [],
-            "active_id": None,
-            "transition_protocol": "completion-v1",
-        }
-    ]
 
 
 @pytest.mark.anyio
 async def test_v2_history_update_advertises_completion_v2() -> None:
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
 
     await controller.send_history_update()
 
@@ -772,7 +540,6 @@ async def test_v2_recorder_rejects_nonfinite_turn_values_before_file_store(
     store = FileConversationStore(tmp_path)
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=adapter,
     )
     recorder = controller._exchange_recorder
@@ -805,7 +572,6 @@ async def test_v2_recorder_rejects_non_string_keys_before_file_store(
     store = FileConversationStore(tmp_path)
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=adapter,
     )
     recorder = controller._exchange_recorder
@@ -881,7 +647,6 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
     store = InMemoryConversationStore()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -918,7 +683,6 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
 
     restored, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
     )
     stored = await store.get(part(), record.id)
     assert isinstance(stored, ConversationRecordV2)
@@ -1031,7 +795,6 @@ async def test_v2_attachment_input_captures_display_and_strips_model_text(
     store = FileConversationStore(tmp_path)
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=adapter,
     )
     recorder = controller._exchange_recorder
@@ -1085,7 +848,7 @@ async def test_v2_attachment_input_captures_display_and_strips_model_text(
     assert _MODEL_ATTACHMENT_MARKER in _turns_layer_json(stored)
 
     # Replay shows the attachment chips with the clean body text.
-    restored, _ = _make_controller(store=store, use_exchange_tree=True)
+    restored, _ = _make_controller(store=store)
     await restored.replay_exchange_record(stored)
     fake_chat = cast(_FakeChat, restored.chat)
     restored_user = fake_chat.restored_messages[0]
@@ -1182,7 +945,7 @@ async def test_v2_recorder_round_trips_structured_blocks_through_file_store(
 ) -> None:
     """Every StructuredBlock type survives capture, the JSON store, and replay."""
     store = FileConversationStore(tmp_path)
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
 
@@ -1231,7 +994,7 @@ async def test_v2_recorder_round_trips_structured_blocks_through_file_store(
     assert html_block.get("html_deps") == [{"name": "sunny-dep", "version": "1"}]
 
     # A fresh controller replays the stored record verbatim.
-    restored, _ = _make_controller(store=store, use_exchange_tree=True)
+    restored, _ = _make_controller(store=store)
     await restored.replay_exchange_record(stored)
     fake_chat = cast(_FakeChat, restored.chat)
     assert [message["role"] for message in fake_chat.restored_messages] == [
@@ -1255,7 +1018,7 @@ async def test_v2_recorder_persists_structured_blocks_from_streams(
 ) -> None:
     """Streamed block_insert projections are captured and replayed, not dropped."""
     store = FileConversationStore(tmp_path)
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
 
@@ -1332,7 +1095,7 @@ async def test_v2_recorder_persists_structured_blocks_from_streams(
 
     stored = await store.get(part(), record.id)
     assert isinstance(stored, ConversationRecordV2)
-    restored, _ = _make_controller(store=store, use_exchange_tree=True)
+    restored, _ = _make_controller(store=store)
     await restored.replay_exchange_record(stored)
     fake_chat = cast(_FakeChat, restored.chat)
     replayed_blocks = [
@@ -1431,7 +1194,7 @@ async def test_v2_active_rename_survives_later_capture_in_file_store(
     from shinychat._history_store import FileConversationStore
 
     store = FileConversationStore(tmp_path)
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(
@@ -1465,7 +1228,7 @@ async def test_v2_inactive_rename_does_not_affect_active_recorder_capture() -> (
     None
 ):
     store = InMemoryConversationStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     inactive = new_conversation_record_v2(
@@ -1522,7 +1285,6 @@ async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
     controller, _ = _make_controller(
         store=store,
         save_callbacks=[save_callback],
-        use_exchange_tree=True,
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -1581,7 +1343,7 @@ def _v2_record_contents(record: ConversationRecordV2) -> list[str]:
 @pytest.mark.anyio
 async def test_v2_new_chat_closes_old_record_and_starts_fresh():
     store = InMemoryConversationStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     chat = cast(_FakeChat, controller.chat)
@@ -1648,7 +1410,7 @@ async def test_v2_new_chat_closes_old_record_and_starts_fresh():
 @pytest.mark.anyio
 async def test_v2_new_chat_greeting_resolves_and_is_not_captured():
     store = InMemoryConversationStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     chat = cast(_FakeChat, controller.chat)
@@ -1714,7 +1476,7 @@ async def test_v2_new_chat_greeting_resolves_and_is_not_captured():
 @pytest.mark.anyio
 async def test_v2_initial_programmatic_message_persists_and_publishes_metadata():
     store = InMemoryConversationStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(
@@ -1742,7 +1504,7 @@ async def test_v2_initial_programmatic_message_persists_and_publishes_metadata()
 @pytest.mark.anyio
 async def test_v2_initial_programmatic_stream_persists_without_chunk_metadata():
     store = InMemoryConversationStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(
@@ -1799,7 +1561,7 @@ async def test_v2_stream_chunks_are_durable_without_metadata_until_terminal(
     from shinychat._history_store import FileConversationStore
 
     store = FileConversationStore(tmp_path)
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(
@@ -1850,7 +1612,7 @@ async def test_v2_stream_chunks_are_durable_without_metadata_until_terminal(
 
 @pytest.mark.anyio
 async def test_v2_restore_marks_exact_record_published_after_callback() -> None:
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     recorder = controller._exchange_recorder
     assert recorder is not None
     target = _restore_target()
@@ -1895,7 +1657,7 @@ async def test_v2_active_rename_waits_for_recorder_capture_lock() -> None:
             await super().put(partition, record)
 
     store = BlockingStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(
@@ -1963,7 +1725,7 @@ async def test_v2_switch_reloads_target_after_inactive_rename() -> None:
             await super().put(partition, record.model_copy(deep=True))
 
     store = SnapshotStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     source = new_conversation_record_v2(
@@ -2004,7 +1766,6 @@ async def test_v2_switch_reloads_target_after_inactive_rename() -> None:
 async def test_v2_restore_materializes_turn_path_once_and_resets_baseline():
     adapter = _TrackingFakeAdapter()
     controller, _ = _make_controller(
-        use_exchange_tree=True,
         adapter=adapter,
     )
     recorder = controller._exchange_recorder
@@ -2069,7 +1830,6 @@ async def test_v2_restore_live_bootstrap_skips_only_root_snapshot():
     adapter = _TrackingFakeAdapter()
     adapter.turns = [{"role": "system", "content": "live"}]
     controller, _ = _make_controller(
-        use_exchange_tree=True,
         adapter=adapter,
     )
     controller.restore_bootstrap = "live"
@@ -2135,7 +1895,6 @@ async def test_v2_restore_live_bootstrap_waits_for_admission_and_recorder_lock()
     adapter = _TrackingFakeAdapter()
     adapter.turns = [{"role": "system", "content": "before admission"}]
     controller, _ = _make_controller(
-        use_exchange_tree=True,
         adapter=adapter,
     )
     controller.restore_bootstrap = "live"
@@ -2208,7 +1967,6 @@ async def test_v2_switch_uses_restore_transaction_and_controller_active_id():
     store = InMemoryConversationStore()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=adapter,
     )
     recorder = controller._exchange_recorder
@@ -2276,7 +2034,7 @@ def _v2_switch_target(state_id: str | None) -> ConversationRecordV2:
 async def test_v2_switch_fires_on_switch_restored_after_successful_restore():
     """The hook fires exactly once, with the restored record, after restore."""
     store = InMemoryConversationStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     existing = new_conversation_record_v2(
@@ -2309,7 +2067,7 @@ async def test_v2_switch_fires_on_switch_restored_after_successful_restore():
 async def test_v2_switch_hook_failure_is_swallowed_with_warning():
     """A raising on_switch_restored must not fail an already-committed switch."""
     store = InMemoryConversationStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     existing = new_conversation_record_v2(
@@ -2339,7 +2097,7 @@ async def test_v2_switch_hook_failure_is_swallowed_with_warning():
 async def test_v2_switch_without_hook_emits_no_navigate():
     """Non-bookmark modes never wire the hook: no URL update on switch."""
     store = InMemoryConversationStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     target = _v2_switch_target("state_target")
@@ -2360,7 +2118,7 @@ async def test_v2_switch_without_hook_emits_no_navigate():
 @pytest.mark.anyio
 async def test_v2_switch_blocked_by_stream_fires_no_on_switch_restored():
     store = InMemoryConversationStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     chat = cast(_FakeChat, controller.chat)
     chat.latest_message_stream = _RunningMessageStream()  # type: ignore[assignment]
     target = _v2_switch_target("state_target")
@@ -2384,7 +2142,7 @@ async def test_v2_switch_blocked_by_stream_fires_no_on_switch_restored():
 async def test_v2_switch_failed_preflight_fires_no_on_switch_restored():
     """A switch that fails before the in-place restore leaves the URL alone."""
     store = _UnsupportedSchemaVersionStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
 
     restored: list[ConversationRecordV2] = []
 
@@ -2423,7 +2181,7 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore(
             await super().put(partition, record)
 
     store = BlockingStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
 
@@ -2624,7 +2382,6 @@ async def test_v2_same_flush_input_and_history_selection_preserves_source_dispat
     public_calls: list[tuple[str, list[Attachment]]] = []
     chat: Chat | None = None
 
-    monkeypatch.setattr("shinychat._history._EXCHANGE_TREE_HISTORY_V2", True)
     try:
         with session_context(cast(Any, session)):
             chat = Chat(
@@ -2719,7 +2476,6 @@ async def test_v2_same_flush_failed_capture_and_history_selection_restores_targe
     capture_errors: list[BaseException] = []
     chat: Chat | None = None
 
-    monkeypatch.setattr("shinychat._history._EXCHANGE_TREE_HISTORY_V2", True)
     try:
         with session_context(cast(Any, session)):
             chat = Chat(
@@ -2877,10 +2633,6 @@ async def test_v2_switch_rejects_active_attached_provider_without_mutating_sourc
     switch: asyncio.Task[None] | None = None
     source_stream: Any | None = None
 
-    monkeypatch.setattr(
-        "shinychat._history._EXCHANGE_TREE_HISTORY_V2",
-        True,
-    )
     try:
         with session_context(cast(Any, session)):
             chat = Chat(
@@ -3029,7 +2781,6 @@ async def test_v2_real_stream_failure_preserves_capture_matrix(
     store = SnapshotStore()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=adapter,
     )
     recorder = controller._exchange_recorder
@@ -3110,7 +2861,7 @@ async def test_cancelled_v2_switch_releases_real_chat_input_admission(
             await super().put(partition, record)
 
     store = BlockingStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     session = _RealChatSession()
@@ -3181,7 +2932,7 @@ async def test_error_v2_switch_releases_real_chat_input_admission(
             await super().put(partition, record)
 
     store = ErrorStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     session = _RealChatSession()
@@ -3230,7 +2981,7 @@ async def test_error_v2_switch_releases_real_chat_input_admission(
 async def test_generic_destructive_admission_does_not_block_real_chat_input(
     request: pytest.FixtureRequest,
 ) -> None:
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     recorder = controller._exchange_recorder
     assert recorder is not None
     session = _RealChatSession()
@@ -3283,7 +3034,6 @@ async def test_v2_switch_saves_source_before_target_preflight_failure() -> None:
     controller, _ = _make_controller(
         store=store,
         save_callbacks=[save],
-        use_exchange_tree=True,
         adapter=adapter,
     )
     recorder = controller._exchange_recorder
@@ -3336,7 +3086,7 @@ async def test_v2_switch_saves_source_before_target_preflight_failure() -> None:
 
 @pytest.mark.anyio
 async def test_v2_restore_hooks_are_ordered_and_receive_keyed_path_context():
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     recorder = controller._exchange_recorder
     assert recorder is not None
     record = new_conversation_record_v2(
@@ -3389,7 +3139,6 @@ async def test_v2_restore_hooks_are_ordered_and_receive_keyed_path_context():
 async def test_v2_restore_invalid_path_leaves_live_chat_unchanged():
     adapter = _TrackingFakeAdapter()
     controller, _ = _make_controller(
-        use_exchange_tree=True,
         adapter=adapter,
     )
     recorder = controller._exchange_recorder
@@ -3464,7 +3213,6 @@ async def test_v2_restore_preflight_failure_leaves_live_state_untouched(
 ) -> None:
     adapter = _TrackingFakeAdapter()
     controller, _ = _make_controller(
-        use_exchange_tree=True,
         adapter=adapter,
     )
     existing = _install_live_v2_record(controller)
@@ -3503,7 +3251,6 @@ async def test_v2_restore_degrades_effective_turns_and_keeps_exchange_usable(
 ) -> None:
     adapter = _TrackingFakeAdapter(chatlas=incompatibility == "content")
     controller, _ = _make_controller(
-        use_exchange_tree=True,
         adapter=adapter,
     )
     target = _restore_target()
@@ -3574,7 +3321,6 @@ async def test_v2_degraded_restore_continuation_snapshots_compatible_turns_for_r
     adapter = _TrackingFakeAdapter()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=adapter,
     )
     target = _restore_target()
@@ -3605,7 +3351,6 @@ async def test_v2_degraded_restore_continuation_snapshots_compatible_turns_for_r
     reloaded_adapter = _TrackingFakeAdapter()
     reloaded, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=reloaded_adapter,
     )
     reloaded_warning = AsyncMock()
@@ -3629,7 +3374,6 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
     store = FileConversationStore(tmp_path)
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=adapter,
     )
     controller.restore_bootstrap = cast(Any, restore_bootstrap)
@@ -3753,7 +3497,6 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
     reloaded_adapter = _TrackingFakeAdapter()
     reloaded, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=reloaded_adapter,
     )
     reloaded.restore_bootstrap = cast(Any, restore_bootstrap)
@@ -4148,7 +3891,6 @@ async def test_v2_resubmit_rejects_malformed_target_turn_data_before_mutation(
 async def test_v2_retry_rejects_incompatible_parent_superseded_by_target_snapshot():
     adapter = _TrackingFakeAdapter()
     controller, store = _make_controller(
-        use_exchange_tree=True,
         adapter=adapter,
     )
     target = _restore_target()
@@ -4205,7 +3947,7 @@ async def test_v2_retry_rejects_incompatible_parent_superseded_by_target_snapsho
 
 @pytest.mark.anyio
 async def test_v2_degraded_restore_warning_is_provider_neutral() -> None:
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     fake_chat = cast(_FakeChat, controller.chat)
     fake_chat._session = _RealHistorySession()  # type: ignore[attr-defined]
     notification = MagicMock()
@@ -4221,7 +3963,7 @@ async def test_v2_degraded_restore_warning_is_provider_neutral() -> None:
 
 @pytest.mark.anyio
 async def test_v2_initial_bookmark_projection_failure_recovers() -> None:
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     target = _restore_target()
     target.nodes["n_0000"].parent_id = "missing"
     fake_chat = cast(_FakeChat, controller.chat)
@@ -4275,7 +4017,7 @@ async def test_v2_initial_bookmark_projection_failure_recovers() -> None:
 async def test_v2_initial_restore_admission_failure_recovers(
     failure: BaseException,
 ) -> None:
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     target = _restore_target()
     fake_chat = cast(_FakeChat, controller.chat)
     notifier = AsyncMock()
@@ -4327,7 +4069,7 @@ async def test_v2_initial_restore_body_failure_leaves_no_stale_step_label():
     # The restore body consumes its own step attribution on failure; the
     # admission label wrapping it must not be re-armed on the re-raise, or a
     # later unrelated failure would misreport it.
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     target = _restore_target()
     notifier = AsyncMock()
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
@@ -4364,7 +4106,6 @@ async def test_v2_live_restore_malformed_effective_turns_becomes_fresh_draft():
     adapter.turns = [{"role": "system", "content": "live"}]
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=adapter,
     )
     controller.restore_bootstrap = "live"
@@ -4427,7 +4168,7 @@ async def test_v2_live_restore_malformed_effective_turns_becomes_fresh_draft():
 
 @pytest.mark.anyio
 async def test_v2_restore_hook_failure_names_entry_and_clears_to_fresh_draft():
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     _install_live_v2_record(controller)
     target = _restore_target()
     target.nodes["n_0000"].state["test:restore"] = StateEntry(
@@ -4492,7 +4233,6 @@ async def test_v2_live_restore_materialization_cancellation_cleans_up():
     adapter = _TrackingFakeAdapter()
     adapter.turns = [{"role": "system", "content": "live"}]
     controller, _ = _make_controller(
-        use_exchange_tree=True,
         adapter=adapter,
     )
     controller.restore_bootstrap = "live"
@@ -4600,7 +4340,6 @@ async def test_v2_restore_failure_becomes_fresh_draft(
     adapter = _TrackingFakeAdapter()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=adapter,
     )
     _install_live_v2_record(controller)
@@ -4678,7 +4417,7 @@ async def test_v2_restore_failure_becomes_fresh_draft(
 
 @pytest.mark.anyio
 async def test_v2_restore_cancellation_preserves_outcome_after_cleanup_failure():
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     _install_live_v2_record(controller)
     target = _restore_target()
     fake_chat = cast(_FakeChat, controller.chat)
@@ -4714,7 +4453,6 @@ async def test_v2_restore_cancellation_preserves_outcome_after_cleanup_failure()
 async def test_v2_restore_active_id_cancellation_cleans_up_and_preserves_identity():
     adapter = _TrackingFakeAdapter()
     controller, _ = _make_controller(
-        use_exchange_tree=True,
         adapter=adapter,
     )
     _install_live_v2_record(controller)
@@ -4756,7 +4494,7 @@ async def test_v2_restore_active_id_cancellation_cleans_up_and_preserves_identit
 
 @pytest.mark.anyio
 async def test_v2_restore_notification_cancellation_preserves_original_instance():
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     _install_live_v2_record(controller)
     target = _restore_target()
     fake_chat = cast(_FakeChat, controller.chat)
@@ -4786,7 +4524,6 @@ async def test_v2_restore_cleanup_failures_are_secondary_and_reported(
 ) -> None:
     adapter = _TrackingFakeAdapter()
     controller, _ = _make_controller(
-        use_exchange_tree=True,
         adapter=adapter,
     )
     _install_live_v2_record(controller)
@@ -4863,7 +4600,6 @@ async def test_v2_restore_cleanup_failures_are_secondary_and_reported(
 async def test_v2_restore_cleanup_continues_after_earlier_failure():
     adapter = _TrackingFakeAdapter()
     controller, _ = _make_controller(
-        use_exchange_tree=True,
         adapter=adapter,
     )
     _install_live_v2_record(controller)
@@ -4953,7 +4689,7 @@ async def test_notify_restore_failure_emits_recovery_message(
     class _NotificationSession:
         ns = ResolvedId("")
 
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     fake_chat = cast(_FakeChat, controller.chat)
     cast(Any, fake_chat)._session = _NotificationSession()
 
@@ -4998,7 +4734,7 @@ async def test_notify_restore_failure_names_failing_hook_or_step(
     class _NotificationSession:
         ns = ResolvedId("")
 
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     fake_chat = cast(_FakeChat, controller.chat)
     cast(Any, fake_chat)._session = _NotificationSession()
 
@@ -5015,7 +4751,6 @@ async def test_v2_restore_failure_allows_next_input_to_record_normally():
     store = InMemoryConversationStore()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
     )
     existing = _install_live_v2_record(controller)
     target = _restore_target()
@@ -5083,7 +4818,7 @@ async def test_v2_restore_failure_allows_next_input_to_record_normally():
 
 @pytest.mark.anyio
 async def test_v2_restore_suppresses_real_transcript_capture_then_restores_it():
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     recorder = controller._exchange_recorder
     assert recorder is not None
     fake_chat = cast(_FakeChat, controller.chat)
@@ -5122,7 +4857,6 @@ async def test_v2_restore_suppresses_real_transcript_capture_then_restores_it():
 async def test_v2_restore_success_order_and_no_failure_notification():
     adapter = _TrackingFakeAdapter()
     controller, _ = _make_controller(
-        use_exchange_tree=True,
         adapter=adapter,
     )
     recorder = controller._exchange_recorder
@@ -5195,7 +4929,7 @@ async def test_v2_restore_success_order_and_no_failure_notification():
 
 @pytest.mark.anyio
 async def test_v2_recorder_allocates_controller_id_before_root_capture():
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     recorder = controller._exchange_recorder
     assert recorder is not None
     observed_ids: list[str | None] = []
@@ -5216,7 +4950,7 @@ async def test_v2_recorder_allocates_controller_id_before_root_capture():
 
 @pytest.mark.anyio
 async def test_v2_inputless_capture_allocates_controller_id():
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     recorder = controller._exchange_recorder
     assert recorder is not None
 
@@ -5233,7 +4967,6 @@ async def test_v2_active_id_callback_runs_after_first_store_write():
     store = InMemoryConversationStore()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -5271,7 +5004,6 @@ async def test_v2_active_id_callback_retries_after_first_store_failure():
     store = FailFirstStore()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -5332,7 +5064,7 @@ async def test_v2_active_delete_waits_for_blocked_write_and_clears_state():
             await super().delete(partition, conv_id)
 
     store = BlockFirstStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     fake_chat = cast(_FakeChat, controller.chat)
@@ -5382,7 +5114,7 @@ async def test_v2_active_delete_waits_for_blocked_write_and_clears_state():
 
 @pytest.mark.anyio
 async def test_v2_new_chat_waits_for_blocked_active_id_callback():
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     recorder = controller._exchange_recorder
     assert recorder is not None
     fake_chat = cast(_FakeChat, controller.chat)
@@ -5427,7 +5159,7 @@ async def test_v2_callback_failure_or_cancellation_retries_for_same_record(
     callback_error: str,
 ):
     store = InMemoryConversationStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     fake_chat = cast(_FakeChat, controller.chat)
@@ -5480,37 +5212,21 @@ async def test_v2_callback_failure_or_cancellation_retries_for_same_record(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("use_exchange_tree", [False, True])
 @pytest.mark.parametrize("callback_error", ["failure", "cancellation"])
 async def test_active_delete_clears_local_state_before_callback_failure(
-    use_exchange_tree: bool, callback_error: str
+    callback_error: str,
 ):
     store = InMemoryConversationStore()
-    controller, _ = _make_controller(
-        store=store, use_exchange_tree=use_exchange_tree
-    )
+    controller, _ = _make_controller(store=store)
     fake_chat = cast(_FakeChat, controller.chat)
-    fake_chat.messages = [_stored_message("assistant", "visible")]
-    fake_chat._transcript.record_accepted_input(
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    fake_chat._transcript = transcript
+    await transcript.record_accepted_input_and_notify(
         _stored_message("user", "input")
     )
-    controller.adapter.set_turns_json([{"role": "user", "content": "input"}])
-
-    recorder = controller._exchange_recorder
-    if use_exchange_tree:
-        assert recorder is not None
-        transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
-        fake_chat._transcript = transcript
-        await transcript.record_accepted_input_and_notify(
-            _stored_message("user", "input")
-        )
-        assert recorder.record is not None
-        active_id = recorder.record.id
-    else:
-        active_id = await controller.ensure_conversation_id()
-        record = new_conversation_record(title="active", id=active_id)
-        controller.record = record
-        await store.put(part(), record)
+    assert recorder.record is not None
+    active_id = recorder.record.id
 
     async def update_url(conv_id: str | None) -> None:
         assert conv_id is None
@@ -5534,13 +5250,12 @@ async def test_active_delete_clears_local_state_before_callback_failure(
     assert fake_chat.messages == []
     assert fake_chat._transcript.read() == ()
     assert fake_chat.clear_messages_calls == 1
-    if recorder is not None:
-        assert recorder.record is None
+    assert recorder.record is None
 
 
 @pytest.mark.anyio
 async def test_v2_new_chat_resets_recorder_and_allocates_a_new_id():
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
@@ -5571,7 +5286,6 @@ async def test_v2_destructive_active_id_callback_observes_reset(
     store = InMemoryConversationStore()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -5628,7 +5342,6 @@ async def test_v2_recorder_captures_postpartition_root_ui_but_not_greeting():
 
     adapter = _FakeAdapter()
     controller, _ = _make_controller(
-        use_exchange_tree=True,
         adapter=adapter,
     )
     controller.chat = real_chat  # type: ignore[assignment]
@@ -5670,7 +5383,7 @@ async def test_v2_recorder_captures_postpartition_root_ui_but_not_greeting():
 
 @pytest.mark.anyio
 async def test_v2_recorder_runs_ordered_hooks_with_explicit_ids_and_removes_state():
-    controller, _ = _make_controller(use_exchange_tree=True)
+    controller, _ = _make_controller()
     recorder = controller._exchange_recorder
     assert recorder is not None
     observed: list[tuple[str, str, str]] = []
@@ -5717,7 +5430,7 @@ async def test_v2_recorder_runs_ordered_hooks_with_explicit_ids_and_removes_stat
 def _make_v2_resubmit_controller() -> tuple[
     HistoryController, _FakeChat, _FakeAdapter, _RecordingStore, str, str
 ]:
-    controller, store = _make_controller(use_exchange_tree=True)
+    controller, store = _make_controller()
     fake_chat = cast(_FakeChat, controller.chat)
     adapter = cast(_FakeAdapter, controller.adapter)
     recorder = controller._exchange_recorder
@@ -5771,7 +5484,7 @@ def _make_v2_resubmit_controller() -> tuple[
 def _make_v2_navigation_controller() -> tuple[
     HistoryController, _FakeChat, _FakeAdapter, _RecordingStore, str, str
 ]:
-    controller, store = _make_controller(use_exchange_tree=True)
+    controller, store = _make_controller()
     fake_chat = cast(_FakeChat, controller.chat)
     adapter = cast(_FakeAdapter, controller.adapter)
     recorder = controller._exchange_recorder
@@ -5894,7 +5607,7 @@ def _make_v2_navigation_controller_with_remembered_descendants() -> tuple[
     str,
     str,
 ]:
-    controller, store = _make_controller(use_exchange_tree=True)
+    controller, store = _make_controller()
     chat = cast(_FakeChat, controller.chat)
     adapter = cast(_FakeAdapter, controller.adapter)
     recorder = controller._exchange_recorder
@@ -7206,7 +6919,6 @@ async def test_v2_retry_restores_partial_exchange_before_creating_sibling(
 ) -> None:
     adapter = _TrackingFakeAdapter()
     controller, _store = _make_controller(
-        use_exchange_tree=True,
         adapter=adapter,
     )
     chat = cast(_FakeChat, controller.chat)
@@ -7358,7 +7070,7 @@ async def test_v2_rejects_retry_for_a_completed_exchange_without_mutating():
 @pytest.mark.anyio
 async def test_v2_recorder_snapshots_chatlas_system_prompt_at_root_close():
     adapter = _FakeAdapter(chatlas=True)
-    controller, _ = _make_controller(use_exchange_tree=True, adapter=adapter)
+    controller, _ = _make_controller(adapter=adapter)
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(
@@ -7415,7 +7127,6 @@ async def test_v2_recorder_captures_model_backed_generic_turns():
 
     client = ModelClient()
     controller, _ = _make_controller(
-        use_exchange_tree=True,
         adapter=TurnsAdapter(client),  # type: ignore[arg-type]
     )
     recorder = controller._exchange_recorder
@@ -7447,7 +7158,6 @@ async def test_v2_recorder_captures_json_only_model_turns():
             pass
 
     controller, _ = _make_controller(
-        use_exchange_tree=True,
         adapter=TurnsAdapter(ModelClient()),  # type: ignore[arg-type]
     )
     recorder = controller._exchange_recorder
@@ -7485,7 +7195,6 @@ async def test_v2_recorder_rejects_model_key_collision_before_file_store(
     store = FileConversationStore(tmp_path)
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=TurnsAdapter(ModelClient()),  # type: ignore[arg-type]
     )
     recorder = controller._exchange_recorder
@@ -7522,7 +7231,6 @@ async def test_v2_recorder_rejects_nested_deque_key_before_file_store(
     store = FileConversationStore(tmp_path)
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=TurnsAdapter(ModelClient()),  # type: ignore[arg-type]
     )
     recorder = controller._exchange_recorder
@@ -7562,7 +7270,6 @@ async def test_v2_recorder_rejects_chatlas_key_collision_before_file_store(
     store = FileConversationStore(tmp_path)
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=TurnsAdapter(client),  # type: ignore[arg-type]
     )
     recorder = controller._exchange_recorder
@@ -7580,7 +7287,7 @@ async def test_v2_recorder_rejects_chatlas_key_collision_before_file_store(
 @pytest.mark.anyio
 async def test_v2_recorder_captures_delta_then_snapshot_on_earlier_turn_rewrite():
     adapter = _FakeAdapter()
-    controller, _ = _make_controller(use_exchange_tree=True, adapter=adapter)
+    controller, _ = _make_controller(adapter=adapter)
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(
@@ -7633,7 +7340,7 @@ async def test_v2_recorder_captures_delta_then_snapshot_on_earlier_turn_rewrite(
 @pytest.mark.parametrize("status", ["error", "cancelled"])
 async def test_v2_recorder_captures_terminal_turns_verbatim(status: str):
     adapter = _FakeAdapter()
-    controller, _ = _make_controller(use_exchange_tree=True, adapter=adapter)
+    controller, _ = _make_controller(adapter=adapter)
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(
@@ -7667,7 +7374,7 @@ async def test_v2_recorder_captures_terminal_turns_verbatim(status: str):
 @pytest.mark.anyio
 async def test_v2_recorder_captures_active_node_before_next_input():
     adapter = _FakeAdapter()
-    controller, _ = _make_controller(use_exchange_tree=True, adapter=adapter)
+    controller, _ = _make_controller(adapter=adapter)
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
@@ -7691,7 +7398,7 @@ async def test_v2_recorder_captures_active_node_before_next_input():
 @pytest.mark.anyio
 async def test_v2_recorder_keeps_terminal_turn_delta_at_node_close():
     adapter = _FakeAdapter()
-    controller, _ = _make_controller(use_exchange_tree=True, adapter=adapter)
+    controller, _ = _make_controller(adapter=adapter)
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(
@@ -7732,7 +7439,6 @@ async def test_v2_recorder_replaces_stream_projection_on_its_opening_exchange():
     adapter = _FakeAdapter()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=adapter,
     )
     recorder = controller._exchange_recorder
@@ -7796,7 +7502,6 @@ async def test_v2_recorder_persists_pre_input_stream_on_pending_root() -> None:
     store = InMemoryConversationStore()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -7857,7 +7562,6 @@ async def test_v2_recorder_ignores_prepartition_content_without_failing_send():
     store = InMemoryConversationStore()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
     )
     controller.partition = None
     recorder = controller._exchange_recorder
@@ -7937,7 +7641,6 @@ async def test_v2_recorder_reopens_terminal_exchange_for_a_new_stream(
     store = InMemoryConversationStore()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -7984,7 +7687,6 @@ async def test_v2_recorder_creates_inputless_child_for_unowned_content() -> (
     store = InMemoryConversationStore()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -8049,7 +7751,7 @@ async def test_v2_recorder_serializes_blocked_stream_projection_before_new_input
             self.records.pop(conv_id, None)
 
     store = BlockingSnapshotStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(
@@ -8115,7 +7817,6 @@ async def test_v2_recorder_persists_stream_terminal_status(
     store = InMemoryConversationStore()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -8179,7 +7880,6 @@ async def test_stream_recorder_failure_does_not_rollback_sent_transcript():
     store = FailingStore()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -8223,7 +7923,7 @@ async def test_accepted_input_persistence_failure_is_open_and_preserves_input():
             raise RuntimeError("durability failure")
 
     store = FailingStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
@@ -8257,7 +7957,6 @@ async def test_terminal_state_capture_failure_propagates_without_rollback():
     store = FailingStore()
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=adapter,
     )
     recorder = controller._exchange_recorder
@@ -8473,21 +8172,12 @@ async def _sent() -> bool:
     return True
 
 
-@pytest.mark.anyio
-async def test_exchange_recorder_is_default_off_and_uses_v1_save_path():
-    controller, store = _make_controller()
-
-    assert controller._exchange_recorder is None
-    await controller.on_response()
-
-    assert len(store.put_calls) == 1
-    assert isinstance(store.put_calls[0][1], ConversationRecordV1)
 
 
 @pytest.mark.anyio
 async def test_v2_response_settlement_writes_through_recorder_once():
     store = _RecordingStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
@@ -8513,7 +8203,7 @@ async def test_v2_response_persistence_does_not_depend_on_bookmark_settlement() 
     None
 ):
     store = InMemoryConversationStore()
-    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
@@ -8543,15 +8233,6 @@ async def test_v2_response_persistence_does_not_depend_on_bookmark_settlement() 
     assert active_input.content == "durable before bookmark"
 
 
-@pytest.mark.anyio
-async def test_replay_ui_clears_greeting():
-    controller, _store = _make_controller()
-    record = new_conversation_record(title="t")
-
-    await controller.replay_ui(record)
-
-    fake_chat = cast(Any, controller.chat)
-    assert fake_chat.set_greeting_calls == [None]
 
 
 @pytest.mark.anyio
@@ -8597,8 +8278,12 @@ async def test_controller_passes_partition_to_custom_store():
     controller.partition = ConversationPartition(
         chat_id="ns-chat", scope="browser-1"
     )
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
 
-    await controller.on_response()
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "hello")
+    )
 
     assert store.put_partitions == [
         ConversationPartition(chat_id="ns-chat", scope="browser-1")
@@ -8613,8 +8298,13 @@ async def test_same_scope_different_chat_ids_are_isolated():
     controller_a.partition = ConversationPartition(
         chat_id="chat-a", scope="browser-1"
     )
-    await controller_a.on_response()
-    assert controller_a.record is not None
+    recorder = controller_a._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "hello")
+    )
+    assert recorder.record is not None
+    record_a = recorder.record
 
     controller_b, _store_b = _make_controller(store=store)
     controller_b.partition = ConversationPartition(
@@ -8622,12 +8312,9 @@ async def test_same_scope_different_chat_ids_are_isolated():
     )
 
     assert (
-        await store.get(controller_a.partition, controller_a.record.id)
-        is not None
+        await store.get(controller_a.partition, record_a.id) is not None
     )
-    assert (
-        await store.get(controller_b.partition, controller_a.record.id) is None
-    )
+    assert await store.get(controller_b.partition, record_a.id) is None
     assert await store.list(controller_b.partition) == []
 
 
@@ -8644,224 +8331,22 @@ async def test_namespaced_chat_ids_are_distinct_partitions():
     assert await store.get(ns2, rec.id) is None
 
 
-@pytest.mark.anyio
-async def test_on_response_no_new_data_does_not_overwrite_saved_values():
-    controller, store = _make_controller()
-    accent = "info"
-
-    controller._save_callbacks.append(
-        lambda values: values.update({"accent": accent})
-    )
-
-    await controller.on_response()
-    assert controller.record is not None
-    assert controller.record.values["accent"] == "info"
-
-    accent = "danger"
-    await controller.on_response()
-
-    assert len(store.put_calls) == 1, "no-op flush should not persist again"
-    assert controller.record.values["accent"] == "info"
 
 
-class _ReplayFakeChat(_FakeChat):
-    """Fake chat whose server-owned message store reflects the latest replay."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.messages: list[Any] = []
-
-    def _messages_for_bookmark(self) -> list[Any]:
-        return self.messages
-
-    async def clear_messages(self, *, greeting: bool = False) -> None:
-        self.messages = []
-
-    async def _restore_bookmark_message(
-        self, message_dict: Any, *, icon: str | None = None
-    ) -> None:
-        self.messages.append(message_dict)
 
 
-@pytest.mark.anyio
-async def test_replay_rereport_does_not_resave_or_truncate():
-    controller, store = _make_controller()
-    chat = _ReplayFakeChat()
-    controller.chat = chat  # type: ignore[assignment]
-
-    chat.messages = [msg("user"), msg("assistant")]
-    await controller.on_response()
-    assert len(store.put_calls) == 1
-    record = controller.record
-    assert record is not None
-    saved_node_count = len(record.path_node_ids())
-    saved_ui = [
-        m
-        for nid in record.path_node_ids()
-        for m in (record.nodes[nid].ui or [])
-    ]
-
-    await controller.replay_ui(record)
-    assert chat.messages == saved_ui, "replay must reconstruct the full UI"
-
-    # Client re-reports the exact restored snapshot (same length/content).
-    await controller.on_response()
-
-    assert len(store.put_calls) == 1, "re-report must not trigger another save"
-    assert controller.record is record, (
-        "restore re-report must not swap records"
-    )
-    assert len(record.path_node_ids()) == saved_node_count, (
-        "restored conversation must not be truncated"
-    )
 
 
-@pytest.mark.anyio
-async def test_replay_rereport_then_new_turn_does_not_duplicate_ui():
-    store = _RecordingStore()
-    chat = _ReplayFakeChat()
-    adapter = _GrowingFakeAdapter()
-    controller = HistoryController(
-        chat=chat,  # type: ignore[arg-type]
-        adapter=adapter,  # type: ignore[arg-type]
-        store=store,  # type: ignore[arg-type]
-        title_fn=None,
-        title_enabled=False,
-        client=None,
-    )
-    controller.partition = part()
-
-    adapter.turns = [
-        {"role": "user", "content": "q1"},
-        {"role": "assistant", "content": "a1"},
-    ]
-    chat.messages = [msg("user"), msg("assistant")]
-    await controller.on_response()
-    assert len(store.put_calls) == 1
-    record = controller.record
-    assert record is not None
-    saved_ui = [
-        m
-        for nid in record.path_node_ids()
-        for m in (record.nodes[nid].ui or [])
-    ]
-    assert len(saved_ui) == 2
-    assert controller.ui_offset == 2
-
-    await controller.replay_ui(record)
-    assert chat.messages == saved_ui, "replay must reconstruct the full UI"
-    controller.ui_offset = 0
-    await controller.on_response()
-    assert len(store.put_calls) == 1, "re-report must not trigger another save"
-    assert controller.ui_offset == 2, (
-        "ui_offset must advance past the re-reported snapshot"
-    )
-
-    chat.messages = [msg("user")]
-    await controller.on_response()
-    assert len(store.put_calls) == 1
-    assert controller.ui_offset == 2, "partial report must not rewind ui_offset"
-
-    adapter.turns += [
-        {"role": "user", "content": "q2"},
-        {"role": "assistant", "content": "a2"},
-    ]
-    chat.messages = [
-        msg("user"),
-        msg("assistant"),
-        msg("user"),
-        msg("assistant"),
-    ]
-    await controller.on_response()
-    assert len(store.put_calls) == 2
-
-    all_ui = [
-        m
-        for nid in record.path_node_ids()
-        for m in (record.nodes[nid].ui or [])
-    ]
-    assert len(all_ui) == 4, (
-        f"expected 4 stored UI messages, got {len(all_ui)}: {all_ui}"
-    )
-    assert all_ui == [
-        derived("user", "q1"),
-        derived("assistant", "a1"),
-        derived("user", "q2"),
-        derived("assistant", "a2"),
-    ]
 
 
-class _DroppingSystemReplayChat(_ReplayFakeChat):
-    async def _restore_bookmark_message(
-        self, message_dict: Any, *, icon: str | None = None
-    ) -> None:
-        if message_dict.get("role") == "system":
-            return
-        await super()._restore_bookmark_message(message_dict, icon=icon)
 
 
-@pytest.mark.anyio
-async def test_replay_ui_offset_counts_only_committed_messages():
-    controller, _store = _make_controller()
-    chat = _DroppingSystemReplayChat()
-    controller.chat = chat  # type: ignore[assignment]
-    record = new_conversation_record(title="t")
-    record.append_linear(
-        [{"role": "user", "content": "q"}],
-        ui=[
-            {**msg("system"), "version": STORED_UI_VERSION},
-            {**msg("user"), "version": STORED_UI_VERSION},
-        ],
-    )
-
-    await controller.replay_ui(record)
-
-    assert len(chat.messages) == 1
-    assert controller.ui_offset == 1
 
 
-# --- ui_offset atomicity (not advanced when store.put raises) ----------------
 
 
-def _make_failing_controller() -> HistoryController:
-    store = _FailingStore()
-    controller = HistoryController(
-        chat=_FakeChat(),  # type: ignore[arg-type]
-        adapter=_FakeAdapter(),  # type: ignore[arg-type]
-        store=store,  # type: ignore[arg-type]
-        title_fn=None,
-        title_enabled=False,
-        client=None,
-    )
-    controller.partition = part()
-    return controller
 
 
-@pytest.mark.anyio
-async def test_ui_offset_unchanged_when_on_response_store_put_raises():
-    controller = _make_failing_controller()
-    initial_offset = controller.ui_offset
-
-    with pytest.raises(OSError):
-        await controller.on_response()
-
-    assert controller.ui_offset == initial_offset, (
-        "ui_offset must not advance when store.put() raises"
-    )
-
-
-@pytest.mark.anyio
-async def test_ui_offset_unchanged_when_save_current_store_put_raises():
-    controller = _make_failing_controller()
-    controller.record = new_conversation_record(title="t")
-    initial_offset = controller.ui_offset
-
-    with pytest.raises(OSError):
-        await controller.save()
-
-    assert controller.ui_offset == initial_offset, (
-        "ui_offset must not advance when store.put() raises"
-    )
 
 
 @pytest.mark.anyio
@@ -8880,17 +8365,31 @@ async def test_explicit_save_captures_state_without_counting_response():
         values["artifact"] = {"version": 2}
         saved_values.append(dict(values))
 
-    controller, store = _make_controller(save_callbacks=[capture])
-    await controller.on_response()
-    assert controller.record is not None
-    response_count = controller.record.response_count
-    put_count = len(store.put_calls)
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(store=store, save_callbacks=[capture])
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "hello")
+    )
+    assert recorder.record is not None
+    response_count = recorder.record.response_count
+
+    put_count = 0
+    original_persist = recorder._persist_record
+
+    async def persist() -> None:
+        nonlocal put_count
+        await original_persist()
+        put_count += 1
+
+    recorder._persist_record = persist
 
     assert await controller.save() is True
-    assert controller.record.response_count == response_count
-    assert controller.record.values == {"artifact": {"version": 2}}
-    assert len(saved_values) == 2
-    assert len(store.put_calls) == put_count + 1
+    assert recorder.record.response_count == response_count
+    assert recorder.record.values == {"artifact": {"version": 2}}
+    assert len(saved_values) == 1
+    assert put_count == 1
     assert controller._title_task is None
 
 
@@ -8902,12 +8401,16 @@ async def test_explicit_save_does_not_start_title_generation():
         title_calls.append(turns)
         return "Generated title"
 
-    controller, _store = _make_controller()
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(store=store)
     controller.title_enabled = True
     controller.title_fn = title_fn
-    await controller.on_response()
-    assert controller.record is not None
-    assert controller.record.response_count == 1
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "hello")
+    )
+    assert recorder.record is not None
     assert controller._title_task is None
 
     assert await controller.save() is True
@@ -8917,22 +8420,26 @@ async def test_explicit_save_does_not_start_title_generation():
 
 @pytest.mark.anyio
 async def test_explicit_save_runs_history_lifecycle_after_persist():
-    controller, _store = _make_controller()
-    await controller.on_response()
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(store=store)
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "hello")
+    )
+    assert recorder.record is not None
     events: list[str] = []
 
-    original_put = controller._put_record
+    original_persist = recorder._persist_record
 
-    async def put(
-        partition: ConversationPartition, record: ConversationRecordV1
-    ) -> None:
-        await original_put(partition, record)
+    async def persist() -> None:
+        await original_persist()
         events.append("put")
 
-    async def bookmark(record: ConversationRecordV1 | ConversationRecordV2) -> None:
+    async def bookmark(record: ConversationRecordV2) -> None:
         events.append("bookmark")
 
-    controller._put_record = put
+    recorder._persist_record = persist
     controller.on_response_saved = bookmark
     controller._evict_if_needed = AsyncMock(
         side_effect=lambda: events.append("evict")
@@ -9021,47 +8528,12 @@ def _nav_actions(chat: _FakeChat) -> list[dict[str, Any]]:
     return [a for a in chat.actions if a["type"] == "history_navigate"]
 
 
-@pytest.mark.anyio
-async def test_switch_to_swaps_in_session():
-    controller, store, chat = _make_nav_controller()
-    target = new_conversation_record(title="other")
-    store.records[target.id] = target
 
-    await controller.switch_to(target.id)
 
-    assert _nav_actions(chat) == []
-    assert chat.cleared == 1
-    assert controller.record is target
 
 
 @pytest.mark.anyio
-async def test_active_stream_rejects_history_switch_before_partial_mutation():
-    controller, store, chat = _make_nav_controller()
-    active = new_conversation_record(title="active")
-    target = new_conversation_record(title="target")
-    controller.record = active
-    store.records[target.id] = target
-
-    @asynccontextmanager
-    async def reject_active_stream():
-        raise RuntimeError(
-            "Cannot clear or restore messages while a message stream is active."
-        )
-        yield
-
-    chat._destructive_history_mutation = reject_active_stream  # type: ignore[method-assign]
-
-    with pytest.raises(RuntimeError, match="stream is active"):
-        await controller.switch_to(target.id)
-
-    assert controller.record is active
-    assert store.put_calls == []
-    assert cast(_NavFakeAdapter, controller.adapter).set_calls == []
-    assert chat.cleared == 0
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize("operation", ["new_chat", "delete", "replay_ui"])
+@pytest.mark.parametrize("operation", ["new_chat", "delete"])
 async def test_active_stream_rejects_destructive_history_paths_before_mutation(
     operation: str,
 ):
@@ -9082,10 +8554,8 @@ async def test_active_stream_rejects_destructive_history_paths_before_mutation(
     with pytest.raises(RuntimeError, match="stream is active"):
         if operation == "new_chat":
             await controller.new_chat()
-        elif operation == "delete":
-            await controller.delete(active.id)
         else:
-            await controller.replay_ui(active)
+            await controller.delete(active.id)
 
     assert controller.record is active
     assert store.records[active.id] is active
@@ -9093,20 +8563,6 @@ async def test_active_stream_rejects_destructive_history_paths_before_mutation(
     assert chat.cleared == 0
 
 
-@pytest.mark.anyio
-async def test_switch_to_url_mode_sends_navigate():
-    controller, store, chat = _make_nav_controller(with_url_mode=True)
-    target = new_conversation_record(title="other")
-    store.records[target.id] = target
-
-    await controller.switch_to(target.id)
-
-    navs = _nav_actions(chat)
-    assert len(navs) == 1
-    assert navs[0]["url"] == f"?conv={target.id}"
-    assert navs[0]["active_id"] == target.id
-    assert chat.cleared == 1
-    assert controller.record is target
 
 
 @pytest.mark.anyio
@@ -9122,6 +8578,9 @@ class _UnsupportedSchemaVersionStore(ConversationStore):
     schema version -- simulates a downgrade against a store written by a
     future version of shinychat."""
 
+    def __init__(self) -> None:
+        self.put_calls: list[tuple[ConversationPartition, Any]] = []
+
     async def list(self, partition: ConversationPartition) -> list[Any]:
         return []
 
@@ -9134,7 +8593,7 @@ class _UnsupportedSchemaVersionStore(ConversationStore):
         return rec
 
     async def put(self, partition: ConversationPartition, record: Any) -> None:
-        pass
+        self.put_calls.append((partition, record))
 
     async def delete(
         self, partition: ConversationPartition, conv_id: str
@@ -9155,15 +8614,14 @@ async def test_switch_to_rejects_record_with_unsupported_schema_version():
 
 @pytest.mark.anyio
 async def test_rename_rejects_record_with_unsupported_schema_version_before_writing():
-    # The controller must check schema_version on every write, not just every
-    # read -- a custom store's put() should never see an incompatible record
-    # (issue #322).
-    controller, store = _make_controller()
-    controller.record = new_conversation_record(title="t")
-    cast(Any, controller.record).schema_version = MAX_SCHEMA_VERSION + 1
+    # #322: an incompatible record must fail before any write. Under the
+    # v2-only runtime the rename's inactive branch reads the target through
+    # the read-gate first, so a future-version record raises before the
+    # store's put() can ever see it.
+    controller, store = _make_controller(store=_UnsupportedSchemaVersionStore())
 
     with pytest.raises(UnsupportedSchemaVersionError):
-        await controller.rename(controller.record.id, "new title")
+        await controller.rename("c_future", "new title")
 
     assert store.put_calls == []
 
@@ -9211,21 +8669,24 @@ async def test_new_chat_browser_mode_no_navigate():
 @pytest.mark.anyio
 async def test_delete_active_url_mode_sends_navigate_null():
     controller, store, chat = _make_nav_controller(with_url_mode=True)
-    active = new_conversation_record(title="doomed")
-    store.records[active.id] = active
-    # Activate through the shared op so record and active ID move together,
-    # as every real code path does.
-    await controller.activate_record(active)
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "doomed")
+    )
+    assert recorder.record is not None
+    active_id = recorder.record.id
+    await store.put(part(), recorder.record)
 
-    await controller.delete(active.id)
+    await controller.delete(active_id)
 
-    assert store.deleted == [active.id]
+    assert store.deleted == [active_id]
     navs = _nav_actions(chat)
     assert navs == [
         {
             "type": "history_navigate",
-            "url": f"?conv={active.id}",
-            "active_id": active.id,
+            "url": f"?conv={active_id}",
+            "active_id": active_id,
         },
         {"type": "history_navigate", "url": None, "active_id": None},
     ]
@@ -9243,64 +8704,12 @@ async def test_delete_inactive_does_not_navigate():
     assert _nav_actions(chat) == []
 
 
-@pytest.mark.anyio
-async def test_on_response_first_save_url_mode_sends_navigate():
-    controller, _store, chat = _make_nav_controller(with_url_mode=True)
-
-    await controller.on_response()
-
-    assert controller.record is not None
-    navs = _nav_actions(chat)
-    assert len(navs) == 1
-    assert navs[0]["url"] == f"?conv={controller.record.id}"
 
 
-# --- retitle ------------------------------------------------------------------
 
 
-def _make_retitle_controller(
-    title_fn: Any = None,
-    raw_client: Any = None,
-) -> tuple[HistoryController, _RecordingStore]:
-    store = _RecordingStore()
-    controller = HistoryController(
-        chat=_FakeChat(),  # type: ignore[arg-type]
-        adapter=_FakeAdapter(),  # type: ignore[arg-type]
-        store=store,  # type: ignore[arg-type]
-        title_fn=title_fn,
-        title_enabled=True,
-        client=raw_client,
-    )
-    controller.partition = part()
-    return controller, store
 
 
-@pytest.mark.anyio
-async def test_retitle_updates_title_and_persists():
-    controller, store = _make_retitle_controller(
-        title_fn=lambda turns: "Generated Title",
-    )
-    controller.record = new_conversation_record(title="fallback")
-
-    await controller.retitle([{"role": "user", "content": "hi"}])
-
-    assert controller.record.title == "Generated Title"
-    assert controller.record.title_source == "llm"
-    assert len(store.put_calls) == 1
-
-
-@pytest.mark.anyio
-async def test_retitle_noop_when_record_is_none():
-    controller, store = _make_retitle_controller(
-        title_fn=lambda turns: "should not be used",
-    )
-
-    await controller.retitle([])
-
-    assert store.put_calls == []
-
-
-# --- bookmark callback cleanup ------------------------------------------------
 
 
 class _BookmarkStub:
@@ -9349,243 +8758,24 @@ async def test_do_bookmark_with_cleanup_cancels_on_failure():
     assert bookmark.cancel_calls == 1
 
 
-@pytest.mark.anyio
-async def test_retitle_noop_when_user_already_renamed():
-    controller, store = _make_retitle_controller(
-        title_fn=lambda turns: "should not be used",
-    )
-    controller.record = new_conversation_record(title="My Title")
-    controller.record.title_source = "user"
-
-    await controller.retitle([])
-
-    assert controller.record.title == "My Title"
-    assert store.put_calls == []
 
 
-@pytest.mark.anyio
-async def test_retitle_noop_when_generate_returns_none():
-    controller, store = _make_retitle_controller(
-        title_fn=lambda turns: None,
-    )
-    controller.record = new_conversation_record(title="fallback")
-
-    await controller.retitle([])
-
-    assert controller.record.title == "fallback"
-    assert controller.record.title_source is None
-    assert store.put_calls == []
 
 
-@pytest.mark.anyio
-async def test_retitle_noop_when_conversation_switched_during_generation():
-    original = new_conversation_record(title="original")
-    replacement = new_conversation_record(title="replacement")
-
-    controller, store = _make_retitle_controller()
-
-    async def slow_title(turns: Any) -> str:
-        # Simulate the conversation switching while the LLM call is in flight
-        controller.record = replacement
-        return "Title for original"
-
-    controller.title_fn = slow_title
-    controller.record = original
-
-    await controller.retitle([])
-
-    assert original.title == "original", "must not update the old record"
-    assert controller.record is replacement
-    assert store.put_calls == []
 
 
-@pytest.mark.anyio
-async def test_retitle_noop_when_user_renames_during_generation():
-    record = new_conversation_record(title="fallback")
-
-    controller, store = _make_retitle_controller()
-
-    async def slow_title(turns: Any) -> str:
-        # Simulate the user renaming while the LLM call is in flight
-        record.title_source = "user"
-        record.title = "User's Title"
-        return "LLM Title"
-
-    controller.title_fn = slow_title
-    controller.record = record
-
-    await controller.retitle([])
-
-    assert record.title == "User's Title"
-    assert record.title_source == "user"
-    assert store.put_calls == []
 
 
-# --- deferred titling trigger --------------------------------------------------
 
 
-class _GrowingFakeAdapter:
-    """Like _FakeAdapter, but turns grow across calls to simulate multiple
-    real responses (_FakeAdapter always returns the same fixed 2 turns)."""
-
-    def __init__(self) -> None:
-        self.turns: list[dict[str, Any]] = []
-
-    def get_turns_json(self) -> list[Any]:
-        return list(self.turns)
-
-    def get_turns_grouped(self) -> list[list[Any]]:
-        return [[t] for t in self.turns]
-
-    def set_turns_json(self, turns: list[Any]) -> None:
-        self.turns = list(turns)
-
-    def client_info(self) -> dict[str, Any]:
-        return {}
 
 
-def _make_deferred_title_controller(
-    title_fn: Any = None,
-) -> tuple[HistoryController, _RecordingStore, _GrowingFakeAdapter]:
-    store = _RecordingStore()
-    adapter = _GrowingFakeAdapter()
-    controller = HistoryController(
-        chat=_FakeChat(),  # type: ignore[arg-type]
-        adapter=adapter,  # type: ignore[arg-type]
-        store=store,  # type: ignore[arg-type]
-        title_fn=title_fn,
-        title_enabled=True,
-        client=None,
-    )
-    controller.partition = part()
-    return controller, store, adapter
 
 
-@pytest.mark.anyio
-async def test_title_stays_fallback_after_first_response():
-    controller, _store, adapter = _make_deferred_title_controller(
-        title_fn=lambda turns: "Generated Title",
-    )
-    adapter.turns = [
-        {"role": "user", "content": "hi"},
-        {"role": "assistant", "content": "hello"},
-    ]
-
-    await controller.on_response()
-
-    assert controller.record is not None
-    assert controller.record.response_count == 1
-    assert controller.record.title_source is None
-    assert controller._title_task is None
 
 
-@pytest.mark.anyio
-async def test_titling_fires_after_second_response_exactly_once():
-    controller, _store, adapter = _make_deferred_title_controller(
-        title_fn=lambda turns: "Generated Title",
-    )
-    adapter.turns = [
-        {"role": "user", "content": "hi"},
-        {"role": "assistant", "content": "hello"},
-    ]
-    await controller.on_response()
-    task_after_first_response = controller._title_task
-    assert task_after_first_response is None
-
-    adapter.turns += [
-        {"role": "user", "content": "more"},
-        {"role": "assistant", "content": "sure"},
-    ]
-    await controller.on_response()
-
-    assert controller.record is not None
-    assert controller.record.response_count == 2
-    title_task = controller._title_task
-    assert title_task is not None
-    await title_task
-    assert controller.record.title == "Generated Title"
-    assert controller.record.title_source == "llm"
 
 
-@pytest.mark.anyio
-async def test_rename_between_first_and_second_response_blocks_auto_titling():
-    controller, _store, adapter = _make_deferred_title_controller(
-        title_fn=lambda turns: "Generated Title",
-    )
-    adapter.turns = [
-        {"role": "user", "content": "hi"},
-        {"role": "assistant", "content": "hello"},
-    ]
-    await controller.on_response()
-    assert controller.record is not None
-    await controller.rename(controller.record.id, "My Title")
-
-    adapter.turns += [
-        {"role": "user", "content": "more"},
-        {"role": "assistant", "content": "sure"},
-    ]
-    await controller.on_response()
-
-    assert controller.record is not None
-    assert controller._title_task is None
-    assert controller.record.title == "My Title"
-    assert controller.record.title_source == "user"
-
-
-@pytest.mark.anyio
-async def test_titling_fires_on_second_response_across_sessions():
-    store = InMemoryConversationStore()
-    adapter1 = _GrowingFakeAdapter()
-    controller1 = HistoryController(
-        chat=_FakeChat(),  # type: ignore[arg-type]
-        adapter=adapter1,  # type: ignore[arg-type]
-        store=store,
-        title_fn=lambda turns: "Generated Title",
-        title_enabled=True,
-        client=None,
-    )
-    controller1.partition = part()
-    adapter1.turns = [
-        {"role": "user", "content": "hi"},
-        {"role": "assistant", "content": "hello"},
-    ]
-    await controller1.on_response()
-    assert controller1.record is not None
-    conv_id = controller1.record.id
-    assert controller1._title_task is None
-
-    # Simulate a brand-new session: fresh controller, same backing store,
-    # loads the persisted (1-response) conversation before continuing it.
-    adapter2 = _GrowingFakeAdapter()
-    adapter2.turns = list(adapter1.turns)
-    controller2 = HistoryController(
-        chat=_FakeChat(),  # type: ignore[arg-type]
-        adapter=adapter2,  # type: ignore[arg-type]
-        store=store,
-        title_fn=lambda turns: "Generated Title",
-        title_enabled=True,
-        client=None,
-    )
-    controller2.partition = part()
-    restored = await store.get(part(), conv_id)
-    assert isinstance(restored, ConversationRecordV1)
-    controller2.record = restored
-
-    adapter2.turns += [
-        {"role": "user", "content": "more"},
-        {"role": "assistant", "content": "sure"},
-    ]
-    await controller2.on_response()
-
-    title_task = controller2._title_task
-    assert title_task is not None
-    await title_task
-    assert controller2.record is not None
-    assert controller2.record.title == "Generated Title"
-    assert controller2.record.title_source == "llm"
-
-
-# --- deferred titling trigger (v2 exchange-tree path) -----------------------
 
 
 def _make_v2_deferred_title_controller(
@@ -9603,7 +8793,6 @@ def _make_v2_deferred_title_controller(
         title_fn=title_fn,
         title_enabled=title_enabled,
         client=None,
-        use_exchange_tree=True,
     )
     controller.partition = part()
     return controller, resolved_store
@@ -9845,95 +9034,10 @@ async def test_v2_retitle_not_rescheduled_at_third_input_exchange():
 # --- save/restore callbacks --------------------------------------------------
 
 
-def _make_fake_chat() -> _FakeChat:
-    return _FakeChat()
 
 
-@pytest.mark.anyio
-async def test_save_callback_fires_and_values_stored(tmp_path: Any) -> None:
-    """on_save callback populates record.values."""
-    from shinychat._history_store import FileConversationStore
-
-    save_calls: list[dict[str, Any]] = []
-    save_cbs: list[Any] = []
-
-    def my_save(values: dict[str, Any]) -> None:
-        values["x"] = 42
-        save_calls.append(dict(values))
-
-    save_cbs.append(my_save)
-
-    store = FileConversationStore(tmp_path)
-    adapter = _FakeAdapter()
-    controller = HistoryController(
-        chat=_make_fake_chat(),  # type: ignore[arg-type]
-        adapter=adapter,  # type: ignore[arg-type]
-        store=store,
-        title_fn=None,
-        title_enabled=False,
-        client=object(),
-        save_callbacks=save_cbs,
-        restore_callbacks=[],
-    )
-    controller.partition = part(scope="alice")
-
-    await controller.on_response()
-
-    assert len(save_calls) == 1
-    assert save_calls[0]["x"] == 42
-    assert controller.record is not None
-    assert controller.record.values.get("x") == 42
 
 
-@pytest.mark.anyio
-async def test_restore_callback_fires_on_switch(tmp_path: Any) -> None:
-    """on_restore callback receives stored values on switch_to."""
-    from shinychat._history_store import FileConversationStore
-    from shinychat._history_types import new_conversation_record
-
-    restored: list[tuple[dict[str, Any], str]] = []
-    restore_cbs: list[Any] = []
-
-    store = FileConversationStore(tmp_path)
-    adapter = _NavFakeAdapter()
-    chat = _NavFakeChat()
-    controller = HistoryController(
-        chat=chat,  # type: ignore[arg-type]
-        adapter=adapter,  # type: ignore[arg-type]
-        store=store,
-        title_fn=None,
-        title_enabled=False,
-        client=object(),
-        save_callbacks=[],
-        restore_callbacks=restore_cbs,
-    )
-    controller.partition = part(scope="alice")
-
-    def on_restore(values: dict[str, Any]) -> None:
-        assert controller.record is not None
-        restored.append((dict(values), controller.record.id))
-
-    restore_cbs.append(on_restore)
-
-    # Create a record with values directly in the store (not via on_response,
-    # which would immediately re-capture and overwrite our values).
-    target = new_conversation_record(title="old")
-    target.values = {"x": 99}
-    await store.put(part(scope="alice"), target)
-
-    # Simulate having a different current conversation
-    other = new_conversation_record(title="current")
-    await store.put(part(scope="alice"), other)
-    controller.record = other
-
-    await controller.switch_to(target.id)
-
-    assert restored == [({"x": 99}, target.id)]
-
-
-# ---------------------------------------------------------------------------
-# _evict_if_needed
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.anyio
@@ -9986,7 +9090,7 @@ async def test_evict_if_needed_removes_oldest_preserves_active():
 
     rec1 = new_conversation_record(title="oldest")
     rec2 = new_conversation_record(title="middle")
-    rec3 = new_conversation_record(title="newest")
+    rec3 = new_conversation_record_v2(title="newest", client_info={})
     rec2.updated_at = rec2.updated_at + timedelta(seconds=1)
     rec3.updated_at = rec3.updated_at + timedelta(seconds=2)
     for rec in [rec1, rec2, rec3]:
@@ -10002,7 +9106,9 @@ async def test_evict_if_needed_removes_oldest_preserves_active():
         max_store_bytes=1,  # 1 byte: ensures all non-active records are evicted
     )
     controller.partition = part(scope="alice")
-    controller.record = rec3  # newest is active
+    # The recorder owns the active record: the newest conversation is active
+    # and must survive the budget sweep.
+    controller._exchange_recorder.record = rec3
 
     await controller._evict_if_needed()
 
@@ -10020,7 +9126,7 @@ async def test_evict_if_needed_calls_list_once_and_never_total_size():
     store = InMemoryConversationStore()
     rec1 = new_conversation_record(title="oldest")
     rec2 = new_conversation_record(title="middle")
-    rec3 = new_conversation_record(title="newest")
+    rec3 = new_conversation_record_v2(title="newest", client_info={})
     rec2.updated_at = rec2.updated_at + timedelta(seconds=1)
     rec3.updated_at = rec3.updated_at + timedelta(seconds=2)
     for rec in [rec1, rec2, rec3]:
@@ -10036,7 +9142,7 @@ async def test_evict_if_needed_calls_list_once_and_never_total_size():
         max_store_bytes=1,
     )
     controller.partition = part(scope="alice")
-    controller.record = rec3
+    controller._exchange_recorder.record = rec3
 
     list_spy = AsyncMock(wraps=store.list)
     total_size_spy = AsyncMock(wraps=store.total_size)
@@ -10052,8 +9158,7 @@ async def test_evict_if_needed_calls_list_once_and_never_total_size():
 @pytest.mark.anyio
 async def test_evict_if_needed_warns_once_when_active_alone_exceeds_budget():
     store = InMemoryConversationStore()
-    rec = new_conversation_record(title="big")
-    rec.append_linear([{"role": "user", "content": "x" * 1000}])
+    rec = new_conversation_record_v2(title="big", client_info={})
     await store.put(part(scope="alice"), rec)
 
     controller = HistoryController(
@@ -10066,7 +9171,7 @@ async def test_evict_if_needed_warns_once_when_active_alone_exceeds_budget():
         max_store_bytes=1,
     )
     controller.partition = part(scope="alice")
-    controller.record = rec  # active; nothing else to evict
+    controller._exchange_recorder.record = rec  # active; nothing else to evict
 
     with pytest.warns(UserWarning, match="remains over"):
         await controller._evict_if_needed()
@@ -10105,81 +9210,53 @@ async def test_evict_one_deletes_from_store():
 
 @pytest.mark.anyio
 async def test_on_response_saved_fires_when_new_data_is_saved():
-    controller, store = _make_controller()
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(store=store)
     fired: list[str] = []
-    turns = [
-        {"role": "user", "content": "hello"},
-        {"role": "assistant", "content": "hi there"},
-    ]
-
-    class _GrowingAdapter(_FakeAdapter):
-        def get_turns_json(
-            self, *, include_system_prompt: bool = False
-        ) -> list[Any]:
-            return turns
 
     async def hook(record: Any) -> None:
         fired.append(record.id)
 
-    controller.adapter = _GrowingAdapter()  # type: ignore[assignment]
     controller.on_response_saved = hook
-
-    await controller.on_response()
-    turns.extend(
-        [
-            {"role": "user", "content": "more"},
-            {"role": "assistant", "content": "sure"},
-        ]
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+        on_stream_started=recorder.stream_started,
+        on_stream_finished=recorder.stream_finished,
     )
-    await controller.on_response()
+
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "hello")
+    )
+
+    async def settle(stream_id: str, exchange: str) -> None:
+        await transcript.start_stream(
+            stream_id=stream_id,
+            entry=TranscriptEntry(message=_stored_message("assistant", "hi")),
+            owner_task=None,
+            exchange_id=exchange,
+            send=_sent,
+        )
+        await transcript.end_stream(
+            stream_id=stream_id, status=None, error=None, send=_sent
+        )
+        await controller.on_response()
+
+    await settle("stream-1", exchange_id)
+    assert fired
+
+    exchange_id2 = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "more")
+    )
+    await settle("stream-2", exchange_id2)
 
     assert len(fired) == 2
     assert fired[0] == fired[1]  # same conversation id both times
 
 
-@pytest.mark.anyio
-async def test_on_pre_switch_true_skips_in_session_swap():
-    controller, store, chat = _make_nav_controller()
-    target = new_conversation_record(title="other")
-    store.records[target.id] = target
-    pre_switch_calls: list[str] = []
-
-    async def hook(rec: Any) -> bool:
-        pre_switch_calls.append(rec.id)
-        return True  # signal: skip in-session swap
-
-    controller.on_pre_switch = hook
-
-    await controller.switch_to(target.id)
-
-    assert pre_switch_calls == [target.id]
-    # In-session swap was skipped: client turns NOT updated, UI NOT cleared
-    assert chat.cleared == 0
-    # record not changed because we returned True (navigation handled by hook)
-    assert controller.record is None
 
 
-@pytest.mark.anyio
-async def test_on_pre_switch_false_allows_in_session_swap():
-    controller, store, chat = _make_nav_controller()
-    target = new_conversation_record(title="other")
-    store.records[target.id] = target
-    pre_switch_calls: list[str] = []
-
-    async def hook(rec: Any) -> bool:
-        pre_switch_calls.append(rec.id)
-        return False  # allow normal in-session swap
-
-    controller.on_pre_switch = hook
-
-    await controller.switch_to(target.id)
-
-    assert pre_switch_calls == [target.id]
-    assert chat.cleared == 1
-    assert controller.record is target
-
-
-# --- on_evict hook -----------------------------------------------------------
 
 
 @pytest.mark.anyio
@@ -10248,508 +9325,36 @@ async def test_on_evict_fires_before_store_delete_in_delete():
 # ---------------------------------------------------------------------------
 
 
-class _TrackingChat:
-    def __init__(self) -> None:
-        self.messages_: list[dict[str, Any]] = []
-        self.actions: list[dict[str, Any]] = []
-        self.cleared: bool = False
-        self.set_greeting_calls: list[Any] = []
-        self._session = None
-
-    def _messages_for_bookmark(self) -> list[dict[str, Any]]:
-        return list(self.messages_)
-
-    async def _send_action(self, action: Any) -> None:
-        self.actions.append(action)
-
-    async def clear_messages(self, *, greeting: bool = False) -> None:
-        self.messages_ = []
-        self.cleared = True
-
-    @asynccontextmanager
-    async def _destructive_history_mutation(self):
-        yield
-
-    async def _restore_bookmark_message(self, message_dict: Any) -> None:
-        self.messages_.append(message_dict)
-
-    async def set_greeting(self, greeting: Any) -> None:
-        self.set_greeting_calls.append(greeting)
-
-
-class _TrackingAdapter:
-    def __init__(self) -> None:
-        self.turns: list[TurnDict] = []
-
-    def get_turns_json(self) -> list[TurnDict]:
-        return list(self.turns)
-
-    def get_turns_grouped(self) -> list[list[TurnDict]]:
-        return [[t] for t in self.turns]
-
-    def set_turns_json(self, turns: list[TurnDict]) -> None:
-        self.turns = list(turns)
-
-    def client_info(self) -> dict[str, str]:
-        return {}
-
-
-def _make_branched_controller() -> tuple[
-    HistoryController, _TrackingChat, _TrackingAdapter, _RecordingStore
-]:
-    chat = _TrackingChat()
-    adapter = _TrackingAdapter()
-    store = _RecordingStore()
-    controller = HistoryController(
-        chat=chat,  # type: ignore[arg-type]
-        adapter=adapter,  # type: ignore[arg-type]
-        store=store,  # type: ignore[arg-type]
-        title_fn=None,
-        title_enabled=False,
-        client=None,
-    )
-    controller.partition = part()
-
-    # Build a branched record:
-    # n_0001(user:q1) -> n_0002(asst:a1) -> n_0003(user:q2) -> n_0004(asst:a2)
-    #                                     -> n_0005(user:q2-edited) -> n_0006(asst:a2-new)
-    rec = new_conversation_record(title="t")
-    rec.append_linear([{"role": "user", "content": "q1"}], ui=[msg("user")])
-    rec.append_linear(
-        [{"role": "assistant", "content": "a1"}], ui=[msg("assistant")]
-    )
-    rec.append_linear([{"role": "user", "content": "q2"}], ui=[msg("user")])
-    rec.append_linear(
-        [{"role": "assistant", "content": "a2"}], ui=[msg("assistant")]
-    )
-    # Branch at n_0002: create sibling of n_0003
-    branch_from(
-        rec,
-        "n_0002",
-        [{"role": "user", "content": "q2-edited"}],
-        ui=[msg("user")],
-    )
-    branch_from(
-        rec,
-        "n_0005",
-        [{"role": "assistant", "content": "a2-new"}],
-        ui=[msg("assistant")],
-    )
-    # Active path: [n_0001, n_0002, n_0005, n_0006]
-    controller.record = rec
-    adapter.turns = rec.path_turns()
-    return controller, chat, adapter, store
-
-
-@pytest.mark.anyio
-async def test_handle_navigate_switches_to_prev_sibling():
-    controller, chat, adapter, store = _make_branched_controller()
-
-    await controller.handle_navigate(2, "prev")
-
-    assert controller.record is not None
-    assert controller.record.current_leaf == "n_0004"
-    assert [t.get("content") for t in adapter.turns] == ["q1", "a1", "q2", "a2"]
-    assert chat.cleared
-    assert len(chat.messages_) == 4
-    assert len(store.put_calls) == 1
-
-
-@pytest.mark.anyio
-async def test_handle_navigate_switches_to_next_sibling():
-    controller, chat, adapter, store = _make_branched_controller()
-
-    await controller.handle_navigate(2, "prev")
-    chat.cleared = False
-    store.put_calls.clear()
-
-    await controller.handle_navigate(2, "next")
-
-    assert controller.record is not None
-    assert controller.record.current_leaf == "n_0006"
-    assert [t.get("content") for t in adapter.turns] == [
-        "q1",
-        "a1",
-        "q2-edited",
-        "a2-new",
-    ]
-
-
-@pytest.mark.anyio
-async def test_handle_navigate_noop_at_boundary():
-    controller, chat, adapter, store = _make_branched_controller()
-
-    await controller.handle_navigate(2, "next")
-
-    assert not chat.cleared
-    assert store.put_calls == []
-
-
-@pytest.mark.anyio
-async def test_handle_navigate_invalid_direction_is_noop():
-    controller, chat, adapter, store = _make_branched_controller()
-    await controller.handle_navigate(2, "invalid")
-    assert not chat.cleared
-    assert store.put_calls == []
-
-
-def _make_triple_branched_controller() -> tuple[
-    HistoryController, _TrackingChat, _TrackingAdapter, _RecordingStore
-]:
-    """Same shape as _make_branched_controller, but the user message at the
-    fork point has been edited twice -- three siblings at one fork point,
-    not two -- to exercise a path no existing fixture covers."""
-    chat = _TrackingChat()
-    adapter = _TrackingAdapter()
-    store = _RecordingStore()
-    controller = HistoryController(
-        chat=chat,  # type: ignore[arg-type]
-        adapter=adapter,  # type: ignore[arg-type]
-        store=store,  # type: ignore[arg-type]
-        title_fn=None,
-        title_enabled=False,
-        client=None,
-    )
-    controller.partition = part()
-
-    # n_0001(user:q1) -> n_0002(asst:a1) -> n_0003(user:q2)      -> n_0004(asst:a2)
-    #                                     -> n_0005(user:q2-e1)  -> n_0006(asst:a2-e1)
-    #                                     -> n_0007(user:q2-e2)  -> n_0008(asst:a2-e2)
-    rec = new_conversation_record(title="t")
-    rec.append_linear([{"role": "user", "content": "q1"}], ui=[msg("user")])
-    rec.append_linear(
-        [{"role": "assistant", "content": "a1"}], ui=[msg("assistant")]
-    )
-    rec.append_linear([{"role": "user", "content": "q2"}], ui=[msg("user")])
-    rec.append_linear(
-        [{"role": "assistant", "content": "a2"}], ui=[msg("assistant")]
-    )
-    branch_from(
-        rec, "n_0002", [{"role": "user", "content": "q2-e1"}], ui=[msg("user")]
-    )
-    branch_from(
-        rec,
-        "n_0005",
-        [{"role": "assistant", "content": "a2-e1"}],
-        ui=[msg("assistant")],
-    )
-    branch_from(
-        rec, "n_0002", [{"role": "user", "content": "q2-e2"}], ui=[msg("user")]
-    )
-    branch_from(
-        rec,
-        "n_0007",
-        [{"role": "assistant", "content": "a2-e2"}],
-        ui=[msg("assistant")],
-    )
-    # Active path: [n_0001, n_0002, n_0007, n_0008]
-    controller.record = rec
-    adapter.turns = rec.path_turns()
-    return controller, chat, adapter, store
-
-
-@pytest.mark.anyio
-async def test_handle_navigate_cycles_through_three_siblings():
-    controller, chat, adapter, store = _make_triple_branched_controller()
-
-    await controller.handle_navigate(2, "prev")
-    assert controller.record is not None
-    assert controller.record.current_leaf == "n_0006"
-    assert [t.get("content") for t in adapter.turns] == [
-        "q1",
-        "a1",
-        "q2-e1",
-        "a2-e1",
-    ]
-
-    await controller.handle_navigate(2, "prev")
-    assert controller.record.current_leaf == "n_0004"
-    assert [t.get("content") for t in adapter.turns] == ["q1", "a1", "q2", "a2"]
-
-    store.put_calls.clear()
-    await controller.handle_navigate(2, "prev")
-    assert controller.record.current_leaf == "n_0004"
-    assert store.put_calls == []
-
-    await controller.handle_navigate(2, "next")
-    assert controller.record.current_leaf == "n_0006"
-    assert [t.get("content") for t in adapter.turns] == [
-        "q1",
-        "a1",
-        "q2-e1",
-        "a2-e1",
-    ]
-
-    await controller.handle_navigate(2, "next")
-    assert controller.record.current_leaf == "n_0008"
-    assert [t.get("content") for t in adapter.turns] == [
-        "q1",
-        "a1",
-        "q2-e2",
-        "a2-e2",
-    ]
-
-    store.put_calls.clear()
-    await controller.handle_navigate(2, "next")
-    assert controller.record.current_leaf == "n_0008"
-    assert store.put_calls == []
-
-
-@pytest.mark.anyio
-async def test_handle_edit_truncates_and_signals_resubmit():
-    controller, chat, adapter, store = _make_branched_controller()
-    chat.messages_ = [
-        msg("user"),
-        msg("assistant"),
-        msg("user"),
-        msg("assistant"),
-    ]
-
-    await controller.handle_edit(2, "q2-re-edited")
-
-    assert controller.record is not None
-    assert controller.record.current_leaf == "n_0002"
-    assert [t.get("content") for t in adapter.turns] == ["q1", "a1"]
-    assert chat.cleared
-    assert len(chat.messages_) == 2
-    update_actions = [
-        a for a in chat.actions if a.get("type") == "update_input"
-    ]
-    assert len(update_actions) == 1
-    assert update_actions[0]["value"] == "q2-re-edited"
-    assert update_actions[0]["submit"] is True
-
-
-@pytest.mark.anyio
-async def test_handle_edit_first_message_truncates_to_root():
-    controller, chat, adapter, store = _make_branched_controller()
-    chat.messages_ = [
-        msg("user"),
-        msg("assistant"),
-        msg("user"),
-        msg("assistant"),
-    ]
-
-    await controller.handle_edit(0, "new-greeting")
-
-    assert controller.record is not None
-    assert controller.record.current_leaf is None
-    assert adapter.turns == []
-    assert chat.messages_ == []
-    update_actions = [
-        a for a in chat.actions if a.get("type") == "update_input"
-    ]
-    assert update_actions[0]["value"] == "new-greeting"
-
-
-@pytest.mark.anyio
-async def test_handle_edit_forks_from_a_multi_turn_tool_call_node():
-    """Edit a message whose parent node is a grouped tool-call exchange
-    (assistant-request/user-result/assistant-final stored as one node, one
-    UI message) -- verifies node_id_for_message_index still maps to the
-    right UI-facing message, and that truncating to that node preserves
-    every turn in the group, not just its last one."""
-    chat = _TrackingChat()
-    adapter = _TrackingAdapter()
-    store = _RecordingStore()
-    controller = HistoryController(
-        chat=chat,  # type: ignore[arg-type]
-        adapter=adapter,  # type: ignore[arg-type]
-        store=store,  # type: ignore[arg-type]
-        title_fn=None,
-        title_enabled=False,
-        client=None,
-    )
-    controller.partition = part()
-
-    # n_0001(user:weather?)                                  ui=[msg(user)]
-    # n_0002(asst_req, user_result, asst_final -- one group)  ui=[msg(assistant)]
-    # n_0003(user:thanks)                                     ui=[msg(user)]
-    # n_0004(asst:you're welcome)                             ui=[msg(assistant)]
-    rec = new_conversation_record(title="t")
-    rec.append_linear(
-        [{"role": "user", "content": "weather?"}], ui=[msg("user")]
-    )
-    rec.append_linear(
-        [
-            {"role": "assistant", "content": "tool_request"},
-            {"role": "user", "content": "tool_result"},
-            {"role": "assistant", "content": "sunny"},
-        ],
-        ui=[msg("assistant")],
-    )
-    rec.append_linear([{"role": "user", "content": "thanks"}], ui=[msg("user")])
-    rec.append_linear(
-        [{"role": "assistant", "content": "you're welcome"}],
-        ui=[msg("assistant")],
-    )
-    controller.record = rec
-    adapter.turns = rec.path_turns()
-    chat.messages_ = [
-        msg("user"),
-        msg("assistant"),
-        msg("user"),
-        msg("assistant"),
-    ]
-
-    await controller.handle_edit(2, "thanks a lot")
-
-    assert controller.record.current_leaf == "n_0002"
-    assert [t.get("content") for t in adapter.turns] == [
-        "weather?",
-        "tool_request",
-        "tool_result",
-        "sunny",
-    ]
-    assert chat.cleared
-    assert len(chat.messages_) == 2
-    update_actions = [
-        a for a in chat.actions if a.get("type") == "update_input"
-    ]
-    assert update_actions[0]["value"] == "thanks a lot"
-    assert update_actions[0]["submit"] is True
-
-
-@pytest.mark.anyio
-async def test_handle_edit_with_attachments_forwards_them_with_set_mode():
-    controller, chat, adapter, store = _make_branched_controller()
-    chat.messages_ = [
-        msg("user"),
-        msg("assistant"),
-        msg("user"),
-        msg("assistant"),
-    ]
-    attachments = [
-        {
-            "mime": "image/png",
-            "data_url": "data:image/png;base64,AAAA",
-            "name": "pic.png",
-            "size": 3,
-        }
-    ]
-
-    await controller.handle_edit(2, "q2-re-edited", attachments)
-
-    update_actions = [
-        a for a in chat.actions if a.get("type") == "update_input"
-    ]
-    assert len(update_actions) == 1
-    assert update_actions[0]["attachment_mode"] == "set"
-    assert update_actions[0]["attachments"] == [
-        {
-            "mime": "image/png",
-            "data_url": "data:image/png;base64,AAAA",
-            "name": "pic.png",
-            "size": 3,
-        }
-    ]
-
-
-@pytest.mark.anyio
-async def test_handle_edit_without_attachments_omits_attachment_fields():
-    controller, chat, adapter, store = _make_branched_controller()
-    chat.messages_ = [
-        msg("user"),
-        msg("assistant"),
-        msg("user"),
-        msg("assistant"),
-    ]
-
-    await controller.handle_edit(2, "q2-re-edited")
-
-    update_actions = [
-        a for a in chat.actions if a.get("type") == "update_input"
-    ]
-    assert "attachments" not in update_actions[0]
-    assert "attachment_mode" not in update_actions[0]
-
-
-@pytest.mark.anyio
-async def test_handle_edit_rejects_unsupported_attachment_type():
-    controller, chat, adapter, store = _make_branched_controller()
-    chat.messages_ = [
-        msg("user"),
-        msg("assistant"),
-        msg("user"),
-        msg("assistant"),
-    ]
-    bad_attachments = [
-        {
-            "mime": "application/x-executable",
-            "data_url": "data:application/x-executable;base64,AAA",
-            "name": "bad.exe",
-            "size": 3,
-        }
-    ]
-
-    with pytest.raises(ValueError, match="unsupported MIME type"):
-        await controller.handle_edit(2, "edited", bad_attachments)
-
-
-@pytest.mark.anyio
-async def test_switch_to_resends_sibling_metadata_for_branched_conversation():
-    chat = _TrackingChat()
-    adapter = _TrackingAdapter()
-    store = InMemoryConversationStore()
-    controller = HistoryController(
-        chat=chat,  # type: ignore[arg-type]
-        adapter=adapter,  # type: ignore[arg-type]
-        store=store,  # type: ignore[arg-type]
-        title_fn=None,
-        title_enabled=False,
-        client=None,
-    )
-    controller.partition = part()
-
-    # Same branched shape as _make_branched_controller:
-    # n_0001(user:q1) -> n_0002(asst:a1) -> n_0003(user:q2) -> n_0004(asst:a2)
-    #                                     -> n_0005(user:q2-edited) -> n_0006(asst:a2-new)
-    rec = new_conversation_record(title="branched")
-    rec.append_linear([{"role": "user", "content": "q1"}], ui=[msg("user")])
-    rec.append_linear(
-        [{"role": "assistant", "content": "a1"}], ui=[msg("assistant")]
-    )
-    rec.append_linear([{"role": "user", "content": "q2"}], ui=[msg("user")])
-    rec.append_linear(
-        [{"role": "assistant", "content": "a2"}], ui=[msg("assistant")]
-    )
-    branch_from(
-        rec,
-        "n_0002",
-        [{"role": "user", "content": "q2-edited"}],
-        ui=[msg("user")],
-    )
-    branch_from(
-        rec,
-        "n_0005",
-        [{"role": "assistant", "content": "a2-new"}],
-        ui=[msg("assistant")],
-    )
-    await store.put(part(), rec)
-
-    other = new_conversation_record(title="other")
-    await store.put(part(), other)
-
-    controller.record = rec
-    adapter.turns = rec.path_turns()
-
-    # Switch to a different conversation, then back -- simulates starting a
-    # new chat and returning to the conversation with edited/branched messages.
-    await controller.switch_to(other.id)
-    chat.actions.clear()
-    await controller.switch_to(rec.id)
-
-    sibling_actions = [
-        a for a in chat.actions if a["type"] == "update_siblings"
-    ]
-    assert len(sibling_actions) == 1
-    # n_0005 (message index 2) is the active branch's fork point: 2nd of 2 siblings.
-    assert sibling_actions[0]["data"] == {2: {"index": 1, "total": 2}}
-
-
-# ---------------------------------------------------------------------------
-# Turns-based restore
-# ---------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def _user_turn_dict(text: str) -> dict[str, Any]:
@@ -10759,460 +9364,26 @@ def _user_turn_dict(text: str) -> dict[str, Any]:
     }
 
 
-class _ToolTurnsAdapter:
-    """Adapter over a fixed chatlas tool-call exchange (user question, then
-    an assistant-request/user-result/assistant-final group)."""
-
-    def __init__(self) -> None:
-        self.user_turn = _user_turn_dict("weather?")
-        self.tool_group = chatlas_tool_group()
-
-    def get_turns_json(self) -> list[Any]:
-        return [self.user_turn, *self.tool_group]
-
-    def get_turns_grouped(self) -> list[list[Any]]:
-        return [[self.user_turn], self.tool_group]
-
-    def set_turns_json(self, turns: list[Any]) -> None:
-        pass
-
-    def client_info(self) -> dict[str, Any]:
-        return {}
-
-
-@pytest.mark.anyio
-async def test_on_response_stores_derived_ui_with_structured_blocks():
-    controller, _store = _make_controller()
-    controller.adapter = _ToolTurnsAdapter()  # type: ignore[assignment]
-
-    await controller.on_response()
-
-    record = controller.record
-    assert record is not None
-    path = record.path_node_ids()
-    assert len(path) == 2
-
-    asst_ui = record.nodes[path[1]].ui
-    assert asst_ui is not None and len(asst_ui) == 1
-    stored = asst_ui[0]
-    assert stored["version"] == STORED_UI_VERSION
-    assert stored["role"] == "assistant"
-    assert [s["type"] for s in stored["segments"] if "type" in s] == [
-        "tool_request",
-        "tool_result",
-    ]
-    assert stored["segments"][0]["tool_name"] == "get_weather"
-    assert stored["segments"][1]["value"] == "Sunny"
-    assert stored["segments"][2] == {
-        "content": "It's sunny.",
-        "content_type": "markdown",
-    }
-
-
-@pytest.mark.anyio
-async def test_replay_emits_derived_blocks_inline_in_segments():
-    from shiny.express._stub_session import ExpressStubSession
-    from shiny.session import session_context
-    from shinychat import Chat
-
-    with session_context(ExpressStubSession()):
-        chat = Chat(id="chat_replay_blocks")
-        sent: list[dict[str, Any]] = []
-
-        async def _capture(action: Any, deps: Any = None) -> None:
-            sent.append(action)
-
-        chat._send_action = _capture  # type: ignore[method-assign]
-
-        controller = HistoryController(
-            chat=chat,  # type: ignore[arg-type]
-            adapter=_ToolTurnsAdapter(),  # type: ignore[arg-type]
-            store=_RecordingStore(),
-            title_fn=None,
-            title_enabled=False,
-            client=None,
-        )
-        controller.partition = part()
-
-        await controller.on_response()
-        record = controller.record
-        assert record is not None
-
-        sent.clear()
-        await controller.replay_ui(record)
-
-    message_actions = [a for a in sent if a["type"] == "message"]
-    assert len(message_actions) == 2
-
-    asst_segments = message_actions[1]["message"]["segments"]
-    kinds = [s.get("type", "string") for s in asst_segments]
-    assert kinds == ["tool_request", "tool_result", "string"]
-    assert asst_segments[0]["request_id"] == "x"
-    assert asst_segments[1]["status"] == "success"
-    assert asst_segments[2] == {
-        "content": "It's sunny.",
-        "content_type": "markdown",
-    }
-
-
-@pytest.mark.anyio
-async def test_replay_discards_old_format_ui_and_rederives_from_turns():
-    rec = new_conversation_record(title="t")
-    rec.append_linear([_user_turn_dict("weather?")], ui=[msg("user")])
-    rec.append_linear(
-        chatlas_tool_group(),
-        ui=[
-            {
-                "role": "assistant",
-                "segments": [
-                    {"content": "It's sunny.", "content_type": "markdown"}
-                ],
-            }
-        ],
-    )
-
-    chat = _TrackingChat()
-    controller, _store = _make_controller()
-    controller.chat = chat  # type: ignore[assignment]
-
-    await controller.replay_ui(rec)
-
-    assert len(chat.messages_) == 2
-    assert chat.messages_[0]["version"] == STORED_UI_VERSION
-    assert chat.messages_[0]["segments"] == [
-        {"content": "weather?", "content_type": "markdown"}
-    ]
-    asst = chat.messages_[1]
-    assert asst["version"] == STORED_UI_VERSION
-    assert [s["type"] for s in asst["segments"] if "type" in s] == [
-        "tool_request",
-        "tool_result",
-    ]
-
-
-@pytest.mark.anyio
-async def test_attachment_message_round_trips_through_history():
-    attachment = {
-        "mime": "text/plain",
-        "name": "notes.txt",
-        "size": 5,
-        "data_url": "data:text/plain;base64,aGVsbG8=",
-    }
-    store = InMemoryConversationStore()
-    partition = part()
-
-    chat = _TrackingChat()
-    adapter = _TrackingAdapter()
-    controller = HistoryController(
-        chat=chat,  # type: ignore[arg-type]
-        adapter=adapter,  # type: ignore[arg-type]
-        store=store,
-        title_fn=None,
-        title_enabled=False,
-        client=None,
-    )
-    controller.partition = partition
-    adapter.turns = [
-        {
-            "role": "user",
-            "contents": [
-                {"content_type": "text", "text": "See attached"},
-                {
-                    "content_type": "text",
-                    "text": (
-                        '<file-attachment name="notes.txt" '
-                        'type="text/plain">\n'
-                        "hello\n"
-                        "</file-attachment>"
-                    ),
-                },
-            ],
-        },
-        {"role": "assistant", "content": "Thanks"},
-    ]
-    chat.messages_ = [
-        {
-            "role": "user",
-            "segments": [
-                {"content": "See attached", "content_type": "markdown"}
-            ],
-            "attachments": [attachment],
-        },
-        {
-            "role": "assistant",
-            "segments": [{"content": "Thanks", "content_type": "markdown"}],
-        },
-    ]
-
-    await controller.on_response()
-    conversations = await store.list(partition)
-    assert len(conversations) == 1
-
-    restored_chat = _TrackingChat()
-    restored = HistoryController(
-        chat=restored_chat,  # type: ignore[arg-type]
-        adapter=_TrackingAdapter(),  # type: ignore[arg-type]
-        store=store,
-        title_fn=None,
-        title_enabled=False,
-        client=None,
-    )
-    restored.partition = partition
-    await restored.switch_to(conversations[0].id)
-
-    assert len(restored_chat.messages_) == 2
-    restored_user = restored_chat.messages_[0]
-    assert restored_user["role"] == "user"
-    assert restored_user["segments"] == [
-        {"content": "See attached", "content_type": "markdown"}
-    ]
-    assert restored_user["attachments"] == [attachment]
-    assert restored_chat.messages_[1]["segments"] == [
-        {"content": "Thanks", "content_type": "markdown"}
-    ]
-
-
-@pytest.mark.anyio
-async def test_replay_repairs_attachment_content_in_existing_record():
-    attachment = {
-        "mime": "text/plain",
-        "name": "notes.txt",
-        "size": 5,
-        "data_url": "data:text/plain;base64,aGVsbG8=",
-    }
-    rec = new_conversation_record(title="t")
-    rec.append_linear(
-        [],
-        ui=[
-            {
-                "version": STORED_UI_VERSION,
-                "role": "user",
-                "segments": [
-                    {
-                        "content": (
-                            "See attached\n\n"
-                            '<file-attachment name="notes.txt" '
-                            'type="text/plain">\n'
-                            "hello\n"
-                            "</file-attachment>"
-                        ),
-                        "content_type": "markdown",
-                    }
-                ],
-                "attachments": [attachment],
-            }
-        ],
-    )
-
-    chat = _TrackingChat()
-    controller, _store = _make_controller()
-    controller.chat = chat  # type: ignore[assignment]
-
-    await controller.replay_ui(rec)
-
-    assert chat.messages_ == [
-        {
-            "version": STORED_UI_VERSION,
-            "role": "user",
-            "segments": [
-                {"content": "See attached", "content_type": "markdown"}
-            ],
-            "attachments": [attachment],
-        }
-    ]
-
-
-@pytest.mark.anyio
-async def test_replay_preserves_cleaned_text_matching_pdf_filename():
-    attachment = {
-        "mime": "application/pdf",
-        "name": "report.pdf",
-        "size": 4,
-        "data_url": "data:application/pdf;base64,JVBERg==",
-    }
-    rec = new_conversation_record(title="t")
-    extend_record_linear(
-        rec,
-        [
-            [
-                {
-                    "role": "user",
-                    "contents": [
-                        {"content_type": "text", "text": "report.pdf"},
-                        {
-                            "content_type": "pdf",
-                            "data": "JVBERg==",
-                            "filename": "report.pdf",
-                        },
-                    ],
-                }
-            ]
-        ],
-        [
-            {
-                "role": "user",
-                "segments": [
-                    {"content": "report.pdf", "content_type": "markdown"}
-                ],
-                "attachments": [attachment],
-            }
-        ],
-        ui_offset=0,
-    )
-    stored = rec.nodes[rec.path_node_ids()[0]].ui
-    assert stored is not None
-    assert stored[0]["attachment_content_stripped"] is True
-
-    chat = _TrackingChat()
-    controller, _store = _make_controller()
-    controller.chat = chat  # type: ignore[assignment]
-
-    await controller.replay_ui(rec)
-    assert chat.messages_[0]["segments"] == [
-        {"content": "report.pdf", "content_type": "markdown"}
-    ]
-
-    await controller.replay_ui(rec)
-    assert chat.messages_[0]["segments"] == [
-        {"content": "report.pdf", "content_type": "markdown"}
-    ]
-
-
-@pytest.mark.anyio
-async def test_replay_falls_back_to_text_when_turns_missing():
-    rec = new_conversation_record(title="t")
-    node_id = rec.append_linear([], ui=None)
-
-    chat = _TrackingChat()
-    controller, _store = _make_controller()
-    controller.chat = chat  # type: ignore[assignment]
-
-    await controller.replay_ui(rec)
-
-    assert chat.messages_ == [
-        {
-            "version": STORED_UI_VERSION,
-            "role": "assistant",
-            "segments": [{"content": "", "content_type": "markdown"}],
-        }
-    ]
-    assert rec.nodes[node_id].ui is None
-
-
-@pytest.mark.anyio
-async def test_replay_rederives_text_only_when_ui_missing():
-    rec = new_conversation_record(title="t")
-    rec.append_linear([_user_turn_dict("hi")], ui=None)
-    rec.append_linear(
-        [
-            {
-                "role": "assistant",
-                "contents": [{"content_type": "text", "text": "hello"}],
-            }
-        ],
-        ui=None,
-    )
-
-    chat = _TrackingChat()
-    controller, _store = _make_controller()
-    controller.chat = chat  # type: ignore[assignment]
-
-    await controller.replay_ui(rec)
-
-    assert chat.messages_ == [
-        derived("user", "hi"),
-        derived("assistant", "hello"),
-    ]
-
-
-@pytest.mark.anyio
-async def test_out_of_band_message_survives_save_and_replay():
-    controller, _store = _make_controller()
-    chat = _TrackingChat()
-    controller.chat = chat  # type: ignore[assignment]
-    adapter = _ToolTurnsAdapter()
-    controller.adapter = adapter  # type: ignore[assignment]
-
-    note = {
-        "role": "assistant",
-        "segments": [
-            {
-                "content": "Note: rate limit reset.",
-                "content_type": "markdown",
-            }
-        ],
-    }
-    chat.messages_ = [msg("user"), msg("assistant"), note]
-
-    await controller.on_response()
-
-    record = controller.record
-    assert record is not None
-    path = record.path_node_ids()
-    leaf_ui = record.nodes[path[1]].ui
-    assert leaf_ui is not None and len(leaf_ui) == 2
-    assert leaf_ui[0]["version"] == STORED_UI_VERSION
-    assert leaf_ui[1] == note
-
-    chat.messages_ = []
-    await controller.replay_ui(record)
-
-    assert len(chat.messages_) == 3
-    assert chat.messages_[2] == note
-    assert [
-        s["type"] for s in chat.messages_[1]["segments"] if "type" in s
-    ] == [
-        "tool_request",
-        "tool_result",
-    ]
-
-
-@pytest.mark.anyio
-async def test_save_replay_continue_save_bookkeeping():
-    controller, store = _make_controller()
-    chat = _ReplayFakeChat()
-    controller.chat = chat  # type: ignore[assignment]
-    adapter = _GrowingFakeAdapter()
-    controller.adapter = adapter  # type: ignore[assignment]
-    adapter.turns = [
-        {"role": "user", "content": "hi"},
-        {"role": "assistant", "content": "hello"},
-    ]
-
-    await controller.on_response()
-    assert len(store.put_calls) == 1
-    record = controller.record
-    assert record is not None
-
-    await controller.replay_ui(record)
-    assert controller.ui_offset == 2
-
-    await controller.on_response()
-    assert len(store.put_calls) == 1
-
-    adapter.turns += [
-        {"role": "user", "content": "more"},
-        {"role": "assistant", "content": "sure"},
-    ]
-    chat.messages = [
-        *chat.messages,
-        msg("user"),
-        msg("assistant"),
-    ]
-    await controller.on_response()
-    assert len(store.put_calls) == 2
-    assert len(record.path_node_ids()) == 4
-    new_node = record.nodes[record.path_node_ids()[3]]
-    assert new_node.ui == [derived("assistant", "sure")]
-
-
-# --- v1-era custom store compatibility (e0x2, plan §7.6 / D1) ----------------
-#
-# D1's compat promise: custom stores written against the released v1 API keep
-# working under the versioned record types. The v1 record material below is
-# the py 0.7.0 matrix case (tests/shared/history-v1-import-matrix.json) read
-# through the production FileConversationStore, so it is exactly what a
-# released writer put on disk -- not hand-rolled fixture data.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 _MATRIX_PATH = (
     Path(__file__).resolve().parents[2]
@@ -11355,7 +9526,6 @@ async def test_v1_era_custom_store_model_validate_yields_v2(tmp_path: Path):
     # are unavailable, which is covered elsewhere).
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=_FakeAdapter(chatlas=True),
     )
 
@@ -11382,7 +9552,6 @@ async def test_custom_store_returning_a_v1_instance_upgrades_on_read(
     store = _V1InstanceReturningStore(v1_record)
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=_FakeAdapter(chatlas=True),
     )
 
@@ -11411,7 +9580,6 @@ async def test_upgraded_v1_record_writes_back_as_v2_on_its_next_save(
 
     controller, _ = _make_controller(
         store=store,
-        use_exchange_tree=True,
         adapter=_FakeAdapter(chatlas=True),
     )
     await controller.switch_to(v1_record.id)
@@ -11430,3 +9598,93 @@ async def test_upgraded_v1_record_writes_back_as_v2_on_its_next_save(
     assert isinstance(stored, ConversationRecordV2)
     assert stored is recorder.record
     assert stored.schema_version == 2
+
+
+# --- rename/delete/switch guards (previously the shared v1 behavior matrix)
+#
+# These engine-independent controller guards used to be pinned cross-language
+# by tests/shared/history-behavior-matrix.json, whose Python harness ran the
+# v1 runtime and died with it (shinychat#4b9z). R keeps consuming the fixture
+# until Phase 6 re-derives the matrix for the single v2 engine; these unit
+# pins keep the guards themselves covered in Python until then.
+
+
+async def _recorder_with_active_record() -> tuple[
+    HistoryController, InMemoryConversationStore, str
+]:
+    """A v2 controller whose recorder owns one settled record."""
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(store=store)
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "hello")
+    )
+    assert recorder.record is not None
+    return controller, store, recorder.record.id
+
+
+@pytest.mark.anyio
+async def test_rename_normalizes_and_truncates_title_at_max_length():
+    from shinychat._history_title import MAX_TITLE_LEN
+
+    controller, store, active_id = await _recorder_with_active_record()
+    title = "  New   Title  " + "x" * 40
+
+    await controller.rename(active_id, title[: MAX_TITLE_LEN + 10])
+
+    stored = await store.get(part(), active_id)
+    assert stored is not None
+    assert stored.title == ("New Title " + "x" * 40)[:MAX_TITLE_LEN]
+    assert stored.title_source == "user"
+
+
+@pytest.mark.anyio
+async def test_rename_empty_title_is_noop():
+    controller, store, active_id = await _recorder_with_active_record()
+
+    await controller.rename(active_id, "   ")
+
+    stored = await store.get(part(), active_id)
+    assert stored is not None
+    assert stored.title_source is None
+
+
+@pytest.mark.anyio
+async def test_rename_nonexistent_conversation_id_is_noop():
+    controller, store, active_id = await _recorder_with_active_record()
+    recorder = controller._exchange_recorder
+    assert recorder.record is not None
+    before = recorder.record.model_dump(mode="json")
+
+    await controller.rename("does-not-exist", "New Title")
+
+    assert recorder.record.model_dump(mode="json") == before
+    assert await store.get(part(), "does-not-exist") is None
+
+
+@pytest.mark.anyio
+async def test_delete_nonexistent_conversation_id_is_noop():
+    controller, store, active_id = await _recorder_with_active_record()
+    recorder = controller._exchange_recorder
+    assert recorder.record is not None
+
+    await controller.delete("does-not-exist")
+
+    assert recorder.record is not None
+    assert controller._active_id_now() == active_id
+    assert await store.get(part(), active_id) is not None
+
+
+@pytest.mark.anyio
+async def test_switch_to_same_active_id_is_noop():
+    controller, store, active_id = await _recorder_with_active_record()
+    recorder = controller._exchange_recorder
+    assert recorder.record is not None
+    before = recorder.record.model_dump(mode="json")
+    assert controller._active_id_now() == active_id
+
+    await controller.switch_to(active_id)
+
+    assert recorder.record.model_dump(mode="json") == before
+    assert controller._active_id_now() == active_id

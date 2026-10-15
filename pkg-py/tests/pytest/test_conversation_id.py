@@ -101,15 +101,6 @@ def make_turns(
     ]
 
 
-def ui_messages(*texts: str) -> list[dict[str, Any]]:
-    roles = ["user", "assistant"]
-    return [
-        {
-            "role": roles[i % 2],
-            "segments": [{"content": text, "content_type": "markdown"}],
-        }
-        for i, text in enumerate(texts)
-    ]
 
 
 class MockClient:
@@ -182,16 +173,6 @@ def make_controller(
     return ctrl
 
 
-async def save_response(
-    ctrl: HistoryController,
-    client: MockClient,
-    chat: StubChat,
-    *texts: str,
-) -> None:
-    """Simulate a completed exchange and its save trigger."""
-    client.set_turns(client.get_turns() + make_turns(*texts))
-    chat.messages = [*chat.messages, *ui_messages(*texts)]
-    await ctrl.on_response()
 
 
 def active_id(ctrl: HistoryController) -> str | None:
@@ -229,182 +210,22 @@ def test_ensure_conversation_id_allocates_once_and_is_stable():
     run_async(main)
 
 
-def test_first_saved_record_uses_preallocated_id():
-    async def main() -> None:
-        chat = StubChat()
-        client = MockClient()
-        ctrl = make_controller(client=client, chat=chat)
-
-        id = await ctrl.ensure_conversation_id()
-        await save_response(ctrl, client, chat)
-
-        assert ctrl.record is not None
-        assert ctrl.record.id == id
-        assert active_id(ctrl) == id
-
-    run_async(main)
 
 
-def test_first_save_without_ensure_allocates_at_save_time():
-    # Standalone history users never call ensure_conversation_id(); the save
-    # path must still converge on a single ID shared by record and identity.
-    async def main() -> None:
-        chat = StubChat()
-        client = MockClient()
-        ctrl = make_controller(client=client, chat=chat)
-
-        await save_response(ctrl, client, chat)
-
-        assert ctrl.record is not None
-        assert active_id(ctrl) == ctrl.record.id
-
-    run_async(main)
 
 
-def test_later_saves_keep_the_same_id():
-    async def main() -> None:
-        chat = StubChat()
-        client = MockClient()
-        ctrl = make_controller(client=client, chat=chat)
-
-        id = await ctrl.ensure_conversation_id()
-        await save_response(ctrl, client, chat, "Hi", "Hello")
-        await save_response(ctrl, client, chat, "Again", "Reply")
-
-        assert ctrl.record is not None
-        assert ctrl.record.id == id
-        assert active_id(ctrl) == id
-
-    run_async(main)
 
 
-def test_switch_to_adopts_the_stored_record_id():
-    async def main() -> None:
-        chat = StubChat()
-        client = MockClient()
-        ctrl = make_controller(client=client, chat=chat)
-
-        id1 = await ctrl.ensure_conversation_id()
-        await save_response(ctrl, client, chat, "One", "Reply one")
-
-        await ctrl.new_chat()
-        assert active_id(ctrl) is None
-
-        id2 = await ctrl.ensure_conversation_id()
-        assert id2 != id1
-        await save_response(ctrl, client, chat, "Two", "Reply two")
-
-        await ctrl.switch_to(id1)
-        assert active_id(ctrl) == id1
-        assert ctrl.record is not None and ctrl.record.id == id1
-
-        await ctrl.switch_to(id2)
-        assert active_id(ctrl) == id2
-        assert ctrl.record is not None and ctrl.record.id == id2
-
-    run_async(main)
 
 
-def test_failed_switch_leaves_the_current_id_unchanged():
-    async def main() -> None:
-        chat = StubChat()
-        client = MockClient()
-        ctrl = make_controller(client=client, chat=chat)
-
-        id = await ctrl.ensure_conversation_id()
-        await save_response(ctrl, client, chat)
-
-        with pytest.raises(RuntimeError, match="no longer exists"):
-            await ctrl.switch_to("c_nonexistent")
-        assert active_id(ctrl) == id
-        assert ctrl.record is not None and ctrl.record.id == id
-
-    run_async(main)
 
 
-def test_edit_and_sibling_navigation_retain_the_id():
-    async def main() -> None:
-        chat = StubChat()
-        client = MockClient()
-        ctrl = make_controller(client=client, chat=chat)
-
-        id = await ctrl.ensure_conversation_id()
-        await save_response(ctrl, client, chat, "Hi", "Hello")
-        assert active_id(ctrl) == id
-
-        # Fork the conversation by editing the first message, then navigate
-        # between the sibling branches: the ID must not move.
-        await ctrl.handle_edit(0, "Hi again")
-        assert active_id(ctrl) == id
-
-        # The edit replays a truncated (empty) conversation; the resubmit's
-        # exchange then arrives as new turns + reported messages.
-        await save_response(ctrl, client, chat, "Hi again", "New reply")
-        assert active_id(ctrl) == id
-
-        await ctrl.handle_navigate(0, "prev")
-        assert active_id(ctrl) == id
-        assert ctrl.record is not None and ctrl.record.id == id
-
-    run_async(main)
 
 
-def test_new_chat_clears_the_id_and_next_submission_reallocates():
-    async def main() -> None:
-        chat = StubChat()
-        client = MockClient()
-        ctrl = make_controller(client=client, chat=chat)
-
-        id1 = await ctrl.ensure_conversation_id()
-        await save_response(ctrl, client, chat)
-
-        await ctrl.new_chat()
-        assert ctrl.record is None
-        assert active_id(ctrl) is None
-
-        id2 = await ctrl.ensure_conversation_id()
-        assert id2 != id1
-
-    run_async(main)
 
 
-def test_deleting_the_active_conversation_clears_the_id():
-    async def main() -> None:
-        chat = StubChat()
-        client = MockClient()
-        ctrl = make_controller(client=client, chat=chat)
-
-        id = await ctrl.ensure_conversation_id()
-        await save_response(ctrl, client, chat)
-
-        await ctrl.delete(id)
-        assert ctrl.record is None
-        assert active_id(ctrl) is None
-
-    run_async(main)
 
 
-def test_on_active_id_change_fires_on_allocation_and_clearing_not_save():
-    async def main() -> None:
-        chat = StubChat()
-        client = MockClient()
-        ctrl = make_controller(client=client, chat=chat)
-
-        calls: list[str | None] = []
-
-        async def on_change(id: str | None) -> None:
-            calls.append(id)
-
-        ctrl.on_active_id_change = on_change
-
-        id = await ctrl.ensure_conversation_id()
-        await ctrl.ensure_conversation_id()  # stable: no refire
-        await save_response(ctrl, client, chat)  # same ID: no refire
-        await ctrl.new_chat()  # cleared: fires None
-
-        assert calls == [id, None]
-
-    run_async(main)
 
 
 def test_new_chat_announces_cleared_id_even_from_empty_draft():
@@ -529,6 +350,11 @@ def make_chat(
     # input, Inputs auto-populates a read-only Value that can no longer be
     # set() to simulate later submissions.
     sess.input["chat_user_input"] = reactive.Value()
+    # The browser-mode initial history effect suspends on a missing
+    # current_id input (the real client always sends it with the browser
+    # token); without it the initial decision never completes and every
+    # history action stays unadmitted.
+    sess.input["chat_history_current_id"] = reactive.Value(None)
     if history is None:
         history = HistoryOptions(store="memory", title=None)
     with session_context(sess):
@@ -640,8 +466,13 @@ def test_public_id_matches_the_stored_record():
         mock.set_turns(make_turns())
         await ctrl.on_response()
 
-        assert ctrl.record is not None
-        assert public_conversation_id(chat) == ctrl.record.id
+        recorder = ctrl._exchange_recorder
+        assert recorder.record is not None
+        assert public_conversation_id(chat) == recorder.record.id
+        stored_partition = ctrl.partition
+        assert stored_partition is not None
+        stored = await ctrl.store.get(stored_partition, recorder.record.id)
+        assert stored is not None and stored.id == public_conversation_id(chat)
 
     run_async(main)
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import sys
 import warnings
-from contextlib import nullcontext
 from copy import deepcopy
 from typing import Any, Awaitable, Callable, cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -481,7 +480,6 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
     handlers: dict[str, Callable[[], Awaitable[None]]] = {}
 
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", _capture_history_effects(handlers)),
         session_context(cast(Any, session)),
     ):
@@ -637,7 +635,6 @@ async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> N
     handlers: dict[str, Callable[[], Awaitable[None]]] = {}
 
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", _capture_history_effects(handlers)),
         session_context(cast(Any, session)),
     ):
@@ -711,7 +708,6 @@ async def test_v2_initial_readiness_flips_after_history_update_send() -> None:
     session = _LiveSession()
     handlers: dict[str, Callable[[], Awaitable[None]]] = {}
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", _capture_history_effects(handlers)),
         session_context(cast(Any, session)),
     ):
@@ -776,7 +772,6 @@ async def test_v2_successful_bookmark_pointer_suppresses_then_admits_root_append
     handlers: dict[str, Callable[[], Awaitable[None]]] = {}
 
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", _capture_history_effects(handlers)),
         session_context(cast(Any, session)),
     ):
@@ -838,7 +833,6 @@ async def test_v2_initial_readiness_rejects_direct_input_without_mutation() -> (
     handlers: dict[str, Callable[[], Awaitable[None]]] = {}
 
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", _capture_history_effects(handlers)),
         session_context(cast(Any, session)),
     ):
@@ -875,25 +869,11 @@ async def test_v2_initial_readiness_rejects_direct_input_without_mutation() -> (
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize(
-    ("use_exchange_tree", "transition_protocol"),
-    [(False, "completion-v1"), (True, "completion-v2")],
-)
-async def test_history_enabled_startup_preserves_source_protocol(
-    use_exchange_tree: bool,
-    transition_protocol: str,
-) -> None:
+async def test_history_enabled_startup_advertises_completion_v2() -> None:
     session = _LiveSession()
-    with (
-        patch.object(
-            history_module,
-            "_EXCHANGE_TREE_HISTORY_V2",
-            use_exchange_tree,
-        ),
-        session_context(cast(Any, session)),
-    ):
+    with session_context(cast(Any, session)):
         chat = Chat(
-            f"history_enabled_{use_exchange_tree}",
+            "history_enabled_v2",
             client=cast(Any, _MockClient()),
             history=HistoryOptions(
                 store="memory",
@@ -913,7 +893,7 @@ async def test_history_enabled_startup_preserves_source_protocol(
             "enabled": True,
             "conversations": [],
             "active_id": None,
-            "transition_protocol": transition_protocol,
+            "transition_protocol": "completion-v2",
         }
     ]
     assert chat.history._started is True
@@ -943,7 +923,6 @@ async def test_v2_server_bookmark_stamps_atomic_history_pointer_only() -> None:
         return decorator if handler is None else decorator(handler)
 
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", capture_effect),
         session_context(cast(Any, session)),
     ):
@@ -1015,7 +994,6 @@ async def test_v2_stale_server_bookmark_pointer_notifies_and_keeps_draft() -> No
 
     notification = MagicMock()
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", capture_effect),
         patch("shiny.ui.notification_show", notification),
         session_context(cast(Any, session)),
@@ -1097,7 +1075,6 @@ async def test_v2_initial_restore_preflight_failure_recovers(
         return decorator if handler is None else decorator(handler)
 
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", capture_effect),
         session_context(cast(Any, session)),
     ):
@@ -1188,7 +1165,6 @@ async def test_v2_initial_restore_preflight_cancellation_recovers_once() -> None
     handlers: dict[str, Callable[[], Awaitable[None]]] = {}
 
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", _capture_history_effects(handlers)),
         session_context(cast(Any, session)),
     ):
@@ -1289,7 +1265,6 @@ async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> No
         return decorator if handler is None else decorator(handler)
 
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", capture_effect),
         session_context(cast(Any, session)),
     ):
@@ -1405,7 +1380,6 @@ async def test_v2_bookmark_settlement_updates_url_and_deletes_replaced_state() -
         return decorator if handler is None else decorator(handler)
 
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", capture_effect),
         session_context(cast(Any, session)),
     ):
@@ -1476,7 +1450,6 @@ async def test_v2_bookmark_switch_restore_soft_navigates_without_reload(
 
 
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", _capture_history_effects({})),
         session_context(cast(Any, session)),
     ):
@@ -1536,7 +1509,6 @@ async def test_v2_bookmark_eviction_clears_bookmark_state_for_v2_records():
 
     store = InMemoryConversationStore()
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", _capture_history_effects({})),
         session_context(cast(Any, session)),
     ):
@@ -1609,7 +1581,6 @@ async def test_v2_bookmark_eviction_of_v1_record_clears_state():
 
     store = InMemoryConversationStore()
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", _capture_history_effects({})),
         session_context(cast(Any, session)),
     ):
@@ -1651,7 +1622,6 @@ async def test_v2_non_bookmark_modes_wire_no_switch_restore_navigator(
 
 
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", _capture_history_effects({})),
         session_context(cast(Any, session)),
     ):
@@ -1714,14 +1684,8 @@ async def test_history_transition_completion_always_matches_request(
 
         return decorator if handler is None else decorator(handler)
 
-    v2_navigation = (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True)
-        if operation == "navigate"
-        else nullcontext()
-    )
     with (
         patch.object(reactive, "effect", capture_effect),
-        v2_navigation,
         session_context(cast(Any, session)),
     ):
         chat = Chat(
@@ -1823,14 +1787,8 @@ async def test_history_transition_legacy_payload_does_not_send_completion(
 
         return decorator if handler is None else decorator(handler)
 
-    v2_navigation = (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True)
-        if operation == "navigate"
-        else nullcontext()
-    )
     with (
         patch.object(reactive, "effect", capture_effect),
-        v2_navigation,
         session_context(cast(Any, session)),
     ):
         chat = Chat(
@@ -1883,7 +1841,6 @@ async def test_v2_message_actions_reject_before_initial_history_readiness(
     store = InMemoryConversationStore()
     handlers: dict[str, Callable[[], Awaitable[None]]] = {}
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", _capture_history_effects(handlers)),
         session_context(cast(Any, session)),
     ):
@@ -1962,7 +1919,6 @@ async def test_v2_new_chat_drawer_action_rejects_before_initial_history_readines
     store = InMemoryConversationStore()
     handlers: dict[str, Callable[[], Awaitable[None]]] = {}
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", _capture_history_effects(handlers)),
         session_context(cast(Any, session)),
     ):
@@ -2035,7 +1991,6 @@ async def test_v2_client_new_chat_closes_record_and_renews_greeting(
     session = _LiveSession()
     store = FileConversationStore(tmp_path)
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         session_context(cast(Any, session)),
     ):
         chat = Chat(
@@ -2140,7 +2095,6 @@ async def test_v2_client_new_chat_rejected_before_initial_history_readiness() ->
 ):
     session = _LiveSession()
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         patch.object(reactive, "effect", _capture_history_effects({})),
         session_context(cast(Any, session)),
     ):
@@ -2220,14 +2174,8 @@ async def test_completion_delivery_failure_does_not_mask_transition_outcome(
 
         return decorator if handler is None else decorator(handler)
 
-    v2_navigation = (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True)
-        if operation == "navigate"
-        else nullcontext()
-    )
     with (
         patch.object(reactive, "effect", capture_effect),
-        v2_navigation,
         session_context(cast(Any, session)),
     ):
         chat = Chat(
@@ -2240,9 +2188,10 @@ async def test_completion_delivery_failure_does_not_mask_transition_outcome(
     controller = chat.history._controller
     assert controller is not None
     controller.partition = cast(Any, object())
-    if operation == "navigate":
-        # Model an admitted post-initialization v2 action.
-        chat.history._initial_history_initialized = True
+    # Model an admitted post-initialization v2 action: every message/drawer
+    # transition effect drops requests that land before the initial history
+    # decision, so the operation itself needs an admitted session.
+    chat.history._initial_history_initialized = True
 
     if outcome == "failure":
         operation_fn = AsyncMock(side_effect=RuntimeError("expected failure"))
@@ -2389,7 +2338,6 @@ async def _make_initialized_live_v2_chat(
     client = _MockClient()
     store = FileConversationStore(tmp_path)
     with (
-        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
         session_context(cast(Any, session)),
     ):
         chat = Chat(

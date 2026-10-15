@@ -18,7 +18,6 @@ from shiny import Session, reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat
-from shinychat import _history as history_module
 from shinychat._attachments import Attachment
 from shinychat._chat_normalize import message_content, message_content_chunk
 from shinychat._chat_types import (
@@ -29,15 +28,10 @@ from shinychat._chat_types import (
     StoredMessage,
     StoredSegment,
 )
-from shinychat._history import HistoryController, HistoryOptions
-from shinychat._history_store import (
-    ConversationPartition,
-    InMemoryConversationStore,
-)
+from shinychat._history import HistoryOptions
 from shinychat._history_types import (
     HISTORY_ERROR_STREAM_START,
     HISTORY_ERROR_STREAM_TERMINAL,
-    new_conversation_record,
 )
 from shinychat._utils_types import MISSING
 
@@ -801,7 +795,6 @@ def test_v2_terminal_metadata_uses_registered_response_settlement_callback(
             finally:
                 chat.destroy()
 
-    monkeypatch.setattr(history_module, "_EXCHANGE_TREE_HISTORY_V2", True)
     run_async(exercise)
 
     history_updates = [
@@ -851,157 +844,8 @@ def test_response_settlement_auto_bookmarks_source_before_new_chat():
     ]
 
 
-def test_new_chat_drains_response_into_the_original_history_record_once():
-    class _HistoryAdapter:
-        def __init__(self) -> None:
-            self.turns = [
-                {"role": "user", "content": "prompt"},
-                {"role": "assistant", "content": "source response"},
-            ]
-
-        def get_turns_json(self) -> list[dict[str, str]]:
-            return list(self.turns)
-
-        def get_turns_grouped(self) -> list[list[dict[str, str]]]:
-            return [[turn] for turn in self.turns]
-
-        def set_turns_json(self, turns: list[dict[str, str]]) -> None:
-            self.turns = list(turns)
-
-        def client_info(self) -> dict[str, str]:
-            return {}
-
-    with session_context(test_session):
-        chat = Chat("response_settlement_history_new_chat", history=False)
-        store = InMemoryConversationStore()
-        controller = HistoryController(
-            chat=chat,
-            adapter=_HistoryAdapter(),  # type: ignore[arg-type]
-            store=store,
-            title_fn=None,
-            title_enabled=False,
-            client=None,
-        )
-        controller.partition = ConversationPartition(
-            chat_id=chat.id, scope="response-settlement"
-        )
-        chat._on_response_settled(controller.on_response)
-
-        run_async(lambda: chat.append_message("source response"))
-        run_async(controller.new_chat)
-        run_async(reactive.flush)
-
-        partition = controller.partition
-        assert partition is not None
-        records = run_async_result(lambda: store.list(partition))
-        assert len(records) == 1
-        record = run_async_result(lambda: store.get(partition, records[0].id))
-
-    assert record is not None
-    assert record.response_count == 1
-    assert controller.record is None
-    assert chat.messages() == ()
 
 
-def test_cancelled_clear_waits_for_the_same_settlement_before_mutating():
-    class _HistoryAdapter:
-        def __init__(self) -> None:
-            self.turns = [
-                {"role": "user", "content": "prompt"},
-                {"role": "assistant", "content": "source response"},
-            ]
-
-        def get_turns_json(self) -> list[dict[str, str]]:
-            return list(self.turns)
-
-        def get_turns_grouped(self) -> list[list[dict[str, str]]]:
-            return [[turn] for turn in self.turns]
-
-        def set_turns_json(self, turns: list[dict[str, str]]) -> None:
-            self.turns = list(turns)
-
-        def client_info(self) -> dict[str, str]:
-            return {}
-
-    with session_context(test_session):
-        chat = Chat("cancelled_new_chat_settlement", history=False)
-        store = InMemoryConversationStore()
-        adapter = _HistoryAdapter()
-        controller = HistoryController(
-            chat=chat,
-            adapter=adapter,  # type: ignore[arg-type]
-            store=store,
-            title_fn=None,
-            title_enabled=False,
-            client=None,
-        )
-        partition = ConversationPartition(chat_id=chat.id, scope="cancelled")
-        controller.partition = partition
-        active = new_conversation_record(title="active")
-        controller.record = active
-        callback_started = asyncio.Event()
-        release_callback = asyncio.Event()
-        first_consumer_calls: list[str] = []
-        second_consumer_calls: list[str] = []
-
-        async def first_consumer() -> None:
-            first_consumer_calls.append("settled")
-
-        async def save_response() -> None:
-            second_consumer_calls.append("started")
-            callback_started.set()
-            await release_callback.wait()
-            await controller.on_response()
-
-        chat._on_response_settled(first_consumer)
-        chat._on_response_settled(save_response)
-
-        async def _exercise() -> None:
-            await store.put(partition, active)
-            await chat.append_message("source response")
-            clear = asyncio.create_task(chat.clear_messages())
-            await callback_started.wait()
-
-            clear.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await clear
-
-            assert first_consumer_calls == ["settled"]
-            assert second_consumer_calls == ["started"]
-            assert chat.messages() == (
-                ChatMessageDict(content="source response", role="assistant"),
-            )
-            assert controller.record is active
-            assert active.response_count == 0
-            assert len(chat._pending_response_settlements) == 1
-
-            retry = asyncio.create_task(chat.clear_messages())
-            await asyncio.sleep(0)
-            assert second_consumer_calls == ["started"]
-            assert not retry.done()
-            assert chat.messages() == (
-                ChatMessageDict(content="source response", role="assistant"),
-            )
-
-            release_callback.set()
-            await retry
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("error")
-            run_async(_exercise)
-
-    assert first_consumer_calls == ["settled"]
-    assert second_consumer_calls == ["started"]
-    assert chat.messages() == ()
-    assert controller.record is active
-    assert adapter.turns == [
-        {"role": "user", "content": "prompt"},
-        {"role": "assistant", "content": "source response"},
-    ]
-    assert run_async_result(lambda: store.get(partition, active.id)) is active
-    assert len(run_async_result(lambda: store.list(partition))) == 1
-    assert active.response_count == 1
-    assert not chat._pending_response_settlements
 
 
 def test_cancelled_settlement_waiter_keeps_the_shared_delivery_running():
