@@ -9313,8 +9313,8 @@ async def test_v2_titling_not_rescheduled_for_sibling_after_llm_title():
     second_id = next(
         node_id
         for node_id in record.path_node_ids()
-        if record.nodes[node_id].input is not None
-        and record.nodes[node_id].input.content == "second question"
+        if (node_input := record.nodes[node_id].input) is not None
+        and node_input.content == "second question"
     )
     sibling_id = "sibling-resubmit"
     await recorder._accepted_resubmit_input_locked(
