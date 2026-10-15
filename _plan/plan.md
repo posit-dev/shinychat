@@ -679,7 +679,20 @@ signed off by the driver before code (process.md §3.4).
      store authors.
   *Done when:* no v1 runtime path remains in Python, every released v1 form
   imports in a fixture, and v2 is the only history engine.
-- **Phase 6 — R port (`05vb`).** After Phase 5.7. Shared JSON fixture
+- **Phase 5.8 — pre-port hardening (Python).** See
+  `phase-5.8-mechanism.md`. Resolve the Phase-5-closeout holistic-review
+  findings (roborev 1592/1593/1594) before the draft PR (`73pm`) and the
+  R port: wire the lossy-import warnings the 5.7 requirement promised
+  (the transform returns them; no production path surfaces them); fix the
+  layering inversions (v1 UI helpers into the importer, `TurnDict` down a
+  layer); centralize the duplicated derivations (index math, root id,
+  path walks); make the recorder's sole-ownership invariant true
+  (Protocol boundary, no `getattr` fallbacks); carry the restore step on
+  the exception; split `_history.py` into wiring and orchestration; trim
+  the test-only surface. No behavior change except the warning wiring.
+  *Done when:* every targeted finding is resolved or dispositioned, the
+  re-run analyses close clean, gates are green, and `73pm` is unblocked.
+- **Phase 6 — R port (`05vb`).** After Phase 5.8. Shared JSON fixture
   matrices + structurally parallel error messages as the parity contract.
   `main` #380 already moved R to server-owned messages, so the R port of the
   Phase 2 core starts from there. Scope: the transcript owner and stream

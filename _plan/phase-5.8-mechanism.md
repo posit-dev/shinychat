@@ -1,0 +1,211 @@
+# Phase 5.8 mechanism: pre-port hardening (Python)
+
+**Status:** DRAFT — awaiting driver approval (no implementation children
+until approved)
+**Phase:** plan.md §4, Phase 5.8
+**Kata:** parent `shinychat#e8kd` under epic `shinychat#6d0d`
+**Context:** `phase-5.7-mechanism.md` is completed context only. This note
+is the Phase 5.8 gate and the only phase-local mechanism reference for new
+work.
+
+## Objective and boundary
+
+Resolve the Phase-5-closeout holistic-review findings (roborev analyses
+1592 architecture, 1593 complexity, 1594 dead-code, run against the nine
+`_history*` modules at HEAD) plus one requirement gap those analyses
+surfaced, so the architecture the collaborator draft PR (`73pm`) asks to
+approve — and that Phase 6 (`05vb`) copies into R — is final-shape.
+
+Driver decision (2026-10-15): **full pre-port hardening** — the layering,
+duplication, recorder-boundary, and module-split work all land before the
+draft PR, not after.
+
+Boundary:
+
+- **No behavior change**, except the lossy-import warning wiring (unit 1),
+  which is a requirement gap fix. Everything else is move/rename/extract.
+- **No JS/SCSS changes** in this phase (no `make update-dist` needed). If a
+  unit discovers it needs one, stop and re-gate.
+- **No R changes.** Where a structural decision is one the R port must
+  mirror, the unit's kata issue says so explicitly (§3.2 shape-stability:
+  Python settles first, R copies the settled shape).
+- The generic state-hook registry **stays generic** — plan §3.7 (extension
+  contract) is a requirement. Collapsing the registry to turns-only is
+  pre-refused.
+
+## The requirement gap (unit 1)
+
+Phase 5.7's absorbed requirement (`36z7` ← `6nzh`): *warn only on
+genuinely lossy imports, with correct node/message wording — never
+unconditionally, never re-warned on every read.* The transform
+(`import_v1_record_with_warnings`, `_history_import.py:75`) produces
+exactly those warnings, but **no production path calls it**: both upgrade
+sites (`_history.py:517` read-gate, `_history_types.py:669` validator)
+call `import_v1_record`, which discards them. The module docstring's
+design ("returned, never emitted, so the read-gate wiring … can surface
+each warning once") was never wired. Current behavior satisfies
+"never re-warn on read" by never warning at all. This traces to a
+requirement — it is a fix, not a backlog item (process §2.1).
+
+## Work units (sequenced)
+
+Order is dependency-driven: moves before centralization, centralization
+before the split, trims continuous. Each unit is one kata child, one
+review unit; the orchestrator requests one roborev range review per unit
+(process §4.1) and batches its findings.
+
+1. **Wire lossy-import warnings** (requirement gap; D1). Independent of
+   all other units; lands first.
+2. **Layering moves** (D2, D3). Move the v1-only UI-derivation helpers
+   (`_stored_ui_dict`, `derive_stored_ui_message`,
+   `_strip_attachment_content`, `derive_node_ui` — `_history.py:205–339`)
+   into `_history_import.py`, deleting the `_history_import → _history`
+   lazy import cycle. Move `TurnDict` down so `_history_types` stops
+   importing `_history_client` (D3). The types↔import validator cycle
+   stays as the documented compatibility shim.
+3. **Duplication centralization** (D4, D5). One visible-input iterator on
+   `ConversationRecordV2` for the three index-math sites
+   (`exchange_id_for_user_message_index`, `_send_sibling_metadata`,
+   `_send_exchange_metadata`); a `root_id` property replacing the five
+   `"n_0000"` literals (D5 covers the importer's `n_0000_1` collision
+   case); one ancestor-walk helper for `path_node_ids` /
+   `set_active_leaf` / the importer's active-path walk;
+   `TURNS_STATE_KEY` defined once and imported (replacing the
+   "mirrors `_history_recorder`" comment); `_RETRYABLE_STATUSES` and the
+   `_attachment_projection` extraction in `resubmit`; store helpers
+   (`_read_jsonl`, `_upsert_meta`, `_check_overwrite`) in
+   `_history_store.py`.
+4. **Recorder boundary** (D6). A `Protocol` naming what
+   `_ExchangeRecorder` needs from its host; public recorder methods for
+   the operations the controller currently performs through privates
+   (`_lock`, `_persist_record`, `_restore_hooks`, `_rewind_hooks`,
+   `_invalidate_turn_baseline`, `_accepted_resubmit_input_locked`,
+   record mutation via `record.set_active_leaf`); delete the
+   `getattr(..., None)` test-fake fallbacks (test fakes implement the
+   Protocol); controller's `retitle` record mutation goes through the
+   recorder. Makes the Phase-4 "sole v2 record owner" invariant true.
+   R-port mirror: yes.
+5. **Restore-step on the exception** (D7). Replace the mutable
+   `_restore_failure_step` slot, its manual reset, and the
+   `restore_body_entered` flag with the step label carried on the
+   re-raised exception (the `StateHookError` pattern; `add_note` or a
+   `RestoreStepError` wrapper). Innermost-step rule per D7.
+6. **Split `_history.py`** (D8). `HistoryController` (orchestration) and
+   `ChatHistory`/`_start` (Shiny wiring, restore-mode setup, input
+   effects) become separate modules; the five near-identical input
+   handlers share a `_transition_effect` helper; the restore-mode
+   callback-slot strategy gets a name. Lands late so units 2–3 shrink
+   the file first. R-port mirror: yes.
+7. **Test-only and leftover surface** (D9). Fold `replay_exchange_record`,
+   `restore_bookmark_pointer`, `retry`/`regenerate` wrappers, and
+   `fallback_title` into the tests or delete them; tests stop exercising
+   production paths through test-only bypasses (process §5.2).
+   `import_v1_record_with_warnings` stays — unit 1 wires it.
+8. **Stale names and docs** (continuous, lands with the unit that
+   touches the site). Drop the `_v2` suffixes (`retitle_v2`,
+   `_publish_active_v2_id`); fix the `FileConversationStore` docstring
+   (three-file layout, "returns `ConversationRecordV1`"), the
+   `ui_message_count` comment (`replay_ui` is gone), the identity-path
+   comment (`_history.py:396–400` vs `:468`/`:786`); dedupe
+   `ensure_conversation_id` / `_allocate_conversation_id`; flatten the
+   no-op if/else in `_destructive_mutation`.
+
+## Decisions
+
+- **D1 — Warning surfacing.** The controller's `_get_record` read-gate
+  collects warnings from `import_v1_record_with_warnings` and emits them
+  via `warnings.warn` (one warning per lossy step, wording unchanged from
+  the transform), guarded by a per-controller `set` of conversation ids
+  already warned — each warning surfaces once per session per
+  conversation, never on re-read. The store and the pydantic validator
+  keep discarding warnings (they have no session to warn into; the
+  controller read-gate is the only user-facing upgrade path). Tests pin:
+  lossy fixture warns once with node/message wording; second read is
+  quiet; non-lossy forms (the four released-form matrix cases) never
+  warn.
+- **D2 — v1 UI helpers live in `_history_import.py`.** They are
+  v1-fidelity helpers whose only production caller is the importer; the
+  "delete when v1 is retired" comment then names one module. Test
+  imports of `_strip_attachment_content` update to the new path.
+- **D3 — `TurnDict` moves to `_history_types.py`.** `_history_client`
+  imports it from there. Breaks the types → client → `_chat_*` import
+  chain; types becomes importable without the chat-client modules.
+- **D4 — One derivation per concept, owned by the record.**
+  `ConversationRecordV2` gains the visible-input iterator and `root_id`;
+  the ancestor walk is a module-private helper in `_history_types`. The
+  controller's metadata senders consume these; they keep no index math
+  of their own. Fail-closed preflight ordering (preflight on deep copy →
+  admit → lock → mutate) is untouched.
+- **D5 — `root_id` semantics.** The unique node with no parent. The
+  importer's synthesized-root collision handling (`n_0000_1` when a v1
+  node already claims `n_0000`) moves behind the property; add a test
+  with a v1 node literally named `n_0000`.
+- **D6 — Recorder boundary.** A `RecorderHost` Protocol in
+  `_history_recorder.py` declares exactly the members the recorder reads
+  today (`adapter`, `partition`, `store`, active-id access and publish,
+  conversation-id allocation, `send_history_update`, save callbacks).
+  New public recorder methods own every record mutation and every
+  currently-private operation the controller calls. The `getattr`
+  fallbacks are deleted with the fakes updated to satisfy the Protocol.
+- **D7 — Restore step travels on the exception.** A `RestoreStepError`
+  (or `add_note`, matching the existing `StateHookError` pattern)
+  carries the innermost step label; setters must not overwrite an
+  existing label. Cancellation re-raise paths stay unwrapped, as
+  `run_plan` already does.
+- **D8 — Module split.** `HistoryController` moves to
+  `_history_controller.py`; `_history.py` keeps `ChatHistory`,
+  `HistoryOptions`, and the Shiny wiring. (Alternative the implementer
+  may propose: inverse split. Either way, one module is wiring, one is
+  orchestration, and the diff is a pure move.) Test patches of
+  `shinychat._history.*` update in the same commit; public import paths
+  (`shinychat` / `shinychat.types` exports) are unchanged — the split
+  moves private modules only.
+- **D9 — Test-only surface.** No production symbol survives solely
+  because tests call it. Fixture-building convenience moves into test
+  helpers. (`ConversationRecordV1`'s graph-editing API is explicitly out
+  of this unit — see Deferred.)
+
+## Deferred (recorded, not this phase)
+
+- **v1 write path in `FileConversationStore.put`** (~200 lines:
+  `_WriteState`, JSONL append/rollback). Dead in production after Phase
+  5.7, but `FileConversationStore` is public and this is a behavior
+  change for custom-store authors → kata issue, decide before release
+  (Phase 7 candidate), with migration notes.
+- **`ConversationRecordV1` graph-editing API** (`append_linear` et al.,
+  used only as a test fixture builder) → same kata issue or its own;
+  test refactor, no urgency.
+- **Import-closure rewrite** (`import_v1_record_with_warnings`, radon
+  E(38)) as precomputed tables → backlog. Pure, fixture-pinned, and the
+  R port mirrors it; rewrite only if the port finds the closures
+  untranslatable.
+- **Older codex reviews (1118–1197, incl. the p4-5r50 series)** →
+  follow-up disposition sweep, separate task.
+- **Hook-registry collapse** → declined (plan §3.7). The
+  turns-only fields in `StatePathContext` may move into a turns payload
+  as part of unit 4 only if it stays internal.
+
+## Done when
+
+- Unit 1 lands: a genuinely lossy v1 import warns once per session per
+  conversation with node/message wording; re-reads are quiet; the
+  released-form matrix stays silent.
+- Units 2–8 land, each with its orchestrator-requested roborev review
+  and batched dispositions; the escalation valve (process §4.3) applies
+  per unit.
+- `roborev analyze` architecture/complexity/dead-code re-run against the
+  same nine modules: every targeted finding is resolved or carries a
+  recorded disposition here; 1592/1593/1594 are closed with evidence.
+- Gates green: `make py-check-unit`, Playwright history specs,
+  ruff/pyright/air. No JS gate expected (no JS changes).
+- No production behavior change except unit 1's warnings: the full py
+  suite passes with zero test-expectation changes other than moved
+  imports/patches and the new warning tests.
+- This note and plan.md §4 are updated at exit; the draft-PR packaging
+  task (`73pm`) is unblocked.
+
+## Handoff log
+
+- 2026-10-15: Note drafted from roborev 1592/1593/1594 + the
+  warning-wiring gap verification; driver selected full pre-port
+  hardening. Awaiting approval before child-task creation.
