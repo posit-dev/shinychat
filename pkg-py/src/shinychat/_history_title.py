@@ -56,17 +56,6 @@ def _truncate_fallback(text: str) -> str:
     return text[: MAX_FALLBACK_LEN - 3] + "..."
 
 
-def fallback_title(turns: list[TurnDict]) -> str:
-    for turn in turns:
-        if turn.get("role") != "user":
-            continue
-        text = " ".join(turn_fallback_markdown(turn).split())
-        if not text:
-            continue
-        return _truncate_fallback(text)
-    return "New chat"
-
-
 def fallback_title_from_text(text: str) -> str:
     text = " ".join(text.split())
     if not text:
