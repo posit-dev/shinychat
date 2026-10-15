@@ -431,6 +431,27 @@ commits, three-findings escalation valve per mechanism.
   children closed; `4b9z` (v1 runtime deletion) is the last child and
   is unblocked — delegating next.
 
+- 2026-10-15: `4b9z` landed (agent hit its turn cap with the tree
+  uncommitted; resumed with a commit-first steer). `668921d5` (v1
+  runtime + flag deleted in `_history.py`), `0187217c` (v1-runtime
+  tests retired; 5 guard behaviors the matrix uniquely pinned re-pinned
+  as unit tests), `17e101ae` (Playwright apps drop the flag),
+  `a52a8dc3` (bookmark switch test pinned to D5 (b) semantics).
+  Deletion verified: no `use_exchange_tree`/`replay_ui`/
+  `extend_record_linear`/`stamp_conversation_id`/`completion-v1`
+  branch remains (the `Literal` wire type keeps `completion-v1` for the
+  JS client); import input path, legacy bookmark READ-gate, and store
+  v1 disk read/write all survive. Unit delta 1209→1120 (−89, all
+  accounted: v1 blocks, matrix harness, v1 twins; 0 xfailed), pyright
+  0, ruff clean, history Playwright 21 green. ESCALATION RECORDED
+  (advisory): the Python `history-behavior-matrix.json` harness died
+  with the v1 runtime; the fixture stays for R (Phase 6 re-derives the
+  cross-language matrix for the single engine). Roborev 1590 Pass with
+  1 Medium + 2 Low: Medium = bookmark-mode docs still promised the
+  reload-restore switch — fixed `b5cf88f1` (docstring + CHANGELOG:
+  in-place switch, soft URL update, on_save/on_restore for raw inputs);
+  Lows (dead `controller.record`, deletion blank-line runs) delegated.
+
 ## Handoff
 
 (appended at phase exit — what landed, what's next, provisional decisions)

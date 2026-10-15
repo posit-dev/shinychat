@@ -1,8 +1,8 @@
 # Plan: exchange-tree conversation history
 
-**Status:** committed · Phases 0–5, 5.5, and 5.6 complete; reset after a pause
-on 2026-10-14 (decisions in §7). Current phase: **5.7 — retire v1 history
-(Python)** · 2026-10-14
+**Status:** committed · Phases 0–5, 5.5, 5.6, and 5.7 complete; reset after a
+pause on 2026-10-14 (decisions in §7). Next phase: **6 — R port** ·
+2026-10-15
 **Kata:** epic `shinychat#6d0d` · Phase 1 `g49a` · Phase 2 `kjyt` · Phase 3
 `qf2r` · Phase 4 `azvt` · Phase 5 `fg70` · Phase 5.5 `pa98` · Phase 5.6
 `e1dv` · Phase 5.7 `36z7` · Phase 6 `05vb` · Phase 7 `r0wj` · Phase 8
@@ -661,7 +661,8 @@ signed off by the driver before code (process.md §3.4).
      backlog `5qxa`, `x9fa`, `y5kr`, `bmqg`.)*
   *Done when:* the branch is merged with current `main`, CI is green, and
   each item has a commit or a recorded disposition.
-- **Phase 5.7 — retire v1 history (Python; `36z7`).**
+- **Phase 5.7 — retire v1 history (Python; `36z7`).** *Complete
+  2026-10-15.* See `phase-5.7-mechanism.md`.
   1. v2 parity gaps: LLM auto-titling, bookmark-mode `on_pre_switch`
      navigation, `new_chat(greeting=)` and `clear()` gating (#399), #373
      structured blocks in captured messages, #394/#401 attachment
