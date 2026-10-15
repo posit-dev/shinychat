@@ -230,6 +230,15 @@ commits, three-findings escalation valve per mechanism.
   the v1→v2 overwrite allowance land with `e0x2`, not `by2p` (comments on
   both issues). Wave 1 delegated: `by2p` (import transform + fixtures),
   `tgdt` (v2 titling); D5 research spike delegated (medium).
+- 2026-10-15: D5 RESOLVED to (b) in-place URL update per the driver's
+  conditional direction (spike: mechanism exists as `history_navigate`
+  sans `reload`; `bookmark_state_id` already persisted; py-shiny never
+  re-reads the URL). Decision on `mfb3`. `tgdt` landed `fb3c8105` (D8:
+  fallback title + retitle at second input-bearing exchange, persist via
+  recorder lock, publish via `history_update`); coordinator-verified (300
+  controller/title tests); roborev 1578 enqueued. Accepted scope
+  deviation: one-line `accepted_input` change in `_history_recorder.py`
+  (v2 fallback title is minted there, not in `_history.py`).
 
 ## Handoff
 
