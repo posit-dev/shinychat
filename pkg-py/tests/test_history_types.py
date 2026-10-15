@@ -622,3 +622,61 @@ def test_upgraded_record_survives_revalidation():
         imported.model_dump(mode="json")
     )
     assert again == imported
+
+
+def test_conversation_record_constructs_from_v2_kwargs_without_marker():
+    """v2 kwargs without schema_version are current-version input, not v1.
+
+    Building `ConversationRecord` -- the class that names the current
+    version -- must not misroute into the v1 model just because the caller
+    left the (defaulted) marker off; the node values here are v2
+    `ExchangeNode`s and the dict says `active_leaf`, never `current_leaf`.
+    """
+    v2 = new_conversation_record_v2(title="t", client_info={"provider": "x"})
+    built = ConversationRecord(
+        id=v2.id,
+        title=v2.title,
+        created_at=v2.created_at,
+        updated_at=v2.updated_at,
+        client_info=v2.client_info,
+        nodes=v2.nodes,
+        active_leaf=v2.active_leaf,
+    )
+    assert isinstance(built, ConversationRecord)
+    assert built.schema_version == 2
+    assert built.model_dump(mode="json") == v2.model_dump(mode="json")
+
+    raw = v2.model_dump(mode="json")
+    del raw["schema_version"]
+    loaded = ConversationRecord.model_validate(raw)
+    assert isinstance(loaded, ConversationRecord)
+    assert loaded.schema_version == 2
+    assert loaded.model_dump(mode="json") == v2.model_dump(mode="json")
+
+
+def test_conversation_record_still_upgrades_markerless_v1_shapes():
+    """The markerless path stays load-bearing for pre-marker records.
+
+    Released v1 record forms that predate the schema_version marker have no
+    explicit version to route on, so shape decides: `current_leaf` alone,
+    and v1 node keys (`parent`/`turns`) when the leaf was dropped from the
+    dump too. Both must upgrade, never validate as v2.
+    """
+    rec = _v1_record_with_exchange()
+    expected_id = rec.id
+
+    raw = rec.model_dump(mode="json")
+    del raw["schema_version"]
+    imported = ConversationRecord.model_validate(raw)
+    assert isinstance(imported, ConversationRecord)
+    assert imported.schema_version == 2
+    assert imported.id == expected_id
+
+    # Same dict with both markerless routes gone: detection falls back to
+    # the v1-only node keys.
+    del raw["current_leaf"]
+    imported = ConversationRecord.model_validate(raw)
+    assert isinstance(imported, ConversationRecord)
+    assert imported.schema_version == 2
+    assert imported.id == expected_id
+

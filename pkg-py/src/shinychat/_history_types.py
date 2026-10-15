@@ -608,6 +608,35 @@ class ConversationRecordV2(BaseModel):
         self.updated_at = utcnow()
 
 
+# Keys that appear on v1 nodes but never on v2 exchange data. v2 nodes say
+# `parent_id` where v1 says `parent`, and v1 carries `turns` (raw 0.6.x disk
+# nodes say `turn_ids`) plus an optional `ui` render cache. `children` and
+# `selected_child` exist in both, so they are not discriminative.
+_V1_ONLY_NODE_KEYS = frozenset({"parent", "turns", "ui", "turn_ids"})
+
+
+def _is_v1_shaped(data: dict[str, Any]) -> bool:
+    """Whether a `schema_version`-less dict is v1-shaped.
+
+    Records that predate the schema_version marker are v1
+    (check_schema_version's None→1 convention), but so is markerless v2
+    input built against the current model, so shape decides: `current_leaf`
+    is the one v1-only top-level key (v2 says `active_leaf`), and v1 nodes
+    carry the keys in _V1_ONLY_NODE_KEYS. Absent every v1 signal the dict
+    is treated as v2 -- the current version, and the class validating it.
+    """
+    if "current_leaf" in data:
+        return True
+    nodes = data.get("nodes")
+    if isinstance(nodes, dict):
+        for node in nodes.values():
+            if isinstance(node, ConversationNode):
+                return True
+            if isinstance(node, dict) and _V1_ONLY_NODE_KEYS & node.keys():
+                return True
+    return False
+
+
 class ConversationRecord(ConversationRecordV2):
     """The CURRENT conversation record version (v2).
 
@@ -616,10 +645,10 @@ class ConversationRecord(ConversationRecordV2):
     Validating v1-shaped input -- a v1 dict or model instance -- runs the
     v1→v2 import (plan section 7.6, decision D1), so custom stores written
     against the v1 API that call `ConversationRecord.model_validate*` keep
-    working and receive a v2 record. Stores may also hand back a
-    `ConversationRecordV1` instance directly; the controller upgrades it on
-    read. Lossy-import warnings are discarded here (reads must not re-warn);
-    use `import_v1_record_with_warnings` to collect them.
+    working and receive a v2 record. Stores may also hand back a `ConversationRecordV1` instance
+    directly; the controller upgrades it on read. Lossy-import warnings
+    are discarded here (reads must not re-warn); use
+    `import_v1_record_with_warnings` to collect them.
     """
 
     @model_validator(mode="before")
@@ -635,12 +664,14 @@ class ConversationRecord(ConversationRecordV2):
             # dict re-built from the imported record.
             return import_v1_record(data).model_dump()
         if isinstance(data, dict):
-            # `schema_version` absent means the record predates the marker;
-            # check_schema_version's None→1 convention applies here too.
-            # Invalid v1 input raises here as a ConversationRecordV1 error,
-            # the same shape the v1-era model gave.
+            # An explicit `schema_version: 1` is always v1. A missing marker
+            # means the record predates it (check_schema_version's None→1
+            # convention) -- but only when the dict is v1-shaped, since v2
+            # kwargs built without the marker are current-version input, not
+            # v1. Invalid v1 input raises here as a ConversationRecordV1
+            # error, the same shape the v1-era model gave.
             version = data.get("schema_version")
-            if version is None or version == 1:
+            if version == 1 or (version is None and _is_v1_shaped(data)):
                 return import_v1_record(
                     ConversationRecordV1.model_validate(data)
                 ).model_dump()
