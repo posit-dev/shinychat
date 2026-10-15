@@ -8780,6 +8780,189 @@ async def test_titling_fires_on_second_response_across_sessions():
     assert controller2.record.title_source == "llm"
 
 
+# --- deferred titling trigger (v2 exchange-tree path) -----------------------
+
+
+def _make_v2_deferred_title_controller(
+    title_fn: Any = None,
+    *,
+    title_enabled: bool = True,
+    store: ConversationStore | None = None,
+    adapter: _FakeAdapter | None = None,
+) -> tuple[HistoryController, ConversationStore]:
+    resolved_store = store if store is not None else _RecordingStore()
+    controller = HistoryController(
+        chat=_FakeChat(),  # type: ignore[arg-type]
+        adapter=adapter or _FakeAdapter(),  # type: ignore[arg-type]
+        store=resolved_store,  # type: ignore[arg-type]
+        title_fn=title_fn,
+        title_enabled=title_enabled,
+        client=None,
+        use_exchange_tree=True,
+    )
+    controller.partition = part()
+    return controller, resolved_store
+
+
+async def _v2_exchange(
+    controller: HistoryController,
+    transcript: ChatTranscript,
+    text: str,
+) -> None:
+    """Drive one completed input-bearing exchange, then settle the response."""
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", text)
+    )
+    await transcript.append(
+        TranscriptEntry(
+            message=_stored_message("assistant", "answer"),
+            icon=None,
+        ),
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+    await controller.on_response()
+
+
+def _v2_transcript(controller: HistoryController) -> ChatTranscript:
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    return ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+    )
+
+
+@pytest.mark.anyio
+async def test_v2_fallback_title_is_truncated_first_input():
+    store = InMemoryConversationStore()
+    controller, _ = _make_v2_deferred_title_controller(
+        title_fn=lambda turns: "Generated Title",
+        store=store,
+    )
+    transcript = _v2_transcript(controller)
+
+    long_input = "What is the best way to sort a very large list of files?" * 2
+    await _v2_exchange(controller, transcript, long_input)
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    expected = " ".join(long_input.split())
+    expected = expected[:47] + "..."
+    assert record.title == expected
+    assert record.title_source is None
+    stored = await store.get(part(), record.id)
+    assert stored is not None and stored.title == expected
+
+
+@pytest.mark.anyio
+async def test_v2_titling_fires_after_second_input_exchange_and_publishes():
+    store = InMemoryConversationStore()
+    controller, _ = _make_v2_deferred_title_controller(
+        title_fn=lambda turns: "Generated Title",
+        store=store,
+    )
+    transcript = _v2_transcript(controller)
+
+    await _v2_exchange(controller, transcript, "first question")
+    task_after_first_exchange = controller._title_task
+    assert task_after_first_exchange is None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    assert record.title == "first question"
+
+    await _v2_exchange(controller, transcript, "second question")
+
+    title_task = controller._title_task
+    assert title_task is not None
+    await title_task
+    assert record.title == "Generated Title"
+    assert record.title_source == "llm"
+    stored = await store.get(part(), record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    assert stored.title == "Generated Title"
+    assert stored.title_source == "llm"
+
+    fake_chat = cast(_FakeChat, controller.chat)
+    update = fake_chat.actions[-1]
+    assert update["type"] == "history_update"
+    assert update["active_id"] == record.id
+    assert [c["title"] for c in update["conversations"]] == [
+        "Generated Title"
+    ]
+
+
+@pytest.mark.anyio
+async def test_v2_titling_skipped_when_title_option_absent():
+    controller, _ = _make_v2_deferred_title_controller(
+        title_fn=None,
+        title_enabled=False,
+    )
+    transcript = _v2_transcript(controller)
+
+    await _v2_exchange(controller, transcript, "first question")
+    await _v2_exchange(controller, transcript, "second question")
+
+    assert controller._title_task is None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    assert record.title == "first question"
+    assert record.title_source is None
+
+
+@pytest.mark.anyio
+async def test_v2_rename_between_exchanges_blocks_auto_titling():
+    controller, _ = _make_v2_deferred_title_controller(
+        title_fn=lambda turns: "Generated Title",
+    )
+    transcript = _v2_transcript(controller)
+
+    await _v2_exchange(controller, transcript, "first question")
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    await controller.rename(record.id, "My Title")
+
+    await _v2_exchange(controller, transcript, "second question")
+
+    assert controller._title_task is None
+    assert record.title == "My Title"
+    assert record.title_source == "user"
+
+
+@pytest.mark.anyio
+async def test_v2_titling_noop_when_record_switched_during_generation():
+    controller, _ = _make_v2_deferred_title_controller()
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = _v2_transcript(controller)
+
+    await _v2_exchange(controller, transcript, "first question")
+    target = recorder.record
+    assert isinstance(target, ConversationRecordV2)
+
+    async def slow_title(turns: Any) -> str:
+        # Simulate the user starting a new chat while the LLM call runs
+        recorder.reset()
+        return "LLM Title"
+
+    controller.title_fn = slow_title
+    await _v2_exchange(controller, transcript, "second question")
+
+    title_task = controller._title_task
+    assert title_task is not None
+    await title_task
+    assert target.title == "first question"
+    assert target.title_source is None
+
+
 # --- save/restore callbacks --------------------------------------------------
 
 

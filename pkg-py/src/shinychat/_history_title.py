@@ -49,6 +49,13 @@ async def generate_title(
         return None
 
 
+def _truncate_fallback(text: str) -> str:
+    """Truncate pre-cleaned fallback text (`fallback_title` semantics)."""
+    if len(text) <= MAX_FALLBACK_LEN:
+        return text
+    return text[: MAX_FALLBACK_LEN - 3] + "..."
+
+
 def fallback_title(turns: list[TurnDict]) -> str:
     for turn in turns:
         if turn.get("role") != "user":
@@ -56,10 +63,21 @@ def fallback_title(turns: list[TurnDict]) -> str:
         text = " ".join(turn_fallback_markdown(turn).split())
         if not text:
             continue
-        if len(text) <= MAX_FALLBACK_LEN:
-            return text
-        return text[: MAX_FALLBACK_LEN - 3] + "..."
+        return _truncate_fallback(text)
     return "New chat"
+
+
+def fallback_title_from_text(text: str) -> str:
+    """Fallback title from a single input's markdown text.
+
+    The text counterpart of :func:`fallback_title` (same cleaning and
+    truncation), for capture-time callers like the v2 exchange recorder
+    that hold the accepted message itself, not adapter turns.
+    """
+    text = " ".join(text.split())
+    if not text:
+        return "New chat"
+    return _truncate_fallback(text)
 
 
 async def chatlas_one_shot_title(

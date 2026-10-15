@@ -651,6 +651,7 @@ class HistoryController:
                 await self.on_response_saved(cast(ConversationRecord, record))
             await self.send_history_update()
             await self._send_sibling_metadata()
+            self._schedule_exchange_retitle(record)
             return
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
@@ -742,6 +743,65 @@ class HistoryController:
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
         await self._put_record(self.partition, target)
+        await self.send_history_update()
+
+    def _schedule_exchange_retitle(self, record: ConversationRecordV2) -> None:
+        """Launch the v2 retitle task (phase-5.7 D8: `tgdt`).
+
+        v1 waits for the second settled response (``response_count == 2``).
+        The tree-aware equivalent counts exchanges carrying an ``input`` on
+        the active path, so navigation/resubmit siblings don't inflate the
+        count the way a session counter would; the task fires when that
+        count reaches 2, giving the LLM/custom ``title_fn`` the same
+        two-exchange context as v1 and skipping conversations abandoned
+        after one message. As on v1, an explicit ``title_fn`` or a user
+        rename (``title_source`` set) suppresses the auto-retitle.
+        """
+        input_exchanges = sum(
+            1
+            for node_id in record.path_node_ids()
+            if record.nodes[node_id].input is not None
+        )
+        if (
+            not self.title_enabled
+            or record.title_source is not None
+            or input_exchanges != 2
+        ):
+            return
+        turns_flat = self.adapter.get_turns_json()
+        self._title_task = asyncio.create_task(self.retitle_v2(turns_flat))
+        self._title_task.add_done_callback(title_task_done)
+
+    async def retitle_v2(self, turns: list[TurnDict]) -> None:
+        """The v2 counterpart of :meth:`retitle` (phase-5.7 D8: `tgdt`).
+
+        Same shape as v1: capture the target before the slow LLM call, bail
+        when the conversation switched away or the user renamed mid-call,
+        then write the new title through the recorder's normal v2 persist
+        path (store put under the recorder lock) and publish it via
+        ``history_update``.
+        """
+        recorder = self._exchange_recorder
+        if recorder is None:
+            return
+        target = recorder.record  # capture before the slow LLM call
+        if target is None or target.title_source == "user":
+            return
+        title = await generate_title(self.title_fn, self.client, turns)
+        if (
+            title is None
+            or recorder.record is not target
+            or target.title_source == "user"
+        ):
+            return  # conversation switched away or user renamed mid-call
+        async with self._exchange_mutation():
+            # Re-check under the recorder lock: the active record or its
+            # title may have changed while the LLM call was in flight.
+            if recorder.record is not target or target.title_source == "user":
+                return
+            target.title = title
+            target.title_source = "llm"
+            await recorder.save_current_locked()
         await self.send_history_update()
 
     def cancel_pending(self) -> None:

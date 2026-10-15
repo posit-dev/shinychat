@@ -36,7 +36,7 @@ from ._history_plan import (
     canonical_turns,
     turn_entry_kind,
 )
-from ._history_title import MAX_TITLE_LEN
+from ._history_title import fallback_title_from_text
 from ._history_types import (
     CapturedMessage,
     ConversationRecordV2,
@@ -348,10 +348,7 @@ class _ExchangeRecorder:
         async with self._lock:
             created = False
             if self.record is None:
-                title = (
-                    " ".join(message.content.split())[:MAX_TITLE_LEN]
-                    or "New chat"
-                )
+                title = fallback_title_from_text(message.content)
                 self.record = await self._new_record(title=title)
                 created = True
             root_id = "n_0000"
