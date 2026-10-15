@@ -754,8 +754,9 @@ class HistoryController:
         count the way a session counter would; the task fires when that
         count reaches 2, giving the LLM/custom ``title_fn`` the same
         two-exchange context as v1 and skipping conversations abandoned
-        after one message. As on v1, an explicit ``title_fn`` or a user
-        rename (``title_source`` set) suppresses the auto-retitle.
+        after one message. As on v1, the retitle is skipped when titling
+        is disabled (``title_enabled`` False) or the title is already set
+        (``title_source`` non-None: a user rename or an earlier title).
         """
         input_exchanges = sum(
             1
@@ -769,23 +770,29 @@ class HistoryController:
         ):
             return
         turns_flat = self.adapter.get_turns_json()
-        self._title_task = asyncio.create_task(self.retitle_v2(turns_flat))
+        self._title_task = asyncio.create_task(
+            self.retitle_v2(turns_flat, record)
+        )
         self._title_task.add_done_callback(title_task_done)
 
-    async def retitle_v2(self, turns: list[TurnDict]) -> None:
+    async def retitle_v2(
+        self, turns: list[TurnDict], target: ConversationRecordV2
+    ) -> None:
         """The v2 counterpart of :meth:`retitle` (phase-5.7 D8: `tgdt`).
 
-        Same shape as v1: capture the target before the slow LLM call, bail
-        when the conversation switched away or the user renamed mid-call,
-        then write the new title through the recorder's normal v2 persist
-        path (store put under the recorder lock) and publish it via
-        ``history_update``.
+        Same shape as v1: the caller passes the settled record to title,
+        so the slow LLM call targets the conversation that was eligible
+        when scheduling happened; bail when the conversation switched away
+        or the user renamed mid-call, then write the new title through the
+        recorder's normal v2 persist path (store put under the recorder
+        lock) and publish it via ``history_update``.
         """
         recorder = self._exchange_recorder
         if recorder is None:
             return
-        target = recorder.record  # capture before the slow LLM call
-        if target is None or target.title_source == "user":
+        if recorder.record is not target:
+            return  # the active conversation switched away before we started
+        if target.title_source == "user":
             return
         title = await generate_title(self.title_fn, self.client, turns)
         if (

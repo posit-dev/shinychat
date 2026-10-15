@@ -8963,6 +8963,86 @@ async def test_v2_titling_noop_when_record_switched_during_generation():
     assert target.title_source is None
 
 
+@pytest.mark.anyio
+async def test_v2_titling_not_rescheduled_for_sibling_after_llm_title():
+    store = InMemoryConversationStore()
+    controller, _ = _make_v2_deferred_title_controller(
+        title_fn=lambda turns: "Generated Title",
+        store=store,
+    )
+    transcript = _v2_transcript(controller)
+
+    await _v2_exchange(controller, transcript, "first question")
+    await _v2_exchange(controller, transcript, "second question")
+
+    title_task = controller._title_task
+    assert title_task is not None
+    await title_task
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    assert record.title_source == "llm"
+
+    # Resubmit the second input, creating a sibling exchange, then settle
+    # another response: the tree-aware count stays at 2 and the LLM title
+    # must not be recomputed.
+    second_id = next(
+        node_id
+        for node_id in record.path_node_ids()
+        if record.nodes[node_id].input is not None
+        and record.nodes[node_id].input.content == "second question"
+    )
+    sibling_id = "sibling-resubmit"
+    await recorder._accepted_resubmit_input_locked(
+        sibling_id, _stored_message("user", "second question edited")
+    )
+    await transcript.append(
+        TranscriptEntry(
+            message=_stored_message("assistant", "answer"),
+            icon=None,
+        ),
+        exchange_id=sibling_id,
+        send=_sent,
+    )
+    await controller.on_response()
+
+    assert controller._title_task is title_task
+    assert record.title == "Generated Title"
+    assert record.title_source == "llm"
+
+
+@pytest.mark.anyio
+async def test_v2_retitle_not_rescheduled_at_third_input_exchange():
+    """A conversation whose title is still unset gets no second chance:
+    once three input-bearing exchanges sit on the active path, the
+    tree-aware count no longer equals 2 and no retitle task fires.
+    """
+    controller, _ = _make_v2_deferred_title_controller(
+        title_fn=lambda turns: None,
+    )
+    transcript = _v2_transcript(controller)
+
+    await _v2_exchange(controller, transcript, "first question")
+    await _v2_exchange(controller, transcript, "second question")
+
+    title_task = controller._title_task
+    assert title_task is not None
+    await title_task
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    assert record.title_source is None
+
+    await _v2_exchange(controller, transcript, "third question")
+
+    assert controller._title_task is title_task
+    assert record.title_source is None
+
+
 # --- save/restore callbacks --------------------------------------------------
 
 
