@@ -4,7 +4,7 @@ import asyncio
 import dataclasses
 import inspect
 import warnings
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -881,26 +881,29 @@ class HistoryController:
             await self._clear_failed_restore(error)
             raise
 
-        restore_body_entered = False
-        try:
-            with _restore_step("admitting the restored conversation"):
-                async with self._destructive_mutation():
-                    async with self._exchange_mutation():
-                        restore_body_entered = True
-                        await self._restore_exchange_record_locked(
-                            selected,
-                            node_ids=node_ids,
-                            planned_state=planned_state,
-                            bootstrap=bootstrap,
-                            persist_active_pointer=persist_active_pointer,
-                        )
-        except BaseException as error:
-            if not restore_body_entered:
+        async with AsyncExitStack() as stack:
+            try:
+                with _restore_step("admitting the restored conversation"):
+                    await stack.enter_async_context(
+                        self._destructive_mutation()
+                    )
+                    await stack.enter_async_context(
+                        self._exchange_mutation()
+                    )
+            except BaseException as error:
+                # Admission failed before the restore body ran: it has no
+                # attribution or cleanup of its own yet, so recover here.
                 await self._clear_failed_restore(error)
-            # Otherwise the restore body already ran its own attribution
-            # and cleanup; its failure propagates unchanged, and the
-            # step note on the exception can't leak into a later one.
-            raise
+                raise
+            # Admitted: the restore body does its own step attribution and
+            # failure cleanup; its failures propagate through the stack.
+            await self._restore_exchange_record_locked(
+                selected,
+                node_ids=node_ids,
+                planned_state=planned_state,
+                bootstrap=bootstrap,
+                persist_active_pointer=persist_active_pointer,
+            )
 
     async def restore_bookmark_pointer(
         self, target: ConversationRecordV2, node_id: str
