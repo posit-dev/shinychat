@@ -4037,6 +4037,98 @@ async def test_v2_initial_restore_admission_failure_recovers(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    "failure",
+    [
+        RuntimeError("second admission guard failed"),
+        asyncio.CancelledError("second admission guard cancelled"),
+    ],
+)
+async def test_v2_initial_restore_second_guard_failure_recovers(
+    failure: BaseException,
+) -> None:
+    # Admission enters the destructive-mutation guard first; when the
+    # exchange-mutation (recorder lock) guard then fails on entry, the
+    # admission context must still label the failure, the unwinding
+    # AsyncExitStack must release the entered guard, and the recovery
+    # must run.
+    controller, _ = _make_controller()
+    target = _restore_target()
+    fake_chat = cast(_FakeChat, controller.chat)
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+
+    # Mirrors the real Chat's `_destructive_history_transaction`: set on
+    # admission, released on exit, so the test can see the guard unwind.
+    transactions: list[object] = []
+
+    @asynccontextmanager
+    async def admit_destructive(*, block_input: bool = False):
+        del block_input
+        transaction = object()
+        transactions.append(transaction)
+        fake_chat._destructive_history_transaction = transaction
+        try:
+            yield
+        finally:
+            fake_chat._destructive_history_transaction = None
+
+    fake_chat._destructive_history_mutation = (
+        admit_destructive  # type: ignore[method-assign]
+    )
+
+    @asynccontextmanager
+    async def fail_exchange_mutation():
+        raise failure
+        yield
+
+    controller._exchange_mutation = (  # type: ignore[method-assign]
+        fail_exchange_mutation
+    )
+
+    if isinstance(failure, Exception):
+        warn_ctx: AbstractContextManager[Any] = pytest.warns(
+            UserWarning,
+            match=r"Chat history restore failed \(failed while admitting the restored conversation\): "
+            r"RuntimeError\('second admission guard failed'\)",
+        )
+    else:
+        warn_ctx = nullcontext()
+
+    with warn_ctx, pytest.raises(type(failure)) as raised:
+        await controller._restore_initial_exchange_record(target)
+    assert raised.value is failure
+
+    # The destructive guard was entered exactly once and released by the
+    # unwinding stack.
+    assert len(transactions) == 1
+    assert fake_chat._destructive_history_transaction is None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    assert recorder.record is None
+    assert controller._active_id_now() is None
+    assert fake_chat.clear_messages_calls == 1
+    history_updates = [
+        action
+        for action in fake_chat.actions
+        if action["type"] == "history_update"
+    ]
+    assert len(history_updates) == 1
+    assert history_updates[0]["active_id"] is None
+    # The synthetic CancelledError never puts the test task into
+    # cancelling state, so cleanup awaits proceed normally; cancellation
+    # just keeps the generic message, as everywhere.
+    expected_detail = (
+        "failed while admitting the restored conversation"
+        if isinstance(failure, Exception)
+        else None
+    )
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=False, detail=expected_detail
+    )
+
+
+@pytest.mark.anyio
 async def test_v2_initial_restore_body_failure_leaves_no_stale_step_label():
     # The restore body consumes its own step attribution on failure; the
     # admission label wrapping it must not be re-armed on the re-raise, or a

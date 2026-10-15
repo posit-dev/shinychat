@@ -234,10 +234,16 @@ async def _complete_history_transition(chat: "Chat", request_id: str) -> None:
         pass
 
 
-# The in-flight restore step travels on the exception itself (PEP 678
-# notes) rather than a controller slot, so the mechanism is stateless: no
-# label needs resetting after recovery, and an already-labeled exception
-# is never relabeled, which makes the innermost failing step win.
+# The in-flight restore step travels on the exception itself rather than a
+# controller slot, so the mechanism stays stateless: an already-labeled
+# exception is never relabeled (the innermost failing step wins), and the
+# label is consumed when read, so a reused exception instance can't report
+# a stale first-failure step. The label rides on a private attribute that
+# only these helpers read and write; the matching PEP 678 note is pure
+# traceback decoration for developers, and nothing parses it. Cancellation
+# and other non-`Exception` failures stay unlabeled, matching
+# `_history_plan.run_plan`.
+_RESTORE_STEP_ATTR = "__shinychat_restore_step__"
 _RESTORE_STEP_NOTE_PREFIX = "shinychat restore step: "
 
 
@@ -256,17 +262,17 @@ def _add_exception_note(error: BaseException, note: str) -> None:
     setattr(error, "__notes__", notes)
 
 
-def _restore_step_label(error: BaseException) -> str | None:
-    """The restore-step note carried by `error`, if any."""
-    notes: Any = getattr(error, "__notes__", None)
-    if notes is None:
-        return None
-    for note in notes:
-        if isinstance(note, str) and note.startswith(
-            _RESTORE_STEP_NOTE_PREFIX
-        ):
-            return note[len(_RESTORE_STEP_NOTE_PREFIX) :]
-    return None
+def _take_restore_step_label(failure: BaseException) -> str | None:
+    """Consume the restore-step label carried by `failure`, if any.
+
+    Like the controller slot this replaces, the label is read once: a
+    second cleanup of the same failure, or the same exception instance
+    failing again later, gets no stale step from the first failure.
+    """
+    step = getattr(failure, _RESTORE_STEP_ATTR, None)
+    if step is not None:
+        delattr(failure, _RESTORE_STEP_ATTR)
+    return step
 
 
 def _restore_failure_detail(failure: BaseException | None) -> str | None:
@@ -281,9 +287,12 @@ def _restore_failure_detail(failure: BaseException | None) -> str | None:
     """
     if not isinstance(failure, Exception):
         return None
+    # Consumed unconditionally, matching the old slot's reset-on-read: a
+    # StateHookError's wording wins, but the label never leaks past this
+    # failure's cleanup either way.
+    step = _take_restore_step_label(failure)
     if isinstance(failure, _history_plan.StateHookError):
         return f"the {failure.entry_name!r} state entry failed to apply"
-    step = _restore_step_label(failure)
     if step is not None:
         return f"failed while {step}"
     return None
@@ -295,13 +304,18 @@ def _restore_step(step: str) -> Iterator[None]:
 
     The step is remembered only when the wrapped block fails, so a later
     ``_clear_failed_restore`` can name where the restore broke; successful
-    steps leave nothing behind. Cancellation and other non-``Exception``
-    failures stay unlabeled, matching ``_history_plan.run_plan``.
+    steps leave nothing behind. The label rides on a private exception
+    attribute, and an already-labeled exception is never relabeled, so
+    the innermost step wins. The PEP 678 note is added purely for
+    developers reading tracebacks. Cancellation and other
+    non-``Exception`` failures stay unlabeled, matching
+    ``_history_plan.run_plan``.
     """
     try:
         yield
     except Exception as error:
-        if _restore_step_label(error) is None:
+        if getattr(error, _RESTORE_STEP_ATTR, None) is None:
+            setattr(error, _RESTORE_STEP_ATTR, step)
             _add_exception_note(
                 error, f"{_RESTORE_STEP_NOTE_PREFIX}{step}"
             )
