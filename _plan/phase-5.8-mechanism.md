@@ -59,13 +59,16 @@ review unit; the orchestrator requests one roborev range review per unit
 
 1. **Wire lossy-import warnings** (requirement gap; D1). Independent of
    all other units; lands first.
-2. **Layering moves** (D2, D3). Move the v1-only UI-derivation helpers
-   (`_stored_ui_dict`, `derive_stored_ui_message`,
-   `_strip_attachment_content`, `derive_node_ui` — `_history.py:205–339`)
-   into `_history_import.py`, deleting the `_history_import → _history`
-   lazy import cycle. Move `TurnDict` down so `_history_types` stops
-   importing `_history_client` (D3). The types↔import validator cycle
-   stays as the documented compatibility shim.
+2. **Layering moves** (D2, D3). Consolidate all v1-only code into one
+   version-named module: rename `_history_import.py` to `_history_v1.py`
+   and move the v1-only UI-derivation helpers (`_stored_ui_dict`,
+   `derive_stored_ui_message`, `_strip_attachment_content`,
+   `derive_node_ui` — `_history.py:205–339`) into it, deleting the
+   `_history_import → _history` lazy import cycle. The read-gate and the
+   validator shim are the only current-version call sites. Move
+   `TurnDict` down so `_history_types` stops importing `_history_client`
+   (D3). The types↔v1-module validator cycle stays as the documented
+   compatibility shim.
 3. **Duplication centralization** (D4, D5). One visible-input iterator on
    `ConversationRecordV2` for the three index-math sites
    (`exchange_id_for_user_message_index`, `_send_sibling_metadata`,
@@ -148,10 +151,18 @@ review unit; the orchestrator requests one roborev range review per unit
   lossy fixture warns once with node/message wording; second read is
   quiet; non-lossy forms (the four released-form matrix cases) never
   warn.
-- **D2 — v1 UI helpers live in `_history_import.py`.** They are
-  v1-fidelity helpers whose only production caller is the importer; the
-  "delete when v1 is retired" comment then names one module. Test
-  imports of `_strip_attachment_content` update to the new path.
+- **D2 — v1 code lives in one version-named module, `_history_v1.py`**
+  (driver annotation 2026-10-15: version in the file name keeps legacy
+  code out of current-version code paths). `_history_import.py` is
+  renamed — the transform, the fidelity contract, and the moved
+  UI-derivation helpers (whose only production caller is the importer)
+  are all v1-only; the "delete when v1 is retired" stopgap becomes one
+  module to delete. This matches the version-suffixed record types
+  (`ConversationRecordV1`/`V2`) and clarifies the R port's parity
+  mapping. `FileConversationStore` stays whole: it is public, and its
+  v1 read/write paths are the deferred Phase-7 item, not a
+  version-split of a public class. Test imports of the moved symbols
+  update in the same commit.
 - **D3 — `TurnDict` moves to `_history_types.py`.** `_history_client`
   imports it from there. Breaks the types → client → `_chat_*` import
   chain; types becomes importable without the chat-client modules.
@@ -259,3 +270,7 @@ review unit; the orchestrator requests one roborev range review per unit
   unit 9 added, accepted refactors folded into units 3/4/6, D10 records
   the driver-delegated judgment calls, `fd2p` backlog filed. Still
   awaiting driver approval of the whole gate.
+- 2026-10-15: Driver annotation (Plannotator): D2 amended — version-named
+  `_history_v1.py` module (rename of `_history_import.py`) holds all
+  v1-only code; store stays whole. Still awaiting approval of the whole
+  gate.
