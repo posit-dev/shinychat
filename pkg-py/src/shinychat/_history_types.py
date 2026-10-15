@@ -7,7 +7,7 @@ import unicodedata
 from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
-from pydantic import BaseModel, Field, JsonValue
+from pydantic import BaseModel, Field, JsonValue, model_validator
 
 from ._attachments import Attachment
 from ._chat_types import (
@@ -606,6 +606,45 @@ class ConversationRecordV2(BaseModel):
             else None
         )
         self.updated_at = utcnow()
+
+
+class ConversationRecord(ConversationRecordV2):
+    """The CURRENT conversation record version (v2).
+
+    This name always tracks the current schema; the released forms are
+    named by their versions (`ConversationRecordV1`, `ConversationRecordV2`).
+    Validating v1-shaped input -- a v1 dict or model instance -- runs the
+    v1→v2 import (plan section 7.6, decision D1), so custom stores written
+    against the v1 API that call `ConversationRecord.model_validate*` keep
+    working and receive a v2 record. Stores may also hand back a
+    `ConversationRecordV1` instance directly; the controller upgrades it on
+    read. Lossy-import warnings are discarded here (reads must not re-warn);
+    use `import_v1_record_with_warnings` to collect them.
+    """
+
+    @model_validator(mode="before")
+    @classmethod
+    def _upgrade_v1(cls, data: Any) -> Any:
+        # Deferred import: _history_import imports this module, so a
+        # top-level import would be circular.
+        from ._history_import import import_v1_record
+
+        if isinstance(data, ConversationRecordV1):
+            # The import yields a ConversationRecordV2, which pydantic will
+            # not accept as model input for this subclass; hand validation a
+            # dict re-built from the imported record.
+            return import_v1_record(data).model_dump()
+        if isinstance(data, dict):
+            # `schema_version` absent means the record predates the marker;
+            # check_schema_version's None→1 convention applies here too.
+            # Invalid v1 input raises here as a ConversationRecordV1 error,
+            # the same shape the v1-era model gave.
+            version = data.get("schema_version")
+            if version is None or version == 1:
+                return import_v1_record(
+                    ConversationRecordV1.model_validate(data)
+                ).model_dump()
+        return data
 
 
 def new_conversation_record_v2(

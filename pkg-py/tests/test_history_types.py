@@ -6,6 +6,7 @@ from shinychat._history_types import (
     CapturedMessage,
     ConversationMeta,
     ConversationNode,
+    ConversationRecord,
     ConversationRecordV1,
     ConversationRecordV2,
     UnsupportedSchemaVersionError,
@@ -520,3 +521,104 @@ def test_path_sibling_metadata_multiple_branches():
     # Active path is [n1, n2, n5, n6]; n5 has siblings [n3, n5] -> (1, 2)
     meta = rec.path_sibling_metadata()
     assert meta == {n5: (1, 2)}
+
+
+# -- ConversationRecord: the name for the current version (plan §7.6, D1) --
+
+def _v1_record_with_exchange() -> ConversationRecordV1:
+    rec = new_conversation_record(title="legacy", id="c_v1")
+    rec.append_linear(turn("user", "hi"))
+    rec.append_linear(turn("assistant", "hello"))
+    rec.bookmark_state_id = "st1"
+    return rec
+
+
+def test_conversation_record_names_the_current_version():
+    assert issubclass(ConversationRecord, ConversationRecordV2)
+    v2 = new_conversation_record_v2(title="t", client_info={})
+    loaded = ConversationRecord.model_validate(v2.model_dump(mode="json"))
+    assert isinstance(loaded, ConversationRecord)
+    assert loaded.schema_version == 2
+    assert loaded.model_dump(mode="json") == v2.model_dump(mode="json")
+
+
+def test_conversation_record_upgrades_a_v1_dict():
+    """A v1-era store calling model_validate on a v1 dict gets a v2 record."""
+    rec = _v1_record_with_exchange()
+    imported = ConversationRecord.model_validate(rec.model_dump(mode="json"))
+    assert isinstance(imported, ConversationRecord)
+    assert isinstance(imported, ConversationRecordV2)
+    assert not isinstance(imported, ConversationRecordV1)
+    assert imported.schema_version == 2
+    assert imported.id == "c_v1"
+    assert imported.title == "legacy"
+    assert imported.bookmark_state_id == "st1"
+    # The v1 user/assistant pair became one exchange on the active path.
+    (exchange_id,) = [
+        nid
+        for nid, node in imported.nodes.items()
+        if node.parent_id is not None
+    ]
+    exchange = imported.nodes[exchange_id]
+    assert exchange.input is not None
+    assert exchange.input.content == "hi"
+    assert [m.as_stored_message().content for m in exchange.messages] == [
+        "hello"
+    ]
+    assert imported.active_leaf == exchange_id
+
+
+def test_conversation_record_upgrades_a_v1_dict_without_schema_version():
+    # check_schema_version's None→1 convention: records that predate the
+    # marker are v1 and upgrade too.
+    rec = _v1_record_with_exchange()
+    raw = rec.model_dump(mode="json")
+    del raw["schema_version"]
+    imported = ConversationRecord.model_validate(raw)
+    assert isinstance(imported, ConversationRecord)
+    assert imported.schema_version == 2
+    assert imported.id == rec.id
+
+
+def test_conversation_record_upgrades_a_v1_instance():
+    imported = ConversationRecord.model_validate(_v1_record_with_exchange())
+    assert isinstance(imported, ConversationRecord)
+    assert imported.schema_version == 2
+    assert imported.active_leaf is not None
+
+
+def test_conversation_record_upgrades_via_validate_json():
+    rec = _v1_record_with_exchange()
+    imported = ConversationRecord.model_validate_json(rec.model_dump_json())
+    assert isinstance(imported, ConversationRecord)
+    assert imported.schema_version == 2
+    assert imported.id == rec.id
+
+
+def test_conversation_record_does_not_rewarn_on_upgrades():
+    # The validator runs the non-warning import path: reads must not emit
+    # lossy-import warnings on every validation (plan §7.4, D2).
+    import warnings as _warnings
+
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("error")
+        ConversationRecord.model_validate(_v1_record_with_exchange())
+
+
+def test_conversation_record_rejects_unsupported_schema_versions():
+    rec = _v1_record_with_exchange()
+    raw = rec.model_dump(mode="json")
+    raw["schema_version"] = 3
+    with pytest.raises(Exception, match="schema_version"):
+        ConversationRecord.model_validate(raw)
+
+
+def test_upgraded_record_survives_revalidation():
+    rec = _v1_record_with_exchange()
+    imported = ConversationRecord.model_validate(rec.model_dump(mode="json"))
+    # Re-validating the upgraded record must not run the import again (or
+    # otherwise change it): v2 input passes through unchanged.
+    again = ConversationRecord.model_validate(
+        imported.model_dump(mode="json")
+    )
+    assert again == imported

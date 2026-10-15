@@ -11,6 +11,7 @@ from .._history_store import (
 )
 from .._history_types import (
     ConversationMeta,
+    ConversationRecord,
     ConversationRecordV1,
     ConversationRecordV2,
 )
@@ -41,6 +42,7 @@ __all__ = [
     "ChatMessageDict",
     "ConversationMeta",
     "ConversationPartition",
+    "ConversationRecord",
     "ConversationRecordV1",
     "ConversationRecordV2",
     "ConversationStore",
