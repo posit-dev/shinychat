@@ -343,6 +343,12 @@ commits, three-findings escalation valve per mechanism.
   no released writer produces — tolerate without crash, no fidelity
   guarantee for corrupt shapes; doc-comment corrected to stop
   overclaiming). Patch delegated (`by2p-fidelity`).
+- 2026-10-15: `by2p` CLOSED. Fidelity patch landed `8ea2e7a3`
+  (input-node leaf → cancelled bare exchange; test verified to fail
+  pre-fix). Roborev 1585 PASS CLEAN — the pointer/selection chain
+  converged after the valve unification + driver endgame. 7/11 children
+  closed; remaining: `e0x2`, `t21d`, `8ec9`, `4b9z`. Session paused for
+  driver status check; kata attention pairs audited and made truthful.
 - 2026-10-15: `gwg3` landed `3230e8f2` (attachment capture verified
   matching #394/#401 — no gap, pinned), `f1e13ae0` (#372 fix: `_put_v2`
   warm cache now sorts `created_at` like every other path; the ABC
