@@ -311,3 +311,12 @@ review unit; the orchestrator requests one roborev range review per unit
   ownership enforceable; revisit only if a future flow legitimately
   moves a non-live record. `c87g` still the only Playwright history
   failure (known flake, 52 others pass).
+- 2026-10-15: Unit 5 (`ajxc`) landed — restore-step label travels on
+  the exception (`60569661`, `78092267`); roborev 1599 pass (2 Low,
+  fixed in `c5158ead`: private-attr label with consuming read,
+  second-guard-failure test). Mechanism decision within D7: add_note
+  (not RestoreStepError) to preserve exception identity and pinned
+  warning reprs; 3.10-safe fallback writes `__notes__` directly (CI
+  floor is 3.10, PEP 678 is 3.11+); the note is traceback decoration
+  only — detection uses the private attribute. Next: unit 6 (`yp75`,
+  comment hygiene D10 — mechanical pass against the triage list).
