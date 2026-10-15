@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 from shiny.types import NotifyException
 from shinychat._chat_client import ChatClient, messages_to_turns
 from shinychat._chat_types import ChatMessageDict
-from shinychat._history import HistoryController
+from shinychat._history import ChatHistory, HistoryController
 from shinychat._history_client import TurnsAdapter
 from shinychat._history_store import (
     ConversationPartition,
@@ -38,7 +37,10 @@ class _TurnClient:
 class _Chat:
     def __init__(self) -> None:
         self.latest_message_stream = _Stream()
-        self.history = SimpleNamespace(_controller=None)
+        # The real ChatHistory namespace so the v2 admission predicate
+        # (`_history_action_admitted`) exercised by ChatClient.new_chat()
+        # runs the production logic against this fake chat.
+        self.history = ChatHistory(cast(Any, self))
         self.messages: list[dict[str, Any]] = []
         self.clear_calls: list[bool] = []
         self.actions: list[dict[str, Any]] = []

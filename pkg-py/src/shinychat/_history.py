@@ -2537,6 +2537,12 @@ class ChatHistory:
                 chat._session.input[ids.new]()
             )
             try:
+                # Mirror the edit/navigate/resubmit input effects: a new-chat
+                # request that lands before the initial history decision would
+                # race the pending restore (and publish a history_update that
+                # releases client-side admission early), so it is dropped.
+                if not self._history_action_admitted():
+                    return
                 if controller.partition is None:
                     return
                 await controller.new_chat()
