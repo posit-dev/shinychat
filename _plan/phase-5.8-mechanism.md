@@ -291,3 +291,10 @@ review unit; the orchestrator requests one roborev range review per unit
   (`xny0`, duplication centralization D4/D5). New backlog `c87g`:
   bookmark input-restore Playwright flake (orthogonal, ~1/3 failure
   rate, related ht4q/bmqg).
+- 2026-10-15: Unit 3 (`xny0`) landed — all ten centralizations (D4/D5)
+  in 9 commits (`b836b620`..`d0af557c`); roborev 1597 pass, finding
+  fixed in `a695a942` (root_id laziness in accepted_input + descriptive
+  error). Next: unit 4 (`b1wd`, recorder boundary D6 — the phase's
+  biggest unit; Protocol, public recorder methods, sentinel
+  retirement). `c87g` now 3/3 in full history-filter runs, still ~1/3
+  solo.
