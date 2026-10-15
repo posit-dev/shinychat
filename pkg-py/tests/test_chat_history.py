@@ -21,7 +21,10 @@ from shinychat._history_store import (
     FileConversationStore,
     InMemoryConversationStore,
 )
-from shinychat._history_types import new_conversation_record_v2
+from shinychat._history_types import (
+    new_conversation_record,
+    new_conversation_record_v2,
+)
 from shinychat.types import ChatMessage, HistoryOptions
 
 # ---------------------------------------------------------------------------
@@ -1529,6 +1532,165 @@ async def test_v2_bookmark_switch_restore_soft_navigates_without_reload(
     ]
     # Soft navigation only: no reload key, so the client replaceState's.
     assert "reload" not in navs[0]
+
+
+@pytest.mark.anyio
+async def test_v2_bookmark_eviction_clears_bookmark_state_for_v2_records():
+    """Bookmark-mode _on_evict clears evicted v2 records' bookmark state.
+
+    Pins the existing eviction contract (gwg3): the wired on_evict finds the
+    record's bookmark_state_id — via the active controller.record when set,
+    else through _get_record — and deletes that server bookmark state. A v2
+    record without a state id evicts without deleting anything. Under v2 the
+    recorder owns the active record, so even the active conversation goes
+    through the _get_record fallback.
+    """
+    session = _LiveSession()
+    session.bookmark.store = "server"
+
+    class CapturedEffect:
+        def __init__(self, _handler: Callable[[], Awaitable[None]]) -> None:
+            pass
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    store = InMemoryConversationStore()
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        patch.object(reactive, "effect", capture_effect),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "bookmark_eviction",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode="bookmark",
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    assert controller.on_evict is not None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    partition = ConversationPartition(chat_id="bookmark_eviction", scope="test")
+    controller.partition = partition
+
+    # An inactive v2 record with a bookmark state id.
+    inactive = new_conversation_record_v2(
+        title="inactive", id="c_inactive", client_info={}
+    )
+    inactive.bookmark_state_id = "state-inactive"
+    await store.put(partition, inactive)
+
+    # The active v2 record: the recorder owns it, controller.record is None.
+    active = new_conversation_record_v2(
+        title="active", id="c_active", client_info={}
+    )
+    active.bookmark_state_id = "state-active"
+    recorder.record = active
+    controller._active_id.set(active.id)
+    await store.put(partition, active)
+
+    # A v2 record with no bookmark state id.
+    await store.put(
+        partition,
+        new_conversation_record_v2(title="bare", id="c_bare", client_info={}),
+    )
+
+    deleted = AsyncMock()
+    with patch.object(history_module, "delete_bookmark_state", deleted):
+        await controller.on_evict("c_inactive")
+        deleted.assert_awaited_once_with("state-inactive")
+
+        deleted.reset_mock()
+        await controller.on_evict("c_active")
+        deleted.assert_awaited_once_with("state-active")
+
+        deleted.reset_mock()
+        await controller.on_evict("c_bare")
+        deleted.assert_not_awaited()
+
+
+@pytest.mark.xfail(
+    reason=(
+        "A v1 record under v2 raises in _on_evict's _get_record fallback "
+        "until the lazy v1->v2 import read-gate lands (shinychat#e0x2; "
+        "import transform shinychat#by2p). Once records upgrade on read, "
+        "evicting a v1 record must clear its bookmark state exactly like a "
+        "v2 record. Pinned as xfail so the gap is visible, never a silent "
+        "pass."
+    ),
+    strict=False,
+)
+@pytest.mark.anyio
+async def test_v2_bookmark_eviction_of_v1_record_clears_state():
+    """After the v1 import lands, evicting a v1 record clears its state."""
+    session = _LiveSession()
+    session.bookmark.store = "server"
+
+    class CapturedEffect:
+        def __init__(self, _handler: Callable[[], Awaitable[None]]) -> None:
+            pass
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    store = InMemoryConversationStore()
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        patch.object(reactive, "effect", capture_effect),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "bookmark_eviction_v1",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode="bookmark",
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    assert controller.on_evict is not None
+    partition = ConversationPartition(
+        chat_id="bookmark_eviction_v1", scope="test"
+    )
+    controller.partition = partition
+
+    legacy = new_conversation_record(title="legacy", id="c_v1")
+    legacy.bookmark_state_id = "state-v1"
+    await store.put(partition, legacy)
+
+    deleted = AsyncMock()
+    with patch.object(history_module, "delete_bookmark_state", deleted):
+        await controller.on_evict("c_v1")
+    deleted.assert_awaited_once_with("state-v1")
 
 
 @pytest.mark.anyio
