@@ -280,6 +280,13 @@ commits, three-findings escalation valve per mechanism.
   `mfb3` delegated (D5 mechanism: post-switch `history_navigate` without
   reload; Playwright bookmark-mode switch test). `by2p` transform commit
   `0fa399c9` landed; fixtures in progress.
+- 2026-10-15: `fn6m` CLOSED (`09dff1bb` + `c29c0a96` + `f07a043e`).
+  `221w` CLOSED — roborev 1580 Pass; its interleaved review of `by2p`'s
+  `0fa399c9` found a MEDIUM order-dependent pointer post-pass bug
+  (off-active-path branches can import the wrong selected child) plus 3
+  Low in `_history_import.py` — steered to the running `by2p` agent to
+  fix before its fixtures land; the one 221w-side finding (vacuous
+  no-`history_update` comment) fixed by coordinator assertion pin.
 
 ## Handoff
 
