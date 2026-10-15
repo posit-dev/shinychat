@@ -285,3 +285,9 @@ review unit; the orchestrator requests one roborev range review per unit
   suppressed — D1 mechanism kept, caveat documented at the read-gate.
   Session-entry note: `uv sync --extra providers` was needed for a
   green `make py-check-unit` in this worktree.
+- 2026-10-15: Unit 2 (`z2nt`) landed — `_history_v1.py` consolidation
+  (D2, `286a4be6`) + `TurnDict` to `_history_types` (D3, `39a82920`);
+  roborev 1596 pass (1 Low, fixed in `74a97b41`). Next: unit 3
+  (`xny0`, duplication centralization D4/D5). New backlog `c87g`:
+  bookmark input-restore Playwright flake (orthogonal, ~1/3 failure
+  rate, related ht4q/bmqg).
