@@ -29,28 +29,33 @@ def expect_filter_state(page: Page, value: str) -> None:
 def test_bookmark_mode_switch_restores_inputs(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    """Switching conversations navigates to a bookmark URL and restores
-    Shiny input values — a capability that browser/url modes cannot provide."""
+    """An in-session conversation switch restores the target's transcript
+    and its saved input values in place (mechanism D5: a soft URL update,
+    never a reload-per-switch). Auxiliary Shiny inputs come back through the
+    conversation's captured `values` via @chat.history.on_restore."""
     page.goto(local_app.url)
 
-    # Conversation A: set the input, then chat (the save mints a bookmark
-    # capturing the input value).
+    # Conversation A: set the input, then chat (the save captures the value
+    # and mints a bookmark state id).
     controller.InputText(page, "filter_text").set("penguins")
     expect_filter_state(page, "penguins")
     start_conversation(page, "first question")
     page.wait_for_url(lambda url: "_state_id_=" in url, timeout=30_000)
 
-    # New chat navigates to the bare URL: input back to its default.
+    # New chat: fresh conversation in place. No reload happens, so the
+    # client keeps its current auxiliary input value (raw inputs are only
+    # synced through on_save/on_restore, never the conversation switch).
     open_drawer(page)
     page.locator(".shiny-chat-history-new").click()
-    controller.InputText(page, "filter_text").expect_value(
-        "none", timeout=30_000
-    )
 
-    # Conversation B.
+    # Conversation B, with a different filter value.
+    controller.InputText(page, "filter_text").set("second value")
+    expect_filter_state(page, "second value")
     start_conversation(page, "second question")
 
-    # Switch back to A: full page load, input value restored.
+    # Switch back to A: in-place restore brings back A's transcript and A's
+    # captured input value, and the URL soft-points at A's bookmark state id
+    # (replaceState — no navigation, no reload).
     open_drawer(page)
     conversation = page.locator(
         ".shiny-chat-history-item", has_text="first question"
