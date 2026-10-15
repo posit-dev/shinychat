@@ -97,18 +97,31 @@ test_that("user_input_contents rejects malformed base64 payloads", {
   expect_error(user_input_contents(value), "Malformed base64 payload")
 })
 
-test_that("contents_from_attachments auto-names unnamed text attachments", {
-  b64 <- jsonlite::base64_enc(charToRaw("hi"))
-  res <- contents_from_attachments(
-    list(
-      list(
-        mime = "text/plain",
-        data_url = paste0("data:text/plain;base64,", b64),
-        name = ""
-      )
-    )
+test_that("contents_from_attachments deterministically names unnamed attachments", {
+  # Auto-generated names come from a process-global counter, so they must not
+  # leak into stored messages: history's attachment-content strip re-derives
+  # the rendered content and matches it against the stored segment text.
+  text_att <- list(
+    mime = "text/plain",
+    data_url = "data:text/plain;base64,aGVsbG8=",
+    name = ""
   )
-  expect_match(res[[1]]@filename, "^document_\\d+\\.txt$")
+  expect_equal(contents_from_attachments(list(text_att))[[1]]@filename, "file")
+  expect_equal(contents_from_attachments(list(text_att))[[1]]@filename, "file")
+
+  pdf_att <- list(
+    mime = "application/pdf",
+    data_url = "data:application/pdf;base64,JVBERi0=",
+    name = ""
+  )
+  expect_equal(
+    contents_from_attachments(list(pdf_att))[[1]]@filename,
+    "document.pdf"
+  )
+  expect_equal(
+    contents_from_attachments(list(pdf_att))[[1]]@filename,
+    "document.pdf"
+  )
 })
 
 test_that("contents_from_attachments builds ellmer image/pdf content", {
@@ -145,7 +158,7 @@ test_that("contents_from_attachments builds ellmer image/pdf content", {
       )
     )
   )[[1]]
-  expect_match(pdf_no_name@filename, "^file_\\d+\\.pdf$")
+  expect_equal(pdf_no_name@filename, "document.pdf")
 })
 
 test_that("contents_from_attachments errors on unsupported type", {

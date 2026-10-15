@@ -564,6 +564,38 @@ test_that("strip_stored_attachment_content repairs existing stored UI", {
   expect_true(cleaned$attachment_content_stripped)
 })
 
+test_that("strip_stored_attachment_content matches unnamed text attachments", {
+  # Regression: unnamed attachments must render with a deterministic filename,
+  # or the re-derived content here never matches the stored segment and the
+  # auto-generated name leaks into the restored message.
+  attachment <- list(
+    mime = "text/plain",
+    name = "",
+    size = 5L,
+    data_url = "data:text/plain;base64,aGVsbG8="
+  )
+  stored <- list(
+    version = STORED_UI_VERSION,
+    role = "user",
+    segments = list(list(
+      content = "See attached\n\nfile",
+      content_type = "markdown"
+    )),
+    attachments = list(attachment)
+  )
+
+  cleaned <- strip_stored_attachment_content(stored)
+
+  expect_equal(
+    cleaned$segments,
+    list(list(
+      content = "See attached",
+      content_type = "markdown"
+    ))
+  )
+  expect_true(cleaned$attachment_content_stripped)
+})
+
 test_that("attachment-only stored UI retains an empty message segment", {
   attachment <- list(
     mime = "image/png",

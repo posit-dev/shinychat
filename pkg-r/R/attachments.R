@@ -200,17 +200,24 @@ content_from_attachment <- function(att) {
   if (startsWith(mime, "image/")) {
     return(ellmer::content_image_url(data_url))
   }
-  if (identical(mime, "application/pdf")) {
-    content <- ellmer::content_pdf_url(data_url)
-    if (nzchar(name)) {
-      content@filename <- name
+  is_pdf <- identical(mime, "application/pdf")
+  if (is_pdf || mime %in% attachment_types()$text) {
+    content <- if (is_pdf) {
+      ellmer::content_pdf_url(data_url)
+    } else {
+      ellmer::content_document_url(data_url, mime_type = mime)
     }
-    return(content)
-  }
-  if (mime %in% attachment_types()$text) {
-    content <- ellmer::content_document_url(data_url, mime_type = mime)
-    if (nzchar(name)) {
-      content@filename <- name
+    # Unnamed attachments get a deterministic fallback: the constructors
+    # auto-name from a process-global counter (document_001.txt,
+    # file_001.pdf, ...), so a filename re-derived later (e.g. by history's
+    # attachment-content strip) would never match the one rendered into the
+    # stored message at input time.
+    content@filename <- if (nzchar(name)) {
+      name
+    } else if (is_pdf) {
+      "document.pdf"
+    } else {
+      "file"
     }
     return(content)
   }
