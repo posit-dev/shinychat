@@ -372,6 +372,38 @@ commits, three-findings escalation valve per mechanism.
   (#421 shared fixture, medium; CHANGELOG migration notes held by
   coordinator to avoid the shared-file conflict with `e0x2`).
 
+- 2026-10-15: `t21d` CLOSED — #421 shared fixture
+  (`e613e28f` fixture+harness through production v2 paths,
+  verified-red evidence; `a2bcdfbd` R sync, drift-free) + CHANGELOG
+  migration notes for custom store authors (`4169d382`). Roborev 1586:
+  1 Low (fake-chat restored_messages accumulation), fixed — a
+  shared-checkout commit race swept the fix into `2307da6e`; content
+  verified, attribution on the issue. `e0x2` landed: `2307da6e`
+  (rename to ConversationRecordV1), `9099dc37` (D1 validator),
+  `a9ff9247` (ABC typing), `91b891e7` (pointerless-record import at
+  synthesized root), `f93a4315` (read-gate in
+  `HistoryController._get_record`, both strict-xfail pins flipped and
+  passing for real, v1-era custom-store compat tests), `25edce90`
+  (put() v1→v2 overwrite + stale side-file cleanup), `947113e8`
+  (CHANGELOG downgrade note), `e2f42187` (tidy). Gates: 1203 passed/0
+  xfail, pyright 0, history Playwright subset 20 passed. INTERPRETATION
+  RECORDED: the D4 read-gate lives in the controller's `_get_record`
+  (fires when the exchange recorder is active), not in the store
+  `get()`s — stores stay mode-agnostic so the v1 runtime (default until
+  `4b9z`) and the import-matrix harness (which pins production
+  `FileConversationStore.get()` returning schema_version 1) keep
+  working; every v2-mode read of a v1 record still yields v2 in memory.
+  Roborev 1587: Fail, 4 findings. F1 (High: v1-era custom store under
+  the DEFAULT v1 runtime now gets a v2 record from
+  `ConversationRecord.model_validate` and the v1 path raises) —
+  accepted as phase-intermediate per the approved D1+D9 sequencing
+  (reviewer's fix contradicted D1; failure is loud; `4b9z` removes the
+  v1 default this same phase; flagged here for driver visibility at
+  exit). F2/F3/F4 confirmed and fix delegated (`e0x2-fixes`):
+  CHANGELOG scope wording, shape-based v1 detection in the validator
+  (markerless released forms are the guardrail), validator accepts
+  plain V2 instances + runtime-type doc note.
+
 ## Handoff
 
 (appended at phase exit — what landed, what's next, provisional decisions)
