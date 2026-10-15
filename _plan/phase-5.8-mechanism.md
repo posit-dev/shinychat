@@ -320,3 +320,10 @@ review unit; the orchestrator requests one roborev range review per unit
   floor is 3.10, PEP 678 is 3.11+); the note is traceback decoration
   only — detection uses the private attribute. Next: unit 6 (`yp75`,
   comment hygiene D10 — mechanical pass against the triage list).
+- 2026-10-15: Unit 6 (`yp75`) landed — triage applied mechanically in
+  3 commits (`4c4925a5`, `a9a3f56f`, `5f571061`); roborev 1600 pass
+  (2 Low over-deletions, fixed in `695a47d1`). Deferred-site map now
+  lives in the triage doc §7 addendum. Next: unit 7 (`mvyc`, split
+  `_history.py` D8). New backlog `7yc1`: page_chat desktop-navigation
+  Playwright flake (one failure under full history-filter load, solo
+  pass; same family as `c87g`/`bmqg`).
