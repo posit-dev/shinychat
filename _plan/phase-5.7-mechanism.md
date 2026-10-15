@@ -327,7 +327,12 @@ commits, three-findings escalation valve per mechanism.
   rule draws another finding, DELETE/REPLACE: resolve selection entirely
   inside the structure pass and drop the post-pass. Fix delegated
   (`by2p-valve`); the mechanism flips to batched range review on next
-  review.
+  review. Valve fix landed `5f1b3c57`: one `stored_pointer()` predicate
+  (a stored pointer counts only when it names an existing child of the
+  node) shared by both passes — KeyError and dangling-pointer writes
+  structurally impossible, no new guard; both regression shapes
+  test-pinned and verified to fail against the pre-fix module. 28
+  import tests green; batched range review 1584 enqueued.
 - 2026-10-15: `gwg3` landed `3230e8f2` (attachment capture verified
   matching #394/#401 — no gap, pinned), `f1e13ae0` (#372 fix: `_put_v2`
   warm cache now sorts `created_at` like every other path; the ABC
