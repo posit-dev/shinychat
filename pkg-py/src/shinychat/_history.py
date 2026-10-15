@@ -560,6 +560,36 @@ class ChatHistory:
             with session_context(session):
                 shiny_ui.notification_show(f"{prefix}: {e}", type="error")
 
+        async def _run_history_transition(
+            input_id: ResolvedId,
+            error_prefix: str,
+            action: Callable[[Any, str | None], Awaitable[None]],
+            *,
+            require_admission: bool = True,
+        ) -> None:
+            """The one skeleton shared by the transition input effects.
+
+            A request landing before the initial history decision would
+            race the pending restore (and publish a history_update that
+            releases client-side admission early), so unadmitted requests
+            are dropped; delete is the one effect that skips the gate.
+            `action` owns the per-effect payload validation and controller
+            call.
+            """
+            payload = chat._session.input[input_id]()
+            request_id = _history_transition_request_id(payload)
+            try:
+                if require_admission and not self._history_action_admitted():
+                    return
+                if controller.partition is None:
+                    return
+                await action(payload, request_id)
+            except Exception as e:
+                await notify_error(error_prefix, e)
+            finally:
+                if request_id is not None:
+                    await _complete_history_transition(chat, request_id)
+
         async def finish_initial(restored: bool) -> None:
             self._initial_history_initialized = True
             await controller.notify_settled(restored)
@@ -717,27 +747,17 @@ class ChatHistory:
             except Exception as e:
                 await notify_error("Could not open conversation", e)
 
+        async def _apply_new(payload: Any, request_id: str | None) -> None:
+            await controller.new_chat()
+
         @reactive.effect
         @reactive.event(chat._session.input[ids.new])
         async def _on_new():
-            request_id = _history_transition_request_id(
-                chat._session.input[ids.new]()
+            await _run_history_transition(
+                ids.new,
+                "Could not start a new chat",
+                _apply_new,
             )
-            try:
-                # Mirror the edit/navigate/resubmit input effects: a new-chat
-                # request that lands before the initial history decision would
-                # race the pending restore (and publish a history_update that
-                # releases client-side admission early), so it is dropped.
-                if not self._history_action_admitted():
-                    return
-                if controller.partition is None:
-                    return
-                await controller.new_chat()
-            except Exception as e:
-                await notify_error("Could not start a new chat", e)
-            finally:
-                if request_id is not None:
-                    await _complete_history_transition(chat, request_id)
 
         @reactive.effect
         @reactive.event(chat._session.input[ids.rename])
@@ -752,106 +772,89 @@ class ChatHistory:
             except Exception as e:
                 await notify_error("Could not rename conversation", e)
 
+        async def _apply_delete(payload: Any, request_id: str | None) -> None:
+            await controller.delete(str(payload["id"]))
+
         @reactive.effect
         @reactive.event(chat._session.input[ids.delete])
         async def _on_delete():
-            payload = chat._session.input[ids.delete]()
-            request_id = _history_transition_request_id(payload)
-            try:
-                if controller.partition is None:
-                    return
-                await controller.delete(str(payload["id"]))
-            except Exception as e:
-                await notify_error("Could not delete conversation", e)
-            finally:
-                if request_id is not None:
-                    await _complete_history_transition(chat, request_id)
+            await _run_history_transition(
+                ids.delete,
+                "Could not delete conversation",
+                _apply_delete,
+                require_admission=False,
+            )
+
+        async def _apply_edit(payload: Any, request_id: str | None) -> None:
+            if not isinstance(payload, dict):
+                raise TypeError("Edited message payload must be an object.")
+            index = payload.get("index")
+            content = payload.get("content")
+            if not isinstance(index, int):
+                raise TypeError("Edited message index must be an integer.")
+            if not isinstance(content, str):
+                raise TypeError("Edited message content must be a string.")
+            await controller.handle_edit(
+                index,
+                content,
+                payload.get("attachments"),
+                request_id=request_id,
+            )
 
         @reactive.effect
         @reactive.event(chat._session.input[ids.message_edit])
         async def _on_edit():
-            payload = chat._session.input[ids.message_edit]()
-            request_id = _history_transition_request_id(payload)
-            try:
-                if not self._history_action_admitted():
-                    return
-                if controller.partition is None:
-                    return
-                if not isinstance(payload, dict):
-                    raise TypeError("Edited message payload must be an object.")
-                index = payload.get("index")
-                content = payload.get("content")
-                if not isinstance(index, int):
-                    raise TypeError("Edited message index must be an integer.")
-                if not isinstance(content, str):
-                    raise TypeError("Edited message content must be a string.")
-                await controller.handle_edit(
-                    index,
-                    content,
-                    payload.get("attachments"),
-                    request_id=request_id,
-                )
-            except Exception as e:
-                await notify_error("Could not edit message", e)
-            finally:
-                if request_id is not None:
-                    await _complete_history_transition(chat, request_id)
+            await _run_history_transition(
+                ids.message_edit,
+                "Could not edit message",
+                _apply_edit,
+            )
+
+        async def _apply_navigate(payload: Any, request_id: str | None) -> None:
+            if not isinstance(payload, dict):
+                raise TypeError("Navigation payload must be an object.")
+            index = payload.get("index")
+            direction = payload.get("direction")
+            if not isinstance(index, int):
+                raise TypeError("Navigation index must be an integer.")
+            if not isinstance(direction, str):
+                raise TypeError("Navigation direction must be a string.")
+            await controller.handle_navigate(
+                index,
+                direction,
+                request_id=request_id,
+            )
 
         @reactive.effect
         @reactive.event(chat._session.input[ids.message_navigate])
         async def _on_navigate():
-            payload = chat._session.input[ids.message_navigate]()
-            request_id = _history_transition_request_id(payload)
-            try:
-                if not self._history_action_admitted():
-                    return
-                if controller.partition is None:
-                    return
-                if not isinstance(payload, dict):
-                    raise TypeError("Navigation payload must be an object.")
-                index = payload.get("index")
-                direction = payload.get("direction")
-                if not isinstance(index, int):
-                    raise TypeError("Navigation index must be an integer.")
-                if not isinstance(direction, str):
-                    raise TypeError("Navigation direction must be a string.")
-                await controller.handle_navigate(
-                    index,
-                    direction,
-                    request_id=request_id,
-                )
-            except Exception as e:
-                await notify_error("Could not navigate messages", e)
-            finally:
-                if request_id is not None:
-                    await _complete_history_transition(chat, request_id)
+            await _run_history_transition(
+                ids.message_navigate,
+                "Could not navigate messages",
+                _apply_navigate,
+            )
+
+        async def _apply_resubmit(payload: Any, request_id: str | None) -> None:
+            if not isinstance(payload, dict):
+                raise TypeError("Resubmit payload must be an object.")
+            index = payload.get("index")
+            kind = payload.get("kind")
+            if not isinstance(index, int):
+                raise TypeError("Resubmit message index must be an integer.")
+            if not isinstance(kind, str):
+                raise TypeError("Resubmit kind must be a string.")
+            await controller.handle_resubmit(
+                index, kind, request_id=request_id
+            )
 
         @reactive.effect
         @reactive.event(chat._session.input[ids.message_resubmit])
         async def _on_resubmit():
-            payload = chat._session.input[ids.message_resubmit]()
-            request_id = _history_transition_request_id(payload)
-            try:
-                if not self._history_action_admitted():
-                    return
-                if controller.partition is None:
-                    return
-                if not isinstance(payload, dict):
-                    raise TypeError("Resubmit payload must be an object.")
-                index = payload.get("index")
-                kind = payload.get("kind")
-                if not isinstance(index, int):
-                    raise TypeError("Resubmit message index must be an integer.")
-                if not isinstance(kind, str):
-                    raise TypeError("Resubmit kind must be a string.")
-                await controller.handle_resubmit(
-                    index, kind, request_id=request_id
-                )
-            except Exception as e:
-                await notify_error("Could not retry message", e)
-            finally:
-                if request_id is not None:
-                    await _complete_history_transition(chat, request_id)
+            await _run_history_transition(
+                ids.message_resubmit,
+                "Could not retry message",
+                _apply_resubmit,
+            )
 
         def _on_session_end() -> None:
             if self._on_session_end is None:
