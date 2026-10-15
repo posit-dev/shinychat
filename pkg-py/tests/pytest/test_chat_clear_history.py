@@ -75,6 +75,12 @@ def _ui_message(role: str, content: str) -> dict[str, Any]:
 async def _make_history_chat() -> tuple[
     ChatClient, _Chat, _TurnClient, InMemoryConversationStore
 ]:
+    return await _make_history_chat_with_tree(use_exchange_tree=False)
+
+
+async def _make_history_chat_with_tree(
+    *, use_exchange_tree: bool
+) -> tuple[ChatClient, _Chat, _TurnClient, InMemoryConversationStore]:
     raw_client = _TurnClient()
     chat = _Chat()
     store = InMemoryConversationStore()
@@ -85,11 +91,16 @@ async def _make_history_chat() -> tuple[
         title_fn=None,
         title_enabled=False,
         client=raw_client,
+        use_exchange_tree=use_exchange_tree,
     )
     controller.partition = ConversationPartition(
         chat_id="chat", scope="test-scope"
     )
     chat.history._controller = controller
+    if use_exchange_tree:
+        # The v2 admission predicate treats a chat as unresolved until the
+        # initial history decision completes; model a post-init chat.
+        chat.history._initial_history_initialized = True
     return (
         ChatClient(chat=cast(Any, chat), client=cast(Any, raw_client)),
         chat,
@@ -146,7 +157,9 @@ async def test_new_chat_saves_and_separates_conversations():
     assert second.id != first_id
     assert first.model_dump(mode="json") == first_snapshot
 
-    saved_first = await store.get(controller.partition, first_id)
+    saved_first = await store.get(
+        cast(ConversationPartition, controller.partition), first_id
+    )
     assert saved_first is not None
     assert saved_first.model_dump(mode="json") == first_snapshot
 
@@ -216,4 +229,91 @@ async def test_new_chat_rejects_an_in_flight_response():
         await client.new_chat()
 
     assert raw_client.get_turns() == turns
+    assert chat.clear_calls == []
+
+
+@pytest.mark.anyio
+async def test_v2_new_chat_rejects_an_in_flight_response():
+    client, chat, raw_client, _store = await _make_history_chat_with_tree(
+        use_exchange_tree=True
+    )
+    chat.latest_message_stream.state = "running"
+    turns = [{"role": "user", "content": "question"}]
+    raw_client.set_turns(turns)
+
+    with pytest.raises(NotifyException, match="Can't start a new chat while"):
+        await client.new_chat()
+
+    assert raw_client.get_turns() == turns
+    assert chat.clear_calls == []
+
+
+@pytest.mark.anyio
+async def test_v2_new_chat_rejected_while_initial_history_unresolved():
+    client, chat, raw_client, _store = await _make_history_chat_with_tree(
+        use_exchange_tree=True
+    )
+    chat.history._initial_history_initialized = False
+    _set_exchange(raw_client, chat, "question", "answer")
+    before_turns = raw_client.get_turns()
+
+    with pytest.raises(RuntimeError, match="still initializing"):
+        await client.new_chat()
+
+    # Rejected before any mutation: turns, rendered messages, and the client
+    # turns are untouched, and no history_update was published.
+    assert raw_client.get_turns() == before_turns
+    assert chat.clear_calls == []
+    assert chat.messages
+
+
+@pytest.mark.anyio
+async def test_v2_new_chat_clears_state_after_initial_history_resolves():
+    client, chat, raw_client, _store = await _make_history_chat_with_tree(
+        use_exchange_tree=True
+    )
+    controller = chat.history._controller
+    assert controller is not None
+    _set_exchange(raw_client, chat, "question", "answer")
+
+    await client.new_chat(greeting=True)
+
+    assert chat.clear_calls == [True]
+    assert raw_client.get_turns() == []
+    assert chat.messages == []
+    assert controller._active_id_now() is None
+    assert any(
+        action.get("type") == "history_update"
+        and action.get("active_id") is None
+        and action.get("transition_protocol") == "completion-v2"
+        for action in chat.actions
+    )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {},
+        {"messages": [{"role": "user", "content": "seed"}]},
+        {
+            "messages": [{"role": "user", "content": "seed"}],
+            "client_history": "set",
+        },
+        {"client_history": "set"},
+        {"client_history": "append"},
+        {"client_history": "keep"},
+    ],
+)
+async def test_v2_clear_rejects_history_managed_chats(kwargs: dict[str, Any]):
+    client, chat, raw_client, _store = await _make_history_chat_with_tree(
+        use_exchange_tree=True
+    )
+    _set_exchange(raw_client, chat, "question", "answer")
+    before_turns = raw_client.get_turns()
+
+    with pytest.raises(ValueError, match="new_chat"):
+        await client.clear(**kwargs)  # type: ignore[arg-type]
+
+    assert raw_client.get_turns() == before_turns
     assert chat.clear_calls == []

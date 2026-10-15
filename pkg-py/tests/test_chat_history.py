@@ -1741,6 +1741,227 @@ async def test_v2_message_actions_reject_before_initial_history_readiness(
 
 
 @pytest.mark.anyio
+async def test_v2_new_chat_drawer_action_rejects_before_initial_history_readiness() -> (
+    None
+):
+    session = _LiveSession()
+    store = InMemoryConversationStore()
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "forged_new",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(store=store, scope="test", restore_mode="none"),
+        )
+
+    try:
+        controller = chat.history._controller
+        assert controller is not None
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+        controller.partition = ConversationPartition(
+            chat_id="forged_new", scope="test"
+        )
+        record = new_conversation_record_v2(
+            title="before", id="c_before", client_info={}
+        )
+        recorder.record = record
+        await store.put(controller.partition, record)
+        controller.adapter.set_turns_json(
+            [{"role": "user", "content": "before"}]
+        )
+        controller._active_id.set(record.id)
+        new_chat_fn = AsyncMock()
+        controller.new_chat = new_chat_fn
+
+        ids = HistoryInputIds.for_chat(ResolvedId("forged_new"))
+        payload: dict[str, Any] = {"requestId": "forged-new"}
+        with session_context(cast(Any, session)):
+            cast(Any, session.input[ids.new])._set(payload)
+
+        record_before = record.model_copy(deep=True)
+        turns_before = controller.adapter.get_turns_json()
+        active_id_before = controller._active_id_now()
+        transcript_before = chat._transcript.read()
+        store_before = await store.list(controller.partition)
+
+        with reactive.isolate():
+            await handlers["_on_new"]()
+
+        # The request is dropped without touching the active conversation,
+        # mirroring the edit/navigate/resubmit input effects...
+        new_chat_fn.assert_not_awaited()
+        assert recorder.record == record_before
+        assert controller.adapter.get_turns_json() == turns_before
+        assert controller._active_id_now() == active_id_before
+        assert chat._transcript.read() == transcript_before
+        assert await store.list(controller.partition) == store_before
+        # ...but the transition request still completes so the drawer's
+        # busy state clears.
+        assert _completion_actions(session) == [
+            {"type": "history_transition_complete", "requestId": "forged-new"}
+        ]
+
+        chat.history._initial_history_initialized = True
+        with reactive.isolate():
+            await handlers["_on_new"]()
+        new_chat_fn.assert_awaited_once()
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_client_new_chat_closes_record_and_renews_greeting(
+    tmp_path: Any,
+) -> None:
+    session = _LiveSession()
+    store = FileConversationStore(tmp_path)
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "v2_new_chat_greeting",
+            client=cast(Any, _MockClient()),
+            greeting="## Hello",
+            history=HistoryOptions(
+                store=store, scope="test", restore_mode="none"
+            ),
+        )
+        try:
+            await reactive.flush()
+            await reactive.flush()
+            assert chat.history._initial_history_initialized
+            controller = chat.history._controller
+            assert controller is not None
+            chat_client = chat.client
+            assert chat_client is not None
+            recorder = controller._exchange_recorder
+            assert recorder is not None
+            partition = controller.partition
+            assert partition is not None
+
+            # One completed exchange in the first conversation.
+            await chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="first question", role="user"),
+                dispatch_user_submit=False,
+            )
+            await chat.append_message(
+                ChatMessage(content="first answer", role="assistant")
+            )
+            assert recorder.record is not None
+            closed_id = recorder.record.id
+
+            session.messages.clear()
+            with reactive.isolate():
+                await chat_client.new_chat(greeting=True)
+
+            actions = [message["action"] for message in session.messages]
+            # The clear carries the greeting flag...
+            assert [a for a in actions if a["type"] == "clear"] == [
+                {"type": "clear", "greeting": True}
+            ]
+            # ...the configured greeting is resolved again for the fresh
+            # conversation (the greeting stays the ambient slot)...
+            greeting_actions = [
+                a for a in actions if a["type"] == "greeting"
+            ]
+            assert [a.get("content") for a in greeting_actions] == [
+                "## Hello"
+            ]
+            # ...and the closed record stays listed with no active conversation.
+            updates = [a for a in actions if a["type"] == "history_update"]
+            assert updates
+            assert updates[-1]["active_id"] is None
+            assert [c["id"] for c in updates[-1]["conversations"]] == [
+                closed_id
+            ]
+            reset_record = recorder.record
+            assert reset_record is None
+            with reactive.isolate():
+                assert chat.history.conversation_id() is None
+
+            # The greeting never entered the record: the stored closed record
+            # holds exactly its own exchange.
+            stored_closed = await store.get(partition, closed_id)
+            assert stored_closed is not None
+            contents: list[str] = []
+            for node in stored_closed.nodes.values():
+                if node.input is not None:
+                    contents.append(node.input.content)
+                for message in node.messages:
+                    contents.append(message.as_stored_message().content)
+            assert contents == ["first question", "first answer"]
+
+            # A second conversation gets a fresh record with fresh identity.
+            await chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="second question", role="user"),
+                dispatch_user_submit=False,
+            )
+            await chat.append_message(
+                ChatMessage(content="second answer", role="assistant")
+            )
+            fresh = recorder.record
+            assert fresh is not None
+            assert fresh.id != closed_id
+            fresh_contents: list[str] = []
+            for node in fresh.nodes.values():
+                if node.input is not None:
+                    fresh_contents.append(node.input.content)
+                for message in node.messages:
+                    fresh_contents.append(message.as_stored_message().content)
+            assert fresh_contents == ["second question", "second answer"]
+        finally:
+            chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_client_new_chat_rejected_before_initial_history_readiness() -> (
+    None
+):
+    session = _LiveSession()
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        patch.object(reactive, "effect", _capture_history_effects({})),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "v2_new_chat_unresolved",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store="memory", scope="test", restore_mode="none"
+            ),
+        )
+        try:
+            # The initial history effect is captured and never run, so the
+            # v2 initial history decision is still unresolved.
+            assert not chat.history._initial_history_initialized
+            chat_client = chat.client
+            assert chat_client is not None
+
+            with pytest.raises(RuntimeError, match="still initializing"):
+                await chat_client.new_chat()
+
+            # Rejected before any mutation: nothing was cleared and no
+            # history_update was published.
+            assert list(chat._transcript.read()) == []
+            assert not any(
+                message["action"]["type"] == "clear"
+                for message in session.messages
+            )
+            assert not any(
+                message["action"]["type"] == "history_update"
+                for message in session.messages
+            )
+        finally:
+            chat.destroy()
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     ("operation", "outcome"),
     [

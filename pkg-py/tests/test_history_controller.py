@@ -427,6 +427,7 @@ class _FakeChat:
         self.restored_icons: list[str | None] = []
         self.messages: list[Any] = []
         self.clear_messages_calls = 0
+        self.clear_messages_greetings: list[bool] = []
         self.published_inputs: list[StoredMessage] = []
         self._transcript = ChatTranscript()
         self.latest_message_stream = _InactiveMessageStream()
@@ -440,6 +441,7 @@ class _FakeChat:
 
     async def clear_messages(self, *, greeting: bool = False) -> None:
         self.clear_messages_calls += 1
+        self.clear_messages_greetings.append(greeting)
         self.messages.clear()
         self._transcript.replace([])
 
@@ -1384,6 +1386,150 @@ async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
     await controller.new_chat()
     assert target.values == {"value": "new"}
     assert saved_values == ["response", "save", "switch", "new"]
+
+
+def _v2_record_contents(record: ConversationRecordV2) -> list[str]:
+    """Flatten a v2 record's inputs and response messages, in node order."""
+    contents: list[str] = []
+    for node in record.nodes.values():
+        if node.input is not None:
+            contents.append(node.input.content)
+        for message in node.messages:
+            contents.append(message.as_stored_message().content)
+    return contents
+
+
+@pytest.mark.anyio
+async def test_v2_new_chat_closes_old_record_and_starts_fresh():
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    chat = cast(_FakeChat, controller.chat)
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+    )
+
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "first question")
+    )
+    assert await transcript.append(
+        TranscriptEntry(message=_stored_message("assistant", "first answer")),
+        exchange_id=None,
+        send=_sent,
+    )
+    await controller.on_response()
+    assert recorder.record is not None
+    closed_id = recorder.record.id
+
+    await controller.new_chat()
+
+    # The closed record is persisted and listed; nothing stays active.
+    assert [meta.id for meta in await store.list(part())] == [closed_id]
+    stored_closed = await store.get(part(), closed_id)
+    assert isinstance(stored_closed, ConversationRecordV2)
+    assert _v2_record_contents(stored_closed) == [
+        "first question",
+        "first answer",
+    ]
+    assert recorder.record is None
+    assert controller._active_id_now() is None
+    assert any(
+        action.get("type") == "history_update"
+        and action.get("active_id") is None
+        and [conv["id"] for conv in action["conversations"]] == [closed_id]
+        for action in chat.actions
+    )
+
+    # A subsequent submission starts a fresh record with a new identity that
+    # carries no content from the closed conversation.
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "second question")
+    )
+    assert await transcript.append(
+        TranscriptEntry(message=_stored_message("assistant", "second answer")),
+        exchange_id=None,
+        send=_sent,
+    )
+    await controller.on_response()
+    fresh = recorder.record
+    assert fresh is not None
+    assert fresh.id != closed_id
+    assert _v2_record_contents(fresh) == ["second question", "second answer"]
+    closed_after = await store.get(part(), closed_id)
+    assert isinstance(closed_after, ConversationRecordV2)
+    assert closed_after.values == stored_closed.values
+    assert _v2_record_contents(closed_after) == [
+        "first question",
+        "first answer",
+    ]
+
+
+@pytest.mark.anyio
+async def test_v2_new_chat_greeting_resolves_and_is_not_captured():
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    chat = cast(_FakeChat, controller.chat)
+
+    settled: list[bool] = []
+
+    async def on_settled(restored: bool) -> None:
+        settled.append(restored)
+        # Mirror ChatHistory.setup_greeting wiring: resolve the configured
+        # greeting once the fresh conversation settles.
+        await chat.set_greeting("## Hello")
+
+    controller.on_settled = on_settled
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+    )
+
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "first question")
+    )
+    assert await transcript.append(
+        TranscriptEntry(message=_stored_message("assistant", "first answer")),
+        exchange_id=None,
+        send=_sent,
+    )
+    await controller.on_response()
+    assert recorder.record is not None
+    closed_id = recorder.record.id
+
+    await controller.new_chat(greeting=True)
+
+    # The greeting flag reaches clear_messages and the configured greeting is
+    # resolved again for the fresh conversation...
+    assert chat.clear_messages_calls == 1
+    assert chat.clear_messages_greetings == [True]
+    assert chat.set_greeting_calls == ["## Hello"]
+    assert settled == [False]
+
+    # ...but the greeting never enters the record: the stored closed record
+    # holds exactly its own exchange, and the fresh record does too.
+    stored_closed = await store.get(part(), closed_id)
+    assert isinstance(stored_closed, ConversationRecordV2)
+    assert _v2_record_contents(stored_closed) == [
+        "first question",
+        "first answer",
+    ]
+
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "second question")
+    )
+    assert await transcript.append(
+        TranscriptEntry(message=_stored_message("assistant", "second answer")),
+        exchange_id=None,
+        send=_sent,
+    )
+    await controller.on_response()
+    fresh = recorder.record
+    assert fresh is not None
+    assert _v2_record_contents(fresh) == ["second question", "second answer"]
 
 
 @pytest.mark.anyio
@@ -9310,12 +9456,6 @@ async def test_v2_titling_not_rescheduled_for_sibling_after_llm_title():
     # Resubmit the second input, creating a sibling exchange, then settle
     # another response: the tree-aware count stays at 2 and the LLM title
     # must not be recomputed.
-    second_id = next(
-        node_id
-        for node_id in record.path_node_ids()
-        if (node_input := record.nodes[node_id].input) is not None
-        and node_input.content == "second question"
-    )
     sibling_id = "sibling-resubmit"
     await recorder._accepted_resubmit_input_locked(
         sibling_id, _stored_message("user", "second question edited")
