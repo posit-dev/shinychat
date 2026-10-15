@@ -123,15 +123,31 @@ def import_v1_record_with_warnings(
         suffix += 1
 
     def mapped(nid: str) -> str:
-        """The single exchange covering v1 node `nid`'s content."""
-        if klass[nid] == _INPUT and not has_bare(nid):
-            selected = nodes[nid].selected_child
-            assert selected is not None, "covered by the pair exchange"
+        """The exchange covering v1 node `nid`'s continuation.
+
+        An input-bearing node continues through its selected response's
+        pair exchange whenever the selection is a response — whether or not
+        the node also keeps a bare exchange — so pointer values never depend
+        on dictionary order. Otherwise the node's own exchange (bare for
+        inputs) carries it.
+        """
+        if klass[nid] != _INPUT:
+            return nid
+        selected = nodes[nid].selected_child
+        if selected is not None and klass.get(selected) == _RESPONSE:
             return selected
         return nid
 
     def cover(nid: str | None) -> str:
-        """The exchange id carrying `nid`'s content (the root for None)."""
+        """The exchange id carrying `nid`'s own content (root for None).
+
+        Placement and continuation follow different exchanges for an
+        input-bearing node with both a selected response and a bare exchange:
+        `mapped` follows the selected continuation, while placement keeps the
+        bare exchange so non-response children re-parent under it. They agree
+        everywhere else (and share this delegation for the no-bare case), so
+        the two cannot drift apart.
+        """
         if nid is None or nid not in nodes:
             return root_id
         if klass[nid] == _INPUT and not has_bare(nid):
@@ -147,6 +163,8 @@ def import_v1_record_with_warnings(
             status="ok",
         )
     }
+
+    turn_kind = _turn_entry_kind(nodes)
 
     # One exchange per v1 node, except input-bearing nodes without a bare
     # exchange: those fold into the pair exchange of their selected
@@ -205,7 +223,7 @@ def import_v1_record_with_warnings(
         # exchange deltas and no root snapshot: folding the chain from
         # entry 0 reproduces v1's path_turns() exactly.
         exchanges[nid].state[_TURNS_STATE_KEY] = StateEntry(
-            kind=_turn_entry_kind(nodes),
+            kind=turn_kind,
             version=1,
             mode="delta",
             data=cast(JsonValue, copy.deepcopy(turns)),
@@ -257,20 +275,33 @@ def import_v1_record_with_warnings(
         return _dedupe(ids)
 
     for nid, exchange in exchanges.items():
-        exchange.children = continuations_after(
-            None if nid == root_id else nid
-        )
+        exchange.children = continuations_after(None if nid == root_id else nid)
 
-    # Uniform pointer post-pass: for every v1 pointer N.selected = C, the
-    # exchange covering C becomes the selected child at its parent.
-    for node in nodes.values():
+    # One-sided links (a node whose parent field names an existing node that
+    # does not list it among its children) never surface through the edge
+    # pass above, so reconcile: every non-root exchange must appear in its
+    # parent's children list exactly once. Appending (rather than re-rooting)
+    # keeps the parent chain — and with it the turn prefix — that v1's own
+    # parent-walking path used to reach such nodes.
+    for nid, exchange in exchanges.items():
+        parent_id = exchange.parent_id
+        if parent_id is not None and nid not in exchanges[parent_id].children:
+            exchanges[parent_id].children.append(nid)
+
+    # Pointer post-pass. Each v1 pointer N.selected = C writes exactly one
+    # v2 slot: the exchange covering N (N's bare exchange for input nodes).
+    # A pointer from an input node to a response child is skipped — the pair
+    # exchange covering that input and its selected response embodies it, and
+    # `mapped` reports it wherever the parent level needs it — so two v1
+    # pointers can never race for one slot and the result never depends on
+    # dictionary order (the active-path walk below re-affirms the path).
+    for nid, node in nodes.items():
         selected = node.selected_child
         if selected is None or selected not in nodes:
             continue
-        mapped_child = mapped(selected)
-        parent_id = exchanges[mapped_child].parent_id
-        if parent_id is not None:
-            exchanges[parent_id].selected_child = mapped_child
+        if klass[nid] == _INPUT and klass[selected] == _RESPONSE:
+            continue
+        exchanges[nid].selected_child = mapped(selected)
 
     # Active leaf: reuse the current leaf's covering exchange; a dangling
     # pointer falls back to a best-effort leaf walked from the root.

@@ -451,6 +451,185 @@ def test_interrupted_input_becomes_cancelled_bare_exchange() -> None:
     ]
 
 
+def test_stale_off_path_pointer_is_order_independent() -> None:
+    # roborev 1580: a stale pointer P.sel = U (input, off the active path,
+    # selected child a response) and U.sel = R used to race for one v2 slot —
+    # whichever node came last in record.nodes won. Here U's entry precedes
+    # P's (child before parent, as foreign-id JSON key order can produce),
+    # and the remembered continuation from P must be the pair covering U+R,
+    # not U's bare exchange.
+    record = _record(
+        {
+            "n_0001": _node(
+                parent=None,
+                children=["n_0002", "n_0010"],
+                turns=[_chatlas_turn("user", "u1")],
+                ui=[_ui("user", "u1")],
+                selected_child="n_0010",
+            ),
+            # U comes before its parent P (n_0002) in dictionary order.
+            "n_0003": _node(
+                parent="n_0002",
+                children=["n_0004", "n_0005"],
+                turns=[_chatlas_turn("user", "u2")],
+                ui=[_ui("user", "u2")],
+                selected_child="n_0004",
+            ),
+            "n_0004": _node(
+                parent="n_0003",
+                children=[],
+                turns=[_chatlas_turn("assistant", "a2")],
+                ui=[_ui("assistant", "a2")],
+                selected_child=None,
+            ),
+            "n_0005": _node(
+                parent="n_0003",
+                children=["n_0006"],
+                turns=[_chatlas_turn("user", "u2 edited")],
+                ui=[_ui("user", "u2 edited")],
+                selected_child="n_0006",
+            ),
+            "n_0006": _node(
+                parent="n_0005",
+                children=[],
+                turns=[_chatlas_turn("assistant", "a2 edited")],
+                ui=[_ui("assistant", "a2 edited")],
+                selected_child=None,
+            ),
+            # P: selected child is U, but U's subtree is off the active path
+            # (the stale pointers persist from before the last navigation).
+            "n_0002": _node(
+                parent="n_0001",
+                children=["n_0003"],
+                turns=[_chatlas_turn("assistant", "a1")],
+                ui=[_ui("assistant", "a1")],
+                selected_child="n_0003",
+            ),
+            "n_0010": _node(
+                parent="n_0001",
+                children=["n_0011"],
+                turns=[_chatlas_turn("user", "u alt")],
+                ui=[_ui("user", "u alt")],
+                selected_child="n_0011",
+            ),
+            "n_0011": _node(
+                parent="n_0010",
+                children=[],
+                turns=[_chatlas_turn("assistant", "a alt")],
+                ui=[_ui("assistant", "a alt")],
+                selected_child=None,
+            ),
+        },
+        current_leaf="n_0011",
+    )
+    imported, warns = import_v1_record_with_warnings(record)
+
+    assert warns == []
+    # U's alternatives under P's pair exchange: the n_0004 pair first (U's
+    # selected response), then U's bare exchange (the edited continuation).
+    pair = imported.nodes["n_0002"]
+    assert pair.children == ["n_0004", "n_0003"]
+    # The stale pointer P.sel = U resolves to the pair covering U + U's
+    # selected response — never the bare exchange, whatever the dict order.
+    assert pair.selected_child == "n_0004"
+    # U's bare exchange keeps the edited branch's own remembered position.
+    assert imported.nodes["n_0003"].children == ["n_0006"]
+    # U's v1 pointer selected its response (n_0004), which the pair
+    # exchange embodies — so the bare exchange carries no pointer and
+    # falls back to its only child, as v1's own children[-1] fallback does.
+    assert imported.nodes["n_0003"].selected_child is None
+    # The active path runs through the other branch: n_0001 keeps a bare
+    # exchange (its child n_0010 is input-bearing), and the imported leaf
+    # hangs under it with its own pointer preserved.
+    assert imported.nodes["n_0000"].children == ["n_0002", "n_0001"]
+    assert imported.active_leaf == "n_0011"
+    assert imported.path_node_ids() == ["n_0000", "n_0001", "n_0011"]
+    assert imported.nodes["n_0001"].children == ["n_0011"]
+    assert imported.nodes["n_0001"].selected_child == "n_0011"
+    # n_0010 folds into the n_0011 pair (selected response, no bare), so
+    # its v1 pointer is embodied there and it holds no exchange id of its own.
+    assert "n_0010" not in imported.nodes
+
+
+def test_orphan_parent_missing_from_nodes_reparents_under_root() -> None:
+    record = _record(
+        {
+            "n_0001": _node(
+                parent=None,
+                children=[],
+                turns=[_chatlas_turn("user", "reachable")],
+                ui=[_ui("user", "reachable")],
+                selected_child=None,
+            ),
+            "n_0002": _node(
+                parent="n_9999",
+                children=[],
+                turns=[_chatlas_turn("user", "orphaned")],
+                ui=[_ui("user", "orphaned")],
+                selected_child=None,
+            ),
+        },
+        current_leaf="n_0002",
+    )
+    imported, warns = import_v1_record_with_warnings(record)
+
+    assert warns == []
+    root = imported.nodes["n_0000"]
+    # An unresolvable parent keeps the node reachable under the root.
+    assert root.children == ["n_0001", "n_0002"]
+    assert imported.nodes["n_0002"].parent_id == "n_0000"
+    assert imported.active_leaf == "n_0002"
+    assert imported.path_node_ids() == ["n_0000", "n_0002"]
+
+
+def test_one_sided_link_appends_to_parent_children() -> None:
+    # roborev 1580: n_0004's parent field names n_0002, but n_0002 does not
+    # list n_0004 among its children. The exchange must still hang under
+    # n_0002's covering exchange (not the root), so v1's parent-walking path
+    # — and its turn prefix — survives the import.
+    record = _record(
+        {
+            "n_0001": _node(
+                parent=None,
+                children=["n_0002"],
+                turns=[_chatlas_turn("user", "u1")],
+                ui=[_ui("user", "u1")],
+                selected_child="n_0002",
+            ),
+            "n_0002": _node(
+                parent="n_0001",
+                children=[],
+                turns=[_chatlas_turn("assistant", "a1")],
+                ui=[_ui("assistant", "a1")],
+                selected_child=None,
+            ),
+            "n_0004": _node(
+                parent="n_0002",
+                children=[],
+                turns=[_chatlas_turn("assistant", "late response")],
+                ui=[_ui("assistant", "late response")],
+                selected_child=None,
+            ),
+        },
+        current_leaf="n_0004",
+    )
+    imported, warns = import_v1_record_with_warnings(record)
+
+    assert warns == []
+    pair = imported.nodes["n_0002"]
+    assert imported.nodes["n_0004"].parent_id == "n_0002"
+    assert "n_0004" in pair.children
+    assert imported.active_leaf == "n_0004"
+    assert imported.path_node_ids() == ["n_0000", "n_0002", "n_0004"]
+    # Turn-prefix and display fidelity along v1's parent-walking path.
+    assert _turns_deltas(imported) == record.path_turns()
+    assert _display(imported) == [
+        ("user", "u1"),
+        ("assistant", "a1"),
+        ("assistant", "late response"),
+    ]
+
+
 def test_unversioned_ui_with_extra_messages_warns_and_drops() -> None:
     record = _record(
         {
