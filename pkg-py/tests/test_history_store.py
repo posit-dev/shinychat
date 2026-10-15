@@ -13,6 +13,7 @@ import shinychat._history_store as history_store_module
 from htmltools import HTMLDependency, tags
 from shinychat._chat_types import StoredMessage, StoredSegment
 from shinychat._history_client import as_turns_adapter
+from shinychat._history_import import import_v1_record
 from shinychat._history_store import (
     ConversationPartition,
     FileConversationStore,
@@ -231,14 +232,47 @@ async def test_v2_put_failure_keeps_previous_document(
 
 
 @pytest.mark.anyio
-async def test_v2_never_overwrites_a_v1_record(store: FileConversationStore):
+async def test_v2_overwrites_a_v1_record(tmp_path: Path):
+    """Lazy conversion write half (plan section 7.5, mechanism D4).
+
+    A v2 record overwrites the v1 record it upgraded from on read: the
+    record becomes v2 on disk, and the v1 append-only side files -- dead
+    under a v2 record -- are removed so the directory holds exactly the v2
+    record.
+    """
+    store = FileConversationStore(dir=tmp_path)
     v1 = new_conversation_record(title="v1")
+    v1.append_linear([{"role": "user", "content": "hi"}])
     await store.put(part(scope="alice"), v1)
+    conv_dir = _conv_dir(tmp_path, v1)
+    assert (conv_dir / "turns.jsonl").is_file()
+
+    upgraded = import_v1_record(
+        cast(ConversationRecordV1, await store.get(part(scope="alice"), v1.id))
+    )
+    await store.put(part(scope="alice"), upgraded)
+
+    reloaded = await FileConversationStore(tmp_path).get(
+        part(scope="alice"), v1.id
+    )
+    assert isinstance(reloaded, ConversationRecordV2)
+    assert reloaded.id == v1.id
+    raw = json.loads((conv_dir / "record.json").read_text(encoding="utf-8"))
+    assert raw["schema_version"] == 2
+    assert not (conv_dir / "turns.jsonl").exists()
+    assert not (conv_dir / "ui.jsonl").exists()
+
+
+@pytest.mark.anyio
+async def test_v1_cannot_overwrite_a_v2_record(store: FileConversationStore):
+    """Only the v1-to-v2 direction is allowed; downgrades stay refused."""
     v2 = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
-    v2.id = v1.id
+    await store.put(part(scope="alice"), v2)
+    v1 = new_conversation_record(title="v1")
+    v1.id = v2.id
 
     with pytest.raises(ValueError, match="different schema version"):
-        await store.put(part(scope="alice"), v2)
+        await store.put(part(scope="alice"), v1)
 
 
 @pytest.mark.anyio
@@ -253,15 +287,30 @@ async def test_file_store_rejects_a_v1_model_labeled_as_v2(
 
 
 @pytest.mark.anyio
-async def test_memory_store_never_overwrites_a_v1_record_with_v2():
+async def test_memory_store_allows_v2_to_overwrite_a_v1_record():
     store = InMemoryConversationStore()
     v1 = new_conversation_record(title="v1")
     await store.put(part(scope="alice"), v1)
     v2 = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
     v2.id = v1.id
 
+    await store.put(part(scope="alice"), v2)
+
+    assert await store.get(part(scope="alice"), v1.id) is v2
+
+
+@pytest.mark.anyio
+async def test_memory_store_refuses_v1_overwriting_a_v2_record():
+    store = InMemoryConversationStore()
+    v2 = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    await store.put(part(scope="alice"), v2)
+    v1 = new_conversation_record(title="v1")
+    v1.id = v2.id
+
     with pytest.raises(ValueError, match="different schema version"):
-        await store.put(part(scope="alice"), v2)
+        await store.put(part(scope="alice"), v1)
+
+    assert await store.get(part(scope="alice"), v2.id) is v2
 
 
 @pytest.mark.anyio

@@ -11394,3 +11394,39 @@ async def test_custom_store_returning_a_v1_instance_upgrades_on_read(
     # new v2 record, not the v1 instance the store still holds.
     assert controller._exchange_recorder is not None
     assert controller._exchange_recorder.record is not store.returned
+
+
+@pytest.mark.anyio
+async def test_upgraded_v1_record_writes_back_as_v2_on_its_next_save(
+    tmp_path: Path,
+):
+    """End-to-end lazy conversion (plan section 7.5): read upgrades, save
+    converts. A v1 record held by the store is upgraded in memory on the
+    read, and its next save writes the v2 record over the v1 one — the
+    put() allowance (mechanism D4) is what lets the recorder's persist land.
+    """
+    v1_record, _expected = await _released_v1_record(tmp_path)
+    store = InMemoryConversationStore()
+    await store.put(part(), v1_record)
+
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+        adapter=_FakeAdapter(chatlas=True),
+    )
+    await controller.switch_to(v1_record.id)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    assert isinstance(recorder.record, ConversationRecordV2)
+
+    # The next save of that conversation persists the upgraded record.
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "follow-up")
+    )
+    await controller.on_response()
+
+    stored = await store.get(part(), v1_record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    assert stored is recorder.record
+    assert stored.schema_version == 2

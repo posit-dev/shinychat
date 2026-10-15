@@ -404,19 +404,50 @@ class FileConversationStore(ConversationStore):
         # anything, so an unsupported existing record is rejected fail-closed
         # rather than partially overwritten.
         record_file = conv_dir / "record.json"
+        overwriting_v1 = False
         if record_file.is_file():
             raw = json.loads(record_file.read_text(encoding="utf-8"))
             existing_schema_version = check_schema_version(
                 raw.get("schema_version")
             )
             if existing_schema_version != record.schema_version:
-                raise ValueError(
-                    "Cannot overwrite a conversation record with a different "
-                    "schema version."
-                )
+                if (
+                    existing_schema_version == 1
+                    and record.schema_version == 2
+                ):
+                    # Lazy conversion (plan section 7.5, mechanism D4): a
+                    # v2 record overwrites the v1 record it upgraded from
+                    # on read, and is written as v2 from then on. The
+                    # reverse direction stays refused: a v1 record never
+                    # overwrites a v2 one.
+                    overwriting_v1 = True
+                else:
+                    raise ValueError(
+                        "Cannot overwrite a conversation record with a different "
+                        "schema version."
+                    )
 
         if isinstance(record, ConversationRecordV2):
             await self._put_v2(partition, record, conv_dir)
+            if overwriting_v1:
+                # The v1 append-only side files are dead under a v2 record:
+                # get() and list() read only record.json. Remove them after
+                # the atomic record.json replace (so a failed write leaves
+                # the v1 record intact) to keep the directory a clean v2
+                # record with honest size accounting, and drop the v1 write
+                # state, which no future put can use.
+                for stale in ("turns.jsonl", "ui.jsonl"):
+                    try:
+                        (conv_dir / stale).unlink(missing_ok=True)
+                    except OSError as e:
+                        logger.warning(
+                            "Could not remove stale v1 file %s: %s",
+                            conv_dir / stale,
+                            e,
+                        )
+                self._write_state.pop(
+                    self._ws_key(partition, record.id), None
+                )
             return
 
         conv_dir.mkdir(parents=True, exist_ok=True)
@@ -625,7 +656,12 @@ class InMemoryConversationStore(ConversationStore):
         existing = self._data[partition].get(record.id)
         if existing is not None:
             existing = _check_record_for_store(existing)
-            if existing.schema_version != record.schema_version:
+            if existing.schema_version != record.schema_version and not (
+                existing.schema_version == 1 and record.schema_version == 2
+            ):
+                # Lazy conversion (plan section 7.5, mechanism D4): a v2
+                # record may overwrite the v1 record it upgraded from on
+                # read; the reverse direction stays refused.
                 raise ValueError(
                     "Cannot overwrite a conversation record with a different "
                     "schema version."
