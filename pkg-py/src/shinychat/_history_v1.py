@@ -66,7 +66,6 @@ from ._history_types import (
 if TYPE_CHECKING:
     from shiny.session import Session
 
-# Node classes, decided by a node's first display message.
 _INPUT = "input"
 _RESPONSE = "response"
 _NEUTRAL = "neutral"
@@ -100,8 +99,6 @@ def import_v1_record_with_warnings(
         nid: _dedupe([child for child in node.children if child in nodes])
         for nid, node in nodes.items()
     }
-    # Root level includes orphans whose parent id names no node, so their
-    # content stays reachable under the synthesized root.
     root_level = [
         nid
         for nid, node in nodes.items()
@@ -200,8 +197,6 @@ def import_v1_record_with_warnings(
         if nid is None or nid not in nodes:
             return root_id
         if klass[nid] == _INPUT and not has_bare(nid):
-            # No bare exchange: the node folds into the pair exchange built
-            # from its selected response child.
             return mapped(nid)
         return nid
 
@@ -215,11 +210,6 @@ def import_v1_record_with_warnings(
 
     turn_kind = _turn_entry_kind(nodes)
 
-    # One exchange per v1 node, except input-bearing nodes without a bare
-    # exchange: those fold into the pair exchange of their selected
-    # response child and never occupy an id of their own. Pair and bare
-    # exchanges keyed by the v1 node they *end* at, so children lists and
-    # parent ids below resolve without chaining.
     for nid, node in nodes.items():
         node_class = klass[nid]
         if node_class == _INPUT and not has_bare(nid):
@@ -231,17 +221,12 @@ def import_v1_record_with_warnings(
         if node_class == _RESPONSE and (
             node.parent in nodes and klass[node.parent] == _INPUT
         ):
-            # Pair exchange: the input-bearing parent's user message plus
-            # this response. Regenerate siblings each build their own pair,
-            # sharing the same input.
             user_messages = display[node.parent]
             input_message = user_messages[0]
             messages = user_messages[1:] + display[nid]
             turns = list(nodes[node.parent].turns) + list(node.turns)
             parent_id = cover(nodes[node.parent].parent)
         else:
-            # A bare input exchange, an unpaired response, or a node with
-            # no representable display messages.
             input_message = display[nid][0] if node_class == _INPUT else None
             messages = (
                 display[nid][1:] if node_class == _INPUT else display[nid]
@@ -278,9 +263,6 @@ def import_v1_record_with_warnings(
             data=cast(JsonValue, copy.deepcopy(turns)),
         )
 
-    # Children lists preserve v1 sibling order: each exchange's children
-    # are the covering exchanges of the continuations after the v1 node it
-    # ends at (the record roots for the synthesized root).
     def covering_exchanges(nid: str) -> list[str]:
         """Exchange ids covering `nid`'s alternatives, in v1 child order.
 
@@ -338,18 +320,6 @@ def import_v1_record_with_warnings(
         if parent_id is not None and nid not in exchanges[parent_id].children:
             exchanges[parent_id].children.append(nid)
 
-    # Pointer post-pass. Each v1 pointer N.selected = C writes exactly one
-    # v2 slot: the exchange covering N (N's bare exchange for input nodes).
-    # A pointer from an input node to a response child is skipped — the pair
-    # exchange covering that input and its selected response embodies it, and
-    # `mapped` reports it wherever the parent level needs it — so two v1
-    # pointers can never race for one slot and the result never depends on
-    # dictionary order (the active-path walk below re-affirms the path).
-    # Pointers resolve through the same `stored_pointer` predicate the
-    # structure pass uses, so one that does not name an existing child of
-    # its node (stale or one-sided) is ignored here exactly as v1's own
-    # fallback semantics would, instead of writing a pointer no exchange
-    # covers.
     for nid in nodes:
         selected = stored_pointer(nid)
         if selected is None:
@@ -358,13 +328,6 @@ def import_v1_record_with_warnings(
             continue
         exchanges[nid].selected_child = mapped(selected)
 
-    # Active leaf: reuse the current leaf's covering exchange; a dangling
-    # pointer falls back to a best-effort leaf walked from the root. An
-    # input-node leaf maps to its own bare exchange (has_bare above forces
-    # one into existence for it): v1's displayed path stopped at the input
-    # node itself, not at the response child it could have followed, so the
-    # imported path must stop at the same place instead of displaying that
-    # response.
     active_leaf: str | None = None
     if record.current_leaf is not None:
         if record.current_leaf in nodes:
@@ -379,12 +342,6 @@ def import_v1_record_with_warnings(
             )
             active_leaf = best_effort
     else:
-        # No active leaf: v1 displayed nothing for this record, and the
-        # imported record must display nothing too. Sitting at the
-        # synthesized root gives exactly that (the root has no input or
-        # messages) and is the same shape a fresh v2 record has, so restore
-        # paths that need a concrete leaf (e.g. the legacy bookmark stamp's
-        # active-leaf fallback) see a well-formed record.
         active_leaf = root_id
 
     # Explicit active-path walk keeps the copied pointers consistent along
@@ -450,7 +407,6 @@ def _turn_entry_kind(nodes: dict[str, ConversationNode]) -> str:
 
 
 def _best_effort_leaf(exchanges: dict[str, ExchangeNode], root_id: str) -> str:
-    """Descend selected-child pointers from the root, newest child last."""
     cursor = root_id
     visited: set[str] = set()
     while exchanges[cursor].children:
@@ -501,7 +457,6 @@ def derive_stored_ui_message(
 def _strip_attachment_content(
     message: StoredUiMessage,
 ) -> StoredUiMessage:
-    """Remove model-facing attachment content from stored user UI."""
     attachments = message.get("attachments")
     if (
         message.get("role") != "user"

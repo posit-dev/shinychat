@@ -87,8 +87,6 @@ class RecorderHost(Protocol):
 
 
 class _ExchangeRecorder:
-    """Private v2 capture owner for one history controller session."""
-
     def __init__(self, host: RecorderHost) -> None:
         self._host = host
         self.record: ConversationRecordV2 | None = None

@@ -366,8 +366,6 @@ class FileConversationStore(ConversationStore):
         conv_dir = safe_conv_path(await self._partition_dir(partition), conv_id)
         record_file = conv_dir / "record.json"
         if not record_file.is_file():
-            # Cache may be stale (e.g. another worker deleted this
-            # conversation) — drop it so the next list() re-reads disk.
             self._meta_cache.pop(partition, None)
             return None
 
@@ -578,7 +576,6 @@ class FileConversationStore(ConversationStore):
         record: ConversationRecordV2,
         conv_dir: Path,
     ) -> None:
-        """Write the v2 logical record through one atomic file replacement."""
         conv_dir.mkdir(parents=True, exist_ok=True)
         record_file = conv_dir / "record.json"
         tmp = conv_dir / ".record.json.tmp"
@@ -676,9 +673,6 @@ class InMemoryConversationStore(ConversationStore):
                 )
         self._data[partition][record.id] = record
 
-        # Only touched-record work — mirrors FileConversationStore.put(), so
-        # a warm cache stays warm without resumming/reserializing everything
-        # in partition (the cost _evict_if_needed would otherwise pay every turn).
         if partition in self._meta_cache:
             size_bytes = len(record.model_dump_json().encode("utf-8"))
             updated = [
@@ -718,7 +712,6 @@ def resolve_store(
         return InMemoryConversationStore()
     if store == "file":
         return FileConversationStore()
-    # "auto": use in-memory for dev, file-based for production
     if os.getenv("SHINY_DEV_MODE") == "1":
         logger.info(
             "Chat history: using in-memory storage (dev mode). "
@@ -794,7 +787,6 @@ async def resolve_bookmark_history_dir(
     try:
         return Path(await save_dir_fn(HISTORY_BOOKMARK_ID))
     except Exception as save_err:
-        # A concurrent session may have created the dir since our restore call.
         if restore_dir_fn is not None:
             try:
                 return Path(await restore_dir_fn(HISTORY_BOOKMARK_ID))

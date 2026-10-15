@@ -84,7 +84,6 @@ def turn_entry_kind(adapter: TurnsAdapter) -> Literal["chatlas", "turns"]:
 def canonical_turns(
     turns: Sequence[Mapping[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    """JSON round-trip each turn and fingerprint the serialized forms."""
     for turn in turns:
         _validate_mapping_keys(turn)
     serialized = [
@@ -255,9 +254,8 @@ def materialize_live_restore_turns(
 ) -> RestorePlan:
     """Materialize the planned turns after admission, keeping live order.
 
-    Live bootstrap is intentionally captured only after admission and
-    recorder serialization, but before destructive effects; the caller
-    invokes this at that point and passes the refreshed plan onward.
+    The caller invokes this at that point and passes the refreshed plan
+    onward.
     """
     materialized: list[tuple[str, RestoreHook, StatePathContext]] = []
     for name, hook, context in planned:
@@ -296,13 +294,12 @@ def preflight_state(
     """Plan one state-path application before anything is mutated.
 
     Validates every state entry on ``node_ids`` against ``hooks`` first, so
-    malformed state can never move the persisted path. Consolidates the
-    former restore and rewind preflights, which were structurally identical
-    except for the hook registry: ``phase`` names the flow in validation
-    errors, ``preserve_live_turns`` (rewind only) keeps the adapter's
-    current turns, and ``reject_unavailable`` (rewind only) refuses plans
-    whose recorded turns cannot be reconstructed. A ``live`` bootstrap
-    defers turn materialization to :func:`materialize_live_restore_turns`.
+    malformed state can never move the persisted path. ``phase`` names the
+    flow in validation errors, ``preserve_live_turns`` (rewind only) keeps
+    the adapter's current turns, and ``reject_unavailable`` (rewind only)
+    refuses plans whose recorded turns cannot be reconstructed. A ``live``
+    bootstrap defers turn materialization to
+    :func:`materialize_live_restore_turns`.
     """
     if record.active_leaf is None:
         raise ValueError("Exchange-tree record has no active leaf.")

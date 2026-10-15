@@ -345,9 +345,6 @@ class HistoryController:
         self.title_fn = title_fn
         self.title_enabled = title_enabled
         self.client = client
-        # List references: mutations to the originals (e.g. registering new
-        # callbacks after _start()) are visible here because we share the same
-        # list object, not a copy.
         self._save_callbacks: list[Callable[[dict[str, Any]], None]] = (
             save_callbacks if save_callbacks is not None else []
         )
@@ -401,8 +398,6 @@ class HistoryController:
         self._over_budget_warned: bool = False
         self._exchange_recorder = _ExchangeRecorder(self)
 
-    # -- active conversation identity --------------------------------------
-
     def conversation_id(self) -> str | None:
         """
         Reactive read of the active conversation ID: ``None`` for an empty
@@ -416,8 +411,6 @@ class HistoryController:
         return self._active_id()
 
     def _active_id_now(self) -> str | None:
-        # Non-reactive read: controller methods run both inside and outside
-        # reactive contexts.
         from shiny import reactive
 
         with reactive.isolate():
@@ -446,9 +439,6 @@ class HistoryController:
             self._active_id.set(None)
 
     async def _set_active_id(self, id: str | None) -> None:
-        # Single writer for the active ID; notifies on_active_id_change only
-        # on an actual change (e.g. first save after ensure_conversation_id()
-        # does not re-fire).
         if self._active_id_now() == id:
             return
         self._active_id.set(id)
@@ -506,8 +496,6 @@ class HistoryController:
         async with self._exchange_recorder.lock:
             yield
 
-    # -- save -----------------------------------------------------------
-
     async def on_response(self) -> None:
         """Save trigger: a completed assistant response.
 
@@ -515,15 +503,6 @@ class HistoryController:
         It fires after a completed assistant append or a stream terminal
         outcome, so replay, clear, accepted input, and partial chunks do not
         settle history.
-
-        Safe without additional locking (P5.6.8 audit, superseding the stale
-        process-wide ``reactive.lock()`` argument): every recorder mutation
-        takes the recorder's ``asyncio.Lock``; the response-settlement pump
-        is single-flight (one runner task, FIFO); and
-        ``ChatTranscript.end_stream`` awaits the capture callbacks before
-        scheduling settlement, so a settlement always observes a finished
-        exchange. These properties hold under both py-shiny's sequential
-        flush and the proposed concurrent-effects model.
         """
         recorder = self._exchange_recorder
         if not await recorder.response_settled():
@@ -581,7 +560,7 @@ class HistoryController:
         """
         recorder = self._exchange_recorder
         if recorder.record is not target:
-            return  # the active conversation switched away before we started
+            return
         if target.title_source == "user":
             return
         title = await generate_title(self.title_fn, self.client, turns)
@@ -590,11 +569,8 @@ class HistoryController:
             or recorder.record is not target
             or target.title_source == "user"
         ):
-            return  # conversation switched away or user renamed mid-call
+            return
         async with self._exchange_mutation():
-            # Re-checked under the recorder lock, inside the recorder: the
-            # active record or its title may have changed while the LLM
-            # call was in flight.
             if not await recorder.retitle_active_locked(target, title):
                 return
         await self.send_history_update()
@@ -623,7 +599,7 @@ class HistoryController:
         total = sum(m.size_bytes for m in metas)
         if total <= self.max_store_bytes:
             return
-        for meta in reversed(metas):  # oldest first
+        for meta in reversed(metas):
             if active_record is not None and meta.id == active_record.id:
                 continue
             total -= meta.size_bytes
@@ -669,8 +645,6 @@ class HistoryController:
 
         message = "Could not restore conversation."
         if detail:
-            # `detail` names the failing hook (state entry) or restore step;
-            # it carries no trailing period so the sentence composes.
             message = f"Could not restore conversation: {detail.rstrip('.')}."
         message += (
             " Recovery was incomplete; reload before starting a new chat."
@@ -700,17 +674,12 @@ class HistoryController:
 
         detail = _restore_failure_detail(failure)
         if isinstance(failure, Exception):
-            # The user-facing notification carries only the safe detail;
-            # developers get the full error, including any raw exception
-            # text from app hooks or the store.
             warnings.warn(
                 f"Chat history restore failed ({detail or 'no detail'}): "
                 f"{failure!r}",
                 stacklevel=2,
             )
 
-        # Local ownership is cleared synchronously before any cleanup can
-        # suspend, so a subsequent accepted input always creates a fresh draft.
         recorder.reset()
         self._active_id.set(None)
 
@@ -745,7 +714,6 @@ class HistoryController:
                 recovery_incomplete=bool(cleanup_failures), detail=detail
             )
         except BaseException:
-            # The original restore error or cancellation remains the outcome.
             pass
 
     async def replay_exchange_record(
@@ -763,8 +731,6 @@ class HistoryController:
     ) -> tuple[tuple[str, ...], RestorePlan, Literal["recorded", "live"]]:
         recorder = self._exchange_recorder
 
-        # Validate the entire path before this transaction clears the current
-        # display or mutates the attached client.
         node_ids = tuple(target.path_node_ids())
         if not node_ids or target.active_leaf is None:
             raise ValueError("Exchange-tree record has no active path.")
@@ -792,8 +758,6 @@ class HistoryController:
         recorder = self._exchange_recorder
 
         try:
-            # Live bootstrap is intentionally captured only after admission
-            # and recorder serialization, but before destructive effects.
             with _restore_step("materializing the restored turns"):
                 if bootstrap == "live":
                     planned_state = (
@@ -808,9 +772,6 @@ class HistoryController:
             if _history_plan.turns_unavailable(planned_state):
                 recorder.invalidate_turn_baseline()
 
-            # `_ExchangeRecorder` remains the sole v2 record owner.
-            # The controller only sequences its installation after
-            # display and state consumers have accepted the target.
             with _restore_step("installing the restored record"):
                 recorder.install_restored_record(target)
                 await self._set_active_id(target.id)
@@ -890,8 +851,6 @@ class HistoryController:
                     self._prepare_exchange_restore(selected)
                 )
         except BaseException as error:
-            # Initial restore has no surrounding transaction to recover a
-            # failed preflight. Keep the shared restore methods fail-closed.
             await self._clear_failed_restore(error)
             raise
 
@@ -938,15 +897,11 @@ class HistoryController:
                     persist_active_pointer=persist_active_pointer,
                 )
 
-    # -- switch / new ----------------------------------------------------
-
     async def switch_to(self, conv_id: str) -> None:
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
         if self._active_id_now() == conv_id:
             return
-        # Load BEFORE mutating anything: a failed load must leave the
-        # current conversation untouched.
         target = await self._get_record(self.partition, conv_id)
         if target is None:
             raise RuntimeError(f"Conversation {conv_id!r} no longer exists.")
@@ -986,9 +941,6 @@ class HistoryController:
             try:
                 await self.on_switch_restored(target)
             except Exception as exc:
-                # The restore already committed; a best-effort URL update
-                # failure (e.g. session closing) must not make callers
-                # treat the succeeded switch as failed.
                 warnings.warn(
                     f"on_switch_restored hook failed: {exc}", stacklevel=1
                 )
@@ -1008,17 +960,10 @@ class HistoryController:
                 await self._exchange_recorder.save_current_locked()
                 self.adapter.set_turns_json([])
                 await self.chat.clear_messages(greeting=greeting)
-                # Announce the cleared state even when the active ID is already None:
-                # in URL/bookmark restore modes the browser may still carry a stale
-                # conversation param (e.g. after a failed restore) that only
-                # on_active_id_change(None) clears.
                 self._exchange_recorder.reset()
                 await self.clear_active()
                 if self.on_active_id_change is not None:
                     await self.on_active_id_change(None)
-                # A fresh chat is never a restore: resolve the greeting the same way
-                # the initial settle does, so it doesn't just rely on a stale/absent
-                # cached value from that first resolution.
                 await self.notify_settled(False)
                 await self.send_history_update()
 
@@ -1110,8 +1055,6 @@ class HistoryController:
             target.input if replacement_input is None else replacement_input
         )
 
-        # Preflight against a copy so malformed rewind state cannot move the
-        # persisted path after input validation has already succeeded.
         prefix = record.model_copy(deep=True)
         prefix.set_active_leaf(parent_id)
         node_ids = tuple(prefix.path_node_ids())
@@ -1175,12 +1118,6 @@ class HistoryController:
                 raise ValueError("Exchange-tree record has no active leaf.")
             await recorder.capture_state_locked(current_leaf, "node_close")
             try:
-                # Rewind hooks run before the leaf move is persisted, so a
-                # hook failure leaves the store pointing at the leaf the
-                # user still sees and the fail-to-fresh-draft recovery
-                # below is the only thing that changed. The plan was
-                # preflighted against a deep copy, so nothing here mutates
-                # until the hooks have accepted the rewind.
                 with _restore_step(save_step):
                     await _history_plan.run_plan(rewind_state)
                     await recorder.persist_active_leaf_locked(record, leaf)
@@ -1255,8 +1192,6 @@ class HistoryController:
             message_index=message_index,
         )
 
-    # -- list mutations ----------------------------------------------------
-
     async def rename(self, conv_id: str, title: str) -> None:
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
@@ -1296,20 +1231,12 @@ class HistoryController:
                         await self.on_active_id_change(None)
                 await self.send_history_update()
 
-    # -- branch navigation --------------------------------------------------
-
     async def _send_sibling_metadata(self) -> None:
         record = self._exchange_recorder.record
         if record is None:
             return
         sibling_meta = record.path_sibling_metadata()
         if not sibling_meta:
-            # No "clear all badges" payload is needed. A badge only exists at a
-            # fork point (a node with >1 sibling), and forks are permanent:
-            # navigating between siblings keeps that node's sibling count > 1,
-            # and nothing prunes nodes from a record. So a path that currently
-            # has no forks never had one, meaning there is no stale badge to
-            # clear — empty here always means the client already shows none.
             return
         data: dict[int, dict[str, int]] = {}
         for node_id, msg_idx in record.iter_visible_inputs():
@@ -1455,8 +1382,6 @@ class HistoryController:
             message_index=message_index,
         )
 
-    # -- protocol ----------------------------------------------------------
-
     async def send_navigate(
         self,
         url: str | None,
@@ -1516,9 +1441,6 @@ class ChatHistory:
         self._controller: HistoryController | None = None
         self._save_callbacks: "list[Callable[[dict[str, Any]], None]]" = []
         self._restore_callbacks: "list[Callable[[dict[str, Any]], None]]" = []
-        # Session-level registrations made by `_start()`, tracked so they can
-        # be released when the owning Chat is destroyed (e.g. same-id
-        # reconstruction) instead of leaking until session end.
         self._effects: "list[Effect_]" = []
         self._session_end_cancel: "Callable[[], None] | None" = None
         self._on_session_end: "Callable[[], None] | None" = None
@@ -1535,10 +1457,6 @@ class ChatHistory:
         self._restore_bootstrap: "Literal['recorded', 'live']" = (
             cfg.restore_bootstrap
         )
-        # This is the initial history effect's existing completion fact. V2
-        # admission reads it synchronously at every guard site, through
-        # `_history_action_admitted()` (the history input effects in this
-        # module and the entry points in `_chat.py`).
         self._initial_history_initialized = False
 
     def enable(self) -> None:
@@ -1547,7 +1465,6 @@ class ChatHistory:
             self._start()
 
     def _history_action_admitted(self) -> bool:
-        """Admit private actions once v2's initial history decision is known."""
         controller = self._controller
         return (
             controller is None
@@ -1823,8 +1740,6 @@ class ChatHistory:
 
             controller.on_active_id_change = _update_url_bookmark
 
-        # Stamp the active history pointer into any Shiny server bookmark.
-        # V2 records need the selected leaf as well as the conversation ID.
         stamp_key = f"{chat.id}_history_exchange_pointer"
         # Legacy v1 bookmark stamp: a v1 server stamped only the conversation
         # id here. When the v2 pointer above is absent, restoring a bookmark
@@ -1892,8 +1807,6 @@ class ChatHistory:
                 shiny_ui.notification_show(f"{prefix}: {e}", type="error")
 
         async def finish_initial(restored: bool) -> None:
-            # Every initial path sends its authoritative history_update before
-            # calling this helper.
             self._initial_history_initialized = True
             await controller.notify_settled(restored)
 
@@ -1915,16 +1828,14 @@ class ChatHistory:
                     try:
                         await controller.notify_settled(False)
                     except BaseException:
-                        # Settlement is advisory; preserve the restore error.
                         pass
                     raise
 
-            owner_scope = scope()  # req() retries until token arrives
+            owner_scope = scope()
             controller.partition = ConversationPartition(
                 chat_id=str(chat.id), scope=owner_scope
             )
 
-            # Priority 1: restore from a Shiny bookmark context (any mode).
             restore_ctx = root_session.bookmark._restore_context
             # node_id is None only for a legacy v1 stamp (conversation id
             # without a leaf); the open block resolves it to the record's
@@ -2002,13 +1913,9 @@ class ChatHistory:
                 await finish_initial(True)
                 return
 
-            # Priority 2: restore from the mode-specific ID source.
             # Reading these inputs may raise SilentException if the browser
             # hasn't sent them yet (they're delivered after Shiny's
             # initializedPromise resolves, which is after the first flush).
-            # Keep the initial readiness false until after send_history_update()
-            # so the effect retries correctly on the next flush rather than
-            # exiting early via the guard above.
             if restore_mode == "url":
                 raw = chat._session.input[ids.url_id]()
                 current_id: str | None = str(raw) if raw else None
@@ -2197,8 +2104,6 @@ class ChatHistory:
         def _on_session_end() -> None:
             if self._on_session_end is None:
                 return
-            # The session consumed the registration by firing it; keep the
-            # tracked state truthful so a later `_teardown()` won't re-run.
             self._session_end_cancel = None
             self._on_session_end = None
             if stamp_cancel is not None:

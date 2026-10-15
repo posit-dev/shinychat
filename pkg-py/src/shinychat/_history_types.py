@@ -55,7 +55,6 @@ HISTORY_ERROR_MESSAGES = frozenset(
 
 
 def normalize_history_error_message(message: str | None) -> str:
-    """Return the bounded, catalogue-backed error summary for persistence."""
     value = unicodedata.normalize("NFC", message or "")
     value = "".join(
         " "
@@ -73,7 +72,6 @@ def normalize_history_error_message(message: str | None) -> str:
 
 
 def project_history_error_message(message: str | None) -> str:
-    """Project only a normalized safe catalogue value to the browser."""
     value = normalize_history_error_message(message)
     return value if value in HISTORY_ERROR_MESSAGES else HISTORY_ERROR_GENERIC
 
@@ -228,10 +226,6 @@ class ConversationRecordV1(BaseModel):
     bookmark_state_id: str | None = None
 
     def meta(self, *, size_bytes: int) -> ConversationMeta:
-        """Lightweight summary for `ConversationStore.list()`.
-
-        See `ConversationMeta.size_bytes` for why the caller must supply it.
-        """
         return ConversationMeta(
             id=self.id,
             title=self.title,
@@ -282,11 +276,6 @@ class ConversationRecordV1(BaseModel):
         return self.children_of(parent)
 
     def set_current_leaf(self, node_id: str | None) -> None:
-        # Move the active leaf and record, at every node on the new path, which
-        # child leads toward that leaf. subtree_leaf() replays those pointers so
-        # navigating back into a sibling subtree returns to the last-viewed
-        # descendant. Off-path nodes are untouched, so each subtree keeps its
-        # own remembered position.
         self.current_leaf = node_id
         path = self.path_node_ids()
         for i, nid in enumerate(path):
@@ -339,8 +328,6 @@ class ConversationRecordV1(BaseModel):
 
 
 class CapturedMessage(BaseModel):
-    """A server-authored message spec captured after a successful wire send."""
-
     role: Literal["user", "assistant"]
     segments: list[StoredSegment | StructuredBlock]
     icon: str | None = None
@@ -582,7 +569,6 @@ class ConversationRecordV2(BaseModel):
         self.updated_at = utcnow()
 
     def open_inputless_exchange(self) -> str:
-        """Open a pending child for content sent outside a user exchange."""
         exchange_id = f"n_{self.next_node_seq:04d}"
         while exchange_id in self.nodes:
             self.next_node_seq += 1

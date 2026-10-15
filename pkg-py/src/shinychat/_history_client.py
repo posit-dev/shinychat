@@ -81,7 +81,6 @@ class TurnsAdapter:
                 serialized.append(_serialize_model_turn(turn))
             else:
                 serialized.append(turn)
-        # Non-chatlas turns are turn dicts by construction (see TurnDict).
         return cast(list[TurnDict], serialized)
 
     def is_chatlas(self) -> bool:
@@ -242,7 +241,6 @@ def normalize_turn_group(group: list[TurnDict]) -> ChatMessage | None:
         if not msg.content and not msg.blocks:
             return None
         return msg
-    # Generic dict turns: join defensively if a hand-built group has more.
     content = "\n\n".join(
         text for t in group if (text := str(t.get("content", "")))
     )
