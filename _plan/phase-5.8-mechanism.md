@@ -298,3 +298,16 @@ review unit; the orchestrator requests one roborev range review per unit
   biggest unit; Protocol, public recorder methods, sentinel
   retirement). `c87g` now 3/3 in full history-filter runs, still ~1/3
   solo.
+- 2026-10-15: Unit 4 (`b1wd`) landed — `RecorderHost` Protocol +
+  getattr-fallback deletion (`ccb422a3`), public recorder boundary
+  (`8d723fff`), recorder-owned live-record mutations (`bc6da642`),
+  `_TURN_BASELINE_INVALID` retired for `list[str] | None` (`ad4c1c29`);
+  roborev 1598 pass (2 Low, fixed in `4a7d431d`: self-record asserts on
+  leaf moves, minimal honest publish semantics in the kill-test fake).
+  Sole-v2-record-owner invariant is now structural. Next: unit 5
+  (`ajxc`, restore step on the exception D7). Provisional decision:
+  leaf-move methods take the validated record as a parameter but assert
+  `record is self.record` — preserves unit-3's call shape while making
+  ownership enforceable; revisit only if a future flow legitimately
+  moves a non-live record. `c87g` still the only Playwright history
+  failure (known flake, 52 others pass).
