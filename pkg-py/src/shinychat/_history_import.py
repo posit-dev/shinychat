@@ -11,15 +11,19 @@ exactly what released py 0.7.2 displayed for the v1 record — no better,
 no worse. Versioned stored UI is carried verbatim; unversioned or missing
 UI is discarded and re-derived from turns; user-message attachment content
 is stripped. F3-class artifacts already in the record are carried, not
-repaired.
+repaired. The contract covers records written by the released v1 writers;
+corrupt shapes no released writer produces (e.g. one-sided parent/child
+links) import best-effort, without a fidelity guarantee.
 
 Structure mapping: an input-bearing v1 node U pairs with each of its
 response children R into one exchange (id R) whose input is U's first
 display message and whose messages are the rest of U plus R — regenerate
 responses become sibling exchanges sharing the input. A "bare" exchange
-(id U, no response) is created when U's selected child is not a response
-or U has non-response children; those children re-parent under bare(U) to
-preserve the turn prefix. Every v1 node id is reused verbatim as an
+(id U, no response) is created when U's selected child is not a response,
+U has non-response children, or U is the record's current leaf (v1's
+displayed path stopped at U even when a response child could follow it);
+non-response children re-parent under bare(U) to preserve the turn prefix.
+Every v1 node id is reused verbatim as an
 exchange id; ids are never parsed, so foreign/custom ids are tolerated.
 Multiple v1 roots re-parent under a synthesized input-less root.
 
@@ -129,8 +133,12 @@ def import_v1_record_with_warnings(
 
         True when the child v1 would follow is not a response (it is a
         leaf, or the active path continues through a non-response child),
-        or when any child must re-parent under the bare exchange to
-        preserve its turn prefix.
+        when any child must re-parent under the bare exchange to
+        preserve its turn prefix, or when `nid` is the record's current
+        leaf: v1's displayed path stopped at an input leaf even when the
+        node had a response child it could have followed (a leaf saved
+        mid-regenerate or after a cancelled regenerate), so the import
+        keeps a bare exchange for the path to stop there too.
         """
         response_ids = {
             child
@@ -138,6 +146,8 @@ def import_v1_record_with_warnings(
             if klass[child] == _RESPONSE
         }
         if effective_selected(nid) not in response_ids:
+            return True
+        if nid == record.current_leaf:
             return True
         return any(
             klass[child] != _RESPONSE for child in existing_children[nid]
@@ -310,8 +320,9 @@ def import_v1_record_with_warnings(
     # does not list it among its children) never surface through the edge
     # pass above, so reconcile: every non-root exchange must appear in its
     # parent's children list exactly once. Appending (rather than re-rooting)
-    # keeps the parent chain — and with it the turn prefix — that v1's own
-    # parent-walking path used to reach such nodes.
+    # keeps the node reachable under its named parent. This is a corrupt
+    # shape no released v1 writer produces, so it imports best-effort only:
+    # the section 7.4 fidelity contract does not cover it.
     for nid, exchange in exchanges.items():
         parent_id = exchange.parent_id
         if parent_id is not None and nid not in exchanges[parent_id].children:
@@ -338,11 +349,17 @@ def import_v1_record_with_warnings(
         exchanges[nid].selected_child = mapped(selected)
 
     # Active leaf: reuse the current leaf's covering exchange; a dangling
-    # pointer falls back to a best-effort leaf walked from the root.
+    # pointer falls back to a best-effort leaf walked from the root. An
+    # input-node leaf maps to its own bare exchange (has_bare above forces
+    # one into existence for it): v1's displayed path stopped at the input
+    # node itself, not at the response child it could have followed, so the
+    # imported path must stop at the same place instead of displaying that
+    # response.
     active_leaf: str | None = None
     if record.current_leaf is not None:
         if record.current_leaf in nodes:
-            active_leaf = mapped(record.current_leaf)
+            leaf = record.current_leaf
+            active_leaf = leaf if klass[leaf] == _INPUT else mapped(leaf)
         else:
             best_effort = _best_effort_leaf(exchanges, root_id)
             warns.append(

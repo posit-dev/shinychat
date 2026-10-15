@@ -471,6 +471,97 @@ def test_interrupted_input_becomes_cancelled_bare_exchange() -> None:
     ]
 
 
+def test_input_node_leaf_ends_path_at_its_bare_exchange() -> None:
+    # roborev 1584, finding 2: a v1 leaf saved at an input node that has a
+    # response child it could follow (mid-regenerate, or after a cancelled
+    # regenerate) displayed only up to the input node in v1. The import
+    # must stop there too: the leaf maps to its bare (cancelled) exchange,
+    # and the response children stay off-path as sibling alternatives.
+    record = _record(
+        {
+            "n_0001": _node(
+                parent=None,
+                children=["n_0002"],
+                turns=[_chatlas_turn("user", "Hello")],
+                ui=[_ui("user", "Hello")],
+                selected_child="n_0002",
+            ),
+            "n_0002": _node(
+                parent="n_0001",
+                children=["n_0003"],
+                turns=[_chatlas_turn("assistant", "Hi there")],
+                ui=[_ui("assistant", "Hi there")],
+                selected_child="n_0003",
+            ),
+            # The leaf: saved with a regenerate already selected (n_0005)
+            # but before the path followed it.
+            "n_0003": _node(
+                parent="n_0002",
+                children=["n_0004", "n_0005"],
+                turns=[_chatlas_turn("user", "Try again")],
+                ui=[_ui("user", "Try again")],
+                selected_child="n_0005",
+            ),
+            "n_0004": _node(
+                parent="n_0003",
+                children=[],
+                turns=[_chatlas_turn("assistant", "First answer")],
+                ui=[_ui("assistant", "First answer")],
+                selected_child=None,
+            ),
+            "n_0005": _node(
+                parent="n_0003",
+                children=[],
+                turns=[_chatlas_turn("assistant", "Regenerated answer")],
+                ui=[_ui("assistant", "Regenerated answer")],
+                selected_child=None,
+            ),
+        },
+        current_leaf="n_0003",
+    )
+    imported, warns = import_v1_record_with_warnings(record)
+
+    assert warns == []
+    # The imported active path stops at n_0003's bare exchange — the
+    # selected regenerate's pair exchange is NOT the active leaf.
+    assert imported.active_leaf == "n_0003"
+    assert imported.path_node_ids()[-1] == "n_0003"
+    bare = imported.nodes["n_0003"]
+    assert bare.parent_id == "n_0002"
+    assert bare.input is not None and bare.input.content == "Try again"
+    assert bare.messages == []
+    assert bare.status == "cancelled"
+    assert bare.selected_child is None
+    # Both responses pair with the input as off-path sibling alternatives
+    # under n_0002; neither response nor its turns is on the active path.
+    assert imported.nodes["n_0002"].children == [
+        "n_0004",
+        "n_0005",
+        "n_0003",
+    ]
+    for pair_id, answer in ("n_0004", "First answer"), (
+        "n_0005",
+        "Regenerated answer",
+    ):
+        pair = imported.nodes[pair_id]
+        assert pair.parent_id == "n_0002"
+        assert pair.input is not None and pair.input.content == "Try again"
+        assert [m.as_stored_message().content for m in pair.messages] == [
+            answer
+        ]
+        assert pair.status == "ok"
+        assert pair_id not in imported.path_node_ids()
+    # v1 fidelity: v1's own path stopped at n_0003, so the import displays
+    # and folds turns exactly up to that input — never the response the
+    # node could have followed.
+    assert _turns_deltas(imported) == record.path_turns()
+    assert _display(imported) == [
+        {"role": "user", "content": "Hello", "attachments": []},
+        {"role": "assistant", "content": "Hi there", "attachments": []},
+        {"role": "user", "content": "Try again", "attachments": []},
+    ]
+
+
 def test_pointerless_input_folds_into_last_response_like_v1() -> None:
     # py 0.6.x records carry no selected_child at all: v1's own subtree
     # fallback follows the last child, so the import must pair the input
