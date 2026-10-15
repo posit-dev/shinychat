@@ -337,3 +337,10 @@ review unit; the orchestrator requests one roborev range review per unit
   test-order isolation failure (`test_history_controller.py` before
   `test_chat_history.py` breaks the history-disabled withdrawal test;
   full suite green, alphabetical order masks it).
+- 2026-10-15: Unit 8 (`fsj3`) landed — test-only surface trimmed
+  (`183ce329` four controller methods folded into test
+  helpers/production entries, `041b1e60` dead `fallback_title`
+  deleted); roborev 1602 pass (2 Low, fixed in `9437e4f4`). Sweep
+  found no other bypasses; `new_conversation_record` and
+  `ConversationStore.total_size` left with rationale on the issue.
+  Next: unit 9 (`c1ht`, stale names and docs sweep — the closer).
