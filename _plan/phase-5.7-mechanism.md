@@ -333,6 +333,16 @@ commits, three-findings escalation valve per mechanism.
   structurally impossible, no new guard; both regression shapes
   test-pinned and verified to fail against the pre-fix module. 28
   import tests green; batched range review 1584 enqueued.
+- 2026-10-15: `dmgt` CLOSED (`670635ab` + `bf248a81`; covered by 1584).
+  Roborev 1584 (batched range) Pass with 3 Low — #3 test-scaffolding
+  dedup landed `b031d8ac`; #1/#2 hit the import selection logic AGAIN
+  (6 findings in 3 rounds on the mechanism family). DRIVER CALL on the
+  valve endgame (2026-10-15): PATCH #2 (input-node `current_leaf` maps
+  to its bare exchange — real §7.4 fidelity break for cancelled-
+  regenerate saves), SCOPE-LIMIT #1 (one-sided links are a corrupt shape
+  no released writer produces — tolerate without crash, no fidelity
+  guarantee for corrupt shapes; doc-comment corrected to stop
+  overclaiming). Patch delegated (`by2p-fidelity`).
 - 2026-10-15: `gwg3` landed `3230e8f2` (attachment capture verified
   matching #394/#401 — no gap, pinned), `f1e13ae0` (#372 fix: `_put_v2`
   warm cache now sorts `created_at` like every other path; the ABC
