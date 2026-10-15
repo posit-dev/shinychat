@@ -126,25 +126,37 @@ needs no live provider client.
 - NEWS/CHANGELOG state that downgrading hides converted conversations
   (§7.5).
 
-### D5 — Bookmark-mode `switch_to` (`mfb3`) — **spike running**
+### D5 — Bookmark-mode `switch_to` (`mfb3`) — **RESOLVED: (b) in-place URL update**
 
-Driver direction (2026-10-15): run a research spike on how problematic the
-in-place URL update (b) would be; if reasonably safe, (b) is preferred over
-(a). Decision recorded here when the spike returns.
+Resolved 2026-10-15 per the driver's conditional direction ("if reasonably
+safe, (b) is the better choice") after a research spike found (b) is
+reasonably safe (full findings on `mfb3`):
 
-v1 `switch_to` in bookmark restore mode calls `on_pre_switch` to navigate
-to the target's `?_state_id_=` URL (full reload). v2 restores in place and
-leaves the URL stale until the next response. Options:
+- The mechanism already exists end-to-end: the `history_navigate` wire
+  action WITHOUT `reload` is a soft `replaceState`, already exercised by
+  v2 today after every response save (`_history.py:2138-2140`). No new
+  wire action, no new JS handler; Shiny's own `updateQueryString`
+  defaults to `replaceState` — in-place update is a first-class pattern.
+- The target's `bookmark_state_id` is already persisted per conversation
+  (`_history_recorder.py:297-320`; `_history_store.py:478`) — no new
+  capture needed.
+- py-shiny reads `_state_id_` only at page GET and WS init, never after;
+  shiny.js patches only `pushState`, so `replaceState` is invisible to
+  server state. Use `replaceState`, never `pushState` (pushState mutates
+  server-side clientdata).
+- Residual risk accepted: WS reconnect re-initializes from the page-load
+  state id — a pre-existing staleness class v2's mint-time navigations
+  already introduce; (a) buys consistency there only at a full reload per
+  switch.
 
-- **(a) Recommended — keep v1 semantics:** in bookmark mode, `switch_to`
-  navigates via `on_pre_switch` exactly as v1 does. Bookmark mode's
-  contract is URL-driven restore; an in-place switch leaves the URL
-  pointing at a different conversation, and a reload would silently
-  restore that other conversation.
-- (b) Update the URL in place (no reload) to the target's latest bookmark
-  state id — keeps v2's client-side switch but needs a new URL-rewrite
-  mechanism (tripwire-adjacent; process.md §7.4).
-- (c) Leave the URL stale — rejected: silently wrong on reload.
+**Mechanism:** after `switch_to`'s v2 restore succeeds, send the existing
+`history_navigate` action with `?_state_id_={bookmark_state_id}` when the
+restored record has one, else `url=None` to clear the stale query. Tests
+at controller, client, and Playwright levels (sketch on `mfb3`).
+
+Rejected: (a) full navigation via `on_pre_switch` (a reload per switch;
+v1's own no-state-id fallthrough already left the URL stale); (c) leaving
+the URL stale (silently wrong conversation on reload).
 
 ### D6 — Legacy bookmark stamp (`dmgt`, §7.8)
 
