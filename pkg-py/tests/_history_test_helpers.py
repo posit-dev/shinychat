@@ -39,14 +39,9 @@ async def replay_exchange_record(
     controller: HistoryController,
     record: ConversationRecordV2 | None = None,
 ) -> None:
-    """Replay an exchange-tree record through the production restore path.
+    """Replay an exchange-tree record through the controller's restore path.
 
-    The controller once exposed this as a public method, but nothing in
-    production ever called it -- every restore goes through either the
-    initial-restore entry (bookmark/session boot) or `switch_to` -- so
-    phase 5.8 (D9) deleted it rather than keep a test-only bypass on the
-    public surface. Tests call this helper, which drives the same
-    production `_restore_exchange_record` entry the deleted method used.
+    Defaults to the recorder's live record; a no-op when there is none.
     """
     recorder = controller._exchange_recorder
     target = recorder.record if record is None else record

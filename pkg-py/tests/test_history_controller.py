@@ -6203,7 +6203,7 @@ async def test_v2_bookmark_pointer_restores_selected_sibling_and_persists() -> N
 
 
 @pytest.mark.anyio
-async def test_v2_bookmark_pointer_rejects_stale_node_before_mutation() -> None:
+async def test_v2_bookmark_pointer_stale_node_fails_preflight_and_resets_to_fresh_draft() -> None:
     controller, chat, adapter, store, _original, _replacement = (
         _make_v2_navigation_controller()
     )
@@ -6217,8 +6217,9 @@ async def test_v2_bookmark_pointer_rejects_stale_node_before_mutation() -> None:
     notifier = AsyncMock()
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
-    # A stale node fails during preflight, before any destructive mutation;
-    # the production initial-restore entry then recovers by resetting state.
+    # A stale node fails during preflight: no restore or persistence
+    # happens, and the production initial-restore entry then recovers by
+    # resetting to a fresh draft.
     with (
         pytest.raises(ValueError, match="Unknown exchange id"),
         pytest.warns(
