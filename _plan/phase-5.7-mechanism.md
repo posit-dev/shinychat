@@ -404,6 +404,20 @@ commits, three-findings escalation valve per mechanism.
   (markerless released forms are the guardrail), validator accepts
   plain V2 instances + runtime-type doc note.
 
+- 2026-10-15: `e0x2` CLOSED. F2/F3/F4 fixes landed `c7db363a`
+  (shape-gated markerless v1 detection: `current_leaf` top-level or
+  v1-only node keys `{parent, turns, ui, turn_ids}`; all four released
+  fixtures route correctly — py 0.6.1 actually stamps
+  `schema_version: 1`, so the explicit-marker branch carries the
+  fixtures and the shape path serves genuinely pre-marker records),
+  `33f6b1d6` (validator accepts plain V2 instances; V2 documented as
+  the runtime isinstance type), `c7724041` (CHANGELOG scoped to the v2
+  path). Roborev 1588 Pass with 2 Low — L1 declined (markerless +
+  nodeless dict: no released writer produces it, on-disk path never
+  reaches it, driver-scoped fidelity contract), L2 fixed `41ee2ff8`.
+  Gates: 1206 passed/0 xfail, pyright 0, ruff clean. `8ec9` delegated
+  (write-guard audit + pins against the landed put() path).
+
 ## Handoff
 
 (appended at phase exit — what landed, what's next, provisional decisions)
