@@ -234,6 +234,80 @@ async def _complete_history_transition(chat: "Chat", request_id: str) -> None:
         pass
 
 
+# The in-flight restore step travels on the exception itself (PEP 678
+# notes) rather than a controller slot, so the mechanism is stateless: no
+# label needs resetting after recovery, and an already-labeled exception
+# is never relabeled, which makes the innermost failing step win.
+_RESTORE_STEP_NOTE_PREFIX = "shinychat restore step: "
+
+
+def _add_exception_note(error: BaseException, note: str) -> None:
+    """`BaseException.add_note` that also works on Python 3.10.
+
+    CI's floor is 3.10 and `add_note` arrived in 3.11; the fallback writes
+    `__notes__` directly with the same shape `add_note` would produce.
+    """
+    add_note = getattr(error, "add_note", None)
+    if add_note is not None:
+        add_note(note)
+        return
+    notes: list[Any] = list(getattr(error, "__notes__", None) or ())
+    notes.append(note)
+    setattr(error, "__notes__", notes)
+
+
+def _restore_step_label(error: BaseException) -> str | None:
+    """The restore-step note carried by `error`, if any."""
+    notes: Any = getattr(error, "__notes__", None)
+    if notes is None:
+        return None
+    for note in notes:
+        if isinstance(note, str) and note.startswith(
+            _RESTORE_STEP_NOTE_PREFIX
+        ):
+            return note[len(_RESTORE_STEP_NOTE_PREFIX) :]
+    return None
+
+
+def _restore_failure_detail(failure: BaseException | None) -> str | None:
+    """Name the failing hook or step for the restore-failure notification.
+
+    The returned detail is safe for end users: it names the failing
+    state entry (``StateHookError`` names its hook) or the labeled
+    in-flight step, and never carries raw exception text, which can
+    hold internal details from app hooks or the store.
+    Cancellation keeps the generic message: its identity is the
+    outcome, not a diagnostic.
+    """
+    if not isinstance(failure, Exception):
+        return None
+    if isinstance(failure, _history_plan.StateHookError):
+        return f"the {failure.entry_name!r} state entry failed to apply"
+    step = _restore_step_label(failure)
+    if step is not None:
+        return f"failed while {step}"
+    return None
+
+
+@contextmanager
+def _restore_step(step: str) -> Iterator[None]:
+    """Label the in-flight restore step on the failure for the detail.
+
+    The step is remembered only when the wrapped block fails, so a later
+    ``_clear_failed_restore`` can name where the restore broke; successful
+    steps leave nothing behind. Cancellation and other non-``Exception``
+    failures stay unlabeled, matching ``_history_plan.run_plan``.
+    """
+    try:
+        yield
+    except Exception as error:
+        if _restore_step_label(error) is None:
+            _add_exception_note(
+                error, f"{_RESTORE_STEP_NOTE_PREFIX}{step}"
+            )
+        raise
+
+
 class HistoryController:
     """Session-scoped orchestrator for conversation history."""
 
@@ -311,10 +385,6 @@ class HistoryController:
         self.restore_bootstrap: Literal["recorded", "live"] = restore_bootstrap
         self._title_task: asyncio.Task[None] | None = None
         self._over_budget_warned: bool = False
-        # In-flight restore step, remembered only when that step fails, so
-        # `_clear_failed_restore` can name where a restore broke in its
-        # user-facing notification. See `_restore_step`.
-        self._restore_failure_step: str | None = None
         self._exchange_recorder = _ExchangeRecorder(self)
 
     # -- active conversation identity --------------------------------------
@@ -609,50 +679,12 @@ class HistoryController:
                 type="warning",
             )
 
-    def _restore_failure_detail(
-        self, failure: BaseException | None
-    ) -> str | None:
-        """Name the failing hook or step for the restore-failure notification.
-
-        The returned detail is safe for end users: it names the failing
-        state entry (``StateHookError`` names its hook) or the labeled
-        in-flight step, and never carries raw exception text, which can
-        hold internal details from app hooks or the store.
-        Cancellation keeps the generic message: its identity is the
-        outcome, not a diagnostic.
-        """
-        try:
-            if not isinstance(failure, Exception):
-                return None
-            step = self._restore_failure_step
-            if isinstance(failure, _history_plan.StateHookError):
-                return f"the {failure.entry_name!r} state entry failed to apply"
-            if step is not None:
-                return f"failed while {step}"
-            return None
-        finally:
-            self._restore_failure_step = None
-
-    @contextmanager
-    def _restore_step(self, step: str) -> Iterator[None]:
-        """Label the in-flight restore step for the failure detail.
-
-        The step is remembered only when the wrapped block fails, so a
-        later ``_clear_failed_restore`` can name where the restore broke;
-        successful steps leave nothing behind.
-        """
-        try:
-            yield
-        except BaseException:
-            self._restore_failure_step = step
-            raise
-
     async def _clear_failed_restore(
         self, failure: BaseException | None = None
     ) -> None:
         recorder = self._exchange_recorder
 
-        detail = self._restore_failure_detail(failure)
+        detail = _restore_failure_detail(failure)
         if isinstance(failure, Exception):
             # The user-facing notification carries only the safe detail;
             # developers get the full error, including any raw exception
@@ -748,16 +780,16 @@ class HistoryController:
         try:
             # Live bootstrap is intentionally captured only after admission
             # and recorder serialization, but before destructive effects.
-            with self._restore_step("materializing the restored turns"):
+            with _restore_step("materializing the restored turns"):
                 if bootstrap == "live":
                     planned_state = (
                         _history_plan.materialize_live_restore_turns(
                             planned_state, adapter=self.adapter
                         )
                     )
-            with self._restore_step("replaying the conversation display"):
+            with _restore_step("replaying the conversation display"):
                 await self._replay_exchange_display(target, node_ids)
-            with self._restore_step("applying the recorded state entries"):
+            with _restore_step("applying the recorded state entries"):
                 await _history_plan.run_plan(planned_state)
             if _history_plan.turns_unavailable(planned_state):
                 recorder.invalidate_turn_baseline()
@@ -765,16 +797,16 @@ class HistoryController:
             # `_ExchangeRecorder` remains the sole v2 record owner.
             # The controller only sequences its installation after
             # display and state consumers have accepted the target.
-            with self._restore_step("installing the restored record"):
+            with _restore_step("installing the restored record"):
                 recorder.install_restored_record(target)
                 await self._set_active_id(target.id)
                 recorder.mark_active_id_published(target)
-            with self._restore_step("persisting the restored record"):
+            with _restore_step("persisting the restored record"):
                 if persist_active_pointer:
                     await recorder.persist_record_locked()
-            with self._restore_step("restoring the app state"):
+            with _restore_step("restoring the app state"):
                 self._restore_app_state(target.values or {})
-            with self._restore_step(
+            with _restore_step(
                 "sending the restored conversation metadata"
             ):
                 await self._send_exchange_metadata()
@@ -835,7 +867,7 @@ class HistoryController:
         selected = target
         persist_active_pointer = False
         try:
-            with self._restore_step("validating the saved conversation"):
+            with _restore_step("validating the saved conversation"):
                 if node_id is not None:
                     selected = target.model_copy(deep=True)
                     selected.set_active_leaf(node_id)
@@ -851,7 +883,7 @@ class HistoryController:
 
         restore_body_entered = False
         try:
-            with self._restore_step("admitting the restored conversation"):
+            with _restore_step("admitting the restored conversation"):
                 async with self._destructive_mutation():
                     async with self._exchange_mutation():
                         restore_body_entered = True
@@ -865,11 +897,9 @@ class HistoryController:
         except BaseException as error:
             if not restore_body_entered:
                 await self._clear_failed_restore(error)
-            else:
-                # The restore body already ran its own attribution and
-                # cleanup; don't let the admission label above leak into a
-                # later, unrelated failure.
-                self._restore_failure_step = None
+            # Otherwise the restore body already ran its own attribution
+            # and cleanup; its failure propagates unchanged, and the
+            # step note on the exception can't leak into a later one.
             raise
 
     async def restore_bookmark_pointer(
@@ -1099,7 +1129,7 @@ class HistoryController:
             }
 
             async def send_resubmission() -> None:
-                with self._restore_step("sending the resubmission"):
+                with _restore_step("sending the resubmission"):
                     await self.chat._send_action(action)
 
             await self._rewind_locked(
@@ -1134,7 +1164,7 @@ class HistoryController:
                 # below is the only thing that changed. The plan was
                 # preflighted against a deep copy, so nothing here mutates
                 # until the hooks have accepted the rewind.
-                with self._restore_step(save_step):
+                with _restore_step(save_step):
                     await _history_plan.run_plan(rewind_state)
                     await recorder.persist_active_leaf_locked(record, leaf)
                 await send()
@@ -1367,11 +1397,11 @@ class HistoryController:
             async def send_navigation() -> None:
                 # The display replay reads only node content by id, so it
                 # does not depend on the record's leaf pointer.
-                with self._restore_step(
+                with _restore_step(
                     "replaying the conversation display"
                 ):
                     await self._replay_exchange_display(record, node_ids)
-                with self._restore_step("sending the navigation update"):
+                with _restore_step("sending the navigation update"):
                     await self._send_sibling_metadata()
                     await self._send_exchange_metadata()
                     await self.send_history_update()

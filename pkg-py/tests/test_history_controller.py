@@ -3762,7 +3762,6 @@ async def test_v2_resubmit_projection_failure_names_the_step():
         recovery_incomplete=False,
         detail="failed while sending the resubmission",
     )
-    assert controller._restore_failure_step is None
 
 
 @pytest.mark.anyio
@@ -4067,9 +4066,6 @@ async def test_v2_initial_restore_body_failure_leaves_no_stale_step_label():
         recovery_incomplete=False,
         detail="failed while replaying the conversation display",
     )
-    # Discriminating: on the buggy shape the admission label was re-armed
-    # here and a later unlabeled failure would have reported it.
-    assert controller._restore_failure_step is None
 
 
 @pytest.mark.anyio
@@ -5882,7 +5878,6 @@ async def test_v2_navigation_update_failure_names_the_step(
         recovery_incomplete=False,
         detail=f"failed while {step}",
     )
-    assert controller._restore_failure_step is None
 
 
 @pytest.mark.anyio
