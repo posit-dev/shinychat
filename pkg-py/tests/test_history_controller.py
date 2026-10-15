@@ -235,6 +235,7 @@ class _FakeChat:
         self._transcript = ChatTranscript()
         self.latest_message_stream = _InactiveMessageStream()
         self._session = None
+        self._destructive_history_transaction: object | None = None
 
     def _messages_for_bookmark(self) -> list[Any]:
         return self.messages
