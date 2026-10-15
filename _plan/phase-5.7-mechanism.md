@@ -295,6 +295,13 @@ commits, three-findings escalation valve per mechanism.
   the URL without reload; reload restores the right conversation).
   `by2p`'s order-independence fix landed `e64583d8`. Roborev 1581
   enqueued. `gwg3` delegated (attachments/list-ordering/eviction trio).
+- 2026-10-15: `mfb3` verified (Playwright 9 green; pyright 0). Roborev
+  1581 Pass with 3 Low: (1) stale `bookmark_state_id` after sibling
+  navigation — REAL, OUT OF SCOPE → backlog `ht4q` (pre-existing class,
+  v1 had it, plan §2 bookmark fidelity beyond the pointer; re-minting on
+  navigation is new machinery); (2) hook failure reported as failed
+  switch — fix delegated (best-effort wrapper); (3) garbled replaceState
+  comment — fix delegated.
 
 ## Handoff
 
