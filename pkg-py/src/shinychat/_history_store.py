@@ -222,21 +222,23 @@ def _check_record_for_store(
 class FileConversationStore(ConversationStore):
     """
     Default store: each conversation is a directory at
-    ``<dir>/<chat_id>/<scope>/<id>/`` containing ``record.json``,
-    ``turns.jsonl``, and ``ui.jsonl``.
-
-    ``record.json`` holds tree structure and metadata (small, rewritten
-    atomically on every save). ``turns.jsonl`` and ``ui.jsonl`` are
-    append-only — new turns and UI entries are appended, never rewritten.
+    ``<dir>/<chat_id>/<scope>/<id>/``. A v2 record is a single
+    ``record.json`` holding the full record inline, rewritten atomically
+    on every save. A v1 record instead splits into ``record.json`` (tree
+    structure and metadata, rewritten atomically) plus append-only
+    ``turns.jsonl`` and ``ui.jsonl`` side files (new turns and UI entries
+    are appended, never rewritten); saving a v2 record over a v1 one
+    removes the now-dead side files.
 
     Temporary records and journal rollback protect against ordinary I/O
     failures, but this store does not fsync files or directories. It also
     does not coordinate concurrent access across processes; callers must
     serialize reads and writes for each conversation.
 
-    On ``get()``, the three files are read and merged into a full
-    ``ConversationRecordV1`` with inline turns and UI on each node. Callers
-    never see the split.
+    On ``get()``, a v2 record is read straight from ``record.json``; a v1
+    record's three files are merged into a full ``ConversationRecordV1``
+    with inline turns and UI on each node. In both cases callers see the
+    record as stored, upgrading v1 records per schema on read themselves.
     """
 
     def __init__(self, dir: str | Path | None = None):

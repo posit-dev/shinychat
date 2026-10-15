@@ -205,9 +205,9 @@ class HistoryController:
         self.partition: ConversationPartition | None = None
         # Active conversation identity: an identified draft (submitted but
         # not yet saved) has an ID and no record. All identity mutations go
-        # through clear_active()
-        # and _set_active_id() so that the active ID never moves
-        # independently of the recorder's record.
+        # through _allocate_conversation_id(), clear_active(),
+        # _set_active_id(), and _clear_failed_restore() so that the active
+        # ID never moves independently of the recorder's record.
         from shiny import reactive
 
         self._active_id: "reactive.Value[str | None]" = reactive.Value(None)

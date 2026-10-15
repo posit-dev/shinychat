@@ -149,10 +149,11 @@ class ConversationNode(BaseModel):
     selected_child: str | None = None
 
     def ui_message_count(self) -> int:
-        # Rendered message count for this node. Must mirror replay_ui's
-        # `node.ui or [<fallback>]`: a missing/empty `ui` still renders one
-        # fabricated message, so index math (node_id_for_message_index,
-        # _send_sibling_metadata) stays aligned with the replayed UI.
+        # Visible message count for this node: its cached UI messages when
+        # present, else one message re-derived from the node's turns on
+        # display — a node always occupies at least one client message
+        # slot, so index math (node_id_for_message_index) stays aligned
+        # with the replayed UI.
         return len(self.ui) if self.ui else 1
 
 
