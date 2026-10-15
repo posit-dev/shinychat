@@ -107,6 +107,76 @@ class _WriteState:
     next_turn_seq: int = 0
 
 
+def _check_overwrite(
+    record_file: Path,
+    record: ConversationRecordV1 | ConversationRecordV2,
+) -> bool:
+    """Validate an existing on-disk record against the incoming one.
+
+    Returns True when a v2 record overwrites the v1 record it upgraded
+    from on read: lazy conversion writes v2 from then on, while the
+    reverse direction stays refused — a v1 record never overwrites a v2
+    one. Any other version mismatch raises.
+    """
+    if not record_file.is_file():
+        return False
+    raw = json.loads(record_file.read_text(encoding="utf-8"))
+    existing_schema_version = check_schema_version(
+        raw.get("schema_version")
+    )
+    if existing_schema_version == record.schema_version:
+        return False
+    if existing_schema_version == 1 and record.schema_version == 2:
+        return True
+    raise ValueError(
+        "Cannot overwrite a conversation record with a different "
+        "schema version."
+    )
+
+
+def _read_jsonl(
+    path: Path,
+    *,
+    key: str,
+    key_type: type,
+    value_type: type,
+    expect: str,
+) -> dict[Any, Any]:
+    """Parse an append-only JSONL side file into a key -> data map.
+
+    Blank lines are ignored; malformed lines are skipped with a warning.
+    """
+    result: dict[Any, Any] = {}
+    if not path.is_file():
+        return result
+    for line_number, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+            if (
+                not isinstance(entry, dict)
+                or type(entry.get(key)) is not key_type
+                or not isinstance(entry.get("data"), value_type)
+            ):
+                raise ValueError(expect)
+            result[entry[key]] = entry["data"]
+        except (
+            json.JSONDecodeError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ):
+            logger.warning(
+                "Skipping malformed JSONL line %s:%d",
+                path,
+                line_number,
+            )
+    return result
+
+
 def _json_digest(value: object) -> str:
     data = json.dumps(
         value,
@@ -306,63 +376,20 @@ class FileConversationStore(ConversationStore):
         if schema_version == 2:
             return ConversationRecordV2.model_validate(raw)
 
-        turns_map: dict[int, dict[str, Any]] = {}
-        turns_file = conv_dir / "turns.jsonl"
-        if turns_file.is_file():
-            for line_number, line in enumerate(
-                turns_file.read_text(encoding="utf-8").splitlines(), start=1
-            ):
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                    if (
-                        not isinstance(entry, dict)
-                        or type(entry.get("seq")) is not int
-                        or not isinstance(entry.get("data"), dict)
-                    ):
-                        raise ValueError("expected seq and data")
-                    turns_map[entry["seq"]] = entry["data"]
-                except (
-                    json.JSONDecodeError,
-                    KeyError,
-                    TypeError,
-                    ValueError,
-                ):
-                    logger.warning(
-                        "Skipping malformed JSONL line %s:%d",
-                        turns_file,
-                        line_number,
-                    )
-
-        ui_map: dict[str, list[dict[str, Any]]] = {}
-        ui_file = conv_dir / "ui.jsonl"
-        if ui_file.is_file():
-            for line_number, line in enumerate(
-                ui_file.read_text(encoding="utf-8").splitlines(), start=1
-            ):
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                    if (
-                        not isinstance(entry, dict)
-                        or not isinstance(entry.get("node_id"), str)
-                        or not isinstance(entry.get("data"), list)
-                    ):
-                        raise ValueError("expected node_id and data")
-                    ui_map[entry["node_id"]] = entry["data"]
-                except (
-                    json.JSONDecodeError,
-                    KeyError,
-                    TypeError,
-                    ValueError,
-                ):
-                    logger.warning(
-                        "Skipping malformed JSONL line %s:%d",
-                        ui_file,
-                        line_number,
-                    )
+        turns_map: dict[int, dict[str, Any]] = _read_jsonl(
+            conv_dir / "turns.jsonl",
+            key="seq",
+            key_type=int,
+            value_type=dict,
+            expect="expected seq and data",
+        )
+        ui_map: dict[str, list[dict[str, Any]]] = _read_jsonl(
+            conv_dir / "ui.jsonl",
+            key="node_id",
+            key_type=str,
+            value_type=list,
+            expect="expected node_id and data",
+        )
 
         nodes: dict[str, ConversationNode] = {}
         for nid, node_data in raw.get("nodes", {}).items():
@@ -404,28 +431,7 @@ class FileConversationStore(ConversationStore):
         # anything, so an unsupported existing record is rejected fail-closed
         # rather than partially overwritten.
         record_file = conv_dir / "record.json"
-        overwriting_v1 = False
-        if record_file.is_file():
-            raw = json.loads(record_file.read_text(encoding="utf-8"))
-            existing_schema_version = check_schema_version(
-                raw.get("schema_version")
-            )
-            if existing_schema_version != record.schema_version:
-                if (
-                    existing_schema_version == 1
-                    and record.schema_version == 2
-                ):
-                    # Lazy conversion (plan section 7.5, mechanism D4): a
-                    # v2 record overwrites the v1 record it upgraded from
-                    # on read, and is written as v2 from then on. The
-                    # reverse direction stays refused: a v1 record never
-                    # overwrites a v2 one.
-                    overwriting_v1 = True
-                else:
-                    raise ValueError(
-                        "Cannot overwrite a conversation record with a different "
-                        "schema version."
-                    )
+        overwriting_v1 = _check_overwrite(record_file, record)
 
         if isinstance(record, ConversationRecordV2):
             await self._put_v2(partition, record, conv_dir)
@@ -548,12 +554,23 @@ class FileConversationStore(ConversationStore):
             size_bytes = sum(
                 f.stat().st_size for f in conv_dir.iterdir() if f.is_file()
             )
-            updated = [
-                m for m in self._meta_cache[partition] if m.id != record.id
-            ]
-            updated.append(record.meta(size_bytes=size_bytes))
-            updated.sort(key=lambda m: m.created_at, reverse=True)
-            self._meta_cache[partition] = updated
+            self._upsert_meta(partition, record, size_bytes)
+
+    def _upsert_meta(
+        self,
+        partition: ConversationPartition,
+        record: ConversationRecordV1 | ConversationRecordV2,
+        size_bytes: int,
+    ) -> None:
+        updated = [
+            m for m in self._meta_cache[partition] if m.id != record.id
+        ]
+        updated.append(record.meta(size_bytes=size_bytes))
+        # list() is documented newest-first by created_at (#372); a
+        # warm cache must not reorder on updated_at when a save touches
+        # an older conversation.
+        updated.sort(key=lambda m: m.created_at, reverse=True)
+        self._meta_cache[partition] = updated
 
     async def _put_v2(
         self,
@@ -575,16 +592,7 @@ class FileConversationStore(ConversationStore):
             raise
 
         if partition in self._meta_cache:
-            size_bytes = record_file.stat().st_size
-            updated = [
-                m for m in self._meta_cache[partition] if m.id != record.id
-            ]
-            updated.append(record.meta(size_bytes=size_bytes))
-            # list() is documented newest-first by created_at (#372); a
-            # warm cache must not reorder on updated_at when a save touches
-            # an older conversation.
-            updated.sort(key=lambda m: m.created_at, reverse=True)
-            self._meta_cache[partition] = updated
+            self._upsert_meta(partition, record, record_file.stat().st_size)
 
     async def delete(
         self, partition: ConversationPartition, conv_id: str
