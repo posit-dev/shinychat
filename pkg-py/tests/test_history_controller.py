@@ -2074,6 +2074,130 @@ async def test_v2_switch_uses_restore_transaction_and_controller_active_id():
     assert fake_chat.actions[-1]["active_id"] == "c_target"
 
 
+# --- v2 bookmark-mode switch navigation (mfb3 / D5) ---------------------------
+
+
+class _RunningMessageStream:
+    def status(self) -> str:
+        return "running"
+
+
+def _v2_switch_target(state_id: str | None) -> ConversationRecordV2:
+    """A minimal switchable v2 target with an optional bookmark state id."""
+    target = new_conversation_record_v2(
+        title="target",
+        id="c_target",
+        client_info={},
+    )
+    target.nodes["n_0000"].state["shinychat:turns"] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[{"role": "system", "content": "restored"}],
+    )
+    target.open_exchange("n_0001", _stored_message("user", "restore me"))
+    target.bookmark_state_id = state_id
+    return target
+
+
+@pytest.mark.anyio
+async def test_v2_switch_fires_on_switch_restored_after_successful_restore():
+    """The hook fires exactly once, with the restored record, after restore."""
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    existing = new_conversation_record_v2(
+        title="existing",
+        id="c_existing",
+        client_info={},
+    )
+    target = _v2_switch_target("state_target")
+    await store.put(part(), target)
+    recorder.record = existing
+    controller._active_id.set(existing.id)
+
+    restored: list[ConversationRecord] = []
+
+    async def hook(record: ConversationRecord) -> None:
+        restored.append(record)
+
+    controller.on_switch_restored = hook
+
+    await controller.switch_to(target.id)
+
+    assert [r.id for r in restored] == ["c_target"]
+    assert restored[0].bookmark_state_id == "state_target"
+    # The controller itself stays out of navigation policy: with the hook
+    # recording instead of navigating, no history_navigate is emitted.
+    assert _nav_actions(cast(_FakeChat, controller.chat)) == []
+
+
+@pytest.mark.anyio
+async def test_v2_switch_without_hook_emits_no_navigate():
+    """Non-bookmark modes never wire the hook: no URL update on switch."""
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    target = _v2_switch_target("state_target")
+    await store.put(part(), target)
+    recorder.record = new_conversation_record_v2(
+        title="existing",
+        id="c_existing",
+        client_info={},
+    )
+    controller._active_id.set("c_existing")
+
+    await controller.switch_to(target.id)
+
+    assert _nav_actions(cast(_FakeChat, controller.chat)) == []
+    assert recorder.record is target
+
+
+@pytest.mark.anyio
+async def test_v2_switch_blocked_by_stream_fires_no_on_switch_restored():
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    chat = cast(_FakeChat, controller.chat)
+    chat.latest_message_stream = _RunningMessageStream()  # type: ignore[assignment]
+    target = _v2_switch_target("state_target")
+    await store.put(part(), target)
+
+    restored: list[ConversationRecord] = []
+
+    async def hook(record: ConversationRecord) -> None:
+        restored.append(record)
+
+    controller.on_switch_restored = hook
+
+    with pytest.raises(RuntimeError, match="stream"):
+        await controller.switch_to(target.id)
+
+    assert restored == []
+    assert _nav_actions(chat) == []
+
+
+@pytest.mark.anyio
+async def test_v2_switch_failed_preflight_fires_no_on_switch_restored():
+    """A switch that fails before the in-place restore leaves the URL alone."""
+    store = _UnsupportedSchemaVersionStore()
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+
+    restored: list[ConversationRecord] = []
+
+    async def hook(record: ConversationRecord) -> None:
+        restored.append(record)
+
+    controller.on_switch_restored = hook
+
+    with pytest.raises(UnsupportedSchemaVersionError):
+        await controller.switch_to("c_future")
+
+    assert restored == []
+    assert _nav_actions(cast(_FakeChat, controller.chat)) == []
+
+
 @pytest.mark.anyio
 async def test_v2_switch_rejects_real_chat_input_during_save_and_restore(
     request: pytest.FixtureRequest,
@@ -8689,7 +8813,7 @@ def _make_nav_controller(
     return controller, store, chat
 
 
-def _nav_actions(chat: _NavFakeChat) -> list[dict[str, Any]]:
+def _nav_actions(chat: _FakeChat) -> list[dict[str, Any]]:
     return [a for a in chat.actions if a["type"] == "history_navigate"]
 
 

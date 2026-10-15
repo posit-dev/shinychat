@@ -476,6 +476,15 @@ class HistoryController:
         self.on_pre_switch: (
             Callable[[ConversationRecord], Awaitable[bool]] | None
         ) = None
+        # Internal hook: fired after a v2 in-place switch_to restore
+        # succeeds. Bookmark mode uses it to point the URL at the restored
+        # conversation's bookmark state id without a reload (a soft
+        # replaceState, the same mechanism the post-response-save mint
+        # uses); a failed or blocked switch never fires it, so the URL
+        # keeps matching the still-active conversation.
+        self.on_switch_restored: (
+            Callable[[ConversationRecord], Awaitable[None]] | None
+        ) = None
         # Internal hook: fired before a conversation is removed from the store.
         self.on_evict: Callable[[str], Awaitable[None]] | None = None
         # Internal hook: fired whenever it's known whether the active
@@ -1273,6 +1282,12 @@ class HistoryController:
                         planned_state=planned_state,
                         bootstrap=bootstrap,
                     )
+            # Only after a successful restore: bookmark mode points the URL
+            # at the restored conversation's state id (or clears a stale
+            # query) without a reload. A failed or blocked switch raises
+            # above, leaving the URL matching the still-active conversation.
+            if self.on_switch_restored is not None:
+                await self.on_switch_restored(cast(ConversationRecord, target))
             return
 
         async with self._destructive_mutation():
@@ -2251,6 +2266,20 @@ class ChatHistory:
                 return False
 
             controller.on_pre_switch = _on_pre_switch
+
+            # D5: after a v2 in-place switch restores, point the URL at the
+            # restored conversation's bookmark state id via the existing
+            # history_navigate action WITHOUT reload (a soft replaceState,
+            # like the post-response-save mint). No state id (the target
+            # never had a response saved) -> url=None clears the stale query.
+            # replaceState never, pushState (would mutate server-side
+            # clientdata mid-session).
+            async def _on_switch_restored(record: ConversationRecord) -> None:
+                state_id = record.bookmark_state_id
+                url = f"?_state_id_={state_id}" if state_id is not None else None
+                await controller.send_navigate(url, record.id)
+
+            controller.on_switch_restored = _on_switch_restored
 
             async def _on_evict(conv_id: str) -> None:
                 if (

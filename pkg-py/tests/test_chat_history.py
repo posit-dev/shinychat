@@ -1457,6 +1457,126 @@ async def test_v2_bookmark_settlement_updates_url_and_deletes_replaced_state() -
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("state_id", ["state-target", None])
+async def test_v2_bookmark_switch_restore_soft_navigates_without_reload(
+    state_id: str | None,
+) -> None:
+    """The _start()-wired on_switch_restored updates the URL in place.
+
+    A v2 in-place switch targets the restored record's bookmark state id
+    (or clears the stale query when it has none) via the existing
+    history_navigate action, with no `reload` key (mfb3 / D5).
+    """
+    session = _LiveSession()
+    session.bookmark.store = "server"
+
+    class CapturedEffect:
+        def __init__(self, _handler: Callable[[], Awaitable[None]]) -> None:
+            pass
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        patch.object(reactive, "effect", capture_effect),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "bookmark_switch_restore",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=InMemoryConversationStore(),
+                scope="test",
+                restore_mode="bookmark",
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    assert controller.on_switch_restored is not None
+
+    record = new_conversation_record_v2(
+        title="target",
+        id="c_target",
+        client_info={},
+    )
+    record.bookmark_state_id = state_id
+    await controller.on_switch_restored(cast(Any, record))
+
+    navs = [
+        message["action"]
+        for message in session.messages
+        if message["action"]["type"] == "history_navigate"
+    ]
+    expected_url = f"?_state_id_={state_id}" if state_id is not None else None
+    assert navs == [
+        {
+            "type": "history_navigate",
+            "url": expected_url,
+            "active_id": "c_target",
+        }
+    ]
+    # Soft navigation only: no reload key, so the client replaceState's.
+    assert "reload" not in navs[0]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("restore_mode", ["none", "browser", "url"])
+async def test_v2_non_bookmark_modes_wire_no_switch_restore_navigator(
+    restore_mode: str,
+) -> None:
+    """Only bookmark mode wires on_switch_restored; other modes must not."""
+    session = _LiveSession()
+
+    class CapturedEffect:
+        def __init__(self, _handler: Callable[[], Awaitable[None]]) -> None:
+            pass
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    with (
+        patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
+        patch.object(reactive, "effect", capture_effect),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            f"no_switch_restore_{restore_mode}",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=InMemoryConversationStore(),
+                scope="test",
+                restore_mode=cast(Any, restore_mode),
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    assert controller.on_switch_restored is None
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     ("operation", "outcome"),
     [
