@@ -378,10 +378,9 @@ async def test_stores_reject_records_built_with_a_mismatched_schema_version(
         with pytest.raises(ValueError, match="model does not match"):
             await store.put(part(scope="alice"), chimera)
 
-    if backend == "file":
-        # No chimera reached disk: no conversation directory was created.
-        scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
-        assert not list(scope_dir.glob("*"))
+    # No chimera was persisted by either backend: the partition stays
+    # empty (a raise-after-mutate regression would fail this).
+    assert await store.list(part(scope="alice")) == []
 
 
 @pytest.mark.anyio
