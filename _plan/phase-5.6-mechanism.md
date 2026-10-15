@@ -288,4 +288,17 @@ except where a task says otherwise).
 
 ## Handoff
 
-(appended at phase exit — what landed, what's next, provisional decisions)
+- **What landed:** `main` sync at `3a2e6208`; one admission predicate with
+  suppressed stream entry points raising; #417 synchronous stream
+  reservation (batched range review 1570 Pass); `_ExchangeRecorder` split
+  into `_history_plan.py` + `_history_recorder.py`; StateHookError step
+  labeling with rewind-before-persist on navigate/resubmit; constant
+  init-window suppression warning; py-shiny#2508 ordering audit (backlog
+  `3y6p`, `k089`, `5qxa`, `x9fa`, `y5kr`, `bmqg`).
+- **What's next:** Phase 5.7 (`shinychat#36z7`) — v2 parity gaps, versioned
+  record types with upgrade-on-read, the v1→v2 import with per-form
+  fixtures, the legacy bookmark stamp, then deletion of the v1 runtime,
+  the `use_exchange_tree` flag, and the Python `completion-v1` branch.
+- **Provisional decisions:** push to origin (and CI) deferred to phase
+  exit; the reservation mechanism is under batched range review after the
+  escalation valve fired (decision: PATCH).
