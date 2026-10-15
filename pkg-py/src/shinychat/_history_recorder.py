@@ -383,32 +383,22 @@ class _ExchangeRecorder:
     ) -> None:
         if entry.message.role not in ("user", "assistant"):
             return
-        if self._controller.partition is None:
-            return
-
-        async with self._lock:
-            target, created = await self._content_exchange(exchange_id)
-            if target is None:
-                return
-            assert self.record is not None
-            self.record.append_message(
-                target,
-                CapturedMessage.from_stored_message(
-                    entry.message, icon=entry.icon
-                ),
-            )
-            await self._persist_record()
-            send_history_update = getattr(
-                self._controller, "send_history_update", None
-            )
-            if created and send_history_update is not None:
-                await send_history_update()
+        await self._commit_content(exchange_id, entry)
 
     async def stream_started(
         self,
         stream_id: str,
         exchange_id: str | None,
         entry: TranscriptEntry,
+    ) -> None:
+        await self._commit_content(exchange_id, entry, stream_id=stream_id)
+
+    async def _commit_content(
+        self,
+        exchange_id: str | None,
+        entry: TranscriptEntry,
+        *,
+        stream_id: str | None = None,
     ) -> None:
         if self._controller.partition is None:
             return
@@ -418,13 +408,14 @@ class _ExchangeRecorder:
             if target is None:
                 return
             assert self.record is not None
-            self._stream_exchanges[stream_id] = target
-            self.record.append_stream_message(
-                target,
-                CapturedMessage.from_stored_message(
-                    entry.message, icon=entry.icon
-                ),
+            captured = CapturedMessage.from_stored_message(
+                entry.message, icon=entry.icon
             )
+            if stream_id is None:
+                self.record.append_message(target, captured)
+            else:
+                self._stream_exchanges[stream_id] = target
+                self.record.append_stream_message(target, captured)
             await self._persist_record()
             send_history_update = getattr(
                 self._controller, "send_history_update", None
