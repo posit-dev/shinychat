@@ -328,6 +328,14 @@ commits, three-findings escalation valve per mechanism.
   inside the structure pass and drop the post-pass. Fix delegated
   (`by2p-valve`); the mechanism flips to batched range review on next
   review.
+- 2026-10-15: `gwg3` landed `3230e8f2` (attachment capture verified
+  matching #394/#401 — no gap, pinned), `f1e13ae0` (#372 fix: `_put_v2`
+  warm cache now sorts `created_at` like every other path; the ABC
+  docstring contract wins), `b4217976` (bookmark eviction pins; the
+  v1-under-v2 eviction gap is strict-xfail referencing `e0x2` — verified
+  it fires on exactly the schema `ValueError` and will xpass when the
+  read-gate lands). Verified: 383 tests, pyright 0. Roborev 1583
+  enqueued.
 
 ## Handoff
 
