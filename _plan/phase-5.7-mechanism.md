@@ -94,6 +94,22 @@ New module `_history_import.py`: a pure function
   unconditionally, never re-warned on every read.
 - Ids (absorbed from `6nzh`): tolerate foreign/custom ids; **no
   int-parsing of node ids**.
+- Synthesis rules (driver-approved 2026-10-15): status is `"ok"` for
+  exchanges with messages and `"cancelled"` for input-bearing exchanges
+  with no response messages (retryable; v2's honest representation of an
+  interrupted exchange — plan §3.4 preserve-partial, R3); root `"ok"`.
+  Every synthesized node's `created_at` is the record's `created_at`;
+  v2's tie-break falls to children-list order, matching v1's
+  `children[-1]` sibling fallback.
+- Research findings guiding the transform (spike, 2026-10-15): v1's
+  on-disk layout is identical across py 0.6.1–0.7.2 and R 0.5.0
+  (`record.json` + `turns.jsonl` + `ui.jsonl`; R omits `next_node_seq`).
+  Fidelity per 0.7.2 `replay_ui`: versioned stored UI is carried
+  verbatim; unversioned/missing UI is re-derived from turns; user-message
+  attachment content is stripped. The import emits per-exchange
+  `mode:"delta"` turn entries and NO root snapshot — v1 never stored the
+  system prompt, so restore reproduces 0.7.2's context exactly. The R
+  0.5.0 fixture stays attachment-free (R had no attachment stripping).
 
 ### D3 — Import fixtures (`by2p`)
 
