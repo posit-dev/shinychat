@@ -341,12 +341,13 @@ class _ExchangeRecorder:
                 title = fallback_title_from_text(message.content)
                 self.record = await self._new_record(title=title)
                 created = True
-            root_id = self.record.root_id
             is_first_input = not any(
                 node.input is not None for node in self.record.nodes.values()
             )
             if is_first_input:
-                await self._capture_state(root_id, "root_close")
+                await self._capture_state(
+                    self.record.root_id, "root_close"
+                )
                 self._close_root_if_inactive()
             else:
                 active_leaf = self.record.active_leaf

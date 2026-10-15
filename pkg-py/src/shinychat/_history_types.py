@@ -450,12 +450,17 @@ class ConversationRecordV2(BaseModel):
         node named ``n_0000`` roots at a synthesized ``n_0000_<suffix>``
         instead — ask the record, never assume the literal.
         """
-        (root_id,) = [
+        roots = [
             node_id
             for node_id, node in self.nodes.items()
             if node.parent_id is None
         ]
-        return root_id
+        if len(roots) != 1:
+            raise ValueError(
+                "Conversation record must have exactly one root node; "
+                f"found {len(roots)}"
+            )
+        return roots[0]
 
     def meta(self, *, size_bytes: int) -> ConversationMeta:
         return ConversationMeta(
