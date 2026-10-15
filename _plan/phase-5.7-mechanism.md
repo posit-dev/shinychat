@@ -270,6 +270,16 @@ commits, three-findings escalation valve per mechanism.
   traced already-sound end to end; `message-transcript-matrix.json`
   rejected as the fixture vehicle (its harness is StoredSegment-only).
   Roborev 1579 enqueued. `221w` delegated (D7 new_chat/clear gating).
+- 2026-10-15: `221w` landed `b879bcdd` + `16a590ae` (D7; key finding:
+  v2 `new_chat` already worked — the real gap was the admission window:
+  the public entry mutated before failing, and an early success published
+  the admission-releasing `history_update`. Now gated in
+  `ChatClient.new_chat` + the drawer `_on_new` effect). Roborev 1580
+  enqueued. Roborev 1579 (`fn6m`) Pass with 3 Low test-quality findings;
+  fixes delegated (deps-transport pin, async helper, redundant assert).
+  `mfb3` delegated (D5 mechanism: post-switch `history_navigate` without
+  reload; Playwright bookmark-mode switch test). `by2p` transform commit
+  `0fa399c9` landed; fixtures in progress.
 
 ## Handoff
 
