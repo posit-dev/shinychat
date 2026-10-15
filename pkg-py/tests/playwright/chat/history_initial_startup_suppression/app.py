@@ -7,7 +7,6 @@ from typing import Any, AsyncGenerator
 from unittest.mock import MagicMock
 
 import chatlas
-import shinychat._history as history_module
 from shiny import App, Inputs, Outputs, Session, reactive, render, ui
 from shinychat import Chat, chat_ui
 from shinychat._chat_types import StoredMessage, StoredSegment
@@ -17,8 +16,6 @@ from shinychat._history_store import (
 )
 from shinychat._history_types import new_conversation_record_v2
 from shinychat.types import HistoryOptions
-
-history_module._EXCHANGE_TREE_HISTORY_V2 = True
 
 TARGET_ID = "startup-target"
 TARGET_EXCHANGE_ID = "n_0001"

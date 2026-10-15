@@ -5,15 +5,12 @@ from typing import Any, AsyncGenerator
 from unittest.mock import MagicMock
 
 import chatlas
-import shinychat._history as history_module
 from chatlas import Turn
 from chatlas._turn import AssistantTurn
 from shiny import App, Inputs, Outputs, Session
 from shiny.ui import HTML
 from shinychat import Chat, chat_ui
 from shinychat.types import FileConversationStore, HistoryOptions
-
-history_module._EXCHANGE_TREE_HISTORY_V2 = True
 
 # Regression app for server-owned history + out-of-band content: a message
 # appended outside the normal request/response turn (e.g. a side-channel

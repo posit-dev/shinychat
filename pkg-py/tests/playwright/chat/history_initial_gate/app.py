@@ -4,13 +4,9 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import chatlas
-import shinychat._history as history_module
 from shiny import App, Inputs, Outputs, Session, reactive, render, ui
 from shinychat import Chat, chat_ui
 from shinychat.types import HistoryOptions
-
-history_module._EXCHANGE_TREE_HISTORY_V2 = True
-
 
 app_ui = ui.page_fillable(
     ui.output_text("accepted_submissions"),

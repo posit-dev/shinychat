@@ -8,14 +8,11 @@ from typing import Any, AsyncGenerator, Literal
 from unittest.mock import MagicMock
 
 import chatlas
-import shinychat._history as history_module
 from chatlas import Turn
 from chatlas._turn import AssistantTurn
 from shiny import App, Inputs, Outputs, Session, reactive, render, ui
 from shinychat import Chat, chat_ui
 from shinychat.types import FileConversationStore, HistoryOptions
-
-history_module._EXCHANGE_TREE_HISTORY_V2 = True
 
 
 class EchoChatClient(chatlas.Chat):

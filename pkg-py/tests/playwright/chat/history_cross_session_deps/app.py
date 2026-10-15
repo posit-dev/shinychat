@@ -21,15 +21,12 @@ from typing import Any, AsyncGenerator
 from unittest.mock import MagicMock
 
 import chatlas
-import shinychat._history as history_module
 from chatlas import Turn
 from chatlas._turn import AssistantTurn
 from htmltools import HTMLDependency, TagList, tags
 from shiny import App, Inputs, Outputs, Session
 from shinychat import Chat, chat_ui
 from shinychat.types import FileConversationStore, HistoryOptions
-
-history_module._EXCHANGE_TREE_HISTORY_V2 = True
 
 CSS_DIR = Path(__file__).parent / "_test_assets"
 
