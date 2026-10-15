@@ -31,7 +31,6 @@ from ._chat_types import (
     StoredMessage,
     StoredSegment,
     UpdateExchangeMetadataAction,
-    UpdateInputAction,
     UpdateSiblingsAction,
     as_stored_message,
 )
@@ -57,7 +56,6 @@ from ._history_store import (
 from ._history_title import (
     MAX_TITLE_LEN,
     TitleFn,
-    fallback_title,
     generate_title,
 )
 
@@ -69,9 +67,7 @@ from ._history_types import (
     ConversationRecordV2,
     StoredUiMessage,
     check_schema_version,
-    is_stored_ui_versioned,
     new_conversation_id,
-    new_conversation_record,
     project_history_error_message,
 )
 
@@ -84,9 +80,6 @@ if TYPE_CHECKING:
 
     from ._chat import Chat
     from ._chat_types import ChatGreeting
-
-
-_EXCHANGE_TREE_HISTORY_V2 = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -345,58 +338,6 @@ def derive_node_ui(
     ]
 
 
-def extend_record_linear(
-    record: ConversationRecordV1,
-    turn_groups: list[list[TurnDict]],
-    ui_messages: list[dict[str, Any]],
-    *,
-    ui_offset: int,
-    session: Session | None = None,
-) -> None:
-    """
-    Append turn groups beyond the record's current path as new linear nodes,
-    deriving each new node's stored UI server-side from its turn group.
-
-    Each group is one or more turns that form a single exchange unit. The
-    i-th derived message attaches to the i-th new node. ``ui_messages`` is
-    the server-side stored-message snapshot (from
-    ``Chat._messages_for_bookmark()``) and serves bookkeeping and
-    out-of-band messages only: derived messages consume the first
-    ``n_derived`` not-yet-saved stored messages, and any extras (e.g.
-    ``append_message()`` calls outside the turn flow) attach to the last
-    appended node.
-    """
-    existing = len(record.path_node_ids())
-    new_groups = turn_groups[existing:]
-
-    new_node_ids: list[str] = []
-    n_derived = 0
-    new_stored_messages = ui_messages[ui_offset:]
-    for g in new_groups:
-        node_id = record.append_linear(cast(list[dict[str, Any]], g))
-        new_node_ids.append(node_id)
-        derived = derive_stored_ui_message(g, session=session)
-        if derived is not None:
-            source = (
-                new_stored_messages[n_derived]
-                if n_derived < len(new_stored_messages)
-                else None
-            )
-            if source and source.get("attachments"):
-                derived["attachments"] = source["attachments"]
-                derived = _strip_attachment_content(derived)
-            record.nodes[node_id].ui = cast(list[dict[str, Any]], [derived])
-            n_derived += 1
-
-    fallback = new_node_ids[-1] if new_node_ids else record.current_leaf
-    if fallback is None:
-        return
-
-    for message in new_stored_messages[n_derived:]:
-        node = record.nodes[fallback]
-        node.ui = [*(node.ui or []), message]
-
-
 def _history_transition_request_id(value: Any) -> str | None:
     if not isinstance(value, dict):
         return None
@@ -432,7 +373,6 @@ class HistoryController:
         save_callbacks: "list[Callable[[dict[str, Any]], None]] | None" = None,
         restore_callbacks: "list[Callable[[dict[str, Any]], None]] | None" = None,
         max_store_bytes: int | None = None,
-        use_exchange_tree: bool = False,
         restore_bootstrap: Literal["recorded", "live"] = "recorded",
     ):
         self.chat = chat
@@ -452,16 +392,18 @@ class HistoryController:
         )
 
         self.partition: ConversationPartition | None = None
-        self.record: ConversationRecordV1 | None = None  # None => unsaved draft
+        # Always None under the v2-only runtime: `_ExchangeRecorder` is the
+        # sole record owner, and the restore transaction asserts that by
+        # assigning None before installing a restored record.
+        self.record: ConversationRecordV1 | None = None
         # Active conversation identity, separate from `record`: an
         # identified draft (submitted but not yet saved) has an ID and no
-        # record. All record/identity mutations go through
-        # activate_record()/clear_active() so that when a record exists, its
-        # `id` equals the active ID.
+        # record. All identity mutations go through clear_active()
+        # and _set_active_id() so that the active ID never moves
+        # independently of the recorder's record.
         from shiny import reactive
 
         self._active_id: "reactive.Value[str | None]" = reactive.Value(None)
-        self.ui_offset = 0  # messages already attached to nodes
         # Set by enable() when restore_mode="url"; called with the new
         # conversation id (or None) after any switch that changes the active
         # conversation.
@@ -469,18 +411,9 @@ class HistoryController:
             Callable[[str | None], Awaitable[None]] | None
         ) = None
         # Internal hook: fired after every save. bookmark mode uses it to mint.
-        # Receives either record version: the v2 record the exchange recorder
-        # owns, or the v1 record the linear path saves.
+        # Receives the v2 record the exchange recorder owns.
         self.on_response_saved: (
-            Callable[
-                [ConversationRecordV1 | ConversationRecordV2], Awaitable[None]
-            ]
-            | None
-        ) = None
-        # Internal hook: fired in switch_to before the in-session swap.
-        # Return True to skip the swap (caller has already navigated).
-        self.on_pre_switch: (
-            Callable[[ConversationRecordV1], Awaitable[bool]] | None
+            Callable[[ConversationRecordV2], Awaitable[None]] | None
         ) = None
         # Internal hook: fired after a v2 in-place switch_to restore
         # succeeds. Bookmark mode uses it to point the URL at the restored
@@ -507,9 +440,7 @@ class HistoryController:
         # `_clear_failed_restore` can name where a restore broke in its
         # user-facing notification. See `_restore_step`.
         self._restore_failure_step: str | None = None
-        self._exchange_recorder = (
-            _ExchangeRecorder(self) if use_exchange_tree else None
-        )
+        self._exchange_recorder = _ExchangeRecorder(self)
 
     # -- active conversation identity --------------------------------------
 
@@ -549,23 +480,7 @@ class HistoryController:
         id = self._active_id_now()
         if id is None:
             id = self._allocate_conversation_id()
-            if (
-                self._exchange_recorder is None
-                and self.on_active_id_change is not None
-            ):
-                await self.on_active_id_change(id)
         return id
-
-    async def activate_record(self, record: ConversationRecordV1) -> None:
-        """
-        Activate a stored record. This (with ``clear_active()``) is the
-        shared operation every restore/switch/init/delete/new-chat path must
-        use, so that ``record`` and the active ID never move independently:
-        when ``record`` is not ``None``, the active ID must equal
-        ``record.id``.
-        """
-        self.record = record
-        await self._set_active_id(record.id)
 
     async def clear_active(self) -> None:
         self.record = None
@@ -588,27 +503,15 @@ class HistoryController:
         if self.on_active_id_change is not None:
             await self.on_active_id_change(record.id)
         recorder = self._exchange_recorder
-        return (
-            recorder is not None
-            and recorder.record is record
-            and self._active_id_now() == record.id
-        )
+        return recorder.record is record and self._active_id_now() == record.id
 
     async def _get_record(
         self, partition: ConversationPartition, conv_id: str
-    ) -> ConversationRecordV1 | ConversationRecordV2 | None:
+    ) -> ConversationRecordV2 | None:
         record = await self.store.get(partition, conv_id)
         if record is not None:
             check_schema_version(record.schema_version)
-            expected_type = (
-                ConversationRecordV2
-                if self._exchange_recorder is not None
-                else ConversationRecordV1
-            )
-            if (
-                self._exchange_recorder is not None
-                and isinstance(record, ConversationRecordV1)
-            ):
+            if isinstance(record, ConversationRecordV1):
                 # Lazy-conversion read-gate (plan §7.5, mechanism D1/D4): a
                 # v1 record -- read from disk by a built-in store or handed
                 # back by a custom store -- upgrades to v2 in memory here, and
@@ -616,17 +519,11 @@ class HistoryController:
                 # import path keeps repeated reads quiet: warnings name only
                 # genuinely lossy imports and must not re-fire on every read.
                 record = import_v1_record(record)
-            if not isinstance(record, expected_type):
+            if not isinstance(record, ConversationRecordV2):
                 raise ValueError(
                     "Conversation record schema does not match the active history path."
                 )
         return record
-
-    async def _put_record(
-        self, partition: ConversationPartition, record: ConversationRecordV1
-    ) -> None:
-        check_schema_version(record.schema_version)
-        await self.store.put(partition, record)
 
     @asynccontextmanager
     async def _destructive_mutation(self, *, block_input: bool = False):
@@ -641,9 +538,6 @@ class HistoryController:
 
     @asynccontextmanager
     async def _exchange_mutation(self):
-        if self._exchange_recorder is None:
-            yield
-            return
         async with self._exchange_recorder._lock:
             yield
 
@@ -667,109 +561,16 @@ class HistoryController:
         flush and the proposed concurrent-effects model.
         """
         recorder = self._exchange_recorder
-        if recorder is not None:
-            if not await recorder.response_settled():
-                return
-            record = recorder.record
-            assert record is not None
-            await self._evict_if_needed()
-            if self.on_response_saved is not None:
-                await self.on_response_saved(record)
-            await self.send_history_update()
-            await self._send_sibling_metadata()
-            self._schedule_exchange_retitle(record)
+        if not await recorder.response_settled():
             return
-        if self.partition is None:
-            raise RuntimeError("HistoryController not initialized")
-        turn_groups = self.adapter.get_turns_grouped()
-        messages = self.chat._messages_for_bookmark()
-
-        first_save = self.record is None
-        if not first_save:
-            record = self.record
-            if record is None:
-                raise RuntimeError("HistoryController not initialized")
-            stored_ui = [
-                m
-                for nid in record.path_node_ids()
-                for m in (record.nodes[nid].ui or [])
-            ]
-            # Idempotent + truncation guard. A restore may trigger the
-            # response effect while the server still has the restored
-            # conversation. Never let that state overwrite the record. Skip
-            # when there are no new turn groups and the server message list is
-            # no longer than what's already stored.
-            if len(turn_groups) <= len(record.path_node_ids()) and len(
-                messages
-            ) <= len(stored_ui):
-                # Advance ui_offset monotonically so a later save doesn't
-                # reprocess these as out-of-band extras.
-                self.ui_offset = max(self.ui_offset, len(messages))
-                return
-
-        if first_save:
-            turns_flat = self.adapter.get_turns_json()
-            # Adopt the active ID allocated at submission time (or allocate
-            # one now for standalone history users), so the saved record
-            # carries the identity model work was already tagged with.
-            new_record = new_conversation_record(
-                title=fallback_title(turns_flat),
-                id=await self.ensure_conversation_id(),
-            )
-            new_record.client_info = self.adapter.client_info()
-            await self.activate_record(new_record)
-
-        record = self.record
-        if record is None:
-            raise RuntimeError("HistoryController not initialized")
-        extend_record_linear(
-            record,
-            turn_groups,
-            messages,
-            ui_offset=self.ui_offset,
-            session=self.chat._session,
-        )
-        record.response_count += 1
-        self._capture_app_state(record)
-        await self._put_record(self.partition, record)
+        record = recorder.record
+        assert record is not None
         await self._evict_if_needed()
         if self.on_response_saved is not None:
             await self.on_response_saved(record)
-        self.ui_offset = len(messages)
         await self.send_history_update()
         await self._send_sibling_metadata()
-
-        # Wait for the second response before titling: gives the LLM/custom
-        # title_fn more context than a single exchange, and avoids spending
-        # a call on conversations abandoned after one message. response_count
-        # (not turn/node counts) drives this, since a single response's
-        # turn-group count isn't fixed across client types.
-        if (
-            self.title_enabled
-            and record.title_source is None
-            and record.response_count == 2
-        ):
-            turns_flat = self.adapter.get_turns_json()
-            self._title_task = asyncio.create_task(self.retitle(turns_flat))
-            self._title_task.add_done_callback(title_task_done)
-
-    async def retitle(self, turns: list[TurnDict]) -> None:
-        target = self.record  # capture before the slow LLM call
-        if target is None or target.title_source == "user":
-            return
-        title = await generate_title(self.title_fn, self.client, turns)
-        if (
-            title is None
-            or self.record is not target
-            or target.title_source == "user"
-        ):
-            return  # conversation switched away or user renamed mid-call
-        target.title = title
-        target.title_source = "llm"
-        if self.partition is None:
-            raise RuntimeError("HistoryController not initialized")
-        await self._put_record(self.partition, target)
-        await self.send_history_update()
+        self._schedule_exchange_retitle(record)
 
     def _schedule_exchange_retitle(self, record: ConversationRecordV2) -> None:
         """Launch the v2 retitle task (phase-5.7 D8: `tgdt`).
@@ -806,16 +607,14 @@ class HistoryController:
     ) -> None:
         """The v2 counterpart of :meth:`retitle` (phase-5.7 D8: `tgdt`).
 
-        Same shape as v1: the caller passes the settled record to title,
-        so the slow LLM call targets the conversation that was eligible
-        when scheduling happened; bail when the conversation switched away
-        or the user renamed mid-call, then write the new title through the
+        Same shape as the scheduling path: the caller passes the settled record
+        to title, so the slow LLM call targets the conversation that was
+        eligible when scheduling happened; bail when the conversation switched
+        away or the user renamed mid-call, then write the new title through the
         recorder's normal v2 persist path (store put under the recorder
         lock) and publish it via ``history_update``.
         """
         recorder = self._exchange_recorder
-        if recorder is None:
-            return
         if recorder.record is not target:
             return  # the active conversation switched away before we started
         if target.title_source == "user":
@@ -856,11 +655,7 @@ class HistoryController:
     async def _evict_if_needed(self) -> None:
         if self.max_store_bytes is None or self.partition is None:
             return
-        active_record = (
-            self._exchange_recorder.record
-            if self._exchange_recorder is not None
-            else self.record
-        )
+        active_record = self._exchange_recorder.record
         metas = await self.store.list(self.partition)
         total = sum(m.size_bytes for m in metas)
         if total <= self.max_store_bytes:
@@ -886,11 +681,7 @@ class HistoryController:
         """Persist app state for the active conversation."""
         if not await self.save_current():
             return False
-        record = (
-            self._exchange_recorder.record
-            if self._exchange_recorder is not None
-            else self.record
-        )
+        record = self._exchange_recorder.record
         assert record is not None
         await self._evict_if_needed()
         if self.on_response_saved is not None:
@@ -901,29 +692,7 @@ class HistoryController:
 
     async def save_current(self) -> bool:
         """Persist the active conversation if it has ever been saved."""
-        if self._exchange_recorder is not None:
-            return await self._exchange_recorder.save_current()
-        if self.record is None or self.partition is None:
-            return False
-        turn_groups = self.adapter.get_turns_grouped()
-        messages = self.chat._messages_for_bookmark()
-        extend_record_linear(
-            self.record,
-            turn_groups,
-            messages,
-            ui_offset=self.ui_offset,
-            session=self.chat._session,
-        )
-        self._capture_app_state(self.record)
-        await self._put_record(self.partition, self.record)
-        self.ui_offset = len(messages)
-        return True
-
-    def _capture_app_state(self, record: ConversationRecordV1) -> None:
-        values: dict[str, Any] = {}
-        for cb in self._save_callbacks:
-            cb(values)
-        record.values = values
+        return await self._exchange_recorder.save_current()
 
     def _restore_app_state(self, values: dict[str, Any]) -> None:
         for cb in self._restore_callbacks:
@@ -1003,7 +772,6 @@ class HistoryController:
         self, failure: BaseException | None = None
     ) -> None:
         recorder = self._exchange_recorder
-        assert recorder is not None
 
         detail = self._restore_failure_detail(failure)
         if isinstance(failure, Exception):
@@ -1059,8 +827,6 @@ class HistoryController:
     async def replay_exchange_record(
         self, record: ConversationRecordV2 | None = None
     ) -> None:
-        if self._exchange_recorder is None:
-            raise RuntimeError("Exchange-tree history is not enabled")
         target = self._exchange_recorder.record if record is None else record
         if target is not None:
             await self._restore_exchange_record(target)
@@ -1072,8 +838,6 @@ class HistoryController:
         bootstrap: Literal["recorded", "live"] | None = None,
     ) -> tuple[tuple[str, ...], RestorePlan, Literal["recorded", "live"]]:
         recorder = self._exchange_recorder
-        if recorder is None:
-            raise RuntimeError("Exchange-tree history is not enabled")
 
         # Validate the entire path before this transaction clears the current
         # display or mutates the attached client.
@@ -1102,7 +866,6 @@ class HistoryController:
         persist_active_pointer: bool = False,
     ) -> None:
         recorder = self._exchange_recorder
-        assert recorder is not None
 
         try:
             # Live bootstrap is intentionally captured only after admission
@@ -1150,7 +913,6 @@ class HistoryController:
         self, record: ConversationRecordV2, node_ids: tuple[str, ...]
     ) -> None:
         recorder = self._exchange_recorder
-        assert recorder is not None
 
         await self.chat.clear_messages()
         await self.chat.set_greeting(None)
@@ -1237,10 +999,6 @@ class HistoryController:
         self, target: ConversationRecordV2, node_id: str
     ) -> None:
         """Restore a validated v2 bookmark node through the normal transaction."""
-        recorder = self._exchange_recorder
-        if recorder is None:
-            raise RuntimeError("Exchange-tree history is not enabled")
-
         selected = target.model_copy(deep=True)
         selected.set_active_leaf(node_id)
         node_ids, planned_state, bootstrap = self._prepare_exchange_restore(selected)
@@ -1268,65 +1026,48 @@ class HistoryController:
         target = await self._get_record(self.partition, conv_id)
         if target is None:
             raise RuntimeError(f"Conversation {conv_id!r} no longer exists.")
-        if isinstance(target, ConversationRecordV2):
-            from shiny import reactive
+        from shiny import reactive
 
-            with reactive.isolate():
-                stream_is_running = (
-                    self.chat.latest_message_stream.status() == "running"
+        with reactive.isolate():
+            stream_is_running = (
+                self.chat.latest_message_stream.status() == "running"
+            )
+        if stream_is_running:
+            raise RuntimeError(
+                "Cannot switch conversations while a message stream is active."
+            )
+        recorder = self._exchange_recorder
+        async with self._destructive_mutation(block_input=True):
+            async with self._exchange_mutation():
+                await recorder.save_current_locked()
+                target = await self._get_record(self.partition, conv_id)
+                if target is None:
+                    raise RuntimeError(
+                        f"Conversation {conv_id!r} no longer exists."
+                    )
+                node_ids, planned_state, bootstrap = (
+                    self._prepare_exchange_restore(target)
                 )
-            if stream_is_running:
-                raise RuntimeError(
-                    "Cannot switch conversations while a message stream is active."
+                await self._restore_exchange_record_locked(
+                    target,
+                    node_ids=node_ids,
+                    planned_state=planned_state,
+                    bootstrap=bootstrap,
                 )
-            recorder = self._exchange_recorder
-            assert recorder is not None
-            async with self._destructive_mutation(block_input=True):
-                async with self._exchange_mutation():
-                    await recorder.save_current_locked()
-                    target = await self._get_record(self.partition, conv_id)
-                    if target is None:
-                        raise RuntimeError(
-                            f"Conversation {conv_id!r} no longer exists."
-                        )
-                    assert isinstance(target, ConversationRecordV2)
-                    node_ids, planned_state, bootstrap = (
-                        self._prepare_exchange_restore(target)
-                    )
-                    await self._restore_exchange_record_locked(
-                        target,
-                        node_ids=node_ids,
-                        planned_state=planned_state,
-                        bootstrap=bootstrap,
-                    )
-            # Only after a successful restore: bookmark mode points the URL
-            # at the restored conversation's state id (or clears a stale
-            # query) without a reload. A failed or blocked switch raises
-            # above, leaving the URL matching the still-active conversation.
-            if self.on_switch_restored is not None:
-                try:
-                    await self.on_switch_restored(target)
-                except Exception as exc:
-                    # The restore already committed; a best-effort URL update
-                    # failure (e.g. session closing) must not make callers
-                    # treat the succeeded switch as failed.
-                    warnings.warn(
-                        f"on_switch_restored hook failed: {exc}", stacklevel=1
-                    )
-            return
-
-        async with self._destructive_mutation():
-            await self.save_current()
-            if self.on_pre_switch is not None:
-                skip = await self.on_pre_switch(target)
-                if skip:
-                    return
-            self.adapter.set_turns_json(target.path_turns())
-            await self.replay_ui(target)
-            await self.activate_record(target)
-            self._restore_app_state(target.values or {})
-            await self._send_sibling_metadata()
-            await self.send_history_update()
+        # Only after a successful restore: bookmark mode points the URL
+        # at the restored conversation's state id (or clears a stale
+        # query) without a reload. A failed or blocked switch raises
+        # above, leaving the URL matching the still-active conversation.
+        if self.on_switch_restored is not None:
+            try:
+                await self.on_switch_restored(target)
+            except Exception as exc:
+                # The restore already committed; a best-effort URL update
+                # failure (e.g. session closing) must not make callers
+                # treat the succeeded switch as failed.
+                warnings.warn(
+                    f"on_switch_restored hook failed: {exc}", stacklevel=1
+                )
 
     async def new_chat(self, *, greeting: bool = False) -> None:
         """
@@ -1340,19 +1081,14 @@ class HistoryController:
         """
         async with self._destructive_mutation():
             async with self._exchange_mutation():
-                if self._exchange_recorder is not None:
-                    await self._exchange_recorder.save_current_locked()
-                else:
-                    await self.save_current()
+                await self._exchange_recorder.save_current_locked()
                 self.adapter.set_turns_json([])
                 await self.chat.clear_messages(greeting=greeting)
-                self.ui_offset = 0
                 # Announce the cleared state even when the active ID is already None:
                 # in URL/bookmark restore modes the browser may still carry a stale
                 # conversation param (e.g. after a failed restore) that only
                 # on_active_id_change(None) clears.
-                if self._exchange_recorder is not None:
-                    self._exchange_recorder.reset()
+                self._exchange_recorder.reset()
                 await self.clear_active()
                 if self.on_active_id_change is not None:
                     await self.on_active_id_change(None)
@@ -1361,33 +1097,6 @@ class HistoryController:
                 # cached value from that first resolution.
                 await self.notify_settled(False)
                 await self.send_history_update()
-
-    async def replay_ui(self, record: ConversationRecordV1) -> None:
-        async with self._destructive_mutation():
-            await self.chat.clear_messages()
-            # A restored conversation is never a "new chat" — the app's
-            # greeting doesn't belong here, regardless of `persistent`.
-            await self.chat.set_greeting(None)
-            for node_id in record.path_node_ids():
-                node = record.nodes[node_id]
-                stored = node.ui
-                # Old-format stored UI (no version marker) is discarded and
-                # re-derived from the node's stored turns, never re-parsed.
-                if stored is None or not is_stored_ui_versioned(stored):
-                    stored = derive_node_ui(
-                        cast(list[TurnDict], node.turns),
-                        session=self.chat._session,
-                    )
-                stored = [
-                    _strip_attachment_content(message) for message in stored
-                ]
-                for message_dict in stored:
-                    restored_message = dict(message_dict)
-                    restored_message.pop("attachment_content_stripped", None)
-                    await self.chat._restore_bookmark_message(restored_message)
-            # Count what the chat actually committed: messages it declines to
-            # store (e.g. system role) must not advance the offset.
-            self.ui_offset = len(self.chat._messages_for_bookmark())
 
     @staticmethod
     def _normalize_resubmit_input(message: StoredMessage) -> StoredMessage:
@@ -1428,8 +1137,6 @@ class HistoryController:
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
         recorder = self._exchange_recorder
-        if recorder is None:
-            raise RuntimeError("Exchange-tree history is not enabled")
         record = recorder.record
         if record is None:
             raise RuntimeError("No exchange-tree conversation is active")
@@ -1588,38 +1295,19 @@ class HistoryController:
         if not title:
             return
         recorder = self._exchange_recorder
-        if recorder is not None:
-            renamed = False
-            async with self._exchange_mutation():
-                if await recorder.rename_active_locked(conv_id, title):
+        renamed = False
+        async with self._exchange_mutation():
+            if await recorder.rename_active_locked(conv_id, title):
+                renamed = True
+            else:
+                record = await self._get_record(self.partition, conv_id)
+                if record is not None:
+                    record.title = title
+                    record.title_source = "user"
+                    await self.store.put(self.partition, record)
                     renamed = True
-                else:
-                    record = await self._get_record(self.partition, conv_id)
-                    if record is not None:
-                        record.title = title
-                        record.title_source = "user"
-                        if isinstance(record, ConversationRecordV2):
-                            await self.store.put(self.partition, record)
-                        else:
-                            await self._put_record(self.partition, record)
-                        renamed = True
-            if renamed:
-                await self.send_history_update()
-            return
-        record = (
-            self.record
-            if self.record is not None and self.record.id == conv_id
-            else await self._get_record(self.partition, conv_id)
-        )
-        if record is None:
-            return
-        record.title = title
-        record.title_source = "user"
-        if isinstance(record, ConversationRecordV2):
-            await self.store.put(self.partition, record)
-        else:
-            await self._put_record(self.partition, record)
-        await self.send_history_update()
+        if renamed:
+            await self.send_history_update()
 
     async def delete(self, conv_id: str) -> None:
         if self.partition is None:
@@ -1629,21 +1317,12 @@ class HistoryController:
                 if self.on_evict is not None:
                     await self.on_evict(conv_id)
                 await self.store.delete(self.partition, conv_id)
-                exchange_record = (
-                    self._exchange_recorder.record
-                    if self._exchange_recorder is not None
-                    else None
-                )
-                if (self.record is not None and self.record.id == conv_id) or (
-                    exchange_record is not None
-                    and exchange_record.id == conv_id
-                ):
-                    if self._exchange_recorder is not None:
-                        self._exchange_recorder.reset()
+                exchange_record = self._exchange_recorder.record
+                if exchange_record is not None and exchange_record.id == conv_id:
+                    self._exchange_recorder.reset()
                     await self.clear_active()
                     self.adapter.set_turns_json([])
                     await self.chat.clear_messages()
-                    self.ui_offset = 0
                     if self.on_active_id_change is not None:
                         await self.on_active_id_change(None)
                 await self.send_history_update()
@@ -1651,11 +1330,7 @@ class HistoryController:
     # -- branch navigation --------------------------------------------------
 
     async def _send_sibling_metadata(self) -> None:
-        record = (
-            self._exchange_recorder.record
-            if self._exchange_recorder is not None
-            else self.record
-        )
+        record = self._exchange_recorder.record
         if record is None:
             return
         sibling_meta = record.path_sibling_metadata()
@@ -1669,22 +1344,14 @@ class HistoryController:
             return
         data: dict[int, dict[str, int]] = {}
         msg_idx = 0
-        if isinstance(record, ConversationRecordV2):
-            for node_id in record.path_node_ids():
-                node = record.nodes[node_id]
-                if node.input is not None:
-                    if node_id in sibling_meta:
-                        idx, total = sibling_meta[node_id]
-                        data[msg_idx] = {"index": idx, "total": total}
-                    msg_idx += 1
-                msg_idx += len(node.messages)
-        else:
-            for node_id in record.path_node_ids():
-                n_ui = record.nodes[node_id].ui_message_count()
+        for node_id in record.path_node_ids():
+            node = record.nodes[node_id]
+            if node.input is not None:
                 if node_id in sibling_meta:
                     idx, total = sibling_meta[node_id]
                     data[msg_idx] = {"index": idx, "total": total}
-                msg_idx += n_ui
+                msg_idx += 1
+            msg_idx += len(node.messages)
         if data:
             action: UpdateSiblingsAction = {
                 "type": "update_siblings",
@@ -1694,7 +1361,7 @@ class HistoryController:
 
     async def _send_exchange_metadata(self) -> None:
         recorder = self._exchange_recorder
-        if recorder is None or recorder.record is None:
+        if recorder.record is None:
             return
 
         data: dict[int, ExchangeMetadata] = {}
@@ -1728,8 +1395,6 @@ class HistoryController:
         request_id: str | None = None,
     ) -> None:
         recorder = self._exchange_recorder
-        if recorder is None:
-            return
         if request_id is None or not request_id:
             raise ValueError("Exchange-tree resubmits require a request ID.")
         record = recorder.record
@@ -1753,81 +1418,15 @@ class HistoryController:
         if direction not in ("prev", "next"):
             return
         recorder = self._exchange_recorder
-        if recorder is not None:
-            if request_id is None or not request_id:
-                raise ValueError("Exchange-tree navigation requires a request ID.")
-            record = recorder.record
-            if record is None:
-                return
-
-            node_id = record.exchange_id_for_user_message_index(message_index)
-            siblings = record.siblings_of(node_id)
-            current_pos = siblings.index(node_id)
-            if direction == "prev":
-                if current_pos == 0:
-                    return
-                target = siblings[current_pos - 1]
-            else:
-                if current_pos == len(siblings) - 1:
-                    return
-                target = siblings[current_pos + 1]
-
-            leaf = record.subtree_leaf(target)
-            projection = record.model_copy(deep=True)
-            projection.set_active_leaf(leaf)
-            node_ids = tuple(projection.path_node_ids())
-            rewind_state = _history_plan.preflight_state(
-                projection,
-                node_ids,
-                recorder._rewind_hooks,
-                adapter=self.adapter,
-                reject_unavailable=True,
-                phase="rewind",
-            )
-
-            async with self._destructive_mutation(block_input=True):
-                async with self._exchange_mutation():
-                    current_leaf = record.active_leaf
-                    if current_leaf is None:
-                        raise ValueError(
-                            "Exchange-tree record has no active leaf."
-                        )
-                    await recorder._capture_state(current_leaf, "node_close")
-                    try:
-                        # Rewind hooks run before the leaf move is persisted,
-                        # so a hook failure leaves the store pointing at the
-                        # leaf the user still sees and the fail-to-fresh-draft
-                        # recovery below is the only thing that changed. The
-                        # plan was preflighted against a deep-copied projection
-                        # above, so nothing here mutates until the hooks have
-                        # accepted the rewind; the display replay reads only
-                        # node content by id, so it does not depend on the
-                        # record's leaf pointer.
-                        with self._restore_step("saving the navigation change"):
-                            await _history_plan.run_plan(rewind_state)
-                            record.set_active_leaf(leaf)
-                            await recorder._persist_record()
-                        with self._restore_step(
-                            "replaying the conversation display"
-                        ):
-                            await self._replay_exchange_display(
-                                record, node_ids
-                            )
-                        with self._restore_step("sending the navigation update"):
-                            await self._send_sibling_metadata()
-                            await self._send_exchange_metadata()
-                            await self.send_history_update()
-                    except BaseException as error:
-                        await self._clear_failed_restore(error)
-                        raise
+        if request_id is None or not request_id:
+            raise ValueError("Exchange-tree navigation requires a request ID.")
+        record = recorder.record
+        if record is None:
             return
 
-        if self.record is None:
-            return
-        node_id, _ = self.record.node_id_for_message_index(message_index)
-        siblings = self.record.siblings_of(node_id)
+        node_id = record.exchange_id_for_user_message_index(message_index)
+        siblings = record.siblings_of(node_id)
         current_pos = siblings.index(node_id)
-
         if direction == "prev":
             if current_pos == 0:
                 return
@@ -1837,16 +1436,54 @@ class HistoryController:
                 return
             target = siblings[current_pos + 1]
 
-        async with self._destructive_mutation():
-            leaf = self.record.subtree_leaf(target)
-            self.record.set_current_leaf(leaf)
-            self.adapter.set_turns_json(self.record.path_turns())
-            await self.replay_ui(self.record)
-            await self._send_sibling_metadata()
-            if self.partition is None:
-                raise RuntimeError("HistoryController not initialized")
-            await self._put_record(self.partition, self.record)
-            await self.send_history_update()
+        leaf = record.subtree_leaf(target)
+        projection = record.model_copy(deep=True)
+        projection.set_active_leaf(leaf)
+        node_ids = tuple(projection.path_node_ids())
+        rewind_state = _history_plan.preflight_state(
+            projection,
+            node_ids,
+            recorder._rewind_hooks,
+            adapter=self.adapter,
+            reject_unavailable=True,
+            phase="rewind",
+        )
+
+        async with self._destructive_mutation(block_input=True):
+            async with self._exchange_mutation():
+                current_leaf = record.active_leaf
+                if current_leaf is None:
+                    raise ValueError(
+                        "Exchange-tree record has no active leaf."
+                    )
+                await recorder._capture_state(current_leaf, "node_close")
+                try:
+                    # Rewind hooks run before the leaf move is persisted,
+                    # so a hook failure leaves the store pointing at the
+                    # leaf the user still sees and the fail-to-fresh-draft
+                    # recovery below is the only thing that changed. The
+                    # plan was preflighted against a deep-copied projection
+                    # above, so nothing here mutates until the hooks have
+                    # accepted the rewind; the display replay reads only
+                    # node content by id, so it does not depend on the
+                    # record's leaf pointer.
+                    with self._restore_step("saving the navigation change"):
+                        await _history_plan.run_plan(rewind_state)
+                        record.set_active_leaf(leaf)
+                        await recorder._persist_record()
+                    with self._restore_step(
+                        "replaying the conversation display"
+                    ):
+                        await self._replay_exchange_display(
+                            record, node_ids
+                        )
+                    with self._restore_step("sending the navigation update"):
+                        await self._send_sibling_metadata()
+                        await self._send_exchange_metadata()
+                        await self.send_history_update()
+                except BaseException as error:
+                    await self._clear_failed_restore(error)
+                    raise
 
     async def handle_edit(
         self,
@@ -1857,62 +1494,20 @@ class HistoryController:
         request_id: str | None = None,
     ) -> None:
         recorder = self._exchange_recorder
-        if recorder is not None:
-            record = recorder.record
-            if record is None:
-                return
-            if request_id is None:
-                raise ValueError("Exchange-tree edits require a request ID.")
-            exchange_id = record.exchange_id_for_user_message_index(message_index)
-            replacement = self._replacement_resubmit_input(content, attachments)
-            await self.resubmit(
-                exchange_id,
-                replacement,
-                kind="edit",
-                request_id=request_id,
-                message_index=message_index,
-            )
+        record = recorder.record
+        if record is None:
             return
-
-        if self.record is None:
-            return
-
-        node_id, _ = self.record.node_id_for_message_index(message_index)
-        fork_parent = self.record.nodes[node_id].parent
-
-        async with self._destructive_mutation():
-            # Branching happens implicitly: truncating current_leaf here means the next
-            # append_linear (from the resubmit's on_response) creates a sibling under
-            # fork_parent, not a child of the old leaf. We don't call branch_from here
-            # because there's no new turn content yet — that arrives via on_response.
-            self.record.set_current_leaf(fork_parent)
-            self.adapter.set_turns_json(self.record.path_turns())
-            await self.replay_ui(self.record)
-            await self._send_sibling_metadata()
-            action: UpdateInputAction = {
-                "type": "update_input",
-                "value": content,
-                "submit": True,
-            }
-            if attachments is not None:
-                # Same normalize-then-validate pattern as the regular (non-edit)
-                # send path in _input_handler.py and Chat.update_user_input —
-                # never trust client-side attachment validation alone.
-                parsed = [Attachment.model_validate(a) for a in attachments]
-                validate_attachments(parsed)
-                action["attachments"] = [
-                    {
-                        "mime": a.mime,
-                        "data_url": a.data_url,
-                        "name": a.name,
-                        "size": a.size,
-                    }
-                    for a in parsed
-                ]
-                # Edits always replace the attachment set — the client's staged
-                # tray is a single source of truth, never a delta to append.
-                action["attachment_mode"] = "set"
-            await self.chat._send_action(action)
+        if request_id is None:
+            raise ValueError("Exchange-tree edits require a request ID.")
+        exchange_id = record.exchange_id_for_user_message_index(message_index)
+        replacement = self._replacement_resubmit_input(content, attachments)
+        await self.resubmit(
+            exchange_id,
+            replacement,
+            kind="edit",
+            request_id=request_id,
+            message_index=message_index,
+        )
 
     # -- protocol ----------------------------------------------------------
 
@@ -1941,11 +1536,7 @@ class HistoryController:
             "enabled": True,
             "conversations": [m.model_dump(mode="json") for m in metas],
             "active_id": self._active_id_now(),
-            "transition_protocol": (
-                "completion-v2"
-                if self._exchange_recorder is not None
-                else "completion-v1"
-            ),
+            "transition_protocol": "completion-v2",
         }
         await self.chat._send_action(action)
 
@@ -2014,7 +1605,6 @@ class ChatHistory:
         controller = self._controller
         return (
             controller is None
-            or controller._exchange_recorder is None
             or self._initial_history_initialized
         )
 
@@ -2184,19 +1774,18 @@ class ChatHistory:
             save_callbacks=self._save_callbacks,
             restore_callbacks=self._restore_callbacks,
             max_store_bytes=max_store_bytes,
-            use_exchange_tree=_EXCHANGE_TREE_HISTORY_V2,
             restore_bootstrap=self._restore_bootstrap,
         )
         self._controller = controller
 
-        if controller._exchange_recorder is not None:
-            chat._transcript.set_capture_callbacks(
-                on_accepted_input=controller._exchange_recorder.accepted_input,
-                on_message_committed=controller._exchange_recorder.message_committed,
-                on_stream_started=controller._exchange_recorder.stream_started,
-                on_stream_updated=controller._exchange_recorder.stream_updated,
-                on_stream_finished=controller._exchange_recorder.stream_finished,
-            )
+        recorder = controller._exchange_recorder
+        chat._transcript.set_capture_callbacks(
+            on_accepted_input=recorder.accepted_input,
+            on_message_committed=recorder.message_committed,
+            on_stream_started=recorder.stream_started,
+            on_stream_updated=recorder.stream_updated,
+            on_stream_finished=recorder.stream_finished,
+        )
 
         if restore_mode == "url":
 
@@ -2217,84 +1806,41 @@ class ChatHistory:
                 )
 
             async def _on_response_saved(
-                record: ConversationRecordV1 | ConversationRecordV2,
+                record: ConversationRecordV2,
             ) -> None:
                 recorder = controller._exchange_recorder
-                if recorder is not None:
-                    pointer = await recorder.bookmark_pointer(
-                        cast(ConversationRecordV2, record)
-                    )
-                    if pointer is None:
-                        return
-                    conversation_id, node_id = pointer
-
-                    async def _on_bookmarked(url: str) -> None:
-                        new_state_id = extract_state_id(url)
-                        if new_state_id is None:
-                            return
-                        try:
-                            current, cleanup_state_id = (
-                                await recorder.settle_bookmark_state_id(
-                                    conversation_id, node_id, new_state_id
-                                )
-                            )
-                        except BaseException:
-                            await delete_bookmark_state(new_state_id)
-                            raise
-                        if cleanup_state_id is not None:
-                            await delete_bookmark_state(cleanup_state_id)
-                        if current:
-                            await controller.send_navigate(
-                                f"?_state_id_={new_state_id}", conversation_id
-                            )
-
-                    await do_bookmark_with_cleanup(
-                        root_session.bookmark, _on_bookmarked
-                    )
+                pointer = await recorder.bookmark_pointer(
+                    cast(ConversationRecordV2, record)
+                )
+                if pointer is None:
                     return
-
-                # The v1 save path hands its linear record.
-                assert isinstance(record, ConversationRecordV1)
-                captured_id = record.id
+                conversation_id, node_id = pointer
 
                 async def _on_bookmarked(url: str) -> None:
                     new_state_id = extract_state_id(url)
                     if new_state_id is None:
                         return
-                    if (
-                        controller.record is None
-                        or controller.record.id != captured_id
-                    ):
-                        return  # switched away
-                    old_state_id = record.bookmark_state_id
-                    record.bookmark_state_id = new_state_id
-                    if old_state_id is not None:
-                        await delete_bookmark_state(old_state_id)
-                    if controller.partition is not None:
-                        await controller._put_record(
-                            controller.partition, record
+                    try:
+                        current, cleanup_state_id = (
+                            await recorder.settle_bookmark_state_id(
+                                conversation_id, node_id, new_state_id
+                            )
                         )
-                    await controller.send_navigate(
-                        f"?_state_id_={new_state_id}", captured_id
-                    )
+                    except BaseException:
+                        await delete_bookmark_state(new_state_id)
+                        raise
+                    if cleanup_state_id is not None:
+                        await delete_bookmark_state(cleanup_state_id)
+                    if current:
+                        await controller.send_navigate(
+                            f"?_state_id_={new_state_id}", conversation_id
+                        )
 
                 await do_bookmark_with_cleanup(
                     root_session.bookmark, _on_bookmarked
                 )
 
             controller.on_response_saved = _on_response_saved
-
-            async def _on_pre_switch(target: ConversationRecordV1) -> bool:
-                if target.bookmark_state_id is not None:
-                    await controller.send_navigate(
-                        f"?_state_id_={target.bookmark_state_id}",
-                        target.id,
-                        reload=True,
-                    )
-                    return True
-                return False
-
-            controller.on_pre_switch = _on_pre_switch
 
             # D5: after a v2 in-place switch restores, point the URL at the
             # restored conversation's bookmark state id via the existing
@@ -2311,21 +1857,15 @@ class ChatHistory:
             controller.on_switch_restored = _on_switch_restored
 
             async def _on_evict(conv_id: str) -> None:
-                if (
-                    controller.record is not None
-                    and controller.record.id == conv_id
-                ):
-                    state_id = controller.record.bookmark_state_id
+                if controller.partition is None:
+                    rec = None
                 else:
-                    if controller.partition is None:
-                        rec = None
-                    else:
-                        rec = await controller._get_record(
-                            controller.partition, conv_id
-                        )
-                    state_id = (
-                        rec.bookmark_state_id if rec is not None else None
+                    rec = await controller._get_record(
+                        controller.partition, conv_id
                     )
+                state_id = (
+                    rec.bookmark_state_id if rec is not None else None
+                )
                 if state_id is not None:
                     await delete_bookmark_state(state_id)
 
@@ -2338,45 +1878,32 @@ class ChatHistory:
             controller.on_active_id_change = _update_url_bookmark
 
         # Stamp the active history pointer into any Shiny server bookmark.
-        # V2 records need the selected leaf as well as the conversation ID;
-        # v1 keeps its existing conversation-only value.
-        stamp_key = (
-            f"{chat.id}_history_exchange_pointer"
-            if controller._exchange_recorder is not None
-            else f"{chat.id}_history_conversation_id"
-        )
+        # V2 records need the selected leaf as well as the conversation ID.
+        stamp_key = f"{chat.id}_history_exchange_pointer"
         # Legacy v1 bookmark stamp: a v1 server stamped only the conversation
         # id here. When the v2 pointer above is absent, restoring a bookmark
         # written by a v1 server reads this key instead (shinychat#dmgt,
-        # plan §7.8). The v1 write site (`stamp_conversation_id` below) keeps
-        # stamping it until task 4b9z deletes the v1 path.
+        # plan §7.8). Nothing writes it anymore — the v1 write site died with
+        # the v1 runtime (shinychat#4b9z) — but the read-gate below must stay
+        # as long as v1-written bookmarks exist in the wild.
         legacy_stamp_key = f"{chat.id}_history_conversation_id"
         stamp_cancel: Callable[[], None] | None = None
         if root_session.bookmark.store == "server":
-
             recorder = controller._exchange_recorder
-            if recorder is not None:
 
-                async def stamp_exchange_pointer(state: Any) -> None:
-                    pointer = await recorder.bookmark_pointer()
-                    if pointer is None:
-                        return
-                    conversation_id, node_id = pointer
-                    state.values[stamp_key] = {
-                        "conversation_id": conversation_id,
-                        "node_id": node_id,
-                    }
+            async def stamp_exchange_pointer(state: Any) -> None:
+                pointer = await recorder.bookmark_pointer()
+                if pointer is None:
+                    return
+                conversation_id, node_id = pointer
+                state.values[stamp_key] = {
+                    "conversation_id": conversation_id,
+                    "node_id": node_id,
+                }
 
-                stamp_callback = stamp_exchange_pointer
-            else:
-
-                def stamp_conversation_id(state: Any) -> None:
-                    if controller.record is not None:
-                        state.values[stamp_key] = controller.record.id
-
-                stamp_callback = stamp_conversation_id
-
-            stamp_cancel = root_session.bookmark.on_bookmark(stamp_callback)
+            stamp_cancel = root_session.bookmark.on_bookmark(
+                stamp_exchange_pointer
+            )
 
         @reactive.calc
         def scope() -> str:
@@ -2424,9 +1951,7 @@ class ChatHistory:
             self._initial_history_initialized = True
             await controller.notify_settled(restored)
 
-        @reactive.effect(
-            priority=10_000 if controller._exchange_recorder is not None else 0
-        )
+        @reactive.effect(priority=10_000)
         async def _init_history():
             if self._initial_history_initialized:
                 return
@@ -2455,7 +1980,6 @@ class ChatHistory:
 
             # Priority 1: restore from a Shiny bookmark context (any mode).
             restore_ctx = root_session.bookmark._restore_context
-            restored_conv_id: str | None = None
             # node_id is None only for a legacy v1 stamp (conversation id
             # without a leaf); the open block resolves it to the record's
             # active leaf after fetching the record.
@@ -2463,38 +1987,35 @@ class ChatHistory:
             bookmark_pointer_invalid = False
             if restore_ctx is not None and restore_ctx.active:
                 raw_pointer = restore_ctx.values.get(stamp_key)
-                if controller._exchange_recorder is not None:
-                    if raw_pointer is not None:
-                        if (
-                            isinstance(raw_pointer, dict)
-                            and set(raw_pointer) == {"conversation_id", "node_id"}
-                            and isinstance(raw_pointer["conversation_id"], str)
-                            and raw_pointer["conversation_id"]
-                            and isinstance(raw_pointer["node_id"], str)
-                            and raw_pointer["node_id"]
-                        ):
-                            bookmark_pointer = (
-                                raw_pointer["conversation_id"],
-                                raw_pointer["node_id"],
-                            )
+                if raw_pointer is not None:
+                    if (
+                        isinstance(raw_pointer, dict)
+                        and set(raw_pointer) == {"conversation_id", "node_id"}
+                        and isinstance(raw_pointer["conversation_id"], str)
+                        and raw_pointer["conversation_id"]
+                        and isinstance(raw_pointer["node_id"], str)
+                        and raw_pointer["node_id"]
+                    ):
+                        bookmark_pointer = (
+                            raw_pointer["conversation_id"],
+                            raw_pointer["node_id"],
+                        )
+                    else:
+                        bookmark_pointer_invalid = True
+                else:
+                    # A bookmark written by a v1 server carries only the
+                    # legacy conversation stamp. Fall back to it and open
+                    # that conversation at its active leaf (shinychat#dmgt,
+                    # plan §7.8). The v2 pointer above keeps precedence
+                    # when both keys exist; a present-but-invalid v2
+                    # pointer still fails loudly below rather than
+                    # silently falling back.
+                    legacy_id = restore_ctx.values.get(legacy_stamp_key)
+                    if legacy_id is not None:
+                        if isinstance(legacy_id, str) and legacy_id:
+                            bookmark_pointer = (legacy_id, None)
                         else:
                             bookmark_pointer_invalid = True
-                    else:
-                        # A bookmark written by a v1 server carries only the
-                        # legacy conversation stamp. Fall back to it and open
-                        # that conversation at its active leaf (shinychat#dmgt,
-                        # plan §7.8). The v2 pointer above keeps precedence
-                        # when both keys exist; a present-but-invalid v2
-                        # pointer still fails loudly below rather than
-                        # silently falling back.
-                        legacy_id = restore_ctx.values.get(legacy_stamp_key)
-                        if legacy_id is not None:
-                            if isinstance(legacy_id, str) and legacy_id:
-                                bookmark_pointer = (legacy_id, None)
-                            else:
-                                bookmark_pointer_invalid = True
-                else:
-                    restored_conv_id = str(raw_pointer) if raw_pointer else None
 
             if bookmark_pointer_invalid:
                 await notify_error(
@@ -2511,15 +2032,15 @@ class ChatHistory:
                     target = await controller._get_record(
                         controller.partition, conversation_id
                     )
-                    if not isinstance(target, ConversationRecordV2):
+                    if target is None:
                         raise ValueError("Bookmark conversation is unavailable.")
                     if node_id is None:
                         # Legacy v1 stamp: no node was stored. Synthesize the
                         # pointer with the record's active leaf so the restore
                         # runs through the exact same open path as a v2
                         # pointer (shinychat#dmgt, plan §7.8). A v1 record
-                        # fails loudly here until the v1→v2 upgrade-on-read
-                        # lands (shinychat#e0x2) — never a silent no-restore.
+                        # upgrades on read (shinychat#e0x2) — never a silent
+                        # no-restore.
                         node_id = target.active_leaf
                     if node_id not in target.nodes:
                         raise ValueError("Bookmark node is unavailable.")
@@ -2534,28 +2055,6 @@ class ChatHistory:
                 await restore_initial_v2(target, node_id=node_id)
                 await finish_initial(True)
                 return
-
-            if restored_conv_id is not None:
-                try:
-                    target = await controller._get_record(
-                        controller.partition, restored_conv_id
-                    )
-                except Exception as e:
-                    await notify_error("Could not load conversation", e)
-                    target = None
-                if target is not None:
-                    if isinstance(target, ConversationRecordV2):
-                        await restore_initial_v2(target)
-                    else:
-                        async with controller._destructive_mutation():
-                            adapter.set_turns_json(target.path_turns())
-                            await controller.replay_ui(target)
-                            await controller.activate_record(target)
-                            controller._restore_app_state(target.values or {})
-                            await controller._send_sibling_metadata()
-                            await controller.send_history_update()
-                    await finish_initial(True)
-                    return
 
             # Priority 2: restore from the mode-specific ID source.
             # Reading these inputs may raise SilentException if the browser
@@ -2582,17 +2081,9 @@ class ChatHistory:
                     await notify_error("Could not load conversation", e)
                     pointed = None
                 if pointed is not None:
-                    if isinstance(pointed, ConversationRecordV2):
-                        await restore_initial_v2(pointed)
-                        await finish_initial(True)
-                        return
-                    else:
-                        async with controller._destructive_mutation():
-                            adapter.set_turns_json(pointed.path_turns())
-                            await controller.replay_ui(pointed)
-                            await controller.activate_record(pointed)
-                            controller._restore_app_state(pointed.values or {})
-                            await controller._send_sibling_metadata()
+                    await restore_initial_v2(pointed)
+                    await finish_initial(True)
+                    return
             await controller.send_history_update()
             await finish_initial(
                 controller._active_id_now() is not None
@@ -2727,10 +2218,7 @@ class ChatHistory:
             except Exception as e:
                 await notify_error("Could not navigate messages", e)
             finally:
-                if (
-                    request_id is not None
-                    and controller._exchange_recorder is not None
-                ):
+                if request_id is not None:
                     await _complete_history_transition(chat, request_id)
 
         @reactive.effect
