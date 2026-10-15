@@ -393,13 +393,9 @@ class HistoryController:
         )
 
         self.partition: ConversationPartition | None = None
-        # Always None under the v2-only runtime: `_ExchangeRecorder` is the
-        # sole record owner, and the restore transaction asserts that by
-        # assigning None before installing a restored record.
-        self.record: ConversationRecordV1 | None = None
-        # Active conversation identity, separate from `record`: an
-        # identified draft (submitted but not yet saved) has an ID and no
-        # record. All identity mutations go through clear_active()
+        # Active conversation identity: an identified draft (submitted but
+        # not yet saved) has an ID and no record. All identity mutations go
+        # through clear_active()
         # and _set_active_id() so that the active ID never moves
         # independently of the recorder's record.
         from shiny import reactive
@@ -484,7 +480,6 @@ class HistoryController:
         return id
 
     async def clear_active(self) -> None:
-        self.record = None
         if self._active_id_now() is not None:
             self._active_id.set(None)
 
@@ -788,7 +783,6 @@ class HistoryController:
         # Local ownership is cleared synchronously before any cleanup can
         # suspend, so a subsequent accepted input always creates a fresh draft.
         recorder.reset()
-        self.record = None
         self._active_id.set(None)
 
         cleanup_failures: list[BaseException] = []
@@ -889,7 +883,6 @@ class HistoryController:
             # The controller only sequences its installation after
             # display and state consumers have accepted the target.
             with self._restore_step("installing the restored record"):
-                self.record = None
                 recorder.install_restored_record(target)
                 await self._set_active_id(target.id)
                 recorder.mark_active_id_published(target)

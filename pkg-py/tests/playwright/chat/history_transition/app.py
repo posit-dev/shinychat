@@ -128,12 +128,13 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     async def send_history_update_for_test(protocol: object) -> None:
         assert controller.partition is not None
         metas = await controller.store.list(controller.partition)
+        recorder = controller._exchange_recorder
         action: dict[str, Any] = {
             "type": "history_update",
             "enabled": True,
             "conversations": [meta.model_dump(mode="json") for meta in metas],
             "active_id": (
-                controller.record.id if controller.record is not None else None
+                recorder.record.id if recorder.record is not None else None
             ),
         }
         if protocol is not missing:
