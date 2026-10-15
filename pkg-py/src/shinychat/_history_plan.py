@@ -5,8 +5,6 @@ writes recorder state, and every adapter (live chat turns) read is an
 explicit ``adapter`` parameter so the live-turns dependency stays visible
 at call sites. Plan tuples carry their bound hooks, so :func:`run_plan`
 executes a plan without touching any hook registry.
-
-The R port mirrors this module's structure.
 """
 
 from __future__ import annotations

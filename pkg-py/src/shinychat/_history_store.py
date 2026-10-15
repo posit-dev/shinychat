@@ -664,9 +664,6 @@ class InMemoryConversationStore(ConversationStore):
             if existing.schema_version != record.schema_version and not (
                 existing.schema_version == 1 and record.schema_version == 2
             ):
-                # Lazy conversion (plan section 7.5, mechanism D4): a v2
-                # record may overwrite the v1 record it upgraded from on
-                # read; the reverse direction stays refused.
                 raise ValueError(
                     "Cannot overwrite a conversation record with a different "
                     "schema version."

@@ -7,9 +7,8 @@ and root lifecycle, and persistence/bookmark state. Restore/rewind
 executes what those functions plan, and keeps ``_restore_turns`` because
 it writes adapter turns and the turn baseline (recorder-owned state).
 
-The R port mirrors this structure. ``HistoryController`` (in ``_history``)
-re-enters the one lock via ``_exchange_mutation``; do not split it into
-per-role locks.
+``HistoryController`` (in ``_history``) re-enters the one lock via
+``_exchange_mutation``.
 """
 
 from __future__ import annotations

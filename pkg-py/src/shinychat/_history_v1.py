@@ -1,4 +1,4 @@
-"""Pure v1 -> v2 conversation-record import (plan sections 7.3-7.5).
+"""Pure v1 -> v2 conversation-record import.
 
 :func:`import_v1_record` turns a legacy v1 :class:`ConversationRecordV1`
 (the linear node-tree record written by shinychat py 0.6.x-0.7.2 and
@@ -6,7 +6,7 @@ R 0.5.0) into a v2 :class:`~shinychat._history_types.ConversationRecordV2`
 exchange tree. The transform is pure data: no session, no store, no I/O,
 and no provider client.
 
-Fidelity contract (plan section 7.4): the imported record displays
+Fidelity contract: the imported record displays
 exactly what released py 0.7.2 displayed for the v1 record — no better,
 no worse. Versioned stored UI is carried verbatim; unversioned or missing
 UI is discarded and re-derived from turns; user-message attachment content
@@ -237,9 +237,6 @@ def import_v1_record_with_warnings(
         exchanges[nid] = ExchangeNode(
             parent_id=parent_id,
             created_at=record.created_at,
-            # Driver-approved synthesis (2026-10-15): "ok" once an exchange
-            # carries messages, "cancelled" when an input-bearing exchange
-            # has no response messages (an interrupted exchange, retryable).
             status=(
                 "ok"
                 if messages
@@ -308,13 +305,6 @@ def import_v1_record_with_warnings(
     for nid, exchange in exchanges.items():
         exchange.children = continuations_after(None if nid == root_id else nid)
 
-    # One-sided links (a node whose parent field names an existing node that
-    # does not list it among its children) never surface through the edge
-    # pass above, so reconcile: every non-root exchange must appear in its
-    # parent's children list exactly once. Appending (rather than re-rooting)
-    # keeps the node reachable under its named parent. This is a corrupt
-    # shape no released v1 writer produces, so it imports best-effort only:
-    # the section 7.4 fidelity contract does not cover it.
     for nid, exchange in exchanges.items():
         parent_id = exchange.parent_id
         if parent_id is not None and nid not in exchanges[parent_id].children:

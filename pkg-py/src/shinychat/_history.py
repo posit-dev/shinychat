@@ -1743,10 +1743,10 @@ class ChatHistory:
         stamp_key = f"{chat.id}_history_exchange_pointer"
         # Legacy v1 bookmark stamp: a v1 server stamped only the conversation
         # id here. When the v2 pointer above is absent, restoring a bookmark
-        # written by a v1 server reads this key instead (shinychat#dmgt,
-        # plan §7.8). Nothing writes it anymore — the v1 write site died with
-        # the v1 runtime (shinychat#4b9z) — but the read-gate below must stay
-        # as long as v1-written bookmarks exist in the wild.
+        # written by a v1 server reads this key instead. Nothing writes it
+        # anymore — the v1 write site died with the v1 runtime — but the
+        # read-gate below must stay as long as v1-written bookmarks exist in
+        # the wild.
         legacy_stamp_key = f"{chat.id}_history_conversation_id"
         stamp_cancel: Callable[[], None] | None = None
         if root_session.bookmark.store == "server":
@@ -1862,11 +1862,10 @@ class ChatHistory:
                 else:
                     # A bookmark written by a v1 server carries only the
                     # legacy conversation stamp. Fall back to it and open
-                    # that conversation at its active leaf (shinychat#dmgt,
-                    # plan §7.8). The v2 pointer above keeps precedence
-                    # when both keys exist; a present-but-invalid v2
-                    # pointer still fails loudly below rather than
-                    # silently falling back.
+                    # that conversation at its active leaf. The v2 pointer
+                    # above keeps precedence when both keys exist; a
+                    # present-but-invalid v2 pointer still fails loudly
+                    # below rather than silently falling back.
                     legacy_id = restore_ctx.values.get(legacy_stamp_key)
                     if legacy_id is not None:
                         if isinstance(legacy_id, str) and legacy_id:
@@ -1895,9 +1894,8 @@ class ChatHistory:
                         # Legacy v1 stamp: no node was stored. Synthesize the
                         # pointer with the record's active leaf so the restore
                         # runs through the exact same open path as a v2
-                        # pointer (shinychat#dmgt, plan §7.8). A v1 record
-                        # upgrades on read (shinychat#e0x2) — never a silent
-                        # no-restore.
+                        # pointer. A v1 record upgrades on read — never a
+                        # silent no-restore.
                         node_id = target.active_leaf
                     if node_id not in target.nodes:
                         raise ValueError("Bookmark node is unavailable.")

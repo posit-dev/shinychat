@@ -200,7 +200,7 @@ def check_schema_version(version: object) -> int:
 class ConversationRecordV1(BaseModel):
     """The legacy v1 linear record (py 0.6.x-0.7.2, R 0.5.0).
 
-    Kept as import input for the v1→v2 upgrade (plan section 7.6); the
+    Kept as import input for the v1→v2 upgrade; the
     current record version is named by :class:`ConversationRecord`.
     """
 
@@ -677,8 +677,8 @@ class ConversationRecord(ConversationRecordV2):
     type: the controller and recorder build plain `ConversationRecordV2`
     objects, which is the type stores receive in `put()` and should
     isinstance-check against. Validating v1-shaped input -- a v1 dict or
-    model instance -- runs the v1→v2 import (plan section 7.6, decision
-    D1), so custom stores written against the v1 API that call
+    model instance -- runs the v1→v2 import, so
+    custom stores written against the v1 API that call
     `ConversationRecord.model_validate*` keep working and receive a v2
     record. Stores may also hand back a `ConversationRecordV1` instance
     directly; the controller upgrades it on read. Lossy-import warnings

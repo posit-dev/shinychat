@@ -227,7 +227,6 @@ def normalize_turn_group(group: list[TurnDict]) -> ChatMessage | None:
         try:
             turns = [Turn.model_validate(t) for t in group]
             contents = [c for turn in turns for c in turn.contents]
-            # The group's first turn decides the role (mirrors R's ellmer_turn_effective_role).
             merged = Turn(role=turns[0].role, contents=contents)
             msg = normalize_message(merged)
         except Exception as e:
