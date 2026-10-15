@@ -696,6 +696,130 @@ def test_one_sided_link_appends_to_parent_children() -> None:
     ]
 
 
+def _assert_pointers_consistent(record: ConversationRecordV2) -> None:
+    """Every v2 pointer names a child of the exchange holding it."""
+    for nid, exchange in record.nodes.items():
+        assert exchange.selected_child is None or (
+            exchange.selected_child in exchange.children
+        ), nid
+
+
+def test_one_sided_pointer_to_non_child_imports_without_error() -> None:
+    # roborev 1582 (MEDIUM): U (n_0001) is an input node whose only listed
+    # child is a response (n_0002), so U has no bare exchange of its own —
+    # it folds into n_0002's pair exchange. n_0003 (U2) is a one-sided-link
+    # input child (its parent names U, but U's children list omits it) and
+    # U's stored pointer selects U2. A pointer that does not name an
+    # existing child of the node is not an effective selection under v1's
+    # own rule, so the import ignores it — the old post-pass instead wrote
+    # exchanges[U].selected_child and crashed with KeyError.
+    record = _record(
+        {
+            "n_0001": _node(
+                parent=None,
+                children=["n_0002"],
+                turns=[_chatlas_turn("user", "u1")],
+                ui=[_ui("user", "u1")],
+                selected_child="n_0003",
+            ),
+            "n_0002": _node(
+                parent="n_0001",
+                children=[],
+                turns=[_chatlas_turn("assistant", "a1")],
+                ui=[_ui("assistant", "a1")],
+                selected_child=None,
+            ),
+            "n_0003": _node(
+                parent="n_0001",
+                children=[],
+                turns=[_chatlas_turn("user", "u2")],
+                ui=[_ui("user", "u2")],
+                selected_child=None,
+            ),
+        },
+        current_leaf="n_0002",
+    )
+    imported, warns = import_v1_record_with_warnings(record)
+
+    assert warns == []
+    # U folds into the pair exchange of its selected response, exactly as
+    # v1's fallback (last child) prescribes for the ignored pointer.
+    assert set(imported.nodes) == {"n_0000", "n_0002", "n_0003"}
+    pair = imported.nodes["n_0002"]
+    # U2 hangs under the pair covering U + U's effective response, not the
+    # root, so v1's parent-walking turn prefix survives the import.
+    assert imported.nodes["n_0003"].parent_id == "n_0002"
+    assert "n_0003" in pair.children
+    assert imported.nodes["n_0000"].selected_child == "n_0002"
+    # U's pointer to U2 was ignored, so the pair carries no pointer of its
+    # own for the off-path child — the v1 leaf stays the v2 leaf.
+    assert pair.selected_child is None
+    assert imported.active_leaf == "n_0002"
+    assert imported.path_node_ids() == ["n_0000", "n_0002"]
+    _assert_pointers_consistent(imported)
+    assert _turns_deltas(imported) == record.path_turns()
+    assert _display(imported) == [
+        {"role": "user", "content": "u1", "attachments": []},
+        {"role": "assistant", "content": "a1", "attachments": []},
+    ]
+
+
+def test_stale_pointer_to_non_child_writes_no_dangling_v2_pointer() -> None:
+    # roborev 1582 (LOW, same root cause): n_0003 is an input node that
+    # keeps a bare exchange (it has a non-response child), and its stored
+    # pointer names its own parent n_0001 — a real node in the record that
+    # is not one of its children. The old post-pass wrote that pointer
+    # through to the bare exchange (mapped to n_0001's pair exchange),
+    # producing a v2 selected_child outside its children list. Under the
+    # unified rule the pointer is ignored, as v1's own fallback semantics
+    # would.
+    record = _record(
+        {
+            "n_0001": _node(
+                parent=None,
+                children=["n_0002", "n_0003"],
+                turns=[_chatlas_turn("user", "u1")],
+                ui=[_ui("user", "u1")],
+                selected_child="n_0002",
+            ),
+            "n_0002": _node(
+                parent="n_0001",
+                children=[],
+                turns=[_chatlas_turn("assistant", "a1")],
+                ui=[_ui("assistant", "a1")],
+                selected_child=None,
+            ),
+            "n_0003": _node(
+                parent="n_0001",
+                children=["n_0005"],
+                turns=[_chatlas_turn("user", "u2")],
+                ui=[_ui("user", "u2")],
+                selected_child="n_0001",
+            ),
+            "n_0005": _node(
+                parent="n_0003",
+                children=[],
+                turns=[_chatlas_turn("user", "u3")],
+                ui=[_ui("user", "u3")],
+                selected_child=None,
+            ),
+        },
+        current_leaf="n_0002",
+    )
+    imported, warns = import_v1_record_with_warnings(record)
+
+    assert warns == []
+    # n_0003 keeps a bare exchange (its child n_0005 is not a response),
+    # and its stale pointer to its own parent did NOT reach it as a
+    # dangling pointer to n_0001's pair exchange.
+    bare = imported.nodes["n_0003"]
+    assert bare.children == ["n_0005"]
+    assert bare.selected_child is None
+    assert imported.active_leaf == "n_0002"
+    assert imported.path_node_ids() == ["n_0000", "n_0002"]
+    _assert_pointers_consistent(imported)
+
+
 def test_unversioned_ui_with_extra_messages_warns_and_drops() -> None:
     record = _record(
         {

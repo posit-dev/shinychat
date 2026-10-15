@@ -94,6 +94,21 @@ def import_v1_record_with_warnings(
         if node.parent is None or node.parent not in nodes
     ]
 
+    def stored_pointer(nid: str) -> str | None:
+        """The pointer stored on `nid` when it names an existing child.
+
+        v1's own rule: a ``selected_child`` that does not name an existing
+        child of the node is ignored — whether stale (it names no node in
+        the record) or one-sided (it names a real node missing from this
+        node's children list) — and v1's fallback applies. Both passes
+        resolve pointers through this one predicate so an ignored pointer
+        can never reach the v2 record.
+        """
+        selected = nodes[nid].selected_child
+        if selected is None or selected not in existing_children[nid]:
+            return None
+        return selected
+
     def effective_selected(nid: str) -> str | None:
         """The child v1 itself would follow from this node.
 
@@ -103,10 +118,10 @@ def import_v1_record_with_warnings(
         therefore keep their real continuation — the last response — instead
         of sprouting phantom bare exchanges for every user turn.
         """
-        node = nodes[nid]
+        selected = stored_pointer(nid)
+        if selected is not None:
+            return selected
         children = existing_children[nid]
-        if node.selected_child is not None and node.selected_child in children:
-            return node.selected_child
         return children[-1] if children else None
 
     def has_bare(nid: str) -> bool:
@@ -309,9 +324,14 @@ def import_v1_record_with_warnings(
     # `mapped` reports it wherever the parent level needs it — so two v1
     # pointers can never race for one slot and the result never depends on
     # dictionary order (the active-path walk below re-affirms the path).
-    for nid, node in nodes.items():
-        selected = node.selected_child
-        if selected is None or selected not in nodes:
+    # Pointers resolve through the same `stored_pointer` predicate the
+    # structure pass uses, so one that does not name an existing child of
+    # its node (stale or one-sided) is ignored here exactly as v1's own
+    # fallback semantics would, instead of writing a pointer no exchange
+    # covers.
+    for nid in nodes:
+        selected = stored_pointer(nid)
+        if selected is None:
             continue
         if klass[nid] == _INPUT and klass[selected] == _RESPONSE:
             continue
