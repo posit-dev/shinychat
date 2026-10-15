@@ -94,21 +94,35 @@ def import_v1_record_with_warnings(
         if node.parent is None or node.parent not in nodes
     ]
 
+    def effective_selected(nid: str) -> str | None:
+        """The child v1 itself would follow from this node.
+
+        Mirrors v1's ``subtree_leaf`` rule: the stored pointer when it names
+        an existing child, else the last child. Records written before the
+        pointer existed (py 0.6.x never stored ``selected_child`` at all)
+        therefore keep their real continuation — the last response — instead
+        of sprouting phantom bare exchanges for every user turn.
+        """
+        node = nodes[nid]
+        children = existing_children[nid]
+        if node.selected_child is not None and node.selected_child in children:
+            return node.selected_child
+        return children[-1] if children else None
+
     def has_bare(nid: str) -> bool:
         """Whether input node `nid` also keeps a bare exchange of its own.
 
-        True when the node's selected child is not a response (it is a
+        True when the child v1 would follow is not a response (it is a
         leaf, or the active path continues through a non-response child),
         or when any child must re-parent under the bare exchange to
         preserve its turn prefix.
         """
-        node = nodes[nid]
         response_ids = {
             child
             for child in existing_children[nid]
             if klass[child] == _RESPONSE
         }
-        if node.selected_child not in response_ids:
+        if effective_selected(nid) not in response_ids:
             return True
         return any(
             klass[child] != _RESPONSE for child in existing_children[nid]
@@ -126,15 +140,15 @@ def import_v1_record_with_warnings(
         """The exchange covering v1 node `nid`'s continuation.
 
         An input-bearing node continues through its selected response's
-        pair exchange whenever the selection is a response — whether or not
-        the node also keeps a bare exchange — so pointer values never depend
-        on dictionary order. Otherwise the node's own exchange (bare for
-        inputs) carries it.
+        pair exchange whenever the child v1 would follow is a response —
+        whether or not the node also keeps a bare exchange — so pointer
+        values never depend on dictionary order. Otherwise the node's own
+        exchange (bare for inputs) carries it.
         """
         if klass[nid] != _INPUT:
             return nid
-        selected = nodes[nid].selected_child
-        if selected is not None and klass.get(selected) == _RESPONSE:
+        selected = effective_selected(nid)
+        if selected is not None and klass[selected] == _RESPONSE:
             return selected
         return nid
 
