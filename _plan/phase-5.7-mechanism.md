@@ -335,7 +335,9 @@ commits, three-findings escalation valve per mechanism.
   v1-under-v2 eviction gap is strict-xfail referencing `e0x2` — verified
   it fires on exactly the schema `ValueError` and will xpass when the
   read-gate lands). Verified: 383 tests, pyright 0. Roborev 1583
-  enqueued.
+  enqueued. `gwg3` CLOSED: 1583 Pass with 4 Low — 3 fixed `9e6f0cba`
+  (strict-xfail so XPASS forces marker removal at `e0x2`; docstring;
+  sentinel), 1 declined (parametrization churn).
 
 ## Handoff
 
