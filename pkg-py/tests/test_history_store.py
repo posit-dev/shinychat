@@ -24,7 +24,7 @@ from shinychat._history_store import (
 from shinychat._history_types import (
     MAX_SCHEMA_VERSION,
     CapturedMessage,
-    ConversationRecord,
+    ConversationRecordV1,
     ConversationRecordV2,
     UnsupportedSchemaVersionError,
     new_conversation_record,
@@ -58,7 +58,7 @@ WORKED_EXAMPLE_PATH = (
 )
 
 
-def _conv_dir(tmp_path: Path, rec: ConversationRecord) -> Path:
+def _conv_dir(tmp_path: Path, rec: ConversationRecordV1) -> Path:
     return tmp_path / sanitize_scope("chat") / sanitize_scope("alice") / rec.id
 
 

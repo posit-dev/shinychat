@@ -63,7 +63,7 @@ from shinychat._history_types import (
     MAX_SCHEMA_VERSION,
     STORED_UI_VERSION,
     CapturedMessage,
-    ConversationRecord,
+    ConversationRecordV1,
     ConversationRecordV2,
     ErrorEntry,
     StateEntry,
@@ -444,6 +444,11 @@ class _FakeChat:
         self.clear_messages_calls += 1
         self.clear_messages_greetings.append(greeting)
         self.messages.clear()
+        # Restored messages ARE the display in production: clearing the
+        # display discards them too, so multi-restore flows (switch away
+        # and back) see only the latest restore, not an accumulation.
+        self.restored_messages.clear()
+        self.restored_icons.clear()
         self._transcript.replace([])
 
     @asynccontextmanager
@@ -613,7 +618,7 @@ class _RecordingStore(ConversationStore):
 
     async def get(
         self, partition: ConversationPartition, conv_id: str
-    ) -> ConversationRecord | None:
+    ) -> ConversationRecordV1 | None:
         return None
 
     async def delete(
@@ -630,18 +635,18 @@ class _FailingStore(_RecordingStore):
 class _PartitionCaptureStore(ConversationStore):
     def __init__(self) -> None:
         self.put_partitions: list[ConversationPartition] = []
-        self.records: dict[str, ConversationRecord] = {}
+        self.records: dict[str, ConversationRecordV1] = {}
 
     async def list(self, partition: ConversationPartition) -> list[Any]:
         return []
 
     async def get(
         self, partition: ConversationPartition, conv_id: str
-    ) -> ConversationRecord | None:
+    ) -> ConversationRecordV1 | None:
         return self.records.get(conv_id)
 
     async def put(
-        self, partition: ConversationPartition, record: ConversationRecord
+        self, partition: ConversationPartition, record: ConversationRecordV1
     ) -> None:
         self.put_partitions.append(partition)
         self.records[record.id] = record
@@ -2283,9 +2288,9 @@ async def test_v2_switch_fires_on_switch_restored_after_successful_restore():
     recorder.record = existing
     controller._active_id.set(existing.id)
 
-    restored: list[ConversationRecord] = []
+    restored: list[ConversationRecordV1] = []
 
-    async def hook(record: ConversationRecord) -> None:
+    async def hook(record: ConversationRecordV1) -> None:
         restored.append(record)
 
     controller.on_switch_restored = hook
@@ -2316,7 +2321,7 @@ async def test_v2_switch_hook_failure_is_swallowed_with_warning():
     recorder.record = existing
     controller._active_id.set(existing.id)
 
-    async def hook(record: ConversationRecord) -> None:
+    async def hook(record: ConversationRecordV1) -> None:
         raise RuntimeError("session closing")
 
     controller.on_switch_restored = hook
@@ -2360,9 +2365,9 @@ async def test_v2_switch_blocked_by_stream_fires_no_on_switch_restored():
     target = _v2_switch_target("state_target")
     await store.put(part(), target)
 
-    restored: list[ConversationRecord] = []
+    restored: list[ConversationRecordV1] = []
 
-    async def hook(record: ConversationRecord) -> None:
+    async def hook(record: ConversationRecordV1) -> None:
         restored.append(record)
 
     controller.on_switch_restored = hook
@@ -2380,9 +2385,9 @@ async def test_v2_switch_failed_preflight_fires_no_on_switch_restored():
     store = _UnsupportedSchemaVersionStore()
     controller, _ = _make_controller(store=store, use_exchange_tree=True)
 
-    restored: list[ConversationRecord] = []
+    restored: list[ConversationRecordV1] = []
 
-    async def hook(record: ConversationRecord) -> None:
+    async def hook(record: ConversationRecordV1) -> None:
         restored.append(record)
 
     controller.on_switch_restored = hook
@@ -8475,7 +8480,7 @@ async def test_exchange_recorder_is_default_off_and_uses_v1_save_path():
     await controller.on_response()
 
     assert len(store.put_calls) == 1
-    assert isinstance(store.put_calls[0][1], ConversationRecord)
+    assert isinstance(store.put_calls[0][1], ConversationRecordV1)
 
 
 @pytest.mark.anyio
@@ -8518,7 +8523,7 @@ async def test_v2_response_persistence_does_not_depend_on_bookmark_settlement() 
     record = recorder.record
     assert record is not None
 
-    async def fail_bookmark(_record: ConversationRecord) -> None:
+    async def fail_bookmark(_record: ConversationRecordV1) -> None:
         raise RuntimeError("bookmark settlement failed")
 
     controller.on_response_saved = fail_bookmark
@@ -8916,12 +8921,12 @@ async def test_explicit_save_runs_history_lifecycle_after_persist():
     original_put = controller._put_record
 
     async def put(
-        partition: ConversationPartition, record: ConversationRecord
+        partition: ConversationPartition, record: ConversationRecordV1
     ) -> None:
         await original_put(partition, record)
         events.append("put")
 
-    async def bookmark(record: ConversationRecord) -> None:
+    async def bookmark(record: ConversationRecordV1) -> None:
         events.append("bookmark")
 
     controller._put_record = put
@@ -9119,7 +9124,7 @@ class _UnsupportedSchemaVersionStore(ConversationStore):
 
     async def get(
         self, partition: ConversationPartition, conv_id: str
-    ) -> ConversationRecord | None:
+    ) -> ConversationRecordV1 | None:
         rec = new_conversation_record(title="from the future")
         rec.id = conv_id
         cast(Any, rec).schema_version = MAX_SCHEMA_VERSION + 1

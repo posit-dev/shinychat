@@ -19,7 +19,7 @@ from ._history_bookmark import (
 from ._history_types import (
     ConversationMeta,
     ConversationNode,
-    ConversationRecord,
+    ConversationRecordV1,
     ConversationRecordV2,
     check_schema_version,
 )
@@ -128,12 +128,12 @@ def _rollback_jsonl(path: Path, *, existed: bool, size: int) -> None:
 
 def _check_record_for_store(
     record: Any,
-) -> ConversationRecord | ConversationRecordV2:
-    if not isinstance(record, (ConversationRecord, ConversationRecordV2)):
+) -> ConversationRecordV1 | ConversationRecordV2:
+    if not isinstance(record, (ConversationRecordV1, ConversationRecordV2)):
         raise TypeError("Conversation stores require a supported record model.")
     version = check_schema_version(record.schema_version)
     if (
-        isinstance(record, ConversationRecord)
+        isinstance(record, ConversationRecordV1)
         and version != 1
         or isinstance(record, ConversationRecordV2)
         and version != 2
@@ -160,7 +160,7 @@ class FileConversationStore(ConversationStore):
     serialize reads and writes for each conversation.
 
     On ``get()``, the three files are read and merged into a full
-    ``ConversationRecord`` with inline turns and UI on each node. Callers
+    ``ConversationRecordV1`` with inline turns and UI on each node. Callers
     never see the split.
     """
 
@@ -261,7 +261,7 @@ class FileConversationStore(ConversationStore):
                             children=nd.get("children", []),
                             turns=[],
                         )
-                    rec = ConversationRecord(
+                    rec = ConversationRecordV1(
                         id=raw["id"],
                         title=raw["title"],
                         title_source=raw.get("title_source"),
@@ -371,7 +371,7 @@ class FileConversationStore(ConversationStore):
                 selected_child=node_data.get("selected_child"),
             )
 
-        return ConversationRecord(
+        return ConversationRecordV1(
             id=raw["id"],
             title=raw["title"],
             title_source=raw.get("title_source"),
@@ -584,7 +584,7 @@ class InMemoryConversationStore(ConversationStore):
     def __init__(self) -> None:
         self._data: dict[
             ConversationPartition,
-            dict[str, ConversationRecord | ConversationRecordV2],
+            dict[str, ConversationRecordV1 | ConversationRecordV2],
         ] = {}
         self._meta_cache: dict[
             ConversationPartition, list[ConversationMeta]

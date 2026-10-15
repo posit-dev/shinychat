@@ -9,7 +9,11 @@ from .._history_store import (
     ConversationStore,
     FileConversationStore,
 )
-from .._history_types import ConversationMeta, ConversationRecord
+from .._history_types import (
+    ConversationMeta,
+    ConversationRecordV1,
+    ConversationRecordV2,
+)
 from .._page_chat import ChatDrawer, ChatNavPanel, ChatSidebar
 
 try:
@@ -37,7 +41,8 @@ __all__ = [
     "ChatMessageDict",
     "ConversationMeta",
     "ConversationPartition",
-    "ConversationRecord",
+    "ConversationRecordV1",
+    "ConversationRecordV2",
     "ConversationStore",
     "FileConversationStore",
     "ToolResultDisplay",

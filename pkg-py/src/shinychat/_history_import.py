@@ -1,6 +1,6 @@
 """Pure v1 -> v2 conversation-record import (plan sections 7.3-7.5).
 
-:func:`import_v1_record` turns a legacy v1 :class:`ConversationRecord`
+:func:`import_v1_record` turns a legacy v1 :class:`ConversationRecordV1`
 (the linear node-tree record written by shinychat py 0.6.x-0.7.2 and
 R 0.5.0) into a v2 :class:`~shinychat._history_types.ConversationRecordV2`
 exchange tree. The transform is pure data: no session, no store, no I/O,
@@ -45,7 +45,7 @@ from ._history_client import TurnDict
 from ._history_types import (
     CapturedMessage,
     ConversationNode,
-    ConversationRecord,
+    ConversationRecordV1,
     ConversationRecordV2,
     ExchangeNode,
     StateEntry,
@@ -62,7 +62,7 @@ _RESPONSE = "response"
 _NEUTRAL = "neutral"
 
 
-def import_v1_record(record: ConversationRecord) -> ConversationRecordV2:
+def import_v1_record(record: ConversationRecordV1) -> ConversationRecordV2:
     """Import a legacy v1 record as a v2 exchange tree.
 
     Lossy-import warnings are discarded; use
@@ -73,7 +73,7 @@ def import_v1_record(record: ConversationRecord) -> ConversationRecordV2:
 
 
 def import_v1_record_with_warnings(
-    record: ConversationRecord,
+    record: ConversationRecordV1,
 ) -> tuple[ConversationRecordV2, list[str]]:
     """Import a v1 record, returning the v2 record and its warnings.
 
@@ -459,7 +459,7 @@ def _best_effort_leaf(exchanges: dict[str, ExchangeNode], root_id: str) -> str:
 
 
 def _display_messages(
-    record: ConversationRecord, warns: list[str]
+    record: ConversationRecordV1, warns: list[str]
 ) -> dict[str, list[StoredMessage]]:
     """Per-node display messages, following the 0.7.2 replay fidelity rule.
 

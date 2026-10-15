@@ -64,7 +64,7 @@ from ._history_title import (
 # top-level import would be circular (shiny.ui._chat imports shinychat).
 from ._history_types import (
     STORED_UI_VERSION,
-    ConversationRecord,
+    ConversationRecordV1,
     ConversationRecordV2,
     StoredUiMessage,
     check_schema_version,
@@ -345,7 +345,7 @@ def derive_node_ui(
 
 
 def extend_record_linear(
-    record: ConversationRecord,
+    record: ConversationRecordV1,
     turn_groups: list[list[TurnDict]],
     ui_messages: list[dict[str, Any]],
     *,
@@ -451,7 +451,7 @@ class HistoryController:
         )
 
         self.partition: ConversationPartition | None = None
-        self.record: ConversationRecord | None = None  # None => unsaved draft
+        self.record: ConversationRecordV1 | None = None  # None => unsaved draft
         # Active conversation identity, separate from `record`: an
         # identified draft (submitted but not yet saved) has an ID and no
         # record. All record/identity mutations go through
@@ -469,12 +469,12 @@ class HistoryController:
         ) = None
         # Internal hook: fired after every save. bookmark mode uses it to mint.
         self.on_response_saved: (
-            Callable[[ConversationRecord], Awaitable[None]] | None
+            Callable[[ConversationRecordV1], Awaitable[None]] | None
         ) = None
         # Internal hook: fired in switch_to before the in-session swap.
         # Return True to skip the swap (caller has already navigated).
         self.on_pre_switch: (
-            Callable[[ConversationRecord], Awaitable[bool]] | None
+            Callable[[ConversationRecordV1], Awaitable[bool]] | None
         ) = None
         # Internal hook: fired after a v2 in-place switch_to restore
         # succeeds. Bookmark mode uses it to point the URL at the restored
@@ -483,7 +483,7 @@ class HistoryController:
         # uses); a failed or blocked switch never fires it, so the URL
         # keeps matching the still-active conversation.
         self.on_switch_restored: (
-            Callable[[ConversationRecord], Awaitable[None]] | None
+            Callable[[ConversationRecordV1], Awaitable[None]] | None
         ) = None
         # Internal hook: fired before a conversation is removed from the store.
         self.on_evict: Callable[[str], Awaitable[None]] | None = None
@@ -510,7 +510,7 @@ class HistoryController:
     def conversation_id(self) -> str | None:
         """
         Reactive read of the active conversation ID: ``None`` for an empty
-        draft, otherwise the ID the eventual ``ConversationRecord`` will (or
+        draft, otherwise the ID the eventual ``ConversationRecordV1`` will (or
         already does) carry. Allocated at first user submission for
         ``chat_app()`` apps, or at first save for standalone history use.
 
@@ -550,7 +550,7 @@ class HistoryController:
                 await self.on_active_id_change(id)
         return id
 
-    async def activate_record(self, record: ConversationRecord) -> None:
+    async def activate_record(self, record: ConversationRecordV1) -> None:
         """
         Activate a stored record. This (with ``clear_active()``) is the
         shared operation every restore/switch/init/delete/new-chat path must
@@ -590,14 +590,14 @@ class HistoryController:
 
     async def _get_record(
         self, partition: ConversationPartition, conv_id: str
-    ) -> ConversationRecord | ConversationRecordV2 | None:
+    ) -> ConversationRecordV1 | ConversationRecordV2 | None:
         record = await self.store.get(partition, conv_id)
         if record is not None:
             check_schema_version(record.schema_version)
             expected_type = (
                 ConversationRecordV2
                 if self._exchange_recorder is not None
-                else ConversationRecord
+                else ConversationRecordV1
             )
             if not isinstance(record, expected_type):
                 raise ValueError(
@@ -606,7 +606,7 @@ class HistoryController:
         return record
 
     async def _put_record(
-        self, partition: ConversationPartition, record: ConversationRecord
+        self, partition: ConversationPartition, record: ConversationRecordV1
     ) -> None:
         check_schema_version(record.schema_version)
         await self.store.put(partition, record)
@@ -657,7 +657,7 @@ class HistoryController:
             assert record is not None
             await self._evict_if_needed()
             if self.on_response_saved is not None:
-                await self.on_response_saved(cast(ConversationRecord, record))
+                await self.on_response_saved(cast(ConversationRecordV1, record))
             await self.send_history_update()
             await self._send_sibling_metadata()
             self._schedule_exchange_retitle(record)
@@ -877,7 +877,7 @@ class HistoryController:
         assert record is not None
         await self._evict_if_needed()
         if self.on_response_saved is not None:
-            await self.on_response_saved(cast(ConversationRecord, record))
+            await self.on_response_saved(cast(ConversationRecordV1, record))
         await self.send_history_update()
         await self._send_sibling_metadata()
         return True
@@ -902,7 +902,7 @@ class HistoryController:
         self.ui_offset = len(messages)
         return True
 
-    def _capture_app_state(self, record: ConversationRecord) -> None:
+    def _capture_app_state(self, record: ConversationRecordV1) -> None:
         values: dict[str, Any] = {}
         for cb in self._save_callbacks:
             cb(values)
@@ -1288,7 +1288,7 @@ class HistoryController:
             # above, leaving the URL matching the still-active conversation.
             if self.on_switch_restored is not None:
                 try:
-                    await self.on_switch_restored(cast(ConversationRecord, target))
+                    await self.on_switch_restored(cast(ConversationRecordV1, target))
                 except Exception as exc:
                     # The restore already committed; a best-effort URL update
                     # failure (e.g. session closing) must not make callers
@@ -1345,7 +1345,7 @@ class HistoryController:
                 await self.notify_settled(False)
                 await self.send_history_update()
 
-    async def replay_ui(self, record: ConversationRecord) -> None:
+    async def replay_ui(self, record: ConversationRecordV1) -> None:
         async with self._destructive_mutation():
             await self.chat.clear_messages()
             # A restored conversation is never a "new chat" — the app's
@@ -2199,7 +2199,7 @@ class ChatHistory:
                     "restore_mode='bookmark' requires bookmark_store='server' in the Shiny app."
                 )
 
-            async def _on_response_saved(record: ConversationRecord) -> None:
+            async def _on_response_saved(record: ConversationRecordV1) -> None:
                 recorder = controller._exchange_recorder
                 if recorder is not None:
                     pointer = await recorder.bookmark_pointer(
@@ -2263,7 +2263,7 @@ class ChatHistory:
 
             controller.on_response_saved = _on_response_saved
 
-            async def _on_pre_switch(target: ConversationRecord) -> bool:
+            async def _on_pre_switch(target: ConversationRecordV1) -> bool:
                 if target.bookmark_state_id is not None:
                     await controller.send_navigate(
                         f"?_state_id_={target.bookmark_state_id}",
@@ -2282,7 +2282,7 @@ class ChatHistory:
             # never had a response saved) -> url=None clears the stale query.
             # Uses replaceState, never pushState (pushState would mutate
             # server-side clientdata mid-session).
-            async def _on_switch_restored(record: ConversationRecord) -> None:
+            async def _on_switch_restored(record: ConversationRecordV1) -> None:
                 state_id = record.bookmark_state_id
                 url = f"?_state_id_={state_id}" if state_id is not None else None
                 await controller.send_navigate(url, record.id)

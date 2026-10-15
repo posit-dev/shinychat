@@ -95,9 +95,9 @@ class StoredUiMessage(TypedDict):
 
 def new_conversation_record(
     *, title: str, id: str | None = None
-) -> ConversationRecord:
+) -> ConversationRecordV1:
     now = utcnow()
-    return ConversationRecord(
+    return ConversationRecordV1(
         id=id if id is not None else new_conversation_id(),
         title=title,
         created_at=now,
@@ -181,7 +181,13 @@ def check_schema_version(version: object) -> int:
     raise UnsupportedSchemaVersionError(version)
 
 
-class ConversationRecord(BaseModel):
+class ConversationRecordV1(BaseModel):
+    """The legacy v1 linear record (py 0.6.x-0.7.2, R 0.5.0).
+
+    Kept as import input for the v1→v2 upgrade (plan section 7.6); the
+    current record version is named by :class:`ConversationRecord`.
+    """
+
     schema_version: Literal[1] = 1
     id: str
     title: str

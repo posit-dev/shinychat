@@ -2,13 +2,13 @@ from typing import Any
 
 from shinychat._history_types import (
     ConversationNode,
-    ConversationRecord,
+    ConversationRecordV1,
     utcnow,
 )
 
 
 def branch_from(
-    record: ConversationRecord,
+    record: ConversationRecordV1,
     fork_parent_id: str | None,
     turns: list[dict[str, Any]],
     ui: list[dict[str, Any]] | None = None,

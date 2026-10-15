@@ -6,7 +6,7 @@ from shinychat._history_types import (
     CapturedMessage,
     ConversationMeta,
     ConversationNode,
-    ConversationRecord,
+    ConversationRecordV1,
     ConversationRecordV2,
     UnsupportedSchemaVersionError,
     check_schema_version,
@@ -247,7 +247,7 @@ def test_json_round_trip():
     rec = new_conversation_record(title="t")
     rec.append_linear(turn("user", "hi"))
     rec.append_linear(turn("assistant", "hello"))
-    rec2 = ConversationRecord.model_validate_json(rec.model_dump_json())
+    rec2 = ConversationRecordV1.model_validate_json(rec.model_dump_json())
     assert rec2 == rec
 
 
@@ -299,7 +299,7 @@ def test_bookmark_state_id_round_trips():
     rec = new_conversation_record(title="t")
     rec.bookmark_state_id = "abc123"
     raw = rec.model_dump(mode="json")
-    loaded = ConversationRecord.model_validate(raw)
+    loaded = ConversationRecordV1.model_validate(raw)
     assert loaded.bookmark_state_id == "abc123"
 
 

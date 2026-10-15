@@ -26,7 +26,7 @@ from shinychat._history_store import (
 )
 from shinychat._history_types import (
     ConversationNode,
-    ConversationRecord,
+    ConversationRecordV1,
     ConversationRecordV2,
 )
 
@@ -80,8 +80,8 @@ def _record(
     current_leaf: str | None,
     id: str = "c_import",
     values: dict[str, Any] | None = None,
-) -> ConversationRecord:
-    return ConversationRecord(
+) -> ConversationRecordV1:
+    return ConversationRecordV1(
         id=id,
         title="Imported",
         created_at=NOW,
@@ -95,7 +95,7 @@ def _record(
 
 def _linear_record(
     *, ui: list[dict[str, Any]] | None, turns: list[dict[str, Any]]
-) -> ConversationRecord:
+) -> ConversationRecordV1:
     """n1(user) -> n2(assistant), one exchange, versioned or derived UI."""
     return _record(
         {
