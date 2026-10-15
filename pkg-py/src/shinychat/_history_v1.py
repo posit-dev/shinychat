@@ -59,6 +59,7 @@ from ._history_types import (
     StateEntry,
     StoredUiMessage,
     TurnDict,
+    _ancestor_path,
     is_stored_ui_versioned,
 )
 
@@ -389,18 +390,7 @@ def import_v1_record_with_warnings(
     # Explicit active-path walk keeps the copied pointers consistent along
     # the imported path (and clears the leaf's own pointer, as v1 does).
     if active_leaf is not None:
-        path: list[str] = []
-        visited: set[str] = set()
-        cursor: str | None = active_leaf
-        while cursor is not None:
-            if cursor in visited:
-                raise ValueError(
-                    f"Cycle detected in conversation nodes at {cursor!r}"
-                )
-            visited.add(cursor)
-            path.append(cursor)
-            cursor = exchanges[cursor].parent_id
-        path.reverse()
+        path = _ancestor_path(exchanges, active_leaf)
         for index, nid in enumerate(path):
             exchanges[nid].selected_child = (
                 path[index + 1] if index + 1 < len(path) else None

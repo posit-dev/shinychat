@@ -400,6 +400,31 @@ class ExchangeNode(BaseModel):
     error: ErrorEntry | None = None
 
 
+def _ancestor_path(
+    nodes: dict[str, ExchangeNode], start: str | None
+) -> list[str]:
+    """Root-to-`start` node ids, following parent pointers.
+
+    Raises on a cycle or a dangling parent reference.
+    """
+    path: list[str] = []
+    visited: set[str] = set()
+    cursor = start
+    while cursor is not None:
+        if cursor in visited:
+            raise ValueError(
+                f"Cycle detected in conversation nodes at {cursor!r}"
+            )
+        node = nodes.get(cursor)
+        if node is None:
+            raise ValueError(f"Dangling parent reference at {cursor!r}")
+        visited.add(cursor)
+        path.append(cursor)
+        cursor = node.parent_id
+    path.reverse()
+    return path
+
+
 class ConversationRecordV2(BaseModel):
     """The v2 exchange-tree record, isolated from the released v1 model."""
 
@@ -427,22 +452,7 @@ class ConversationRecordV2(BaseModel):
         )
 
     def path_node_ids(self) -> list[str]:
-        ids: list[str] = []
-        visited: set[str] = set()
-        cursor = self.active_leaf
-        while cursor is not None:
-            if cursor in visited:
-                raise ValueError(
-                    f"Cycle detected in conversation nodes at {cursor!r}"
-                )
-            node = self.nodes.get(cursor)
-            if node is None:
-                raise ValueError(f"Dangling parent reference at {cursor!r}")
-            visited.add(cursor)
-            ids.append(cursor)
-            cursor = node.parent_id
-        ids.reverse()
-        return ids
+        return _ancestor_path(self.nodes, self.active_leaf)
 
     def children_of(self, node_id: str | None) -> list[str]:
         if node_id is None:
@@ -466,21 +476,7 @@ class ConversationRecordV2(BaseModel):
         if node_id not in self.nodes:
             raise ValueError(f"Unknown exchange id {node_id!r}")
 
-        path: list[str] = []
-        visited: set[str] = set()
-        cursor: str | None = node_id
-        while cursor is not None:
-            if cursor in visited:
-                raise ValueError(
-                    f"Cycle detected in conversation nodes at {cursor!r}"
-                )
-            node = self.nodes.get(cursor)
-            if node is None:
-                raise ValueError(f"Dangling parent reference at {cursor!r}")
-            visited.add(cursor)
-            path.append(cursor)
-            cursor = node.parent_id
-        path.reverse()
+        path = _ancestor_path(self.nodes, node_id)
 
         self.active_leaf = node_id
         for index, path_node_id in enumerate(path):
