@@ -281,8 +281,8 @@ export function attachmentBadgeLabel(name: string, type: string): string {
 
 /**
  * Synthetic File for a large clipboard text paste. Named "Pasted Text" so the
- * attachment card and the server-side `<file-attachment name=...>` wrapper both
- * read nicely; typed text/plain so it round-trips like an uploaded .txt.
+ * attachment card reads nicely; typed text/plain so it round-trips like an
+ * uploaded .txt.
  */
 export function pastedTextFile(text: string): File {
   return new File([text], "Pasted Text", { type: "text/plain" })

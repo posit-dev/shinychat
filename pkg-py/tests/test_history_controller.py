@@ -155,10 +155,13 @@ def test_strip_attachment_content_repairs_existing_stored_ui():
     assert cleaned.get("attachment_content_stripped") is True
 
 
-def test_strip_attachment_content_keeps_empty_attachment_only_message():
+def test_strip_attachment_content_matches_unnamed_text_attachment():
+    # Regression: unnamed attachments must render with a deterministic
+    # filename, or the re-derived content here never matches the stored
+    # segment and the auto-generated name leaks into the restored message.
     attachment = {
         "mime": "text/plain",
-        "name": "notes.txt",
+        "name": "",
         "size": 5,
         "data_url": "data:text/plain;base64,aGVsbG8=",
     }
@@ -168,14 +171,37 @@ def test_strip_attachment_content_keeps_empty_attachment_only_message():
             "version": STORED_UI_VERSION,
             "role": "user",
             "segments": [
+                {"content": "See attached\n\nfile", "content_type": "markdown"}
+            ],
+            "attachments": [attachment],
+        },
+    )
+
+    cleaned = _strip_attachment_content(stored)
+
+    assert cleaned["segments"] == [
+        {"content": "See attached", "content_type": "markdown"}
+    ]
+    assert cleaned.get("attachment_content_stripped") is True
+
+
+def test_strip_attachment_content_keeps_empty_attachment_only_message():
+    attachment = {
+        "mime": "image/png",
+        "name": "plot.png",
+        "size": 3,
+        "data_url": "data:image/png;base64,QUJD",
+    }
+    stored = cast(
+        StoredUiMessage,
+        {
+            "version": STORED_UI_VERSION,
+            "role": "user",
+            "segments": [
                 {
-                    "content": (
-                        '<file-attachment name="notes.txt" '
-                        'type="text/plain">\n'
-                        "hello\n"
-                        "</file-attachment>"
-                    ),
-                    "content_type": "markdown",
+                    "type": "html_block",
+                    "version": 1,
+                    "content": '<img src="data:image/png;base64,QUJD"/>',
                 }
             ],
             "attachments": [attachment],
@@ -2413,11 +2439,14 @@ async def test_v2_same_flush_input_and_history_selection_preserves_source_dispat
         assert provider_text == "source input"
         assert provider_kwargs["content"] == "all"
         assert len(provider_contents) == 1
-        assert provider_contents[0].text == (
-            '<file-attachment name="notes.txt" type="text/plain">\n'
-            "notes\n"
-            "</file-attachment>"
-        )
+        # Since #415, text attachments travel to the provider as native
+        # document content rather than a <file-attachment> text wrapper.
+        from chatlas.types import ContentDocument
+
+        assert isinstance(provider_contents[0], ContentDocument)
+        assert provider_contents[0].data == b"notes"
+        assert provider_contents[0].filename == "notes.txt"
+        assert provider_contents[0].mime_type == "text/plain"
         with reactive.isolate():
             latest_input = chat.user_input()
             assert latest_input is not None

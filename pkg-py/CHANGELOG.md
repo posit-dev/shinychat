@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### New features
+
+* Text file attachments are now sent to the model via chatlas's `content_document_url()` rather than a hand-assembled `<file-attachment>` text wrapper, so providers that handle documents natively receive a real document. (#415)
+
+### Changes
+
+* Streamed responses now reveal smoothly at a typing-like pace instead of in abrupt server-sized chunks, with far fewer re-renders along the way. Bursts of text catch up quickly, the reveal never flashes a partial HTML tag, and stopping a response reveals any buffered text immediately. The trailing dot now appears only once a stream has stalled (or before any text has arrived), rather than hopping along with every update. (#411)
+
 ### Conversation history
 
 * On the v2 conversation-history path — which this release makes the only history engine by removing the legacy v1 runtime and its opt-in flag — legacy v1 records are upgraded to the current v2 format in memory when read, and written back as v2 on their next save (there is no bulk migration). Custom `ConversationStore` implementations keep working: `ConversationRecord.model_validate*` on a v1 record returns an upgraded v2 record, and a store whose `get()` still returns a v1 record is upgraded by the controller on read. Note that downgrading the package afterwards hides conversations that were converted on save — their records are v2, which the older version cannot read.

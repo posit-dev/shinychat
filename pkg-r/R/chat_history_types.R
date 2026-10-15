@@ -316,11 +316,7 @@ strip_stored_attachment_content <- function(message) {
   attachment_content <- lapply(attachments, function(attachment) {
     tryCatch(
       {
-        content <- content_from_attachment(attachment)
-        if (is.character(content)) {
-          return(as.character(content))
-        }
-        rendered <- contents_shinychat(content)
+        rendered <- contents_shinychat(content_from_attachment(attachment))
         if (is.null(rendered)) NULL else as.character(rendered)
       },
       error = function(e) NULL
