@@ -661,6 +661,8 @@ class InMemoryConversationStore(ConversationStore):
         existing = self._data[partition].get(record.id)
         if existing is not None:
             existing = _check_record_for_store(existing)
+            # A v2 record may overwrite the v1 record it upgraded from on
+            # read; every other cross-version overwrite stays refused.
             if existing.schema_version != record.schema_version and not (
                 existing.schema_version == 1 and record.schema_version == 2
             ):

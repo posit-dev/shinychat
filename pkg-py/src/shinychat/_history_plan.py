@@ -252,8 +252,9 @@ def materialize_live_restore_turns(
 ) -> RestorePlan:
     """Materialize the planned turns after admission, keeping live order.
 
-    The caller invokes this at that point and passes the refreshed plan
-    onward.
+    Callers must invoke this after admission and recorder serialization
+    but before any destructive restore effects, then pass the refreshed
+    plan onward.
     """
     materialized: list[tuple[str, RestoreHook, StatePathContext]] = []
     for name, hook, context in planned:
