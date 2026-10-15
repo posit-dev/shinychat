@@ -265,6 +265,9 @@ async def test_v2_new_chat_rejected_while_initial_history_unresolved():
     assert raw_client.get_turns() == before_turns
     assert chat.clear_calls == []
     assert chat.messages
+    assert not any(
+        action.get("type") == "history_update" for action in chat.actions
+    )
 
 
 @pytest.mark.anyio
