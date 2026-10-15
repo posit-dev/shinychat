@@ -261,7 +261,12 @@ try:
     def _(chunk: ContentText):
         return message_content(chunk)
 
-    from chatlas.types import ContentImageInline, ContentImageRemote, ContentPDF
+    from chatlas.types import (
+        ContentDocument,
+        ContentImageInline,
+        ContentImageRemote,
+        ContentPDF,
+    )
 
     @message_content.register
     def _(message: ContentImageInline):
@@ -286,6 +291,18 @@ try:
 
     @message_content_chunk.register
     def _(chunk: ContentPDF):
+        return message_content(chunk)
+
+    # Documents render as filename only, mirroring ContentPDF. If providers
+    # ever return documents in assistant turns, they need a deliberate display
+    # (e.g., a download card) -- this dispatch can't distinguish user content
+    # from assistant content, so a bare filename can't serve both cases.
+    @message_content.register
+    def _(message: ContentDocument):
+        return ChatMessage(content=message.filename or "document")
+
+    @message_content_chunk.register
+    def _(chunk: ContentDocument):
         return message_content(chunk)
 
     @message_content.register

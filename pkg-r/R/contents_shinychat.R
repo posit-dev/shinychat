@@ -145,6 +145,18 @@ method(contents_shinychat, ellmer::ContentText) <- function(content) {
   content@text
 }
 
+# Documents render as their filename only: user attachments already display as
+# chips on the message, and pinning this keeps a future ellmer renderer for
+# ContentDocument from leaking file contents into derived UI. If providers
+# ever return documents in assistant turns, give them a deliberate display
+# (e.g., a download card) -- this method can't distinguish user content from
+# assistant content, so a bare filename can't serve both cases.
+method(contents_shinychat, ellmer::ContentDocument) <- function(content) {
+  # Fall back on an empty filename for parity with Python's
+  # `message.filename or "document"` rendering.
+  if (nzchar(content@filename)) content@filename else "document"
+}
+
 method(contents_shinychat, ellmer::ContentThinking) <- function(content) {
   structure(content@thinking, class = "shinychat_thinking")
 }
