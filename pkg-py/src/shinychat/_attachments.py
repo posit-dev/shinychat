@@ -314,13 +314,20 @@ def attachment_to_content(att: Attachment) -> "Content":
         data = decode_data_url(att.data_url)
         return ContentPDF(data=data, filename=att.name or "document.pdf")
     if is_text_type(att.mime):
-        from chatlas import content_document_url
+        from chatlas.types import ContentDocument
 
+        # Construct ContentDocument directly (mirroring ContentPDF above)
+        # rather than via chatlas's content_document_url(): that constructor
+        # auto-names data: URLs from a process-global counter, and a filename
+        # re-derived later (e.g. by history's attachment-content strip) would
+        # never match the one rendered into the stored message at input time.
         _require_data_url(att)
-        content = content_document_url(att.data_url, mime_type=att.mime)
-        if att.name:
-            content.filename = att.name
-        return content
+        data = decode_data_url(att.data_url)
+        return ContentDocument(
+            data=data,
+            filename=att.name or "file",
+            mime_type=att.mime,
+        )
     raise ValueError(f"Unsupported attachment type: {att.mime}")
 
 

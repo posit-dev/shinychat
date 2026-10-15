@@ -217,6 +217,36 @@ def test_strip_attachment_content_repairs_existing_stored_ui():
     assert cleaned.get("attachment_content_stripped") is True
 
 
+def test_strip_attachment_content_matches_unnamed_text_attachment():
+    # Regression: unnamed attachments must render with a deterministic
+    # filename, or the re-derived content here never matches the stored
+    # segment and the auto-generated name leaks into the restored message.
+    attachment = {
+        "mime": "text/plain",
+        "name": "",
+        "size": 5,
+        "data_url": "data:text/plain;base64,aGVsbG8=",
+    }
+    stored = cast(
+        StoredUiMessage,
+        {
+            "version": STORED_UI_VERSION,
+            "role": "user",
+            "segments": [
+                {"content": "See attached\n\nfile", "content_type": "markdown"}
+            ],
+            "attachments": [attachment],
+        },
+    )
+
+    cleaned = _strip_attachment_content(stored)
+
+    assert cleaned["segments"] == [
+        {"content": "See attached", "content_type": "markdown"}
+    ]
+    assert cleaned.get("attachment_content_stripped") is True
+
+
 def test_strip_attachment_content_keeps_empty_attachment_only_message():
     attachment = {
         "mime": "image/png",

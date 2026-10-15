@@ -161,6 +161,33 @@ def test_attachment_to_content_text_builds_document_content():
     assert content.data == md.encode()
 
 
+def test_attachment_to_content_text_names_unnamed_deterministically():
+    # Unnamed attachments must not get chatlas's counter-based auto-name: the
+    # history strip re-derives the rendered content and matches it against the
+    # stored segment text, which a changing name would never match.
+    att = Attachment(
+        mime="text/plain",
+        data_url="data:text/plain;base64,aGVsbG8=",
+        name="",
+    )
+    for _ in range(2):
+        content = attachment_to_content(att)
+        assert isinstance(content, ContentDocument)
+        assert content.filename == "file"
+
+
+def test_attachment_to_content_text_malformed_base64_raises_clean_error():
+    att = Attachment(
+        mime="text/plain",
+        data_url="data:text/plain;base64,%%%not-base64%%%",
+        name="broken.txt",
+    )
+    with pytest.raises(
+        ValueError, match="Malformed base64 payload in data URL"
+    ):
+        attachment_to_content(att)
+
+
 def test_attachment_to_content_pdf_malformed_base64_raises_clean_error():
     att = Attachment(
         mime="application/pdf",
