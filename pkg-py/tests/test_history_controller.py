@@ -32,7 +32,12 @@ from shiny.session import session_context
 from shinychat import Chat, _history_plan
 from shinychat._attachments import Attachment
 from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
-from shinychat._chat_types import ChatMessage, StoredMessage, StoredSegment
+from shinychat._chat_types import (
+    ChatMessage,
+    StoredMessage,
+    StoredSegment,
+    StructuredBlock,
+)
 from shinychat._history import (
     HistoryController,
     HistoryInputIds,
@@ -919,6 +924,323 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
         for message in fake_chat.restored_messages
     ] == ["hello", "hi"]
     assert fake_chat.restored_icons == [None, "<i>bot</i>"]
+
+
+# ---------------------------------------------------------------------------
+# v2 structured content blocks in captured messages (main #373 parity)
+# ---------------------------------------------------------------------------
+
+
+def _structured_block_segments() -> list[StoredSegment | StructuredBlock]:
+    """One of every ``StructuredBlock`` type, in content order."""
+    return [
+        StoredSegment(content="", content_type="markdown"),
+        {
+            "type": "tool_request",
+            "version": 1,
+            "request_id": "req-1",
+            "tool_name": "get_weather",
+            "title": "Weather",
+            "icon": "cloud",
+            "intent": "Look up the weather",
+            "arguments": '{"city": "Paris"}',
+            "grouping": "tool",
+        },
+        {
+            "type": "tool_result",
+            "version": 1,
+            "request_id": "req-1",
+            "tool_name": "get_weather",
+            "status": "success",
+            "value": "Sunny, 21C",
+            "value_type": "markdown",
+        },
+        {
+            "type": "web_search",
+            "version": 1,
+            "query": "weather paris",
+            "id": "search-1",
+        },
+        {
+            "type": "web_search_results",
+            "version": 1,
+            "sources": [
+                {
+                    "url": "https://example.com/paris",
+                    "title": "Paris",
+                    "domain": "example.com",
+                }
+            ],
+            "search_id": "search-1",
+        },
+        {
+            "type": "web_search_citations",
+            "version": 1,
+            "sources": [{"url": "https://example.com/paris"}],
+        },
+        {
+            "type": "web_fetch",
+            "version": 1,
+            "url": "https://example.com/paris",
+            "status": "success",
+        },
+        {
+            "type": "html_block",
+            "version": 1,
+            "content": "<b>Sunny</b>",
+            "html_deps": [{"name": "sunny-dep", "version": "1"}],
+        },
+    ]
+
+
+def _expected_restored_blocks() -> list[dict[str, Any]]:
+    """The wire dicts each block segment must restore as, verbatim."""
+    return [
+        cast(dict[str, Any], segment)
+        for segment in _structured_block_segments()
+        if isinstance(segment, dict)
+    ]
+
+
+@pytest.mark.anyio
+async def test_v2_recorder_round_trips_structured_blocks_through_file_store(
+    tmp_path: Path,
+) -> None:
+    """Every StructuredBlock type survives capture, the JSON store, and replay."""
+    store = FileConversationStore(tmp_path)
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+    )
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "search weather in paris")
+    )
+    await transcript.append(
+        TranscriptEntry(
+            message=StoredMessage(
+                role="assistant",
+                segments=_structured_block_segments(),
+            ),
+            icon="<i>bot</i>",
+        ),
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    node = record.nodes[exchange_id]
+    assert node.status == "ok"
+    assert len(node.messages) == 1
+    captured_blocks = [
+        segment for segment in node.messages[0].segments if isinstance(segment, dict)
+    ]
+    assert captured_blocks == _expected_restored_blocks()
+
+    # Persist and re-read through the file store's JSON round trip.
+    await controller.on_response()
+    stored = await store.get(part(), record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    stored_blocks = [
+        segment
+        for segment in stored.nodes[exchange_id].messages[0].segments
+        if isinstance(segment, dict)
+    ]
+    assert stored_blocks == _expected_restored_blocks()
+    html_block = next(
+        block for block in stored_blocks if block["type"] == "html_block"
+    )
+    assert html_block.get("html_deps") == [{"name": "sunny-dep", "version": "1"}]
+
+    # A fresh controller replays the stored record verbatim.
+    restored, _ = _make_controller(store=store, use_exchange_tree=True)
+    await restored.replay_exchange_record(stored)
+    fake_chat = cast(_FakeChat, restored.chat)
+    assert [message["role"] for message in fake_chat.restored_messages] == [
+        "user",
+        "assistant",
+    ]
+    user_segments = fake_chat.restored_messages[0]["segments"]
+    assert user_segments[0]["content"] == "search weather in paris"
+    replayed_blocks = [
+        segment
+        for segment in fake_chat.restored_messages[1]["segments"]
+        if segment.get("type") is not None
+    ]
+    assert replayed_blocks == _expected_restored_blocks()
+    assert fake_chat.restored_icons == [None, "<i>bot</i>"]
+
+
+@pytest.mark.anyio
+async def test_v2_recorder_persists_structured_blocks_from_streams(
+    tmp_path: Path,
+) -> None:
+    """Streamed block_insert projections are captured and replayed, not dropped."""
+    store = FileConversationStore(tmp_path)
+    controller, _ = _make_controller(store=store, use_exchange_tree=True)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "weather?")
+    )
+    request_block: StructuredBlock = cast(
+        StructuredBlock,
+        {
+            "type": "tool_request",
+            "version": 1,
+            "request_id": "req-1",
+            "tool_name": "get_weather",
+        },
+    )
+    result_block: StructuredBlock = cast(
+        StructuredBlock,
+        {
+            "type": "tool_result",
+            "version": 1,
+            "request_id": "req-1",
+            "tool_name": "get_weather",
+            "status": "success",
+            "value": "Sunny",
+            "value_type": "markdown",
+        },
+    )
+
+    async def _stream_message(*blocks: StructuredBlock) -> StoredMessage:
+        return StoredMessage(
+            role="assistant",
+            segments=[
+                StoredSegment(content="", content_type="markdown"),
+                *blocks,
+            ],
+        )
+
+    await transcript.start_stream(
+        stream_id="stream",
+        entry=TranscriptEntry(message=await _stream_message(request_block)),
+        owner_task=None,
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+    await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[],
+        message=await _stream_message(request_block, result_block),
+        operation="replace",
+        send=_sent,
+    )
+    await transcript.end_stream(
+        stream_id="stream",
+        status=None,
+        error=None,
+        send=_sent,
+    )
+
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    node = record.nodes[exchange_id]
+    assert node.status == "ok"
+    assert len(node.messages) == 1
+    streamed_blocks = [
+        segment for segment in node.messages[0].segments if isinstance(segment, dict)
+    ]
+    assert streamed_blocks == [request_block, result_block]
+
+    stored = await store.get(part(), record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    restored, _ = _make_controller(store=store, use_exchange_tree=True)
+    await restored.replay_exchange_record(stored)
+    fake_chat = cast(_FakeChat, restored.chat)
+    replayed_blocks = [
+        segment
+        for segment in fake_chat.restored_messages[-1]["segments"]
+        if segment.get("type") is not None
+    ]
+    assert replayed_blocks == [request_block, result_block]
+
+
+@pytest.mark.anyio
+async def test_restore_bookmark_message_warns_on_unknown_block_type() -> None:
+    """An unreplayable block degrades with a warning, never silently.
+
+    Messages with block types this version does not know (e.g. written by a
+    newer shinychat) are skipped loudly; the restore loop continues with the
+    remaining messages.
+    """
+    from shiny.express._stub_session import ExpressStubSession
+
+    with session_context(ExpressStubSession()):
+        chat = Chat(id="chat_unknown_block")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        unknown = {
+            "role": "assistant",
+            "segments": [
+                {"content": "", "content_type": "markdown"},
+                {"type": "future_block", "version": 1},
+            ],
+        }
+        with pytest.warns(
+            UserWarning,
+            match="Skipping malformed bookmarked chat message",
+        ):
+            await chat._restore_bookmark_message(unknown)
+        assert sent == []
+        assert list(chat._transcript.read()) == []
+
+        # A known-block message in the same restore loop still replays, with
+        # its blocks inline in the wire segments and html_deps passed to the
+        # transport.
+        await chat._restore_bookmark_message(
+            {
+                "role": "assistant",
+                "segments": [
+                    {
+                        "content": "",
+                        "content_type": "markdown",
+                        "html_deps": [{"name": "seg-dep"}],
+                    },
+                    *(
+                        block
+                        for block in _structured_block_segments()
+                        if isinstance(block, dict)
+                    ),
+                ],
+            },
+            icon="<i>bot</i>",
+        )
+
+        message_actions = [action for action in sent if action["type"] == "message"]
+        assert len(message_actions) == 1
+        wire_segments = message_actions[0]["message"]["segments"]
+        assert [
+            segment["type"]
+            for segment in wire_segments
+            if segment.get("type") is not None
+        ] == [block["type"] for block in _expected_restored_blocks()]
+        assert [
+            segment
+            for segment in wire_segments
+            if segment.get("type") is not None
+        ] == _expected_restored_blocks()
+        assert chat._transcript.read()[0].message.blocks == (
+            _expected_restored_blocks()
+        )
 
 
 @pytest.mark.anyio
