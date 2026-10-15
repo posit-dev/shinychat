@@ -276,3 +276,12 @@ review unit; the orchestrator requests one roborev range review per unit
   v1-only code; store stays whole.
 - 2026-10-15: Driver approved the gate. Nine children created in a
   linear blocking chain (`5hda` first: warning wiring). Phase open.
+- 2026-10-15: Unit 1 (`5hda`) landed — read-gate wires
+  `import_v1_record_with_warnings` with a per-controller warned-id set
+  (`2fb061d8`, `d7454174`); roborev 1595 pass, findings batched on the
+  issue. Next: unit 2 (`z2nt`, layering moves D2/D3). Provisional
+  disposition: Python's default warnings filter coalesces identical
+  warnings process-wide, so cross-session repeats in one process may be
+  suppressed — D1 mechanism kept, caveat documented at the read-gate.
+  Session-entry note: `uv sync --extra providers` was needed for a
+  green `make py-check-unit` in this worktree.
