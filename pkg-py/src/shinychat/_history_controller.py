@@ -336,12 +336,16 @@ class HistoryController:
             return
         record = recorder.record
         assert record is not None
+        await self._after_persist(record)
+        self._schedule_exchange_retitle(record)
+
+    async def _after_persist(self, record: ConversationRecordV2) -> None:
+        """Shared post-save tail: eviction, save hook, and UI updates."""
         await self._evict_if_needed()
         if self.on_response_saved is not None:
             await self.on_response_saved(record)
         await self.send_history_update()
         await self._send_sibling_metadata()
-        self._schedule_exchange_retitle(record)
 
     def _schedule_exchange_retitle(self, record: ConversationRecordV2) -> None:
         """Launch the retitle task when the active path carries its second
@@ -456,11 +460,7 @@ class HistoryController:
             return False
         record = self._exchange_recorder.record
         assert record is not None
-        await self._evict_if_needed()
-        if self.on_response_saved is not None:
-            await self.on_response_saved(record)
-        await self.send_history_update()
-        await self._send_sibling_metadata()
+        await self._after_persist(record)
         return True
 
     async def save_current(self) -> bool:
@@ -1098,14 +1098,11 @@ class HistoryController:
         node_id = record.exchange_id_for_user_message_index(message_index)
         siblings = record.siblings_of(node_id)
         current_pos = siblings.index(node_id)
-        if direction == "prev":
-            if current_pos == 0:
-                return
-            target = siblings[current_pos - 1]
-        else:
-            if current_pos == len(siblings) - 1:
-                return
-            target = siblings[current_pos + 1]
+        step = -1 if direction == "prev" else 1
+        target_pos = current_pos + step
+        if target_pos < 0 or target_pos >= len(siblings):
+            return
+        target = siblings[target_pos]
 
         leaf = record.subtree_leaf(target)
         projection = record.model_copy(deep=True)

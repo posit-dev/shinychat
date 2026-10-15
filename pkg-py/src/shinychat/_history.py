@@ -8,6 +8,7 @@ from typing import (
     Awaitable,
     Callable,
     Literal,
+    NamedTuple,
     cast,
 )
 
@@ -182,6 +183,52 @@ async def do_bookmark_with_cleanup(
         await bookmark.do_bookmark()
     finally:
         cancel()
+
+
+class _ParsedBookmarkPointer(NamedTuple):
+    """Outcome of parsing bookmark values for a conversation pointer."""
+
+    pointer: tuple[str, str | None] | None
+    invalid: bool
+
+
+def _parse_bookmark_pointer(
+    values: dict[str, Any], stamp_key: str, legacy_key: str
+) -> _ParsedBookmarkPointer:
+    """Extract the conversation pointer from bookmark values.
+
+    A v2 stamp is a ``{conversation_id, node_id}`` dict under ``stamp_key``;
+    when it is absent, fall back to the legacy v1 conversation stamp under
+    ``legacy_key`` (its pointer carries no node, resolved by the caller).
+    A present-but-malformed value of either kind marks the outcome invalid
+    instead of silently falling back.
+    """
+    raw_pointer = values.get(stamp_key)
+    if raw_pointer is not None:
+        if (
+            isinstance(raw_pointer, dict)
+            and set(raw_pointer) == {"conversation_id", "node_id"}
+            and isinstance(raw_pointer["conversation_id"], str)
+            and raw_pointer["conversation_id"]
+            and isinstance(raw_pointer["node_id"], str)
+            and raw_pointer["node_id"]
+        ):
+            return _ParsedBookmarkPointer(
+                (raw_pointer["conversation_id"], raw_pointer["node_id"]),
+                False,
+            )
+        return _ParsedBookmarkPointer(None, True)
+    # A bookmark written by a v1 server carries only the legacy
+    # conversation stamp. Fall back to it and open that conversation at
+    # its active leaf. The v2 pointer above keeps precedence when both
+    # keys exist; a present-but-invalid v2 pointer still fails loudly
+    # rather than silently falling back.
+    legacy_id = values.get(legacy_key)
+    if legacy_id is not None:
+        if isinstance(legacy_id, str) and legacy_id:
+            return _ParsedBookmarkPointer((legacy_id, None), False)
+        return _ParsedBookmarkPointer(None, True)
+    return _ParsedBookmarkPointer(None, False)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -675,35 +722,11 @@ class ChatHistory:
             bookmark_pointer: tuple[str, str | None] | None = None
             bookmark_pointer_invalid = False
             if restore_ctx is not None and restore_ctx.active:
-                raw_pointer = restore_ctx.values.get(stamp_key)
-                if raw_pointer is not None:
-                    if (
-                        isinstance(raw_pointer, dict)
-                        and set(raw_pointer) == {"conversation_id", "node_id"}
-                        and isinstance(raw_pointer["conversation_id"], str)
-                        and raw_pointer["conversation_id"]
-                        and isinstance(raw_pointer["node_id"], str)
-                        and raw_pointer["node_id"]
-                    ):
-                        bookmark_pointer = (
-                            raw_pointer["conversation_id"],
-                            raw_pointer["node_id"],
-                        )
-                    else:
-                        bookmark_pointer_invalid = True
-                else:
-                    # A bookmark written by a v1 server carries only the
-                    # legacy conversation stamp. Fall back to it and open
-                    # that conversation at its active leaf. The v2 pointer
-                    # above keeps precedence when both keys exist; a
-                    # present-but-invalid v2 pointer still fails loudly
-                    # below rather than silently falling back.
-                    legacy_id = restore_ctx.values.get(legacy_stamp_key)
-                    if legacy_id is not None:
-                        if isinstance(legacy_id, str) and legacy_id:
-                            bookmark_pointer = (legacy_id, None)
-                        else:
-                            bookmark_pointer_invalid = True
+                parsed = _parse_bookmark_pointer(
+                    restore_ctx.values, stamp_key, legacy_stamp_key
+                )
+                bookmark_pointer = parsed.pointer
+                bookmark_pointer_invalid = parsed.invalid
 
             if bookmark_pointer_invalid:
                 await notify_error(
