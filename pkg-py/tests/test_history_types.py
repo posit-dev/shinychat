@@ -680,3 +680,20 @@ def test_conversation_record_still_upgrades_markerless_v1_shapes():
     assert imported.schema_version == 2
     assert imported.id == expected_id
 
+
+
+def test_conversation_record_accepts_a_plain_v2_instance():
+    """A plain ConversationRecordV2 validates as the current version.
+
+    The controller/recorder build plain V2 objects, and a store may hand
+    one back to `ConversationRecord.model_validate*`; the record survives
+    with equal content and the result is a ConversationRecord.
+    """
+    v2 = new_conversation_record_v2(title="t", client_info={})
+    assert not isinstance(v2, ConversationRecord)
+    rec = ConversationRecord.model_validate(v2)
+    assert isinstance(rec, ConversationRecord)
+    assert rec.model_dump(mode="json") == v2.model_dump(mode="json")
+    # An already-converted record revalidates to itself, not a copy.
+    again = ConversationRecord.model_validate(rec)
+    assert again is rec

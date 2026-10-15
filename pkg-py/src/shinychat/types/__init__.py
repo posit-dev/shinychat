@@ -11,6 +11,10 @@ from .._history_store import (
 )
 from .._history_types import (
     ConversationMeta,
+    # `ConversationRecord` is the version-tracking validation/construction
+    # entry point; the runtime type the controller/recorder build -- and
+    # that stores receive in put() and should isinstance-check against --
+    # is `ConversationRecordV2`.
     ConversationRecord,
     ConversationRecordV1,
     ConversationRecordV2,

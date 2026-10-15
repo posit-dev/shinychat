@@ -642,10 +642,14 @@ class ConversationRecord(ConversationRecordV2):
 
     This name always tracks the current schema; the released forms are
     named by their versions (`ConversationRecordV1`, `ConversationRecordV2`).
-    Validating v1-shaped input -- a v1 dict or model instance -- runs the
-    v1→v2 import (plan section 7.6, decision D1), so custom stores written
-    against the v1 API that call `ConversationRecord.model_validate*` keep
-    working and receive a v2 record. Stores may also hand back a `ConversationRecordV1` instance
+    It is the validation/construction entry point, not the runtime record
+    type: the controller and recorder build plain `ConversationRecordV2`
+    objects, which is the type stores receive in `put()` and should
+    isinstance-check against. Validating v1-shaped input -- a v1 dict or
+    model instance -- runs the v1→v2 import (plan section 7.6, decision
+    D1), so custom stores written against the v1 API that call
+    `ConversationRecord.model_validate*` keep working and receive a v2
+    record. Stores may also hand back a `ConversationRecordV1` instance
     directly; the controller upgrades it on read. Lossy-import warnings
     are discarded here (reads must not re-warn); use
     `import_v1_record_with_warnings` to collect them.
@@ -663,6 +667,14 @@ class ConversationRecord(ConversationRecordV2):
             # not accept as model input for this subclass; hand validation a
             # dict re-built from the imported record.
             return import_v1_record(data).model_dump()
+        if isinstance(data, ConversationRecordV2) and not isinstance(
+            data, ConversationRecord
+        ):
+            # A plain v2 instance (built by the controller/recorder, or
+            # cached by a store) is already current; pydantic refuses a
+            # base-class instance as input for this subclass, so hand
+            # validation an equal dict instead.
+            return data.model_dump()
         if isinstance(data, dict):
             # An explicit `schema_version: 1` is always v1. A missing marker
             # means the record predates it (check_schema_version's None→1
