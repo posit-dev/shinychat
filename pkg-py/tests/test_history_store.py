@@ -339,6 +339,101 @@ async def test_memory_store_rejects_a_mutated_resident_v1_record():
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("backend", ["file", "memory"])
+async def test_stores_reject_records_built_with_a_mismatched_schema_version(
+    backend: str, tmp_path: Path
+):
+    """A v1-flagged model never reaches the v2 write path, and vice versa.
+
+    The ``Literal`` schema_version fields stop mismatches at validation
+    time, but ``model_construct()`` and ``model_copy(update=...)`` skip
+    validation -- ``_check_record_for_store`` exists for exactly these
+    tampered shapes (issue 8ec9 finding a): a record whose model and
+    schema version disagree is rejected before any write in both stores.
+    """
+    store = (
+        FileConversationStore(dir=tmp_path)
+        if backend == "file"
+        else InMemoryConversationStore()
+    )
+    v2 = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    v1 = new_conversation_record(title="v1")
+
+    chimera_attempts = [
+        # A v2 model flagged v1 -- a v1-flagged record in v2's
+        # single-document layout.
+        ConversationRecordV2.model_construct(
+            **{**v2.__dict__, "schema_version": 1}
+        ),
+        v2.model_copy(update={"schema_version": 1}),
+        # A v1 model flagged v2 -- a v2-flagged record in v1's split
+        # layout.
+        ConversationRecordV1.model_construct(
+            **{**v1.__dict__, "schema_version": 2}
+        ),
+        v1.model_copy(update={"schema_version": 2}),
+    ]
+
+    for chimera in chimera_attempts:
+        with pytest.raises(ValueError, match="model does not match"):
+            await store.put(part(scope="alice"), chimera)
+
+    if backend == "file":
+        # No chimera reached disk: no conversation directory was created.
+        scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
+        assert not list(scope_dir.glob("*"))
+
+
+@pytest.mark.anyio
+async def test_failed_v2_overwrite_of_v1_leaves_the_v1_record_intact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Lazy-conversion cleanup is consumed only after the write succeeds.
+
+    Mechanism D4: a failed record.json replacement during a v2-over-v1
+    overwrite must leave the v1 record whole -- record.json, both
+    append-only side files, and the v1 write state a retry needs -- while
+    a successful overwrite removes the dead side files and drops the v1
+    write state. The removals happen strictly after the atomic replace,
+    never before it.
+    """
+    store = FileConversationStore(dir=tmp_path)
+    v1 = new_conversation_record(title="v1")
+    v1.append_linear([{"role": "user", "content": "hi"}])
+    await store.put(part(scope="alice"), v1)
+    conv_dir = _conv_dir(tmp_path, v1)
+    before = _file_snapshot(conv_dir)
+    ws_key = (part(scope="alice"), v1.id)
+    assert ws_key in store._write_state
+
+    upgraded = import_v1_record(
+        cast(ConversationRecordV1, await store.get(part(scope="alice"), v1.id))
+    )
+    monkeypatch.setattr(
+        os,
+        "replace",
+        lambda *args: (_ for _ in ()).throw(
+            OSError("injected replace failure")
+        ),
+    )
+    with pytest.raises(OSError, match="injected replace failure"):
+        await store.put(part(scope="alice"), upgraded)
+    monkeypatch.undo()
+
+    assert _file_snapshot(conv_dir) == before
+    assert not (conv_dir / ".record.json.tmp").exists()
+    assert ws_key in store._write_state
+
+    await store.put(part(scope="alice"), upgraded)
+
+    raw = json.loads((conv_dir / "record.json").read_text(encoding="utf-8"))
+    assert raw["schema_version"] == 2
+    assert not (conv_dir / "turns.jsonl").exists()
+    assert not (conv_dir / "ui.jsonl").exists()
+    assert ws_key not in store._write_state
+
+
+@pytest.mark.anyio
 async def test_file_store_round_trips_dict_tool_result_display(
     store: FileConversationStore,
 ):
