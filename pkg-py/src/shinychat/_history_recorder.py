@@ -310,6 +310,46 @@ class _ExchangeRecorder:
         await self.persist_record_locked()
         return True
 
+    async def retitle_active_locked(
+        self, target: ConversationRecordV2, title: str
+    ) -> bool:
+        """Apply an LLM-generated title to the active record.
+
+        Returns False without mutating when the active record moved on,
+        the user renamed mid-call, or there is no partition to persist
+        into — the controller's under-lock re-check lives here, so the
+        record mutation stays recorder-owned.
+        """
+        if (
+            self.record is not target
+            or target.title_source == "user"
+            or self._host.partition is None
+        ):
+            return False
+        target.title = title
+        target.title_source = "llm"
+        self._capture_app_state()
+        await self.persist_record_locked()
+        return True
+
+    def move_active_leaf_locked(
+        self, record: ConversationRecordV2, leaf: str
+    ) -> None:
+        """Move the active leaf on a controller-validated record.
+
+        The recorder owns every live-record mutation; the controller
+        passes the record it validated and preflighted (``self.record``
+        in every current flow).
+        """
+        record.set_active_leaf(leaf)
+
+    async def persist_active_leaf_locked(
+        self, record: ConversationRecordV2, leaf: str
+    ) -> None:
+        """Move the active leaf and persist, as one recorder-owned step."""
+        record.set_active_leaf(leaf)
+        await self.persist_record_locked()
+
     async def bookmark_pointer(
         self, record: ConversationRecordV2 | None = None
     ) -> tuple[str, str] | None:

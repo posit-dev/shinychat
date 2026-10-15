@@ -508,13 +508,11 @@ class HistoryController:
         ):
             return  # conversation switched away or user renamed mid-call
         async with self._exchange_mutation():
-            # Re-check under the recorder lock: the active record or its
-            # title may have changed while the LLM call was in flight.
-            if recorder.record is not target or target.title_source == "user":
+            # Re-checked under the recorder lock, inside the recorder: the
+            # active record or its title may have changed while the LLM
+            # call was in flight.
+            if not await recorder.retitle_active_locked(target, title):
                 return
-            target.title = title
-            target.title_source = "llm"
-            await recorder.save_current_locked()
         await self.send_history_update()
 
     def cancel_pending(self) -> None:
@@ -1138,8 +1136,7 @@ class HistoryController:
                 # until the hooks have accepted the rewind.
                 with self._restore_step(save_step):
                     await _history_plan.run_plan(rewind_state)
-                    record.set_active_leaf(leaf)
-                    await recorder.persist_record_locked()
+                    await recorder.persist_active_leaf_locked(record, leaf)
                 await send()
             except BaseException as error:
                 await self._clear_failed_restore(error)
@@ -1162,7 +1159,7 @@ class HistoryController:
             if record.active_leaf is None:
                 raise ValueError("Exchange-tree record has no active leaf.")
             await _history_plan.run_plan(rewind_state, skip_turns=True)
-            record.set_active_leaf(parent_id)
+            recorder.move_active_leaf_locked(record, parent_id)
             accepted_exchange_id = (
                 self.chat._transcript.record_accepted_input(submitted_input)
             )
