@@ -301,7 +301,8 @@ commits, three-findings escalation valve per mechanism.
   v1 had it, plan §2 bookmark fidelity beyond the pointer; re-minting on
   navigation is new machinery); (2) hook failure reported as failed
   switch — fix delegated (best-effort wrapper); (3) garbled replaceState
-  comment — fix delegated.
+  comment — fix delegated. `mfb3` CLOSED after fixes landed `b6c4af86`
+  (303 controller tests, pyright 0).
 
 ## Handoff
 
