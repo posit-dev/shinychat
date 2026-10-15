@@ -207,12 +207,8 @@ def _check_record_for_store(
     if not isinstance(record, (ConversationRecordV1, ConversationRecordV2)):
         raise TypeError("Conversation stores require a supported record model.")
     version = check_schema_version(record.schema_version)
-    if (
-        isinstance(record, ConversationRecordV1)
-        and version != 1
-        or isinstance(record, ConversationRecordV2)
-        and version != 2
-    ):
+    expected = 1 if isinstance(record, ConversationRecordV1) else 2
+    if version != expected:
         raise ValueError(
             "Conversation record model does not match its schema version."
         )

@@ -259,10 +259,7 @@ class HistoryController:
         conversation is an empty draft. Repeated calls for the same active
         conversation return the same ID.
         """
-        id = self._active_id_now()
-        if id is None:
-            id = self._allocate_conversation_id()
-        return id
+        return self._allocate_conversation_id()
 
     async def clear_active(self) -> None:
         if self._active_id_now() is not None:
