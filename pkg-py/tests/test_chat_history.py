@@ -1473,26 +1473,10 @@ async def test_v2_bookmark_switch_restore_soft_navigates_without_reload(
     session = _LiveSession()
     session.bookmark.store = "server"
 
-    class CapturedEffect:
-        def __init__(self, _handler: Callable[[], Awaitable[None]]) -> None:
-            pass
-
-        def destroy(self) -> None:
-            pass
-
-    def capture_effect(
-        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
-    ) -> Any:
-        def decorator(
-            effect_handler: Callable[[], Awaitable[None]],
-        ) -> CapturedEffect:
-            return CapturedEffect(effect_handler)
-
-        return decorator if handler is None else decorator(handler)
 
     with (
         patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
-        patch.object(reactive, "effect", capture_effect),
+        patch.object(reactive, "effect", _capture_history_effects({})),
         session_context(cast(Any, session)),
     ):
         chat = Chat(
@@ -1548,27 +1532,11 @@ async def test_v2_bookmark_eviction_clears_bookmark_state_for_v2_records():
     session = _LiveSession()
     session.bookmark.store = "server"
 
-    class CapturedEffect:
-        def __init__(self, _handler: Callable[[], Awaitable[None]]) -> None:
-            pass
-
-        def destroy(self) -> None:
-            pass
-
-    def capture_effect(
-        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
-    ) -> Any:
-        def decorator(
-            effect_handler: Callable[[], Awaitable[None]],
-        ) -> CapturedEffect:
-            return CapturedEffect(effect_handler)
-
-        return decorator if handler is None else decorator(handler)
 
     store = InMemoryConversationStore()
     with (
         patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
-        patch.object(reactive, "effect", capture_effect),
+        patch.object(reactive, "effect", _capture_history_effects({})),
         session_context(cast(Any, session)),
     ):
         chat = Chat(
@@ -1643,27 +1611,11 @@ async def test_v2_bookmark_eviction_of_v1_record_clears_state():
     session = _LiveSession()
     session.bookmark.store = "server"
 
-    class CapturedEffect:
-        def __init__(self, _handler: Callable[[], Awaitable[None]]) -> None:
-            pass
-
-        def destroy(self) -> None:
-            pass
-
-    def capture_effect(
-        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
-    ) -> Any:
-        def decorator(
-            effect_handler: Callable[[], Awaitable[None]],
-        ) -> CapturedEffect:
-            return CapturedEffect(effect_handler)
-
-        return decorator if handler is None else decorator(handler)
 
     store = InMemoryConversationStore()
     with (
         patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
-        patch.object(reactive, "effect", capture_effect),
+        patch.object(reactive, "effect", _capture_history_effects({})),
         session_context(cast(Any, session)),
     ):
         chat = Chat(
@@ -1702,26 +1654,10 @@ async def test_v2_non_bookmark_modes_wire_no_switch_restore_navigator(
     """Only bookmark mode wires on_switch_restored; other modes must not."""
     session = _LiveSession()
 
-    class CapturedEffect:
-        def __init__(self, _handler: Callable[[], Awaitable[None]]) -> None:
-            pass
-
-        def destroy(self) -> None:
-            pass
-
-    def capture_effect(
-        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
-    ) -> Any:
-        def decorator(
-            effect_handler: Callable[[], Awaitable[None]],
-        ) -> CapturedEffect:
-            return CapturedEffect(effect_handler)
-
-        return decorator if handler is None else decorator(handler)
 
     with (
         patch.object(history_module, "_EXCHANGE_TREE_HISTORY_V2", True),
-        patch.object(reactive, "effect", capture_effect),
+        patch.object(reactive, "effect", _capture_history_effects({})),
         session_context(cast(Any, session)),
     ):
         chat = Chat(
