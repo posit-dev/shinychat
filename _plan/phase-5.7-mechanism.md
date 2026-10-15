@@ -255,6 +255,14 @@ commits, three-findings escalation valve per mechanism.
   controller/title tests); roborev 1578 enqueued. Accepted scope
   deviation: one-line `accepted_input` change in `_history_recorder.py`
   (v2 fallback title is minted there, not in `_history.py`).
+- 2026-10-15: `tgdt` CLOSED. Roborev 1578 Pass with 3 Low, all fixed in
+  `a1d51d9a` (retitle target passed through with start-of-task bail;
+  docstring; sibling/third-exchange test pins). First `by2p`/`fn6m`
+  agents hit the default turn limit after research-only runs (the 5.6
+  `b0hf` pattern); re-delegated with incremental-commit briefs and the
+  driver-approved D2 synthesis rules. `fn6m`'s finding: the 5.6 merge
+  already widened `CapturedMessage.segments` to
+  `StoredSegment | StructuredBlock` — remaining work is mostly coverage.
 
 ## Handoff
 
