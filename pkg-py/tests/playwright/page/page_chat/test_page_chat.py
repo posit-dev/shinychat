@@ -69,8 +69,13 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     resizer = page_chat.loc.get_by_role("separator", name="Resize sidebar")
     expect(resizer).to_be_visible()
     resizer.press("End")
-    expect(resizer).to_have_attribute(
-        "aria-valuenow", resizer.get_attribute("aria-valuemax")
+    # aria-valuemax is recomputed from live layout (ResizeObserver / sidebar
+    # MutationObserver), so a value read before this assertion can go stale
+    # within its retry window. Poll the element for self-consistency instead.
+    page.wait_for_function(
+        "(el) => el.getAttribute('aria-valuenow') === el.getAttribute('aria-valuemax')",
+        arg=resizer.element_handle(),
+        timeout=TIMEOUT,
     )
     resizer.press("Home")
     expect(resizer).to_have_attribute("aria-valuenow", "150")
