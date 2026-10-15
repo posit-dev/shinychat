@@ -45,7 +45,7 @@ from shinychat._history import (
     do_bookmark_with_cleanup,
 )
 from shinychat._history_client import TurnsAdapter
-from shinychat._history_plan import StatePathContext
+from shinychat._history_plan import StatePathContext, canonical_turns
 from shinychat._history_store import (
     ConversationPartition,
     ConversationStore,
@@ -486,19 +486,15 @@ def _stored_message(role: str, content: str) -> StoredMessage:
 def test_v2_recorder_rejects_non_string_mapping_keys_recursively(
     turn: dict[Any, Any],
 ):
-    from shinychat._history_recorder import _ExchangeRecorder
-
     with pytest.raises(ValueError, match="Non-string mapping key"):
-        _ExchangeRecorder._canonical_turns([turn])
+        canonical_turns([turn])
 
 
 def test_v2_recorder_string_key_reordering_keeps_a_stable_prefix():
-    from shinychat._history_recorder import _ExchangeRecorder
-
-    _, baseline = _ExchangeRecorder._canonical_turns(
+    _, baseline = canonical_turns(
         [{"one": "one", "two": {"nested": "value"}}]
     )
-    _, current = _ExchangeRecorder._canonical_turns(
+    _, current = canonical_turns(
         [
             {"two": {"nested": "value"}, "one": "one"},
             {"role": "assistant", "content": "later"},
@@ -509,10 +505,8 @@ def test_v2_recorder_string_key_reordering_keeps_a_stable_prefix():
 
 
 def test_v2_recorder_rejects_non_json_turn_values():
-    from shinychat._history_recorder import _ExchangeRecorder
-
     with pytest.raises(TypeError):
-        _ExchangeRecorder._canonical_turns([{"value": object()}])
+        canonical_turns([{"value": object()}])
 
 
 @pytest.mark.anyio
@@ -3442,9 +3436,7 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
     assert target.nodes[exchange_id].model_dump_json() == original_node
     assert adapter.set_calls == restore_set_calls
     assert adapter.turns == expected_baseline
-    assert recorder._turn_baseline == recorder._canonical_turns(
-        expected_baseline
-    )[1]
+    assert recorder._turn_baseline == canonical_turns(expected_baseline)[1]
     assert len(rewind_contexts) == 1
     assert rewind_before_branch == [True]
     assert rewind_contexts[0].node_ids == ("n_0000",)

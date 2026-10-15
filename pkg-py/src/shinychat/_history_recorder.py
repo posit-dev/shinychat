@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -83,16 +82,8 @@ class _ExchangeRecorder:
     def _register_rewind_hook(self, name: str, hook: RewindHook) -> None:
         self._rewind_hooks[name] = hook
 
-    @staticmethod
-    def _canonical_turns(
-        turns: Sequence[Mapping[str, Any]],
-    ) -> tuple[list[dict[str, Any]], list[str]]:
-        # Kept as the recorder-facing name for the capture seam; the
-        # implementation lives once in `_history_plan.canonical_turns`.
-        return canonical_turns(turns)
-
     def _set_turn_baseline(self, turns: list[dict[str, Any]]) -> None:
-        _, self._turn_baseline = self._canonical_turns(turns)
+        _, self._turn_baseline = canonical_turns(turns)
 
     def _invalidate_turn_baseline(self) -> None:
         self._turn_baseline = list(_TURN_BASELINE_INVALID)
@@ -100,7 +91,7 @@ class _ExchangeRecorder:
     def _capture_turns(self, context: CaptureContext) -> StateEntry:
         adapter = self._controller.adapter
         include_system_prompt = adapter_is_chatlas(adapter)
-        turns, fingerprints = self._canonical_turns(
+        turns, fingerprints = canonical_turns(
             adapter.get_turns_json(include_system_prompt=include_system_prompt)
         )
         is_prefix = (
