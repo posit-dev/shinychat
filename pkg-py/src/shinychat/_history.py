@@ -2324,6 +2324,12 @@ class ChatHistory:
             if controller._exchange_recorder is not None
             else f"{chat.id}_history_conversation_id"
         )
+        # Legacy v1 bookmark stamp: a v1 server stamped only the conversation
+        # id here. When the v2 pointer above is absent, restoring a bookmark
+        # written by a v1 server reads this key instead (shinychat#dmgt,
+        # plan §7.8). The v1 write site (`stamp_conversation_id` below) keeps
+        # stamping it until task 4b9z deletes the v1 path.
+        legacy_stamp_key = f"{chat.id}_history_conversation_id"
         stamp_cancel: Callable[[], None] | None = None
         if root_session.bookmark.store == "server":
 
@@ -2429,7 +2435,10 @@ class ChatHistory:
             # Priority 1: restore from a Shiny bookmark context (any mode).
             restore_ctx = root_session.bookmark._restore_context
             restored_conv_id: str | None = None
-            bookmark_pointer: tuple[str, str] | None = None
+            # node_id is None only for a legacy v1 stamp (conversation id
+            # without a leaf); the open block resolves it to the record's
+            # active leaf after fetching the record.
+            bookmark_pointer: tuple[str, str | None] | None = None
             bookmark_pointer_invalid = False
             if restore_ctx is not None and restore_ctx.active:
                 raw_pointer = restore_ctx.values.get(stamp_key)
@@ -2449,6 +2458,20 @@ class ChatHistory:
                             )
                         else:
                             bookmark_pointer_invalid = True
+                    else:
+                        # A bookmark written by a v1 server carries only the
+                        # legacy conversation stamp. Fall back to it and open
+                        # that conversation at its active leaf (shinychat#dmgt,
+                        # plan §7.8). The v2 pointer above keeps precedence
+                        # when both keys exist; a present-but-invalid v2
+                        # pointer still fails loudly below rather than
+                        # silently falling back.
+                        legacy_id = restore_ctx.values.get(legacy_stamp_key)
+                        if legacy_id is not None:
+                            if isinstance(legacy_id, str) and legacy_id:
+                                bookmark_pointer = (legacy_id, None)
+                            else:
+                                bookmark_pointer_invalid = True
                 else:
                     restored_conv_id = str(raw_pointer) if raw_pointer else None
 
@@ -2469,10 +2492,20 @@ class ChatHistory:
                     )
                     if not isinstance(target, ConversationRecordV2):
                         raise ValueError("Bookmark conversation is unavailable.")
+                    if node_id is None:
+                        # Legacy v1 stamp: no node was stored. Synthesize the
+                        # pointer with the record's active leaf so the restore
+                        # runs through the exact same open path as a v2
+                        # pointer (shinychat#dmgt, plan §7.8). A v1 record
+                        # fails loudly here until the v1→v2 upgrade-on-read
+                        # lands (shinychat#e0x2) — never a silent no-restore.
+                        node_id = target.active_leaf
                     if node_id not in target.nodes:
                         raise ValueError("Bookmark node is unavailable.")
                 except Exception as e:
-                    await notify_error("Could not load conversation", e)
+                    await notify_error(
+                        f"Could not load conversation {conversation_id!r}", e
+                    )
                     await controller.send_history_update()
                     await finish_initial(False)
                     return
