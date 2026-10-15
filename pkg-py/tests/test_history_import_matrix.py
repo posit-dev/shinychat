@@ -8,12 +8,21 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, cast
 
+import pytest
+from shinychat._chat_types import StoredMessage
 from shinychat._history_import import (
     import_v1_record,
     import_v1_record_with_warnings,
+)
+from shinychat._history_store import (
+    ConversationPartition,
+    FileConversationStore,
+    sanitize_scope,
 )
 from shinychat._history_types import (
     ConversationNode,
@@ -109,22 +118,33 @@ def _linear_record(
     )
 
 
-def _display(record: ConversationRecordV2) -> list[tuple[str, str]]:
+def _display(record: ConversationRecordV2) -> list[dict[str, Any]]:
     """The exchange-tree display projection, straight off the record.
 
     Mirrors `_replay_exchange_display` without a chat or provider client:
     for each exchange on the active path, its input followed by its
-    messages.
+    messages. The projection proves rendering an imported record needs
+    no live provider client — it never leaves the record object.
     """
-    projected: list[tuple[str, str]] = []
+    projected: list[dict[str, Any]] = []
     for nid in record.path_node_ids():
         node = record.nodes[nid]
         if node.input is not None:
-            projected.append((node.input.role, node.input.content))
+            projected.append(_project_message(node.input))
         for message in node.messages:
-            stored = message.as_stored_message()
-            projected.append((stored.role, stored.content))
+            projected.append(_project_message(message.as_stored_message()))
     return projected
+
+
+def _project_message(message: StoredMessage) -> dict[str, Any]:
+    return {
+        "role": message.role,
+        "content": message.content,
+        "attachments": [
+            {"mime": attachment.mime, "name": attachment.name}
+            for attachment in message.attachments
+        ],
+    }
 
 
 def _turns_deltas(record: ConversationRecordV2) -> list[dict[str, Any]]:
@@ -187,8 +207,8 @@ def test_linear_record_pairs_into_one_exchange_per_turn() -> None:
     assert entry.mode == "delta"
     # Display needs no provider client: the projection walks the record.
     assert _display(imported) == [
-        ("user", "Hello"),
-        ("assistant", "Hi there"),
+        {"role": "user", "content": "Hello", "attachments": []},
+        {"role": "assistant", "content": "Hi there", "attachments": []},
     ]
 
 
@@ -206,8 +226,8 @@ def test_derived_ui_uses_plain_turns_kind_without_warning() -> None:
     entry = imported.nodes["n_0002"].state["shinychat:turns"]
     assert entry.kind == "turns"
     assert _display(imported) == [
-        ("user", "Hello"),
-        ("assistant", "Hi there"),
+        {"role": "user", "content": "Hello", "attachments": []},
+        {"role": "assistant", "content": "Hi there", "attachments": []},
     ]
 
 
@@ -443,11 +463,57 @@ def test_interrupted_input_becomes_cancelled_bare_exchange() -> None:
     # the display equals v1's stored UI along the path.
     assert _turns_deltas(imported) == record.path_turns()
     assert _display(imported) == [
-        ("user", "u1"),
-        ("assistant", "a1"),
-        ("user", "u2"),
-        ("user", "u2 edited"),
-        ("assistant", "a2 edited"),
+        {"role": "user", "content": "u1", "attachments": []},
+        {"role": "assistant", "content": "a1", "attachments": []},
+        {"role": "user", "content": "u2", "attachments": []},
+        {"role": "user", "content": "u2 edited", "attachments": []},
+        {"role": "assistant", "content": "a2 edited", "attachments": []},
+    ]
+
+
+def test_pointerless_input_folds_into_last_response_like_v1() -> None:
+    # py 0.6.x records carry no selected_child at all: v1's own subtree
+    # fallback follows the last child, so the import must pair the input
+    # with its last response (no phantom bare exchange for every turn).
+    record = _record(
+        {
+            "n_0001": _node(
+                parent=None,
+                children=["n_0002", "n_0003"],
+                turns=[_chatlas_turn("user", "Hello")],
+                ui=[_ui("user", "Hello", version=False)],
+                selected_child=None,
+            ),
+            "n_0002": _node(
+                parent="n_0001",
+                children=[],
+                turns=[_chatlas_turn("assistant", "First try")],
+                ui=[_ui("assistant", "First try", version=False)],
+                selected_child=None,
+            ),
+            "n_0003": _node(
+                parent="n_0001",
+                children=[],
+                turns=[_chatlas_turn("assistant", "Regenerated")],
+                ui=[_ui("assistant", "Regenerated", version=False)],
+                selected_child=None,
+            ),
+        },
+        current_leaf="n_0003",
+    )
+    imported, warns = import_v1_record_with_warnings(record)
+
+    assert warns == []
+    assert set(imported.nodes) == {"n_0000", "n_0002", "n_0003"}
+    assert imported.nodes["n_0000"].children == ["n_0002", "n_0003"]
+    # No stored pointer: v1's fallback continuation is the last child.
+    assert imported.active_leaf == "n_0003"
+    assert imported.nodes["n_0002"].status == "ok"
+    assert imported.nodes["n_0003"].status == "ok"
+    # Unversioned UI is re-derived from turns, like released 0.7.2.
+    assert _display(imported) == [
+        {"role": "user", "content": "Hello", "attachments": []},
+        {"role": "assistant", "content": "Regenerated", "attachments": []},
     ]
 
 
@@ -624,9 +690,9 @@ def test_one_sided_link_appends_to_parent_children() -> None:
     # Turn-prefix and display fidelity along v1's parent-walking path.
     assert _turns_deltas(imported) == record.path_turns()
     assert _display(imported) == [
-        ("user", "u1"),
-        ("assistant", "a1"),
-        ("assistant", "late response"),
+        {"role": "user", "content": "u1", "attachments": []},
+        {"role": "assistant", "content": "a1", "attachments": []},
+        {"role": "assistant", "content": "late response", "attachments": []},
     ]
 
 
@@ -824,3 +890,164 @@ def test_metadata_is_carried_verbatim() -> None:
     assert imported.id == record.id
     assert imported.created_at == record.created_at
     assert imported.updated_at == record.updated_at
+
+
+# ---------------------------------------------------------------------------
+# Per-released-form import matrix (shinychat#by2p)
+# ---------------------------------------------------------------------------
+# Every case replays real on-disk bytes written by a released writer -- py
+# 0.6.1, 0.7.0, 0.7.1 and R 0.5.0 -- through the production
+# FileConversationStore.get(), then the v1->v2 transform. Cases whose files
+# the store cannot parse, or whose import strays from the recorded
+# expectation, fail loudly here; there are no skips.
+
+_MATRIX_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "tests"
+    / "shared"
+    / "history-v1-import-matrix.json"
+)
+_MATRIX: list[dict[str, Any]] = json.loads(
+    _MATRIX_PATH.read_text(encoding="utf-8")
+)
+
+
+@pytest.mark.parametrize(
+    "case", _MATRIX, ids=lambda case: cast(str, case["name"])
+)
+def test_matrix_covers_every_released_writer(case: dict[str, Any]) -> None:
+    """The matrix holds exactly the four released v1 forms, fully dressed."""
+    assert {c["name"] for c in _MATRIX} == {
+        "py_0_6_unversioned_ui",
+        "py_0_7_0_versioned_ui",
+        "py_0_7_1_attachments",
+        "r_0_5_0",
+    }
+    assert case["source"] in {"py/v0.6.1", "py/v0.7.0", "py/v0.7.1", "r/v0.5.0"}
+    assert set(case["files"]) == {"record.json", "turns.jsonl", "ui.jsonl"}
+    for name in case["files"]:
+        assert case["files"][name], (
+            f"{case['name']}/{name}: empty fixture bytes"
+        )
+    for key in (
+        "active_leaf",
+        "nodes",
+        "display",
+        "turns_state",
+        "source_turns_read",
+        "warns",
+    ):
+        assert key in case["expect"], (
+            f"{case['name']}: missing expectation {key!r}"
+        )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "case", _MATRIX, ids=lambda case: cast(str, case["name"])
+)
+async def test_imports_v1_records_from_every_released_writer(
+    case: dict[str, Any], tmp_path: Path
+) -> None:
+    expected = case["expect"]
+    conv_id = json.loads(case["files"]["record.json"])["id"]
+
+    # Materialize the fixture in the store's own on-disk layout: scope
+    # folder names carry the sanitize_scope hash, exactly like real records.
+    conv_dir = (
+        tmp_path
+        / sanitize_scope("chat")
+        / sanitize_scope("fixture-scope")
+        / conv_id
+    )
+    conv_dir.mkdir(parents=True)
+    for name, text in case["files"].items():
+        (conv_dir / name).write_text(text, encoding="utf-8")
+
+    store = FileConversationStore(dir=tmp_path)
+    v1 = await store.get(
+        ConversationPartition(chat_id="chat", scope="fixture-scope"), conv_id
+    )
+    assert v1 is not None, (
+        f"{case['name']}: fixture unreadable through the production store"
+    )
+    assert v1.schema_version == 1
+    # How many v1 turns the store actually parsed. The R 0.5.0 writer
+    # double-encodes turns.jsonl as a jsonlite serializeJSON string, so the
+    # Python reader skips every line -- the same empty-turn-context fidelity
+    # released 0.7.2 restored R records with.
+    assert {nid: len(node.turns) for nid, node in v1.nodes.items()} == expected[
+        "source_turns_read"
+    ]
+
+    imported, warns = import_v1_record_with_warnings(v1)
+    assert warns == expected["warns"], (
+        f"{case['name']}: unexpected lossy warnings"
+    )
+
+    # Pinned v2 tree.
+    assert imported.active_leaf == expected["active_leaf"]
+    assert set(imported.nodes) == set(expected["nodes"])
+    (root_id,) = [
+        nid for nid, node in expected["nodes"].items() if node["parent"] is None
+    ]
+    root = imported.nodes[root_id]
+    assert "shinychat:turns" not in root.state, (
+        "root must keep no turn snapshot"
+    )
+    for nid, exp_node in expected["nodes"].items():
+        node = imported.nodes[nid]
+        assert node.parent_id == exp_node["parent"], (
+            f"{case['name']}/{nid}: parent"
+        )
+        assert node.children == exp_node["children"], (
+            f"{case['name']}/{nid}: children"
+        )
+        assert node.selected_child == exp_node["selected_child"], (
+            f"{case['name']}/{nid}: selected_child"
+        )
+        assert node.status == exp_node["status"], (
+            f"{case['name']}/{nid}: status"
+        )
+        exp_turns = expected["turns_state"].get(nid)
+        if exp_turns is None:
+            assert nid == root_id, (
+                f"{case['name']}/{nid}: missing pinned turns state"
+            )
+        else:
+            entry = node.state["shinychat:turns"]
+            assert entry.kind == exp_turns["kind"], (
+                f"{case['name']}/{nid}: kind"
+            )
+            assert entry.version == exp_turns["version"], (
+                f"{case['name']}/{nid}: version"
+            )
+            assert entry.mode == exp_turns["mode"], (
+                f"{case['name']}/{nid}: mode"
+            )
+            assert entry.data == exp_turns["data"], (
+                f"{case['name']}/{nid}: data"
+            )
+
+    # Pinned display projection (proves rendering needs no provider client).
+    assert _display(imported) == expected["display"], f"{case['name']}: display"
+
+    # Dynamic fidelity beyond the pinned snapshot: the folded delta chain
+    # equals v1's own path turns, and no exchange id is synthesized — every
+    # imported id except the root is a v1 node id, reused verbatim (input
+    # nodes that fold into their response's pair exchange drop their id by
+    # design; the root is the only v2 addition).
+    assert _turns_deltas(imported) == v1.path_turns(), (
+        f"{case['name']}: turn prefix"
+    )
+    assert imported.path_node_ids()[-1] == imported.active_leaf
+    assert {nid for nid in imported.nodes if nid != root_id} <= set(v1.nodes)
+    assert all(
+        node.created_at == v1.created_at for node in imported.nodes.values()
+    ), f"{case['name']}: synthesized created_at"
+    assert imported.id == v1.id
+    assert imported.title == v1.title
+    assert imported.response_count == v1.response_count
+    assert imported.client_info == v1.client_info
+    assert imported.values == v1.values
+    assert imported.bookmark_state_id == v1.bookmark_state_id
