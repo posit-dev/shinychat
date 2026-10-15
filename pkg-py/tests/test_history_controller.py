@@ -973,10 +973,6 @@ async def test_v2_recorder_round_trips_structured_blocks_through_file_store(
         if isinstance(segment, dict)
     ]
     assert stored_blocks == _expected_restored_blocks()
-    html_block = next(
-        block for block in stored_blocks if block["type"] == "html_block"
-    )
-    assert html_block.get("html_deps") == [{"name": "sunny-dep", "version": "1"}]
 
     # A fresh controller replays the stored record verbatim.
     restored, _ = _make_controller(store=store)
@@ -1038,7 +1034,7 @@ async def test_v2_recorder_persists_structured_blocks_from_streams(
         },
     )
 
-    async def _stream_message(*blocks: StructuredBlock) -> StoredMessage:
+    def _stream_message(*blocks: StructuredBlock) -> StoredMessage:
         return StoredMessage(
             role="assistant",
             segments=[
@@ -1049,7 +1045,7 @@ async def test_v2_recorder_persists_structured_blocks_from_streams(
 
     await transcript.start_stream(
         stream_id="stream",
-        entry=TranscriptEntry(message=await _stream_message(request_block)),
+        entry=TranscriptEntry(message=_stream_message(request_block)),
         owner_task=None,
         exchange_id=exchange_id,
         send=_sent,
@@ -1057,7 +1053,7 @@ async def test_v2_recorder_persists_structured_blocks_from_streams(
     await transcript.transition_stream(
         stream_id="stream",
         source_segments=[],
-        message=await _stream_message(request_block, result_block),
+        message=_stream_message(request_block, result_block),
         operation="replace",
         send=_sent,
     )
