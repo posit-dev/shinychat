@@ -17,12 +17,20 @@ from __future__ import annotations
 import asyncio
 import inspect
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Literal,
+    Protocol,
+    cast,
+)
 
 from pydantic import JsonValue
 
 from ._chat_transcript import TranscriptEntry
 from ._chat_types import StoredMessage
+from ._history_client import TurnsAdapter
 from ._history_plan import (
     CaptureContext,
     CaptureHook,
@@ -34,6 +42,7 @@ from ._history_plan import (
     canonical_turns,
     turn_entry_kind,
 )
+from ._history_store import ConversationPartition, ConversationStore
 from ._history_title import fallback_title_from_text
 from ._history_types import (
     TURNS_STATE_KEY,
@@ -45,7 +54,35 @@ from ._history_types import (
 )
 
 if TYPE_CHECKING:
-    from ._history import HistoryController
+    from ._chat import Chat
+
+
+class RecorderHost(Protocol):
+    """The host surface ``_ExchangeRecorder`` reads from its controller.
+
+    Declares exactly the members the recorder uses: the turns adapter, the
+    active partition, the store, the chat (for capture-callback suspension
+    during display replay), app-state save callbacks, active-id access and
+    publish, conversation-id allocation, and ``send_history_update``. Any
+    test double for the recorder's host must provide all of them; there are
+    no optional fallbacks. The R port mirrors this boundary.
+    """
+
+    adapter: TurnsAdapter
+    partition: ConversationPartition | None
+    store: ConversationStore
+    chat: Chat
+    _save_callbacks: list[Callable[[dict[str, Any]], None]]
+
+    def _active_id_now(self) -> str | None: ...
+
+    def _allocate_conversation_id(self) -> str: ...
+
+    async def _publish_active_v2_id(
+        self, record: ConversationRecordV2
+    ) -> bool: ...
+
+    async def send_history_update(self) -> None: ...
 
 # Invalidated-turn-baseline sentinel. Canonical turn fingerprints are JSON
 # encodings of dicts, so a real fingerprint is never ""; the sentinel is
@@ -59,8 +96,8 @@ _TURN_BASELINE_INVALID: list[str] = [""]
 class _ExchangeRecorder:
     """Private v2 capture owner for one history controller session."""
 
-    def __init__(self, controller: HistoryController) -> None:
-        self._controller = controller
+    def __init__(self, host: RecorderHost) -> None:
+        self._host = host
         self.record: ConversationRecordV2 | None = None
         self._stream_exchanges: dict[str, str] = {}
         self._lock = asyncio.Lock()
@@ -89,7 +126,7 @@ class _ExchangeRecorder:
         self._turn_baseline = list(_TURN_BASELINE_INVALID)
 
     def _capture_turns(self, context: CaptureContext) -> StateEntry:
-        adapter = self._controller.adapter
+        adapter = self._host.adapter
         include_system_prompt = adapter_is_chatlas(adapter)
         turns, fingerprints = canonical_turns(
             adapter.get_turns_json(include_system_prompt=include_system_prompt)
@@ -139,7 +176,7 @@ class _ExchangeRecorder:
         if context.prepared_turns is None:
             raise RuntimeError("Turns must be materialized before restore.")
         turns = context.prepared_turns
-        adapter = self._controller.adapter
+        adapter = self._host.adapter
         if context.turns_unavailable:
             if context.bootstrap == "recorded":
                 adapter.set_turns_json([])
@@ -156,10 +193,10 @@ class _ExchangeRecorder:
     async def _new_record(self, *, title: str) -> ConversationRecordV2:
         return new_conversation_record_v2(
             title=title,
-            id=self._controller._allocate_conversation_id(),
+            id=self._host._allocate_conversation_id(),
             client_info={
                 str(key): str(value)
-                for key, value in self._controller.adapter.client_info().items()
+                for key, value in self._host.adapter.client_info().items()
             },
         )
 
@@ -186,7 +223,7 @@ class _ExchangeRecorder:
 
     @contextmanager
     def suspend_capture(self):
-        transcript = self._controller.chat._transcript
+        transcript = self._host.chat._transcript
         transcript.set_capture_callbacks(
             on_accepted_input=None,
             on_message_committed=None,
@@ -209,34 +246,24 @@ class _ExchangeRecorder:
         record = self.record
         assert record is not None
         record_id = record.id
-        partition = self._controller.partition
+        partition = self._host.partition
         assert partition is not None
-        await self._controller.store.put(partition, record)
+        await self._host.store.put(partition, record)
         if (
             self.record is not record
-            or self._controller._active_id_now() != record_id
+            or self._host._active_id_now() != record_id
         ):
             return
 
         if self._active_id_published_for is not record:
-            publisher = getattr(self._controller, "_publish_active_v2_id", None)
-            if publisher is not None:
-                published = await publisher(record)
-            else:
-                callback = self._controller.on_active_id_change
-                if callback is not None:
-                    await callback(record_id)
-                published = (
-                    self.record is record
-                    and self._controller._active_id_now() == record_id
-                )
+            published = await self._host._publish_active_v2_id(record)
             if published:
                 self._active_id_published_for = record
 
     def _capture_app_state(self) -> None:
         assert self.record is not None
         values: dict[str, Any] = {}
-        for callback in self._controller._save_callbacks:
+        for callback in self._host._save_callbacks:
             callback(values)
         self.record.values = values
 
@@ -245,7 +272,7 @@ class _ExchangeRecorder:
             return await self.save_current_locked()
 
     async def save_current_locked(self) -> bool:
-        if self.record is None or self._controller.partition is None:
+        if self.record is None or self._host.partition is None:
             return False
         self._capture_app_state()
         await self._persist_record()
@@ -253,7 +280,7 @@ class _ExchangeRecorder:
 
     async def response_settled(self) -> bool:
         async with self._lock:
-            if self.record is None or self._controller.partition is None:
+            if self.record is None or self._host.partition is None:
                 return False
             self._capture_app_state()
             self.record.response_count += 1
@@ -264,7 +291,7 @@ class _ExchangeRecorder:
         if (
             self.record is None
             or self.record.id != conv_id
-            or self._controller.partition is None
+            or self._host.partition is None
         ):
             return False
         self.record.title = title
@@ -315,7 +342,7 @@ class _ExchangeRecorder:
     def mark_active_id_published(self, record: ConversationRecordV2) -> None:
         if (
             self.record is record
-            and self._controller._active_id_now() == record.id
+            and self._host._active_id_now() == record.id
         ):
             self._active_id_published_for = record
 
@@ -331,8 +358,7 @@ class _ExchangeRecorder:
     async def accepted_input(
         self, exchange_id: str, message: StoredMessage
     ) -> None:
-        controller = self._controller
-        if controller.partition is None:
+        if self._host.partition is None:
             return
 
         async with self._lock:
@@ -355,17 +381,14 @@ class _ExchangeRecorder:
                 await self._capture_state(active_leaf, "node_close")
             self.record.open_exchange(exchange_id, message)
             await self._persist_record()
-            send_history_update = getattr(
-                controller, "send_history_update", None
-            )
-            if created and send_history_update is not None:
-                await send_history_update()
+            if created:
+                await self._host.send_history_update()
 
     async def _accepted_resubmit_input_locked(
         self, exchange_id: str, message: StoredMessage
     ) -> None:
         """Open a degraded-resubmit sibling without closing its shared parent."""
-        if self._controller.partition is None:
+        if self._host.partition is None:
             raise RuntimeError("HistoryController not initialized")
 
         if self.record is None:
@@ -401,7 +424,7 @@ class _ExchangeRecorder:
         *,
         stream_id: str | None = None,
     ) -> None:
-        if self._controller.partition is None:
+        if self._host.partition is None:
             return
 
         async with self._lock:
@@ -418,16 +441,13 @@ class _ExchangeRecorder:
                 self._stream_exchanges[stream_id] = target
                 self.record.append_stream_message(target, captured)
             await self._persist_record()
-            send_history_update = getattr(
-                self._controller, "send_history_update", None
-            )
-            if created and send_history_update is not None:
-                await send_history_update()
+            if created:
+                await self._host.send_history_update()
 
     async def stream_updated(
         self, stream_id: str, entry: TranscriptEntry
     ) -> None:
-        if self._controller.partition is None:
+        if self._host.partition is None:
             return
 
         async with self._lock:
@@ -448,7 +468,7 @@ class _ExchangeRecorder:
         status: Literal["ok", "cancelled", "error"],
         error: str | None,
     ) -> None:
-        if self._controller.partition is None:
+        if self._host.partition is None:
             return
 
         async with self._lock:

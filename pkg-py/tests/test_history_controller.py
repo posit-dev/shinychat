@@ -8031,13 +8031,32 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
             controller._allocate_conversation_id = allocate_conversation_id
             controller._active_id_now = lambda: controller.conversation_id
             controller.on_active_id_change = None
+            controller._save_callbacks = []
+
+            async def send_history_update():
+                return None
+
+            controller.send_history_update = send_history_update
             recorder = _ExchangeRecorder(controller)
+
+            async def publish_active_v2_id(record):
+                if controller._active_id_now() != record.id:
+                    return False
+                if controller.on_active_id_change is not None:
+                    await controller.on_active_id_change(record.id)
+                return (
+                    recorder.record is record
+                    and controller._active_id_now() == record.id
+                )
+
+            controller._publish_active_v2_id = publish_active_v2_id
             transcript = ChatTranscript(
                 on_accepted_input=recorder.accepted_input,
                 on_stream_started=recorder.stream_started,
                 on_stream_updated=recorder.stream_updated,
                 on_stream_finished=recorder.stream_finished,
             )
+            controller.chat = SimpleNamespace(_transcript=transcript)
             if sys.argv[2] == "pre-input-start":
                 await transcript.start_stream(
                     stream_id="stream",
