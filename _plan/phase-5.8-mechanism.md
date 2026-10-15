@@ -1,7 +1,8 @@
 # Phase 5.8 mechanism: pre-port hardening (Python)
 
-**Status:** DRAFT — awaiting driver approval (no implementation children
-until approved)
+**Status:** APPROVED by the driver 2026-10-15 (units 1–9, D1–D10 as
+amended). Children: `5hda` → `z2nt` → `xny0` → `b1wd` → `ajxc` → `yp75`
+→ `mvyc` → `fsj3` → `c1ht` (linear blocking chain).
 **Phase:** plan.md §4, Phase 5.8
 **Kata:** parent `shinychat#e8kd` under epic `shinychat#6d0d`
 **Context:** `phase-5.7-mechanism.md` is completed context only. This note
@@ -272,5 +273,6 @@ review unit; the orchestrator requests one roborev range review per unit
   awaiting driver approval of the whole gate.
 - 2026-10-15: Driver annotation (Plannotator): D2 amended — version-named
   `_history_v1.py` module (rename of `_history_import.py`) holds all
-  v1-only code; store stays whole. Still awaiting approval of the whole
-  gate.
+  v1-only code; store stays whole.
+- 2026-10-15: Driver approved the gate. Nine children created in a
+  linear blocking chain (`5hda` first: warning wiring). Phase open.
