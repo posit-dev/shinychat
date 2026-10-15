@@ -344,3 +344,49 @@ review unit; the orchestrator requests one roborev range review per unit
   found no other bypasses; `new_conversation_record` and
   `ConversationStore.total_size` left with rationale on the issue.
   Next: unit 9 (`c1ht`, stale names and docs sweep — the closer).
+- 2026-10-15: Unit 9 (`c1ht`) landed — `_v2` suffixes dropped, stale
+  docstrings fixed, id allocation deduped, 1593 low-risk extractions
+  (`c44163b9`, `91323e86`, `d864626c`, `244c9b1e`, `8e6a3ef6`);
+  roborev 1603 clean pass. Skips recorded with evidence: C7
+  `_destructive_mutation` flatten (zero-arg test fakes make it a
+  contract change) and C10 `live_turns` (premise wrong). Closeout
+  sweep from the 1606 dead-code re-run folded in (`208c315a`,
+  `33891568`); roborev 1607 pass (2 Low: Playwright `replay_ui`
+  comments fixed; test-helper duplication of the restore transaction
+  ACCEPTED with rationale — the alternative reintroduces the D9
+  violation). Phase exit: `origin/main` merged (`92cdaa3f`;
+  smooth-streaming #411 + native document content #415/#419 +
+  deflake #427 reconciled with the exchange-tree structure, assets
+  rebuilt via `make update-dist`); js 1457 + py 1129 + R 2131 green.
+  Phase 5.8 complete — all nine children closed; 73pm unblocked.
+  Next: Phase 6 R port (`05vb`) after the draft PR lands.
+
+## Closeout analysis dispositions (2026-10-15)
+
+Re-runs against the same modules (now ten, post-split): 1604
+architecture, 1605 complexity, 1606 dead-code. Originals 1592/1593/
+1594 closed with this note as evidence.
+
+- **1604 strengths confirm the phase's targets**: pure planner,
+  isolated v1 import, sole record owner (structural), `RecorderHost`
+  Protocol, stateless failure attribution, `_RestoreModeHooks`.
+- **1604 concerns A–D** (active-id ownership unification, lock-token
+  enforcement, chat/facade seams, controller god-object split,
+  schema-version single-point, v1 trim): forward-looking redesigns
+  beyond the no-behavior-change boundary. Dispositions: the v1 trim
+  items fold into the existing Deferred v1-write-path / v1-API entry
+  (Phase 7 candidate); the rest are backlog for the draft-PR review
+  (`73pm`) or Phase 6/7 to pick up — recorded here, not relitigated.
+- **1605 hotspots** are dominated by the recorded deferrals
+  (`import_v1_record_with_warnings` E(36) — Deferred import-closure
+  rewrite; `_strip_attachment_content` stopgap; v1 write path).
+  Two suggestions declined with cause: simplify the restore-step
+  labelling (would reopen roborev 1599 finding 2 — the
+  consuming-read/private-attr design is the adjudicated one) and the
+  `_destructive_mutation` flatten (tried in c1ht, skipped with
+  evidence). `_start` breakup and preflight split: backlog.
+- **1606**: "no truly dead code." The three actionable items landed
+  (`_restore_exchange_record` fold, two stale comments). Remaining
+  v1-surface items stay under the Deferred list. `new_conversation_record_v2`
+  / `_put_v2` / `restore_initial_v2` names stay while their v1
+  counterparts exist (the suffix dies naturally with v1 retirement).

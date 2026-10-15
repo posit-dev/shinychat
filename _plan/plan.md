@@ -1,12 +1,12 @@
 # Plan: exchange-tree conversation history
 
-**Status:** committed · Phases 0–5, 5.5, 5.6, and 5.7 complete; reset after a
-pause on 2026-10-14 (decisions in §7). Next phase: **6 — R port** ·
+**Status:** committed · Phases 0–5, 5.5, 5.6, 5.7, and 5.8 complete; reset
+after a pause on 2026-10-14 (decisions in §7). Next phase: **6 — R port** ·
 2026-10-15
 **Kata:** epic `shinychat#6d0d` · Phase 1 `g49a` · Phase 2 `kjyt` · Phase 3
 `qf2r` · Phase 4 `azvt` · Phase 5 `fg70` · Phase 5.5 `pa98` · Phase 5.6
-`e1dv` · Phase 5.7 `36z7` · Phase 6 `05vb` · Phase 7 `r0wj` · Phase 8
-`9xgn` (the `kata` CLI issue tracker).
+`e1dv` · Phase 5.7 `36z7` · Phase 5.8 `e8kd` · Phase 6 `05vb` · Phase 7
+`r0wj` · Phase 8 `9xgn` (the `kata` CLI issue tracker).
 All abbreviated Kata IDs below belong to the `shinychat` project;
 planning history in closed issue `kvhc`
 **Predecessor:** `feat/turn-history-sync-redesign` (stopped; see the
@@ -694,6 +694,10 @@ signed off by the driver before code (process.md §3.4).
   warning wiring.
   *Done when:* every targeted finding is resolved or dispositioned, the
   re-run analyses close clean, gates are green, and `73pm` is unblocked.
+  **COMPLETE 2026-10-15** — all nine units landed with per-unit roborev
+  reviews (1595–1603, 1607; findings batched and closed on each issue);
+  closeout re-runs 1604/1605/1606 dispositioned in the mechanism note and
+  1592/1593/1594 closed; `73pm` unblocked.
 - **Phase 6 — R port (`05vb`).** After Phase 5.8. Shared JSON fixture
   matrices + structurally parallel error messages as the parity contract.
   `main` #380 already moved R to server-owned messages, so the R port of the
