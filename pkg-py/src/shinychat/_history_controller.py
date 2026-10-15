@@ -553,13 +553,6 @@ class HistoryController:
         except BaseException:
             pass
 
-    async def replay_exchange_record(
-        self, record: ConversationRecordV2 | None = None
-    ) -> None:
-        target = self._exchange_recorder.record if record is None else record
-        if target is not None:
-            await self._restore_exchange_record(target)
-
     def _prepare_exchange_restore(
         self,
         target: ConversationRecordV2,
@@ -714,25 +707,6 @@ class HistoryController:
                 bootstrap=bootstrap,
                 persist_active_pointer=persist_active_pointer,
             )
-
-    async def restore_bookmark_pointer(
-        self, target: ConversationRecordV2, node_id: str
-    ) -> None:
-        """Restore a validated v2 bookmark node through the normal transaction."""
-        selected = target.model_copy(deep=True)
-        selected.set_active_leaf(node_id)
-        node_ids, planned_state, bootstrap = self._prepare_exchange_restore(selected)
-        persist_active_pointer = target.active_leaf != node_id
-
-        async with self._destructive_mutation():
-            async with self._exchange_mutation():
-                await self._restore_exchange_record_locked(
-                    selected,
-                    node_ids=node_ids,
-                    planned_state=planned_state,
-                    bootstrap=bootstrap,
-                    persist_active_pointer=persist_active_pointer,
-                )
 
     async def switch_to(self, conv_id: str) -> None:
         if self.partition is None:
@@ -1004,26 +978,6 @@ class HistoryController:
                     if projection_error is None:
                         raise
                     raise projection_error from publication_error
-
-    async def retry(
-        self, exchange_id: str, *, request_id: str, message_index: int
-    ) -> None:
-        await self.resubmit(
-            exchange_id,
-            kind="retry",
-            request_id=request_id,
-            message_index=message_index,
-        )
-
-    async def regenerate(
-        self, exchange_id: str, *, request_id: str, message_index: int
-    ) -> None:
-        await self.resubmit(
-            exchange_id,
-            kind="regenerate",
-            request_id=request_id,
-            message_index=message_index,
-        )
 
     async def rename(self, conv_id: str, title: str) -> None:
         if self.partition is None:

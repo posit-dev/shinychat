@@ -1,8 +1,10 @@
 from typing import Any
 
+from shinychat._history_controller import HistoryController
 from shinychat._history_types import (
     ConversationNode,
     ConversationRecordV1,
+    ConversationRecordV2,
     utcnow,
 )
 
@@ -31,3 +33,22 @@ def branch_from(
     record.current_leaf = node_id
     record.updated_at = utcnow()
     return node_id
+
+
+async def replay_exchange_record(
+    controller: HistoryController,
+    record: ConversationRecordV2 | None = None,
+) -> None:
+    """Replay an exchange-tree record through the production restore path.
+
+    The controller once exposed this as a public method, but nothing in
+    production ever called it -- every restore goes through either the
+    initial-restore entry (bookmark/session boot) or `switch_to` -- so
+    phase 5.8 (D9) deleted it rather than keep a test-only bypass on the
+    public surface. Tests call this helper, which drives the same
+    production `_restore_exchange_record` entry the deleted method used.
+    """
+    recorder = controller._exchange_recorder
+    target = recorder.record if record is None else record
+    if target is not None:
+        await controller._restore_exchange_record(target)

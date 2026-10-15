@@ -25,6 +25,7 @@ from typing import Any, Callable, Literal, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+from _history_test_helpers import replay_exchange_record
 from pydantic import BaseModel
 from shiny import Inputs, reactive
 from shiny.module import ResolvedId
@@ -666,7 +667,7 @@ async def test_v2_recorder_persists_one_input_response_and_replays_display():
     )
     stored = await store.get(part(), record.id)
     assert isinstance(stored, ConversationRecordV2)
-    await restored.replay_exchange_record(stored)
+    await replay_exchange_record(restored, stored)
     fake_chat = cast(_FakeChat, restored.chat)
     assert [message["role"] for message in fake_chat.restored_messages] == [
         "user",
@@ -829,7 +830,7 @@ async def test_v2_attachment_input_captures_display_and_strips_model_text(
 
     # Replay shows the attachment chips with the clean body text.
     restored, _ = _make_controller(store=store)
-    await restored.replay_exchange_record(stored)
+    await replay_exchange_record(restored, stored)
     fake_chat = cast(_FakeChat, restored.chat)
     restored_user = fake_chat.restored_messages[0]
     assert restored_user["role"] == "user"
@@ -971,7 +972,7 @@ async def test_v2_recorder_round_trips_structured_blocks_through_file_store(
 
     # A fresh controller replays the stored record verbatim.
     restored, _ = _make_controller(store=store)
-    await restored.replay_exchange_record(stored)
+    await replay_exchange_record(restored, stored)
     fake_chat = cast(_FakeChat, restored.chat)
     assert [message["role"] for message in fake_chat.restored_messages] == [
         "user",
@@ -1072,7 +1073,7 @@ async def test_v2_recorder_persists_structured_blocks_from_streams(
     stored = await store.get(part(), record.id)
     assert isinstance(stored, ConversationRecordV2)
     restored, _ = _make_controller(store=store)
-    await restored.replay_exchange_record(stored)
+    await replay_exchange_record(restored, stored)
     fake_chat = cast(_FakeChat, restored.chat)
     replayed_blocks = [
         segment
@@ -1602,7 +1603,7 @@ async def test_v2_restore_marks_exact_record_published_after_callback() -> None:
     controller._active_id.set("c_previous")
     controller.on_active_id_change = active_id_callback
 
-    await controller.replay_exchange_record(target)
+    await replay_exchange_record(controller, target)
 
     assert published == [target.id]
     assert recorder._active_id_published_for is target
@@ -1780,7 +1781,7 @@ async def test_v2_restore_materializes_turn_path_once_and_resets_baseline():
         data=[{"role": "user", "content": "after snapshot"}],
     )
 
-    await controller.replay_exchange_record(record)
+    await replay_exchange_record(controller, record)
 
     expected = [
         {"role": "assistant", "content": "replacement"},
@@ -1834,7 +1835,7 @@ async def test_v2_restore_live_bootstrap_skips_only_root_snapshot():
         data=[{"role": "assistant", "content": "later snapshot"}],
     )
 
-    await controller.replay_exchange_record(record)
+    await replay_exchange_record(controller, record)
 
     assert adapter.set_calls == [
         [{"role": "assistant", "content": "later snapshot"}]
@@ -1914,7 +1915,7 @@ async def test_v2_restore_live_bootstrap_waits_for_admission_and_recorder_lock()
     await recorder.lock.acquire()
     try:
         restore_task = asyncio.create_task(
-            controller.replay_exchange_record(record)
+            replay_exchange_record(controller, record)
         )
         await entered_admission.wait()
         assert adapter.set_calls == []
@@ -3093,7 +3094,7 @@ async def test_v2_restore_hooks_are_ordered_and_receive_keyed_path_context():
     recorder._register_restore_hook("first", first)
     recorder._register_restore_hook("second", second)
 
-    await controller.replay_exchange_record(record)
+    await replay_exchange_record(controller, record)
 
     assert [name for name, _ in observed] == ["first", "second"]
     first_context = observed[0][1]
@@ -3133,7 +3134,7 @@ async def test_v2_restore_invalid_path_leaves_live_chat_unchanged():
     fake_chat = cast(_FakeChat, controller.chat)
 
     with pytest.raises(ValueError, match="Dangling parent reference"):
-        await controller.replay_exchange_record(invalid)
+        await replay_exchange_record(controller, invalid)
 
     assert recorder.record is existing
     assert fake_chat.clear_messages_calls == 0
@@ -3206,7 +3207,7 @@ async def test_v2_restore_preflight_failure_leaves_live_state_untouched(
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
     with pytest.raises(ValueError):
-        await controller.replay_exchange_record(target)
+        await replay_exchange_record(controller, target)
 
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -3251,7 +3252,7 @@ async def test_v2_restore_degrades_effective_turns_and_keeps_exchange_usable(
     controller._notify_turns_unavailable = warn  # type: ignore[method-assign]
     controller.send_history_update = publish  # type: ignore[method-assign]
 
-    await controller.replay_exchange_record(target)
+    await replay_exchange_record(controller, target)
 
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -3304,7 +3305,7 @@ async def test_v2_degraded_restore_continuation_snapshots_compatible_turns_for_r
     warning = AsyncMock()
     controller._notify_turns_unavailable = warning  # type: ignore[method-assign]
 
-    await controller.replay_exchange_record(target)
+    await replay_exchange_record(controller, target)
 
     warning.assert_awaited_once()
     recorder = controller._exchange_recorder
@@ -3331,7 +3332,7 @@ async def test_v2_degraded_restore_continuation_snapshots_compatible_turns_for_r
     reloaded_warning = AsyncMock()
     reloaded._notify_turns_unavailable = reloaded_warning  # type: ignore[method-assign]
 
-    await reloaded.replay_exchange_record(stored)
+    await replay_exchange_record(reloaded, stored)
 
     reloaded_warning.assert_not_awaited()
     assert reloaded_adapter.turns == compatible_turns
@@ -3395,7 +3396,7 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
 
     recorder._register_rewind_hook("parent", rewind_parent)
 
-    await controller.replay_exchange_record(target)
+    await replay_exchange_record(controller, target)
 
     assert recorder.record is target
     expected_baseline = [] if restore_bootstrap == "recorded" else live_baseline
@@ -3479,7 +3480,7 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
     assert reloaded_recorder is not None
     reloaded_recorder._register_restore_hook("parent", lambda _context: None)
 
-    await reloaded.replay_exchange_record(stored)
+    await replay_exchange_record(reloaded, stored)
 
     reloaded_warning.assert_not_awaited()
     assert reloaded_adapter.turns == expected_baseline
@@ -3886,7 +3887,7 @@ async def test_v2_retry_rejects_incompatible_parent_superseded_by_target_snapsho
     controller._notify_turns_unavailable = warn  # type: ignore[method-assign]
     controller.send_history_update = publish  # type: ignore[method-assign]
 
-    await controller.replay_exchange_record(target)
+    await replay_exchange_record(controller, target)
 
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -4200,7 +4201,7 @@ async def test_v2_live_restore_malformed_effective_turns_becomes_fresh_draft():
             r"ValueError\('Turn-state entries must contain a list of JSON objects",
         ),
     ):
-        await controller.replay_exchange_record(target)
+        await replay_exchange_record(controller, target)
 
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -4262,7 +4263,7 @@ async def test_v2_restore_hook_failure_names_entry_and_clears_to_fresh_draft():
             r"'test:restore': injected restore hook failure\"\)",
         ),
     ):
-        await controller.replay_exchange_record(target)
+        await replay_exchange_record(controller, target)
 
     # The hook's own error stays chained; the wrapper names the entry.
     assert raised.value.entry_name == "test:restore"
@@ -4354,7 +4355,7 @@ async def test_v2_live_restore_materialization_cancellation_cleans_up():
         ),
         pytest.raises(asyncio.CancelledError) as raised,
     ):
-        await controller.replay_exchange_record(target)
+        await replay_exchange_record(controller, target)
 
     assert raised.value is original
     assert recorder.record is None
@@ -4462,7 +4463,7 @@ async def test_v2_restore_failure_becomes_fresh_draft(
         controller.send_history_update = AsyncMock(side_effect=expected)  # type: ignore[method-assign]
 
     with pytest.raises(RuntimeError, match=expected.args[0]):
-        await controller.replay_exchange_record(target)
+        await replay_exchange_record(controller, target)
 
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -4497,7 +4498,7 @@ async def test_v2_restore_cancellation_preserves_outcome_after_cleanup_failure()
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
     with pytest.raises(asyncio.CancelledError):
-        await controller.replay_exchange_record(target)
+        await replay_exchange_record(controller, target)
 
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -4536,7 +4537,7 @@ async def test_v2_restore_active_id_cancellation_cleans_up_and_preserves_identit
     controller.on_active_id_change = active_id_callback
 
     with pytest.raises(asyncio.CancelledError) as raised:
-        await controller.replay_exchange_record(target)
+        await replay_exchange_record(controller, target)
 
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -4565,7 +4566,7 @@ async def test_v2_restore_notification_cancellation_preserves_original_instance(
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
     with pytest.raises(asyncio.CancelledError) as raised:
-        await controller.replay_exchange_record(target)
+        await replay_exchange_record(controller, target)
 
     assert raised.value is original
     # Cancellation keeps the generic message: no detail to attribute.
@@ -4642,7 +4643,7 @@ async def test_v2_restore_cleanup_failures_are_secondary_and_reported(
             r"RuntimeError\('original restore failure'\)",
         ),
     ):
-        await controller.replay_exchange_record(target)
+        await replay_exchange_record(controller, target)
 
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -4710,7 +4711,7 @@ async def test_v2_restore_cleanup_continues_after_earlier_failure():
     controller._notify_restore_failure = notify  # type: ignore[method-assign]
 
     with pytest.raises(RuntimeError, match="original restore failure"):
-        await controller.replay_exchange_record(target)
+        await replay_exchange_record(controller, target)
 
     assert events == [
         "initial-clear",
@@ -4849,7 +4850,7 @@ async def test_v2_restore_failure_allows_next_input_to_record_normally():
     controller._notify_restore_failure = AsyncMock()  # type: ignore[method-assign]
 
     with pytest.raises(RuntimeError, match="replay failed"):
-        await controller.replay_exchange_record(target)
+        await replay_exchange_record(controller, target)
 
     assert recorder.record is None
     assert controller._active_id_now() is None
@@ -4901,7 +4902,7 @@ async def test_v2_restore_suppresses_real_transcript_capture_then_restores_it():
         )
 
     fake_chat._restore_bookmark_message = replay_through_transcript  # type: ignore[method-assign]
-    await controller.replay_exchange_record(target)
+    await replay_exchange_record(controller, target)
 
     assert recorder.record is target
     assert len(target.nodes) == 2
@@ -4968,7 +4969,7 @@ async def test_v2_restore_success_order_and_no_failure_notification():
     notifier = AsyncMock()
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
-    await controller.replay_exchange_record(target)
+    await replay_exchange_record(controller, target)
 
     assert events == [
         "clear",
@@ -6180,7 +6181,10 @@ async def test_v2_bookmark_pointer_restores_selected_sibling_and_persists() -> N
     assert record is not None
     assert record.active_leaf == replacement
 
-    await controller.restore_bookmark_pointer(record, original)
+    # The production entry for restoring a validated v2 bookmark node
+    # through the normal transaction: the bookmark-boot path in _history.py
+    # calls this with the saved leaf.
+    await controller._restore_initial_exchange_record(record, node_id=original)
 
     restored = recorder.record
     assert restored is not None
@@ -6209,16 +6213,46 @@ async def test_v2_bookmark_pointer_rejects_stale_node_before_mutation() -> None:
     assert record is not None
     before = record.model_dump(mode="json")
     turns_before = list(adapter.turns)
+    fake_chat = cast(_FakeChat, controller.chat)
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
-    with pytest.raises(ValueError, match="Unknown exchange id"):
-        await controller.restore_bookmark_pointer(record, "missing-node")
+    # A stale node fails during preflight, before any destructive mutation;
+    # the production initial-restore entry then recovers by resetting state.
+    with (
+        pytest.raises(ValueError, match="Unknown exchange id"),
+        pytest.warns(
+            UserWarning,
+            match=r"Chat history restore failed "
+            r"\(failed while validating the saved conversation\): "
+            r"ValueError\(\"Unknown exchange id 'missing-node'\"\)",
+        ),
+    ):
+        await controller._restore_initial_exchange_record(
+            record, node_id="missing-node"
+        )
 
-    assert recorder.record is record
+    # The stored record itself is untouched...
     assert record.model_dump(mode="json") == before
-    assert adapter.turns == turns_before
-    assert chat.destructive_preflight_calls == 0
-    assert chat.restored_messages == []
+    assert turns_before != []  # sanity: the fixture had live turns
+    # ...and nothing destructive or persisted happened.
+    assert fake_chat.destructive_preflight_calls == 0
+    assert fake_chat.restored_messages == []
     assert store.put_calls == []
+    # Recovery: the controller released the bad restore's state instead.
+    assert recorder.record is None
+    assert controller._active_id_now() is None
+    assert fake_chat.clear_messages_calls == 1
+    assert adapter.turns == []
+    history_updates = [
+        action for action in fake_chat.actions if action["type"] == "history_update"
+    ]
+    assert len(history_updates) == 1
+    assert history_updates[0]["active_id"] is None
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=False,
+        detail="failed while validating the saved conversation",
+    )
 
 
 @pytest.mark.anyio
@@ -6735,7 +6769,7 @@ async def test_v2_resubmit_rejects_inputless_node_without_mutation():
 
 
 @pytest.mark.anyio
-async def test_v2_edit_retry_and_regenerate_use_resubmit():
+async def test_v2_edit_uses_resubmit():
     controller, _chat, _adapter, _store, _first, target = (
         _make_v2_resubmit_controller()
     )
@@ -6743,8 +6777,6 @@ async def test_v2_edit_retry_and_regenerate_use_resubmit():
     controller.resubmit = resubmit  # type: ignore[method-assign]
 
     await controller.handle_edit(1, "edited", request_id="edit")
-    await controller.retry(target, request_id="retry", message_index=1)
-    await controller.regenerate(target, request_id="regenerate", message_index=1)
 
     edited_input = resubmit.await_args_list[0].args[1]
     assert isinstance(edited_input, StoredMessage)
@@ -6755,13 +6787,6 @@ async def test_v2_edit_retry_and_regenerate_use_resubmit():
             edited_input,
             kind="edit",
             request_id="edit",
-            message_index=1,
-        ),
-        call(target, kind="retry", request_id="retry", message_index=1),
-        call(
-            target,
-            kind="regenerate",
-            request_id="regenerate",
             message_index=1,
         ),
     ]
@@ -7016,7 +7041,7 @@ async def test_v2_retry_restores_partial_exchange_before_creating_sibling(
         on_stream_finished=recorder.stream_finished,
     )
 
-    await controller.replay_exchange_record(record)
+    await replay_exchange_record(controller, record)
 
     assert [
         message["segments"][0]["content"]
