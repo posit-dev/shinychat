@@ -1,0 +1,442 @@
+[
+  {
+    "name": "py_0_6_unversioned_ui",
+    "source": "py/v0.6.1",
+    "files": {
+      "record.json": "{\"schema_version\": 1, \"id\": \"c_001a13fb380340f901c7931\", \"title\": \"What is the capital of France?\", \"title_source\": null, \"response_count\": 2, \"created_at\": \"2026-10-15T13:14:50+00:00\", \"updated_at\": \"2026-10-15T13:14:50+00:00\", \"client_info\": {\"provider\": \"openai\", \"model\": \"gpt-4o-mini\"}, \"next_node_seq\": 5, \"current_leaf\": \"n_0004\", \"nodes\": {\"n_0001\": {\"parent\": null, \"children\": [\"n_0002\"], \"turn_ids\": [0]}, \"n_0002\": {\"parent\": \"n_0001\", \"children\": [\"n_0003\"], \"turn_ids\": [1]}, \"n_0003\": {\"parent\": \"n_0002\", \"children\": [\"n_0004\"], \"turn_ids\": [2]}, \"n_0004\": {\"parent\": \"n_0003\", \"children\": [], \"turn_ids\": [3]}}, \"values\": {}, \"bookmark_state_id\": null}",
+      "turns.jsonl": "{\"seq\": 0, \"data\": {\"role\": \"user\", \"contents\": [{\"content_type\": \"text\", \"text\": \"What is the capital of France?\"}]}}\n{\"seq\": 1, \"data\": {\"role\": \"assistant\", \"contents\": [{\"content_type\": \"text\", \"text\": \"The capital of France is Paris.\"}]}}\n{\"seq\": 2, \"data\": {\"role\": \"user\", \"contents\": [{\"content_type\": \"text\", \"text\": \"What about Spain?\"}]}}\n{\"seq\": 3, \"data\": {\"role\": \"assistant\", \"contents\": [{\"content_type\": \"text\", \"text\": \"The capital of Spain is Madrid.\"}]}}\n",
+      "ui.jsonl": "{\"node_id\": \"n_0001\", \"data\": [{\"role\": \"user\", \"segments\": [{\"content\": \"What is the capital of France?\", \"content_type\": \"markdown\"}]}]}\n{\"node_id\": \"n_0002\", \"data\": [{\"role\": \"assistant\", \"segments\": [{\"content\": \"The capital of France is Paris.\", \"content_type\": \"markdown\"}]}]}\n{\"node_id\": \"n_0003\", \"data\": [{\"role\": \"user\", \"segments\": [{\"content\": \"What about Spain?\", \"content_type\": \"markdown\"}]}]}\n{\"node_id\": \"n_0004\", \"data\": [{\"role\": \"assistant\", \"segments\": [{\"content\": \"The capital of Spain is Madrid.\", \"content_type\": \"markdown\"}]}]}\n"
+    },
+    "expect": {
+      "active_leaf": "n_0004",
+      "nodes": {
+        "n_0000": {
+          "parent": null,
+          "children": [
+            "n_0002"
+          ],
+          "selected_child": "n_0002",
+          "status": "ok"
+        },
+        "n_0002": {
+          "parent": "n_0000",
+          "children": [
+            "n_0004"
+          ],
+          "selected_child": "n_0004",
+          "status": "ok"
+        },
+        "n_0004": {
+          "parent": "n_0002",
+          "children": [],
+          "selected_child": null,
+          "status": "ok"
+        }
+      },
+      "display": [
+        {
+          "role": "user",
+          "content": "What is the capital of France?",
+          "attachments": []
+        },
+        {
+          "role": "assistant",
+          "content": "The capital of France is Paris.",
+          "attachments": []
+        },
+        {
+          "role": "user",
+          "content": "What about Spain?",
+          "attachments": []
+        },
+        {
+          "role": "assistant",
+          "content": "The capital of Spain is Madrid.",
+          "attachments": []
+        }
+      ],
+      "turns_state": {
+        "n_0002": {
+          "kind": "chatlas",
+          "version": 1,
+          "mode": "delta",
+          "data": [
+            {
+              "role": "user",
+              "contents": [
+                {
+                  "content_type": "text",
+                  "text": "What is the capital of France?"
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "contents": [
+                {
+                  "content_type": "text",
+                  "text": "The capital of France is Paris."
+                }
+              ]
+            }
+          ]
+        },
+        "n_0004": {
+          "kind": "chatlas",
+          "version": 1,
+          "mode": "delta",
+          "data": [
+            {
+              "role": "user",
+              "contents": [
+                {
+                  "content_type": "text",
+                  "text": "What about Spain?"
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "contents": [
+                {
+                  "content_type": "text",
+                  "text": "The capital of Spain is Madrid."
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "source_turns_read": {
+        "n_0001": 1,
+        "n_0002": 1,
+        "n_0003": 1,
+        "n_0004": 1
+      },
+      "warns": []
+    }
+  },
+  {
+    "name": "py_0_7_0_versioned_ui",
+    "source": "py/v0.7.0",
+    "files": {
+      "record.json": "{\"schema_version\": 1, \"id\": \"c_001a13fb3840bfa02d9ab8d\", \"title\": \"What is the capital of France?\", \"title_source\": null, \"response_count\": 2, \"created_at\": \"2026-10-15T13:14:51+00:00\", \"updated_at\": \"2026-10-15T13:14:51+00:00\", \"client_info\": {\"provider\": \"openai\", \"model\": \"gpt-4o-mini\"}, \"next_node_seq\": 5, \"current_leaf\": \"n_0004\", \"nodes\": {\"n_0001\": {\"parent\": null, \"children\": [\"n_0002\"], \"turn_ids\": [0], \"selected_child\": \"n_0002\"}, \"n_0002\": {\"parent\": \"n_0001\", \"children\": [\"n_0003\"], \"turn_ids\": [1], \"selected_child\": \"n_0003\"}, \"n_0003\": {\"parent\": \"n_0002\", \"children\": [\"n_0004\"], \"turn_ids\": [2], \"selected_child\": \"n_0004\"}, \"n_0004\": {\"parent\": \"n_0003\", \"children\": [], \"turn_ids\": [3], \"selected_child\": null}}, \"values\": {}, \"bookmark_state_id\": null}",
+      "turns.jsonl": "{\"seq\": 0, \"data\": {\"role\": \"user\", \"contents\": [{\"content_type\": \"text\", \"text\": \"What is the capital of France?\"}]}}\n{\"seq\": 1, \"data\": {\"role\": \"assistant\", \"contents\": [{\"content_type\": \"text\", \"text\": \"The capital of France is Paris.\"}]}}\n{\"seq\": 2, \"data\": {\"role\": \"user\", \"contents\": [{\"content_type\": \"text\", \"text\": \"What about Spain?\"}]}}\n{\"seq\": 3, \"data\": {\"role\": \"assistant\", \"contents\": [{\"content_type\": \"text\", \"text\": \"The capital of Spain is Madrid.\"}]}}\n",
+      "ui.jsonl": "{\"node_id\": \"n_0001\", \"data\": [{\"role\": \"user\", \"segments\": [{\"content\": \"What is the capital of France?\", \"content_type\": \"markdown\"}], \"version\": 1}]}\n{\"node_id\": \"n_0002\", \"data\": [{\"role\": \"assistant\", \"segments\": [{\"content\": \"The capital of France is Paris.\", \"content_type\": \"markdown\"}], \"version\": 1}]}\n{\"node_id\": \"n_0003\", \"data\": [{\"role\": \"user\", \"segments\": [{\"content\": \"What about Spain?\", \"content_type\": \"markdown\"}], \"version\": 1}]}\n{\"node_id\": \"n_0004\", \"data\": [{\"role\": \"assistant\", \"segments\": [{\"content\": \"The capital of Spain is Madrid.\", \"content_type\": \"markdown\"}], \"version\": 1}]}\n"
+    },
+    "expect": {
+      "active_leaf": "n_0004",
+      "nodes": {
+        "n_0000": {
+          "parent": null,
+          "children": [
+            "n_0002"
+          ],
+          "selected_child": "n_0002",
+          "status": "ok"
+        },
+        "n_0002": {
+          "parent": "n_0000",
+          "children": [
+            "n_0004"
+          ],
+          "selected_child": "n_0004",
+          "status": "ok"
+        },
+        "n_0004": {
+          "parent": "n_0002",
+          "children": [],
+          "selected_child": null,
+          "status": "ok"
+        }
+      },
+      "display": [
+        {
+          "role": "user",
+          "content": "What is the capital of France?",
+          "attachments": []
+        },
+        {
+          "role": "assistant",
+          "content": "The capital of France is Paris.",
+          "attachments": []
+        },
+        {
+          "role": "user",
+          "content": "What about Spain?",
+          "attachments": []
+        },
+        {
+          "role": "assistant",
+          "content": "The capital of Spain is Madrid.",
+          "attachments": []
+        }
+      ],
+      "turns_state": {
+        "n_0002": {
+          "kind": "chatlas",
+          "version": 1,
+          "mode": "delta",
+          "data": [
+            {
+              "role": "user",
+              "contents": [
+                {
+                  "content_type": "text",
+                  "text": "What is the capital of France?"
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "contents": [
+                {
+                  "content_type": "text",
+                  "text": "The capital of France is Paris."
+                }
+              ]
+            }
+          ]
+        },
+        "n_0004": {
+          "kind": "chatlas",
+          "version": 1,
+          "mode": "delta",
+          "data": [
+            {
+              "role": "user",
+              "contents": [
+                {
+                  "content_type": "text",
+                  "text": "What about Spain?"
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "contents": [
+                {
+                  "content_type": "text",
+                  "text": "The capital of Spain is Madrid."
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "source_turns_read": {
+        "n_0001": 1,
+        "n_0002": 1,
+        "n_0003": 1,
+        "n_0004": 1
+      },
+      "warns": []
+    }
+  },
+  {
+    "name": "py_0_7_1_attachments",
+    "source": "py/v0.7.1",
+    "files": {
+      "record.json": "{\"schema_version\": 1, \"id\": \"c_001a13fb39e3f79cb92b030\", \"title\": \"What is the capital of France? See attached not...\", \"title_source\": null, \"response_count\": 2, \"created_at\": \"2026-10-15T13:14:58+00:00\", \"updated_at\": \"2026-10-15T13:14:58+00:00\", \"client_info\": {\"provider\": \"openai\", \"model\": \"gpt-4o-mini\"}, \"next_node_seq\": 5, \"current_leaf\": \"n_0004\", \"nodes\": {\"n_0001\": {\"parent\": null, \"children\": [\"n_0002\"], \"turn_ids\": [0], \"selected_child\": \"n_0002\"}, \"n_0002\": {\"parent\": \"n_0001\", \"children\": [\"n_0003\"], \"turn_ids\": [1], \"selected_child\": \"n_0003\"}, \"n_0003\": {\"parent\": \"n_0002\", \"children\": [\"n_0004\"], \"turn_ids\": [2], \"selected_child\": \"n_0004\"}, \"n_0004\": {\"parent\": \"n_0003\", \"children\": [], \"turn_ids\": [3], \"selected_child\": null}}, \"values\": {}, \"bookmark_state_id\": null}",
+      "turns.jsonl": "{\"seq\": 0, \"data\": {\"role\": \"user\", \"contents\": [{\"content_type\": \"text\", \"text\": \"What is the capital of France? See attached notes.\"}, {\"content_type\": \"text\", \"text\": \"<file-attachment name=\\\"notes.md\\\" type=\\\"text/markdown\\\">\\n# Notes\\n</file-attachment>\"}]}}\n{\"seq\": 1, \"data\": {\"role\": \"assistant\", \"contents\": [{\"content_type\": \"text\", \"text\": \"The capital of France is Paris.\"}]}}\n{\"seq\": 2, \"data\": {\"role\": \"user\", \"contents\": [{\"content_type\": \"text\", \"text\": \"What about Spain?\"}]}}\n{\"seq\": 3, \"data\": {\"role\": \"assistant\", \"contents\": [{\"content_type\": \"text\", \"text\": \"The capital of Spain is Madrid.\"}]}}\n",
+      "ui.jsonl": "{\"node_id\": \"n_0001\", \"data\": [{\"role\": \"user\", \"segments\": [{\"content\": \"What is the capital of France? See attached notes.\", \"content_type\": \"markdown\"}], \"version\": 1, \"attachments\": [{\"mime\": \"text/markdown\", \"name\": \"notes.md\", \"size\": 7, \"data_url\": \"data:text/markdown;base64,IyBOb3Rlcw==\"}], \"attachment_content_stripped\": true}]}\n{\"node_id\": \"n_0002\", \"data\": [{\"role\": \"assistant\", \"segments\": [{\"content\": \"The capital of France is Paris.\", \"content_type\": \"markdown\"}], \"version\": 1}]}\n{\"node_id\": \"n_0003\", \"data\": [{\"role\": \"user\", \"segments\": [{\"content\": \"What about Spain?\", \"content_type\": \"markdown\"}], \"version\": 1}]}\n{\"node_id\": \"n_0004\", \"data\": [{\"role\": \"assistant\", \"segments\": [{\"content\": \"The capital of Spain is Madrid.\", \"content_type\": \"markdown\"}], \"version\": 1}]}\n"
+    },
+    "expect": {
+      "active_leaf": "n_0004",
+      "nodes": {
+        "n_0000": {
+          "parent": null,
+          "children": [
+            "n_0002"
+          ],
+          "selected_child": "n_0002",
+          "status": "ok"
+        },
+        "n_0002": {
+          "parent": "n_0000",
+          "children": [
+            "n_0004"
+          ],
+          "selected_child": "n_0004",
+          "status": "ok"
+        },
+        "n_0004": {
+          "parent": "n_0002",
+          "children": [],
+          "selected_child": null,
+          "status": "ok"
+        }
+      },
+      "display": [
+        {
+          "role": "user",
+          "content": "What is the capital of France? See attached notes.",
+          "attachments": [
+            {
+              "mime": "text/markdown",
+              "name": "notes.md"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "The capital of France is Paris.",
+          "attachments": []
+        },
+        {
+          "role": "user",
+          "content": "What about Spain?",
+          "attachments": []
+        },
+        {
+          "role": "assistant",
+          "content": "The capital of Spain is Madrid.",
+          "attachments": []
+        }
+      ],
+      "turns_state": {
+        "n_0002": {
+          "kind": "chatlas",
+          "version": 1,
+          "mode": "delta",
+          "data": [
+            {
+              "role": "user",
+              "contents": [
+                {
+                  "content_type": "text",
+                  "text": "What is the capital of France? See attached notes."
+                },
+                {
+                  "content_type": "text",
+                  "text": "<file-attachment name=\"notes.md\" type=\"text/markdown\">\n# Notes\n</file-attachment>"
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "contents": [
+                {
+                  "content_type": "text",
+                  "text": "The capital of France is Paris."
+                }
+              ]
+            }
+          ]
+        },
+        "n_0004": {
+          "kind": "chatlas",
+          "version": 1,
+          "mode": "delta",
+          "data": [
+            {
+              "role": "user",
+              "contents": [
+                {
+                  "content_type": "text",
+                  "text": "What about Spain?"
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "contents": [
+                {
+                  "content_type": "text",
+                  "text": "The capital of Spain is Madrid."
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "source_turns_read": {
+        "n_0001": 1,
+        "n_0002": 1,
+        "n_0003": 1,
+        "n_0004": 1
+      },
+      "warns": []
+    }
+  },
+  {
+    "name": "r_0_5_0",
+    "source": "r/v0.5.0",
+    "files": {
+      "record.json": "{\"schema_version\":1,\"id\":\"c_001a13fb455155921b3cca3\",\"title\":\"What is the capital of France?\",\"title_source\":null,\"response_count\":2,\"created_at\":\"2026-10-15T13:15:45Z\",\"updated_at\":\"2026-10-15T13:15:45Z\",\"client_info\":{\"provider\":\"openai\",\"model\":\"gpt-4o-mini\"},\"current_leaf\":\"n_0004\",\"nodes\":{\"n_0001\":{\"parent\":null,\"children\":[\"n_0002\"],\"turn_ids\":[0],\"selected_child\":\"n_0002\"},\"n_0002\":{\"parent\":\"n_0001\",\"children\":[\"n_0003\"],\"turn_ids\":[1],\"selected_child\":\"n_0003\"},\"n_0003\":{\"parent\":\"n_0002\",\"children\":[\"n_0004\"],\"turn_ids\":[2],\"selected_child\":\"n_0004\"},\"n_0004\":{\"parent\":\"n_0003\",\"children\":[],\"turn_ids\":[3],\"selected_child\":null}},\"values\":{\"theme\":\"dark\"},\"bookmark_state_id\":null}",
+      "turns.jsonl": "{\"seq\":0,\"data\":\"{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{\\\"names\\\":{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"version\\\",\\\"class\\\",\\\"props\\\"]}},\\\"value\\\":[{\\\"type\\\":\\\"double\\\",\\\"attributes\\\":{},\\\"value\\\":[1]},{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"ellmer::UserTurn\\\"]},{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{\\\"names\\\":{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"contents\\\"]}},\\\"value\\\":[{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{},\\\"value\\\":[{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{\\\"names\\\":{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"version\\\",\\\"class\\\",\\\"props\\\"]}},\\\"value\\\":[{\\\"type\\\":\\\"double\\\",\\\"attributes\\\":{},\\\"value\\\":[1]},{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"ellmer::ContentText\\\"]},{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{\\\"names\\\":{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"text\\\"]}},\\\"value\\\":[{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"What is the capital of France?\\\"]}]}]}]}]}]}\"}\n{\"seq\":1,\"data\":\"{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{\\\"names\\\":{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"version\\\",\\\"class\\\",\\\"props\\\"]}},\\\"value\\\":[{\\\"type\\\":\\\"double\\\",\\\"attributes\\\":{},\\\"value\\\":[1]},{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"ellmer::AssistantTurn\\\"]},{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{\\\"names\\\":{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"contents\\\",\\\"json\\\",\\\"tokens\\\",\\\"cost\\\",\\\"duration\\\",\\\"finish_reason\\\"]}},\\\"value\\\":[{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{},\\\"value\\\":[{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{\\\"names\\\":{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"version\\\",\\\"class\\\",\\\"props\\\"]}},\\\"value\\\":[{\\\"type\\\":\\\"double\\\",\\\"attributes\\\":{},\\\"value\\\":[1]},{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"ellmer::ContentText\\\"]},{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{\\\"names\\\":{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"text\\\"]}},\\\"value\\\":[{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"The capital of France is Paris.\\\"]}]}]}]},{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{},\\\"value\\\":[]},{\\\"type\\\":\\\"double\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"NA\\\",\\\"NA\\\",\\\"NA\\\"]},{\\\"type\\\":\\\"double\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"NA\\\"]},{\\\"type\\\":\\\"double\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"NA\\\"]},{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[null]}]}]}\"}\n{\"seq\":2,\"data\":\"{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{\\\"names\\\":{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"version\\\",\\\"class\\\",\\\"props\\\"]}},\\\"value\\\":[{\\\"type\\\":\\\"double\\\",\\\"attributes\\\":{},\\\"value\\\":[1]},{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"ellmer::UserTurn\\\"]},{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{\\\"names\\\":{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"contents\\\"]}},\\\"value\\\":[{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{},\\\"value\\\":[{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{\\\"names\\\":{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"version\\\",\\\"class\\\",\\\"props\\\"]}},\\\"value\\\":[{\\\"type\\\":\\\"double\\\",\\\"attributes\\\":{},\\\"value\\\":[1]},{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"ellmer::ContentText\\\"]},{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{\\\"names\\\":{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"text\\\"]}},\\\"value\\\":[{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"What about Spain?\\\"]}]}]}]}]}]}\"}\n{\"seq\":3,\"data\":\"{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{\\\"names\\\":{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"version\\\",\\\"class\\\",\\\"props\\\"]}},\\\"value\\\":[{\\\"type\\\":\\\"double\\\",\\\"attributes\\\":{},\\\"value\\\":[1]},{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"ellmer::AssistantTurn\\\"]},{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{\\\"names\\\":{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"contents\\\",\\\"json\\\",\\\"tokens\\\",\\\"cost\\\",\\\"duration\\\",\\\"finish_reason\\\"]}},\\\"value\\\":[{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{},\\\"value\\\":[{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{\\\"names\\\":{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"version\\\",\\\"class\\\",\\\"props\\\"]}},\\\"value\\\":[{\\\"type\\\":\\\"double\\\",\\\"attributes\\\":{},\\\"value\\\":[1]},{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"ellmer::ContentText\\\"]},{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{\\\"names\\\":{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"text\\\"]}},\\\"value\\\":[{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"The capital of Spain is Madrid.\\\"]}]}]}]},{\\\"type\\\":\\\"list\\\",\\\"attributes\\\":{},\\\"value\\\":[]},{\\\"type\\\":\\\"double\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"NA\\\",\\\"NA\\\",\\\"NA\\\"]},{\\\"type\\\":\\\"double\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"NA\\\"]},{\\\"type\\\":\\\"double\\\",\\\"attributes\\\":{},\\\"value\\\":[\\\"NA\\\"]},{\\\"type\\\":\\\"character\\\",\\\"attributes\\\":{},\\\"value\\\":[null]}]}]}\"}",
+      "ui.jsonl": "{\"node_id\":\"n_0001\",\"data\":[{\"version\":1,\"role\":\"user\",\"segments\":[{\"content\":\"What is the capital of France?\",\"content_type\":\"markdown\"}]}]}\n{\"node_id\":\"n_0002\",\"data\":[{\"version\":1,\"role\":\"assistant\",\"segments\":[{\"content\":\"The capital of France is Paris.\",\"content_type\":\"markdown\"}]}]}\n{\"node_id\":\"n_0003\",\"data\":[{\"version\":1,\"role\":\"user\",\"segments\":[{\"content\":\"What about Spain?\",\"content_type\":\"markdown\"}]}]}\n{\"node_id\":\"n_0004\",\"data\":[{\"version\":1,\"role\":\"assistant\",\"segments\":[{\"content\":\"The capital of Spain is Madrid.\",\"content_type\":\"markdown\"}]}]}"
+    },
+    "expect": {
+      "active_leaf": "n_0004",
+      "nodes": {
+        "n_0000": {
+          "parent": null,
+          "children": [
+            "n_0002"
+          ],
+          "selected_child": "n_0002",
+          "status": "ok"
+        },
+        "n_0002": {
+          "parent": "n_0000",
+          "children": [
+            "n_0004"
+          ],
+          "selected_child": "n_0004",
+          "status": "ok"
+        },
+        "n_0004": {
+          "parent": "n_0002",
+          "children": [],
+          "selected_child": null,
+          "status": "ok"
+        }
+      },
+      "display": [
+        {
+          "role": "user",
+          "content": "What is the capital of France?",
+          "attachments": []
+        },
+        {
+          "role": "assistant",
+          "content": "The capital of France is Paris.",
+          "attachments": []
+        },
+        {
+          "role": "user",
+          "content": "What about Spain?",
+          "attachments": []
+        },
+        {
+          "role": "assistant",
+          "content": "The capital of Spain is Madrid.",
+          "attachments": []
+        }
+      ],
+      "turns_state": {
+        "n_0002": {
+          "kind": "turns",
+          "version": 1,
+          "mode": "delta",
+          "data": []
+        },
+        "n_0004": {
+          "kind": "turns",
+          "version": 1,
+          "mode": "delta",
+          "data": []
+        }
+      },
+      "source_turns_read": {
+        "n_0001": 0,
+        "n_0002": 0,
+        "n_0003": 0,
+        "n_0004": 0
+      },
+      "warns": []
+    },
+    "note": "R 0.5.0 double-encodes turns.jsonl data as a jsonlite serializeJSON string, so the Python store reader skips every turn line (matching released py 0.7.2, which restored an empty turn context for R records while displaying the versioned UI verbatim). Phase 6's R harness reads the same bytes through R's own reader and expects non-empty deltas."
+  }
+]
