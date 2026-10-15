@@ -15,13 +15,11 @@ def branch_from(
     turns: list[dict[str, Any]],
     ui: list[dict[str, Any]] | None = None,
 ) -> str:
-    """Create a sibling node directly on `record`, bypassing the normal
-    append-linear path.
+    """Create a sibling node directly on a v1 `record` for fixtures.
 
-    Production code never branches this way -- `HistoryController.handle_edit`
-    achieves branching indirectly by truncating `current_leaf` and letting the
-    next `append_linear` (from the resubmit's `on_response`) create the
-    sibling. This exists solely to build branched fixtures for tests.
+    Production v1 code never branched this way, and the v2 exchange tree
+    branches through resubmit/open_exchange instead. This exists solely to
+    build branched v1 fixtures for tests.
     """
     node_id = f"n_{record.next_node_seq:04d}"
     record.next_node_seq += 1
@@ -45,5 +43,16 @@ async def replay_exchange_record(
     """
     recorder = controller._exchange_recorder
     target = recorder.record if record is None else record
-    if target is not None:
-        await controller._restore_exchange_record(target)
+    if target is None:
+        return
+    node_ids, planned_state, bootstrap = controller._prepare_exchange_restore(
+        target
+    )
+    async with controller._destructive_mutation():
+        async with controller._exchange_mutation():
+            await controller._restore_exchange_record_locked(
+                target,
+                node_ids=node_ids,
+                planned_state=planned_state,
+                bootstrap=bootstrap,
+            )

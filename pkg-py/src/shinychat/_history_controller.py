@@ -640,25 +640,6 @@ class HistoryController:
                         icon=message.icon,
                     )
 
-    async def _restore_exchange_record(
-        self,
-        target: ConversationRecordV2,
-        *,
-        bootstrap: Literal["recorded", "live"] | None = None,
-    ) -> None:
-        node_ids, planned_state, selected_bootstrap = (
-            self._prepare_exchange_restore(target, bootstrap=bootstrap)
-        )
-
-        async with self._destructive_mutation():
-            async with self._exchange_mutation():
-                await self._restore_exchange_record_locked(
-                    target,
-                    node_ids=node_ids,
-                    planned_state=planned_state,
-                    bootstrap=selected_bootstrap,
-                )
-
     async def _restore_initial_exchange_record(
         self,
         target: ConversationRecordV2,
