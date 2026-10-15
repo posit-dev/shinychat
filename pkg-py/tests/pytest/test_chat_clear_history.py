@@ -116,8 +116,6 @@ def _set_exchange(
     ]
 
 
-
-
 @pytest.mark.anyio
 async def test_history_disabled_clear_keeps_legacy_modes():
     raw_client = _TurnClient()
@@ -143,8 +141,6 @@ async def test_new_chat_requires_conversation_history():
 
     with pytest.raises(ValueError, match="conversation history"):
         await client.new_chat()
-
-
 
 
 @pytest.mark.anyio

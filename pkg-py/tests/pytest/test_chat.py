@@ -844,10 +844,6 @@ def test_response_settlement_auto_bookmarks_source_before_new_chat():
     ]
 
 
-
-
-
-
 def test_cancelled_settlement_waiter_keeps_the_shared_delivery_running():
     with session_context(test_session):
         chat = Chat("cancelled_settlement_owner_waiter", history=False)
