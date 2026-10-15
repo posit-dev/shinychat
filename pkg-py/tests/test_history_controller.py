@@ -8505,6 +8505,7 @@ async def test_active_stream_rejects_destructive_history_paths_before_mutation(
 
     chat._destructive_history_mutation = reject_active_stream  # type: ignore[method-assign]
 
+    put_count = len(store.put_calls)
     with pytest.raises(RuntimeError, match="stream is active"):
         if operation == "new_chat":
             await controller.new_chat()
@@ -8513,7 +8514,10 @@ async def test_active_stream_rejects_destructive_history_paths_before_mutation(
 
     assert recorder.record is active
     assert controller._active_id_now() == active_id
-    assert store.put_calls[-1][1] is active
+    # The rejection happened before ANY store mutation: no new put, and
+    # delete never reached the store.
+    assert len(store.put_calls) == put_count
+    assert store.deleted == []
     assert cast(_NavFakeAdapter, controller.adapter).set_calls == []
     assert chat.cleared == 0
 
@@ -8561,6 +8565,11 @@ async def test_switch_to_rejects_record_with_unsupported_schema_version():
 
     with pytest.raises(UnsupportedSchemaVersionError):
         await controller.switch_to("c_future")
+
+    # The rejection installed nothing: no record, no active conversation.
+    assert controller._exchange_recorder is not None
+    assert controller._exchange_recorder.record is None
+    assert controller._active_id_now() is None
 
 
 @pytest.mark.anyio
