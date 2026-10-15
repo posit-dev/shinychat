@@ -9481,10 +9481,10 @@ def _lossy_ui(role: str, texts: list[str]) -> list[dict[str, Any]]:
     ]
 
 
-def _lossy_v1_record() -> ConversationRecordV1:
+def _lossy_v1_record(id: str = "c_lossy") -> ConversationRecordV1:
     """A v1 record whose two nodes each carry one genuinely lossy step."""
     return ConversationRecordV1(
-        id="c_lossy",
+        id=id,
         title="Lossy",
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
@@ -9517,12 +9517,14 @@ def _lossy_v1_record() -> ConversationRecordV1:
     )
 
 
-_LOSSY_WARNS = [
-    f"conversation c_lossy: node {nid!r} carried 2 stored UI message(s) "
-    "without a version marker, but only one display message can be "
-    "re-derived from its turns; 1 message(s) were dropped"
-    for nid in ("n_0001", "n_0002")
-]
+def _lossy_warns(conv_id: str) -> list[str]:
+    return [
+        f"conversation {conv_id}: node {nid!r} carried 2 stored UI "
+        "message(s) without a version marker, but only one display "
+        "message can be re-derived from its turns; 1 message(s) were "
+        "dropped"
+        for nid in ("n_0001", "n_0002")
+    ]
 
 
 @pytest.mark.anyio
@@ -9540,12 +9542,28 @@ async def test_lossy_v1_import_warns_once_per_session_per_conversation():
         record = await controller._get_record(part(), "c_lossy")
 
     assert isinstance(record, ConversationRecordV2)
-    assert [str(w.message) for w in caught] == _LOSSY_WARNS
+    assert [str(w.message) for w in caught] == _lossy_warns("c_lossy")
 
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         again = await controller._get_record(part(), "c_lossy")
     assert isinstance(again, ConversationRecordV2)
+
+    # Per conversation, not per session: a second lossy conversation read
+    # by the same controller still warns.
+    store.records["c_lossy_2"] = _lossy_v1_record(id="c_lossy_2")
+    with pytest.warns(UserWarning) as caught_second:
+        await controller._get_record(part(), "c_lossy_2")
+    assert [str(w.message) for w in caught_second] == _lossy_warns(
+        "c_lossy_2"
+    )
+
+    # Per session: a fresh controller over the same store warns again for
+    # the same conversation.
+    fresh, _ = _make_controller(store=store)
+    with pytest.warns(UserWarning) as caught_fresh:
+        await fresh._get_record(part(), "c_lossy")
+    assert [str(w.message) for w in caught_fresh] == _lossy_warns("c_lossy")
 
 
 @pytest.mark.anyio

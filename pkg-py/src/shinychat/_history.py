@@ -515,8 +515,11 @@ class HistoryController:
                 # a built-in store or handed back by a custom store --
                 # upgrades to v2 in memory here, and is written back as v2 on
                 # its next save. Genuinely lossy upgrade steps surface as
-                # warnings exactly once per session per conversation; re-reads
-                # re-import quietly.
+                # warnings once per session per conversation; re-reads
+                # re-import quietly. (Python's default warning filter also
+                # coalesces an identical repeat process-wide, so a second
+                # session in the same process may not re-see a warning a
+                # previous session already emitted.)
                 record, warns = import_v1_record_with_warnings(record)
                 if warns and record.id not in self._lossy_import_warned:
                     self._lossy_import_warned.add(record.id)
