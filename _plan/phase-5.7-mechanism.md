@@ -287,6 +287,14 @@ commits, three-findings escalation valve per mechanism.
   Low in `_history_import.py` — steered to the running `by2p` agent to
   fix before its fixtures land; the one 221w-side finding (vacuous
   no-`history_update` comment) fixed by coordinator assertion pin.
+- 2026-10-15: `mfb3` landed `2e8de4a4` + `2756f6d0` (D5: internal
+  `on_switch_restored` hook fired only after a successful v2 switch;
+  bookmark mode wires it to `history_navigate` sans reload with the
+  restored record's `bookmark_state_id`, else `url=None`. JS verified
+  unchanged — no dist rebuild. Playwright pin: in-place switch updates
+  the URL without reload; reload restores the right conversation).
+  `by2p`'s order-independence fix landed `e64583d8`. Roborev 1581
+  enqueued. `gwg3` delegated (attachments/list-ordering/eviction trio).
 
 ## Handoff
 
