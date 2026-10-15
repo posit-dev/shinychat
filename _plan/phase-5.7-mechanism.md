@@ -418,6 +418,19 @@ commits, three-findings escalation valve per mechanism.
   Gates: 1206 passed/0 xfail, pyright 0, ruff clean. `8ec9` delegated
   (write-guard audit + pins against the landed put() path).
 
+- 2026-10-15: `8ec9` CLOSED. Audit verdict: the chimera guard HOLDS
+  against every constructible bypass (model_construct/model_copy both
+  directions, subclass tampering — all rejected by the
+  isinstance-routing + `_check_record_for_store` pairing); pins added
+  `136f46e5` (bypass vectors + failed-v2-over-v1-overwrite ordering:
+  v1 record whole, write state retained, cleanup strictly
+  post-replace). Migration marker: NONE exists on this branch — issue
+  finding (b) moot here, recorded for `115q` (R side). Roborev 1589
+  Pass with 1 Low — fixed `36c23a36` (both-backends no-persistence
+  post-condition). Gates: 1209 passed/0 xfail, pyright 0. 10/11
+  children closed; `4b9z` (v1 runtime deletion) is the last child and
+  is unblocked — delegating next.
+
 ## Handoff
 
 (appended at phase exit — what landed, what's next, provisional decisions)
