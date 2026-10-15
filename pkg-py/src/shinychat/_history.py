@@ -38,6 +38,7 @@ from ._history_client import (
 )
 from ._history_plan import (
     RestorePlan,
+    StatePlan,
 )
 from ._history_recorder import _ExchangeRecorder
 from ._history_store import (
@@ -56,6 +57,7 @@ from ._history_title import (
 from ._history_types import (
     ConversationRecordV1,
     ConversationRecordV2,
+    ExchangeNode,
     TurnDict,
     check_schema_version,
     new_conversation_id,
@@ -976,6 +978,40 @@ class HistoryController:
                 await self.send_history_update()
 
     @staticmethod
+    def _validate_resubmit_target(
+        record: ConversationRecordV2, exchange_id: str, kind: str
+    ) -> tuple[ExchangeNode, str]:
+        """The validated resubmit target and its parent prefix id."""
+        target = record.nodes.get(exchange_id)
+        if target is None:
+            raise ValueError(f"Unknown exchange id {exchange_id!r}")
+        if target.input is None:
+            raise ValueError(
+                f"Exchange {exchange_id!r} has no user input to resubmit."
+            )
+        if exchange_id not in record.path_node_ids():
+            raise ValueError(
+                f"Exchange {exchange_id!r} is not on the active path."
+            )
+        if target.parent_id is None:
+            raise ValueError(
+                f"Exchange {exchange_id!r} has no parent prefix to resubmit."
+            )
+        if kind == "retry":
+            if target.status not in _RETRYABLE_STATUSES:
+                raise ValueError(
+                    "Only interrupted or failed exchanges can be retried."
+                )
+        elif kind == "regenerate":
+            if target.status != "ok":
+                raise ValueError(
+                    "Only completed exchanges can be regenerated."
+                )
+        elif kind != "edit":
+            raise ValueError(f"Unknown exchange resubmit kind {kind!r}.")
+        return target, target.parent_id
+
+    @staticmethod
     def _normalize_resubmit_input(message: StoredMessage) -> StoredMessage:
         if message.role != "user":
             raise ValueError("Only user inputs can be resubmitted.")
@@ -1018,32 +1054,13 @@ class HistoryController:
         if record is None:
             raise RuntimeError("No exchange-tree conversation is active")
 
-        target = record.nodes.get(exchange_id)
-        if target is None:
-            raise ValueError(f"Unknown exchange id {exchange_id!r}")
-        if target.input is None:
-            raise ValueError(
-                f"Exchange {exchange_id!r} has no user input to resubmit."
-            )
-        if exchange_id not in record.path_node_ids():
-            raise ValueError(
-                f"Exchange {exchange_id!r} is not on the active path."
-            )
-        if target.parent_id is None:
-            raise ValueError(
-                f"Exchange {exchange_id!r} has no parent prefix to resubmit."
-            )
-        if kind == "retry":
-            if target.status not in ("pending", "error", "cancelled"):
-                raise ValueError("Only interrupted or failed exchanges can be retried.")
-        elif kind == "regenerate":
-            if target.status != "ok":
-                raise ValueError("Only completed exchanges can be regenerated.")
-        elif kind != "edit":
-            raise ValueError(f"Unknown exchange resubmit kind {kind!r}.")
+        target, parent_id = self._validate_resubmit_target(
+            record, exchange_id, kind
+        )
         preserve_live_turns = _history_plan.active_path_turns_are_incompatible(
             record, adapter=self.adapter
         )
+        assert target.input is not None  # _validate_resubmit_target
         submitted_input = self._normalize_resubmit_input(
             target.input if replacement_input is None else replacement_input
         )
@@ -1051,7 +1068,7 @@ class HistoryController:
         # Preflight against a copy so malformed rewind state cannot move the
         # persisted path after input validation has already succeeded.
         prefix = record.model_copy(deep=True)
-        prefix.set_active_leaf(target.parent_id)
+        prefix.set_active_leaf(parent_id)
         node_ids = tuple(prefix.path_node_ids())
         rewind_state = _history_plan.preflight_state(
             prefix,
@@ -1064,72 +1081,115 @@ class HistoryController:
         )
 
         async with self._destructive_mutation(block_input=True):
-            async with self._exchange_mutation():
-                current_leaf = record.active_leaf
-                if current_leaf is None:
-                    raise ValueError("Exchange-tree record has no active leaf.")
-                if preserve_live_turns:
-                    # The failed target and its shared parent stay immutable.
-                    # Non-turn hooks still rewind the ordinary parent prefix
-                    # before the accepted input opens its sibling.
-                    await _history_plan.run_plan(rewind_state, skip_turns=True)
-                    record.set_active_leaf(target.parent_id)
-                    accepted_exchange_id = (
-                        self.chat._transcript.record_accepted_input(submitted_input)
-                    )
-                    await recorder._accepted_resubmit_input_locked(
-                        accepted_exchange_id, submitted_input
-                    )
-                    accepted_input_action: HistoryAcceptedInputProjectionAction = {
-                        "type": "history_accepted_input_projection",
-                        "index": message_index,
-                        "content": str(submitted_input.content),
-                        "attachments": _attachment_projection(
-                            submitted_input.attachments
-                        ),
-                    }
-                    projection_error: BaseException | None = None
-                    try:
-                        await self.chat._send_action(accepted_input_action)
-                    except BaseException as error:
-                        projection_error = error
-                        raise
-                    finally:
-                        try:
-                            self.chat._publish_accepted_user_input(
-                                submitted_input
-                            )
-                        except BaseException as publication_error:
-                            if projection_error is None:
-                                raise
-                            raise projection_error from publication_error
-                    return
-                await recorder._capture_state(current_leaf, "node_close")
+            if preserve_live_turns:
+                await self._open_resubmit_sibling_locked(
+                    record,
+                    rewind_state,
+                    parent_id,
+                    submitted_input,
+                    message_index,
+                )
+                return
+            action: HistoryEditProjectionAction = {
+                "type": "history_edit_projection",
+                "requestId": request_id,
+                "index": message_index,
+                "content": str(submitted_input.content),
+                "attachments": _attachment_projection(
+                    submitted_input.attachments
+                ),
+            }
+
+            async def send_resubmission() -> None:
+                with self._restore_step("sending the resubmission"):
+                    await self.chat._send_action(action)
+
+            await self._rewind_locked(
+                record,
+                rewind_state,
+                parent_id,
+                save_step="saving the resubmission",
+                send=send_resubmission,
+            )
+
+    async def _rewind_locked(
+        self,
+        record: ConversationRecordV2,
+        rewind_state: StatePlan,
+        leaf: str,
+        *,
+        save_step: str,
+        send: Callable[[], Awaitable[None]],
+    ) -> None:
+        """The shared rewind skeleton: capture the close, run the plan,
+        move and persist the leaf, send, clear a failed restore."""
+        recorder = self._exchange_recorder
+        async with self._exchange_mutation():
+            current_leaf = record.active_leaf
+            if current_leaf is None:
+                raise ValueError("Exchange-tree record has no active leaf.")
+            await recorder._capture_state(current_leaf, "node_close")
+            try:
+                # Rewind hooks run before the leaf move is persisted, so a
+                # hook failure leaves the store pointing at the leaf the
+                # user still sees and the fail-to-fresh-draft recovery
+                # below is the only thing that changed. The plan was
+                # preflighted against a deep copy, so nothing here mutates
+                # until the hooks have accepted the rewind.
+                with self._restore_step(save_step):
+                    await _history_plan.run_plan(rewind_state)
+                    record.set_active_leaf(leaf)
+                    await recorder._persist_record()
+                await send()
+            except BaseException as error:
+                await self._clear_failed_restore(error)
+                raise
+
+    async def _open_resubmit_sibling_locked(
+        self,
+        record: ConversationRecordV2,
+        rewind_state: StatePlan,
+        parent_id: str,
+        submitted_input: StoredMessage,
+        message_index: int,
+    ) -> None:
+        """The preserve-live-turns resubmit path: the failed target and
+        its shared parent stay immutable, and non-turn hooks still rewind
+        the ordinary parent prefix before the accepted input opens its
+        sibling."""
+        recorder = self._exchange_recorder
+        async with self._exchange_mutation():
+            if record.active_leaf is None:
+                raise ValueError("Exchange-tree record has no active leaf.")
+            await _history_plan.run_plan(rewind_state, skip_turns=True)
+            record.set_active_leaf(parent_id)
+            accepted_exchange_id = (
+                self.chat._transcript.record_accepted_input(submitted_input)
+            )
+            await recorder._accepted_resubmit_input_locked(
+                accepted_exchange_id, submitted_input
+            )
+            accepted_input_action: HistoryAcceptedInputProjectionAction = {
+                "type": "history_accepted_input_projection",
+                "index": message_index,
+                "content": str(submitted_input.content),
+                "attachments": _attachment_projection(
+                    submitted_input.attachments
+                ),
+            }
+            projection_error: BaseException | None = None
+            try:
+                await self.chat._send_action(accepted_input_action)
+            except BaseException as error:
+                projection_error = error
+                raise
+            finally:
                 try:
-                    # Rewind hooks run before the leaf move is persisted, so a
-                    # hook failure leaves the store pointing at the leaf the
-                    # user still sees and the fail-to-fresh-draft recovery
-                    # below is the only thing that changed. The plan was
-                    # preflighted against a deep copy above, so nothing here
-                    # mutates until the hooks have accepted the rewind.
-                    with self._restore_step("saving the resubmission"):
-                        await _history_plan.run_plan(rewind_state)
-                        record.set_active_leaf(target.parent_id)
-                        await recorder._persist_record()
-                    action: HistoryEditProjectionAction = {
-                        "type": "history_edit_projection",
-                        "requestId": request_id,
-                        "index": message_index,
-                        "content": str(submitted_input.content),
-                        "attachments": _attachment_projection(
-                            submitted_input.attachments
-                        ),
-                    }
-                    with self._restore_step("sending the resubmission"):
-                        await self.chat._send_action(action)
-                except BaseException as error:
-                    await self._clear_failed_restore(error)
-                    raise
+                    self.chat._publish_accepted_user_input(submitted_input)
+                except BaseException as publication_error:
+                    if projection_error is None:
+                        raise
+                    raise projection_error from publication_error
 
     async def retry(
         self, exchange_id: str, *, request_id: str, message_index: int
@@ -1306,40 +1366,26 @@ class HistoryController:
         )
 
         async with self._destructive_mutation(block_input=True):
-            async with self._exchange_mutation():
-                current_leaf = record.active_leaf
-                if current_leaf is None:
-                    raise ValueError(
-                        "Exchange-tree record has no active leaf."
-                    )
-                await recorder._capture_state(current_leaf, "node_close")
-                try:
-                    # Rewind hooks run before the leaf move is persisted,
-                    # so a hook failure leaves the store pointing at the
-                    # leaf the user still sees and the fail-to-fresh-draft
-                    # recovery below is the only thing that changed. The
-                    # plan was preflighted against a deep-copied projection
-                    # above, so nothing here mutates until the hooks have
-                    # accepted the rewind; the display replay reads only
-                    # node content by id, so it does not depend on the
-                    # record's leaf pointer.
-                    with self._restore_step("saving the navigation change"):
-                        await _history_plan.run_plan(rewind_state)
-                        record.set_active_leaf(leaf)
-                        await recorder._persist_record()
-                    with self._restore_step(
-                        "replaying the conversation display"
-                    ):
-                        await self._replay_exchange_display(
-                            record, node_ids
-                        )
-                    with self._restore_step("sending the navigation update"):
-                        await self._send_sibling_metadata()
-                        await self._send_exchange_metadata()
-                        await self.send_history_update()
-                except BaseException as error:
-                    await self._clear_failed_restore(error)
-                    raise
+
+            async def send_navigation() -> None:
+                # The display replay reads only node content by id, so it
+                # does not depend on the record's leaf pointer.
+                with self._restore_step(
+                    "replaying the conversation display"
+                ):
+                    await self._replay_exchange_display(record, node_ids)
+                with self._restore_step("sending the navigation update"):
+                    await self._send_sibling_metadata()
+                    await self._send_exchange_metadata()
+                    await self.send_history_update()
+
+            await self._rewind_locked(
+                record,
+                rewind_state,
+                leaf,
+                save_step="saving the navigation change",
+                send=send_navigation,
+            )
 
     async def handle_edit(
         self,
