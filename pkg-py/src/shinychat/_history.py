@@ -516,7 +516,7 @@ class HistoryController:
     def conversation_id(self) -> str | None:
         """
         Reactive read of the active conversation ID: ``None`` for an empty
-        draft, otherwise the ID the eventual ``ConversationRecordV1`` will (or
+        draft, otherwise the ID the eventual conversation record will (or
         already does) carry. Allocated at first user submission for
         ``chat_app()`` apps, or at first save for standalone history use.
 

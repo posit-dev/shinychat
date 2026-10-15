@@ -25,10 +25,10 @@ from shinychat._history_store import (
     InMemoryConversationStore,
 )
 from shinychat._history_types import (
+    MAX_SCHEMA_VERSION,
     CapturedMessage,
     ConversationRecordV1,
     ConversationRecordV2,
-    MAX_SCHEMA_VERSION,
     new_conversation_record,
     new_conversation_record_v2,
 )

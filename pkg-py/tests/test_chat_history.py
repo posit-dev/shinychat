@@ -22,7 +22,6 @@ from shinychat._history_store import (
     InMemoryConversationStore,
 )
 from shinychat._history_types import (
-    ConversationRecordV1,
     ConversationRecordV2,
     new_conversation_record,
     new_conversation_record_v2,
