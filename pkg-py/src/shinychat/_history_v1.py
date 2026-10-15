@@ -44,7 +44,6 @@ from ._attachments import Attachment, attachment_to_content
 from ._chat_normalize import normalize_message
 from ._chat_types import StoredMessage, as_stored_message
 from ._history_client import (
-    TurnDict,
     normalize_turn_group,
     turn_dict_effective_role,
     turn_fallback_markdown,
@@ -58,6 +57,7 @@ from ._history_types import (
     ExchangeNode,
     StateEntry,
     StoredUiMessage,
+    TurnDict,
     is_stored_ui_versioned,
 )
 

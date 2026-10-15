@@ -24,7 +24,6 @@ from pydantic import JsonValue
 
 from ._chat_transcript import TranscriptEntry
 from ._chat_types import StoredMessage
-from ._history_client import TurnDict
 from ._history_plan import (
     CaptureContext,
     CaptureHook,
@@ -41,6 +40,7 @@ from ._history_types import (
     CapturedMessage,
     ConversationRecordV2,
     StateEntry,
+    TurnDict,
     new_conversation_record_v2,
 )
 

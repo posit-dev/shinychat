@@ -1,6 +1,6 @@
 import pytest
-from shinychat._history_client import TurnDict
 from shinychat._history_title import fallback_title, generate_title
+from shinychat._history_types import TurnDict
 
 
 def test_fallback_title_truncates_first_user_message():

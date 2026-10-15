@@ -5,11 +5,11 @@ from typing import Any, cast
 import pytest
 from htmltools import tags
 from shinychat._history_client import (
-    TurnDict,
     TurnsAdapter,
     as_turns_adapter,
     turn_fallback_markdown,
 )
+from shinychat._history_types import TurnDict
 
 
 class DictClient:

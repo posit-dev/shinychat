@@ -33,7 +33,6 @@ from ._chat_types import (
 )
 from ._history_bookmark import delete_bookmark_state, extract_state_id
 from ._history_client import (
-    TurnDict,
     TurnsAdapter,
     as_turns_adapter,
 )
@@ -57,6 +56,7 @@ from ._history_title import (
 from ._history_types import (
     ConversationRecordV1,
     ConversationRecordV2,
+    TurnDict,
     check_schema_version,
     new_conversation_id,
     project_history_error_message,

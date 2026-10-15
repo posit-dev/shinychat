@@ -9,22 +9,7 @@ from ._chat_bookmark import is_chatlas_chat_client, serialize_chatlas_turn
 from ._chat_client import ChatClient
 from ._chat_normalize import normalize_message
 from ._chat_types import ChatMessage, Role
-from ._typing_extensions import NotRequired, TypedDict
-
-
-class TurnDict(TypedDict):
-    """A JSON-serialized chat turn dict.
-
-    Matches the shape of ``chatlas.Turn.model_dump(mode="json")`` and the
-    plain dicts that non-chatlas clients return from ``get_turns()``. The
-    keys this codebase reads are ``role`` (a string), ``contents``
-    (chatlas content-item dicts), and ``content`` (plain-text content on
-    generic dicts). Extra keys are allowed at runtime.
-    """
-
-    role: NotRequired[str]
-    contents: NotRequired[list[Any]]
-    content: NotRequired[Any]
+from ._history_types import TurnDict
 
 
 def _validate_mapping_keys(value: Any) -> None:

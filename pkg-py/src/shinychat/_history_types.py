@@ -18,8 +18,23 @@ from ._chat_types import (
     StoredSegment,
     StructuredBlock,
 )
-from ._history_client import TurnDict
 from ._typing_extensions import NotRequired, TypedDict
+
+
+class TurnDict(TypedDict):
+    """A JSON-serialized chat turn dict.
+
+    Matches the shape of ``chatlas.Turn.model_dump(mode="json")`` and the
+    plain dicts that non-chatlas clients return from ``get_turns()``. The
+    keys this codebase reads are ``role`` (a string), ``contents``
+    (chatlas content-item dicts), and ``content`` (plain-text content on
+    generic dicts). Extra keys are allowed at runtime.
+    """
+
+    role: NotRequired[str]
+    contents: NotRequired[list[Any]]
+    content: NotRequired[Any]
+
 
 TitleSource = Literal["llm", "user"]
 

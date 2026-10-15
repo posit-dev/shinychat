@@ -5,7 +5,8 @@ import warnings
 from typing import Any, Awaitable, Callable, Union, cast
 
 from ._chat_bookmark import is_chatlas_chat_client
-from ._history_client import TurnDict, turn_fallback_markdown
+from ._history_client import turn_fallback_markdown
+from ._history_types import TurnDict
 from ._utils import wrap_async
 
 TitleFn = Callable[
