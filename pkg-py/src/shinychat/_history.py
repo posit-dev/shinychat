@@ -634,7 +634,11 @@ class ChatHistory:
                 if request_id is not None:
                     await _complete_history_transition(chat, request_id)
 
-        async def finish_initial(restored: bool) -> None:
+        async def finish_initial(
+            restored: bool, *, send_update: bool = False
+        ) -> None:
+            if send_update:
+                await controller.send_history_update()
             self._initial_history_initialized = True
             await controller.notify_settled(restored)
 
@@ -706,8 +710,7 @@ class ChatHistory:
                     "Could not load conversation",
                     ValueError("Bookmark pointer is invalid."),
                 )
-                await controller.send_history_update()
-                await finish_initial(False)
+                await finish_initial(False, send_update=True)
                 return
 
             if bookmark_pointer is not None:
@@ -731,8 +734,7 @@ class ChatHistory:
                     await notify_error(
                         f"Could not load conversation {conversation_id!r}", e
                     )
-                    await controller.send_history_update()
-                    await finish_initial(False)
+                    await finish_initial(False, send_update=True)
                     return
 
                 await restore_initial_v2(target, node_id=node_id)
@@ -763,9 +765,9 @@ class ChatHistory:
                     await restore_initial_v2(pointed)
                     await finish_initial(True)
                     return
-            await controller.send_history_update()
             await finish_initial(
-                controller._active_id_now() is not None
+                controller._active_id_now() is not None,
+                send_update=True,
             )
 
         async def _save_on_response():
