@@ -472,6 +472,71 @@ def test_v2_server_bookmarks_restore_distinct_sibling_leaves(
     )
 
 
+@pytest.mark.parametrize("local_app", ["app_bookmark.py"], indirect=True)
+def test_v2_bookmark_switch_updates_url_in_place_and_reload_restores_target(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    """A v2 in-place switch in bookmark mode updates the URL without a reload.
+
+    Switching conversations moves ?_state_id_ to the target's bookmark state
+    id via a soft replaceState (no page load), so a reload afterwards
+    restores the switched-to conversation (mfb3 / D5).
+    """
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    def converse(text: str) -> None:
+        chat.set_user_input(text)
+        expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
+        chat.send_user_input(method="enter")
+        chat.expect_latest_message(f"echo: {text}", timeout=30_000)
+
+    converse("conversation A")
+    page.wait_for_url(lambda url: "_state_id_=" in url, timeout=10_000)
+    url_a = page.url
+
+    page.locator(".shiny-chat-history-trigger").click()
+    expect(
+        page.locator(".shiny-chat-history-item", has_text="conversation A")
+    ).to_have_count(1, timeout=10_000)
+    page.locator(".shiny-chat-history-new").click()
+    page.locator(".shiny-chat-history-drawer").wait_for(state="hidden")
+
+    converse("conversation B")
+    page.wait_for_url(
+        lambda url: "_state_id_=" in url and url != url_a, timeout=10_000
+    )
+    url_b = page.url
+
+    # Any full page load during the switches below wipes this marker; a
+    # soft replaceState keeps it. (Set after the New chat click, which
+    # intentionally hard-navigates to clear the URL in bookmark mode.)
+    page.evaluate("window.__noReloadMarker = true")
+
+    # In-place switch B -> A: the URL moves to A's state id, no reload.
+    page.locator(".shiny-chat-history-trigger").click()
+    page.locator(".shiny-chat-history-item", has_text="conversation A").click()
+    page.wait_for_url(lambda url: url == url_a, timeout=10_000)
+    chat.expect_latest_message("echo: conversation A", timeout=30_000)
+    assert page.evaluate("window.__noReloadMarker") is True
+
+    # And back A -> B, still in place.
+    page.locator(".shiny-chat-history-trigger").click()
+    page.locator(".shiny-chat-history-item", has_text="conversation B").click()
+    page.wait_for_url(lambda url: url == url_b, timeout=10_000)
+    chat.expect_latest_message("echo: conversation B", timeout=30_000)
+    assert page.evaluate("window.__noReloadMarker") is True
+
+    # The replaced URL is the one py-shiny consumes on load: a reload
+    # restores B, the switched-to conversation.
+    page.reload()
+    expect(chat.loc).to_be_visible(timeout=30_000)
+    chat.expect_latest_message("echo: conversation B", timeout=30_000)
+    expect(_message_count(page)).to_have_count(2, timeout=10_000)
+    assert page.url == url_b
+
+
 @pytest.mark.parametrize("local_app", ["app_url.py"], indirect=True)
 def test_v2_url_restore_publishes_one_history_update(
     page: Page, local_app: ShinyAppProc
