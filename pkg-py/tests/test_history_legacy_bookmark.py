@@ -4,9 +4,9 @@ A bookmark written by a v1 server stamps only the conversation id, under the
 legacy `{id}_history_conversation_id` key. Under the exchange-tree path,
 `_init_history` reads that key when the v2 pointer is absent and opens the
 stamped conversation at its active leaf — through the same open path a v2
-pointer takes, so the restore works transparently once the v1→v2
-upgrade-on-read lands (shinychat#e0x2). Until then, a v1 record fails
-visibly at the schema check; it is never a silent no-restore.
+pointer takes. Since the v1→v2 upgrade-on-read (shinychat#e0x2), a v1
+record restores transparently; a record no released version can read still
+fails visibly — it is never a silent no-restore.
 """
 
 from __future__ import annotations
@@ -26,6 +26,9 @@ from shinychat._history_store import (
 )
 from shinychat._history_types import (
     CapturedMessage,
+    ConversationRecordV1,
+    ConversationRecordV2,
+    MAX_SCHEMA_VERSION,
     new_conversation_record,
     new_conversation_record_v2,
 )
@@ -255,27 +258,37 @@ async def test_v2_legacy_stamp_bogus_value_fails_visibly(bogus: Any) -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_legacy_stamp_v1_record_fails_loudly_before_upgrade_on_read():
-    """Pre-shinychat#e0x2 pin: a v1 record fails visibly at the schema check.
+async def test_v2_legacy_stamp_unsupported_record_fails_loudly():
+    """A record no released version can read fails visibly — never silently.
 
-    Until the v1→v2 upgrade-on-read lands (shinychat#e0x2), opening a v1
-    record under the v2 path raises in `HistoryController._get_record`. The
-    bookmark restore must surface that failure — naming the conversation —
-    never a silent no-restore. The companion xfail test below holds the
-    full-restore assertion for once the read-gate exists.
+    Originally pinned the pre-read-gate v1 failure (shinychat#e0x2); v1
+    records now restore through the upgrade-on-read, so the loud-failure
+    guarantee is pinned with a record from a newer, unsupported schema
+    version instead — the same never-silent-no-restore contract: the
+    restore surfaces a warning naming the conversation and a notification.
     """
-    chat_id = "legacy_stamp_v1_record"
+    chat_id = "legacy_stamp_unsupported_record"
     session = _LiveSession()
-    store = InMemoryConversationStore()
+
+    class _FutureSchemaStore(InMemoryConversationStore):
+        """Simulates a downgrade against a store written by a future version."""
+
+        async def get(self, partition: Any, conv_id: str) -> Any:
+            record = await super().get(partition, conv_id)
+            if record is not None:
+                cast(Any, record).schema_version = MAX_SCHEMA_VERSION + 1
+            return record
+
+    store = _FutureSchemaStore()
     partition = ConversationPartition(chat_id=chat_id, scope="test")
     await store.put(
-        partition, new_conversation_record(title="legacy", id="c_v1")
+        partition, new_conversation_record(title="future", id="c_future")
     )
     chat, handlers = await _make_legacy_bookmark_chat(
         chat_id,
         session,
         store,
-        {f"{chat_id}_history_conversation_id": "c_v1"},
+        {f"{chat_id}_history_conversation_id": "c_future"},
     )
     try:
         controller = chat.history._controller
@@ -291,9 +304,8 @@ async def test_v2_legacy_stamp_v1_record_fails_loudly_before_upgrade_on_read():
             pytest.warns(
                 UserWarning,
                 match=(
-                    r"Could not load conversation 'c_v1': "
-                    r"Conversation record schema does not match the active "
-                    r"history path"
+                    r"Could not load conversation 'c_future': "
+                    r"Unsupported conversation record schema version: 3"
                 ),
             ),
         ):
@@ -308,16 +320,16 @@ async def test_v2_legacy_stamp_v1_record_fails_loudly_before_upgrade_on_read():
 
 
 @pytest.mark.anyio
-@pytest.mark.xfail(
-    reason=(
-        "v1→v2 upgrade-on-read lands with shinychat#e0x2; until then a v1 "
-        "record fails loudly at the schema check (pinned by "
-        "test_v2_legacy_stamp_v1_record_fails_loudly_before_upgrade_on_read)"
-    ),
-    strict=True,
-)
 async def test_v2_legacy_stamp_v1_record_restores_after_upgrade_on_read():
-    """Full restore of a v1-stamped conversation once the read-gate lands."""
+    """A v1-stamped conversation fully restores once the read-gate lands.
+
+    Originally pinned as a strict xfail until shinychat#e0x2 landed the
+    v1→v2 upgrade-on-read (the companion test above held the loud-failure
+    pin for the pre-gate behavior). The legacy stamp now opens the v1
+    record through the same path a v2 pointer takes: it is upgraded in
+    memory at the active leaf, installed as the recorder's record, and
+    becomes the active conversation.
+    """
     chat_id = "legacy_stamp_v1_record_upgraded"
     session = _LiveSession()
     store = InMemoryConversationStore()
@@ -345,7 +357,14 @@ async def test_v2_legacy_stamp_v1_record_restores_after_upgrade_on_read():
 
         assert chat.history._initial_history_initialized
         assert recorder.record is not None
+        assert isinstance(recorder.record, ConversationRecordV2)
+        assert not isinstance(recorder.record, ConversationRecordV1)
+        assert recorder.record.schema_version == 2
         assert recorder.record.id == "c_v1"
+        assert recorder.record.title == "legacy"
+        # The pointerless v1 record upgrades at the synthesized root — the
+        # same shape a fresh v2 record has.
+        assert recorder.record.active_leaf == "n_0000"
         assert controller._active_id_now() == "c_v1"
     finally:
         chat.destroy()

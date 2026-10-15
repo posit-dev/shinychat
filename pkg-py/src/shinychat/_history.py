@@ -44,6 +44,7 @@ from ._history_client import (
     turn_dict_effective_role,
     turn_fallback_markdown,
 )
+from ._history_import import import_v1_record
 from ._history_plan import (
     RestorePlan,
 )
@@ -468,8 +469,13 @@ class HistoryController:
             Callable[[str | None], Awaitable[None]] | None
         ) = None
         # Internal hook: fired after every save. bookmark mode uses it to mint.
+        # Receives either record version: the v2 record the exchange recorder
+        # owns, or the v1 record the linear path saves.
         self.on_response_saved: (
-            Callable[[ConversationRecordV1], Awaitable[None]] | None
+            Callable[
+                [ConversationRecordV1 | ConversationRecordV2], Awaitable[None]
+            ]
+            | None
         ) = None
         # Internal hook: fired in switch_to before the in-session swap.
         # Return True to skip the swap (caller has already navigated).
@@ -483,7 +489,7 @@ class HistoryController:
         # uses); a failed or blocked switch never fires it, so the URL
         # keeps matching the still-active conversation.
         self.on_switch_restored: (
-            Callable[[ConversationRecordV1], Awaitable[None]] | None
+            Callable[[ConversationRecordV2], Awaitable[None]] | None
         ) = None
         # Internal hook: fired before a conversation is removed from the store.
         self.on_evict: Callable[[str], Awaitable[None]] | None = None
@@ -599,6 +605,17 @@ class HistoryController:
                 if self._exchange_recorder is not None
                 else ConversationRecordV1
             )
+            if (
+                self._exchange_recorder is not None
+                and isinstance(record, ConversationRecordV1)
+            ):
+                # Lazy-conversion read-gate (plan §7.5, mechanism D1/D4): a
+                # v1 record -- read from disk by a built-in store or handed
+                # back by a custom store -- upgrades to v2 in memory here, and
+                # is written back as v2 on its next save. The non-warning
+                # import path keeps repeated reads quiet: warnings name only
+                # genuinely lossy imports and must not re-fire on every read.
+                record = import_v1_record(record)
             if not isinstance(record, expected_type):
                 raise ValueError(
                     "Conversation record schema does not match the active history path."
@@ -657,7 +674,7 @@ class HistoryController:
             assert record is not None
             await self._evict_if_needed()
             if self.on_response_saved is not None:
-                await self.on_response_saved(cast(ConversationRecordV1, record))
+                await self.on_response_saved(record)
             await self.send_history_update()
             await self._send_sibling_metadata()
             self._schedule_exchange_retitle(record)
@@ -877,7 +894,7 @@ class HistoryController:
         assert record is not None
         await self._evict_if_needed()
         if self.on_response_saved is not None:
-            await self.on_response_saved(cast(ConversationRecordV1, record))
+            await self.on_response_saved(record)
         await self.send_history_update()
         await self._send_sibling_metadata()
         return True
@@ -1288,7 +1305,7 @@ class HistoryController:
             # above, leaving the URL matching the still-active conversation.
             if self.on_switch_restored is not None:
                 try:
-                    await self.on_switch_restored(cast(ConversationRecordV1, target))
+                    await self.on_switch_restored(target)
                 except Exception as exc:
                     # The restore already committed; a best-effort URL update
                     # failure (e.g. session closing) must not make callers
@@ -2199,7 +2216,9 @@ class ChatHistory:
                     "restore_mode='bookmark' requires bookmark_store='server' in the Shiny app."
                 )
 
-            async def _on_response_saved(record: ConversationRecordV1) -> None:
+            async def _on_response_saved(
+                record: ConversationRecordV1 | ConversationRecordV2,
+            ) -> None:
                 recorder = controller._exchange_recorder
                 if recorder is not None:
                     pointer = await recorder.bookmark_pointer(
@@ -2234,6 +2253,8 @@ class ChatHistory:
                     )
                     return
 
+                # The v1 save path hands its linear record.
+                assert isinstance(record, ConversationRecordV1)
                 captured_id = record.id
 
                 async def _on_bookmarked(url: str) -> None:
@@ -2282,7 +2303,7 @@ class ChatHistory:
             # never had a response saved) -> url=None clears the stale query.
             # Uses replaceState, never pushState (pushState would mutate
             # server-side clientdata mid-session).
-            async def _on_switch_restored(record: ConversationRecordV1) -> None:
+            async def _on_switch_restored(record: ConversationRecordV2) -> None:
                 state_id = record.bookmark_state_id
                 url = f"?_state_id_={state_id}" if state_id is not None else None
                 await controller.send_navigate(url, record.id)

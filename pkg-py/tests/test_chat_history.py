@@ -1595,21 +1595,15 @@ async def test_v2_bookmark_eviction_clears_bookmark_state_for_v2_records():
         deleted.assert_not_awaited()
 
 
-@pytest.mark.xfail(
-    reason=(
-        "A v1 record under v2 raises in _on_evict's _get_record fallback "
-        "until the lazy v1->v2 import read-gate lands (shinychat#e0x2; "
-        "import transform shinychat#by2p). Once records upgrade on read, "
-        "evicting a v1 record must clear its bookmark state exactly like a "
-        "v2 record. Pinned as strict xfail so the gap is visible and never "
-        "silently passes: once the read-gate lands (XPASS), this test must "
-        "fail until the marker is removed."
-    ),
-    strict=True,
-)
 @pytest.mark.anyio
 async def test_v2_bookmark_eviction_of_v1_record_clears_state():
-    """After the v1 import lands, evicting a v1 record clears its state."""
+    """Evicting a v1 record clears its bookmark state like a v2 record.
+
+    Originally pinned as a strict xfail while the lazy v1→v2 read-gate was
+    missing (shinychat#e0x2): a v1 record raised in _on_evict's _get_record
+    fallback. Now the read-gate upgrades the v1 record in memory, so eviction
+    resolves its bookmark_state_id exactly like a v2 record's.
+    """
     session = _LiveSession()
     session.bookmark.store = "server"
 

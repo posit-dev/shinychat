@@ -54,6 +54,7 @@ from shinychat._history_store import (
     ConversationStore,
     FileConversationStore,
     InMemoryConversationStore,
+    sanitize_scope,
 )
 from shinychat._history_types import (
     HISTORY_ERROR_GENERIC,
@@ -2288,9 +2289,9 @@ async def test_v2_switch_fires_on_switch_restored_after_successful_restore():
     recorder.record = existing
     controller._active_id.set(existing.id)
 
-    restored: list[ConversationRecordV1] = []
+    restored: list[ConversationRecordV2] = []
 
-    async def hook(record: ConversationRecordV1) -> None:
+    async def hook(record: ConversationRecordV2) -> None:
         restored.append(record)
 
     controller.on_switch_restored = hook
@@ -2321,7 +2322,7 @@ async def test_v2_switch_hook_failure_is_swallowed_with_warning():
     recorder.record = existing
     controller._active_id.set(existing.id)
 
-    async def hook(record: ConversationRecordV1) -> None:
+    async def hook(record: ConversationRecordV2) -> None:
         raise RuntimeError("session closing")
 
     controller.on_switch_restored = hook
@@ -2365,9 +2366,9 @@ async def test_v2_switch_blocked_by_stream_fires_no_on_switch_restored():
     target = _v2_switch_target("state_target")
     await store.put(part(), target)
 
-    restored: list[ConversationRecordV1] = []
+    restored: list[ConversationRecordV2] = []
 
-    async def hook(record: ConversationRecordV1) -> None:
+    async def hook(record: ConversationRecordV2) -> None:
         restored.append(record)
 
     controller.on_switch_restored = hook
@@ -2385,9 +2386,9 @@ async def test_v2_switch_failed_preflight_fires_no_on_switch_restored():
     store = _UnsupportedSchemaVersionStore()
     controller, _ = _make_controller(store=store, use_exchange_tree=True)
 
-    restored: list[ConversationRecordV1] = []
+    restored: list[ConversationRecordV2] = []
 
-    async def hook(record: ConversationRecordV1) -> None:
+    async def hook(record: ConversationRecordV2) -> None:
         restored.append(record)
 
     controller.on_switch_restored = hook
@@ -8523,7 +8524,9 @@ async def test_v2_response_persistence_does_not_depend_on_bookmark_settlement() 
     record = recorder.record
     assert record is not None
 
-    async def fail_bookmark(_record: ConversationRecordV1) -> None:
+    async def fail_bookmark(
+        _record: ConversationRecordV1 | ConversationRecordV2,
+    ) -> None:
         raise RuntimeError("bookmark settlement failed")
 
     controller.on_response_saved = fail_bookmark
@@ -8926,7 +8929,7 @@ async def test_explicit_save_runs_history_lifecycle_after_persist():
         await original_put(partition, record)
         events.append("put")
 
-    async def bookmark(record: ConversationRecordV1) -> None:
+    async def bookmark(record: ConversationRecordV1 | ConversationRecordV2) -> None:
         events.append("bookmark")
 
     controller._put_record = put
@@ -11201,3 +11204,193 @@ async def test_save_replay_continue_save_bookkeeping():
     assert len(record.path_node_ids()) == 4
     new_node = record.nodes[record.path_node_ids()[3]]
     assert new_node.ui == [derived("assistant", "sure")]
+
+
+# --- v1-era custom store compatibility (e0x2, plan §7.6 / D1) ----------------
+#
+# D1's compat promise: custom stores written against the released v1 API keep
+# working under the versioned record types. The v1 record material below is
+# the py 0.7.0 matrix case (tests/shared/history-v1-import-matrix.json) read
+# through the production FileConversationStore, so it is exactly what a
+# released writer put on disk -- not hand-rolled fixture data.
+
+_MATRIX_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "tests"
+    / "shared"
+    / "history-v1-import-matrix.json"
+)
+
+
+async def _released_v1_record(
+    tmp_path: Path,
+) -> tuple[ConversationRecordV1, dict[str, Any]]:
+    """The py 0.7.0 matrix case as a v1 record, plus its pinned expectation."""
+    cases = json.loads(_MATRIX_PATH.read_text(encoding="utf-8"))
+    case = next(
+        c for c in cases if c["name"] == "py_0_7_0_versioned_ui"
+    )
+    conv_id = json.loads(case["files"]["record.json"])["id"]
+    conv_dir = (
+        tmp_path
+        / sanitize_scope("chat")
+        / sanitize_scope("fixture-scope")
+        / conv_id
+    )
+    conv_dir.mkdir(parents=True)
+    for name, text in case["files"].items():
+        (conv_dir / name).write_text(text, encoding="utf-8")
+    store = FileConversationStore(dir=tmp_path)
+    record = await store.get(
+        ConversationPartition(chat_id="chat", scope="fixture-scope"), conv_id
+    )
+    assert isinstance(record, ConversationRecordV1)
+    return record, case["expect"]
+
+
+class _V1EraModelValidatingStore(ConversationStore):
+    """A store written against the released v1 API, unmodified.
+
+    Its get() builds records the v1 way: ConversationRecord.model_validate
+    on a v1-shaped dict, through the public name that named the v1 model
+    back then. Under the versioned types that same code yields an upgraded
+    v2 record.
+    """
+
+    def __init__(self, v1_record: ConversationRecordV1) -> None:
+        self._v1_dict = v1_record.model_dump(mode="json")
+        self.returned: Any = None
+
+    async def list(self, partition: ConversationPartition) -> list[Any]:
+        return []
+
+    async def get(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> Any:
+        # Exactly the code a v1-era custom store ran.
+        from shinychat.types import ConversationRecord
+
+        self.returned = ConversationRecord.model_validate(self._v1_dict)
+        return self.returned
+
+    async def put(
+        self, partition: ConversationPartition, record: Any
+    ) -> None:
+        pass
+
+    async def delete(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> None:
+        pass
+
+
+class _V1InstanceReturningStore(ConversationStore):
+    """A store that hands back a raw ConversationRecordV1 instance.
+
+    A store that cached instances from before the upgrade (or builds them
+    directly) still returns v1 models; the controller must upgrade them on
+    read.
+    """
+
+    def __init__(self, v1_record: ConversationRecordV1) -> None:
+        self._v1_dict = v1_record.model_dump(mode="json")
+        self.returned: Any = None
+
+    async def list(self, partition: ConversationPartition) -> list[Any]:
+        return []
+
+    async def get(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> Any:
+        self.returned = ConversationRecordV1.model_validate(self._v1_dict)
+        return self.returned
+
+    async def put(
+        self, partition: ConversationPartition, record: Any
+    ) -> None:
+        pass
+
+    async def delete(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> None:
+        pass
+
+
+def _assert_full_v2_restore(
+    controller: HistoryController,
+    v1_record: ConversationRecordV1,
+    expected: dict[str, Any],
+) -> None:
+    """Shared assertions: the switched-to legacy conversation restored as v2."""
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    restored = recorder.record
+    assert restored is not None
+    assert isinstance(restored, ConversationRecordV2)
+    assert restored.schema_version == 2
+    assert restored.id == v1_record.id
+    assert restored.active_leaf == expected["active_leaf"]
+    assert controller._active_id_now() == v1_record.id
+    # The displayed conversation matches the released-writer expectation.
+    fake_chat = cast(_FakeChat, controller.chat)
+    assert [
+        message["segments"][0]["content"]
+        for message in fake_chat.restored_messages
+    ] == [entry["content"] for entry in expected["display"]]
+
+
+@pytest.mark.anyio
+async def test_v1_era_custom_store_model_validate_yields_v2(tmp_path: Path):
+    """Unmodified v1-era store code now yields upgraded v2 records.
+
+    The store's get() calls ConversationRecord.model_validate on a v1 dict
+    -- the public name under the v1 API. The D1 upgrade validator turns
+    that into a v2 record, so the store keeps working and the controller
+    restores it as-is.
+    """
+    v1_record, expected = await _released_v1_record(tmp_path)
+    store = _V1EraModelValidatingStore(v1_record)
+    # The released record carries chatlas turns; a chatlas client can
+    # re-hydrate them (a plain client would be notified the recorded turns
+    # are unavailable, which is covered elsewhere).
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+        adapter=_FakeAdapter(chatlas=True),
+    )
+
+    await controller.switch_to(v1_record.id)
+
+    assert isinstance(store.returned, ConversationRecordV2)
+    _assert_full_v2_restore(controller, v1_record, expected)
+    # The validator's v2 record went through untouched: the restored record
+    # is the very object the store returned.
+    assert controller._exchange_recorder is not None
+    assert controller._exchange_recorder.record is store.returned
+
+
+@pytest.mark.anyio
+async def test_custom_store_returning_a_v1_instance_upgrades_on_read(
+    tmp_path: Path,
+):
+    """A store handing back a ConversationRecordV1 keeps working.
+
+    The controller's read-gate upgrades the v1 instance in memory (plan
+    §7.5, D1/D4) and restores the upgraded v2 record.
+    """
+    v1_record, expected = await _released_v1_record(tmp_path)
+    store = _V1InstanceReturningStore(v1_record)
+    controller, _ = _make_controller(
+        store=store,
+        use_exchange_tree=True,
+        adapter=_FakeAdapter(chatlas=True),
+    )
+
+    await controller.switch_to(v1_record.id)
+
+    assert isinstance(store.returned, ConversationRecordV1)
+    _assert_full_v2_restore(controller, v1_record, expected)
+    # The upgrade happened on the controller side: the restored record is a
+    # new v2 record, not the v1 instance the store still holds.
+    assert controller._exchange_recorder is not None
+    assert controller._exchange_recorder.record is not store.returned
