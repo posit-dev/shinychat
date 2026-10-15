@@ -33,6 +33,20 @@ from shinychat._history_store import (
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _fresh_reactive_lock():
+    # Shiny's global reactive lock binds to the first event loop that
+    # contends for it (Python < 3.14); every run_async() here is a fresh
+    # loop, so start — and leave — each test with an unbound lock, or
+    # ExtendedTask done-callbacks die with 'bound to a different event
+    # loop' and task statuses never settle.
+    from shiny.reactive._core import _reactive_environment as renv
+
+    renv._lock = None
+    yield
+    renv._lock = None
+
+
 def run_async(coro_fn: Any) -> None:
     """Run an async function in a separate thread to avoid event loop conflicts."""
     exc: list[BaseException] = []

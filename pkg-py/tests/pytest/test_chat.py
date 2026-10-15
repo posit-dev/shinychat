@@ -3054,6 +3054,10 @@ async def _run_stream_test(sent: list[Any], n: int, body: Any) -> None:
         if len(sent) >= n and not renv.lock.locked():
             break
         await asyncio.sleep(0.01)
+    # Leave the lock unbound: this loop is about to die, and a lock bound
+    # to a dead loop breaks ExtendedTask done-callbacks in later tests
+    # (Python < 3.14 binds locks to their first contending loop).
+    renv._lock = None
 
 
 def test_nested_stream_context_inside_append_message_stream_works():
