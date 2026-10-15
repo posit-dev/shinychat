@@ -213,6 +213,40 @@ def test_linear_record_pairs_into_one_exchange_per_turn() -> None:
     ]
 
 
+def test_v1_node_named_n_0000_imports_under_a_suffixed_root() -> None:
+    """A v1 node id that collides with the synthesized root name shifts
+    the root to n_0000_1; the record's root_id property reports the true
+    root either way (D5)."""
+    record = _record(
+        {
+            "n_0000": _node(
+                parent=None,
+                children=["n_0001"],
+                turns=[_chatlas_turn("user", "hi")],
+                ui=[_ui("user", "hi")],
+                selected_child="n_0001",
+            ),
+            "n_0001": _node(
+                parent="n_0000",
+                children=[],
+                turns=[_chatlas_turn("assistant", "yo")],
+                ui=[_ui("assistant", "yo")],
+                selected_child=None,
+            ),
+        },
+        current_leaf="n_0001",
+    )
+    imported, warns = import_v1_record_with_warnings(record)
+
+    assert warns == []
+    # The input node folds into its response's pair exchange, so n_0000
+    # drops its id; the collision case is visible only in the root's name.
+    assert set(imported.nodes) == {"n_0000_1", "n_0001"}
+    assert imported.root_id == "n_0000_1"
+    assert imported.path_node_ids() == ["n_0000_1", "n_0001"]
+    assert imported.active_leaf == "n_0001"
+
+
 def test_derived_ui_uses_plain_turns_kind_without_warning() -> None:
     record = _linear_record(
         ui=None,

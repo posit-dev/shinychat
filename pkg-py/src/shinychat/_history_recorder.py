@@ -330,11 +330,9 @@ class _ExchangeRecorder:
 
     def _close_root_if_inactive(self) -> None:
         assert self.record is not None
-        root_id = "n_0000"
-        root = self.record.nodes.get(root_id)
+        root_id = self.record.root_id
         if (
-            root is not None
-            and root.status == "pending"
+            self.record.nodes[root_id].status == "pending"
             and root_id not in self._stream_exchanges.values()
         ):
             self.record.finish_exchange(root_id, "ok", None)
@@ -352,7 +350,7 @@ class _ExchangeRecorder:
                 title = fallback_title_from_text(message.content)
                 self.record = await self._new_record(title=title)
                 created = True
-            root_id = "n_0000"
+            root_id = self.record.root_id
             is_first_input = not any(
                 node.input is not None for node in self.record.nodes.values()
             )

@@ -442,6 +442,21 @@ class ConversationRecordV2(BaseModel):
     values: dict[str, Any] = Field(default_factory=dict)
     bookmark_state_id: str | None = None
 
+    @property
+    def root_id(self) -> str:
+        """The unique node with no parent.
+
+        Usually ``"n_0000"``, but an imported v1 record that already had a
+        node named ``n_0000`` roots at a synthesized ``n_0000_<suffix>``
+        instead — ask the record, never assume the literal.
+        """
+        (root_id,) = [
+            node_id
+            for node_id, node in self.nodes.items()
+            if node.parent_id is None
+        ]
+        return root_id
+
     def meta(self, *, size_bytes: int) -> ConversationMeta:
         return ConversationMeta(
             id=self.id,
