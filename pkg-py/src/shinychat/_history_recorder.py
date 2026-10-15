@@ -78,7 +78,7 @@ class RecorderHost(Protocol):
 
     def _allocate_conversation_id(self) -> str: ...
 
-    async def _publish_active_v2_id(
+    async def _publish_active_id(
         self, record: ConversationRecordV2
     ) -> bool: ...
 
@@ -265,7 +265,7 @@ class _ExchangeRecorder:
             return
 
         if self._active_id_published_for is not record:
-            published = await self._host._publish_active_v2_id(record)
+            published = await self._host._publish_active_id(record)
             if published:
                 self._active_id_published_for = record
 

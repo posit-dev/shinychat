@@ -275,7 +275,7 @@ class HistoryController:
         if self.on_active_id_change is not None:
             await self.on_active_id_change(id)
 
-    async def _publish_active_v2_id(self, record: ConversationRecordV2) -> bool:
+    async def _publish_active_id(self, record: ConversationRecordV2) -> bool:
         if self._active_id_now() != record.id:
             return False
         if self.on_active_id_change is not None:
@@ -347,15 +347,15 @@ class HistoryController:
         self._schedule_exchange_retitle(record)
 
     def _schedule_exchange_retitle(self, record: ConversationRecordV2) -> None:
-        """Launch the v2 retitle task (phase-5.7 D8: `tgdt`).
+        """Launch the retitle task when the active path carries its second
+        input exchange.
 
-        v1 waits for the second settled response (``response_count == 2``).
-        The tree-aware equivalent counts exchanges carrying an ``input`` on
-        the active path, so navigation/resubmit siblings don't inflate the
-        count the way a session counter would; the task fires when that
-        count reaches 2, giving the LLM/custom ``title_fn`` the same
-        two-exchange context as v1 and skipping conversations abandoned
-        after one message. As on v1, the retitle is skipped when titling
+        The count covers exchanges carrying an ``input`` on the active
+        path, so navigation/resubmit siblings don't inflate the count the
+        way a session counter would; the task fires when that count
+        reaches 2, giving the LLM/custom ``title_fn`` the same
+        two-exchange context as classic titling and skipping conversations
+        abandoned after one message. The retitle is skipped when titling
         is disabled (``title_enabled`` False) or the title is already set
         (``title_source`` non-None: a user rename or an earlier title).
         """
@@ -372,21 +372,21 @@ class HistoryController:
             return
         turns_flat = self.adapter.get_turns_json()
         self._title_task = asyncio.create_task(
-            self.retitle_v2(turns_flat, record)
+            self.retitle(turns_flat, record)
         )
         self._title_task.add_done_callback(title_task_done)
 
-    async def retitle_v2(
+    async def retitle(
         self, turns: list[TurnDict], target: ConversationRecordV2
     ) -> None:
-        """The v2 counterpart of :meth:`retitle` (phase-5.7 D8: `tgdt`).
+        """Retitle the settled record with the LLM or custom ``title_fn``.
 
-        Same shape as the scheduling path: the caller passes the settled record
-        to title, so the slow LLM call targets the conversation that was
-        eligible when scheduling happened; bail when the conversation switched
-        away or the user renamed mid-call, then write the new title through the
-        recorder's normal v2 persist path (store put under the recorder
-        lock) and publish it via ``history_update``.
+        The slow title call targets the record passed by the scheduler, so
+        it titles the conversation that was eligible when scheduling
+        happened; bail when the conversation switched away or the user
+        renamed mid-call, then write the new title through the recorder's
+        normal persist path (store put under the recorder lock) and
+        publish it via ``history_update``.
         """
         recorder = self._exchange_recorder
         if recorder.record is not target:
