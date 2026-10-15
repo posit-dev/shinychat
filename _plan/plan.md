@@ -689,7 +689,9 @@ signed off by the driver before code (process.md §3.4).
   path walks); make the recorder's sole-ownership invariant true
   (Protocol boundary, no `getattr` fallbacks); carry the restore step on
   the exception; split `_history.py` into wiring and orchestration; trim
-  the test-only surface. No behavior change except the warning wiring.
+  the test-only surface; apply the comment-audit triage
+  (`phase-5.8-comment-audit-triage.md`). No behavior change except the
+  warning wiring.
   *Done when:* every targeted finding is resolved or dispositioned, the
   re-run analyses close clean, gates are green, and `73pm` is unblocked.
 - **Phase 6 — R port (`05vb`).** After Phase 5.8. Shared JSON fixture

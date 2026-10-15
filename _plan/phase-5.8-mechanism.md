@@ -12,7 +12,10 @@ work.
 
 Resolve the Phase-5-closeout holistic-review findings (roborev analyses
 1592 architecture, 1593 complexity, 1594 dead-code, run against the nine
-`_history*` modules at HEAD) plus one requirement gap those analyses
+`_history*` modules at HEAD), the comment audit of the same modules
+(four tranches under `.agents/prompts/review-comments.md`, triaged in
+`_plan/phase-5.8-comment-audit-triage.md`: 135 sites — 80 DELETE, 23
+REWRITE-AS-CODE, 26 KEEP), plus one requirement gap those analyses
 surfaced, so the architecture the collaborator draft PR (`73pm`) asks to
 approve — and that Phase 6 (`05vb`) copies into R — is final-shape.
 
@@ -72,7 +75,13 @@ review unit; the orchestrator requests one roborev range review per unit
    `set_active_leaf` / the importer's active-path walk;
    `TURNS_STATE_KEY` defined once and imported (replacing the
    "mirrors `_history_recorder`" comment); `_RETRYABLE_STATUSES` and the
-   `_attachment_projection` extraction in `resubmit`; store helpers
+   `_attachment_projection` extraction in `resubmit`; one `_rewind_locked`
+   skeleton shared by `handle_navigate` and `resubmit` (capture close →
+   run plan → set leaf → persist → send → `_clear_failed_restore`), with
+   `_validate_resubmit_target` and the sibling-open path extracted; the
+   recorder's one-line-differing `message_committed`/`stream_started`
+   merged; the trivial `_canonical_turns` wrapper deleted in favor of
+   calling `canonical_turns` at its two call sites; store helpers
    (`_read_jsonl`, `_upsert_meta`, `_check_overwrite`) in
    `_history_store.py`.
 4. **Recorder boundary** (D6). A `Protocol` naming what
@@ -83,8 +92,10 @@ review unit; the orchestrator requests one roborev range review per unit
    record mutation via `record.set_active_leaf`); delete the
    `getattr(..., None)` test-fake fallbacks (test fakes implement the
    Protocol); controller's `retitle` record mutation goes through the
-   recorder. Makes the Phase-4 "sole v2 record owner" invariant true.
-   R-port mirror: yes.
+   recorder; the `_TURN_BASELINE_INVALID` sentinel retires — the turn
+   baseline becomes `list[str] | None` (or carries an explicit invalid
+   flag), ending the fingerprint-collision and aliasing prose. Makes the
+   Phase-4 "sole v2 record owner" invariant true. R-port mirror: yes.
 5. **Restore-step on the exception** (D7). Replace the mutable
    `_restore_failure_step` slot, its manual reset, and the
    `restore_body_entered` flag with the step label carried on the
@@ -94,8 +105,10 @@ review unit; the orchestrator requests one roborev range review per unit
    `ChatHistory`/`_start` (Shiny wiring, restore-mode setup, input
    effects) become separate modules; the five near-identical input
    handlers share a `_transition_effect` helper; the restore-mode
-   callback-slot strategy gets a name. Lands late so units 2–3 shrink
-   the file first. R-port mirror: yes.
+   callback-slot strategy gets a name; `finish_initial` folds the
+   authoritative `send_history_update` into the helper so the ordering
+   invariant is structural. Lands late so units 2–3 shrink the file
+   first. R-port mirror: yes.
 7. **Test-only and leftover surface** (D9). Fold `replay_exchange_record`,
    `restore_bookmark_pointer`, `retry`/`regenerate` wrappers, and
    `fallback_title` into the tests or delete them; tests stop exercising
@@ -108,7 +121,19 @@ review unit; the orchestrator requests one roborev range review per unit
    `ui_message_count` comment (`replay_ui` is gone), the identity-path
    comment (`_history.py:396–400` vs `:468`/`:786`); dedupe
    `ensure_conversation_id` / `_allocate_conversation_id`; flatten the
-   no-op if/else in `_destructive_mutation`.
+   no-op if/else in `_destructive_mutation`; plus the remaining
+   low-risk list from 1593: `_check_record_for_store`'s precedence
+   expression, `handle_navigate`'s prev/next branches, a `live_turns`
+   helper, `_after_persist`, and `_parse_bookmark_pointer` for the
+   `_init_history` parsing block.
+9. **Comment hygiene** (D10). Apply the comment-audit triage
+   (`_plan/phase-5.8-comment-audit-triage.md`): the 80 DELETEs, and
+   ref-stripping of planning-artifact pointers from kept comments.
+   Lands after unit 2 (moved helpers carry clean comments) and before
+   unit 6 (the split moves a smaller, cleaner file). Sites the triage
+   mapped to units 1–8 die with those units; this unit takes the rest
+   in one mechanical pass, verified against the triage list, not
+   re-adjudicated site by site.
 
 ## Decisions
 
@@ -164,6 +189,24 @@ review unit; the orchestrator requests one roborev range review per unit
   because tests call it. Fixture-building convenience moves into test
   helpers. (`ConversationRecordV1`'s graph-editing API is explicitly out
   of this unit — see Deferred.)
+- **D10 — Comment-audit judgment calls** (driver-delegated, recorded
+  2026-10-15; full triage in `_plan/phase-5.8-comment-audit-triage.md`
+  §5). KEEP: the `_restore_failure_detail` leak-safety docstring (trust
+  boundary for the bounded-error requirement); the `_teardown` Shiny
+  effect/session constraint (trimmed); the
+  `_complete_history_transition` advisory-swallow comment (no code
+  change); the import module's "Structure mapping" paragraph and the
+  recorder/plan module-docstring contracts, minus plan pointers (the
+  parts units 4/6 make structural die with those units); the
+  `sanitize_scope` path-traversal rationale; the `(#372)` issue link
+  (exception 5). DELETE: all three "R port mirrors" notes — R6 parity
+  is enforced by shared fixtures, not prose. STRIP: bare `shinychat#…`
+  kata ids from kept comments (local task tracking); `_plan/`/
+  `plan §`/D-number references die per the audit policy. DECLINED as
+  mechanism-without-requirement: callback-registration API, `_effects`
+  registry object, `_initial_history_initialized` guard object,
+  `_teardown` owner-object refactor — their narration comments simply
+  die.
 
 ## Deferred (recorded, not this phase)
 
@@ -181,6 +224,9 @@ review unit; the orchestrator requests one roborev range review per unit
   untranslatable.
 - **Older codex reviews (1118–1197, incl. the p4-5r50 series)** →
   follow-up disposition sweep, separate task.
+- **`new_conversation_id` collision-free ids** → kata `shinychat#fd2p`
+  (backlog; changes the new-record id format, so it lands after this
+  phase's no-behavior-change boundary).
 - **Hook-registry collapse** → declined (plan §3.7). The
   turns-only fields in `StatePathContext` may move into a turns payload
   as part of unit 4 only if it stays internal.
@@ -209,3 +255,7 @@ review unit; the orchestrator requests one roborev range review per unit
 - 2026-10-15: Note drafted from roborev 1592/1593/1594 + the
   warning-wiring gap verification; driver selected full pre-port
   hardening. Awaiting approval before child-task creation.
+- 2026-10-15: Comment audit folded in (4 tranches, medium triage):
+  unit 9 added, accepted refactors folded into units 3/4/6, D10 records
+  the driver-delegated judgment calls, `fd2p` backlog filed. Still
+  awaiting driver approval of the whole gate.
