@@ -336,18 +336,20 @@ class _ExchangeRecorder:
     def move_active_leaf_locked(
         self, record: ConversationRecordV2, leaf: str
     ) -> None:
-        """Move the active leaf on a controller-validated record.
+        """Move the active leaf on the recorder's live record.
 
-        The recorder owns every live-record mutation; the controller
-        passes the record it validated and preflighted (``self.record``
-        in every current flow).
+        The controller passes the record it validated and preflighted;
+        the assert pins that this can only ever be the live record, so
+        the sole-record-owner invariant cannot silently fork.
         """
+        assert record is self.record
         record.set_active_leaf(leaf)
 
     async def persist_active_leaf_locked(
         self, record: ConversationRecordV2, leaf: str
     ) -> None:
         """Move the active leaf and persist, as one recorder-owned step."""
+        assert record is self.record
         record.set_active_leaf(leaf)
         await self.persist_record_locked()
 

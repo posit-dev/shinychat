@@ -8039,15 +8039,13 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
             controller.send_history_update = send_history_update
             recorder = _ExchangeRecorder(controller)
 
+            # Minimal honest publish semantics for this host double: the
+            # id is published iff it is still the active one. Deliberately
+            # not a copy of HistoryController._publish_active_v2_id — the
+            # crash-recovery path this test pins never observed the real
+            # method (the pre-Protocol fallback skipped it too).
             async def publish_active_v2_id(record):
-                if controller._active_id_now() != record.id:
-                    return False
-                if controller.on_active_id_change is not None:
-                    await controller.on_active_id_change(record.id)
-                return (
-                    recorder.record is record
-                    and controller._active_id_now() == record.id
-                )
+                return controller._active_id_now() == record.id
 
             controller._publish_active_v2_id = publish_active_v2_id
             transcript = ChatTranscript(
