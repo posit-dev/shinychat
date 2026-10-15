@@ -1186,7 +1186,7 @@ async def test_restore_bookmark_message_warns_on_unknown_block_type() -> None:
         sent: list[dict[str, Any]] = []
 
         async def _capture(action: Any, deps: Any = None) -> None:
-            sent.append(action)
+            sent.append({"action": action, "deps": deps})
 
         chat._send_action = _capture  # type: ignore[method-assign]
 
@@ -1227,7 +1227,9 @@ async def test_restore_bookmark_message_warns_on_unknown_block_type() -> None:
             icon="<i>bot</i>",
         )
 
-        message_actions = [action for action in sent if action["type"] == "message"]
+        message_actions = [
+            item["action"] for item in sent if item["action"]["type"] == "message"
+        ]
         assert len(message_actions) == 1
         wire_segments = message_actions[0]["message"]["segments"]
         assert [
@@ -1243,6 +1245,11 @@ async def test_restore_bookmark_message_warns_on_unknown_block_type() -> None:
         assert chat._transcript.read()[0].message.blocks == (
             _expected_restored_blocks()
         )
+
+        # The message action carries the segment's html_deps to the transport.
+        message_items = [item for item in sent if item["action"]["type"] == "message"]
+        assert len(message_items) == 1
+        assert {"name": "seg-dep"} in (message_items[0]["deps"] or [])
 
 
 @pytest.mark.anyio
