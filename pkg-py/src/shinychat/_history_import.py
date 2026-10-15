@@ -368,6 +368,14 @@ def import_v1_record_with_warnings(
                 f"best-effort leaf {best_effort!r} was imported instead"
             )
             active_leaf = best_effort
+    else:
+        # No active leaf: v1 displayed nothing for this record, and the
+        # imported record must display nothing too. Sitting at the
+        # synthesized root gives exactly that (the root has no input or
+        # messages) and is the same shape a fresh v2 record has, so restore
+        # paths that need a concrete leaf (e.g. the legacy bookmark stamp's
+        # active-leaf fallback) see a well-formed record.
+        active_leaf = root_id
 
     # Explicit active-path walk keeps the copied pointers consistent along
     # the imported path (and clears the leaf's own pointer, as v1 does).

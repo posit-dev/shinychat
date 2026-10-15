@@ -28,6 +28,7 @@ from shinychat._history_types import (
     ConversationNode,
     ConversationRecordV1,
     ConversationRecordV2,
+    new_conversation_record,
 )
 
 NOW = datetime(2026, 10, 15, 12, 0, 0, tzinfo=timezone.utc)
@@ -1052,6 +1053,26 @@ def test_dangling_current_leaf_warns_and_imports_best_effort_leaf() -> None:
     # Best effort: follow the copied selected-child pointers from the root.
     assert imported.active_leaf == "n_0002"
     assert imported.path_node_ids() == ["n_0000", "n_0002"]
+
+
+def test_pointerless_record_imports_at_the_synthesized_root() -> None:
+    """A v1 record with no current leaf imports as a well-formed empty v2 record.
+
+    v1 displayed nothing for it; the import sits at the synthesized root —
+    the same shape a fresh v2 record has — so restore paths that need a
+    concrete leaf (e.g. the legacy bookmark stamp's active-leaf fallback,
+    shinychat#e0x2) see a well-formed record. No warning: nothing was lost.
+    """
+    record = new_conversation_record(title="empty", id="c_empty")
+    imported, warns = import_v1_record_with_warnings(record)
+
+    assert warns == []
+    assert imported.schema_version == 2
+    assert set(imported.nodes) == {"n_0000"}
+    assert imported.nodes["n_0000"].status == "ok"
+    assert imported.active_leaf == "n_0000"
+    assert imported.path_node_ids() == ["n_0000"]
+    assert _display(imported) == []
 
 
 def test_missing_system_prompt_never_warns() -> None:
