@@ -90,6 +90,7 @@ async def test_put_get_round_trip(store: FileConversationStore):
     await store.put(part(scope="alice"), rec)
     got = await store.get(part(scope="alice"), rec.id)
     assert got is not None
+    assert isinstance(got, ConversationRecordV1)
     assert got.id == rec.id
     assert got.title == rec.title
     assert got.next_node_seq == rec.next_node_seq
@@ -225,6 +226,7 @@ async def test_v2_put_failure_keeps_previous_document(
         part(scope="alice"), rec.id
     )
     assert reloaded is not None
+    assert isinstance(reloaded, ConversationRecordV2)
     assert reloaded.nodes["exchange-1"].status == "ok"
 
 
@@ -317,6 +319,7 @@ async def test_file_store_round_trips_dict_tool_result_display(
     restored = await store.get(part(), rec.id)
 
     assert restored is not None
+    assert isinstance(restored, ConversationRecordV1)
     adapter.set_turns_json(restored.path_turns())
     restored_turn = cast(dict[str, Any], adapter.get_turns_json()[0])
     display = restored_turn["contents"][0]["extra"]["display"]
@@ -484,6 +487,7 @@ async def test_missing_ui_jsonl_returns_nodes_with_none_ui(
 
     got = await store.get(part(scope="alice"), rec.id)
     assert got is not None
+    assert isinstance(got, ConversationRecordV1)
     for node in got.nodes.values():
         assert node.ui is None
 
@@ -531,6 +535,7 @@ async def test_ui_growth_across_saves_is_repersisted(
 
     got = await store.get(part(), rec.id)
     assert got is not None
+    assert isinstance(got, ConversationRecordV1)
     assert got.nodes[nid].ui == [msg1, msg2]
 
     # Fresh store instance forces a re-read from disk, proving the growth
@@ -538,6 +543,7 @@ async def test_ui_growth_across_saves_is_repersisted(
     store2 = FileConversationStore(dir=tmp_path)
     got2 = await store2.get(part(), rec.id)
     assert got2 is not None
+    assert isinstance(got2, ConversationRecordV1)
     assert got2.nodes[nid].ui == [msg1, msg2]
 
 
@@ -569,6 +575,7 @@ async def test_store_fixture_matrix_unreplayable_turn_value_persists(
 
     got = await FileConversationStore(dir=tmp_path).get(part(), rec.id)
     assert got is not None
+    assert isinstance(got, ConversationRecordV1)
     assert got.path_turns() == [{"role": "assistant", "value": value}]
 
 
@@ -593,6 +600,7 @@ async def test_store_fixture_matrix_malformed_jsonl_line_warns(
         got = await store.get(part(), rec.id)
 
     assert got is not None
+    assert isinstance(got, ConversationRecordV1)
     assert got.path_turns() == [{"role": "user", "content": "preserved"}]
     assert f"{turns_file}:2" in caplog.text
 
@@ -629,6 +637,7 @@ async def test_store_fixture_matrix_grown_content_same_count_is_repersisted(
 
     got = await FileConversationStore(dir=tmp_path).get(part(), rec.id)
     assert got is not None
+    assert isinstance(got, ConversationRecordV1)
     assert got.nodes[nid].ui == rec.nodes[nid].ui
 
 
@@ -814,7 +823,9 @@ async def test_file_store_write_state_keys_partition_without_delimiter_collision
     got_b = await store.get(partition_b, conv_id)
 
     assert got_a is not None
+    assert isinstance(got_a, ConversationRecordV1)
     assert got_b is not None
+    assert isinstance(got_b, ConversationRecordV1)
     assert got_a.path_turns() == [{"role": "user", "content": "from a"}]
     assert got_b.path_turns() == [{"role": "user", "content": "from b"}]
 

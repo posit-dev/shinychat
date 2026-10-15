@@ -646,7 +646,7 @@ class _PartitionCaptureStore(ConversationStore):
         return self.records.get(conv_id)
 
     async def put(
-        self, partition: ConversationPartition, record: ConversationRecordV1
+        self, partition: ConversationPartition, record: Any
     ) -> None:
         self.put_partitions.append(partition)
         self.records[record.id] = record
@@ -5236,7 +5236,7 @@ async def test_v2_active_id_callback_runs_after_first_store_write():
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
-    persisted: list[ConversationRecordV2 | None] = []
+    persisted: list[ConversationRecordV1 | ConversationRecordV2 | None] = []
 
     async def update_url(conv_id: str | None) -> None:
         assert conv_id is not None
@@ -5274,7 +5274,7 @@ async def test_v2_active_id_callback_retries_after_first_store_failure():
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
-    persisted: list[ConversationRecordV2 | None] = []
+    persisted: list[ConversationRecordV1 | ConversationRecordV2 | None] = []
 
     async def update_url(conv_id: str | None) -> None:
         assert conv_id is not None
@@ -9564,7 +9564,9 @@ async def test_titling_fires_on_second_response_across_sessions():
         client=None,
     )
     controller2.partition = part()
-    controller2.record = await store.get(part(), conv_id)
+    restored = await store.get(part(), conv_id)
+    assert isinstance(restored, ConversationRecordV1)
+    controller2.record = restored
 
     adapter2.turns += [
         {"role": "user", "content": "more"},

@@ -58,14 +58,19 @@ class ConversationStore(ABC):
     @abstractmethod
     async def get(
         self, partition: ConversationPartition, conv_id: str
-    ) -> Any:
-        """Full record, or None if missing."""
+    ) -> ConversationRecordV1 | ConversationRecordV2 | None:
+        """Full record, or None if missing.
+
+        The record may be either schema version: stores may still hand
+        back a ``ConversationRecordV1`` (e.g. legacy data read from disk);
+        the controller upgrades v1 records in memory on read.
+        """
 
     @abstractmethod
     async def put(
         self,
         partition: ConversationPartition,
-        record: Any,
+        record: ConversationRecordV1 | ConversationRecordV2,
     ) -> None:
         """Upsert. Rename = mutate record.title and put()."""
 
@@ -287,7 +292,7 @@ class FileConversationStore(ConversationStore):
 
     async def get(
         self, partition: ConversationPartition, conv_id: str
-    ) -> Any:
+    ) -> ConversationRecordV1 | ConversationRecordV2 | None:
         conv_dir = safe_conv_path(await self._partition_dir(partition), conv_id)
         record_file = conv_dir / "record.json"
         if not record_file.is_file():
@@ -389,7 +394,7 @@ class FileConversationStore(ConversationStore):
     async def put(
         self,
         partition: ConversationPartition,
-        record: Any,
+        record: ConversationRecordV1 | ConversationRecordV2,
     ) -> None:
         record = _check_record_for_store(record)
 
@@ -605,13 +610,13 @@ class InMemoryConversationStore(ConversationStore):
 
     async def get(
         self, partition: ConversationPartition, conv_id: str
-    ) -> Any:
+    ) -> ConversationRecordV1 | ConversationRecordV2 | None:
         return self._data.get(partition, {}).get(conv_id)
 
     async def put(
         self,
         partition: ConversationPartition,
-        record: Any,
+        record: ConversationRecordV1 | ConversationRecordV2,
     ) -> None:
         record = _check_record_for_store(record)
 

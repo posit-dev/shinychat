@@ -22,6 +22,8 @@ from shinychat._history_store import (
     InMemoryConversationStore,
 )
 from shinychat._history_types import (
+    ConversationRecordV1,
+    ConversationRecordV2,
     new_conversation_record,
     new_conversation_record_v2,
 )
@@ -2108,6 +2110,7 @@ async def test_v2_client_new_chat_closes_record_and_renews_greeting(
             # holds exactly its own exchange.
             stored_closed = await store.get(partition, closed_id)
             assert stored_closed is not None
+            assert isinstance(stored_closed, ConversationRecordV2)
             contents: list[str] = []
             for node in stored_closed.nodes.values():
                 if node.input is not None:
@@ -2545,6 +2548,7 @@ async def test_v2_clear_settles_terminal_response_before_clear_mutation(
                 partition, recorder.record.id
             )
             assert stored_before_clear is not None
+            assert isinstance(stored_before_clear, ConversationRecordV2)
             assert stored_before_clear.response_count == 1
             stored_active_leaf = stored_before_clear.active_leaf
             assert stored_active_leaf is not None
@@ -2706,7 +2710,9 @@ async def test_v2_clear_retains_input_admitted_after_clear_dispatch(
                 partition, recorder.record.id
             )
             assert persisted is not None
-            persisted_tail = persisted.nodes[persisted.active_leaf]  # type: ignore[index]
+            assert isinstance(persisted, ConversationRecordV2)
+            assert persisted.active_leaf is not None
+            persisted_tail = persisted.nodes[persisted.active_leaf]
             assert persisted_tail.input is not None
             assert persisted_tail.input.content == "tail input"
             assert [
