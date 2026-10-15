@@ -19,7 +19,7 @@ from contextlib import (
     nullcontext,
     suppress,
 )
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -62,6 +62,7 @@ from shinychat._history_types import (
     MAX_SCHEMA_VERSION,
     STORED_UI_VERSION,
     CapturedMessage,
+    ConversationNode,
     ConversationRecordV1,
     ConversationRecordV2,
     ErrorEntry,
@@ -9463,6 +9464,120 @@ async def test_upgraded_v1_record_writes_back_as_v2_on_its_next_save(
     assert isinstance(stored, ConversationRecordV2)
     assert stored is recorder.record
     assert stored.schema_version == 2
+
+
+# --- lossy-import warning surfacing (read-gate) ---------------------------
+
+
+def _lossy_ui(role: str, texts: list[str]) -> list[dict[str, Any]]:
+    """Unversioned stored UI: the import re-derives one display message
+    from the node's turns and drops the rest, with a warning."""
+    return [
+        {
+            "role": role,
+            "segments": [{"content": text, "content_type": "markdown"}],
+        }
+        for text in texts
+    ]
+
+
+def _lossy_v1_record() -> ConversationRecordV1:
+    """A v1 record whose two nodes each carry one genuinely lossy step."""
+    return ConversationRecordV1(
+        id="c_lossy",
+        title="Lossy",
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        nodes={
+            "n_0001": ConversationNode(
+                parent=None,
+                children=["n_0002"],
+                turns=[_user_turn_dict("Hello")],
+                ui=_lossy_ui("user", ["Hello", "Hello again"]),
+                selected_child="n_0002",
+            ),
+            "n_0002": ConversationNode(
+                parent="n_0001",
+                children=[],
+                turns=[
+                    {
+                        "role": "assistant",
+                        "contents": [
+                            {"content_type": "text", "text": "Hi there"}
+                        ],
+                    }
+                ],
+                ui=_lossy_ui("assistant", ["Hi there", "Hi again"]),
+                selected_child=None,
+            ),
+        },
+        next_node_seq=3,
+        current_leaf="n_0002",
+        values={},
+    )
+
+
+_LOSSY_WARNS = [
+    f"conversation c_lossy: node {nid!r} carried 2 stored UI message(s) "
+    "without a version marker, but only one display message can be "
+    "re-derived from its turns; 1 message(s) were dropped"
+    for nid in ("n_0001", "n_0002")
+]
+
+
+@pytest.mark.anyio
+async def test_lossy_v1_import_warns_once_per_session_per_conversation():
+    """The read-gate surfaces each genuinely lossy import step, once.
+
+    One warning per lossy step, wording unchanged from the transform; the
+    second read of the same conversation is quiet.
+    """
+    store = _PartitionCaptureStore()
+    store.records["c_lossy"] = _lossy_v1_record()
+    controller, _ = _make_controller(store=store)
+
+    with pytest.warns(UserWarning) as caught:
+        record = await controller._get_record(part(), "c_lossy")
+
+    assert isinstance(record, ConversationRecordV2)
+    assert [str(w.message) for w in caught] == _LOSSY_WARNS
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        again = await controller._get_record(part(), "c_lossy")
+    assert isinstance(again, ConversationRecordV2)
+
+
+@pytest.mark.anyio
+async def test_released_v1_forms_never_warn_on_read(tmp_path: Path):
+    """The four released-form matrix records import losslessly: the
+    read-gate stays silent for every one of them."""
+    cases = json.loads(_MATRIX_PATH.read_text(encoding="utf-8"))
+    assert {c["name"] for c in cases} == {
+        "py_0_6_unversioned_ui",
+        "py_0_7_0_versioned_ui",
+        "py_0_7_1_attachments",
+        "r_0_5_0",
+    }
+    partition = ConversationPartition(chat_id="chat", scope="fixture-scope")
+    for case in cases:
+        conv_id = json.loads(case["files"]["record.json"])["id"]
+        conv_dir = (
+            tmp_path
+            / sanitize_scope("chat")
+            / sanitize_scope("fixture-scope")
+            / conv_id
+        )
+        conv_dir.mkdir(parents=True)
+        for name, text in case["files"].items():
+            (conv_dir / name).write_text(text, encoding="utf-8")
+        store = FileConversationStore(dir=tmp_path)
+        controller, _ = _make_controller(store=store)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            record = await controller._get_record(partition, conv_id)
+        assert isinstance(record, ConversationRecordV2), case["name"]
 
 
 # --- rename/delete/switch guards (previously the shared v1 behavior matrix)

@@ -43,7 +43,7 @@ from ._history_client import (
     turn_dict_effective_role,
     turn_fallback_markdown,
 )
-from ._history_import import import_v1_record
+from ._history_import import import_v1_record_with_warnings
 from ._history_plan import (
     RestorePlan,
 )
@@ -392,6 +392,9 @@ class HistoryController:
             restore_callbacks if restore_callbacks is not None else []
         )
 
+        # Conversation ids whose lossy v1-import warnings already surfaced
+        # this session; the read-gate warns once per session per conversation.
+        self._lossy_import_warned: set[str] = set()
         self.partition: ConversationPartition | None = None
         # Active conversation identity: an identified draft (submitted but
         # not yet saved) has an ID and no record. All identity mutations go
@@ -508,13 +511,17 @@ class HistoryController:
         if record is not None:
             check_schema_version(record.schema_version)
             if isinstance(record, ConversationRecordV1):
-                # Lazy-conversion read-gate (plan §7.5, mechanism D1/D4): a
-                # v1 record -- read from disk by a built-in store or handed
-                # back by a custom store -- upgrades to v2 in memory here, and
-                # is written back as v2 on its next save. The non-warning
-                # import path keeps repeated reads quiet: warnings name only
-                # genuinely lossy imports and must not re-fire on every read.
-                record = import_v1_record(record)
+                # Lazy-conversion read-gate: a v1 record -- read from disk by
+                # a built-in store or handed back by a custom store --
+                # upgrades to v2 in memory here, and is written back as v2 on
+                # its next save. Genuinely lossy upgrade steps surface as
+                # warnings exactly once per session per conversation; re-reads
+                # re-import quietly.
+                record, warns = import_v1_record_with_warnings(record)
+                if warns and record.id not in self._lossy_import_warned:
+                    self._lossy_import_warned.add(record.id)
+                    for warning in warns:
+                        warnings.warn(warning)
             if not isinstance(record, ConversationRecordV2):
                 raise ValueError(
                     "Conversation record schema does not match the active history path."
