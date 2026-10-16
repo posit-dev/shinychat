@@ -13,6 +13,8 @@ unless approval is explicitly waived. Policies and reviewed workflow:
 is closed with driver-approved scoped evidence; full-suite CI is green at
 `78819fa0` (runtime fix `506d92ab`). See the Phase 5.8 handoff for the
 explicitly accepted pre-existing local modal-test failure.
+**Execution pickup:** `.agents/prompts/pickup-phase-5.9.md` carries the current
+approval disposition, source state, and next-agent handoff.
 **Kata:** epic `shinychat#6d0d` · Phase 1 `g49a` · Phase 2 `kjyt` · Phase 3
 `qf2r` · Phase 4 `azvt` · Phase 5 `fg70` · Phase 5.5 `pa98` · Phase 5.6
 `e1dv` · Phase 5.7 `36z7` · Phase 5.8 `e8kd` · Phase 5.9 `f9hc` · Phase 6
