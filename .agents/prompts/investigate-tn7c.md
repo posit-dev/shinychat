@@ -1,5 +1,14 @@
 # Investigate tn7c: bookmark soft-switch CI timeout
 
+> **Historical investigation prompt (2026-10-16).** Investigation captured
+> two same-signature failures: the outer row's visible non-interactive region
+> received the click while its enabled select button was off-screen during
+> drawer opening; no selection input was dispatched. Garrick approved the
+> two test-only actual-button locator changes and the verification plan.
+> See `shinychat#tn7c` for current review/verification status. The investigation
+> instructions below do not authorize more retries, sibling fixes, closure,
+> restacking, or the R port; exact fix-SHA green CI is still required.
+
 You are a high-capability investigator in shinychat, working at:
 
 `/Users/garrick/work/posit-dev/shinychat.worktrees/feat/history-exchange-tree`

@@ -424,10 +424,19 @@ architecture, 1605 complexity, 1606 dead-code. Originals 1592/1593/
   soft-switch timeout now has dedicated issue `shinychat#tn7c` and handoff
   `.agents/prompts/investigate-tn7c.md`. Both CI attempts at f7a75c5c passed
   c87g but ended 225/226 on this other test; all other checks are green.
-- **Next:** investigate tn7c, obtain the driver's fix ruling, and resolve
-  it with reviewed changes and green full-suite CI before preparing the
-  Python review stack, requesting review, or starting the R port. The dated
-  plan/process amendment supersedes the old R-before-stack sequence.
-- **Provisional:** tn7c's root remains unverified. No implementation,
-  third CI retry, upstream report, restack, or R-port work is authorized by
-  the investigation handoff; other backlog flakes remain independent.
+- **Investigated:** two unchanged local captures reproduced tn7c's URL
+  timeout. During drawer opening, the outer row's visible non-interactive
+  region received the click while the enabled select button was entirely
+  off-screen; no `chat_history_select` was sent. The store was connected and
+  unblocked. Original CI click chronology is unavailable; the link to CI
+  remains the same traceback signature, not directly captured boundaries.
+- **Approved:** Garrick authorized the two test-only actual-button locator
+  changes in the bookmark soft-switch test, preserving every assertion and
+  timeout. No production, dependency, JS/SCSS/R, or sibling-test changes.
+  Verification and review are in progress; evidence and current status are
+  on `shinychat#tn7c`.
+- **Next:** verify repeated untraced targets and broader suites, static/unit
+  gates, and external review, then obtain green full-suite CI at the exact
+  pushed fix SHA before closure. The Python stack and R port remain gated;
+  other backlog flakes remain independent. No upstream report, restack, or
+  R-port work is authorized by this fix.
