@@ -1,8 +1,9 @@
 # Plan: exchange-tree conversation history
 
-**Status:** committed · Phases 0–5, 5.5, 5.6, 5.7, and 5.8 complete; reset
-after a pause on 2026-10-14 (decisions in §7). Next phase: **6 — R port** ·
-2026-10-15
+**Status:** committed · Phases 0–5, 5.5, 5.6, 5.7, and 5.8 complete.
+**Next:** resolve CI blocker `shinychat#tn7c`, establish green full-suite CI,
+then prepare the Python review stack before the R port · driver decision
+2026-10-16 (amends the 2026-10-14 sequencing in §7.1).
 **Kata:** epic `shinychat#6d0d` · Phase 1 `g49a` · Phase 2 `kjyt` · Phase 3
 `qf2r` · Phase 4 `azvt` · Phase 5 `fg70` · Phase 5.5 `pa98` · Phase 5.6
 `e1dv` · Phase 5.7 `36z7` · Phase 5.8 `e8kd` · Phase 6 `05vb` · Phase 7
@@ -698,7 +699,9 @@ signed off by the driver before code (process.md §3.4).
   reviews (1595–1603, 1607; findings batched and closed on each issue);
   closeout re-runs 1604/1605/1606 dispositioned in the mechanism note and
   1592/1593/1594 closed; `73pm` unblocked.
-- **Phase 6 — R port (`05vb`).** After Phase 5.8. Shared JSON fixture
+- **Phase 6 — R port (`05vb`).** After Phase 5.8 and the 2026-10-16
+  pre-port gate: resolve `tn7c`, establish green full-suite CI, and prepare
+  the Python review stack on which the R port will stack. Shared JSON fixture
   matrices + structurally parallel error messages as the parity contract.
   `main` #380 already moved R to server-owned messages, so the R port of the
   Phase 2 core starts from there. Scope: the transcript owner and stream
@@ -717,7 +720,11 @@ signed off by the driver before code (process.md §3.4).
   forking (§3.6) is in scope or backlog.
   *Done when:* deprecations ship with way-pointing, docs describe only v2,
   and `_plan/` is ready for removal.
-- **Phase 8 — cut the review stack (`9xgn`).** Cut the final diff into
+- **Phase 8 — cut the review stack (`9xgn`).** **Timing amended
+  2026-10-16:** prepare the initial Python stack after `tn7c` resolution and
+  green full-suite CI, before the R port. Verify each PR against its intended
+  base; R work stacks on that foundation. Task decomposition/dependency
+  resequencing is separate from the `tn7c` investigation. Cut the diff into
   stacked PRs along subsystem seams: JS transcript and protocol; Python
   transcript owner; record, store, and import; restore and branching; R
   port; legacy and docs. Each PR is independently reviewable; the stack
@@ -758,8 +765,12 @@ list (§4) and process.md §8.
 1. **Work organization.** Implementation continues on the one feature branch
    `feat/history-exchange-tree`. The per-unit stacked-PR workflow caused
    friction during Phases 2–5 and is retired (process.md §8.1). Review
-   happens at the end: Phase 8 cuts the finished branch into a stack of
-   reviewable PRs along subsystem seams, and the stack merges together.
+   was originally scheduled at the end. **Amendment 2026-10-16:** resolve
+   `tn7c` and get full-suite CI green before preparing the initial Python
+   review stack or requesting review; then stack the R port on that
+   foundation. Independently verify each stack level. This supersedes the
+   former R-before-stack order, not the subsystem seams or scope. Do not
+   perform stack/dependency reorganization as part of the investigation.
 2. **Main sync by merge.** Bring `main` in with merge commits, not rebases.
    Branch history is disposable because Phase 8 rebuilds the stack from the
    final diff. Sync at least at every phase boundary.

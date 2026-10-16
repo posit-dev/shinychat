@@ -1,5 +1,10 @@
 # Investigate c87g: bookmark-mode input-restore race
 
+> **Historical — completed 2026-10-16.** c87g is closed after a verified
+> test-only New-chat reload wait (`70f991f2`). Its issue records the corrected
+> verdict; family hypotheses below were not established. For the remaining
+> soft-switch CI blocker, use `investigate-tn7c.md` and `shinychat#tn7c`.
+
 You are a high-capability investigator working in the shinychat repo at
 `/Users/garrick/work/posit-dev/shinychat.worktrees/feat/history-exchange-tree`
 (branch `feat/history-exchange-tree`, the exchange-tree conversation-history

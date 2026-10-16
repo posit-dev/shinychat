@@ -148,7 +148,11 @@ not wreckage.
    are implemented on the one feature branch, in small conventional commits
    grouped by subsystem so the final diff can be cut cleanly. Bring `main`
    in by merge at least at every phase boundary; unresolved drift is a
-   finding. The review stack is cut in Phase 8 and merges together. (The
+   finding. **Timing amended 2026-10-16 (plan.md §7.1):** resolve CI blocker
+   `tn7c` and establish green full-suite CI before preparing the initial
+   Python review stack or requesting review; the R port stacks on that
+   foundation. Verify each PR against its intended base. Stack/dependency
+   reorganization is separate from the `tn7c` investigation. (The
    original rule, one small stacked PR per unit of work with settled
    segments merging at phase boundaries, caused friction in Phases 2–5 and
    is retired.)

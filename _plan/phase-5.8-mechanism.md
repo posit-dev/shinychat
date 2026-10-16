@@ -417,3 +417,17 @@ architecture, 1605 complexity, 1606 dead-code. Originals 1592/1593/
   without claiming that exact interleaving was proven. No upstream
   report, restore guards, or production ordering changes are warranted
   by the captured c87g failure.
+
+## Remaining CI blocker / pre-stack gate (2026-10-16)
+
+- **Landed:** c87g is closed with scoped evidence; the separate B-to-A
+  soft-switch timeout now has dedicated issue `shinychat#tn7c` and handoff
+  `.agents/prompts/investigate-tn7c.md`. Both CI attempts at f7a75c5c passed
+  c87g but ended 225/226 on this other test; all other checks are green.
+- **Next:** investigate tn7c, obtain the driver's fix ruling, and resolve
+  it with reviewed changes and green full-suite CI before preparing the
+  Python review stack, requesting review, or starting the R port. The dated
+  plan/process amendment supersedes the old R-before-stack sequence.
+- **Provisional:** tn7c's root remains unverified. No implementation,
+  third CI retry, upstream report, restack, or R-port work is authorized by
+  the investigation handoff; other backlog flakes remain independent.
