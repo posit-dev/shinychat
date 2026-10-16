@@ -18,6 +18,7 @@ def test_chat_survives_dom_move(page: Page, local_app: ShinyAppProc) -> None:
     # that lives only in client-side state (not in the server-rendered HTML).
     user_message = "I need help with something"
     chat.set_user_input(user_message)
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message(f"You said: {user_message}")
 
@@ -36,5 +37,6 @@ def test_chat_survives_dom_move(page: Page, local_app: ShinyAppProc) -> None:
     # And the chat must remain functional after the move.
     follow_up = "thanks"
     chat.set_user_input(follow_up)
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message(f"You said: {follow_up}")

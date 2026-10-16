@@ -1,14 +1,31 @@
 from __future__ import annotations
 
+import asyncio
+import sys
+import warnings
+from copy import deepcopy
 from typing import Any, Awaitable, Callable, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import shinychat._history as history_module
+import shinychat._history_plan as history_plan_module
+from shiny import reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat
-from shinychat._history import ChatHistory
-from shinychat.types import HistoryOptions
+from shinychat._history import ChatHistory, HistoryInputIds
+from shinychat._history_store import (
+    ConversationPartition,
+    FileConversationStore,
+    InMemoryConversationStore,
+)
+from shinychat._history_types import (
+    ConversationRecordV2,
+    new_conversation_record,
+    new_conversation_record_v2,
+)
+from shinychat.types import ChatMessage, HistoryOptions
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -33,6 +50,18 @@ class _MockSession:
         pass
 
     def _increment_busy_count(self) -> None:
+        pass
+
+    def _decrement_busy_count(self) -> None:
+        pass
+
+    def _process_ui(self, ui: Any) -> dict[str, Any]:
+        return {"html": str(ui), "deps": []}
+
+    def _send_message_sync(self, message: Any) -> None:
+        pass
+
+    async def _unhandled_error(self, error: Any) -> None:
         pass
 
     def is_stub_session(self) -> bool:
@@ -68,6 +97,14 @@ def test_history_config_defaults_preserved():
     chat = _make_chat(history=HistoryOptions(store="memory"))
     assert chat.history._store == "memory"
     assert chat.history._restore_mode == "browser"  # default preserved
+    assert chat.history._restore_bootstrap == "recorded"
+
+
+def test_history_config_accepts_live_restore_bootstrap():
+    chat = _make_chat(
+        history=HistoryOptions(store="memory", restore_bootstrap="live")
+    )
+    assert chat.history._restore_bootstrap == "live"
 
 
 def test_on_save_registers_callback():
@@ -240,7 +277,40 @@ class _MockBookmark:
     def __init__(self) -> None:
         self.exclude: list[str] = []
         self.store = "disable"
-        self._restore_context = None
+        self._restore_context: Any = None
+        self.bookmark_callbacks: list[Callable[[Any], Any]] = []
+        self.bookmarked_callbacks: list[Callable[[str], Any]] = []
+        self.bookmark_urls: list[str] = []
+        self.bookmark_states: list[dict[str, Any]] = []
+
+    def on_bookmark(self, callback: Callable[[Any], Any]) -> Callable[[], None]:
+        self.bookmark_callbacks.append(callback)
+
+        def cancel() -> None:
+            self.bookmark_callbacks.remove(callback)
+
+        return cancel
+
+    def on_bookmarked(self, callback: Callable[[str], Any]) -> Callable[[], None]:
+        self.bookmarked_callbacks.append(callback)
+
+        def cancel() -> None:
+            self.bookmarked_callbacks.remove(callback)
+
+        return cancel
+
+    async def do_bookmark(self) -> None:
+        state = MagicMock(values={})
+        for callback in self.bookmark_callbacks:
+            result = callback(state)
+            if asyncio.iscoroutine(result):
+                await result
+        self.bookmark_states.append(state.values)
+        url = self.bookmark_urls.pop(0)
+        for callback in list(self.bookmarked_callbacks):
+            result = callback(url)
+            if asyncio.iscoroutine(result):
+                await result
 
 
 class _LiveSession(_MockSession):
@@ -250,6 +320,7 @@ class _LiveSession(_MockSession):
         super().__init__()
         self.bookmark = _MockBookmark()
         self.ended_callbacks: list[Callable[[], None]] = []
+        self.messages: list[dict[str, Any]] = []
 
     def is_stub_session(self) -> bool:
         return False
@@ -270,7 +341,8 @@ class _LiveSession(_MockSession):
         pass
 
     async def send_custom_message(self, type: str, message: object) -> None:
-        pass
+        assert type == "shinyChatMessage"
+        self.messages.append(cast(dict[str, Any], message))
 
 
 class _MockClient:
@@ -293,6 +365,1889 @@ def _make_live_chat(id: str, session: Any) -> Chat:
             client=cast(Any, _MockClient()),
             history=HistoryOptions(store="memory"),
         )
+
+
+def _completion_actions(session: _LiveSession) -> list[dict[str, Any]]:
+    return [
+        message["action"]
+        for message in session.messages
+        if message["action"]["type"] == "history_transition_complete"
+    ]
+
+
+def _history_updates(session: _LiveSession) -> list[dict[str, Any]]:
+    return [
+        message["action"]
+        for message in session.messages
+        if message["action"]["type"] == "history_update"
+    ]
+
+
+class _CapturedHistoryEffect:
+    def __init__(
+        self,
+        handler: Callable[[], Awaitable[None]],
+        handlers: dict[str, Callable[[], Awaitable[None]]],
+    ) -> None:
+        handlers[handler.__name__] = handler
+
+    def destroy(self) -> None:
+        pass
+
+
+def _capture_history_effects(
+    handlers: dict[str, Callable[[], Awaitable[None]]],
+) -> Callable[..., Any]:
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> _CapturedHistoryEffect:
+            return _CapturedHistoryEffect(effect_handler, handlers)
+
+        return decorator if handler is None else decorator(handler)
+
+    return capture_effect
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("with_client", [False, True])
+async def test_history_disabled_publishes_one_initial_withdrawal(
+    with_client: bool,
+) -> None:
+    session = _LiveSession()
+    with session_context(cast(Any, session)):
+        chat = Chat(
+            f"history_disabled_{with_client}",
+            client=cast(Any, _MockClient()) if with_client else None,
+            history=False,
+        )
+        try:
+            await reactive.flush()
+            await reactive.flush()
+        finally:
+            chat.destroy()
+
+    assert _history_updates(session) == [
+        {
+            "type": "history_update",
+            "enabled": False,
+            "conversations": [],
+            "active_id": None,
+        }
+    ]
+    assert chat.history._started is False
+    assert chat.history._controller is None
+
+
+@pytest.mark.anyio
+async def test_chat_without_client_publishes_initial_history_withdrawal() -> None:
+    session = _LiveSession()
+    with session_context(cast(Any, session)):
+        chat = Chat("history_unavailable_without_client")
+        try:
+            await reactive.flush()
+            await reactive.flush()
+        finally:
+            chat.destroy()
+
+    assert _history_updates(session) == [
+        {
+            "type": "history_update",
+            "enabled": False,
+            "conversations": [],
+            "active_id": None,
+        }
+    ]
+    assert chat.history._started is False
+    assert chat.history._controller is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("restore_bootstrap", ["recorded", "live"])
+@pytest.mark.parametrize("target_id", [None, "c_target"])
+async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
+    restore_bootstrap: str,
+    target_id: str | None,
+) -> None:
+    chat_id = f"initial_capture_{restore_bootstrap}_{target_id or 'fresh'}"
+    session = _LiveSession()
+    store = InMemoryConversationStore()
+    history_ids = HistoryInputIds.for_chat(ResolvedId(chat_id))
+    session.input[history_ids.browser_token] = reactive.Value("token")
+    session.input[history_ids.current_id] = reactive.Value(target_id)
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    with (
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            chat_id,
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode="browser",
+                restore_bootstrap=restore_bootstrap,  # type: ignore[arg-type]
+            ),
+        )
+
+    try:
+        controller = chat.history._controller
+        assert controller is not None
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+        assert not chat.history._initial_history_initialized
+        if target_id is not None:
+            await store.put(
+                ConversationPartition(chat_id=chat_id, scope="test"),
+                new_conversation_record_v2(
+                    title="target",
+                    id=target_id,
+                    client_info={},
+                ),
+            )
+        stored_before = await store.list(
+            ConversationPartition(chat_id=chat_id, scope="test")
+        )
+
+        with warnings.catch_warnings():
+            # User-input recording stays silent (direct submissions have the
+            # P5.4 rejection path); scope the filter so only this call's
+            # warnings become errors.
+            warnings.simplefilter("error")
+            await chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="blocked input", role="user")
+            )
+        with pytest.warns(UserWarning, match="The append was ignored because"):
+            await chat.append_message(object())
+        # The internal chunk-start guard is defense in depth for private
+        # misuse; like the public stream entry points, it raises.
+        with pytest.raises(
+            RuntimeError, match="chat history is still initializing"
+        ):
+            await chat._append_message_chunk(
+                "", chunk="start", stream_id="blocked-stream"
+            )
+        # Suppressed stream entry points now raise instead of silently
+        # dismissing: the producer is unconsumed and the caller keeps
+        # ownership of it (D1).
+        with pytest.raises(RuntimeError, match="chat history is still initializing"):
+            async with chat.message_stream_context() as stream:
+                await stream.append("blocked stream append")
+                await stream.replace("blocked stream replace")
+
+        stream_started = False
+
+        async def blocked_stream():
+            nonlocal stream_started
+            stream_started = True
+            yield "blocked stream update"
+
+        with patch.object(
+            reactive,
+            "extended_task",
+            wraps=reactive.extended_task,
+        ) as extended_task:
+            with pytest.raises(
+                RuntimeError, match="chat history is still initializing"
+            ):
+                await chat.append_message_stream(blocked_stream())
+        extended_task.assert_not_called()
+        assert not stream_started
+
+        assert chat._transcript.read() == ()
+        assert chat._transcript.active_stream_id is None
+        assert recorder.record is None
+        assert [
+            message["action"]["type"] for message in session.messages
+        ] == []
+        assert (
+            await store.list(ConversationPartition(chat_id=chat_id, scope="test"))
+        ) == stored_before
+
+        # Client-triggered slash commands during the window are dropped
+        # silently (like user input): the handler does not run and no
+        # warning fires. (The effect's finally still clears the client's
+        # loading indicator — pre-existing UX, not a transcript write.)
+        slash_calls: list[str] = []
+
+        @chat.slash_command("blocked", "Blocked command")
+        async def _(user_text: str) -> None:
+            slash_calls.append(user_text)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            cast(
+                Any, session.input[chat._slash_command_id]
+            )._set({"command": "blocked", "userText": "nope", "echo": True})
+            with session_context(cast(Any, session)), reactive.isolate():
+                await handlers["_on_slash_command"]()
+        assert slash_calls == []
+        assert chat._transcript.read() == ()
+
+        with session_context(cast(Any, session)), reactive.isolate():
+            await handlers["_init_history"]()
+
+        assert chat.history._initial_history_initialized
+        assert len(_history_updates(session)) == 1
+        await chat.append_message("root captured append")
+        assert recorder.record is not None
+        root_id = recorder.record.active_leaf
+        assert root_id is not None
+        root = recorder.record.nodes[root_id]
+        assert root.input is None
+        assert [
+            message.as_stored_message().content
+            for message in cast(Any, root).messages
+        ] == ["root captured append"]
+
+        # Post-admission, the same slash command runs — proving the earlier
+        # suppression was the admission guard, not a dead handler.
+        cast(
+            Any, session.input[chat._slash_command_id]
+        )._set({"command": "blocked", "userText": "works", "echo": True})
+        with session_context(cast(Any, session)), reactive.isolate():
+            await handlers["_on_slash_command"]()
+        assert slash_calls == ["works"]
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> None:
+    chat_id = "initial_readiness_cleanup_send_failure"
+    session = _LiveSession()
+    store = InMemoryConversationStore()
+    history_ids = HistoryInputIds.for_chat(ResolvedId(chat_id))
+    session.input[history_ids.browser_token] = reactive.Value("token")
+    session.input[history_ids.current_id] = reactive.Value("c_target")
+    await store.put(
+        ConversationPartition(chat_id=chat_id, scope="test"),
+        new_conversation_record_v2(
+            title="target",
+            id="c_target",
+            client_info={},
+        ),
+    )
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    with (
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            chat_id,
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode="browser",
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    original = RuntimeError("restore failed")
+    publication_failure = RuntimeError("history update failed")
+
+    async def fail_replay(
+        _target: Any, _node_ids: tuple[str, ...]
+    ) -> None:
+        raise original
+
+    async def fail_history_update() -> None:
+        raise publication_failure
+
+    controller._replay_exchange_display = fail_replay  # type: ignore[method-assign]
+    controller.send_history_update = fail_history_update  # type: ignore[method-assign]
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+    settled: list[bool] = []
+
+    async def on_settled(restored: bool) -> None:
+        settled.append(restored)
+
+    controller.on_settled = on_settled
+
+    try:
+        with (
+            session_context(cast(Any, session)),
+            reactive.isolate(),
+            pytest.raises(RuntimeError) as raised,
+            pytest.warns(
+                UserWarning,
+                match=r"Chat history restore failed "
+                r"\(failed while replaying the conversation display\): "
+                r"RuntimeError\('restore failed'\)",
+            ),
+        ):
+            await handlers["_init_history"]()
+
+        assert raised.value is original
+        assert not chat.history._initial_history_initialized
+        assert settled == [False]
+        assert recorder.record is None
+        assert controller._active_id_now() is None
+        assert _history_updates(session) == []
+        notifier.assert_awaited_once_with(
+            recovery_incomplete=True,
+            detail="failed while replaying the conversation display",
+        )
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_initial_readiness_flips_after_history_update_send() -> None:
+    session = _LiveSession()
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+    with (
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "initial_readiness_send",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store="memory",
+                scope="test",
+                restore_mode="none",
+            ),
+        )
+
+    try:
+        controller = chat.history._controller
+        assert controller is not None
+        send_started = asyncio.Event()
+        release_send = asyncio.Event()
+        send_history_update = controller.send_history_update
+
+        async def blocked_history_update() -> None:
+            send_started.set()
+            await release_send.wait()
+            await send_history_update()
+
+        controller.send_history_update = blocked_history_update  # type: ignore[method-assign]
+        with session_context(cast(Any, session)), reactive.isolate():
+            init = asyncio.ensure_future(handlers["_init_history"]())
+        await send_started.wait()
+        assert not chat.history._initial_history_initialized
+
+        release_send.set()
+        await init
+        assert chat.history._initial_history_initialized
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_successful_bookmark_pointer_suppresses_then_admits_root_append() -> None:
+    chat_id = "initial_bookmark_pointer_boundary"
+    session = _LiveSession()
+    session.bookmark.store = "server"
+    session.bookmark._restore_context = MagicMock(
+        active=True,
+        values={
+            f"{chat_id}_history_exchange_pointer": {
+                "conversation_id": "c_target",
+                "node_id": "n_0000",
+            }
+        },
+    )
+    store = InMemoryConversationStore()
+    await store.put(
+        ConversationPartition(chat_id=chat_id, scope="test"),
+        new_conversation_record_v2(
+            title="target",
+            id="c_target",
+            client_info={},
+        ),
+    )
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    with (
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            chat_id,
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode="bookmark",
+            ),
+        )
+
+    try:
+        controller = chat.history._controller
+        assert controller is not None
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+
+        with pytest.warns(UserWarning, match="The append was ignored because"):
+            await chat.append_message("suppressed bookmark append")
+        assert not chat.history._initial_history_initialized
+        assert chat._transcript.read() == ()
+        assert recorder.record is None
+        assert session.messages == []
+
+        with session_context(cast(Any, session)), reactive.isolate():
+            await handlers["_init_history"]()
+
+        assert chat.history._initial_history_initialized
+        assert len(_history_updates(session)) == 1
+        assert recorder.record is not None
+        assert recorder.record.id == "c_target"
+        assert recorder.record.active_leaf == "n_0000"
+        assert controller._active_id_now() == "c_target"
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            await chat.append_message("admitted bookmark append")
+        assert recorder.record is not None
+        active_leaf = recorder.record.active_leaf
+        assert active_leaf is not None
+        root = recorder.record.nodes[active_leaf]
+        assert root.input is None
+        assert [
+            message.as_stored_message().content
+            for message in cast(Any, root).messages
+        ] == ["admitted bookmark append"]
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_initial_readiness_rejects_direct_input_without_mutation() -> (
+    None
+):
+    chat_id = "initial_readiness_direct_input"
+    session = _LiveSession()
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    with (
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            chat_id,
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store="memory",
+                scope="test",
+                restore_mode="none",
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    controller.partition = ConversationPartition(chat_id=chat_id, scope="test")
+
+    with session_context(cast(Any, session)), reactive.isolate():
+        chat._record_accepted_user_input(
+            ChatMessage(content="forged input", role="user")
+        )
+        await chat._record_accepted_user_input_with_capture(
+            ChatMessage(content="direct input", role="user")
+        )
+
+    assert chat._transcript.read() == ()
+    with reactive.isolate():
+        assert chat._latest_user_input() is None
+        assert chat._normal_user_submission() is None
+    assert controller._active_id_now() is None
+    assert recorder.record is None
+
+
+@pytest.mark.anyio
+async def test_history_enabled_startup_advertises_completion_v2() -> None:
+    session = _LiveSession()
+    with session_context(cast(Any, session)):
+        chat = Chat(
+            "history_enabled_v2",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store="memory",
+                scope="test",
+                restore_mode="none",
+            ),
+        )
+        try:
+            await reactive.flush()
+            await reactive.flush()
+        finally:
+            chat.destroy()
+
+    assert _history_updates(session) == [
+        {
+            "type": "history_update",
+            "enabled": True,
+            "conversations": [],
+            "active_id": None,
+            "transition_protocol": "completion-v2",
+        }
+    ]
+    assert chat.history._started is True
+    assert chat.history._controller is not None
+
+
+@pytest.mark.anyio
+async def test_v2_server_bookmark_stamps_atomic_history_pointer_only() -> None:
+    session = _LiveSession()
+    session.bookmark.store = "server"
+
+    class CapturedEffect:
+        def __init__(self, _handler: Callable[[], Awaitable[None]]) -> None:
+            pass
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    with (
+        patch.object(reactive, "effect", capture_effect),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "bookmark_pointer",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=InMemoryConversationStore(),
+                scope="test",
+                restore_mode="none",
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    recorder.record = new_conversation_record_v2(
+        title="pointer",
+        id="c_pointer",
+        client_info={},
+    )
+    state = MagicMock(values={})
+
+    for callback in session.bookmark.bookmark_callbacks:
+        result = callback(state)
+        if asyncio.iscoroutine(result):
+            await result
+
+    assert state.values == {
+        "bookmark_pointer_history_exchange_pointer": {
+            "conversation_id": "c_pointer",
+            "node_id": "n_0000",
+        }
+    }
+
+
+@pytest.mark.anyio
+async def test_v2_stale_server_bookmark_pointer_notifies_and_keeps_draft() -> None:
+    session = _LiveSession()
+    session.bookmark.store = "server"
+    session.bookmark._restore_context = MagicMock(
+        active=True,
+        values={
+            "stale_pointer_history_exchange_pointer": {
+                "conversation_id": "missing",
+                "node_id": "n_missing",
+            }
+        },
+    )
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    class CapturedEffect:
+        def __init__(self, handler: Callable[[], Awaitable[None]]) -> None:
+            handlers[handler.__name__] = handler
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    notification = MagicMock()
+    with (
+        patch.object(reactive, "effect", capture_effect),
+        patch("shiny.ui.notification_show", notification),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "stale_pointer",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=InMemoryConversationStore(),
+                scope="test",
+                restore_mode="none",
+            ),
+        )
+
+    with (
+        patch("shiny.ui.notification_show", notification),
+        session_context(cast(Any, session)),
+        reactive.isolate(),
+    ):
+        await handlers["_init_history"]()
+
+    controller = chat.history._controller
+    assert controller is not None
+    assert controller._active_id_now() is None
+    assert controller._exchange_recorder is not None
+    assert controller._exchange_recorder.record is None
+    assert chat.history._initial_history_initialized
+    assert chat.messages() == ()
+    notification.assert_called_once()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("restore_mode", ["bookmark", "browser", "url"])
+async def test_v2_initial_restore_preflight_failure_recovers(
+    restore_mode: str,
+) -> None:
+    chat_id = f"initial_restore_{restore_mode}"
+    session = _LiveSession()
+    store = InMemoryConversationStore()
+    history_ids = HistoryInputIds.for_chat(ResolvedId(chat_id))
+    if restore_mode == "bookmark":
+        session.bookmark.store = "server"
+        session.bookmark._restore_context = MagicMock(
+            active=True,
+            values={
+                f"{chat_id}_history_exchange_pointer": {
+                    "conversation_id": "c_target",
+                    "node_id": "n_0000",
+                }
+            },
+        )
+    else:
+        session.input[history_ids.browser_token] = reactive.Value("token")
+        input_id = (
+            history_ids.current_id
+            if restore_mode == "browser"
+            else history_ids.url_id
+        )
+        session.input[input_id] = reactive.Value("c_target")
+
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    class CapturedEffect:
+        def __init__(self, handler: Callable[[], Awaitable[None]]) -> None:
+            handlers[handler.__name__] = handler
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    with (
+        patch.object(reactive, "effect", capture_effect),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            chat_id,
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode=restore_mode,  # type: ignore[arg-type]
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    target = new_conversation_record_v2(
+        title="target",
+        id="c_target",
+        client_info={},
+    )
+    target_before = target.model_dump(mode="json")
+    partition = ConversationPartition(chat_id=chat_id, scope="test")
+    await store.put(partition, target)
+    expected = ValueError("initial preflight failed")
+
+    def fail_preflight(*_args: Any, **_kwargs: Any) -> Any:
+        raise expected
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    settled: list[bool] = []
+
+    async def on_settled(restored: bool) -> None:
+        settled.append(restored)
+
+    controller.on_settled = on_settled
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+
+    with (
+        patch.object(history_plan_module, "preflight_state", fail_preflight),
+        session_context(cast(Any, session)),
+        reactive.isolate(),
+        pytest.raises(ValueError) as raised,
+        pytest.warns(
+            UserWarning,
+            match=r"Chat history restore failed \(failed while validating the saved conversation\): "
+            r"ValueError\('initial preflight failed'\)",
+        ),
+    ):
+        await handlers["_init_history"]()
+
+    assert raised.value is expected
+    assert settled == [False]
+    assert controller._active_id_now() is None
+    assert recorder.record is None
+    assert target.model_dump(mode="json") == target_before
+    assert await store.get(partition, target.id) is target
+    updates = [
+        message["action"]
+        for message in session.messages
+        if message["action"]["type"] == "history_update"
+    ]
+    assert len(updates) == 1
+    assert updates[0]["active_id"] is None
+    assert updates[0]["transition_protocol"] == "completion-v2"
+    assert chat.history._initial_history_initialized
+    notifier.assert_awaited_once_with(
+        recovery_incomplete=False,
+        detail="failed while validating the saved conversation",
+    )
+    with session_context(cast(Any, session)), reactive.isolate():
+        await chat._record_accepted_user_input_with_capture(
+            ChatMessage(content="fresh after preflight failure", role="user")
+        )
+    assert recorder.record is not None
+
+
+@pytest.mark.anyio
+async def test_v2_initial_restore_preflight_cancellation_recovers_once() -> None:
+    chat_id = "initial_preflight_cancel"
+    session = _LiveSession()
+    store = InMemoryConversationStore()
+    history_ids = HistoryInputIds.for_chat(ResolvedId(chat_id))
+    session.input[history_ids.browser_token] = reactive.Value("token")
+    session.input[history_ids.current_id] = reactive.Value("c_target")
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    with (
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            chat_id,
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode="browser",
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    target = new_conversation_record_v2(
+        title="target",
+        id="c_target",
+        client_info={},
+    )
+    target_before = target.model_dump(mode="json")
+    partition = ConversationPartition(chat_id=chat_id, scope="test")
+    await store.put(partition, target)
+    original = asyncio.CancelledError("initial preflight cancelled")
+    preflight = MagicMock(side_effect=original)
+    replay = AsyncMock(side_effect=AssertionError("replay must not run"))
+    controller._prepare_exchange_restore = preflight  # type: ignore[method-assign]
+    controller._replay_exchange_display = replay  # type: ignore[method-assign]
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+    settled: list[bool] = []
+
+    async def on_settled(restored: bool) -> None:
+        settled.append(restored)
+
+    controller.on_settled = on_settled
+
+    with (
+        session_context(cast(Any, session)),
+        reactive.isolate(),
+        pytest.raises(asyncio.CancelledError) as raised,
+    ):
+        await handlers["_init_history"]()
+
+    assert raised.value is original
+    assert preflight.call_count == 1
+    replay.assert_not_awaited()
+    assert settled == [False]
+    assert controller._active_id_now() is None
+    assert recorder.record is None
+    assert target.model_dump(mode="json") == target_before
+    assert await store.get(partition, target.id) is target
+    updates = _history_updates(session)
+    assert len(updates) == 1
+    assert updates[0]["active_id"] is None
+    assert updates[0]["transition_protocol"] == "completion-v2"
+    assert chat.history._initial_history_initialized
+    # Cancellation keeps the generic message: no detail to attribute.
+    notifier.assert_awaited_once_with(recovery_incomplete=False, detail=None)
+
+    with session_context(cast(Any, session)), reactive.isolate():
+        await handlers["_init_history"]()
+
+    assert preflight.call_count == 1
+    replay.assert_not_awaited()
+    assert settled == [False]
+    assert len(_history_updates(session)) == 1
+
+
+@pytest.mark.anyio
+async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> None:
+    chat_id = "initial_restore_cancel"
+    session = _LiveSession()
+    store = InMemoryConversationStore()
+    history_ids = HistoryInputIds.for_chat(ResolvedId(chat_id))
+    session.input[history_ids.browser_token] = reactive.Value("token")
+    session.input[history_ids.current_id] = reactive.Value("c_target")
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    class CapturedEffect:
+        def __init__(self, handler: Callable[[], Awaitable[None]]) -> None:
+            handlers[handler.__name__] = handler
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    with (
+        patch.object(reactive, "effect", capture_effect),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            chat_id,
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode="browser",
+                restore_bootstrap="live",
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    target = new_conversation_record_v2(
+        title="target",
+        id="c_target",
+        client_info={},
+    )
+    partition = ConversationPartition(chat_id=chat_id, scope="test")
+    await store.put(partition, target)
+    original = asyncio.CancelledError("initial restore cancelled")
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+
+    async def cancel_replay(
+        _target: Any, _node_ids: tuple[str, ...]
+    ) -> None:
+        raise original
+
+    controller._replay_exchange_display = cancel_replay  # type: ignore[method-assign]
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+    settled: list[bool] = []
+
+    async def on_settled(restored: bool) -> None:
+        settled.append(restored)
+
+    controller.on_settled = on_settled
+
+    with (
+        session_context(cast(Any, session)),
+        reactive.isolate(),
+        pytest.raises(asyncio.CancelledError) as raised,
+    ):
+        await handlers["_init_history"]()
+
+    assert raised.value is original
+    assert controller._active_id_now() is None
+    assert recorder.record is None
+    assert settled == [False]
+    updates = [
+        message["action"]
+        for message in session.messages
+        if message["action"]["type"] == "history_update"
+    ]
+    assert len(updates) == 1
+    assert updates[0]["active_id"] is None
+    assert chat.history._initial_history_initialized
+    # Cancellation keeps the generic message: no detail to attribute.
+    notifier.assert_awaited_once_with(recovery_incomplete=False, detail=None)
+
+    with (
+        session_context(cast(Any, session)),
+        reactive.isolate(),
+    ):
+        await handlers["_init_history"]()
+
+    assert settled == [False]
+    assert len(
+        [
+            message
+            for message in session.messages
+            if message["action"]["type"] == "history_update"
+        ]
+    ) == 1
+    with session_context(cast(Any, session)), reactive.isolate():
+        await chat._record_accepted_user_input_with_capture(
+            ChatMessage(content="fresh after cancellation", role="user")
+        )
+    assert recorder.record is not None
+
+
+@pytest.mark.anyio
+async def test_v2_bookmark_settlement_updates_url_and_deletes_replaced_state() -> (
+    None
+):
+    session = _LiveSession()
+    session.bookmark.store = "server"
+    session.bookmark.bookmark_urls = [
+        "?_state_id_=state-first",
+        "?_state_id_=state-second",
+    ]
+
+    class CapturedEffect:
+        def __init__(self, _handler: Callable[[], Awaitable[None]]) -> None:
+            pass
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    with (
+        patch.object(reactive, "effect", capture_effect),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "bookmark_settlement",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=InMemoryConversationStore(),
+                scope="test",
+                restore_mode="bookmark",
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    controller.partition = ConversationPartition(chat_id="bookmark_settlement", scope="test")
+    record = new_conversation_record_v2(
+        title="pointer",
+        id="c_pointer",
+        client_info={},
+    )
+    recorder.record = record
+    controller._active_id.set(record.id)
+
+    deleted = AsyncMock()
+    with patch.object(history_module, "delete_bookmark_state", deleted):
+        assert controller.on_response_saved is not None
+        await controller.on_response_saved(cast(Any, record))
+        record.open_inputless_exchange()
+        await controller.on_response_saved(cast(Any, record))
+
+    assert record.bookmark_state_id == "state-second"
+    deleted.assert_awaited_once_with("state-first")
+    assert session.bookmark.bookmark_states == [
+        {
+            "bookmark_settlement_history_exchange_pointer": {
+                "conversation_id": "c_pointer",
+                "node_id": "n_0000",
+            }
+        },
+        {
+            "bookmark_settlement_history_exchange_pointer": {
+                "conversation_id": "c_pointer",
+                "node_id": "n_0001",
+            }
+        },
+    ]
+    assert [
+        message["action"]["url"] for message in session.messages
+    ] == ["?_state_id_=state-first", "?_state_id_=state-second"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("state_id", ["state-target", None])
+async def test_v2_bookmark_switch_restore_soft_navigates_without_reload(
+    state_id: str | None,
+) -> None:
+    """The _start()-wired on_switch_restored updates the URL in place.
+
+    A v2 in-place switch targets the restored record's bookmark state id
+    (or clears the stale query when it has none) via the existing
+    history_navigate action, with no `reload` key (mfb3 / D5).
+    """
+    session = _LiveSession()
+    session.bookmark.store = "server"
+
+
+    with (
+        patch.object(reactive, "effect", _capture_history_effects({})),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "bookmark_switch_restore",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=InMemoryConversationStore(),
+                scope="test",
+                restore_mode="bookmark",
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    assert controller.on_switch_restored is not None
+
+    record = new_conversation_record_v2(
+        title="target",
+        id="c_target",
+        client_info={},
+    )
+    record.bookmark_state_id = state_id
+    await controller.on_switch_restored(cast(Any, record))
+
+    navs = [
+        message["action"]
+        for message in session.messages
+        if message["action"]["type"] == "history_navigate"
+    ]
+    expected_url = f"?_state_id_={state_id}" if state_id is not None else None
+    assert navs == [
+        {
+            "type": "history_navigate",
+            "url": expected_url,
+            "active_id": "c_target",
+        }
+    ]
+    # Soft navigation only: no reload key, so the client replaceState's.
+    assert "reload" not in navs[0]
+
+
+@pytest.mark.anyio
+async def test_v2_bookmark_eviction_clears_bookmark_state_for_v2_records():
+    """Bookmark-mode _on_evict clears evicted v2 records' bookmark state.
+
+    Pins the existing eviction contract (gwg3): the wired on_evict finds the
+    record's bookmark_state_id — via the active recorder record when set,
+    else through _get_record — and deletes that server bookmark state. A v2
+    record without a state id evicts without deleting anything. Under v2 the
+    recorder owns the active record, so even the active conversation goes
+    through the _get_record fallback.
+    """
+    session = _LiveSession()
+    session.bookmark.store = "server"
+
+
+    store = InMemoryConversationStore()
+    with (
+        patch.object(reactive, "effect", _capture_history_effects({})),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "bookmark_eviction",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode="bookmark",
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    assert controller.on_evict is not None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    partition = ConversationPartition(chat_id="bookmark_eviction", scope="test")
+    controller.partition = partition
+
+    # An inactive v2 record with a bookmark state id.
+    inactive = new_conversation_record_v2(
+        title="inactive", id="c_inactive", client_info={}
+    )
+    inactive.bookmark_state_id = "state-inactive"
+    await store.put(partition, inactive)
+
+    # The active v2 record: the recorder owns it.
+    active = new_conversation_record_v2(
+        title="active", id="c_active", client_info={}
+    )
+    active.bookmark_state_id = "state-active"
+    recorder.record = active
+    controller._active_id.set(active.id)
+    await store.put(partition, active)
+
+    # A v2 record with no bookmark state id.
+    await store.put(
+        partition,
+        new_conversation_record_v2(title="bare", id="c_bare", client_info={}),
+    )
+
+    deleted = AsyncMock()
+    with patch.object(history_module, "delete_bookmark_state", deleted):
+        await controller.on_evict("c_inactive")
+        deleted.assert_awaited_once_with("state-inactive")
+
+        deleted.reset_mock()
+        await controller.on_evict("c_active")
+        deleted.assert_awaited_once_with("state-active")
+
+        deleted.reset_mock()
+        await controller.on_evict("c_bare")
+        deleted.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_v2_bookmark_eviction_of_v1_record_clears_state():
+    """Evicting a v1 record clears its bookmark state like a v2 record.
+
+    Originally pinned as a strict xfail while the lazy v1→v2 read-gate was
+    missing (shinychat#e0x2): a v1 record raised in _on_evict's _get_record
+    fallback. Now the read-gate upgrades the v1 record in memory, so eviction
+    resolves its bookmark_state_id exactly like a v2 record's.
+    """
+    session = _LiveSession()
+    session.bookmark.store = "server"
+
+
+    store = InMemoryConversationStore()
+    with (
+        patch.object(reactive, "effect", _capture_history_effects({})),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "bookmark_eviction_v1",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode="bookmark",
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    assert controller.on_evict is not None
+    partition = ConversationPartition(
+        chat_id="bookmark_eviction_v1", scope="test"
+    )
+    controller.partition = partition
+
+    legacy = new_conversation_record(title="legacy", id="c_v1")
+    legacy.bookmark_state_id = "state-v1"
+    await store.put(partition, legacy)
+
+    deleted = AsyncMock()
+    with patch.object(history_module, "delete_bookmark_state", deleted):
+        await controller.on_evict("c_v1")
+    deleted.assert_awaited_once_with("state-v1")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("restore_mode", ["none", "browser", "url"])
+async def test_v2_non_bookmark_modes_wire_no_switch_restore_navigator(
+    restore_mode: str,
+) -> None:
+    """Only bookmark mode wires on_switch_restored; other modes must not."""
+    session = _LiveSession()
+
+
+    with (
+        patch.object(reactive, "effect", _capture_history_effects({})),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            f"no_switch_restore_{restore_mode}",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=InMemoryConversationStore(),
+                scope="test",
+                restore_mode=cast(Any, restore_mode),
+            ),
+        )
+
+    controller = chat.history._controller
+    assert controller is not None
+    assert controller.on_switch_restored is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("operation", "outcome"),
+    [
+        ("new", "success"),
+        ("new", "failure"),
+        ("new", "cancelled"),
+        ("delete", "success"),
+        ("delete", "failure"),
+        ("delete", "cancelled"),
+        ("edit", "success"),
+        ("edit", "failure"),
+        ("edit", "cancelled"),
+        ("resubmit", "success"),
+        ("resubmit", "failure"),
+        ("resubmit", "cancelled"),
+        ("navigate", "success"),
+        ("navigate", "failure"),
+        ("navigate", "cancelled"),
+    ],
+)
+async def test_history_transition_completion_always_matches_request(
+    operation: str, outcome: str
+) -> None:
+    session = _LiveSession()
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    class CapturedEffect:
+        def __init__(self, handler: Callable[[], Awaitable[None]]) -> None:
+            handlers[handler.__name__] = handler
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    with (
+        patch.object(reactive, "effect", capture_effect),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "transition",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store="memory", scope="test", restore_mode="none"
+            ),
+        )
+    controller = chat.history._controller
+    assert controller is not None
+    controller.partition = cast(Any, object())
+
+    if outcome == "failure":
+        operation_fn = AsyncMock(side_effect=RuntimeError("expected failure"))
+    elif outcome == "cancelled":
+
+        async def operation_fn(*_args: Any, **_kwargs: Any) -> None:
+            raise asyncio.CancelledError()
+
+    else:
+        operation_fn = AsyncMock()
+
+    ids = HistoryInputIds.for_chat(ResolvedId("transition"))
+    if operation == "new":
+        controller.new_chat = operation_fn  # type: ignore[method-assign]
+        input_id = ids.new
+        payload: object = {"requestId": f"{operation}-{outcome}"}
+    elif operation == "delete":
+        controller.delete = operation_fn  # type: ignore[method-assign]
+        input_id = ids.delete
+        payload = {"id": "active", "requestId": f"{operation}-{outcome}"}
+    elif operation == "edit":
+        controller.handle_edit = operation_fn  # type: ignore[method-assign]
+        input_id = ids.message_edit
+        payload = {
+            "index": 0,
+            "content": "edited",
+            "attachments": [],
+            "requestId": f"{operation}-{outcome}",
+        }
+    elif operation == "resubmit":
+        controller.handle_resubmit = operation_fn  # type: ignore[method-assign]
+        input_id = ids.message_resubmit
+        payload = {
+            "index": 0,
+            "kind": "retry",
+            "requestId": f"{operation}-{outcome}",
+        }
+    else:
+        controller.handle_navigate = operation_fn  # type: ignore[method-assign]
+        input_id = ids.message_navigate
+        payload = {
+            "index": 0,
+            "direction": "prev",
+            "requestId": f"{operation}-{outcome}",
+        }
+
+    with session_context(cast(Any, session)):
+        cast(Any, session.input[input_id])._set(payload)
+    try:
+        with reactive.isolate():
+            await handlers[f"_on_{operation}"]()
+    except asyncio.CancelledError:
+        pass
+
+    assert _completion_actions(session) == [
+        {
+            "type": "history_transition_complete",
+            "requestId": f"{operation}-{outcome}",
+        }
+    ]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "operation", ["new", "delete", "edit", "resubmit", "navigate"]
+)
+async def test_history_transition_legacy_payload_does_not_send_completion(
+    operation: str,
+) -> None:
+    session = _LiveSession()
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    class CapturedEffect:
+        def __init__(self, handler: Callable[[], Awaitable[None]]) -> None:
+            handlers[handler.__name__] = handler
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    with (
+        patch.object(reactive, "effect", capture_effect),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "transition_legacy",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store="memory", scope="test", restore_mode="none"
+            ),
+        )
+    controller = chat.history._controller
+    assert controller is not None
+    controller.partition = cast(Any, object())
+
+    ids = HistoryInputIds.for_chat(ResolvedId("transition_legacy"))
+    if operation == "new":
+        controller.new_chat = AsyncMock()  # type: ignore[method-assign]
+        input_id = ids.new
+        payload: object = 1
+    elif operation == "delete":
+        controller.delete = AsyncMock()  # type: ignore[method-assign]
+        input_id = ids.delete
+        payload = {"id": "active"}
+    elif operation == "edit":
+        controller.handle_edit = AsyncMock()  # type: ignore[method-assign]
+        input_id = ids.message_edit
+        payload = {"index": 0, "content": "edited", "attachments": []}
+    elif operation == "resubmit":
+        controller.handle_resubmit = AsyncMock()  # type: ignore[method-assign]
+        input_id = ids.message_resubmit
+        payload = {"index": 0, "kind": "retry"}
+    else:
+        controller.handle_navigate = AsyncMock()  # type: ignore[method-assign]
+        input_id = ids.message_navigate
+        payload = {"index": 0, "direction": "prev"}
+
+    with session_context(cast(Any, session)):
+        cast(Any, session.input[input_id])._set(payload)
+    with reactive.isolate():
+        await handlers[f"_on_{operation}"]()
+
+    assert _completion_actions(session) == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("operation", ["edit", "navigate", "resubmit"])
+async def test_v2_message_actions_reject_before_initial_history_readiness(
+    operation: str,
+) -> None:
+    session = _LiveSession()
+    store = InMemoryConversationStore()
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+    with (
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            f"forged_{operation}",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store, scope="test", restore_mode="none"
+            ),
+        )
+
+    try:
+        controller = chat.history._controller
+        assert controller is not None
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+        controller.partition = ConversationPartition(
+            chat_id=f"forged_{operation}", scope="test"
+        )
+        record = new_conversation_record_v2(
+            title="before", id="c_before", client_info={}
+        )
+        recorder.record = record
+        await store.put(controller.partition, record)
+        controller.adapter.set_turns_json(
+            [{"role": "user", "content": "before"}]
+        )
+        controller._active_id.set(record.id)
+        operation_fn = AsyncMock()
+        setattr(controller, f"handle_{operation}", operation_fn)
+
+        ids = HistoryInputIds.for_chat(ResolvedId(f"forged_{operation}"))
+        payload: dict[str, Any] = {
+            "index": 0,
+            "requestId": f"forged-{operation}",
+        }
+        if operation == "edit":
+            payload.update(content="after", attachments=[])
+        elif operation == "navigate":
+            payload["direction"] = "next"
+        else:
+            payload["kind"] = "retry"
+        input_id = getattr(ids, f"message_{operation}")
+        with session_context(cast(Any, session)):
+            cast(Any, session.input[input_id])._set(payload)
+
+        record_before = record.model_copy(deep=True)
+        turns_before = controller.adapter.get_turns_json()
+        active_id_before = controller._active_id_now()
+        transcript_before = chat._transcript.read()
+        store_before = await store.list(controller.partition)
+
+        with reactive.isolate():
+            await handlers[f"_on_{operation}"]()
+
+        operation_fn.assert_not_awaited()
+        assert recorder.record == record_before
+        assert controller.adapter.get_turns_json() == turns_before
+        assert controller._active_id_now() == active_id_before
+        assert chat._transcript.read() == transcript_before
+        assert await store.list(controller.partition) == store_before
+
+        chat.history._initial_history_initialized = True
+        with reactive.isolate():
+            await handlers[f"_on_{operation}"]()
+        operation_fn.assert_awaited_once()
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_new_chat_drawer_action_rejects_before_initial_history_readiness() -> (
+    None
+):
+    session = _LiveSession()
+    store = InMemoryConversationStore()
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+    with (
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "forged_new",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(store=store, scope="test", restore_mode="none"),
+        )
+
+    try:
+        controller = chat.history._controller
+        assert controller is not None
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+        controller.partition = ConversationPartition(
+            chat_id="forged_new", scope="test"
+        )
+        record = new_conversation_record_v2(
+            title="before", id="c_before", client_info={}
+        )
+        recorder.record = record
+        await store.put(controller.partition, record)
+        controller.adapter.set_turns_json(
+            [{"role": "user", "content": "before"}]
+        )
+        controller._active_id.set(record.id)
+        new_chat_fn = AsyncMock()
+        controller.new_chat = new_chat_fn
+
+        ids = HistoryInputIds.for_chat(ResolvedId("forged_new"))
+        payload: dict[str, Any] = {"requestId": "forged-new"}
+        with session_context(cast(Any, session)):
+            cast(Any, session.input[ids.new])._set(payload)
+
+        record_before = record.model_copy(deep=True)
+        turns_before = controller.adapter.get_turns_json()
+        active_id_before = controller._active_id_now()
+        transcript_before = chat._transcript.read()
+        store_before = await store.list(controller.partition)
+
+        with reactive.isolate():
+            await handlers["_on_new"]()
+
+        # The request is dropped without touching the active conversation,
+        # mirroring the edit/navigate/resubmit input effects...
+        new_chat_fn.assert_not_awaited()
+        assert recorder.record == record_before
+        assert controller.adapter.get_turns_json() == turns_before
+        assert controller._active_id_now() == active_id_before
+        assert chat._transcript.read() == transcript_before
+        assert await store.list(controller.partition) == store_before
+        # ...but the transition request still completes so the drawer's
+        # busy state clears.
+        assert _completion_actions(session) == [
+            {"type": "history_transition_complete", "requestId": "forged-new"}
+        ]
+
+        chat.history._initial_history_initialized = True
+        with reactive.isolate():
+            await handlers["_on_new"]()
+        new_chat_fn.assert_awaited_once()
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_client_new_chat_closes_record_and_renews_greeting(
+    tmp_path: Any,
+) -> None:
+    session = _LiveSession()
+    store = FileConversationStore(tmp_path)
+    with (
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "v2_new_chat_greeting",
+            client=cast(Any, _MockClient()),
+            greeting="## Hello",
+            history=HistoryOptions(
+                store=store, scope="test", restore_mode="none"
+            ),
+        )
+        try:
+            await reactive.flush()
+            await reactive.flush()
+            assert chat.history._initial_history_initialized
+            controller = chat.history._controller
+            assert controller is not None
+            chat_client = chat.client
+            assert chat_client is not None
+            recorder = controller._exchange_recorder
+            assert recorder is not None
+            partition = controller.partition
+            assert partition is not None
+
+            # One completed exchange in the first conversation.
+            await chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="first question", role="user"),
+                dispatch_user_submit=False,
+            )
+            await chat.append_message(
+                ChatMessage(content="first answer", role="assistant")
+            )
+            assert recorder.record is not None
+            closed_id = recorder.record.id
+
+            session.messages.clear()
+            with reactive.isolate():
+                await chat_client.new_chat(greeting=True)
+
+            actions = [message["action"] for message in session.messages]
+            # The clear carries the greeting flag...
+            assert [a for a in actions if a["type"] == "clear"] == [
+                {"type": "clear", "greeting": True}
+            ]
+            # ...the configured greeting is resolved again for the fresh
+            # conversation (the greeting stays the ambient slot)...
+            greeting_actions = [
+                a for a in actions if a["type"] == "greeting"
+            ]
+            assert [a.get("content") for a in greeting_actions] == [
+                "## Hello"
+            ]
+            # ...and the closed record stays listed with no active conversation.
+            updates = [a for a in actions if a["type"] == "history_update"]
+            assert updates
+            assert updates[-1]["active_id"] is None
+            assert [c["id"] for c in updates[-1]["conversations"]] == [
+                closed_id
+            ]
+            reset_record = recorder.record
+            assert reset_record is None
+            with reactive.isolate():
+                assert chat.history.conversation_id() is None
+
+            # The greeting never entered the record: the stored closed record
+            # holds exactly its own exchange.
+            stored_closed = await store.get(partition, closed_id)
+            assert stored_closed is not None
+            assert isinstance(stored_closed, ConversationRecordV2)
+            contents: list[str] = []
+            for node in stored_closed.nodes.values():
+                if node.input is not None:
+                    contents.append(node.input.content)
+                for message in node.messages:
+                    contents.append(message.as_stored_message().content)
+            assert contents == ["first question", "first answer"]
+
+            # A second conversation gets a fresh record with fresh identity.
+            await chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="second question", role="user"),
+                dispatch_user_submit=False,
+            )
+            await chat.append_message(
+                ChatMessage(content="second answer", role="assistant")
+            )
+            fresh = recorder.record
+            assert fresh is not None
+            assert fresh.id != closed_id
+            fresh_contents: list[str] = []
+            for node in fresh.nodes.values():
+                if node.input is not None:
+                    fresh_contents.append(node.input.content)
+                for message in node.messages:
+                    fresh_contents.append(message.as_stored_message().content)
+            assert fresh_contents == ["second question", "second answer"]
+        finally:
+            chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_client_new_chat_rejected_before_initial_history_readiness() -> (
+    None
+):
+    session = _LiveSession()
+    with (
+        patch.object(reactive, "effect", _capture_history_effects({})),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "v2_new_chat_unresolved",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store="memory", scope="test", restore_mode="none"
+            ),
+        )
+        try:
+            # The initial history effect is captured and never run, so the
+            # v2 initial history decision is still unresolved.
+            assert not chat.history._initial_history_initialized
+            chat_client = chat.client
+            assert chat_client is not None
+
+            with pytest.raises(RuntimeError, match="still initializing"):
+                await chat_client.new_chat()
+
+            # Rejected before any mutation: nothing was cleared and no
+            # history_update was published.
+            assert list(chat._transcript.read()) == []
+            assert not any(
+                message["action"]["type"] == "clear"
+                for message in session.messages
+            )
+            assert not any(
+                message["action"]["type"] == "history_update"
+                for message in session.messages
+            )
+        finally:
+            chat.destroy()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("operation", "outcome"),
+    [
+        ("new", "success"),
+        ("new", "failure"),
+        ("new", "cancelled"),
+        ("delete", "success"),
+        ("delete", "failure"),
+        ("delete", "cancelled"),
+        ("edit", "success"),
+        ("edit", "failure"),
+        ("edit", "cancelled"),
+        ("resubmit", "success"),
+        ("resubmit", "failure"),
+        ("resubmit", "cancelled"),
+        ("navigate", "success"),
+        ("navigate", "failure"),
+        ("navigate", "cancelled"),
+    ],
+)
+async def test_completion_delivery_failure_does_not_mask_transition_outcome(
+    operation: str, outcome: str
+) -> None:
+    session = _LiveSession()
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+
+    class CapturedEffect:
+        def __init__(self, handler: Callable[[], Awaitable[None]]) -> None:
+            handlers[handler.__name__] = handler
+
+        def destroy(self) -> None:
+            pass
+
+    def capture_effect(
+        handler: Callable[[], Awaitable[None]] | None = None, **_kwargs: Any
+    ) -> Any:
+        def decorator(
+            effect_handler: Callable[[], Awaitable[None]],
+        ) -> CapturedEffect:
+            return CapturedEffect(effect_handler)
+
+        return decorator if handler is None else decorator(handler)
+
+    with (
+        patch.object(reactive, "effect", capture_effect),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "transition_delivery",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store="memory", scope="test", restore_mode="none"
+            ),
+        )
+    controller = chat.history._controller
+    assert controller is not None
+    controller.partition = cast(Any, object())
+    # Model an admitted post-initialization v2 action: every message/drawer
+    # transition effect drops requests that land before the initial history
+    # decision, so the operation itself needs an admitted session.
+    chat.history._initial_history_initialized = True
+
+    if outcome == "failure":
+        operation_fn = AsyncMock(side_effect=RuntimeError("expected failure"))
+    elif outcome == "cancelled":
+
+        async def operation_fn(*_args: Any, **_kwargs: Any) -> None:
+            raise asyncio.CancelledError()
+
+    else:
+        operation_fn = AsyncMock()
+
+    ids = HistoryInputIds.for_chat(ResolvedId("transition_delivery"))
+    if operation == "new":
+        controller.new_chat = operation_fn  # type: ignore[method-assign]
+        input_id = ids.new
+        payload: object = {"requestId": f"{operation}-{outcome}"}
+    elif operation == "delete":
+        controller.delete = operation_fn  # type: ignore[method-assign]
+        input_id = ids.delete
+        payload = {"id": "active", "requestId": f"{operation}-{outcome}"}
+    elif operation == "edit":
+        controller.handle_edit = operation_fn  # type: ignore[method-assign]
+        input_id = ids.message_edit
+        payload = {
+            "index": 0,
+            "content": "edited",
+            "attachments": [],
+            "requestId": f"{operation}-{outcome}",
+        }
+    elif operation == "resubmit":
+        controller.handle_resubmit = operation_fn  # type: ignore[method-assign]
+        input_id = ids.message_resubmit
+        payload = {
+            "index": 0,
+            "kind": "retry",
+            "requestId": f"{operation}-{outcome}",
+        }
+    else:
+        controller.handle_navigate = operation_fn  # type: ignore[method-assign]
+        input_id = ids.message_navigate
+        payload = {
+            "index": 0,
+            "direction": "prev",
+            "requestId": f"{operation}-{outcome}",
+        }
+
+    async def fail_completion(action: dict[str, Any]) -> None:
+        if action["type"] == "history_transition_complete":
+            raise RuntimeError("completion delivery failed")
+
+    chat._send_action = fail_completion  # type: ignore[method-assign]
+    with session_context(cast(Any, session)):
+        cast(Any, session.input[input_id])._set(payload)
+
+    if outcome == "cancelled":
+        with pytest.raises(asyncio.CancelledError):
+            with reactive.isolate():
+                await handlers[f"_on_{operation}"]()
+    else:
+        with reactive.isolate():
+            await handlers[f"_on_{operation}"]()
 
 
 def _registered_history_cleanups(session: Any) -> list[Callable[[], None]]:
@@ -369,3 +2324,346 @@ def test_session_end_runs_history_cleanup_once():
 def test_chat_destroy_without_history_start_is_safe():
     chat = _make_chat(history=False)
     chat.destroy()  # no session-level registrations to release
+
+
+async def _make_initialized_live_v2_chat(
+    tmp_path: Any, chat_id: str
+) -> tuple[Chat, _LiveSession, _MockClient, FileConversationStore]:
+    session = _LiveSession()
+    client = _MockClient()
+    store = FileConversationStore(tmp_path)
+    with (
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            chat_id,
+            client=cast(Any, client),
+            history=HistoryOptions(
+                store=store,
+                scope="test",
+                restore_mode="none",
+            ),
+        )
+        await reactive.flush()
+        await reactive.flush()
+    assert chat.history._initial_history_initialized
+    return chat, session, client, store
+
+
+def _transcript_snapshot(chat: Chat) -> list[dict[str, Any]]:
+    return [
+        {
+            "message": entry.message.model_dump(mode="json"),
+            "icon": entry.icon,
+            "status": entry.status,
+            "error": deepcopy(entry.error),
+            "exchange_id": entry.exchange_id,
+        }
+        for entry in chat._transcript.read()
+    ]
+
+
+async def _finish_held_clear_task(
+    task: asyncio.Task[Any],
+    release: asyncio.Event,
+    *,
+    cancel: bool = False,
+) -> None:
+    release.set()
+    done, _ = await asyncio.wait({task}, timeout=1)
+    if task not in done and cancel:
+        task.cancel()
+        done, _ = await asyncio.wait({task}, timeout=1)
+
+    failure: BaseException | None = None
+    if task not in done:
+        failure = TimeoutError(
+            "Held clear task did not finish within 1 second."
+        )
+    elif task.cancelled():
+        if cancel:
+            return
+        failure = asyncio.CancelledError()
+    else:
+        failure = task.exception()
+    if failure is None:
+        return
+
+    active_exception = sys.exc_info()[1]
+    if active_exception is not None:
+        raise active_exception from failure
+    raise failure
+
+
+@pytest.mark.anyio
+async def test_finish_held_clear_task_chains_task_failure_to_body_failure() -> (
+    None
+):
+    async def fail() -> None:
+        raise RuntimeError("clear task failed")
+
+    task = asyncio.create_task(fail())
+    await asyncio.sleep(0)
+
+    with pytest.raises(AssertionError, match="body failed") as raised:
+        try:
+            raise AssertionError("body failed")
+        finally:
+            await _finish_held_clear_task(task, asyncio.Event(), cancel=True)
+
+    assert task.done()
+    assert isinstance(raised.value.__cause__, RuntimeError)
+    assert str(raised.value.__cause__) == "clear task failed"
+
+
+@pytest.mark.anyio
+async def test_v2_clear_settles_terminal_response_before_clear_mutation(
+    tmp_path: Any,
+) -> None:
+    chat, session, _, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "clear_terminal_settlement"
+    )
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    partition = ConversationPartition(
+        chat_id="clear_terminal_settlement", scope="test"
+    )
+    settlements = 0
+    original_response_settled = recorder.response_settled
+
+    async def count_settlement() -> bool:
+        nonlocal settlements
+        settlements += 1
+        return await original_response_settled()
+
+    recorder.response_settled = count_settlement  # type: ignore[method-assign]
+    await chat._record_accepted_user_input_with_capture(
+        ChatMessage(content="before clear", role="user"),
+        dispatch_user_submit=False,
+    )
+    assert await chat._append_message_chunk(
+        "", chunk="start", stream_id="terminal-stream"
+    )
+    assert await chat._append_message_chunk(
+        "terminal response", stream_id="terminal-stream"
+    )
+    assert await chat._append_message_chunk(
+        "", chunk="end", stream_id="terminal-stream"
+    )
+    assert settlements == 0
+    assert len(chat._pending_response_settlements) == 1
+
+    clear_dispatched = asyncio.Event()
+    release_clear = asyncio.Event()
+    original_send = session.send_custom_message
+
+    async def hold_after_clear_dispatch(type: str, message: object) -> None:
+        await original_send(type, message)
+        if cast(dict[str, Any], message)["action"]["type"] == "clear":
+            clear_dispatched.set()
+            await release_clear.wait()
+
+    session.send_custom_message = hold_after_clear_dispatch  # type: ignore[method-assign]
+    clear_task = asyncio.create_task(chat.clear_messages())
+    try:
+        try:
+            await asyncio.wait_for(clear_dispatched.wait(), timeout=1)
+
+            assert settlements == 1
+            assert (
+                chat._transcript.read()[-1].message.content
+                == "terminal response"
+            )
+            assert recorder.record is not None
+            active_leaf = recorder.record.active_leaf
+            assert active_leaf is not None
+            assert recorder.record.nodes[active_leaf].status == "ok"
+            stored_before_clear = await FileConversationStore(tmp_path).get(
+                partition, recorder.record.id
+            )
+            assert stored_before_clear is not None
+            assert isinstance(stored_before_clear, ConversationRecordV2)
+            assert stored_before_clear.response_count == 1
+            stored_active_leaf = stored_before_clear.active_leaf
+            assert stored_active_leaf is not None
+            assert stored_before_clear.nodes[stored_active_leaf].status == "ok"
+
+            await _finish_held_clear_task(clear_task, release_clear)
+
+            assert settlements == 1
+            assert chat._transcript.read() == ()
+            assert [
+                message["action"]
+                for message in session.messages
+                if message["action"]["type"] == "clear"
+            ] == [{"type": "clear"}]
+        finally:
+            await _finish_held_clear_task(
+                clear_task, release_clear, cancel=True
+            )
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_clear_rejects_active_stream_without_mutating_state(
+    tmp_path: Any,
+) -> None:
+    chat, session, client, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "clear_active_stream"
+    )
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    partition = ConversationPartition(
+        chat_id="clear_active_stream", scope="test"
+    )
+    client.set_turns([{"role": "user", "content": "client turn"}])
+    await chat._record_accepted_user_input_with_capture(
+        ChatMessage(content="active input", role="user"),
+        dispatch_user_submit=False,
+    )
+    assert await chat._append_message_chunk(
+        "", chunk="start", stream_id="active-stream"
+    )
+    assert await chat._append_message_chunk(
+        "partial response", stream_id="active-stream"
+    )
+    assert recorder.record is not None
+    persisted = await FileConversationStore(tmp_path).get(
+        partition, recorder.record.id
+    )
+    assert persisted is not None
+    before = {
+        "transcript": _transcript_snapshot(chat),
+        "recorder": {
+            "record": recorder.record.model_dump(mode="json"),
+            "stream_exchanges": deepcopy(recorder._stream_exchanges),
+        },
+        "client_turns": deepcopy(client.get_turns()),
+        "active_id": controller._active_id_now(),
+        "persisted": persisted.model_dump(mode="json"),
+        "wire": deepcopy(session.messages),
+    }
+
+    with pytest.raises(
+        RuntimeError,
+        match="Cannot clear or restore messages while a message stream",
+    ):
+        await chat.clear_messages()
+
+    persisted_after = await FileConversationStore(tmp_path).get(
+        partition, recorder.record.id
+    )
+    assert persisted_after is not None
+    after = {
+        "transcript": _transcript_snapshot(chat),
+        "recorder": {
+            "record": recorder.record.model_dump(mode="json"),
+            "stream_exchanges": deepcopy(recorder._stream_exchanges),
+        },
+        "client_turns": deepcopy(client.get_turns()),
+        "active_id": controller._active_id_now(),
+        "persisted": persisted_after.model_dump(mode="json"),
+        "wire": deepcopy(session.messages),
+    }
+    assert after == before
+
+    await chat._append_message_chunk("", chunk="end", stream_id="active-stream")
+    chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_clear_retains_input_admitted_after_clear_dispatch(
+    tmp_path: Any,
+) -> None:
+    chat, session, _, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "clear_tail_exchange"
+    )
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    partition = ConversationPartition(
+        chat_id="clear_tail_exchange", scope="test"
+    )
+    await chat._record_accepted_user_input_with_capture(
+        ChatMessage(content="old input", role="user"),
+        dispatch_user_submit=False,
+    )
+    await chat.append_message("old response")
+    await reactive.flush()
+    await reactive.flush()
+    assert recorder.record is not None
+    old_leaf = recorder.record.active_leaf
+    assert old_leaf is not None
+
+    clear_dispatched = asyncio.Event()
+    release_clear = asyncio.Event()
+    original_send = session.send_custom_message
+
+    async def hold_after_clear_dispatch(type: str, message: object) -> None:
+        await original_send(type, message)
+        if cast(dict[str, Any], message)["action"]["type"] == "clear":
+            clear_dispatched.set()
+            await release_clear.wait()
+
+    session.send_custom_message = hold_after_clear_dispatch  # type: ignore[method-assign]
+    clear_task = asyncio.create_task(chat.clear_messages())
+    try:
+        try:
+            await asyncio.wait_for(clear_dispatched.wait(), timeout=1)
+
+            await chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="tail input", role="user"),
+                dispatch_user_submit=False,
+            )
+            assert chat._transcript.read()[-1].message.content == "tail input"
+            await _finish_held_clear_task(clear_task, release_clear)
+            await chat.append_message("tail response")
+            await reactive.flush()
+            await reactive.flush()
+
+            assert [
+                entry.message.content for entry in chat._transcript.read()
+            ] == ["tail input", "tail response"]
+            assert recorder.record is not None
+            tail_leaf = recorder.record.active_leaf
+            assert tail_leaf is not None
+            assert tail_leaf != old_leaf
+            tail_node = recorder.record.nodes[tail_leaf]
+            assert tail_node.input is not None
+            assert tail_node.input.content == "tail input"
+            assert [
+                message.as_stored_message().content
+                for message in tail_node.messages
+            ] == ["tail response"]
+
+            persisted = await FileConversationStore(tmp_path).get(
+                partition, recorder.record.id
+            )
+            assert persisted is not None
+            assert isinstance(persisted, ConversationRecordV2)
+            assert persisted.active_leaf is not None
+            persisted_tail = persisted.nodes[persisted.active_leaf]
+            assert persisted_tail.input is not None
+            assert persisted_tail.input.content == "tail input"
+            assert [
+                message.as_stored_message().content
+                for message in persisted_tail.messages
+            ] == ["tail response"]
+            assert persisted.active_leaf == tail_leaf
+            assert [
+                message["action"]
+                for message in session.messages
+                if message["action"]["type"] == "clear"
+            ] == [{"type": "clear"}]
+        finally:
+            await _finish_held_clear_task(
+                clear_task, release_clear, cancel=True
+            )
+    finally:
+        chat.destroy()

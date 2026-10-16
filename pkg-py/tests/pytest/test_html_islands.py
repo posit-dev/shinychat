@@ -363,6 +363,9 @@ def test_as_stored_message_processes_block_deps_with_session():
         def _increment_busy_count(self) -> None:
             pass
 
+        def _decrement_busy_count(self) -> None:
+            pass
+
         def _process_ui(self, ui: object) -> dict[str, object]:
             rendered = TagList(cast(Any, ui)).render()
             return {
@@ -427,6 +430,9 @@ def test_as_stored_message_no_session_keeps_raw_deps():
         def _increment_busy_count(self) -> None:
             pass
 
+        def _decrement_busy_count(self) -> None:
+            pass
+
         async def send_custom_message(
             self, type: str, message: dict[str, Any]
         ) -> None:
@@ -484,6 +490,9 @@ def test_append_message_emits_processed_block_deps():
             pass
 
         def _increment_busy_count(self) -> None:
+            pass
+
+        def _decrement_busy_count(self) -> None:
             pass
 
         def _process_ui(self, ui: object) -> dict[str, object]:

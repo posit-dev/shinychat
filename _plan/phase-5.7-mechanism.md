@@ -1,0 +1,490 @@
+# Phase 5.7 mechanism: retire v1 history (Python)
+
+**Status:** APPROVED by the driver 2026-10-15 (D1–D9 as written; D5 may be
+amended to (b) pending the research-spike outcome)
+**Phase:** plan.md §4, Phase 5.7; reset decisions plan.md §7.3–7.8 (2026-10-14)
+**Kata:** parent `shinychat#36z7` under epic `shinychat#6d0d`
+**Context:** `phase-5.6-mechanism.md` is completed context only. This note
+is the Phase 5.7 gate and the only phase-local mechanism reference for new
+work.
+
+## Objective and boundary
+
+Close the v2 parity gaps, add versioned record types with upgrade-on-read,
+import every released v1 record form, honor the legacy v1 bookmark stamp,
+then delete the v1 runtime, the `use_exchange_tree` flag, and the Python
+`completion-v1` protocol branch — so Phase 6 ports exactly one engine to R.
+Scope and done-when: plan.md §4 Phase 5.7. Import fidelity (§7.4), lazy
+conversion (§7.5), record types (§7.6), and the legacy bookmark stamp
+(§7.8) are already decided; this note resolves the remaining mechanism
+decisions.
+
+Boundary: the JS `completion-v1` path **stays** until R emits
+`completion-v2` (Phase 6). No bulk store migration (§7.5). No new public
+API. The import is a pure data transform — no session, no I/O (§7.6).
+
+## Current state (verified by inventory, 2026-10-15)
+
+- `_history_types.py`: `ConversationRecord` is the **v1** type
+  (`schema_version: Literal[1]`, :184); `ConversationRecordV2` is separate
+  (:379). `MAX_SCHEMA_VERSION = 2` (:144). There is **no** upgrade-on-read
+  hook and **no** `_migrated_from_v1` flag on this branch.
+- Store: `FileConversationStore.put` (:389) routes to `_put_v2` only when
+  `schema_version == 2` and **refuses the v1→v2 overwrite** lazy
+  conversion needs. `_put_v2` re-sorts the meta cache by `updated_at`
+  (:547) while `list()` sorts by `created_at` (:284) — the #372
+  inconsistency (`gwg3`).
+- V1 runtime surface (deletion targets, `4b9z`): `extend_record_linear`
+  (:347), `replay_ui` (:1258), `_EXCHANGE_TREE_HISTORY_V2` (:88) +
+  `use_exchange_tree` param (:496, :2080), v1 tails in `on_response`
+  (:657-743 incl. retitle), `handle_navigate` (:1639) / `handle_edit`
+  (:1744) linear paths, `save_current` (:809),
+  `_capture/_restore_app_state` (:829/:835), `_on_pre_switch`
+  (:2176-2186), `stamp_conversation_id` (:2242), init fallback
+  `replay_ui` (:2394/:2434), and the `completion-v1` branch in
+  `send_history_update` (:1840). ~20 test flag-patch sites.
+- Parity gaps: v2 `on_response` returns at :655 before the retitle block
+  (:726-743); v2 `switch_to` (:1180-1212) never calls `on_pre_switch`;
+  `new_chat(greeting=)` (`_history.py:1224`) and `clear()` gating exist
+  on v1 paths only; `CapturedMessage` segments are StoredSegment-only so
+  #373 structured blocks are skipped with a warning on replay;
+  `_on_evict` (:2188-2207) reads v1-shaped record state.
+- Bookmark stamp: v2 reads `{id}_history_exchange_pointer`
+  (`_init_history` :2331); the legacy `{id}_history_conversation_id` is
+  still written (:2244) and read (:2342) by the v1 path only.
+- Shared fixtures live in `tests/shared/`
+  (`history-behavior-matrix.json`, `history-store-fixture-matrix.json`,
+  `message-transcript-matrix.json`), synced to R by `make r-sync-fixtures`
+  with CI drift checks. Released tags for fixture derivation: `py/v0.6.1`,
+  `py/v0.7.0`, `py/v0.7.1`, `py/v0.7.2`; R 0.5.0.
+- Python CHANGELOG: `pkg-py/CHANGELOG.md`; no store-author migration
+  section exists yet.
+
+## Decisions
+
+### D1 — Record-type layout (`e0x2`, §7.6)
+
+Rename today's `ConversationRecord` → `ConversationRecordV1` in
+`_history_types.py` (it is the v1 type; the import consumes it).
+`ConversationRecordV2` stays as is. `ConversationRecord` becomes the name
+for the **current** version (V2) and upgrades older versions on
+validation: a `mode="before"` validator detects v1-shaped input and runs
+the D2 import, so existing custom stores calling
+`ConversationRecord.model_validate*` keep working. The controller also
+accepts a `ConversationRecordV1` instance from a store and upgrades it.
+Metadata fields (`id`, `title`, `created_at`, `updated_at`) keep their
+names in every version; `put()` gains no meta argument. Type the
+`ConversationStore` ABC against the record types (currently `Any`) and
+update `shinychat.types` exports.
+
+### D2 — The import (`by2p`, §7.3–7.5)
+
+New module `_history_import.py`: a pure function
+`import_v1_record(record: ConversationRecordV1) -> ConversationRecordV2`
+— no session, no I/O. Behavior:
+
+- Pair user/response v1 nodes into exchanges; re-parent multiple roots
+  under a synthesized input-less root; synthesize `status` and
+  `created_at`; handle the missing system prompt in v1 turns.
+- Fidelity (§7.4): the result displays what released 0.7.2 shows — no
+  better, no worse. F3-class artifacts already in stored records are
+  carried, not repaired.
+- Warnings (absorbed from superseded `6nzh`): warn **only** on genuinely
+  lossy imports, with correct node/message wording — never
+  unconditionally, never re-warned on every read.
+- Ids (absorbed from `6nzh`): tolerate foreign/custom ids; **no
+  int-parsing of node ids**.
+- Synthesis rules (driver-approved 2026-10-15): status is `"ok"` for
+  exchanges with messages and `"cancelled"` for input-bearing exchanges
+  with no response messages (retryable; v2's honest representation of an
+  interrupted exchange — plan §3.4 preserve-partial, R3); root `"ok"`.
+  Every synthesized node's `created_at` is the record's `created_at`;
+  v2's tie-break falls to children-list order, matching v1's
+  `children[-1]` sibling fallback.
+- Research findings guiding the transform (spike, 2026-10-15): v1's
+  on-disk layout is identical across py 0.6.1–0.7.2 and R 0.5.0
+  (`record.json` + `turns.jsonl` + `ui.jsonl`; R omits `next_node_seq`).
+  Fidelity per 0.7.2 `replay_ui`: versioned stored UI is carried
+  verbatim; unversioned/missing UI is re-derived from turns; user-message
+  attachment content is stripped. The import emits per-exchange
+  `mode:"delta"` turn entries and NO root snapshot — v1 never stored the
+  system prompt, so restore reproduces 0.7.2's context exactly. The R
+  0.5.0 fixture stays attachment-free (R had no attachment stripping).
+
+### D3 — Import fixtures (`by2p`)
+
+New shared fixture file `tests/shared/history-v1-import-matrix.json`, one
+case per released form, derived from the released writers (tags
+`py/v0.6.1`, `py/v0.7.0`, `py/v0.7.1`+; R 0.5.0):
+
+1. py 0.6.x — unversioned stored UI (UI re-derived from turns, as `main`
+   does).
+2. py 0.7.0 — versioned stored UI.
+3. py 0.7.1+ — attachments, with model-facing attachment text stripped.
+4. R 0.5.0 — shared now so Phase 6 runs the same fixture in R.
+
+Synced to R via `make r-sync-fixtures` (drift CI-checked); Python harness
+follows the `tests/test_history_matrix.py` pattern. Confirm rendering
+needs no live provider client.
+
+### D4 — Lazy conversion read-gate and write guards (`e0x2`, `8ec9`, §7.5)
+
+- `get()` (and any record read) upgrades v1 → v2 in memory through the D1
+  validator. There is no bulk migration. The read-gate wiring lands with
+  `e0x2` (Wave 2) — `by2p` delivers only the pure transform and fixtures.
+- `put()` **accepts a v2 record overwriting an existing v1 record**
+  (reversing today's refusal) — that is the "written as v2 on their next
+  write" half of §7.5. Also lands with `e0x2`.
+- Write guards (`8ec9`, verified against the landed versioned path):
+  never write a v1-flagged record through the v2 path; a record that was
+  upgraded on read is written as v2 with no v1 chimera. If any migration
+  marker is introduced, it is consumed only after appends succeed.
+- NEWS/CHANGELOG state that downgrading hides converted conversations
+  (§7.5).
+
+### D5 — Bookmark-mode `switch_to` (`mfb3`) — **RESOLVED: (b) in-place URL update**
+
+Resolved 2026-10-15 per the driver's conditional direction ("if reasonably
+safe, (b) is the better choice") after a research spike found (b) is
+reasonably safe (full findings on `mfb3`):
+
+- The mechanism already exists end-to-end: the `history_navigate` wire
+  action WITHOUT `reload` is a soft `replaceState`, already exercised by
+  v2 today after every response save (`_history.py:2138-2140`). No new
+  wire action, no new JS handler; Shiny's own `updateQueryString`
+  defaults to `replaceState` — in-place update is a first-class pattern.
+- The target's `bookmark_state_id` is already persisted per conversation
+  (`_history_recorder.py:297-320`; `_history_store.py:478`) — no new
+  capture needed.
+- py-shiny reads `_state_id_` only at page GET and WS init, never after;
+  shiny.js patches only `pushState`, so `replaceState` is invisible to
+  server state. Use `replaceState`, never `pushState` (pushState mutates
+  server-side clientdata).
+- Residual risk accepted: WS reconnect re-initializes from the page-load
+  state id — a pre-existing staleness class v2's mint-time navigations
+  already introduce; (a) buys consistency there only at a full reload per
+  switch.
+
+**Mechanism:** after `switch_to`'s v2 restore succeeds, send the existing
+`history_navigate` action with `?_state_id_={bookmark_state_id}` when the
+restored record has one, else `url=None` to clear the stale query. Tests
+at controller, client, and Playwright levels (sketch on `mfb3`).
+
+Rejected: (a) full navigation via `on_pre_switch` (a reload per switch;
+v1's own no-state-id fallthrough already left the URL stale); (c) leaving
+the URL stale (silently wrong conversation on reload).
+
+### D6 — Legacy bookmark stamp (`dmgt`, §7.8)
+
+`_init_history` additionally reads the legacy
+`{id}_history_conversation_id` key when the v2 pointer is absent and opens
+that conversation at its active leaf (upgraded on read via D4). The v1
+**write** site (`stamp_conversation_id` :2242) is deleted with `4b9z`;
+the read-gate stays as long as the import does.
+
+### D7 — `new_chat(greeting=)` and `clear()` gating (`221w`, main #399)
+
+v2 `new_chat(greeting=)` closes the active record and starts a fresh v2
+record; the greeting stays the ambient slot (excluded from capture, plan
+§2). `clear()` with history enabled raises, matching main's #399
+semantics. No new public API.
+
+### D8 — LLM auto-titling on v2 (`tgdt`)
+
+Restore v1 behavior on the recorder path: the conversation title falls
+back to the truncated first input (`fallback_title`,
+`_history_title.py`), then the LLM retitle task fires when the active
+path reaches its second completed input-bearing exchange (the v2
+equivalent of v1's `response_count == 2`). The retitle writes through the
+normal v2 persist path and publishes via `history_update`.
+
+### D9 — Deletion surface (`4b9z`, after all parity/import children)
+
+Delete: `extend_record_linear`, `replay_ui`, every v1 branch listed in
+Current state, the `_EXCHANGE_TREE_HISTORY_V2` flag and `use_exchange_tree`
+param, and the Python `completion-v1` branch (`send_history_update` always
+emits `completion-v2`). `ConversationRecordV1` remains, but only as import
+input (D1/D2). The JS `completion-v1` path stays until Phase 6. Tests
+patching the flag are updated or deleted; tests of v1 behavior that the
+import now owns move to the import fixture.
+
+## Sequencing
+
+Keystone-first: the import path (read v1 → upgrade → display) is this
+phase's keystone; the v1 deletion is the hardening that lands last.
+
+- **Wave 1 (disjoint scopes, parallel):** `by2p` import transform +
+  fixtures (new files: `_history_import.py`, fixture, harness) ∥ `tgdt`
+  titling (`_history.py` response path).
+- **Wave 2:** `e0x2` versioned types + read-gate wiring (consumes D2's
+  transform) ∥ `221w` (new_chat/clear) ∥ `fn6m` (structured blocks).
+  Same-file overlap on `_history.py` is resolved by landing order:
+  `221w`/`fn6m` after `tgdt` merges.
+- **Wave 3 (parallel):** `dmgt` (after `by2p`), `8ec9` (after `e0x2`),
+  `mfb3`, `gwg3`, `t21d` fixture + CHANGELOG migration notes.
+- **Wave 4:** `4b9z` v1 deletion (blocked by `tgdt`, `mfb3`, `221w`,
+  `fn6m`, `gwg3`, `e0x2`, `by2p`, `dmgt`).
+
+Edge fixes to apply: `dmgt` blocked-by `by2p`; `8ec9` blocked-by `e0x2`.
+
+Every task: claimed in Kata with truthful attention pair, small
+conventional commits (Kata refs in body), roborev review on the task's
+commits, three-findings escalation valve per mechanism.
+
+## Progress log
+
+- 2026-10-15: phase opened. Suite baseline: JS 1407 passed (23 skipped);
+  R 2123 passed (0 fail); py 224/225 Playwright + unit green — the one red
+  is `cancel_in_modal::test_escape_cancels_stream_before_closing_chat_modal`,
+  a pre-existing local-environment failure dispositioned under `ftz9`
+  (fails identically on pure `origin/main`; main CI passes; re-check when
+  branch CI runs). `phase-5.6-mechanism.md` handoff backfilled. Branch is
+  404 commits ahead of `origin/main`; `origin/main` is an ancestor — no
+  boundary merge needed.
+- 2026-10-15: note APPROVED (D1–D9). Edges fixed: `dmgt` blocked-by
+  `by2p`, `8ec9` blocked-by `e0x2`. D4 scope amended: read-gate wiring and
+  the v1→v2 overwrite allowance land with `e0x2`, not `by2p` (comments on
+  both issues). Wave 1 delegated: `by2p` (import transform + fixtures),
+  `tgdt` (v2 titling); D5 research spike delegated (medium).
+- 2026-10-15: D5 RESOLVED to (b) in-place URL update per the driver's
+  conditional direction (spike: mechanism exists as `history_navigate`
+  sans `reload`; `bookmark_state_id` already persisted; py-shiny never
+  re-reads the URL). Decision on `mfb3`. `tgdt` landed `fb3c8105` (D8:
+  fallback title + retitle at second input-bearing exchange, persist via
+  recorder lock, publish via `history_update`); coordinator-verified (300
+  controller/title tests); roborev 1578 enqueued. Accepted scope
+  deviation: one-line `accepted_input` change in `_history_recorder.py`
+  (v2 fallback title is minted there, not in `_history.py`).
+- 2026-10-15: `tgdt` CLOSED. Roborev 1578 Pass with 3 Low, all fixed in
+  `a1d51d9a` (retitle target passed through with start-of-task bail;
+  docstring; sibling/third-exchange test pins). First `by2p`/`fn6m`
+  agents hit the default turn limit after research-only runs (the 5.6
+  `b0hf` pattern); re-delegated with incremental-commit briefs and the
+  driver-approved D2 synthesis rules. `fn6m`'s finding: the 5.6 merge
+  already widened `CapturedMessage.segments` to
+  `StoredSegment | StructuredBlock` — remaining work is mostly coverage.
+- 2026-10-15: `fn6m` landed `09dff1bb` (v2 structured-block round-trip
+  pins: all 7 #373 block types through capture → FileConversationStore →
+  replay; unknown block warns and continues) + `c29c0a96` (pyright
+  narrowing fix from `a1d51d9a`, caught at the gate). Production path
+  traced already-sound end to end; `message-transcript-matrix.json`
+  rejected as the fixture vehicle (its harness is StoredSegment-only).
+  Roborev 1579 enqueued. `221w` delegated (D7 new_chat/clear gating).
+- 2026-10-15: `221w` landed `b879bcdd` + `16a590ae` (D7; key finding:
+  v2 `new_chat` already worked — the real gap was the admission window:
+  the public entry mutated before failing, and an early success published
+  the admission-releasing `history_update`. Now gated in
+  `ChatClient.new_chat` + the drawer `_on_new` effect). Roborev 1580
+  enqueued. Roborev 1579 (`fn6m`) Pass with 3 Low test-quality findings;
+  fixes delegated (deps-transport pin, async helper, redundant assert).
+  `mfb3` delegated (D5 mechanism: post-switch `history_navigate` without
+  reload; Playwright bookmark-mode switch test). `by2p` transform commit
+  `0fa399c9` landed; fixtures in progress.
+- 2026-10-15: `fn6m` CLOSED (`09dff1bb` + `c29c0a96` + `f07a043e`).
+  `221w` CLOSED — roborev 1580 Pass; its interleaved review of `by2p`'s
+  `0fa399c9` found a MEDIUM order-dependent pointer post-pass bug
+  (off-active-path branches can import the wrong selected child) plus 3
+  Low in `_history_import.py` — steered to the running `by2p` agent to
+  fix before its fixtures land; the one 221w-side finding (vacuous
+  no-`history_update` comment) fixed by coordinator assertion pin.
+- 2026-10-15: `mfb3` landed `2e8de4a4` + `2756f6d0` (D5: internal
+  `on_switch_restored` hook fired only after a successful v2 switch;
+  bookmark mode wires it to `history_navigate` sans reload with the
+  restored record's `bookmark_state_id`, else `url=None`. JS verified
+  unchanged — no dist rebuild. Playwright pin: in-place switch updates
+  the URL without reload; reload restores the right conversation).
+  `by2p`'s order-independence fix landed `e64583d8`. Roborev 1581
+  enqueued. `gwg3` delegated (attachments/list-ordering/eviction trio).
+- 2026-10-15: `mfb3` verified (Playwright 9 green; pyright 0). Roborev
+  1581 Pass with 3 Low: (1) stale `bookmark_state_id` after sibling
+  navigation — REAL, OUT OF SCOPE → backlog `ht4q` (pre-existing class,
+  v1 had it, plan §2 bookmark fidelity beyond the pointer; re-minting on
+  navigation is new machinery); (2) hook failure reported as failed
+  switch — fix delegated (best-effort wrapper); (3) garbled replaceState
+  comment — fix delegated. `mfb3` CLOSED after fixes landed `b6c4af86`
+  (303 controller tests, pyright 0).
+- 2026-10-15: `by2p` COMPLETE pending review — `0fa399c9` (transform),
+  `e64583d8` (roborev 1580 dispositions: pointer race, one-sided links,
+  quadratic kind scan, cover/mapped dedup), `3f4ade7a` (fixture-driven
+  fidelity fix: py 0.6.1 never persisted `selected_child` — resolve
+  effective selection via v1's own `subtree_leaf` fallback),
+  `12fc8366` (4-form fixture matrix + loud harness, 26 tests through
+  production `FileConversationStore.get()`), `b2559262` (r-sync-fixtures;
+  new Makefile cp line). Fixture bytes generated by each release's own
+  writers in temp worktrees. Notable: R 0.5.0's turns.jsonl is
+  double-encoded jsonlite — Python skips turn lines, matching released
+  0.7.2 restore fidelity for R records (verbatim UI, empty turn
+  context). Roborev 1582 enqueued on the completion range. `dmgt`
+  delegated (D6 legacy bookmark read-gate, honest pre-`e0x2`
+  degradation).
+- 2026-10-15: ESCALATION VALVE fired on the import pointer post-pass
+  (4 findings across roborev 1580/1582: order-dependence, one-sided
+  links, KeyError regression, inconsistent stale pointer). 1582 verdict
+  Fail (1 Medium regression: KeyError on one-sided-link input child
+  selected by a stored pointer). Decision: PATCH-AS-REPLACE — unify both
+  passes on v1's `effective_selected` rule (a pointer not naming an
+  existing child of the node is ignored); no new guard. If the unified
+  rule draws another finding, DELETE/REPLACE: resolve selection entirely
+  inside the structure pass and drop the post-pass. Fix delegated
+  (`by2p-valve`); the mechanism flips to batched range review on next
+  review. Valve fix landed `5f1b3c57`: one `stored_pointer()` predicate
+  (a stored pointer counts only when it names an existing child of the
+  node) shared by both passes — KeyError and dangling-pointer writes
+  structurally impossible, no new guard; both regression shapes
+  test-pinned and verified to fail against the pre-fix module. 28
+  import tests green; batched range review 1584 enqueued.
+- 2026-10-15: `dmgt` CLOSED (`670635ab` + `bf248a81`; covered by 1584).
+  Roborev 1584 (batched range) Pass with 3 Low — #3 test-scaffolding
+  dedup landed `b031d8ac`; #1/#2 hit the import selection logic AGAIN
+  (6 findings in 3 rounds on the mechanism family). DRIVER CALL on the
+  valve endgame (2026-10-15): PATCH #2 (input-node `current_leaf` maps
+  to its bare exchange — real §7.4 fidelity break for cancelled-
+  regenerate saves), SCOPE-LIMIT #1 (one-sided links are a corrupt shape
+  no released writer produces — tolerate without crash, no fidelity
+  guarantee for corrupt shapes; doc-comment corrected to stop
+  overclaiming). Patch delegated (`by2p-fidelity`).
+- 2026-10-15: `by2p` CLOSED. Fidelity patch landed `8ea2e7a3`
+  (input-node leaf → cancelled bare exchange; test verified to fail
+  pre-fix). Roborev 1585 PASS CLEAN — the pointer/selection chain
+  converged after the valve unification + driver endgame. 7/11 children
+  closed; remaining: `e0x2`, `t21d`, `8ec9`, `4b9z`. Session paused for
+  driver status check; kata attention pairs audited and made truthful.
+- 2026-10-15: `gwg3` landed `3230e8f2` (attachment capture verified
+  matching #394/#401 — no gap, pinned), `f1e13ae0` (#372 fix: `_put_v2`
+  warm cache now sorts `created_at` like every other path; the ABC
+  docstring contract wins), `b4217976` (bookmark eviction pins; the
+  v1-under-v2 eviction gap is strict-xfail referencing `e0x2` — verified
+  it fires on exactly the schema `ValueError` and will xpass when the
+  read-gate lands). Verified: 383 tests, pyright 0. Roborev 1583
+  enqueued. `gwg3` CLOSED: 1583 Pass with 4 Low — 3 fixed `9e6f0cba`
+  (strict-xfail so XPASS forces marker removal at `e0x2`; docstring;
+  sentinel), 1 declined (parametrization churn).
+
+- 2026-10-15: phase RESUMED after clean pause. Baseline re-verified
+  before changes: py unit 1185 passed + 2 xfailed (the two strict pins
+  awaiting `e0x2`), pyright 0, JS 1407 passed (23 skipped), Playwright
+  224/226 — `cancel_in_modal` still the dispositioned `ftz9` red;
+  `page_chat::test_desktop_navigation_streaming_and_history_auto_open`
+  failed once (sidebar resizer aria-valuenow timing) and PASSED on
+  isolated re-run — classified flake, watch for recurrence at phase exit.
+  Wave 2/3 delegated in parallel with disjoint write scopes: `e0x2`
+  (versioned record types + read-gate, medium) and `t21d` fixture half
+  (#421 shared fixture, medium; CHANGELOG migration notes held by
+  coordinator to avoid the shared-file conflict with `e0x2`).
+
+- 2026-10-15: `t21d` CLOSED — #421 shared fixture
+  (`e613e28f` fixture+harness through production v2 paths,
+  verified-red evidence; `a2bcdfbd` R sync, drift-free) + CHANGELOG
+  migration notes for custom store authors (`4169d382`). Roborev 1586:
+  1 Low (fake-chat restored_messages accumulation), fixed — a
+  shared-checkout commit race swept the fix into `2307da6e`; content
+  verified, attribution on the issue. `e0x2` landed: `2307da6e`
+  (rename to ConversationRecordV1), `9099dc37` (D1 validator),
+  `a9ff9247` (ABC typing), `91b891e7` (pointerless-record import at
+  synthesized root), `f93a4315` (read-gate in
+  `HistoryController._get_record`, both strict-xfail pins flipped and
+  passing for real, v1-era custom-store compat tests), `25edce90`
+  (put() v1→v2 overwrite + stale side-file cleanup), `947113e8`
+  (CHANGELOG downgrade note), `e2f42187` (tidy). Gates: 1203 passed/0
+  xfail, pyright 0, history Playwright subset 20 passed. INTERPRETATION
+  RECORDED: the D4 read-gate lives in the controller's `_get_record`
+  (fires when the exchange recorder is active), not in the store
+  `get()`s — stores stay mode-agnostic so the v1 runtime (default until
+  `4b9z`) and the import-matrix harness (which pins production
+  `FileConversationStore.get()` returning schema_version 1) keep
+  working; every v2-mode read of a v1 record still yields v2 in memory.
+  Roborev 1587: Fail, 4 findings. F1 (High: v1-era custom store under
+  the DEFAULT v1 runtime now gets a v2 record from
+  `ConversationRecord.model_validate` and the v1 path raises) —
+  accepted as phase-intermediate per the approved D1+D9 sequencing
+  (reviewer's fix contradicted D1; failure is loud; `4b9z` removes the
+  v1 default this same phase; flagged here for driver visibility at
+  exit). F2/F3/F4 confirmed and fix delegated (`e0x2-fixes`):
+  CHANGELOG scope wording, shape-based v1 detection in the validator
+  (markerless released forms are the guardrail), validator accepts
+  plain V2 instances + runtime-type doc note.
+
+- 2026-10-15: `e0x2` CLOSED. F2/F3/F4 fixes landed `c7db363a`
+  (shape-gated markerless v1 detection: `current_leaf` top-level or
+  v1-only node keys `{parent, turns, ui, turn_ids}`; all four released
+  fixtures route correctly — py 0.6.1 actually stamps
+  `schema_version: 1`, so the explicit-marker branch carries the
+  fixtures and the shape path serves genuinely pre-marker records),
+  `33f6b1d6` (validator accepts plain V2 instances; V2 documented as
+  the runtime isinstance type), `c7724041` (CHANGELOG scoped to the v2
+  path). Roborev 1588 Pass with 2 Low — L1 declined (markerless +
+  nodeless dict: no released writer produces it, on-disk path never
+  reaches it, driver-scoped fidelity contract), L2 fixed `41ee2ff8`.
+  Gates: 1206 passed/0 xfail, pyright 0, ruff clean. `8ec9` delegated
+  (write-guard audit + pins against the landed put() path).
+
+- 2026-10-15: `8ec9` CLOSED. Audit verdict: the chimera guard HOLDS
+  against every constructible bypass (model_construct/model_copy both
+  directions, subclass tampering — all rejected by the
+  isinstance-routing + `_check_record_for_store` pairing); pins added
+  `136f46e5` (bypass vectors + failed-v2-over-v1-overwrite ordering:
+  v1 record whole, write state retained, cleanup strictly
+  post-replace). Migration marker: NONE exists on this branch — issue
+  finding (b) moot here, recorded for `115q` (R side). Roborev 1589
+  Pass with 1 Low — fixed `36c23a36` (both-backends no-persistence
+  post-condition). Gates: 1209 passed/0 xfail, pyright 0. 10/11
+  children closed; `4b9z` (v1 runtime deletion) is the last child and
+  is unblocked — delegating next.
+
+- 2026-10-15: `4b9z` CLOSED (roborev 1591's 2 Lows fixed `07295d7e`:
+  no-store-mutation + no-install pins on the rejection paths). 11/11
+  children closed. Phase-exit gates: py unit 1120 passed/0 xfailed,
+  pyright 0, ruff clean, full Playwright 225/226 (only the
+  dispositioned `ftz9` local red; the resume-day flake did not recur),
+  JS 1407 (23 skipped), R 2123/0 fail. `origin/main` unmoved — no
+  boundary merge needed. plan.md status header + §4 marked complete.
+- 2026-10-15: `4b9z` landed (agent hit its turn cap with the tree
+  uncommitted; resumed with a commit-first steer). `668921d5` (v1
+  runtime + flag deleted in `_history.py`), `0187217c` (v1-runtime
+  tests retired; 5 guard behaviors the matrix uniquely pinned re-pinned
+  as unit tests), `17e101ae` (Playwright apps drop the flag),
+  `a52a8dc3` (bookmark switch test pinned to D5 (b) semantics).
+  Deletion verified: no `use_exchange_tree`/`replay_ui`/
+  `extend_record_linear`/`stamp_conversation_id`/`completion-v1`
+  branch remains (the `Literal` wire type keeps `completion-v1` for the
+  JS client); import input path, legacy bookmark READ-gate, and store
+  v1 disk read/write all survive. Unit delta 1209→1120 (−89, all
+  accounted: v1 blocks, matrix harness, v1 twins; 0 xfailed), pyright
+  0, ruff clean, history Playwright 21 green. ESCALATION RECORDED
+  (advisory): the Python `history-behavior-matrix.json` harness died
+  with the v1 runtime; the fixture stays for R (Phase 6 re-derives the
+  cross-language matrix for the single engine). Roborev 1590 Pass with
+  1 Medium + 2 Low: Medium = bookmark-mode docs still promised the
+  reload-restore switch — fixed `b5cf88f1` (docstring + CHANGELOG:
+  in-place switch, soft URL update, on_save/on_restore for raw inputs);
+  Lows (dead `controller.record`, deletion blank-line runs) delegated.
+
+## Handoff
+
+- **What landed:** Phase 5.7 complete — v2 parity gaps closed (titling,
+  bookmark-mode in-place switch, new_chat/clear gating, structured
+  blocks, attachments/list-ordering/eviction), the v1→v2 import for all
+  four released forms with a shared fixture matrix, versioned record
+  types with upgrade-on-read and lazy conversion (v1 writes back as v2),
+  legacy bookmark stamp read-gate, store write guards pinned, and the
+  v1 runtime + `use_exchange_tree` flag + Python `completion-v1` branch
+  deleted. Python has exactly one history engine; v1 survives only as
+  import input (`ConversationRecordV1` + `_history_import.py` + disk
+  read) plus the legacy stamp read-gate. Branch: 476 commits ahead of
+  `origin/main` (unmoved), green modulo the dispositioned `ftz9`
+  Playwright local red.
+- **What's next:** Phase 6 (`05vb`) — the R port of the single engine:
+  transcript owner, exchange tree, S7 versioned records, R 0.5.0
+  import, legacy bookmark stamp, the shared fixtures (turn-rewrite and
+  v1-import matrices ready now; the cross-language behavior matrix
+  needs re-derivation for the v2 engine — the Python harness died with
+  the v1 runtime). Also queued for the driver: push/CI (branch is ~476
+  commits unpushed; 5.6 deferred this to phase exit) and the roborev
+  1587-F1 disposition (phase-intermediate default-config regression,
+  eliminated by `4b9z`'s deletion).
+- **Provisional decisions:** the D4 read-gate lives in the controller
+  (`_get_record`), not the stores, so stores stay mode-agnostic and the
+  import-matrix harness pins production `FileConversationStore.get()`
+  returning schema_version 1 — revisit if Phase 6 wants the gate in the
+  R store. `115q` (R migration marker) must consume any marker only
+  after writes succeed (8ec9 audit conclusion).

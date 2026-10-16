@@ -15,6 +15,7 @@ def test_web_asides(page: Page, local_app: ShinyAppProc) -> None:
     expect(chat.loc_input_button).to_be_disabled()
 
     chat.set_user_input("tell me about e-bike motors")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
 
     # Wait for the stream to finish: six aside groups should appear.
@@ -143,6 +144,7 @@ def test_aside_marker_public_style_properties(
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30 * 1000)
     chat.set_user_input("tell me about e-bike motors")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
 
     labeled_marker = page.get_by_role("button", name="eBicycles (+1 more)")
@@ -248,6 +250,7 @@ def test_web_aside_symmetric_padding_when_favicon_fails(
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30 * 1000)
     chat.set_user_input("tell me about e-bike motors")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
 
     pill = page.locator(".shiny-aside-group").first.locator(".shiny-aside-pill")
@@ -273,6 +276,7 @@ def test_rich_list_item_aside_renders_inline(
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30 * 1000)
     chat.set_user_input("tell me about e-bike motors")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
 
     list_item = page.locator("li").filter(
@@ -327,6 +331,7 @@ def test_final_rich_aside_remains_visible_after_streaming(
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30 * 1000)
     chat.set_user_input("tell me about e-bike motors")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
 
     group = page.locator(".shiny-aside-group").filter(has_text="Final source")
@@ -349,6 +354,7 @@ def test_web_aside_popover_inherits_scoped_theme(
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30 * 1000)
     chat.set_user_input("tell me about e-bike motors")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
 
     first = page.locator(".shiny-aside-group").first
@@ -378,6 +384,7 @@ def test_web_aside_popover_wraps_and_scrolls_in_a_narrow_viewport(
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30 * 1000)
     chat.set_user_input("tell me about e-bike motors")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
 
     groups = page.locator(".shiny-aside-group")
