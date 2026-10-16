@@ -361,7 +361,8 @@ review unit; the orchestrator requests one roborev range review per unit
   deflake #427 reconciled with the exchange-tree structure, assets
   rebuilt via `make update-dist`); js 1457 + py 1129 + R 2131 green.
   Phase 5.8 complete — all nine children closed; 73pm unblocked.
-  Next: Phase 6 R port (`05vb`) after the draft PR lands.
+  Next (historical; superseded by the 2026-10-16 stack-planning gate below):
+  Phase 6 R port (`05vb`) after the draft PR lands.
 
 ## Closeout analysis dispositions (2026-10-15)
 
@@ -447,7 +448,15 @@ architecture, 1605 complexity, 1606 dead-code. Originals 1592/1593/
   boundary; roborev 1609 accepted the scoped patch with two Low sibling-test
   suggestions explicitly declined, not a no-findings review. Driver approved
   closure; `shinychat#tn7c` is CLOSED with evidence and artifacts on the issue.
-  Next: Python stack preparation per the dated gate, then the R port on that
-  foundation; verify each stack level against its intended base. Task-graph
-  reorganization is a separate step, and no stack/R/upstream work was started
-  or newly authorized by the tn7c fix.
+  Next: Phase 5.9 Python stack task `f9hc` per `phase-5.9-mechanism.md`, then
+  the R port on that foundation; verify each stack level against its intended
+  base. Planning decisions recorded 2026-10-16 require publication,
+  verification and human approval before R, unless explicitly waived by the
+  driver. The task graph now gives `f9hc` a direct blocking edge to `05vb`;
+  `f9hc` is now directly under the epic; Phase 8 remains final packaging after
+  Phase 7. Independent modal prerequisite `8ej9` is worked from `main` before
+  reconstruction, rather than carrying the historical local-red waiver into
+  the stack. The Python stack preserves R's pinned asset copy until port entry.
+  No reconstruction, publication, or R implementation has started. This later
+  planning step is separate from, and was not authorized by, the tn7c
+  investigation/fix.

@@ -125,11 +125,14 @@ the directory in the final cleanup before the completed effort merges to
 1. **One kata issue per work item**, parented appropriately; claim with
    `work.attention ok`, stamp `work.branch`, keep the attention pair
    truthful, close with evidence. Never end a session with the signal stale.
-2. **Small conventional commits**, one logical change each, kata refs in the
-   body.
-3. **Every JS/SCSS change** rebuilds and copies dist assets in the same
-   commit (`make update-dist` builds JS assets and copies them in one command) —
-   the packages serve their own asset copies; skipping this ships stale JS.
+2. **Small conventional commits**, one logical change each. Private Kata and
+   roborev references, if retained, are optional body details, never subjects.
+3. **Every JS/SCSS change** rebuilds and distributes assets inside the
+   responsible PR; source and asset commits may be separate. Normally use
+   `make update-dist` for both packages. Phase 5.9 is the scoped exception:
+   `make js-build`, then `make py-update-dist`, preserving R's pinned copy
+   until port entry. The packages serve their own assets; skipping the
+   responsible package's refresh ships stale JS.
 4. **Escalate early on these tripwires** — each is a known money pit:
    anything touching the init/restore window; anything that wants a timer,
    a queue, or a second flag to manage ordering; anything that stores
@@ -151,8 +154,24 @@ not wreckage.
    finding. **Timing amended 2026-10-16 (plan.md §7.1):** resolve CI blocker
    `tn7c` and establish green full-suite CI before preparing the initial
    Python review stack or requesting review; the R port stacks on that
-   foundation. Verify each PR against its intended base. Stack/dependency
-   reorganization is separate from the `tn7c` investigation. (The
+   foundation under Phase 5.9 `f9hc`, a direct epic child. Phase 8 remains
+   final packaging after Phase 7. Independent modal prerequisite `8ej9` is
+   worked from `main` and integrated before reconstruction. Use
+   `history-tree/{feat}` branches. Verify each PR against its
+   intended base; publication, verification, and human approval gate R unless
+   the driver explicitly waives approval with recorded stack SHAs. Reconstruct
+   from the final diff with small semantic commits. Private Kata/roborev refs
+   belong only as optional body details, never commit subjects. The stack
+   merges together; independent release of intermediate PRs is not required.
+   Omit `_plan/` and effort-local handoffs from all reconstructed levels,
+   retaining their history on the source archive; `1gjh` audits absence rather
+   than an introduce-then-delete PR. In the Python-only stack, run
+   `make js-build` and then `make py-update-dist`, preserving R's served assets
+   from the pinned base; ordinary dual-package distribution remains the
+   default elsewhere. Refresh R's assets at port entry with
+   `make r-update-dist` and verify behavior. Reviewed workflow:
+   `phase-5.9-mechanism.md`. Stack/dependency reorganization is separate from
+   the `tn7c` investigation. (The
    original rule, one small stacked PR per unit of work with settled
    segments merging at phase boundaries, caused friction in Phases 2–5 and
    is retired.)

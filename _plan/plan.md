@@ -1,15 +1,19 @@
 # Plan: exchange-tree conversation history
 
 **Status:** committed · Phases 0–5, 5.5, 5.6, 5.7, and 5.8 complete.
-**Next:** prepare the Python review stack before the R port · driver decision
-2026-10-16 (amends the 2026-10-14 sequencing in §7.1). `shinychat#tn7c`
+**Next:** resolve independent modal prerequisite `shinychat#8ej9`, then
+reconstruct the Python review stack under Phase 5.9 `shinychat#f9hc`.
+Read-only stack planning may continue meanwhile. Obtain human approval before
+R unless explicitly waived by the driver. Policies and reviewed workflow:
+[phase-5.9-mechanism.md](phase-5.9-mechanism.md) · driver decisions 2026-10-16
+(amend the 2026-10-14 sequencing in §7.1). `shinychat#tn7c`
 is closed with driver-approved scoped evidence; full-suite CI is green at
 `78819fa0` (runtime fix `506d92ab`). See the Phase 5.8 handoff for the
 explicitly accepted pre-existing local modal-test failure.
 **Kata:** epic `shinychat#6d0d` · Phase 1 `g49a` · Phase 2 `kjyt` · Phase 3
 `qf2r` · Phase 4 `azvt` · Phase 5 `fg70` · Phase 5.5 `pa98` · Phase 5.6
-`e1dv` · Phase 5.7 `36z7` · Phase 5.8 `e8kd` · Phase 6 `05vb` · Phase 7
-`r0wj` · Phase 8 `9xgn` (the `kata` CLI issue tracker).
+`e1dv` · Phase 5.7 `36z7` · Phase 5.8 `e8kd` · Phase 5.9 `f9hc` · Phase 6
+`05vb` · Phase 7 `r0wj` · Phase 8 `9xgn` (the `kata` CLI issue tracker).
 All abbreviated Kata IDs below belong to the `shinychat` project;
 planning history in closed issue `kvhc`
 **Predecessor:** `feat/turn-history-sync-redesign` (stopped; see the
@@ -17,9 +21,12 @@ planning history in closed issue `kvhc`
 **Companions:** [rationale.md](rationale.md) — why this design, what was
 considered and rejected, and the answers to each team concern ·
 [process.md](process.md) — the normative working process for this effort.
-**Lifecycle:** `_plan/` is a tracked working directory for this feature
-branch. Keep these documents current throughout implementation and remove the
-directory in the final cleanup before merging the completed effort to `main`.
+**Lifecycle:** `_plan/` is a tracked working directory for the original
+feature branch. Keep these documents current and retain their history with the
+archived development branch. Driver amendment 2026-10-16: never introduce
+`_plan/` or effort-local `.agents` handoffs into the reconstructed review
+stack; `1gjh` audits their absence at every level and final packaging. This
+supersedes introducing them and deleting them in the final PR.
 
 ---
 
@@ -575,9 +582,11 @@ signed off by the driver before code (process.md §3.4).
   transactional send-then-commit, synchronous `messages()` — #311's core,
   re-derived cleanly from the draft's design (decided: no rebase attempt).
   Land the exchange-open signal and stream attribution here. The client
-  source and `js/dist` advance; since Phase 4 `make update-dist` updates both
-  packages' bundles, and R keeps its echo-era server path until its Phase 6
-  port (`main` #380 later moved R to server-owned messages). The shared transcript fixture is
+  source and `js/dist` advance; from Phase 4, `make update-dist` updated both
+  packages' bundles. Phase 5.9 reconstruction explicitly preserves R's pinned
+  bundle while updating Python; R refreshes at port entry. R kept its echo-era
+  server path until `main` #380 moved it to server-owned messages. The shared
+  transcript fixture is
   re-derived and revised, not copied unchanged: admitted user intent is not
   rejected by an active stream, and cancellation/error preserve content
   already sent. See `phase-2-mechanism.md`.
@@ -701,10 +710,28 @@ signed off by the driver before code (process.md §3.4).
   reviews (1595–1603, 1607; findings batched and closed on each issue);
   closeout re-runs 1604/1605/1606 dispositioned in the mechanism note and
   1592/1593/1594 closed; `73pm` unblocked.
+- **Phase 5.9 — Python review-stack preparation (`f9hc`).** Direct child
+  of epic `6d0d`, before R; not early execution of Phase 8 final packaging.
+  Reviewed workflow: `phase-5.9-mechanism.md`; concrete PR/commit map still
+  requires approval. Resolve independent modal prerequisite `8ej9` before
+  reconstruction. Preserve the source archive and reconstruct on
+  `history-tree/{feat}` branches with small semantic commits. Private
+  Kata/roborev refs are optional body details only, never commit subjects.
+  Update JS and Python assets at each responsible level; preserve R's served
+  assets from the pinned upstream base until port entry. Omit effort-local
+  working files. Verify each actual base and final-tree equivalence with these
+  explicit differences. Publish and obtain human approval before releasing R,
+  unless the driver explicitly waives approval with exact stack SHAs.
 - **Phase 6 — R port (`05vb`).** After Phase 5.8 and the 2026-10-16
   pre-port gate: resolve `tn7c`, establish green full-suite CI, and prepare
-  the Python review stack on which the R port will stack. Shared JSON fixture
-  matrices + structurally parallel error messages as the parity contract.
+  the Phase 5.9 Python review stack under `f9hc` on which the R port will stack. The
+  stack must be published, verified, and human-approved before R starts;
+  a driver waiver of human approval must be explicit and recorded with exact
+  stack SHAs. Phase 8's final-packaging umbrella is not an R prerequisite.
+  Shared JSON fixture matrices + structurally parallel error messages are
+  the parity contract. An opening port action refreshes R's assets from the
+  verified Python stack (`make r-update-dist`) and verifies R behavior before
+  implementation; the initial Python stack intentionally left that copy pinned.
   `main` #380 already moved R to server-owned messages, so the R port of the
   Phase 2 core starts from there. Scope: the transcript owner and stream
   correlation, the exchange tree, S7 versioned record classes with list
@@ -721,17 +748,15 @@ signed off by the driver before code (process.md §3.4).
   remaining `mcbp` scope. Docs, NEWS, CHANGELOG. Decide whether conversation
   forking (§3.6) is in scope or backlog.
   *Done when:* deprecations ship with way-pointing, docs describe only v2,
-  and `_plan/` is ready for removal.
-- **Phase 8 — cut the review stack (`9xgn`).** **Timing amended
-  2026-10-16:** prepare the initial Python stack after `tn7c` resolution and
-  green full-suite CI, before the R port. Verify each PR against its intended
-  base; R work stacks on that foundation. Task decomposition/dependency
-  resequencing is separate from the `tn7c` investigation. Cut the diff into
-  stacked PRs along subsystem seams: JS transcript and protocol; Python
-  transcript owner; record, store, and import; restore and branching; R
-  port; legacy and docs. Each PR is independently reviewable; the stack
-  merges together. Delete `_plan/` in the final PR. Draft #379 closes when
-  the stack opens.
+  and the review stack contains no effort-local working documents.
+- **Phase 8 — final review-stack packaging (`9xgn`).** After Phase 7,
+  complete the R and legacy/docs segments on the Phase 5.9 Python foundation;
+  verify all actual bases, record approvals and finalize the bottom-to-top
+  review/merge guide. Initial pre-R Python reconstruction belongs to Phase 5.9,
+  not this phase. Each PR is independently reviewable; the stack merges
+  together. `1gjh` audits that no effort-local working files entered any
+  reconstructed level or final merge tree. Preserve the source archive.
+  Draft #379 closes when Phase 5.9 opens its replacement Python stack.
 
 ## 5. Open questions and cheapest checks
 
@@ -773,6 +798,14 @@ list (§4) and process.md §8.
    foundation. Independently verify each stack level. This supersedes the
    former R-before-stack order, not the subsystem seams or scope. Do not
    perform stack/dependency reorganization as part of the investigation.
+   **Planning decisions 2026-10-16:** Phase 5.9 `f9hc` is a direct epic
+   child and blocks R; Phase 8 remains final packaging. Modal prerequisite
+   `8ej9` precedes reconstruction. Use `history-tree/{feat}` branches, small
+   semantic commits with private refs only as optional body details, and no
+   effort-local working files. In this Python stack, refresh JS/Python assets
+   only and pin R assets until an opening port refresh. Publication,
+   verification and human approval are the default R gate; only an explicit
+   driver waiver relaxes approval. See `phase-5.9-mechanism.md`.
 2. **Main sync by merge.** Bring `main` in with merge commits, not rebases.
    Branch history is disposable because Phase 8 rebuilds the stack from the
    final diff. Sync at least at every phase boundary.
