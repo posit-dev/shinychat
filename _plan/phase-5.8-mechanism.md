@@ -289,8 +289,9 @@ review unit; the orchestrator requests one roborev range review per unit
   (D2, `286a4be6`) + `TurnDict` to `_history_types` (D3, `39a82920`);
   roborev 1596 pass (1 Low, fixed in `74a97b41`). Next: unit 3
   (`xny0`, duplication centralization D4/D5). New backlog `c87g`:
-  bookmark input-restore Playwright flake (orthogonal, ~1/3 failure
-  rate, related ht4q/bmqg).
+  bookmark-input Playwright flake (orthogonal, ~1/3 failure
+  rate, related ht4q/bmqg; initial restore diagnosis superseded by the
+  c87g follow-up below).
 - 2026-10-15: Unit 3 (`xny0`) landed — all ten centralizations (D4/D5)
   in 9 commits (`b836b620`..`d0af557c`); roborev 1597 pass, finding
   fixed in `a695a942` (root_id laziness in accepted_input + descriptive
@@ -326,7 +327,8 @@ review unit; the orchestrator requests one roborev range review per unit
   lives in the triage doc §7 addendum. Next: unit 7 (`mvyc`, split
   `_history.py` D8). New backlog `7yc1`: page_chat desktop-navigation
   Playwright flake (one failure under full history-filter load, solo
-  pass; same family as `c87g`/`bmqg`).
+  pass; initially grouped with `c87g`/`bmqg` by load sensitivity, not
+  a verified shared mechanism — see the c87g follow-up below).
 - 2026-10-15: Unit 7 (`mvyc`) landed — `_history.py` split into wiring
   (`_history.py`, 880 lines) + orchestration (`_history_controller.py`,
   1253 lines) in 4 commits (`2db0b23d` pure move, `558b7181`
@@ -390,3 +392,28 @@ architecture, 1605 complexity, 1606 dead-code. Originals 1592/1593/
   v1-surface items stay under the Deferred list. `new_conversation_record_v2`
   / `_put_v2` / `restore_initial_v2` names stay while their v1
   counterparts exist (the suffix dies naturally with v1 retirement).
+
+## c87g follow-up (2026-10-16)
+
+- **Landed:** test-only New-chat synchronization (`70f991f2`). The
+  unchanged test reproduced `filter: none` before the fix. Investigation
+  showed the test edited the old document during the intentional
+  bookmark-mode reload, before a debounced input update was sent; no
+  restore callback fired in the captured failure. The test now waits for
+  the bare-URL document to load before editing B's Shiny-bound input.
+  Final A transcript/input assertions are unchanged. Verification:
+  20/20 untraced solo runs; three untraced history suites, 53/53 each;
+  Python format/types gates clean; 1129 unit tests passed; roborev 1608
+  passed with no findings. Exact-SHA CI and closure evidence live on
+  `shinychat#c87g`.
+- **Next:** existing draft-PR and Phase 6 gates still apply. c87g does
+  not require a production restore-path redesign before the R port.
+  R already reloads on bookmark-mode New chat; browser harnesses must
+  await the fresh document.
+- **Provisional:** no shared-root claim for `ht4q`, `7yc1`, or `bmqg`;
+  they remain separate. The v2 soft-switch timeout needs its own
+  evidence. The CI concatenated-value variant was not independently
+  reconstructed; untraced verification checks the corrected ordering
+  without claiming that exact interleaving was proven. No upstream
+  report, restore guards, or production ordering changes are warranted
+  by the captured c87g failure.
