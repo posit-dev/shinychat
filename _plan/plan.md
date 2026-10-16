@@ -1,11 +1,13 @@
 # Plan: exchange-tree conversation history
 
 **Status:** committed · Phases 0–5, 5.5, 5.6, 5.7, and 5.8 complete.
-**Next:** review the [three-PR proposal](phase-5.9-stack-map.md) under Phase
-5.9 `shinychat#f9hc`; modal prerequisite `shinychat#8ej9` is resolved on main
-(`2fa02a27`, PR #430). Pin/integrate/verify that updated main before approving
-constructed stack levels. Obtain human approval of the published Python
-foundation before R unless explicitly waived. Policies and reviewed workflow:
+**Next:** the [three-PR proposal](phase-5.9-stack-map.md) is approved with
+notes under Phase 5.9 `shinychat#f9hc` (approval disposition in §7.1).
+Preserve the source, pin/integrate/verify updated main, then reconstruct review
+slices without compatibility churn solely to keep intermediate PRs working.
+Modal prerequisite `8ej9` is resolved (`2fa02a27`, PR #430). The complete
+stack must be source-equivalent, fully verified and human-approved before R
+unless approval is explicitly waived. Policies and reviewed workflow:
 [phase-5.9-mechanism.md](phase-5.9-mechanism.md) · driver decisions 2026-10-16
 (amend the 2026-10-14 sequencing in §7.1). `shinychat#tn7c`
 is closed with driver-approved scoped evidence; full-suite CI is green at
@@ -715,7 +717,10 @@ signed off by the driver before code (process.md §3.4).
   of epic `6d0d`, before R; not early execution of Phase 8 final packaging.
   Reviewed workflow: `phase-5.9-mechanism.md`; static three-PR proposal and
   verification matrix: `phase-5.9-stack-map.md`, with complete snapshot path
-  inventory. Concrete cuts/experiments still require driver approval. Modal
+  inventory. Plannotator approved the proposal with notes: optimize for
+  reviewable slices, not independently correct/green intermediate PRs. This
+  supersedes the older per-level compatibility requirements in the approved
+  snapshot; do not add staging aliases/backfills solely to satisfy them. Modal
   prerequisite `8ej9` is CLOSED on main (`2fa02a27`); integrate and verify
   that fix in the pinned reference before reconstruction. Preserve the source
   archive and reconstruct on
@@ -723,7 +728,8 @@ signed off by the driver before code (process.md §3.4).
   Kata/roborev refs are optional body details only, never commit subjects.
   Update JS and Python assets at each responsible level; preserve R's served
   assets from the pinned upstream base until port entry. Omit effort-local
-  working files. Verify each actual base and final-tree equivalence with these
+  working files. Record intermediate dependencies/failures transparently;
+  require full-stack verification and final-tree equivalence with these
   explicit differences. Publish and obtain human approval before releasing R,
   unless the driver explicitly waives approval with exact stack SHAs.
 - **Phase 6 — R port (`05vb`).** After Phase 5.8 and the 2026-10-16
@@ -810,6 +816,23 @@ list (§4) and process.md §8.
    only and pin R assets until an opening port refresh. Publication,
    verification and human approval are the default R gate; only an explicit
    driver waiver relaxes approval. See `phase-5.9-mechanism.md`.
+   **Plannotator approval with notes, 2026-10-16:** the documents at
+   `a972aee6` were approved (`decision: approved`, three guidance comments).
+   The reviewer-question headings are reading guides, not requests for the
+   driver to re-validate the design. Phase 5.9's intermediate PRs are review
+   slices and need not be internally consistent or green if forcing that
+   would create compatibility churn. Do not introduce or maintain staging
+   aliases, backfills, guards or extra hunk surgery solely for that purpose.
+   Keep the three review concerns, but prefer straightforward final-state
+   composition. The complete stack must implement the approved feature,
+   preserve the validated reference modulo explicit exclusions/asset policy,
+   and pass full verification. Disclose intermediate gaps rather than hiding
+   them or suppressing tests. This supersedes earlier per-rung correctness
+   requirements; the approved artifacts remain unchanged as review history.
+   It does not authorize bypassing required checks or branch protection. Before
+   publication/merge, choose a method that verifies and lands the complete
+   stack rather than sequentially merging broken slices. Human approval of
+   the resulting Python foundation still gates R unless explicitly waived.
 2. **Main sync by merge.** Bring `main` in with merge commits, not rebases.
    Branch history is disposable: Phase 5.9 rebuilds the initial Python stack
    from the final diff; Phase 8 completes final packaging after R/docs. Sync

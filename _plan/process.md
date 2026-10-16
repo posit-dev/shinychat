@@ -159,9 +159,14 @@ not wreckage.
    foundation under Phase 5.9 `f9hc`, a direct epic child. Phase 8 remains
    final packaging after Phase 7. Independent modal prerequisite `8ej9` is
    worked from `main` and integrated before reconstruction. Use
-   `history-tree/{feat}` branches. Verify each PR against its
-   intended base; publication, verification, and human approval gate R unless
-   the driver explicitly waives approval with recorded stack SHAs. Reconstruct
+   `history-tree/{feat}` branches. **Approval with notes (2026-10-16,
+   plan.md §7.1):** these are review slices, not independently working PRs.
+   Record their dependencies and expected failures, but do not add compatibility
+   churn solely for intermediate green. Require source equivalence and full
+   verification at the composed stack tip. Do not suppress tests or bypass
+   required merge checks; resolve the whole-stack merge method before
+   publication. Publication, full-stack verification and human approval gate
+   R unless the driver explicitly waives approval with recorded stack SHAs. Reconstruct
    from the final diff with small semantic commits. Private Kata/roborev refs
    belong only as optional body details, never commit subjects. The stack
    merges together; independent release of intermediate PRs is not required.
