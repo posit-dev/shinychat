@@ -1,8 +1,9 @@
 # Phase 5.9 mechanism: Python review-stack preparation
 
 **Status:** Workflow reviewed by the driver; annotation feedback incorporated. The concrete PR/commit map and reconstruction execution still require approval.
-**Kata:** Phase 5.9 `shinychat#f9hc`, directly under feature epic `6d0d`; blocks Phase 6 `05vb`. Independent modal prerequisite `8ej9` blocks reconstruction. Phase 8 `9xgn` remains final packaging after Phase 7.
+**Kata:** Phase 5.9 `shinychat#f9hc`, directly under feature epic `6d0d`; blocks Phase 6 `05vb`. Independent modal prerequisite `8ej9` is resolved on main; its integration into the validated reference remains required. Phase 8 `9xgn` remains final packaging after Phase 7.
 **References:** [plan.md](plan.md) §4/§7.1–7.2; [process.md](process.md) §8.1; [phase-5.8-mechanism.md](phase-5.8-mechanism.md) latest closeout.
+**Preparation proposal:** [phase-5.9-stack-map.md](phase-5.9-stack-map.md), with a complete fixed-snapshot [change inventory](phase-5.9-change-inventory.csv). Concrete boundaries and experiments await driver approval.
 
 ## Approved policies (driver discussion, 2026-10-16)
 
@@ -16,28 +17,31 @@
 
 ## Observed source state
 
-The initial source snapshot is `b382c176`; recorded all-green CI ran at `78819fa0`, not at this later documentation HEAD. The source fix for the last blocker is `506d92ab`. The previously accepted local modal-test exception remains historical evidence on `ftz9`/`tn7c`. New prerequisite `8ej9` owns its resolution before reconstruction; this plan does not carry that waiver into new stack verification.
+The initial source snapshot is `b382c176`; recorded all-green CI ran at `78819fa0`, not at this later documentation HEAD. The source fix for the last history blocker is `506d92ab`. The accepted local modal-test exception on `ftz9`/`tn7c` is historical evidence only. Independent prerequisite `8ej9` is now CLOSED: fix `2fa02a27` landed on main (PR #430), whose local tree matches recorded CI-green PR head `c6ac0d9f`. Integrate and verify it in the reconstruction reference; no modal waiver carries forward.
 
-Local-ref observations, without a fresh fetch: `origin/main` is `0bf2364a`, merge-base `94c4f426`; the branch has 542 commits not on that ref, while main has one commit not on the branch (`0bf2364a`, mock-session hooks, #428). The two-tip diff is 177 files, +40,095/-4,893, including working documents and assets. These numbers describe the investigation snapshot, not reviewer-facing stack size.
+Initial snapshot observations (without a fresh fetch by this preparation): base `0bf2364a`, merge-base `94c4f426`; source has 542 commits not on that base, while that main snapshot has one commit not on source (`0bf2364a`, mock-session hooks, #428). The two-tip diff is 177 files, +40,095/-4,893, including working documents and assets. These numbers describe the fixed investigation snapshot, not current upstream or reviewer-facing stack size.
 
-No branch reconstruction, archive-ref creation, force push, PR publication, upstream integration, or new test run has occurred during this planning discussion.
+Those counts describe the initial local-ref snapshot; independent modal work has since advanced local origin/main to `2fa02a27`. No stack branches, archive refs, force pushes, publication, upstream integration, builds or runtime tests were performed by this preparation. Independent main-based modal verification is recorded on `8ej9`.
 
-## Candidate review boundaries — not an approved transplant map
+## Proposed review chain — not a verified transplant map
 
-| Review unit | Main concern | Dependency to resolve before approving the cut |
+Read-only preparation recommends three PRs, detailed in [phase-5.9-stack-map.md](phase-5.9-stack-map.md):
+
+| Proposed branch | Reviewer concern | Staged contract |
 |---|---|---|
-| Transcript ownership and wire protocol | Coordinated JS/Python message ownership, stream identity and transport behavior | Client echo removal and server consumer cutover must remain compatible; retain the R-compatible protocol path until the R port. |
-| Records, stores and v1 import | Exchange graph, versioned records, store boundary and released-form compatibility fixtures | Records/import use shared chat types; versioned validation and import are coupled. Do not split the validator from its required importer. |
-| Exchange capture and state hooks | Recorder ownership, capture, restore/rewind plans and host contract | Recorder depends on transcript, record/store and client adapters; final chat host wiring may span several candidate units. |
-| Restore, branching and app integration | Controller/wiring, bookmarks, actions, initialization, failure/retry semantics and UI affordances | Controller and recorder may need one review unit. End-to-end browser tests must exercise the actual intermediate tree. |
+| `history-tree/records` | Explicit record models and faithful released-form import | Preserve the existing public record alias, legacy schema gate and live store/controller; no generic V2 upgrade yet. |
+| `history-tree/transcript` | Server transcript/stream lifecycle and client protocol primitives | Preserve legacy initialization/admission; defer automatic completion seed/release and activation. Update JS/Python assets, pin R. |
+| `history-tree/exchange-history` | Atomic capture/plans/controller/store/restore cutover | Activate version tracking, dual-version stores, initial admission and completion-v2 together; all controller-dependent tests arrive here. |
 
-These are reader concerns, not directory-only copies or a promised count of four PRs. Move shared prerequisites to their first necessary layer. Combine units if a split would need placeholder APIs, a second implementation, temporary guards or an otherwise broken intermediate tree. No feature flags or production redesign solely to make the review stack thinner.
+The original capture/state-hook and restore concerns are combined: their only concrete host and verification surface is the controller. Stores move with the live consumer to avoid a temporary narrowing guard. Public alias preservation is staging of the existing released contract, not a new flag/API. Browser snapshot deletion was branch-only history and is net-zero against the provisional base.
+
+These cuts are static proposals, not proof of three green trees. Shared files require the map's named hunk splits, not directory copies. If a split needs placeholder APIs, a second engine, temporary guards or broken intermediate behavior, combine the affected level with cutover and return the changed map for approval.
 
 ## Proposed activities
 
-### 0. Resolve the local modal-test failure
+### 0. Integrate the resolved modal prerequisite
 
-Complete separate prerequisite `8ej9` before reconstruction. Compare the unchanged second-Escape failure on clean main and the feature source, identify whether it belongs to the test, production behavior, or environment, and verify the evidence-supported correction with repeated untraced focused runs plus the relevant full Playwright suite. Do not skip the test, weaken dismissal/cancellation assertions, or silently retain the old exception. An unavailable resolution requires an explicit driver decision, not automatic continuation. Read-only stack planning can proceed meanwhile; record how the resolution enters the integration reference.
+Separate main-based task `8ej9` is CLOSED with fix `2fa02a27` (PR #430); its tree matches recorded CI-green PR head `c6ac0d9f`. The Phase 5.9 agent does not redo that investigation. Bring the resolved fix into the pinned integration reference and verify the formerly failing case plus the relevant full suite there before accepting a reconstruction baseline. Do not skip assertions or carry the old exception into a new tree. Any renewed failure requires an explicit disposition, not automatic continuation.
 
 ### 1. Freeze a recoverable reference
 
@@ -77,24 +81,31 @@ Collect human approval of the Python foundation. Changes made during review requ
 
 ## Remaining decisions before execution
 
-- The concrete hunk/commit map and actual viable PR count/order.
-- Exact layer slugs under the agreed `history-tree/` prefix; archive/integration reference names; pinned upstream and validated reference SHAs.
-- Exact per-level focused verification matrix and publication/review instructions.
+- Approval of the three proposed cuts, staged public/schema contract and bounded construction experiments.
+- Archive/integration reference names and refreshed upstream/source SHAs after the independent fix; the proposed layer slugs are recorded in the map.
+- Execution proof of the proposed per-level verification matrix and publication/review instructions.
 
 The driver-approved policies do not resolve these mechanism choices or authorize destructive operations. Existing Phase 6/7 feature scope and backlog dispositions remain unchanged.
 
 ## Plan self-review
 
-**96/100:** clarity 24/25, comprehensiveness 25/25, feasibility 22/25, consistency 25/25.
+**93/100:** clarity 24/25, comprehensiveness 24/25, feasibility 20/25, consistency 25/25. The lower feasibility score reflects the explicit lack of construction/runtime proof for the new map, not a relaxation of verification gates.
 
 - [x] Name the pre-R work Phase 5.9, directly under the epic, and reserve Phase 8 for post-Phase-7 packaging to avoid a dependency cycle.
 - [x] Preserve the existing final-diff decision, meaningful commit subjects, source recovery and driver approval boundaries.
 - [x] Account for upstream drift and intermediate compatibility; update JS/Python assets at each responsible level while pinning R assets, and explain that difference in the final-tree comparison.
 - [x] Record the branch prefix and give the local modal failure an independent pre-reconstruction task rather than carrying its historical exception.
-- [x] Replace the superseded introduce-then-delete working-document policy and keep human approval as the default R gate.
-- [ ] Resolve the concrete decomposition and exact verification matrix before reconstruction; current seams are intentionally provisional.
+- [x] Replace the superseded introduce-then-delete working-document policy and keep human approval as the default R gate; prune the remaining old Phase 8/lifecycle wording in plan/process.
+- [x] Document a concrete three-PR proposal, every snapshot path's ownership/handling, semantic commit sequences, test collection constraints and supported verification targets.
+- [ ] Driver approval and construction proof after the modal resolution; staged public/schema and initialization contracts remain unverified on intermediate trees.
 
-The revised workflow is sufficient to guide the next planning investigation, not proof that the four candidate cuts build independently. The driver reviewed the workflow and policies; concrete reconstruction/publication approval remains gated on the map and prerequisites.
+The reviewed workflow and policies remain approved in principle. The new concrete map is ready for driver review, not a claim that its proposed trees build or a grant of reconstruction/publication approval.
+
+## Preparation handoff
+
+- Landed: reviewed policies committed as `93e82051`; static source/base inventory and proposed three-PR map prepared without runtime changes.
+- Next: review the concrete map; pin/integrate/verify updated main with the resolved modal correction, then approve bounded construction experiments.
+- Provisional: the three cuts, existing-alias/schema staging and deferred activation hunks require construction proof; collapse a failed seam instead of adding packaging-only guards.
 
 ## Annotation disposition (pn-b0caa7, 2026-10-16)
 

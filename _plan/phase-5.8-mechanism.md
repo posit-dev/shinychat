@@ -454,9 +454,10 @@ architecture, 1605 complexity, 1606 dead-code. Originals 1592/1593/
   verification and human approval before R, unless explicitly waived by the
   driver. The task graph now gives `f9hc` a direct blocking edge to `05vb`;
   `f9hc` is now directly under the epic; Phase 8 remains final packaging after
-  Phase 7. Independent modal prerequisite `8ej9` is worked from `main` before
-  reconstruction, rather than carrying the historical local-red waiver into
-  the stack. The Python stack preserves R's pinned asset copy until port entry.
+  Phase 7. Independent modal prerequisite `8ej9` was resolved from `main` in
+  `2fa02a27`; integrate and verify that fix before reconstruction rather than
+  carrying the historical local-red waiver into the stack. The Python stack
+  preserves R's pinned asset copy until port entry.
   No reconstruction, publication, or R implementation has started. This later
   planning step is separate from, and was not authorized by, the tn7c
   investigation/fix.

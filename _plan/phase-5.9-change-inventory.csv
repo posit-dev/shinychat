@@ -1,0 +1,178 @@
+path,status,category,added,deleted,handling,proposed_review_units,hunk_contract
+.agents/prompts/investigate-c87g.md,A,working-artifacts,164,0,omit-from-review-stack,OMIT,working-artifact omission; archive source only
+.agents/prompts/investigate-tn7c.md,A,working-artifacts,288,0,omit-from-review-stack,OMIT,working-artifact omission; archive source only
+.agents/prompts/pickup-phase.md,A,working-artifacts,58,0,omit-from-review-stack,OMIT,working-artifact omission; archive source only
+.agents/prompts/pickup-task.md,A,working-artifacts,40,0,omit-from-review-stack,OMIT,working-artifact omission; archive source only
+Makefile,M,project-build-config,4,0,assign-in-concrete-pr-map,PR1;PR3,stage import fixture copy first; turn-rewrite copy only when canonical input arrives
+_plan/phase-2-mechanism.md,A,working-artifacts,474,0,omit-from-review-stack,OMIT,working-artifact omission; archive source only
+_plan/phase-3-mechanism.md,A,working-artifacts,712,0,omit-from-review-stack,OMIT,working-artifact omission; archive source only
+_plan/phase-4-mechanism.md,A,working-artifacts,2997,0,omit-from-review-stack,OMIT,working-artifact omission; archive source only
+_plan/phase-5-mechanism.md,A,working-artifacts,862,0,omit-from-review-stack,OMIT,working-artifact omission; archive source only
+_plan/phase-5.6-mechanism.md,A,working-artifacts,304,0,omit-from-review-stack,OMIT,working-artifact omission; archive source only
+_plan/phase-5.7-mechanism.md,A,working-artifacts,490,0,omit-from-review-stack,OMIT,working-artifact omission; archive source only
+_plan/phase-5.8-comment-audit-triage.md,A,working-artifacts,600,0,omit-from-review-stack,OMIT,working-artifact omission; archive source only
+_plan/phase-5.8-mechanism.md,A,working-artifacts,453,0,omit-from-review-stack,OMIT,working-artifact omission; archive source only
+_plan/plan.md,A,working-artifacts,826,0,omit-from-review-stack,OMIT,working-artifact omission; archive source only
+_plan/process.md,A,working-artifacts,189,0,omit-from-review-stack,OMIT,working-artifact omission; archive source only
+_plan/rationale.md,A,working-artifacts,158,0,omit-from-review-stack,OMIT,working-artifact omission; archive source only
+js/dist/shinychat.css,M,generated-assets,1,1,regenerate-at-responsible-js-level,PR2;PR3,regenerate JS/Python at each changed JS level
+js/dist/shinychat.css.map,M,generated-assets,2,2,regenerate-at-responsible-js-level,PR2;PR3,regenerate JS/Python at each changed JS level
+js/dist/shinychat.js,M,generated-assets,76,76,regenerate-at-responsible-js-level,PR2;PR3,regenerate JS/Python at each changed JS level
+js/dist/shinychat.js.map,M,generated-assets,4,4,regenerate-at-responsible-js-level,PR2;PR3,regenerate JS/Python at each changed JS level
+js/src/chat/ChatApp.tsx,M,js-source,117,10,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/src/chat/ChatContainer.tsx,M,js-source,18,4,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/src/chat/ChatHistoryDrawer.tsx,M,js-source,5,5,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/src/chat/ChatInput.tsx,M,js-source,34,9,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/src/chat/ChatMessage.tsx,M,js-source,30,2,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/src/chat/ChatMessages.tsx,M,js-source,3,0,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/src/chat/chat-entry.ts,M,js-source,7,0,assign-in-concrete-pr-map,PR3,automatic completion-v2 seed and entry binding tests
+js/src/chat/chat.scss,M,js-source,37,0,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/src/chat/history-entry.ts,M,js-source,1,1,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/src/chat/historyStore.ts,M,js-source,118,9,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/src/chat/state.ts,M,js-source,38,0,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/src/transport/shiny-transport.ts,M,js-source,35,10,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/src/transport/types.ts,M,js-source,36,2,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/tests/chat/ChatApp.integration.test.tsx,M,tests-fixtures,792,2,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/tests/chat/ChatApp.test.tsx,M,tests-fixtures,48,0,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/tests/chat/ChatHistoryDrawer.test.tsx,M,tests-fixtures,4,19,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/tests/chat/ChatInput.test.tsx,M,tests-fixtures,110,0,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/tests/chat/ChatMessage.test.tsx,M,tests-fixtures,218,0,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/tests/chat/chat-entry.test.ts,M,tests-fixtures,48,0,assign-in-concrete-pr-map,PR3,automatic completion-v2 seed and entry binding tests
+js/tests/chat/history-entry.test.tsx,M,tests-fixtures,37,0,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/tests/chat/historyStore.test.ts,M,tests-fixtures,301,1,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/tests/helpers/fakeTiptapInput.tsx,M,tests-fixtures,2,1,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/tests/helpers/mocks.ts,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+js/tests/transport/shiny-transport.test.ts,M,tests-fixtures,67,5,assign-in-concrete-pr-map,PR2;PR3,protocol primitives first; activation/legacy-busy/event-priority hunks and assertions at cutover
+pkg-py/CHANGELOG.md,M,docs-examples-other,16,0,assign-in-concrete-pr-map,PR2;PR3,reservation/lifecycle fixes then complete history migration/admission/restore contract
+pkg-py/src/shinychat/_chat.py,M,python-source,960,224,assign-in-concrete-pr-map,PR2;PR3,host lifecycle first; all initial admission/seed/release hunks at cutover
+pkg-py/src/shinychat/_chat_client.py,M,python-source,19,0,assign-in-concrete-pr-map,PR3,initial-history new-chat guard
+pkg-py/src/shinychat/_chat_transcript.py,A,python-source,578,0,assign-in-concrete-pr-map,PR2,transcript owner and independent direct tests
+pkg-py/src/shinychat/_chat_types.py,M,python-source,38,0,assign-in-concrete-pr-map,PR1;PR2,shared record primitives then transcript/wire declarations
+pkg-py/src/shinychat/_history.py,M,python-source,440,967,assign-in-concrete-pr-map,PR3,live wiring/controller replacement; retain baseline before cutover
+pkg-py/src/shinychat/_history_client.py,M,python-source,48,25,assign-in-concrete-pr-map,PR1,shared turn types and adapter validation
+pkg-py/src/shinychat/_history_controller.py,A,python-source,1182,0,assign-in-concrete-pr-map,PR3,atomic live cutover
+pkg-py/src/shinychat/_history_plan.py,A,python-source,379,0,assign-in-concrete-pr-map,PR3,atomic live cutover
+pkg-py/src/shinychat/_history_recorder.py,A,python-source,532,0,assign-in-concrete-pr-map,PR3,atomic live cutover
+pkg-py/src/shinychat/_history_store.py,M,python-source,219,98,assign-in-concrete-pr-map,PR3,dual-version store changes with live consumer; no interim guard
+pkg-py/src/shinychat/_history_title.py,M,python-source,13,12,assign-in-concrete-pr-map,PR3,retire helper only with old controller caller
+pkg-py/src/shinychat/_history_types.py,M,python-source,504,25,assign-in-concrete-pr-map,PR1;PR3,explicit models/constants first; public current-version alias and schema gate at cutover
+pkg-py/src/shinychat/_history_v1.py,A,python-source,616,0,assign-in-concrete-pr-map,PR1,pure importer and warnings
+pkg-py/src/shinychat/types/__init__.py,M,python-source,12,1,assign-in-concrete-pr-map,PR1;PR3,explicit version exports first; version-tracking alias/comment at cutover
+pkg-py/src/shinychat/www/GIT_VERSION,M,generated-assets,1,1,regenerate-at-responsible-js-level,PR2;PR3,regenerate JS/Python at each changed JS level
+pkg-py/src/shinychat/www/shinychat.css,M,generated-assets,1,1,regenerate-at-responsible-js-level,PR2;PR3,regenerate JS/Python at each changed JS level
+pkg-py/src/shinychat/www/shinychat.css.map,M,generated-assets,2,2,regenerate-at-responsible-js-level,PR2;PR3,regenerate JS/Python at each changed JS level
+pkg-py/src/shinychat/www/shinychat.js,M,generated-assets,76,76,regenerate-at-responsible-js-level,PR2;PR3,regenerate JS/Python at each changed JS level
+pkg-py/src/shinychat/www/shinychat.js.map,M,generated-assets,4,4,regenerate-at-responsible-js-level,PR2;PR3,regenerate JS/Python at each changed JS level
+pkg-py/tests/_history_test_helpers.py,M,tests-fixtures,33,8,assign-in-concrete-pr-map,PR1;PR3,pure branch_from first; controller import and replay helper at cutover
+pkg-py/tests/fixtures/history-v2-worked-example.json,A,tests-fixtures,180,0,assign-in-concrete-pr-map,PR3,live controller/store/history cutover and legacy matrix retirement
+pkg-py/tests/playwright/chat/append_assistant_attachment/test_append_assistant_attachment.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/aside_responsive/test_aside_responsive.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/attachment_input/test_attachment_input.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/auto_cancel_core/test_chat_auto_cancel_core.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/auto_core/test_chat_auto_core.py,M,tests-fixtures,2,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/auto_express/test_chat_auto_express.py,M,tests-fixtures,2,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/basic/test_chat_basic.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/bookmark/test_chat_bookmark_restore.py,M,tests-fixtures,29,4,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/bookmark_attachment/test_bookmark_attachment.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/bookmark_html_deps/test_bookmark_html_deps.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/bookmark_html_deps_stream/test_bookmark_html_deps_stream.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/bookmark_mixed_thinking_stream/test_bookmark_mixed_thinking_stream.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/bookmark_no_store/test_bookmark_no_store.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/client_state/app.py,A,tests-fixtures,34,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/client_state/test_messages_source.py,A,tests-fixtures,21,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/client_state/test_resubmit.py,A,tests-fixtures,25,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/errors/test_chat_errors.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/greeting/test_chat_greeting.py,M,tests-fixtures,5,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/history/test_history.py,M,tests-fixtures,2,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_actions/test_history_actions.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_auto_memory_reload/test_history_auto_memory_reload.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_bookmark/app.py,M,tests-fixtures,12,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_bookmark/test_history_bookmark.py,M,tests-fixtures,17,10,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_bookmark_with_state/test_history_bookmark_with_state.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_cross_session_deps/_test_assets/custom.css,A,tests-fixtures,1,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_cross_session_deps/app.py,A,tests-fixtures,102,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_cross_session_deps/test_history_cross_session_deps.py,A,tests-fixtures,74,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_current/test_history_current.py,M,tests-fixtures,3,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_edit/test_history_edit.py,M,tests-fixtures,13,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_greeting_no_flash/test_history_greeting_no_flash.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_idempotent_save/app.py,A,tests-fixtures,109,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_idempotent_save/test_history_idempotent_save.py,A,tests-fixtures,174,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_initial_gate/app.py,A,tests-fixtures,80,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_initial_gate/test_history_initial_gate.py,A,tests-fixtures,115,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_initial_seed_withdrawal/app.py,A,tests-fixtures,61,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_initial_seed_withdrawal/test_history_initial_seed_withdrawal.py,A,tests-fixtures,31,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_initial_startup_suppression/app.py,A,tests-fixtures,133,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_initial_startup_suppression/app_url.py,A,tests-fixtures,4,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_initial_startup_suppression/test_history_initial_startup_suppression.py,A,tests-fixtures,43,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_out_of_band/app.py,A,tests-fixtures,82,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_out_of_band/test_history_out_of_band.py,A,tests-fixtures,72,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_restore_on_reload/test_history_restore_on_reload.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_switch_clears_greeting/test_history_switch_clears_greeting.py,M,tests-fixtures,2,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_transition/app.py,A,tests-fixtures,164,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_transition/draft.txt,A,tests-fixtures,1,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_transition/test_history_transition.py,A,tests-fixtures,172,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_ui_offset_after_restore/_test_assets/custom.css,A,tests-fixtures,1,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_ui_offset_after_restore/app.py,A,tests-fixtures,108,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_ui_offset_after_restore/test_history_ui_offset_after_restore.py,A,tests-fixtures,123,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_v2_restore/app.py,A,tests-fixtures,241,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_v2_restore/app_bookmark.py,A,tests-fixtures,11,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_v2_restore/app_url.py,A,tests-fixtures,4,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_v2_restore/draft.txt,A,tests-fixtures,1,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_v2_restore/replacement.txt,A,tests-fixtures,1,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/history_v2_restore/test_history_v2_restore.py,A,tests-fixtures,566,0,assign-in-concrete-pr-map,PR3,exchange-history apps/assertions; baseline remains before cutover
+pkg-py/tests/playwright/chat/icon/test_chat_icon.py,M,tests-fixtures,5,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/image_input/test_image_input.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/input-suggestion/test_chat_input_suggestion.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/message_stream_context/test_chat_message_stream_context.py,M,tests-fixtures,2,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/module/test_chat_module.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/move/test_chat_move.py,M,tests-fixtures,2,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/scroll_on_send/test_scroll_on_send.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/slash_commands/test_chat_slash_commands.py,M,tests-fixtures,2,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/stream/app.py,M,tests-fixtures,12,16,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/transform_assistant/test_chat_transform_assistant.py,M,tests-fixtures,2,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/transform_assistant_stream/test_chat_transform_assistant_stream.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/web_asides/test_web_asides.py,M,tests-fixtures,7,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/chat/web_citations/test_web_citations.py,M,tests-fixtures,2,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/page/page_chat/test_page_chat.py,M,tests-fixtures,2,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/page/page_chat_drawer/test_page_chat_artifact.py,M,tests-fixtures,1,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/playwright/page/page_chat_navigation_example/test_page_chat_navigation_example.py,M,tests-fixtures,4,0,assign-in-concrete-pr-map,PR2;PR3,retain baseline host tests; stage only lifecycle vs activation synchronization hunks at responsible layer
+pkg-py/tests/pytest/test_chat.py,M,tests-fixtures,3704,677,assign-in-concrete-pr-map,PR2;PR3,legacy host/fake adjustments first; admission/state/controller expectations at cutover
+pkg-py/tests/pytest/test_chat_auto.py,M,tests-fixtures,14,0,assign-in-concrete-pr-map,PR2;PR3,legacy host/fake adjustments first; admission/state/controller expectations at cutover
+pkg-py/tests/pytest/test_chat_bookmark_exclusions.py,A,tests-fixtures,68,0,assign-in-concrete-pr-map,PR2;PR3,legacy host/fake adjustments first; admission/state/controller expectations at cutover
+pkg-py/tests/pytest/test_chat_clear_history.py,M,tests-fixtures,81,66,assign-in-concrete-pr-map,PR2;PR3,legacy host/fake adjustments first; admission/state/controller expectations at cutover
+pkg-py/tests/pytest/test_conversation_id.py,M,tests-fixtures,35,213,assign-in-concrete-pr-map,PR2;PR3,host mock adjustments; reconcile newer main hooks rather than reverting them
+pkg-py/tests/pytest/test_drawer.py,M,tests-fixtures,37,20,assign-in-concrete-pr-map,PR2;PR3,generic host fake/API or initialization synchronization hunks; preserve baseline assertions
+pkg-py/tests/pytest/test_greeting.py,M,tests-fixtures,57,37,assign-in-concrete-pr-map,PR2;PR3,legacy host/fake adjustments first; admission/state/controller expectations at cutover
+pkg-py/tests/pytest/test_html_islands.py,M,tests-fixtures,9,0,assign-in-concrete-pr-map,PR2;PR3,generic host fake/API or initialization synchronization hunks; preserve baseline assertions
+pkg-py/tests/pytest/test_input_handler.py,M,tests-fixtures,4,0,assign-in-concrete-pr-map,PR2;PR3,legacy host/fake adjustments first; admission/state/controller expectations at cutover
+pkg-py/tests/pytest/test_markdown_stream.py,M,tests-fixtures,3,0,assign-in-concrete-pr-map,PR2;PR3,generic host fake/API or initialization synchronization hunks; preserve baseline assertions
+pkg-py/tests/pytest/test_messages_deprecation.py,M,tests-fixtures,8,0,assign-in-concrete-pr-map,PR2;PR3,legacy host/fake adjustments first; admission/state/controller expectations at cutover
+pkg-py/tests/pytest/test_structured_blocks.py,M,tests-fixtures,2,0,assign-in-concrete-pr-map,PR2;PR3,generic host fake/API or initialization synchronization hunks; preserve baseline assertions
+pkg-py/tests/pytest/test_tool_condensed_view.py,M,tests-fixtures,13,4,assign-in-concrete-pr-map,PR2;PR3,generic host fake/API or initialization synchronization hunks; preserve baseline assertions
+pkg-py/tests/test_chat_history.py,M,tests-fixtures,2302,4,assign-in-concrete-pr-map,PR2;PR3,legacy host/fake adjustments first; admission/state/controller expectations at cutover
+pkg-py/tests/test_chat_transcript.py,A,tests-fixtures,826,0,assign-in-concrete-pr-map,PR2,direct transcript ownership evidence
+pkg-py/tests/test_history_client.py,M,tests-fixtures,14,1,assign-in-concrete-pr-map,PR1,adapter or pure import evidence with legacy production reads
+pkg-py/tests/test_history_controller.py,M,tests-fixtures,8816,1782,assign-in-concrete-pr-map,PR3,live controller/store/history cutover and legacy matrix retirement
+pkg-py/tests/test_history_import_matrix.py,A,tests-fixtures,1323,0,assign-in-concrete-pr-map,PR1,adapter or pure import evidence with legacy production reads
+pkg-py/tests/test_history_legacy_bookmark.py,A,tests-fixtures,368,0,assign-in-concrete-pr-map,PR3,live controller/store/history cutover and legacy matrix retirement
+pkg-py/tests/test_history_matrix.py,D,tests-fixtures,0,229,assign-in-concrete-pr-map,PR3,live controller/store/history cutover and legacy matrix retirement
+pkg-py/tests/test_history_store.py,M,tests-fixtures,426,79,assign-in-concrete-pr-map,PR1;PR3,explicit model/V1 fixture evidence first; current alias and V2 store tests at cutover
+pkg-py/tests/test_history_title.py,M,tests-fixtures,13,23,assign-in-concrete-pr-map,PR3,live controller/store/history cutover and legacy matrix retirement
+pkg-py/tests/test_history_turn_rewrite_matrix.py,A,tests-fixtures,212,0,assign-in-concrete-pr-map,PR3,live controller/store/history cutover and legacy matrix retirement
+pkg-py/tests/test_history_types.py,M,tests-fixtures,367,31,assign-in-concrete-pr-map,PR1;PR3,explicit model/V1 fixture evidence first; current alias and V2 store tests at cutover
+pkg-py/tests/test_message_transcript_matrix.py,A,tests-fixtures,187,0,assign-in-concrete-pr-map,PR2,direct transcript ownership evidence
+pkg-r/inst/lib/shiny/GIT_VERSION,M,generated-assets,1,1,keep-pinned-upstream-bytes,BASE,"pin entire served asset to upstream base, not source snapshot"
+pkg-r/inst/lib/shiny/shinychat.css,M,generated-assets,1,1,keep-pinned-upstream-bytes,BASE,"pin entire served asset to upstream base, not source snapshot"
+pkg-r/inst/lib/shiny/shinychat.css.map,M,generated-assets,2,2,keep-pinned-upstream-bytes,BASE,"pin entire served asset to upstream base, not source snapshot"
+pkg-r/inst/lib/shiny/shinychat.js,M,generated-assets,76,76,keep-pinned-upstream-bytes,BASE,"pin entire served asset to upstream base, not source snapshot"
+pkg-r/inst/lib/shiny/shinychat.js.map,M,generated-assets,4,4,keep-pinned-upstream-bytes,BASE,"pin entire served asset to upstream base, not source snapshot"
+pkg-r/tests/testthat/fixtures/history-store-fixture-matrix.json,M,tests-fixtures,10,0,assign-in-concrete-pr-map,PR1,V1 opaque-value storage fixture and copied case
+pkg-r/tests/testthat/fixtures/history-turn-rewrite-matrix.json,A,tests-fixtures,73,0,assign-in-concrete-pr-map,PR3,controller-dependent matrix and R copy
+pkg-r/tests/testthat/fixtures/history-v1-import-matrix.json,A,tests-fixtures,442,0,assign-in-concrete-pr-map,PR1,released-writer import matrix and R copy
+pkg-r/tests/testthat/test-chat-history-hooks.R,M,tests-fixtures,23,0,assign-in-concrete-pr-map,PR2,unchanged R protocol/module behavior assertions; no R port
+pkg-r/tests/testthat/test-chat_history_integration.R,M,tests-fixtures,27,6,assign-in-concrete-pr-map,PR2,unchanged R protocol/module behavior assertions; no R port
+pkg-r/tests/testthat/test-chat_history_store.R,M,tests-fixtures,20,0,assign-in-concrete-pr-map,PR1,opaque-value V1 store roundtrip
+tests/shared/history-store-fixture-matrix.json,M,tests-fixtures,10,0,assign-in-concrete-pr-map,PR1,V1 opaque-value storage fixture and copied case
+tests/shared/history-turn-rewrite-matrix.json,A,tests-fixtures,73,0,assign-in-concrete-pr-map,PR3,controller-dependent matrix and R copy
+tests/shared/history-v1-import-matrix.json,A,tests-fixtures,442,0,assign-in-concrete-pr-map,PR1,released-writer import matrix and R copy
+tests/shared/message-transcript-matrix.json,A,tests-fixtures,637,0,assign-in-concrete-pr-map,PR2,Python-only transcript matrix

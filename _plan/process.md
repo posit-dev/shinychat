@@ -4,9 +4,10 @@
 **Status:** normative for this effort. If scratch docs contradict this
 document, this document wins; if this document contradicts plan.md, plan.md
 wins — amend whichever is wrong rather than forking the truth.
-**Lifecycle:** keep `_plan/` tracked and current during implementation. Remove
-the directory in the final cleanup before the completed effort merges to
-`main`.
+**Lifecycle:** keep `_plan/` tracked and current on the original development
+branch and preserve it with that source archive. Do not introduce effort-local
+working documents into any reconstructed review-stack level; `1gjh` audits
+absence rather than an introduce-then-delete final PR.
 
 ## 1. Standing structure
 
@@ -108,11 +109,12 @@ the directory in the final cleanup before the completed effort merges to
    issue body or doc section, mark it *at supersession time* (edit the body,
    strike the section). At every phase transition, prune the working doc set
    the next agent will be pointed at.
-2. **plan.md, rationale.md, and this document are the durable references.**
-   Anything else that accumulates under this directory is scratch and must
-   be treated as possibly stale.
-   If scratch contradicts plan.md, plan.md wins; if plan.md is wrong, amend
-   plan.md — don't fork the truth into a new doc.
+2. **plan.md, rationale.md, this document, and the current phase mechanism
+   note are durable references.** A concrete map explicitly linked by the
+   mechanism note is part of that phase's planning contract; a fixed-snapshot
+   inventory is evidence, not approval of a decomposition. Other accumulated
+   notes are scratch and may be stale. If they contradict plan.md, plan.md
+   wins; if plan.md is wrong, amend it rather than forking the truth.
 3. **Decisions land in the plan, not in chat.** Any open-question resolution
    (plan.md §5) is recorded by editing plan.md with the answer and date. An
    open question that has been answered but not written down is still open.
