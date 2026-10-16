@@ -42,11 +42,12 @@ def test_bookmark_mode_switch_restores_inputs(
     start_conversation(page, "first question")
     page.wait_for_url(lambda url: "_state_id_=" in url, timeout=30_000)
 
-    # New chat: fresh conversation in place. No reload happens, so the
-    # client keeps its current auxiliary input value (raw inputs are only
-    # synced through on_save/on_restore, never the conversation switch).
+    # Bookmark-mode New chat reloads at the bare app URL. Wait for the
+    # new document before editing inputs; click() can return before the
+    # server-triggered navigation starts.
     open_drawer(page)
     page.locator(".shiny-chat-history-new").click()
+    page.wait_for_url(local_app.url, wait_until="load", timeout=30_000)
 
     # Conversation B, with a different filter value.
     controller.InputText(page, "filter_text").set("second value")
