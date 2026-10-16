@@ -5,9 +5,12 @@
 > received the click while its enabled select button was off-screen during
 > drawer opening; no selection input was dispatched. Garrick approved the
 > two test-only actual-button locator changes and the verification plan.
-> See `shinychat#tn7c` for current review/verification status. The investigation
-> instructions below do not authorize more retries, sibling fixes, closure,
-> restacking, or the R port; exact fix-SHA green CI is still required.
+> `shinychat#tn7c` is closed with driver-approved scoped evidence: exact
+> pushed HEAD `78819fa0` (source fix `506d92ab`) passed all CI on attempt 1.
+> The local full suite's known pre-existing modal-test failure was explicitly
+> retained and accepted for closure. See the issue for evidence and review
+> dispositions. The historical instructions below do not authorize more
+> retries, sibling fixes, restacking, or the R port.
 
 You are a high-capability investigator in shinychat, working at:
 

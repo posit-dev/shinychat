@@ -1,9 +1,11 @@
 # Plan: exchange-tree conversation history
 
 **Status:** committed · Phases 0–5, 5.5, 5.6, 5.7, and 5.8 complete.
-**Next:** resolve CI blocker `shinychat#tn7c`, establish green full-suite CI,
-then prepare the Python review stack before the R port · driver decision
-2026-10-16 (amends the 2026-10-14 sequencing in §7.1).
+**Next:** prepare the Python review stack before the R port · driver decision
+2026-10-16 (amends the 2026-10-14 sequencing in §7.1). `shinychat#tn7c`
+is closed with driver-approved scoped evidence; full-suite CI is green at
+`78819fa0` (runtime fix `506d92ab`). See the Phase 5.8 handoff for the
+explicitly accepted pre-existing local modal-test failure.
 **Kata:** epic `shinychat#6d0d` · Phase 1 `g49a` · Phase 2 `kjyt` · Phase 3
 `qf2r` · Phase 4 `azvt` · Phase 5 `fg70` · Phase 5.5 `pa98` · Phase 5.6
 `e1dv` · Phase 5.7 `36z7` · Phase 5.8 `e8kd` · Phase 6 `05vb` · Phase 7

@@ -418,7 +418,7 @@ architecture, 1605 complexity, 1606 dead-code. Originals 1592/1593/
   report, restore guards, or production ordering changes are warranted
   by the captured c87g failure.
 
-## Remaining CI blocker / pre-stack gate (2026-10-16)
+## Resolved CI blocker / pre-stack gate (2026-10-16)
 
 - **Landed:** c87g is closed with scoped evidence; the separate B-to-A
   soft-switch timeout now has dedicated issue `shinychat#tn7c` and handoff
@@ -430,13 +430,24 @@ architecture, 1605 complexity, 1606 dead-code. Originals 1592/1593/
   off-screen; no `chat_history_select` was sent. The store was connected and
   unblocked. Original CI click chronology is unavailable; the link to CI
   remains the same traceback signature, not directly captured boundaries.
-- **Approved:** Garrick authorized the two test-only actual-button locator
-  changes in the bookmark soft-switch test, preserving every assertion and
-  timeout. No production, dependency, JS/SCSS/R, or sibling-test changes.
-  Verification and review are in progress; evidence and current status are
-  on `shinychat#tn7c`.
-- **Next:** verify repeated untraced targets and broader suites, static/unit
-  gates, and external review, then obtain green full-suite CI at the exact
-  pushed fix SHA before closure. The Python stack and R port remain gated;
-  other backlog flakes remain independent. No upstream report, restack, or
-  R-port work is authorized by this fix.
+- **Resolved:** Garrick approved the two test-only actual-button locators,
+  preserving every assertion and timeout. Source fix `506d92ab`; separately
+  committed handoff docs / exact tested HEAD `78819fa0`. All CI passed on
+  attempt 1: Python `38937649668` (full Playwright 226/226, lint/types, unit
+  versions 3.10–3.14), R `38937650150` (all matrix jobs), JS assets
+  `38937649613`. No production, dependency, JS/SCSS/R, or sibling-test changes.
+- **Local verification / scoped exception:** 20/20 independent untraced
+  targets, three 53/53 history suites, 1129 units, and format/all-pkg-py types
+  passed. Full local suite: 225/226; the fixed target passed, but the known
+  pre-existing `cancel_in_modal` second-Escape test failed. `ftz9` already
+  records Garrick's environmental disposition after the same failure on
+  pure `origin/main`. No new modal root is claimed and no retry/fix applied.
+  Garrick explicitly approved retaining this local red for scoped closure.
+- **Review / handoff:** independent evidence review confirmed the DOM
+  boundary; roborev 1609 accepted the scoped patch with two Low sibling-test
+  suggestions explicitly declined, not a no-findings review. Driver approved
+  closure; `shinychat#tn7c` is CLOSED with evidence and artifacts on the issue.
+  Next: Python stack preparation per the dated gate, then the R port on that
+  foundation; verify each stack level against its intended base. Task-graph
+  reorganization is a separate step, and no stack/R/upstream work was started
+  or newly authorized by the tn7c fix.
