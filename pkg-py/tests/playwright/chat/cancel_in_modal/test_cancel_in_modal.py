@@ -6,11 +6,25 @@ from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
 
 
+def open_chat_modal(page: Page) -> None:
+    # A visible modal can still be opening, when Bootstrap ignores Escape dismissal.
+    page.evaluate(
+        """() => {
+            window.__chatModalShown = false;
+            window.jQuery(document).one("shown.bs.modal", "#shiny-modal", () => {
+                window.__chatModalShown = true;
+            });
+        }"""
+    )
+    page.get_by_role("button", name="Open chat").click()
+    page.wait_for_function("window.__chatModalShown === true", timeout=5000)
+
+
 def test_escape_cancels_stream_before_closing_chat_modal(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     page.goto(local_app.url)
-    page.get_by_role("button", name="Open chat").click()
+    open_chat_modal(page)
 
     modal = page.get_by_role("dialog")
     expect(modal).to_be_visible()
@@ -36,7 +50,7 @@ def test_escape_closes_suggestion_before_cancelling_stream(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     page.goto(local_app.url)
-    page.get_by_role("button", name="Open chat").click()
+    open_chat_modal(page)
 
     modal = page.get_by_role("dialog")
     expect(modal).to_be_visible()
