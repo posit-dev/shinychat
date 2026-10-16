@@ -516,14 +516,18 @@ def test_v2_bookmark_switch_updates_url_in_place_and_reload_restores_target(
 
     # In-place switch B -> A: the URL moves to A's state id, no reload.
     page.locator(".shiny-chat-history-trigger").click()
-    page.locator(".shiny-chat-history-item", has_text="conversation A").click()
+    page.locator(
+        ".shiny-chat-history-item", has_text="conversation A"
+    ).locator(".shiny-chat-history-item-select").click()
     page.wait_for_url(lambda url: url == url_a, timeout=10_000)
     chat.expect_latest_message("echo: conversation A", timeout=30_000)
     assert page.evaluate("window.__noReloadMarker") is True
 
     # And back A -> B, still in place.
     page.locator(".shiny-chat-history-trigger").click()
-    page.locator(".shiny-chat-history-item", has_text="conversation B").click()
+    page.locator(
+        ".shiny-chat-history-item", has_text="conversation B"
+    ).locator(".shiny-chat-history-item-select").click()
     page.wait_for_url(lambda url: url == url_b, timeout=10_000)
     chat.expect_latest_message("echo: conversation B", timeout=30_000)
     assert page.evaluate("window.__noReloadMarker") is True
