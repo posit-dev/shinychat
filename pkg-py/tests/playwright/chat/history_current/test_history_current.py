@@ -55,6 +55,7 @@ def test_current_restores_active_not_most_recent(
 
     # --- Conversation A ---
     chat.set_user_input("hello A")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: hello A", timeout=30_000)
 
@@ -64,6 +65,7 @@ def test_current_restores_active_not_most_recent(
     page.locator(".shiny-chat-history-drawer").wait_for(state="hidden")
 
     chat.set_user_input("hello B")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: hello B", timeout=30_000)
 
@@ -105,6 +107,7 @@ def test_current_falls_back_to_fresh_when_stored_id_is_stale(
 
     # Create a conversation so localStorage gets a real-looking ID written.
     chat.set_user_input("hello stale")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: hello stale", timeout=30_000)
 

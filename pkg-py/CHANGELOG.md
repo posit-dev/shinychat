@@ -15,11 +15,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Streamed responses now reveal smoothly at a typing-like pace instead of in abrupt server-sized chunks, with far fewer re-renders along the way. Bursts of text catch up quickly, the reveal never flashes a partial HTML tag, and stopping a response reveals any buffered text immediately. The trailing dot now appears only once a stream has stalled (or before any text has arrived), rather than hopping along with every update. (#411)
 
+### Conversation history
+
+* On the v2 conversation-history path — which this release makes the only history engine by removing the legacy v1 runtime and its opt-in flag — legacy v1 records are upgraded to the current v2 format in memory when read, and written back as v2 on their next save (there is no bulk migration). Custom `ConversationStore` implementations keep working: `ConversationRecord.model_validate*` on a v1 record returns an upgraded v2 record, and a store whose `get()` still returns a v1 record is upgraded by the controller on read. Note that downgrading the package afterwards hides conversations that were converted on save — their records are v2, which the older version cannot read.
+
+* In bookmark restore mode, in-session conversation switches no longer reload the page to the target conversation's bookmark URL. The switch now happens in place and the address bar soft-updates to the target's `?_state_id_=...` URL. A page reload no longer re-runs Shiny's restore on switch, so raw input controls are not re-populated from the bookmark on in-session switches; apps that need input values restored should capture and re-apply them with `@chat.history.on_save`/`@chat.history.on_restore` (page-load restores are unchanged).
+
+* Migration notes for custom `ConversationStore` authors: records are now versioned schema types — conversation history is persisted as an exchange tree (`ConversationRecordV2`, `schema_version` 2) whose turns are re-captured per exchange rather than appended to one mutable turn log (this is what fixes stale-turn restores after client-side `set_turns()` compaction, #421). Stores that pass v1 record bytes through opaquely can generally keep doing so — reads upgrade through the import described above — but any store that *reads into* v1 internals (`nodes`, `current_leaf`, `selected_child`, or node-level `turns`/`ui` fields) must switch to the v2 record model (`active_leaf` exchange tree, per-exchange `state` entries) or it will silently mis-serve restored conversations. The store contract itself (`list`/`get`/`put`/`delete` per partition) is unchanged.
+
 ### Bug fixes
 
 * Expanding a running tool call's row in a tool group now shows its arguments. Previously the panel stayed empty until the call finished. (#424)
 
 * Stopping an in-progress response now returns focus to the chat input, even inside a Shiny modal. During streaming, Escape dismisses an open slash-command menu or history drawer first; a subsequent Escape cancels the response without closing the modal. (thanks @taekop, #416)
+
+* `Chat.append_message_stream()` and the root stream of `Chat.message_stream_context()` now raise a `RuntimeError` when conversation history is still initializing, instead of silently returning `None`/an empty message stream. The rejection happens before the message iterable is wrapped or consumed, so no chunks are pulled from an unconsumed, possibly expensive producer and ownership stays with the caller to close or gate it.
+
+* A programmatic `Chat.append_message()` suppressed while conversation history is still initializing now emits a `UserWarning` instead of failing silently: the append was ignored, was not sent, and will not be replayed. Client-triggered actions (user submissions, slash commands) attempted during that window are still rejected silently through their own path.
+
+* Restore-failure notifications now name the failing state entry (e.g. `shinychat:turns`) or the restore step that failed, instead of a generic message. Cancellations keep the generic message. And when navigating between exchanges or resubmitting, a failure in a state-rewind hook no longer leaves the stored conversation pointing at the new exchange: the stored record now only moves after the rewind succeeds.
+
+* `Chat.append_message_stream()` now starts its stream before returning, so it can no longer be overtaken by later work. An `append_message()` — or a second `append_message_stream()` — while the stream is active now raises `RuntimeError` at the call site instead of possibly jumping ahead of the stream; wait for the stream to finish (e.g. via `latest_message_stream`) before appending. Cancelling the stream's task before its body starts now also ends the stream, so later messages are not stuck behind a dead stream. (#417, #418; thanks @schloerke)
 
 ## [0.7.2] - 2026-09-18
 
