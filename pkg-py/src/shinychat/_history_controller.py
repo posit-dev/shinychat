@@ -123,6 +123,33 @@ def _take_restore_step_label(failure: BaseException) -> str | None:
     return step
 
 
+# A failure whose cleanup already showed the sanitized user notification
+# carries this marker, so an outer action boundary (`_on_select`,
+# `_run_history_transition`, ...) keeps its raw warning for developers but
+# skips its own second toast, which would repeat the failure with raw
+# exception text (app hook internals included). Like the step label, the
+# marker rides on the exception itself and is consumed when read.
+_RESTORE_NOTIFIED_ATTR = "__shinychat_restore_notified__"
+
+
+def _mark_restore_failure_notified(failure: BaseException) -> None:
+    """Record that cleanup already showed `failure`'s user notification."""
+    setattr(failure, _RESTORE_NOTIFIED_ATTR, True)
+
+
+def _restore_failure_was_notified(failure: BaseException) -> bool:
+    """Consume the cleanup-notified marker carried by `failure`, if any.
+
+    Read-once, matching the restore-step label: a boundary that suppresses
+    its toast consumes the marker, so a reused exception instance can't
+    suppress a later, genuinely unnotified failure.
+    """
+    notified = getattr(failure, _RESTORE_NOTIFIED_ATTR, False)
+    if notified:
+        delattr(failure, _RESTORE_NOTIFIED_ATTR)
+    return bool(notified)
+
+
 def _restore_failure_detail(failure: BaseException | None) -> str | None:
     """Name the failing hook or step for the restore-failure notification.
 
@@ -220,6 +247,16 @@ class HistoryController:
         ) = None
         self.on_switch_restored: (
             Callable[[ConversationRecordV2], Awaitable[None]] | None
+        ) = None
+        # Fired by failure cleanup INSTEAD of on_active_id_change(None)
+        # when the restore mode's active-id callback navigates
+        # destructively. Bookmark mode's active-id callback hard-reloads —
+        # right for an intentional New chat, wrong for failure recovery,
+        # where the reload would discard the recovered fresh draft and the
+        # failure toast. Modes without destructive None-navigation leave
+        # this unset and keep the fallback.
+        self.on_failed_restore_cleared: (
+            Callable[[], Awaitable[None]] | None
         ) = None
         self.on_evict: Callable[[str], Awaitable[None]] | None = None
         self.on_settled: Callable[[bool], Awaitable[None]] | None = None
@@ -531,7 +568,10 @@ class HistoryController:
         await best_effort(lambda: self.adapter.set_turns_json([]))
         await best_effort(lambda: self.chat.set_greeting(None))
         active_id_callback = self.on_active_id_change
-        if active_id_callback is not None:
+        clear_callback = self.on_failed_restore_cleared
+        if clear_callback is not None:
+            await best_effort(clear_callback)
+        elif active_id_callback is not None:
             await best_effort(lambda: active_id_callback(None))
         try:
             await self.send_history_update()
@@ -550,6 +590,11 @@ class HistoryController:
             )
         except BaseException:
             pass
+        else:
+            if failure is not None:
+                # Only a notification that actually went out marks the
+                # failure; otherwise an outer boundary must still notify.
+                _mark_restore_failure_notified(failure)
 
     def _prepare_exchange_restore(
         self,

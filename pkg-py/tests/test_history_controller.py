@@ -4756,6 +4756,85 @@ async def test_v2_restore_cleanup_continues_after_earlier_failure():
 
 
 @pytest.mark.anyio
+async def test_v2_restore_cleanup_prefers_failed_restore_clear_callback():
+    """A restore mode whose active-id callback navigates destructively
+    installs ``on_failed_restore_cleared``; failure cleanup uses it
+    INSTEAD of ``on_active_id_change(None)``. Bookmark mode's active-id
+    callback hard-reloads — right for an intentional New chat, wrong for
+    failure recovery, where the reload would discard the recovered fresh
+    draft and the failure toast."""
+    adapter = _TrackingFakeAdapter()
+    controller, _ = _make_controller(adapter=adapter)
+    _install_live_v2_record(controller)
+    target = _restore_target()
+    fake_chat = cast(_FakeChat, controller.chat)
+    fake_chat._restore_bookmark_message = AsyncMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("original restore failure")
+    )
+    active_id_calls: list[str | None] = []
+    cleared: list[bool] = []
+
+    async def active_id(id: str | None) -> None:
+        active_id_calls.append(id)
+
+    async def clear() -> None:
+        cleared.append(True)
+
+    controller.on_active_id_change = active_id
+    controller.on_failed_restore_cleared = clear
+    notifier = AsyncMock()
+    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="original restore failure"):
+        await replay_exchange_record(controller, target)
+
+    assert cleared == [True]
+    assert active_id_calls == []
+    notifier.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_v2_restore_cleanup_marks_failure_as_notified():
+    """After a successful cleanup notification the failure carries the
+    notified marker (consumed on read), so an outer action boundary can
+    skip its duplicate raw toast. When the notification itself could not
+    be sent, the failure stays unmarked so the boundary still notifies."""
+    from shinychat._history_controller import _restore_failure_was_notified
+
+    controller, _ = _make_controller()
+    _install_live_v2_record(controller)
+    target = _restore_target()
+    fake_chat = cast(_FakeChat, controller.chat)
+    original = RuntimeError("original restore failure")
+    fake_chat._restore_bookmark_message = AsyncMock(  # type: ignore[method-assign]
+        side_effect=original
+    )
+    controller._notify_restore_failure = AsyncMock()  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError) as raised:
+        await replay_exchange_record(controller, target)
+
+    assert raised.value is original
+    # Read-once, matching the restore-step label convention.
+    assert _restore_failure_was_notified(original) is True
+    assert _restore_failure_was_notified(original) is False
+
+    unnotified = RuntimeError("second restore failure")
+    fake_chat._restore_bookmark_message = AsyncMock(  # type: ignore[method-assign]
+        side_effect=unnotified
+    )
+    controller._notify_restore_failure = AsyncMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("notification send failed")
+    )
+
+    with pytest.raises(RuntimeError) as raised_again:
+        await replay_exchange_record(controller, target)
+
+    assert raised_again.value is unnotified
+    assert _restore_failure_was_notified(unnotified) is False
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     ("recovery_incomplete", "expected_message"),
     [
