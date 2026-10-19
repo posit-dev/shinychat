@@ -252,6 +252,9 @@ class _SpySession:
     def _increment_busy_count(self) -> None:
         pass
 
+    def _decrement_busy_count(self) -> None:
+        pass
+
     async def send_custom_message(self, type: str, message: dict) -> None:
         self.messages.append((type, message))
 
@@ -260,7 +263,7 @@ def _spy_actions(spy: _SpySession) -> list[dict]:
     return [msg[1]["action"] for msg in spy.messages]
 
 
-def _make_spy_chat():
+def _make_spy_chat(request: pytest.FixtureRequest):
     from shiny.module import ResolvedId
 
     spy = _SpySession()
@@ -268,6 +271,7 @@ def _make_spy_chat():
     with session_context(cast(Any, spy)):
         chat = Chat(id="chat")
     chat._session = cast(Any, spy)
+    request.addfinalizer(chat.destroy)
     return chat, spy
 
 
@@ -288,8 +292,8 @@ def _run_async(coro_fn):
         raise exc[0]
 
 
-def test_set_greeting_none_sends_greeting_clear():
-    chat, spy = _make_spy_chat()
+def test_set_greeting_none_sends_greeting_clear(request: pytest.FixtureRequest):
+    chat, spy = _make_spy_chat(request)
 
     async def _run():
         await chat.set_greeting(None)
@@ -300,8 +304,8 @@ def test_set_greeting_none_sends_greeting_clear():
     assert actions[0]["type"] == "greeting_clear"
 
 
-def test_set_greeting_string_sends_greeting_action():
-    chat, spy = _make_spy_chat()
+def test_set_greeting_string_sends_greeting_action(request: pytest.FixtureRequest):
+    chat, spy = _make_spy_chat(request)
 
     async def _run():
         await chat.set_greeting("Hello")
@@ -315,8 +319,8 @@ def test_set_greeting_string_sends_greeting_action():
     assert actions[0]["options"]["persistent"] is False
 
 
-def test_set_greeting_html_sends_html_content_type():
-    chat, spy = _make_spy_chat()
+def test_set_greeting_html_sends_html_content_type(request: pytest.FixtureRequest):
+    chat, spy = _make_spy_chat(request)
 
     async def _run():
         await chat.set_greeting(chat_greeting(HTML("<b>hi</b>")))
@@ -329,10 +333,12 @@ def test_set_greeting_html_sends_html_content_type():
     assert "<b>hi</b>" in actions[0]["content"]
 
 
-def test_set_greeting_tag_content_sends_no_island_tags():
+def test_set_greeting_tag_content_sends_no_island_tags(
+    request: pytest.FixtureRequest,
+):
     """The greeting action carries flattened trusted html — no island tags
     on the wire."""
-    chat, spy = _make_spy_chat()
+    chat, spy = _make_spy_chat(request)
 
     async def _run():
         await chat.set_greeting(chat_greeting(tags.div("hi")))
@@ -346,8 +352,8 @@ def test_set_greeting_tag_content_sends_no_island_tags():
     assert "<div>hi</div>" in actions[0]["content"]
 
 
-def test_set_greeting_stream_sends_start_chunks_end():
-    chat, spy = _make_spy_chat()
+def test_set_greeting_stream_sends_start_chunks_end(request: pytest.FixtureRequest):
+    chat, spy = _make_spy_chat(request)
 
     async def _run():
         async def stream():
@@ -366,8 +372,8 @@ def test_set_greeting_stream_sends_start_chunks_end():
     assert all(a["operation"] == "append" for a in chunk_actions)
 
 
-def test_set_greeting_persistent():
-    chat, spy = _make_spy_chat()
+def test_set_greeting_persistent(request: pytest.FixtureRequest):
+    chat, spy = _make_spy_chat(request)
 
     async def _run():
         await chat.set_greeting(chat_greeting("Hi", persistent=True))
@@ -382,8 +388,10 @@ def test_set_greeting_persistent():
 # ---------------------------------------------------------------------------
 
 
-def test_greeting_content_set_after_set_greeting_string():
-    chat, _ = _make_spy_chat()
+def test_greeting_content_set_after_set_greeting_string(
+    request: pytest.FixtureRequest,
+):
+    chat, _ = _make_spy_chat(request)
 
     async def _run():
         await chat.set_greeting("Hello world")
@@ -392,8 +400,10 @@ def test_greeting_content_set_after_set_greeting_string():
     assert chat._greeting_content == "Hello world"
 
 
-def test_greeting_content_cleared_after_set_greeting_none():
-    chat, _ = _make_spy_chat()
+def test_greeting_content_cleared_after_set_greeting_none(
+    request: pytest.FixtureRequest,
+):
+    chat, _ = _make_spy_chat(request)
 
     async def _run():
         await chat.set_greeting("Hello world")
@@ -403,8 +413,10 @@ def test_greeting_content_cleared_after_set_greeting_none():
     assert chat._greeting_content is None
 
 
-def test_greeting_content_cleared_after_clear_messages_with_greeting():
-    chat, _ = _make_spy_chat()
+def test_greeting_content_cleared_after_clear_messages_with_greeting(
+    request: pytest.FixtureRequest,
+):
+    chat, _ = _make_spy_chat(request)
 
     async def _run():
         await chat.set_greeting("Hello world")
@@ -414,8 +426,8 @@ def test_greeting_content_cleared_after_clear_messages_with_greeting():
     assert chat._greeting_content is None
 
 
-def test_get_greeting_returns_content_after_set():
-    chat, _ = _make_spy_chat()
+def test_get_greeting_returns_content_after_set(request: pytest.FixtureRequest):
+    chat, _ = _make_spy_chat(request)
 
     async def _run():
         await chat.set_greeting("Hello world")
@@ -424,8 +436,8 @@ def test_get_greeting_returns_content_after_set():
     assert chat.get_greeting() == "Hello world"
 
 
-def test_get_greeting_returns_none_after_clear():
-    chat, _ = _make_spy_chat()
+def test_get_greeting_returns_none_after_clear(request: pytest.FixtureRequest):
+    chat, _ = _make_spy_chat(request)
 
     async def _run():
         await chat.set_greeting("Hello world")
@@ -447,13 +459,13 @@ class _MockBookmark:
         self.exclude: list[str] = []
 
     def on_bookmark(self, fn: object) -> object:
-        return fn
+        return lambda: None
 
     def on_restore(self, fn: object) -> object:
-        return fn
+        return lambda: None
 
     def on_bookmarked(self, fn: object) -> object:
-        return fn
+        return lambda: None
 
 
 class _MockBookmarkSession:
@@ -482,6 +494,9 @@ class _MockBookmarkSession:
     def _increment_busy_count(self) -> None:
         pass
 
+    def _decrement_busy_count(self) -> None:
+        pass
+
     async def send_custom_message(self, type: str, message: dict) -> None:
         pass
 
@@ -496,7 +511,7 @@ class _MockClient:
         pass
 
 
-def _make_bookmark_chat(chat_id: str):
+def _make_bookmark_chat(chat_id: str, request: pytest.FixtureRequest):
     """Create a Chat with a session that has bookmark support."""
     from shiny.session import session_context
 
@@ -504,18 +519,23 @@ def _make_bookmark_chat(chat_id: str):
     with session_context(cast(Any, bm_sess)):
         chat = Chat(id=chat_id)
     chat._session = cast(Any, bm_sess)
+    request.addfinalizer(chat.destroy)
     return chat, bm_sess
 
 
-def test_enable_bookmarking_excludes_greeting_requested():
-    chat, bm_sess = _make_bookmark_chat("bm_chat_req")
+def test_enable_bookmarking_excludes_greeting_requested(
+    request: pytest.FixtureRequest,
+):
+    chat, bm_sess = _make_bookmark_chat("bm_chat_req", request)
     with session_context(cast(Any, bm_sess)):
         chat.enable_bookmarking(_MockClient())
     assert "bm_chat_req_greeting_requested" in bm_sess.bookmark.exclude
 
 
-def test_enable_bookmarking_excludes_greeting_dismissed():
-    chat, bm_sess = _make_bookmark_chat("bm_chat_dis")
+def test_enable_bookmarking_excludes_greeting_dismissed(
+    request: pytest.FixtureRequest,
+):
+    chat, bm_sess = _make_bookmark_chat("bm_chat_dis", request)
     with session_context(cast(Any, bm_sess)):
         chat.enable_bookmarking(_MockClient())
     assert "bm_chat_dis_greeting_dismissed" in bm_sess.bookmark.exclude
@@ -526,8 +546,8 @@ def test_enable_bookmarking_excludes_greeting_dismissed():
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_greeting_static_string():
-    chat, spy = _make_spy_chat()
+def test_resolve_greeting_static_string(request: pytest.FixtureRequest):
+    chat, spy = _make_spy_chat(request)
 
     async def _run():
         await resolve_greeting(chat, "## Hi")
@@ -539,8 +559,8 @@ def test_resolve_greeting_static_string():
     assert actions[0]["content"] == "## Hi"
 
 
-def test_resolve_greeting_zero_arg_callable():
-    chat, spy = _make_spy_chat()
+def test_resolve_greeting_zero_arg_callable(request: pytest.FixtureRequest):
+    chat, spy = _make_spy_chat(request)
     called = False
 
     def _greeting():
@@ -557,8 +577,8 @@ def test_resolve_greeting_zero_arg_callable():
     assert actions[0]["content"] == "## Generated"
 
 
-def test_resolve_greeting_awaitable_callable():
-    chat, spy = _make_spy_chat()
+def test_resolve_greeting_awaitable_callable(request: pytest.FixtureRequest):
+    chat, spy = _make_spy_chat(request)
 
     async def _greeting():
         return "## Async Generated"
