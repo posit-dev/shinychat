@@ -381,12 +381,23 @@ class ChatTranscript:
             if release:
                 self._release_transaction(transaction)
 
-    def replace(self, entries: Sequence[TranscriptEntry]) -> None:
+    def replace(
+        self,
+        entries: Sequence[TranscriptEntry],
+        *,
+        transaction: object | None = None,
+    ) -> None:
         """Replace the committed transcript after a caller has restored it."""
-        self._assert_can_clear_or_restore()
-        self._entries = tuple(entry.copy() for entry in entries)
-        self._open_exchange_id = None
-        self._notify_change()
+        transaction, release = self._use_transaction(
+            transaction, self._reserve_clear_or_restore
+        )
+        try:
+            self._entries = tuple(entry.copy() for entry in entries)
+            self._open_exchange_id = None
+            self._notify_change()
+        finally:
+            if release:
+                self._release_transaction(transaction)
 
     def assert_no_active_stream(self) -> None:
         """Reject destructive operations while a stream owns the transcript."""
