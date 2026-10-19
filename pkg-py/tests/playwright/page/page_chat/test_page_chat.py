@@ -693,6 +693,11 @@ def test_open_mobile_dropdown_repositions_after_desktop_resize(
     expect(menu.locator(".shiny-chat-page-nav-menu-items")).to_have_css(
         "position", "fixed"
     )
+    # Desktop CSS can apply before the responsive handler moves the
+    # controls out of the hidden mobile mount.
+    expect(menu.locator(".shiny-chat-page-nav-menu-items")).to_be_visible(
+        timeout=TIMEOUT
+    )
     items_box = menu.locator(".shiny-chat-page-nav-menu-items").bounding_box()
     assert items_box is not None
     assert items_box["x"] >= 0
