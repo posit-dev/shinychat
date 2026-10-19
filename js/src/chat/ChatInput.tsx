@@ -18,6 +18,7 @@ import type { SubmitKey } from "./tiptap/submitShortcut"
 import { type AttachmentPayload } from "./attachments"
 import { useAttachmentStaging } from "./useAttachmentStaging"
 import { AttachmentTray } from "./AttachmentTray"
+import { isHistorySubmissionBlocked, type HistoryStore } from "./historyStore"
 
 export interface ChatInputProps {
   transport: ChatTransport
@@ -25,6 +26,8 @@ export interface ChatInputProps {
   uploadAccept: string[]
   maxUploadSize: number | null
   disabled: boolean
+  historyStore: HistoryStore
+  submissionBlocked?: boolean
   hasTopShadow?: boolean
   placeholder: string
   onSend?: () => void
@@ -49,7 +52,7 @@ export interface ChatInputHandle {
       attachments?: AttachmentPayload[]
       attachmentMode?: "append" | "set"
     },
-  ): void
+  ): boolean
   focus(): void
 }
 
@@ -77,6 +80,8 @@ export const ChatInput = memo(
       uploadAccept,
       maxUploadSize,
       disabled,
+      historyStore,
+      submissionBlocked = false,
       hasTopShadow = false,
       placeholder,
       onSend,
@@ -115,6 +120,11 @@ export const ChatInput = memo(
 
     const submitValue = useCallback(
       (content: string): boolean => {
+        if (
+          submissionBlocked ||
+          isHistorySubmissionBlocked(historyStore.getSnapshot())
+        )
+          return false
         const payloads = getPayloads()
         if (content.trim().length === 0 && payloads.length === 0) return false
         if (disabled) return false
@@ -179,6 +189,8 @@ export const ChatInput = memo(
       },
       [
         disabled,
+        historyStore,
+        submissionBlocked,
         dispatch,
         transport,
         inputId,
@@ -194,8 +206,8 @@ export const ChatInput = memo(
     // Lets Enter submit an attachments-only message even though the editor
     // doc is empty (TiptapInput blocks empty submits otherwise).
     const canSubmitEmpty = useCallback(
-      () => getPayloads().length > 0,
-      [getPayloads],
+      () => !submissionBlocked && getPayloads().length > 0,
+      [getPayloads, submissionBlocked],
     )
 
     useImperativeHandle(
@@ -214,9 +226,9 @@ export const ChatInput = memo(
             attachments?: AttachmentPayload[]
             attachmentMode?: "append" | "set"
           } = {},
-        ): void {
+        ): boolean {
           const tiptap = tiptapRef.current
-          if (!tiptap) return
+          if (!tiptap) return false
 
           if (!submit) {
             if (newValue !== undefined) {
@@ -227,7 +239,15 @@ export const ChatInput = memo(
             if (attachments !== undefined) {
               applyPayloads(attachments, attachmentMode)
             }
-            return
+            return true
+          }
+
+          if (
+            submissionBlocked ||
+            isHistorySubmissionBlocked(historyStore.getSnapshot())
+          ) {
+            if (focus) tiptap.focus()
+            return false
           }
 
           // Submit: stage the provided value (if any), send, then restore the
@@ -243,10 +263,11 @@ export const ChatInput = memo(
               ? [...getPayloads(), ...newPayloads]
               : newPayloads
 
+          let submitted = false
           if (submitAttachments.length === 0) {
             // No attachments in play — reuse the interactive path so slash
             // commands submitted programmatically still execute.
-            submitValue(submitContent)
+            submitted = submitValue(submitContent)
           } else if (!disabled && submitAttachments.length > 0) {
             dispatch({
               type: "INPUT_SENT",
@@ -260,6 +281,7 @@ export const ChatInput = memo(
                 ? { text: submitContent, attachments: submitAttachments }
                 : submitContent,
             )
+            submitted = true
             onSend?.()
           }
 
@@ -268,9 +290,10 @@ export const ChatInput = memo(
           } else if (focus) {
             tiptap.focus()
           }
-          if (attachments !== undefined) {
+          if (submitted && attachments !== undefined) {
             clearAttachments()
           }
+          return submitted
         },
         focus(): void {
           tiptapRef.current?.focus()
@@ -278,6 +301,8 @@ export const ChatInput = memo(
       }),
       [
         disabled,
+        historyStore,
+        submissionBlocked,
         dispatch,
         transport,
         inputId,
@@ -328,7 +353,7 @@ export const ChatInput = memo(
     // color rule and keep their state-driven color instead of turning gray.
     // pointer-events doesn't cover keyboard/screen-reader users, so those
     // states also get aria-disabled and are removed from the tab order.
-    const sendButtonDisabled = sendButtonState === "empty"
+    const sendButtonDisabled = sendButtonState === "empty" || submissionBlocked
     const sendButtonInert =
       sendButtonState === "pending" || sendButtonState === "cancelling"
 
