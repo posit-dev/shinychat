@@ -747,6 +747,9 @@ class ChatHistory:
                     # session-closing unhandled-error path — and skip
                     # finish_initial so admission is never released
                     # unconditionally and settled isn't notified twice.
+                    # This is the final notification boundary for initial
+                    # recovery; do not leave a marker on a reused exception.
+                    _restore_failure_was_notified(error)
                     return False
                 return True
 
