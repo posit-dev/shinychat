@@ -1,12 +1,18 @@
 import pytest
 from _history_test_helpers import branch_from
+from shinychat._attachments import Attachment
+from shinychat._chat_types import StoredMessage, StoredSegment
 from shinychat._history_types import (
+    CapturedMessage,
     ConversationMeta,
     ConversationNode,
     ConversationRecord,
+    ConversationRecordV1,
+    ConversationRecordV2,
     UnsupportedSchemaVersionError,
     check_schema_version,
     new_conversation_record,
+    new_conversation_record_v2,
 )
 
 
@@ -24,6 +30,188 @@ def test_new_record_is_empty_draft():
     assert rec.title == "hello world"
     assert rec.title_source is None
     assert rec.response_count == 0
+
+
+def test_v2_record_tracks_an_exchange_path_with_captured_messages():
+    input_message = StoredMessage(
+        role="user",
+        segments=[StoredSegment(content="hello", content_type="markdown")],
+    )
+    response = StoredMessage(
+        role="assistant",
+        segments=[StoredSegment(content="hi", content_type="markdown")],
+    )
+    rec = new_conversation_record_v2(
+        title="hello",
+        client_info={"kind": "test"},
+    )
+
+    rec.open_exchange("exchange-1", input_message)
+    rec.append_message(
+        "exchange-1",
+        CapturedMessage.from_stored_message(response, icon="bot"),
+    )
+
+    assert isinstance(rec, ConversationRecordV2)
+    assert rec.schema_version == 2
+    assert rec.path_node_ids() == ["n_0000", "exchange-1"]
+    node = rec.nodes["exchange-1"]
+    assert node.status == "ok"
+    assert node.input == input_message
+    assert node.messages[0].as_stored_message() == response
+    assert node.messages[0].icon == "bot"
+
+
+def test_captured_message_round_trips_attachments_for_display():
+    """The capture seam keeps attachments for display and drops nothing else.
+
+    Pins main #394/#401 semantics at the seam level (gwg3): a captured
+    message round-trips its attachments verbatim. (Controller-level tests
+    cover that the model-facing attachment text never enters the capture.)
+    """
+    stored = StoredMessage(
+        role="user",
+        segments=[
+            StoredSegment(content="See attached", content_type="markdown")
+        ],
+        attachments=[
+            Attachment(
+                mime="text/plain",
+                name="notes.txt",
+                size=5,
+                data_url="data:text/plain;base64,aGVsbG8=",
+            )
+        ],
+    )
+    captured = CapturedMessage.from_stored_message(stored, icon=None)
+    assert captured.attachments == stored.attachments
+    assert captured.as_stored_message() == stored
+
+
+def _v2_user_message(content: str) -> StoredMessage:
+    return StoredMessage(
+        role="user",
+        segments=[StoredSegment(content=content, content_type="markdown")],
+    )
+
+
+def test_v2_graph_primitives_track_children_siblings_and_selected_path():
+    rec = new_conversation_record_v2(
+        title="hello",
+        id="c_v2",
+        client_info={"kind": "test"},
+    )
+    first = "exchange-1"
+    second = "exchange-2"
+    rec.open_exchange(first, _v2_user_message("first"))
+    rec.set_active_leaf("n_0000")
+    rec.open_exchange(second, _v2_user_message("second"))
+
+    assert rec.children_of(None) == ["n_0000"]
+    assert rec.children_of("n_0000") == [first, second]
+    assert rec.siblings_of(first) == [first, second]
+    assert rec.siblings_of(second) == [first, second]
+
+    rec.set_active_leaf(first)
+    assert rec.active_leaf == first
+    assert rec.nodes["n_0000"].selected_child == first
+    assert rec.nodes[first].selected_child is None
+
+
+def test_v2_set_active_leaf_validates_before_mutating():
+    rec = new_conversation_record_v2(
+        title="hello",
+        id="c_v2",
+        client_info={"kind": "test"},
+    )
+    rec.open_exchange("exchange-1", _v2_user_message("first"))
+    before = rec.model_dump()
+
+    with pytest.raises(ValueError, match="Unknown exchange id"):
+        rec.set_active_leaf("missing")
+
+    assert rec.model_dump() == before
+
+
+def test_v2_subtree_leaf_remembers_child_then_falls_back_to_newest():
+    rec = new_conversation_record_v2(
+        title="hello",
+        id="c_v2",
+        client_info={"kind": "test"},
+    )
+    first = "exchange-1"
+    second = "exchange-2"
+    first_leaf = "exchange-1-leaf"
+    second_leaf = "exchange-2-leaf"
+    rec.open_exchange(first, _v2_user_message("first"))
+    rec.set_active_leaf("n_0000")
+    rec.open_exchange(second, _v2_user_message("second"))
+    rec.set_active_leaf(first)
+    rec.open_exchange(first_leaf, _v2_user_message("first leaf"))
+    rec.set_active_leaf(second)
+    rec.open_exchange(second_leaf, _v2_user_message("second leaf"))
+
+    rec.nodes["n_0000"].selected_child = first
+    assert rec.subtree_leaf("n_0000") == first_leaf
+
+    rec.nodes["n_0000"].selected_child = None
+    assert rec.subtree_leaf("n_0000") == second_leaf
+
+
+def test_v2_path_sibling_metadata_tracks_the_selected_exchange():
+    rec = new_conversation_record_v2(
+        title="hello",
+        id="c_v2",
+        client_info={"kind": "test"},
+    )
+    first = "exchange-1"
+    original = "exchange-2-original"
+    replacement = "exchange-2-replacement"
+    rec.open_exchange(first, _v2_user_message("first"))
+    rec.open_exchange(original, _v2_user_message("original"))
+    rec.set_active_leaf(first)
+    rec.open_exchange(replacement, _v2_user_message("replacement"))
+
+    assert rec.path_sibling_metadata() == {replacement: (1, 2)}
+
+    rec.set_active_leaf(original)
+    assert rec.path_sibling_metadata() == {original: (0, 2)}
+
+
+def test_v2_user_message_projection_skips_inputless_path_nodes():
+    rec = new_conversation_record_v2(
+        title="hello",
+        id="c_v2",
+        client_info={"kind": "test"},
+    )
+    first = "exchange-1"
+    second = "exchange-2"
+    rec.open_inputless_exchange()
+    rec.open_exchange(first, _v2_user_message("first"))
+    inputless = rec.open_inputless_exchange()
+    response = StoredMessage(
+        role="assistant",
+        segments=[StoredSegment(content="response", content_type="markdown")],
+    )
+    rec.append_message(
+        inputless, CapturedMessage.from_stored_message(response, icon=None)
+    )
+    rec.append_message(
+        first, CapturedMessage.from_stored_message(response, icon=None)
+    )
+    rec.append_message(
+        first, CapturedMessage.from_stored_message(response, icon=None)
+    )
+    rec.open_exchange(second, _v2_user_message("second"))
+
+    assert rec.exchange_id_for_user_message_index(0) == first
+    assert rec.exchange_id_for_user_message_index(4) == second
+    with pytest.raises(IndexError):
+        rec.exchange_id_for_user_message_index(1)
+    with pytest.raises(IndexError):
+        rec.exchange_id_for_user_message_index(5)
+    with pytest.raises(IndexError):
+        rec.exchange_id_for_user_message_index(-1)
 
 
 @pytest.mark.parametrize("version", [True, 1.0, "1", [], [1], float("nan")])
@@ -59,7 +247,8 @@ def test_path_follows_current_leaf_not_all_nodes():
 def test_json_round_trip():
     rec = new_conversation_record(title="t")
     rec.append_linear(turn("user", "hi"))
-    rec2 = ConversationRecord.model_validate_json(rec.model_dump_json())
+    rec.append_linear(turn("assistant", "hello"))
+    rec2 = ConversationRecordV1.model_validate_json(rec.model_dump_json())
     assert rec2 == rec
 
 
@@ -111,7 +300,7 @@ def test_bookmark_state_id_round_trips():
     rec = new_conversation_record(title="t")
     rec.bookmark_state_id = "abc123"
     raw = rec.model_dump(mode="json")
-    loaded = ConversationRecord.model_validate(raw)
+    loaded = ConversationRecordV1.model_validate(raw)
     assert loaded.bookmark_state_id == "abc123"
 
 
@@ -123,15 +312,6 @@ def test_append_linear_populates_children():
     assert rec.nodes[n1].children == [n2]
     assert rec.nodes[n2].children == [n3]
     assert rec.nodes[n3].children == []
-
-
-def test_next_node_seq_increments():
-    rec = new_conversation_record(title="t")
-    assert rec.next_node_seq == 1
-    rec.append_linear(turn("user", "hi"))
-    assert rec.next_node_seq == 2
-    rec.append_linear(turn("assistant", "hello"))
-    assert rec.next_node_seq == 3
 
 
 def test_next_node_seq_never_reuses_ids():
@@ -148,30 +328,11 @@ def test_next_node_seq_never_reuses_ids():
     assert rec.next_node_seq == 4
 
 
-def test_children_round_trip_json():
-    rec = new_conversation_record(title="t")
-    rec.append_linear(turn("user", "hi"))
-    rec.append_linear(turn("assistant", "hello"))
-    rec2 = ConversationRecord.model_validate_json(rec.model_dump_json())
-    for nid in rec.nodes:
-        assert rec2.nodes[nid].children == rec.nodes[nid].children
-    assert rec2.next_node_seq == rec.next_node_seq
-
-
 def msg(role: str) -> dict[str, object]:
     return {
         "role": role,
         "segments": [{"content": role, "content_type": "markdown"}],
     }
-
-
-def test_children_of_returns_direct_children_sorted():
-    rec = new_conversation_record(title="t")
-    n1 = rec.append_linear(turn("user", "hi"))
-    n2 = rec.append_linear(turn("assistant", "hey"))
-    assert rec.children_of(None) == [n1]
-    assert rec.children_of(n1) == [n2]
-    assert rec.children_of(n2) == []
 
 
 def test_children_of_with_branch():
@@ -292,7 +453,7 @@ def test_node_id_for_message_index_simple():
 
 def test_node_id_for_message_index_counts_empty_ui_nodes_as_one():
     # A node with ui=None still renders one fabricated message on restore
-    # (replay_ui's `node.ui or [fallback]`), so it occupies one client message
+    # (`node.ui or [fallback]`), so it occupies one client message
     # slot here too — the mapping must not skip it, or client indices would
     # disagree with the server.
     rec = new_conversation_record(title="t")
@@ -360,3 +521,178 @@ def test_path_sibling_metadata_multiple_branches():
     # Active path is [n1, n2, n5, n6]; n5 has siblings [n3, n5] -> (1, 2)
     meta = rec.path_sibling_metadata()
     assert meta == {n5: (1, 2)}
+
+
+# -- ConversationRecord: the name for the current version (plan §7.6, D1) --
+
+def _v1_record_with_exchange() -> ConversationRecordV1:
+    rec = new_conversation_record(title="legacy", id="c_v1")
+    rec.append_linear(turn("user", "hi"))
+    rec.append_linear(turn("assistant", "hello"))
+    rec.bookmark_state_id = "st1"
+    return rec
+
+
+def test_conversation_record_names_the_current_version():
+    assert issubclass(ConversationRecord, ConversationRecordV2)
+    v2 = new_conversation_record_v2(title="t", client_info={})
+    loaded = ConversationRecord.model_validate(v2.model_dump(mode="json"))
+    assert isinstance(loaded, ConversationRecord)
+    assert loaded.schema_version == 2
+    assert loaded.model_dump(mode="json") == v2.model_dump(mode="json")
+
+
+def test_conversation_record_upgrades_a_v1_dict():
+    """A v1-era store calling model_validate on a v1 dict gets a v2 record."""
+    rec = _v1_record_with_exchange()
+    imported = ConversationRecord.model_validate(rec.model_dump(mode="json"))
+    assert isinstance(imported, ConversationRecord)
+    assert isinstance(imported, ConversationRecordV2)
+    assert not isinstance(imported, ConversationRecordV1)
+    assert imported.schema_version == 2
+    assert imported.id == "c_v1"
+    assert imported.title == "legacy"
+    assert imported.bookmark_state_id == "st1"
+    # The v1 user/assistant pair became one exchange on the active path.
+    (exchange_id,) = [
+        nid
+        for nid, node in imported.nodes.items()
+        if node.parent_id is not None
+    ]
+    exchange = imported.nodes[exchange_id]
+    assert exchange.input is not None
+    assert exchange.input.content == "hi"
+    assert [m.as_stored_message().content for m in exchange.messages] == [
+        "hello"
+    ]
+    assert imported.active_leaf == exchange_id
+
+
+def test_conversation_record_upgrades_a_v1_dict_without_schema_version():
+    # check_schema_version's None→1 convention: records that predate the
+    # marker are v1 and upgrade too.
+    rec = _v1_record_with_exchange()
+    raw = rec.model_dump(mode="json")
+    del raw["schema_version"]
+    imported = ConversationRecord.model_validate(raw)
+    assert isinstance(imported, ConversationRecord)
+    assert imported.schema_version == 2
+    assert imported.id == rec.id
+
+
+def test_conversation_record_upgrades_a_v1_instance():
+    imported = ConversationRecord.model_validate(_v1_record_with_exchange())
+    assert isinstance(imported, ConversationRecord)
+    assert imported.schema_version == 2
+    assert imported.active_leaf is not None
+
+
+def test_conversation_record_upgrades_via_validate_json():
+    rec = _v1_record_with_exchange()
+    imported = ConversationRecord.model_validate_json(rec.model_dump_json())
+    assert isinstance(imported, ConversationRecord)
+    assert imported.schema_version == 2
+    assert imported.id == rec.id
+
+
+def test_conversation_record_does_not_rewarn_on_upgrades():
+    # The validator runs the non-warning import path: reads must not emit
+    # lossy-import warnings on every validation (plan §7.4, D2).
+    import warnings as _warnings
+
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("error")
+        ConversationRecord.model_validate(_v1_record_with_exchange())
+
+
+def test_conversation_record_rejects_unsupported_schema_versions():
+    rec = _v1_record_with_exchange()
+    raw = rec.model_dump(mode="json")
+    raw["schema_version"] = 3
+    with pytest.raises(Exception, match="schema_version"):
+        ConversationRecord.model_validate(raw)
+
+
+def test_upgraded_record_survives_revalidation():
+    rec = _v1_record_with_exchange()
+    imported = ConversationRecord.model_validate(rec.model_dump(mode="json"))
+    # Re-validating the upgraded record must not run the import again (or
+    # otherwise change it): v2 input passes through unchanged.
+    again = ConversationRecord.model_validate(
+        imported.model_dump(mode="json")
+    )
+    assert again == imported
+
+
+def test_conversation_record_constructs_from_v2_kwargs_without_marker():
+    """v2 kwargs without schema_version are current-version input, not v1.
+
+    Building `ConversationRecord` -- the class that names the current
+    version -- must not misroute into the v1 model just because the caller
+    left the (defaulted) marker off; the node values here are v2
+    `ExchangeNode`s and the dict says `active_leaf`, never `current_leaf`.
+    """
+    v2 = new_conversation_record_v2(title="t", client_info={"provider": "x"})
+    built = ConversationRecord(
+        id=v2.id,
+        title=v2.title,
+        created_at=v2.created_at,
+        updated_at=v2.updated_at,
+        client_info=v2.client_info,
+        nodes=v2.nodes,
+        active_leaf=v2.active_leaf,
+    )
+    assert isinstance(built, ConversationRecord)
+    assert built.schema_version == 2
+    assert built.model_dump(mode="json") == v2.model_dump(mode="json")
+
+    raw = v2.model_dump(mode="json")
+    del raw["schema_version"]
+    loaded = ConversationRecord.model_validate(raw)
+    assert isinstance(loaded, ConversationRecord)
+    assert loaded.schema_version == 2
+    assert loaded.model_dump(mode="json") == v2.model_dump(mode="json")
+
+
+def test_conversation_record_still_upgrades_markerless_v1_shapes():
+    """The markerless path stays load-bearing for pre-marker records.
+
+    Released v1 record forms that predate the schema_version marker have no
+    explicit version to route on, so shape decides: `current_leaf` alone,
+    and v1 node keys (`parent`/`turns`) when the leaf was dropped from the
+    dump too. Both must upgrade, never validate as v2.
+    """
+    rec = _v1_record_with_exchange()
+    expected_id = rec.id
+
+    raw = rec.model_dump(mode="json")
+    del raw["schema_version"]
+    imported = ConversationRecord.model_validate(raw)
+    assert isinstance(imported, ConversationRecord)
+    assert imported.schema_version == 2
+    assert imported.id == expected_id
+
+    # Same dict with both markerless routes gone: detection falls back to
+    # the v1-only node keys.
+    del raw["current_leaf"]
+    imported = ConversationRecord.model_validate(raw)
+    assert isinstance(imported, ConversationRecord)
+    assert imported.schema_version == 2
+    assert imported.id == expected_id
+
+
+def test_conversation_record_accepts_a_plain_v2_instance():
+    """A plain ConversationRecordV2 validates as the current version.
+
+    The controller/recorder build plain V2 objects, and a store may hand
+    one back to `ConversationRecord.model_validate*`; the record survives
+    with equal content and the result is a ConversationRecord.
+    """
+    v2 = new_conversation_record_v2(title="t", client_info={})
+    assert not isinstance(v2, ConversationRecord)
+    rec = ConversationRecord.model_validate(v2)
+    assert isinstance(rec, ConversationRecord)
+    assert rec.model_dump(mode="json") == v2.model_dump(mode="json")
+    # An already-converted record revalidates to itself, not a copy.
+    again = ConversationRecord.model_validate(rec)
+    assert again is rec
