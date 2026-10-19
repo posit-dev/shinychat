@@ -1,0 +1,73 @@
+[
+  {
+    "name": "set_turns_compaction_survives_switch_round_trip",
+    "steps": [
+      {
+        "op": "input",
+        "content": "What is the capital of France?",
+        "turns": [
+          {"role": "user", "content": "What is the capital of France?"}
+        ]
+      },
+      {
+        "op": "response",
+        "content": "The capital of France is Paris.",
+        "turns": [
+          {"role": "user", "content": "What is the capital of France?"},
+          {"role": "assistant", "content": "The capital of France is Paris."}
+        ]
+      },
+      {
+        "op": "client_set_turns",
+        "turns": [
+          {
+            "role": "assistant",
+            "content": "The user asked about the capital of France; the answer was Paris."
+          }
+        ]
+      },
+      {
+        "op": "input",
+        "content": "What is its population?",
+        "turns": [
+          {
+            "role": "assistant",
+            "content": "The user asked about the capital of France; the answer was Paris."
+          },
+          {"role": "user", "content": "What is its population?"}
+        ]
+      },
+      {
+        "op": "response",
+        "content": "Paris has about 2.1 million residents.",
+        "turns": [
+          {
+            "role": "assistant",
+            "content": "The user asked about the capital of France; the answer was Paris."
+          },
+          {"role": "user", "content": "What is its population?"},
+          {"role": "assistant", "content": "Paris has about 2.1 million residents."}
+        ]
+      },
+      {"op": "new_chat"},
+      {"op": "switch_to", "id": "$conversation"}
+    ],
+    "expect": {
+      "turns": [
+        {
+          "role": "assistant",
+          "content": "The user asked about the capital of France; the answer was Paris."
+        },
+        {"role": "user", "content": "What is its population?"},
+        {"role": "assistant", "content": "Paris has about 2.1 million residents."}
+      ],
+      "display": [
+        {"role": "user", "content": "What is the capital of France?"},
+        {"role": "assistant", "content": "The capital of France is Paris."},
+        {"role": "user", "content": "What is its population?"},
+        {"role": "assistant", "content": "Paris has about 2.1 million residents."}
+      ],
+      "response_count": 2
+    }
+  }
+]
