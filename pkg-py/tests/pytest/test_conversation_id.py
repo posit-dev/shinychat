@@ -274,6 +274,13 @@ class _MockSession:
     def _decrement_busy_count(self) -> None:
         pass
 
+    def _restore_gate(self, priority: int) -> None:
+        # No bookmark restore is in progress, so effects can run right away.
+        return None
+
+    def _otel_reactive_update_span(self) -> None:
+        return None
+
     def _process_ui(self, x: Any) -> dict[str, Any]:
         return {"html": str(x), "deps": []}
 
