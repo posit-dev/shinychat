@@ -60,6 +60,7 @@ from ._history_v1 import import_v1_record_with_warnings
 
 if TYPE_CHECKING:
     from ._chat import Chat
+    from ._chat_transcript import TranscriptEntry
 
 
 # Exchange statuses from which a retry (or a fresh resubmit) is allowed.
@@ -312,11 +313,11 @@ class HistoryController:
         if block_input:
             async with self.chat._destructive_history_mutation(
                 block_input=True
-            ):
-                yield
+            ) as transaction:
+                yield transaction
             return
-        async with self.chat._destructive_history_mutation():
-            yield
+        async with self.chat._destructive_history_mutation() as transaction:
+            yield transaction
 
     @asynccontextmanager
     async def _exchange_mutation(self):
@@ -853,7 +854,12 @@ class HistoryController:
             phase="rewind",
         )
 
-        async with self._destructive_mutation(block_input=True):
+        async with self._destructive_mutation(
+            block_input=True
+        ) as transaction:
+            transcript_prefix = self._transcript_prefix_entries(
+                record, node_ids
+            )
             if preserve_live_turns:
                 await self._open_resubmit_sibling_locked(
                     record,
@@ -861,6 +867,8 @@ class HistoryController:
                     parent_id,
                     submitted_input,
                     message_index,
+                    transcript_prefix=transcript_prefix,
+                    transaction=transaction,
                 )
                 return
             action: HistoryEditProjectionAction = {
@@ -883,7 +891,30 @@ class HistoryController:
                 parent_id,
                 save_step="saving the resubmission",
                 send=send_resubmission,
+                transcript_prefix=transcript_prefix,
+                transaction=transaction,
             )
+
+    def _transcript_prefix_entries(
+        self,
+        record: ConversationRecordV2,
+        node_ids: tuple[str, ...],
+    ) -> tuple["TranscriptEntry", ...]:
+        """The committed server transcript truncated to ``node_ids``.
+
+        The transcript is append-only, so a resubmit's abandoned messages
+        always trail the parent prefix: count the entries the prefix
+        nodes own (one per input plus each captured message) and keep
+        that leading slice, preserving the entries' rich data (icons,
+        statuses, attachments) exactly as committed.
+        """
+        count = 0
+        for node_id in node_ids:
+            node = record.nodes[node_id]
+            if node.input is not None:
+                count += 1
+            count += len(node.messages)
+        return self.chat._transcript.read()[:count]
 
     async def _rewind_locked(
         self,
@@ -893,6 +924,8 @@ class HistoryController:
         *,
         save_step: str,
         send: Callable[[], Awaitable[None]],
+        transcript_prefix: tuple["TranscriptEntry", ...] | None = None,
+        transaction: object | None = None,
     ) -> None:
         """The shared rewind skeleton: capture the close, run the plan,
         move and persist the leaf, send, clear a failed restore."""
@@ -906,6 +939,16 @@ class HistoryController:
                 with _restore_step(save_step):
                     await _history_plan.run_plan(rewind_state)
                     await recorder.persist_active_leaf_locked(record, leaf)
+                    if transcript_prefix is not None:
+                        # Sync the append-only server transcript to the
+                        # same parent prefix the record/adapter rewound
+                        # to, so the replacement input appends after the
+                        # prefix instead of the abandoned tail. Capture
+                        # callbacks do not fire on replace: the record
+                        # was already rewound above.
+                        self.chat._transcript.replace(
+                            transcript_prefix, transaction=transaction
+                        )
                 await send()
             except BaseException as error:
                 await self._clear_failed_restore(error)
@@ -918,6 +961,9 @@ class HistoryController:
         parent_id: str,
         submitted_input: StoredMessage,
         message_index: int,
+        *,
+        transcript_prefix: tuple["TranscriptEntry", ...] | None = None,
+        transaction: object | None = None,
     ) -> None:
         """The preserve-live-turns resubmit path: the failed target and
         its shared parent stay immutable, and non-turn hooks still rewind
@@ -929,6 +975,12 @@ class HistoryController:
                 raise ValueError("Exchange-tree record has no active leaf.")
             await _history_plan.run_plan(rewind_state, skip_turns=True)
             recorder.move_active_leaf_locked(record, parent_id)
+            if transcript_prefix is not None:
+                # Same server-transcript sync as the ordinary rewind
+                # path, before the accepted sibling input appends.
+                self.chat._transcript.replace(
+                    transcript_prefix, transaction=transaction
+                )
             accepted_exchange_id = (
                 self.chat._transcript.record_accepted_input(submitted_input)
             )

@@ -6368,6 +6368,250 @@ async def test_v2_resubmit_rewinds_parent_prefix_and_new_input_creates_sibling()
     assert record.nodes[target].input == target_input
 
 
+def _make_v2_resubmit_real_chat(
+    request: pytest.FixtureRequest, *, chat_id: str
+) -> tuple[HistoryController, Chat, _FakeAdapter, _RecordingStore, str, str]:
+    """The resubmit fixture with a real ``Chat`` hosting the transcript.
+
+    The record gains assistant replies so the server transcript mirrors a
+    live conversation: a retained prefix (root -> ``first``) and an
+    abandoned tail (``target``) that a resubmit of ``target`` rewinds.
+    """
+    controller, _fake_chat, adapter, store, first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.append_message(
+        first,
+        CapturedMessage.from_stored_message(
+            _stored_message("assistant", "reply one"), icon="icon-one"
+        ),
+    )
+    record.append_message(
+        target,
+        CapturedMessage.from_stored_message(
+            _stored_message("assistant", "reply two"), icon=None
+        ),
+    )
+    session = _RealChatSession()
+    with session_context(cast(Any, session)):
+        chat = Chat(chat_id, history=False)
+    request.addfinalizer(chat.destroy)
+    controller.chat = chat  # type: ignore[assignment]
+    return controller, chat, adapter, store, first, target
+
+
+async def _seed_resubmit_transcript(
+    chat: Chat, first: str, target: str
+) -> None:
+    """Seed a real transcript exactly as live capture would have left it.
+
+    The retained prefix carries rich entry data (attachments, icon, a
+    terminal status/error) so the regression proves truncation preserves
+    it instead of reconstructing lossy entries.
+    """
+
+    async def send() -> bool:
+        return True
+
+    first_input = StoredMessage(
+        role="user",
+        segments=[StoredSegment(content="first", content_type="markdown")],
+        attachments=[
+            Attachment(
+                mime="text/plain",
+                name="notes.txt",
+                size=5,
+                data_url="data:text/plain;base64,aGVsbG8=",
+            )
+        ],
+    )
+    await chat._transcript.append(
+        TranscriptEntry(message=first_input),
+        exchange_id=first,
+        send=send,
+    )
+    await chat._transcript.append(
+        TranscriptEntry(
+            message=_stored_message("assistant", "reply one"),
+            icon="icon-one",
+            status="cancelled",
+            error={"message": "interrupted"},
+        ),
+        exchange_id=first,
+        send=send,
+    )
+    await chat._transcript.append(
+        TranscriptEntry(message=_stored_message("user", "second")),
+        exchange_id=target,
+        send=send,
+    )
+    await chat._transcript.append(
+        TranscriptEntry(message=_stored_message("assistant", "reply two")),
+        exchange_id=target,
+        send=send,
+    )
+
+
+def _wire_resubmit_capture(controller: HistoryController, chat: Chat) -> None:
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    chat._transcript.set_capture_callbacks(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+
+
+def _spy_send_actions(chat: Chat) -> list[dict[str, Any]]:
+    sent: list[dict[str, Any]] = []
+    original = chat._send_action
+
+    async def record_action(action: Any, *args: Any, **kwargs: Any) -> None:
+        sent.append(action)
+        await original(action, *args, **kwargs)
+
+    chat._send_action = record_action  # type: ignore[method-assign]
+    return sent
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "kind,target_status",
+    [("edit", "ok"), ("retry", "error"), ("regenerate", "ok")],
+)
+async def test_v2_resubmit_syncs_real_server_transcript_to_parent_prefix(
+    request: pytest.FixtureRequest, kind: str, target_status: Any
+) -> None:
+    """A resubmit rewinds the authoritative server transcript to the same
+    parent prefix the record/adapter/display rewind to, so ``chat.messages()``
+    and legacy flat-message bookmark serialization match the visible
+    conversation instead of retaining abandoned messages."""
+    controller, chat, _adapter, _store, first, target = (
+        _make_v2_resubmit_real_chat(request, chat_id=f"resubmit_transcript_{kind}")
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.nodes[target].status = target_status
+    await _seed_resubmit_transcript(chat, first, target)
+    _wire_resubmit_capture(controller, chat)
+    sent = _spy_send_actions(chat)
+
+    if kind == "edit":
+        await controller.handle_edit(2, "second edited", request_id="req")
+    else:
+        await controller.handle_resubmit(2, kind, request_id="req")
+
+    # The client projection still goes out unchanged.
+    assert sent[-1] == {
+        "type": "history_edit_projection",
+        "requestId": "req",
+        "index": 2,
+        "content": "second edited" if kind == "edit" else "second",
+        "attachments": [],
+    }
+
+    # The server transcript holds exactly the parent prefix, with the
+    # retained entries' rich data intact.
+    messages = chat.messages()
+    assert [m["content"] for m in messages] == ["first", "reply one"]
+    assert [m["role"] for m in messages] == ["user", "assistant"]
+    prefix_attachments = messages[0].get("attachments")
+    assert prefix_attachments is not None
+    assert prefix_attachments[0].name == "notes.txt"
+    assert messages[1].get("status") == "cancelled"
+    assert messages[1].get("error") == {"message": "interrupted"}
+    bookmark_dump = chat._messages_for_bookmark()
+    assert [m["segments"][0]["content"] for m in bookmark_dump] == [
+        "first",
+        "reply one",
+    ]
+    assert bookmark_dump[0]["attachments"][0]["name"] == "notes.txt"
+
+    # The replacement input then appends through the ordinary real-Chat
+    # capture path, producing prefix + replacement on the server too.
+    replacement = "second edited" if kind == "edit" else "second"
+    await chat._record_accepted_user_input_with_capture(
+        ChatMessage(content=replacement, role="user")
+    )
+    assert [m["content"] for m in chat.messages()] == [
+        "first",
+        "reply one",
+        replacement,
+    ]
+    sibling = record.active_leaf
+    assert sibling is not None
+    assert sibling != target
+    assert record.children_of(first) == [target, sibling]
+    sibling_input = record.nodes[sibling].input
+    assert sibling_input is not None
+    assert sibling_input.content == replacement
+
+
+@pytest.mark.anyio
+async def test_v2_degraded_resubmit_syncs_real_server_transcript_before_sibling(
+    request: pytest.FixtureRequest,
+) -> None:
+    """The preserve-live-turns resubmit also truncates the server
+    transcript to the parent prefix before accepting its sibling input."""
+    controller, chat, adapter, _store, first, target = (
+        _make_v2_resubmit_real_chat(request, chat_id="resubmit_transcript_degraded")
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    record.nodes[target].status = "error"
+    # Force the degraded path: the live adapter turns no longer extend the
+    # recorded active path, so the failed target must stay immutable.
+    adapter.turns = [{"role": "system", "content": "live"}]
+    record.nodes[target].state["shinychat:turns"] = StateEntry(
+        kind="unsupported", version=1, mode="delta", data=[]
+    )
+    await _seed_resubmit_transcript(chat, first, target)
+    _wire_resubmit_capture(controller, chat)
+    sent = _spy_send_actions(chat)
+
+    await controller.handle_resubmit(2, "retry", request_id="req")
+
+    sibling = record.active_leaf
+    assert sibling is not None
+    assert sibling != target
+    assert record.nodes[sibling].parent_id == first
+    assert record.children_of(first) == [target, sibling]
+    assert sent[-1] == {
+        "type": "history_accepted_input_projection",
+        "index": 2,
+        "content": "second",
+        "attachments": [],
+    }
+
+    # The transcript holds the parent prefix plus the accepted sibling
+    # input only; the abandoned exchange is gone from the server too.
+    messages = chat.messages()
+    assert [m["content"] for m in messages] == [
+        "first",
+        "reply one",
+        "second",
+    ]
+    degraded_attachments = messages[0].get("attachments")
+    assert degraded_attachments is not None
+    assert degraded_attachments[0].name == "notes.txt"
+    assert messages[1].get("status") == "cancelled"
+    assert [m["segments"][0]["content"] for m in chat._messages_for_bookmark()] == [
+        "first",
+        "reply one",
+        "second",
+    ]
+
+
 @pytest.mark.anyio
 async def test_v2_resubmit_rejects_real_chat_input_until_replay_releases(
     request: pytest.FixtureRequest,
