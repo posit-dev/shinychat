@@ -14,7 +14,10 @@ from typing import (
 
 from ._history_bookmark import delete_bookmark_state, extract_state_id
 from ._history_client import as_turns_adapter
-from ._history_controller import HistoryController
+from ._history_controller import (
+    HistoryController,
+    _restore_failure_was_notified,
+)
 from ._history_store import (
     ConversationPartition,
     ConversationStore,
@@ -258,6 +261,12 @@ class _RestoreModeHooks:
     on_switch_restored: (
         Callable[[ConversationRecordV2], Awaitable[None]] | None
     ) = None
+    # Fired by restore-failure cleanup INSTEAD of on_active_id_change(None)
+    # when the mode's None-navigation is destructive. Bookmark mode clears
+    # the stale ``?_state_id_=`` query with a soft navigation here; its
+    # on_active_id_change(None) hard reload stays reserved for the
+    # intentional New chat transition.
+    on_failed_restore_cleared: Callable[[], Awaitable[None]] | None = None
     # Fired before a conversation is removed from the store.
     on_evict: Callable[[str], Awaitable[None]] | None = None
 
@@ -265,6 +274,7 @@ class _RestoreModeHooks:
         controller.on_active_id_change = self.on_active_id_change
         controller.on_response_saved = self.on_response_saved
         controller.on_switch_restored = self.on_switch_restored
+        controller.on_failed_restore_cleared = self.on_failed_restore_cleared
         controller.on_evict = self.on_evict
 
 
@@ -345,10 +355,18 @@ def _bookmark_restore_hooks(
         if conv_id is None:
             await controller.send_navigate(None, None, reload=True)
 
+    async def _on_failed_restore_cleared() -> None:
+        # A failed restore recovered to a fresh draft in place; only the
+        # stale ``?_state_id_=`` query needs clearing. A hard reload here
+        # (the intentional New chat behavior above) would discard the
+        # recovered draft and the failure toast.
+        await controller.send_navigate(None, None)
+
     return _RestoreModeHooks(
         on_active_id_change=_update_url_bookmark,
         on_response_saved=_on_response_saved,
         on_switch_restored=_on_switch_restored,
+        on_failed_restore_cleared=_on_failed_restore_cleared,
         on_evict=_on_evict,
     )
 
@@ -647,7 +665,15 @@ class ChatHistory:
 
             from shiny import ui as shiny_ui
 
+            # The raw exception text stays in the warning (developer
+            # diagnostics) either way.
             warnings.warn(f"{prefix}: {e}", stacklevel=1)
+            if _restore_failure_was_notified(e):
+                # Restore cleanup already showed this failure's one
+                # sanitized toast; a second toast here would repeat the
+                # failure with raw exception text (hook internals
+                # included).
+                return
             with session_context(session):
                 shiny_ui.notification_show(f"{prefix}: {e}", type="error")
 
@@ -698,17 +724,31 @@ class ChatHistory:
                 target: ConversationRecordV2,
                 *,
                 node_id: str | None = None,
-            ) -> None:
+            ) -> bool:
                 try:
                     await controller._restore_initial_exchange_record(
                         target, node_id=node_id
                     )
-                except BaseException:
+                except BaseException as error:
                     try:
                         await controller.notify_settled(False)
                     except BaseException:
                         pass
-                    raise
+                    if not isinstance(error, Exception):
+                        # Cancellation and other fatal failures keep their
+                        # identity and propagate.
+                        raise
+                    # A recoverable failure was already handled by the
+                    # controller's `_clear_failed_restore`: it recovered a
+                    # fresh chat, warned, showed the one sanitized toast,
+                    # and released admission iff its authoritative
+                    # history_update send succeeded. Swallow it here — an
+                    # exception escaping this effect reaches Shiny's
+                    # session-closing unhandled-error path — and skip
+                    # finish_initial so admission is never released
+                    # unconditionally and settled isn't notified twice.
+                    return False
+                return True
 
             owner_scope = scope()
             controller.partition = ConversationPartition(
@@ -760,8 +800,8 @@ class ChatHistory:
                     await finish_initial(False, send_update=True)
                     return
 
-                await restore_initial_v2(target, node_id=node_id)
-                await finish_initial(True)
+                if await restore_initial_v2(target, node_id=node_id):
+                    await finish_initial(True)
                 return
 
             # Reading these inputs may raise SilentException if the browser
@@ -785,8 +825,8 @@ class ChatHistory:
                     await notify_error("Could not load conversation", e)
                     pointed = None
                 if pointed is not None:
-                    await restore_initial_v2(pointed)
-                    await finish_initial(True)
+                    if await restore_initial_v2(pointed):
+                        await finish_initial(True)
                     return
             await finish_initial(
                 controller._active_id_now() is not None,
