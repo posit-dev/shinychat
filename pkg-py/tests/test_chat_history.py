@@ -1165,7 +1165,9 @@ async def test_v2_initial_restore_preflight_failure_recovers(
 
 
 @pytest.mark.anyio
-async def test_v2_initial_restore_failure_real_effect_recovers_without_session_error() -> None:
+async def test_v2_initial_restore_failure_real_effect_recovers_without_session_error(
+    request: pytest.FixtureRequest,
+) -> None:
     """A failed initial restore runs inside a REAL Shiny effect/flush.
 
     The recoverable failure is cleaned up and handled at the effect
@@ -1219,24 +1221,22 @@ async def test_v2_initial_restore_failure_real_effect_recovers_without_session_e
                 restore_mode="browser",
             ),
         )
-        try:
-            # Real effects + real flush: no captured-handler shortcut, so a
-            # failure escaping the init effect would take Shiny's real
-            # Effect_ error route to session._unhandled_error.
-            with (
-                patch.object(
-                    history_plan_module, "preflight_state", fail_preflight
-                ),
-                patch.object(
-                    shiny_ui, "notification_show", record_notification
-                ),
-                warnings.catch_warnings(),
-            ):
-                warnings.simplefilter("ignore")
-                await reactive.flush()
-                await reactive.flush()
-        finally:
-            chat.destroy()
+        request.addfinalizer(chat.destroy)
+        # Real effects + real flush: no captured-handler shortcut, so a
+        # failure escaping the init effect would take Shiny's real
+        # Effect_ error route to session._unhandled_error.
+        with (
+            patch.object(
+                history_plan_module, "preflight_state", fail_preflight
+            ),
+            patch.object(
+                shiny_ui, "notification_show", record_notification
+            ),
+            warnings.catch_warnings(),
+        ):
+            warnings.simplefilter("ignore")
+            await reactive.flush()
+            await reactive.flush()
 
     controller = chat.history._controller
     assert controller is not None
@@ -1534,6 +1534,77 @@ async def test_v2_select_missing_conversation_still_notifies_rejection() -> None
     assert toasts == [
         "Could not open conversation: Conversation 'c_missing' no longer "
         "exists."
+    ]
+
+
+@pytest.mark.anyio
+async def test_v2_recovered_initial_error_does_not_hide_a_later_rejection(
+    request: pytest.FixtureRequest,
+) -> None:
+    chat_id = "initial_error_notification_lifetime"
+    session = _LiveSession()
+    store = InMemoryConversationStore()
+    ids = HistoryInputIds.for_chat(ResolvedId(chat_id))
+    session.input[ids.browser_token] = reactive.Value("token")
+    session.input[ids.current_id] = reactive.Value("c_target")
+    session.input[ids.select] = reactive.Value({"id": "c_other"})
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+    with (
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            chat_id,
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(store=store, scope="test"),
+        )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    await store.put(
+        ConversationPartition(chat_id=chat_id, scope="test"),
+        new_conversation_record_v2(
+            title="target", id="c_target", client_info={}
+        ),
+    )
+    failure = ValueError("storage unavailable")
+
+    def fail_preflight(*_args: Any, **_kwargs: Any) -> Any:
+        raise failure
+
+    toasts: list[str] = []
+
+    def record_notification(message: Any, *_args: Any, **_kwargs: Any) -> None:
+        toasts.append(str(message))
+
+    import shiny.ui as shiny_ui
+
+    with (
+        patch.object(history_plan_module, "preflight_state", fail_preflight),
+        patch.object(shiny_ui, "notification_show", record_notification),
+        session_context(cast(Any, session)),
+        reactive.isolate(),
+        warnings.catch_warnings(),
+    ):
+        warnings.simplefilter("ignore")
+        await handlers["_init_history"]()
+    assert len(toasts) == 1
+    assert chat.history._initial_history_initialized
+
+    # An app/store may reuse an exception instance. This later lookup has
+    # not run restore cleanup and must report its own failure normally.
+    with (
+        patch.object(controller, "_get_record", AsyncMock(side_effect=failure)),
+        patch.object(shiny_ui, "notification_show", record_notification),
+        session_context(cast(Any, session)),
+        reactive.isolate(),
+        pytest.warns(UserWarning, match="Could not open conversation"),
+    ):
+        await handlers["_on_select"]()
+    assert toasts == [
+        "Could not restore conversation: failed while validating the saved "
+        "conversation. A fresh chat is ready.",
+        "Could not open conversation: storage unavailable",
     ]
 
 
