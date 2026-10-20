@@ -20,7 +20,8 @@ def test_incompatible_context_can_be_viewed_and_navigated_but_not_continued(
     page.get_by_role("button", name="Saved incompatible context").click()
 
     chat.expect_latest_message("original reply", timeout=30_000)
-    status = chat.loc.get_by_role("status")
+    bar = chat.loc.locator(".shiny-chat-readonly")
+    status = bar.get_by_role("status")
     expect(status).to_contain_text(
         "This conversation can be viewed but not continued. Its saved model context couldn't be loaded."
     )
@@ -53,7 +54,7 @@ def test_incompatible_context_can_be_viewed_and_navigated_but_not_continued(
     expect(status).to_be_visible()
     assert status.evaluate("el => el.scrollWidth <= el.clientWidth")
 
-    new_chat = status.get_by_role("button", name="New chat")
+    new_chat = bar.get_by_role("button", name="New chat")
     new_chat.focus()
     new_chat.press("Enter")
     expect(status).to_have_count(0)

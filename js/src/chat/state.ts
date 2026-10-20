@@ -148,7 +148,9 @@ export interface ChatHistoryState {
    * True when the active conversation's saved model context could not be
    * loaded: the transcript is viewable but not continuable. Distinct from
    * `inputDisabled` (transient streaming/transition state) — streaming and
-   * clear actions never touch it; only `history_update` sets it.
+   * clear actions never touch it; only `history_update` sets it. This is
+   * a deliberate server-metadata mirror, like enabled/activeId/conversations;
+   * rendering and same-tick guards use HistoryStore's synchronous snapshot.
    */
   readOnly: boolean
 }

@@ -89,6 +89,7 @@ describe("read-only composer bar", () => {
     expect(bar.textContent).toContain(READ_ONLY_COPY)
     const newChat = screen.getByRole("button", { name: "New chat" })
     expect(newChat).toBeInTheDocument()
+    expect(bar).not.toContainElement(newChat)
     // The button is described by the bar text, so focused entry reads the
     // explanation even for AT that skips newly-mounted role=status content.
     const descriptionId = newChat.getAttribute("aria-describedby")
@@ -209,6 +210,31 @@ describe("read-only focus transfer", () => {
     fireHistoryUpdate(transport, elementId, { active_read_only: true })
 
     expect(document.activeElement).toBe(trigger)
+  })
+
+  it("keeps New chat focus while app output is streaming and rejects busy clicks", () => {
+    const transport = createMockTransport()
+    const elementId = renderChat(transport)
+    fireHistoryUpdate(transport, elementId, { active_read_only: true })
+    const newChat = screen.getByRole("button", { name: "New chat" })
+    act(() => newChat.focus())
+
+    act(() => {
+      transport.fire(elementId, {
+        type: "chunk_start",
+        message: { role: "assistant", segments: [] },
+      })
+    })
+
+    expect(newChat).toHaveAttribute("aria-disabled", "true")
+    expect(newChat).not.toBeDisabled()
+    expect(document.activeElement).toBe(newChat)
+    fireEvent.click(newChat)
+    expect(transport.sendHistoryNew).not.toHaveBeenCalled()
+
+    act(() => transport.fire(elementId, { type: "chunk_end" }))
+    expect(newChat).not.toHaveAttribute("aria-disabled")
+    expect(document.activeElement).toBe(newChat)
   })
 
   it("does not steal focus from a toolbar control that remains mounted", () => {

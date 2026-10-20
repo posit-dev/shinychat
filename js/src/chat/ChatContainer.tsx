@@ -1134,12 +1134,12 @@ export const ChatContainer = forwardRef<
             {readOnly ? (
               <div
                 className="shiny-chat-readonly"
-                role="status"
                 onFocus={handleComposerFocusIn}
                 onBlur={handleComposerFocusOut}
               >
                 <p
                   className="shiny-chat-readonly-message"
+                  role="status"
                   id={`${elementId}-readonly-message`}
                 >
                   {
@@ -1153,11 +1153,13 @@ export const ChatContainer = forwardRef<
                   // AT that skips the freshly-mounted role=status content
                   // still reads the explanation when entry focus lands here.
                   aria-describedby={`${elementId}-readonly-message`}
-                  disabled={history.busy || !history.connected}
-                  // Keep keyboard focus while New chat settles. The store
-                  // rejects repeated actions during the pending transition.
+                  // Preserve focus in every unavailable state. The store
+                  // rejects actions while busy, pending, or disconnected.
                   aria-disabled={
-                    history.historyTransitionPending !== null || undefined
+                    history.busy ||
+                    history.historyTransitionPending !== null ||
+                    !history.connected ||
+                    undefined
                   }
                   onClick={historyStore.actions.create}
                 >
