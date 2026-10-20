@@ -28,7 +28,10 @@ const READ_ONLY_COPY =
 
 let chatSeq = 0
 
-function renderChat(transport: ReturnType<typeof createMockTransport>) {
+function renderChat(
+  transport: ReturnType<typeof createMockTransport>,
+  toolbarEl?: HTMLElement,
+) {
   // Unique ids per render: history stores are keyed by elementId and outlive
   // a component across tests within this file.
   const elementId = `readonly-chat-${++chatSeq}`
@@ -40,6 +43,7 @@ function renderChat(transport: ReturnType<typeof createMockTransport>) {
       inputId={`${elementId}-input`}
       uploadAccept={[]}
       maxUploadSize={null}
+      toolbarEl={toolbarEl}
     />,
   )
   return elementId
@@ -205,6 +209,24 @@ describe("read-only focus transfer", () => {
     fireHistoryUpdate(transport, elementId, { active_read_only: true })
 
     expect(document.activeElement).toBe(trigger)
+  })
+
+  it("does not steal focus from a toolbar control that remains mounted", () => {
+    const transport = createMockTransport()
+    const toolbar = document.createElement("div")
+    const control = document.createElement("button")
+    control.textContent = "Toolbar action"
+    toolbar.append(control)
+    const elementId = renderChat(transport, toolbar)
+    const editor = screen.getByRole("textbox", { name: "Chat message" })
+    act(() => editor.focus())
+    act(() => control.focus())
+    expect(document.activeElement).toBe(control)
+
+    fireHistoryUpdate(transport, elementId, { active_read_only: true })
+
+    expect(control).toBeInTheDocument()
+    expect(document.activeElement).toBe(control)
   })
 
   it("returns focus to a usable input after New chat clears the read-only state", () => {

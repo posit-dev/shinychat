@@ -2919,6 +2919,41 @@ def test_chat_destroy_without_history_start_is_safe():
     chat.destroy()  # no session-level registrations to release
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize("operation", ["message", "stream"])
+async def test_app_output_in_read_only_history_is_displayed_but_not_saved(
+    operation: str, tmp_path: Any, request: pytest.FixtureRequest,
+) -> None:
+    chat, session, _, store = await _make_initialized_live_v2_chat(
+        tmp_path, "read_only_app_output"
+    )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    partition = ConversationPartition(chat_id=chat.id, scope="test")
+    target = _restore_target()
+    target.nodes[target.root_id].state["shinychat:turns"].version = 2
+    await store.put(partition, target)
+    with session_context(cast(Any, session)), reactive.isolate():
+        with pytest.warns(UserWarning, match="version"):
+            await controller.switch_to(target.id)
+    stored_before = await store.get(partition, target.id)
+    messages_before = len(session.messages)
+
+    with session_context(cast(Any, session)), reactive.isolate():
+        if operation == "message":
+            await chat.append_message("session-only app output")
+        else:
+            async with chat.message_stream_context() as stream:
+                await stream.append("session-only app output")
+
+    assert chat._transcript.read()[-1].message.content == "session-only app output"
+    assert len(session.messages) > messages_before
+    assert await store.get(partition, target.id) == stored_before
+    assert controller._exchange_recorder.record == stored_before
+    assert controller._exchange_recorder.read_only
+
+
 async def _make_initialized_live_v2_chat(
     tmp_path: Any, chat_id: str
 ) -> tuple[Chat, _LiveSession, _MockClient, FileConversationStore]:

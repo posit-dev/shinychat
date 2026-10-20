@@ -259,11 +259,9 @@ export const ChatContainer = forwardRef<
   const [historyOpen, setHistoryOpen] = useState(false)
   const historyTriggerRef = useRef<HTMLButtonElement>(null)
 
-  // Read-only composer (unavailable saved model context). Focus ownership is
-  // tracked via focusin/focusout on the composer rather than
-  // document.activeElement: the swap unmounts the focused element, which
-  // fires no blur event and resets activeElement to <body> before the
-  // transition effect runs — so the flag must survive the unmount.
+  // Track focus only in the swapped input/bar region. Removing a focused
+  // element fires no blur, so ownership must survive the unmount; toolbar
+  // controls stay mounted and must not have their focus redirected.
   const readOnly = history.readOnly
   const readOnlyNewChatRef = useRef<HTMLButtonElement>(null)
   const composerFocusedRef = useRef(false)
@@ -276,7 +274,7 @@ export const ChatContainer = forwardRef<
     (e: React.FocusEvent<HTMLElement>) => {
       const next = e.relatedTarget as Node | null
       composerFocusedRef.current =
-        next !== null && (composerRef.current?.contains(next) ?? false)
+        next !== null && e.currentTarget.contains(next)
     },
     [],
   )
@@ -1132,14 +1130,14 @@ export const ChatContainer = forwardRef<
             />
           </div>
 
-          <div
-            className="shiny-chat-composer"
-            ref={composerRef}
-            onFocus={handleComposerFocusIn}
-            onBlur={handleComposerFocusOut}
-          >
+          <div className="shiny-chat-composer" ref={composerRef}>
             {readOnly ? (
-              <div className="shiny-chat-readonly" role="status">
+              <div
+                className="shiny-chat-readonly"
+                role="status"
+                onFocus={handleComposerFocusIn}
+                onBlur={handleComposerFocusOut}
+              >
                 <p
                   className="shiny-chat-readonly-message"
                   id={`${elementId}-readonly-message`}
@@ -1174,6 +1172,8 @@ export const ChatContainer = forwardRef<
                     : "shiny-chat-input"
                 }
                 onClick={onContainerClick}
+                onFocus={handleComposerFocusIn}
+                onBlur={handleComposerFocusOut}
               >
                 <ChatInput
                   ref={chatInputRef}

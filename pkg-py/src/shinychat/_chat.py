@@ -1042,6 +1042,10 @@ class Chat:
         """
         Append a message to the chat.
 
+        App output in a restored read-only conversation is displayed but not
+        saved to history. It disappears when the saved path is replayed or
+        reloaded; appending does not recover the unavailable model context.
+
         Parameters
         ----------
         message
@@ -1240,6 +1244,10 @@ class Chat:
         3. Be used from within a `.append_message_stream()`
             * Useful for inserting additional content from another context into the
               stream (e.g., see the note about tool calls below).
+
+        As with :meth:`append_message`, app output in a restored read-only
+        conversation is displayed but not saved and does not recover its model
+        context.
 
         Yields
         ------
@@ -1549,6 +1557,10 @@ class Chat:
     ):
         """
         Append a message as a stream of message chunks.
+
+        As with :meth:`append_message`, app output in a restored read-only
+        conversation is displayed but not saved and does not recover its model
+        context.
 
         Parameters
         ----------

@@ -52,7 +52,6 @@ def test_incompatible_context_can_be_viewed_and_navigated_but_not_continued(
     chat.expect_latest_message("original reply", timeout=30_000)
     expect(status).to_be_visible()
     assert status.evaluate("el => el.scrollWidth <= el.clientWidth")
-    page.screenshot(path=f"/tmp/shinychat-read-only-{width}.png")
 
     new_chat = status.get_by_role("button", name="New chat")
     new_chat.focus()
