@@ -39,9 +39,12 @@ class StatePathContext:
     active_leaf: str
     node_ids: tuple[str, ...]
     entries: tuple[tuple[str, StateEntry], ...]
-    bootstrap: Literal["recorded", "live"]
     prepared_turns: list[dict[str, Any]] | None = None
     turns_unavailable: bool = False
+    # Deep-copied per-hook entries the same hook owned on the record's
+    # previous path (snapshotted at preflight, before node-close capture);
+    # ``None`` when the planner has no previous path to report.
+    previous_entries: tuple[tuple[str, StateEntry], ...] | None = None
 
 
 RestoreHook = Callable[[StatePathContext], Awaitable[None] | None]
@@ -199,7 +202,6 @@ def active_path_turns_are_incompatible(
                 active_leaf=record.active_leaf,
                 node_ids=node_ids,
                 entries=entries,
-                bootstrap="recorded",
             )
         ),
         adapter=adapter,
@@ -215,61 +217,22 @@ def materialize_restore_turns(
 
     Returns the materialized turns and whether they are unusable (``True``
     means the caller must keep or clear live turns instead of replaying
-    them). A ``live`` bootstrap starts from the adapter's current turns and
-    skips only the implicit root snapshot.
+    them). Recorded entries rebuild the list from scratch; the live
+    turns never seed it.
     """
-    include_system_prompt = adapter_is_chatlas(adapter)
-    turns: list[Any] = (
-        adapter.get_turns_json(include_system_prompt=include_system_prompt)
-        if context.bootstrap == "live"
-        else []
-    )
-    root_id = context.node_ids[0]
+    turns: list[Any] = []
     _validate_turn_entries(context.entries)
     if _turns_are_incompatible(context, adapter=adapter):
         return canonical_turns(turns)[0], True
 
-    for node_id, entry in _effective_turn_entries(context):
+    for _node_id, entry in _effective_turn_entries(context):
         entry_turns = cast(list[dict[str, Any]], entry.data)
-        if (
-            context.bootstrap == "live"
-            and node_id == root_id
-            and entry.mode == "snapshot"
-        ):
-            continue
         if entry.mode == "snapshot":
             turns = list(entry_turns)
         else:
             turns.extend(entry_turns)
 
     return canonical_turns(turns)[0], False
-
-
-def materialize_live_restore_turns(
-    planned: RestorePlan,
-    *,
-    adapter: TurnsAdapter,
-) -> RestorePlan:
-    """Materialize the planned turns after admission, keeping live order.
-
-    Callers must invoke this after admission and recorder serialization
-    but before any destructive restore effects, then pass the refreshed
-    plan onward.
-    """
-    materialized: list[tuple[str, RestoreHook, StatePathContext]] = []
-    for name, hook, context in planned:
-        prepared_context = context
-        if name == TURNS_STATE_KEY:
-            prepared_turns, unavailable = materialize_restore_turns(
-                context, adapter=adapter
-            )
-            prepared_context = dataclasses.replace(
-                context,
-                prepared_turns=prepared_turns,
-                turns_unavailable=unavailable,
-            )
-        materialized.append((name, hook, prepared_context))
-    return tuple(materialized)
 
 
 def turns_unavailable(planned: StatePlan) -> bool:
@@ -285,7 +248,7 @@ def preflight_state(
     hooks: Mapping[str, StateHook],
     *,
     adapter: TurnsAdapter,
-    bootstrap: Literal["recorded", "live"] = "recorded",
+    previous_node_ids: tuple[str, ...] | None = None,
     preserve_live_turns: bool = False,
     reject_unavailable: bool = False,
     phase: Literal["restore", "rewind"] = "restore",
@@ -296,18 +259,16 @@ def preflight_state(
     malformed state can never move the persisted path. ``phase`` names the
     flow in validation errors, ``preserve_live_turns`` (rewind only) keeps
     the adapter's current turns, and ``reject_unavailable`` (rewind only)
-    refuses plans whose recorded turns cannot be reconstructed. A ``live``
-    bootstrap defers turn materialization to
-    :func:`materialize_live_restore_turns`.
+    refuses plans whose recorded turns cannot be reconstructed.
+    ``previous_node_ids`` (the record's path before the rewind, passed
+    before node-close capture) populates ``previous_entries``.
     """
     if record.active_leaf is None:
         raise ValueError("Exchange-tree record has no active leaf.")
     for node_id in node_ids:
         for name, entry in record.nodes[node_id].state.items():
             if name not in hooks:
-                raise ValueError(
-                    f"Unsupported {phase} state entry {name!r}."
-                )
+                raise ValueError(f"Unsupported {phase} state entry {name!r}.")
             _validate_restore_state_entry(name, entry)
 
     planned: list[tuple[str, StateHook, StatePathContext]] = []
@@ -317,35 +278,39 @@ def preflight_state(
             for node_id in node_ids
             if name in record.nodes[node_id].state
         )
+        previous_entries = (
+            tuple(
+                (
+                    node_id,
+                    record.nodes[node_id].state[name].model_copy(deep=True),
+                )
+                for node_id in previous_node_ids
+                if name in record.nodes[node_id].state
+            )
+            if previous_node_ids is not None
+            else None
+        )
         context = StatePathContext(
             conversation_id=record.id,
             active_leaf=record.active_leaf,
             node_ids=node_ids,
             entries=entries,
-            bootstrap=bootstrap,
+            previous_entries=previous_entries,
         )
         if name == TURNS_STATE_KEY:
             if preserve_live_turns:
-                include_system_prompt = adapter_is_chatlas(adapter)
-                prepared_turns = canonical_turns(
-                    adapter.get_turns_json(
-                        include_system_prompt=include_system_prompt
-                    )
-                )[0]
+                prepared_turns = canonical_turns(adapter.get_turns_json())[0]
                 context = dataclasses.replace(
                     context,
-                    bootstrap="live",
                     prepared_turns=prepared_turns,
                     turns_unavailable=True,
                 )
-            elif bootstrap == "recorded":
+            else:
                 prepared_turns, unavailable = materialize_restore_turns(
                     context, adapter=adapter
                 )
                 if reject_unavailable and unavailable:
-                    raise ValueError(
-                        "Unsupported shinychat:turns state entry."
-                    )
+                    raise ValueError("Unsupported shinychat:turns state entry.")
                 context = dataclasses.replace(
                     context,
                     prepared_turns=prepared_turns,

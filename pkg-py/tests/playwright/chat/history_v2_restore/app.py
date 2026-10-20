@@ -20,7 +20,9 @@ class EchoChatClient(chatlas.Chat):
         provider = MagicMock()
         provider.name = "echo"
         provider.model = "echo"
-        super().__init__(provider)
+        super().__init__(
+            provider, system_prompt="You are the history echo assistant."
+        )
         self.provider_context: reactive.Value[str] | None = None
         self.provider_calls: reactive.Value[int] | None = None
         self.provider_attachment_counts: reactive.Value[str] | None = None
@@ -55,7 +57,9 @@ class EchoChatClient(chatlas.Chat):
                 self.provider_attachment_names.set(
                     ",".join([existing, value]) if existing else value
                 )
-        context = [str(turn.contents) for turn in self._turns] + [user_input]
+        context = [str(turn.contents) for turn in self.get_turns()] + [
+            user_input
+        ]
         if self.provider_context is not None:
             self.provider_context.set(" | ".join(context))
         if (
@@ -166,14 +170,14 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     @reactive.event(input.inspect_turns)
     def _inspect_turns() -> None:
         restored_turns = [
-            turn.model_dump(mode="json")
-            for turn in client.get_turns(include_system_prompt=True)
+            turn.model_dump(mode="json") for turn in client.get_turns()
         ]
         turns_value.set(
             json.dumps(
                 {
                     "turn_count": len(restored_turns),
                     "turns": restored_turns,
+                    "system_prompt": client.system_prompt,
                 }
             )
         )
@@ -190,6 +194,9 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
                 {
                     "conversation_id": record.id,
                     "node_count": len(record.nodes),
+                    "root_prompt": record.nodes[record.root_id]
+                    .state["shinychat:system_prompt"]
+                    .model_dump(mode="json"),
                     "active_state": active.state["shinychat:turns"].model_dump(
                         mode="json"
                     ),

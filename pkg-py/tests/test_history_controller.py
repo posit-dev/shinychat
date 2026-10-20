@@ -21,7 +21,7 @@ from contextlib import (
 )
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Literal, cast
+from typing import Any, Callable, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -1829,48 +1829,11 @@ async def test_v2_restore_materializes_turn_path_once_and_resets_baseline():
 
 
 @pytest.mark.anyio
-async def test_v2_restore_live_bootstrap_skips_only_root_snapshot():
-    adapter = _TrackingFakeAdapter()
-    adapter.turns = [{"role": "system", "content": "live"}]
-    controller, _ = _make_controller(
-        adapter=adapter,
-    )
-    controller.restore_bootstrap = "live"
-    record = new_conversation_record_v2(
-        title="restore",
-        id="c_live",
-        client_info={},
-    )
-    record.nodes["n_0000"].state["shinychat:turns"] = StateEntry(
-        kind="turns",
-        version=1,
-        mode="snapshot",
-        data=[{"role": "system", "content": "recorded root"}],
-    )
-    record.open_exchange("n_0001", _stored_message("user", "first"))
-    record.nodes["n_0001"].state["shinychat:turns"] = StateEntry(
-        kind="turns",
-        version=1,
-        mode="delta",
-        data=[{"role": "user", "content": "first"}],
-    )
-    snapshot_node = record.open_inputless_exchange()
-    record.nodes[snapshot_node].state["shinychat:turns"] = StateEntry(
-        kind="turns",
-        version=1,
-        mode="snapshot",
-        data=[{"role": "assistant", "content": "later snapshot"}],
-    )
+async def test_v2_restore_waits_for_admission_and_recorder_lock():
+    """A restore never mutates the live turns before admission is granted
+    and the recorder lock is held, even though preflight materialized the
+    turns up front."""
 
-    await replay_exchange_record(controller, record)
-
-    assert adapter.set_calls == [
-        [{"role": "assistant", "content": "later snapshot"}]
-    ]
-
-
-@pytest.mark.anyio
-async def test_v2_restore_live_bootstrap_waits_for_admission_and_recorder_lock():
     class _ObservedRestoreLock:
         def __init__(self) -> None:
             self._lock = asyncio.Lock()
@@ -1896,30 +1859,16 @@ async def test_v2_restore_live_bootstrap_waits_for_admission_and_recorder_lock()
             self._lock.release()
 
     adapter = _TrackingFakeAdapter()
-    adapter.turns = [{"role": "system", "content": "before admission"}]
     controller, _ = _make_controller(
         adapter=adapter,
     )
-    controller.restore_bootstrap = "live"
     recorder = controller._exchange_recorder
     assert recorder is not None
     observed_lock = _ObservedRestoreLock()
     recorder.lock = observed_lock  # type: ignore[assignment]
-    original_get_turns = adapter.get_turns_json
-    capture_after_restore_lock: list[bool] = []
-
-    def get_turns_json(
-        *, include_system_prompt: bool = False
-    ) -> list[dict[str, Any]]:
-        capture_after_restore_lock.append(
-            observed_lock.restore_acquired.is_set()
-        )
-        return original_get_turns(include_system_prompt=include_system_prompt)
-
-    adapter.get_turns_json = get_turns_json  # type: ignore[method-assign]
     record = new_conversation_record_v2(
         title="restore",
-        id="c_live",
+        id="c_admission",
         client_info={},
     )
     record.nodes["n_0000"].state["shinychat:turns"] = StateEntry(
@@ -1949,7 +1898,6 @@ async def test_v2_restore_live_bootstrap_waits_for_admission_and_recorder_lock()
 
         release_admission.set()
         await observed_lock.restore_attempted.wait()
-        adapter.turns = [{"role": "system", "content": "after admission"}]
         assert adapter.set_calls == []
 
         observed_lock.release()
@@ -1958,9 +1906,9 @@ async def test_v2_restore_live_bootstrap_waits_for_admission_and_recorder_lock()
         if observed_lock.locked():
             observed_lock.release()
 
-    assert capture_after_restore_lock == [True]
+    assert observed_lock.restore_acquired.is_set()
     assert adapter.set_calls == [
-        [{"role": "system", "content": "after admission"}]
+        [{"role": "system", "content": "recorded root"}]
     ]
 
 
@@ -3132,7 +3080,6 @@ async def test_v2_restore_hooks_are_ordered_and_receive_keyed_path_context():
     assert first_context.conversation_id == "c_hooks"
     assert first_context.active_leaf == "n_0001"
     assert first_context.node_ids == ("n_0000", "n_0001")
-    assert first_context.bootstrap == "recorded"
     assert first_context.entries == (
         ("n_0000", record.nodes["n_0000"].state["first"]),
     )
@@ -3369,20 +3316,17 @@ async def test_v2_degraded_restore_continuation_snapshots_compatible_turns_for_r
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("restore_bootstrap", ["recorded", "live"])
 @pytest.mark.parametrize("resubmit_kind", ["retry", "edit", "regenerate"])
 async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
-    tmp_path: Path, restore_bootstrap: str, resubmit_kind: str
+    tmp_path: Path, resubmit_kind: str
 ) -> None:
     adapter = _TrackingFakeAdapter()
-    live_baseline = [{"role": "system", "content": "live"}]
-    adapter.turns = list(live_baseline)
+    adapter.turns = [{"role": "system", "content": "live"}]
     store = FileConversationStore(tmp_path)
     controller, _ = _make_controller(
         store=store,
         adapter=adapter,
     )
-    controller.restore_bootstrap = cast(Any, restore_bootstrap)
     target = _restore_target()
     exchange_id = "n_0001"
     target.nodes[exchange_id].status = (
@@ -3429,7 +3373,7 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
     await replay_exchange_record(controller, target)
 
     assert recorder.record is target
-    expected_baseline = [] if restore_bootstrap == "recorded" else live_baseline
+    expected_baseline: list[dict[str, Any]] = []
     assert adapter.turns == expected_baseline
     assert events == ["warning", "history_update"]
     restored_display = list(cast(_FakeChat, controller.chat).restored_messages)
@@ -3440,7 +3384,9 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
         target, adapter=cast(TurnsAdapter, adapter)
     )
     original_send_action = cast(_FakeChat, controller.chat)._send_action
-    original_publish = cast(_FakeChat, controller.chat)._publish_accepted_user_input
+    original_publish = cast(
+        _FakeChat, controller.chat
+    )._publish_accepted_user_input
 
     async def send_projection(action: dict[str, Any]) -> None:
         events.append("projection")
@@ -3451,7 +3397,9 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
         original_publish(message)
 
     cast(_FakeChat, controller.chat)._send_action = send_projection  # type: ignore[method-assign]
-    cast(_FakeChat, controller.chat)._publish_accepted_user_input = publish_after_projection  # type: ignore[method-assign]
+    cast(
+        _FakeChat, controller.chat
+    )._publish_accepted_user_input = publish_after_projection  # type: ignore[method-assign]
 
     if resubmit_kind == "edit":
         await controller.handle_edit(0, "edited", request_id=resubmit_kind)
@@ -3474,8 +3422,9 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
     assert rewind_contexts[0].entries == (
         ("n_0000", target.nodes["n_0000"].state["parent"]),
     )
-    assert rewind_contexts[0].bootstrap == "recorded"
-    assert cast(_FakeChat, controller.chat).restored_messages == restored_display
+    assert (
+        cast(_FakeChat, controller.chat).restored_messages == restored_display
+    )
     assert events == ["warning", "history_update", "projection", "published"]
     assert target.nodes["n_0000"].input == parent_before.input
     assert target.nodes["n_0000"].state == parent_before.state
@@ -3503,7 +3452,6 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
         store=store,
         adapter=reloaded_adapter,
     )
-    reloaded.restore_bootstrap = cast(Any, restore_bootstrap)
     reloaded_warning = AsyncMock()
     reloaded._notify_turns_unavailable = reloaded_warning  # type: ignore[method-assign]
     reloaded_recorder = reloaded._exchange_recorder
@@ -4192,72 +4140,6 @@ async def test_v2_initial_restore_body_failure_leaves_no_stale_step_label():
 
 
 @pytest.mark.anyio
-async def test_v2_live_restore_malformed_effective_turns_becomes_fresh_draft():
-    store = InMemoryConversationStore()
-    adapter = _TrackingFakeAdapter()
-    adapter.turns = [{"role": "system", "content": "live"}]
-    controller, _ = _make_controller(
-        store=store,
-        adapter=adapter,
-    )
-    controller.restore_bootstrap = "live"
-    _install_live_v2_record(controller)
-    target = _restore_target()
-    target.nodes["n_0000"].state["shinychat:turns"].data = ["malformed"]
-    target_before = target.model_copy(deep=True)
-    await store.put(part(), target)
-    fake_chat = cast(_FakeChat, controller.chat)
-    fake_chat.messages = [_stored_message("assistant", "live")]
-    fake_chat._transcript.replace(
-        [TranscriptEntry(message=_stored_message("assistant", "live"))]
-    )
-    released_ids: list[str | None] = []
-
-    async def release_active_id(id: str | None) -> None:
-        released_ids.append(id)
-
-    controller.on_active_id_change = release_active_id
-    notifier = AsyncMock()
-    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
-
-    with (
-        pytest.raises(
-            ValueError, match="Turn-state entries must contain a list of JSON objects"
-        ),
-        pytest.warns(
-            UserWarning,
-            match=r"Chat history restore failed "
-            r"\(failed while materializing the restored turns\): "
-            r"ValueError\('Turn-state entries must contain a list of JSON objects",
-        ),
-    ):
-        await replay_exchange_record(controller, target)
-
-    recorder = controller._exchange_recorder
-    assert recorder is not None
-    assert recorder.record is None
-    assert controller._active_id_now() is None
-    assert released_ids == [None]
-    assert fake_chat.clear_messages_calls == 1
-    assert fake_chat.messages == []
-    assert fake_chat._transcript.read() == ()
-    assert adapter.set_calls == [[]]
-    assert adapter.turns == []
-    assert target == target_before
-    assert await store.get(part(), target.id) is target
-    history_updates = [
-        action for action in fake_chat.actions if action["type"] == "history_update"
-    ]
-    assert len(history_updates) == 1
-    assert history_updates[0]["active_id"] is None
-    assert history_updates[0]["transition_protocol"] == "completion-v2"
-    notifier.assert_awaited_once_with(
-        recovery_incomplete=False,
-        detail="failed while materializing the restored turns",
-    )
-
-
-@pytest.mark.anyio
 async def test_v2_restore_hook_failure_names_entry_and_clears_to_fresh_draft():
     controller, _ = _make_controller()
     _install_live_v2_record(controller)
@@ -4316,94 +4198,6 @@ async def test_v2_restore_hook_failure_names_entry_and_clears_to_fresh_draft():
         recovery_incomplete=False,
         detail="the 'test:restore' state entry failed to apply",
     )
-
-
-@pytest.mark.anyio
-async def test_v2_live_restore_materialization_cancellation_cleans_up():
-    adapter = _TrackingFakeAdapter()
-    adapter.turns = [{"role": "system", "content": "live"}]
-    controller, _ = _make_controller(
-        adapter=adapter,
-    )
-    controller.restore_bootstrap = "live"
-    _install_live_v2_record(controller)
-    target = _restore_target()
-    fake_chat = cast(_FakeChat, controller.chat)
-    fake_chat.messages = [_stored_message("assistant", "live")]
-    fake_chat._transcript.replace(
-        [TranscriptEntry(message=_stored_message("assistant", "live"))]
-    )
-    recorder = controller._exchange_recorder
-    assert recorder is not None
-    preflight_completed = False
-    admission_held = False
-    original_preflight = controller._prepare_exchange_restore
-    original = asyncio.CancelledError("cancel during materialization")
-    released_ids: list[str | None] = []
-
-    def prepare_restore(
-        target: ConversationRecordV2,
-        *,
-        bootstrap: Literal["recorded", "live"] | None = None,
-    ) -> tuple[tuple[str, ...], Any, Any]:
-        nonlocal preflight_completed
-        result = original_preflight(target, bootstrap=bootstrap)
-        preflight_completed = True
-        return result
-
-    @asynccontextmanager
-    async def observe_admission(*, block_input: bool = False):
-        nonlocal admission_held
-        del block_input
-        admission_held = True
-        try:
-            yield
-        finally:
-            admission_held = False
-
-    def cancel_materialization(plan: Any, **_kwargs: Any) -> Any:
-        assert preflight_completed
-        assert admission_held
-        assert recorder.lock.locked()
-        raise original
-
-    async def release_active_id(id: str | None) -> None:
-        released_ids.append(id)
-
-    controller._prepare_exchange_restore = prepare_restore  # type: ignore[method-assign]
-    fake_chat._destructive_history_mutation = observe_admission  # type: ignore[method-assign]
-    fake_chat.set_greeting = AsyncMock(  # type: ignore[method-assign]
-        side_effect=RuntimeError("cleanup greeting failure")
-    )
-    controller.on_active_id_change = release_active_id
-    notifier = AsyncMock()
-    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
-
-    with (
-        patch.object(
-            _history_plan, "materialize_live_restore_turns", cancel_materialization
-        ),
-        pytest.raises(asyncio.CancelledError) as raised,
-    ):
-        await replay_exchange_record(controller, target)
-
-    assert raised.value is original
-    assert recorder.record is None
-    assert controller._active_id_now() is None
-    assert released_ids == [None]
-    assert fake_chat.clear_messages_calls == 1
-    assert fake_chat.messages == []
-    assert fake_chat._transcript.read() == ()
-    assert adapter.set_calls == [[]]
-    assert adapter.turns == []
-    history_updates = [
-        action for action in fake_chat.actions if action["type"] == "history_update"
-    ]
-    assert len(history_updates) == 1
-    assert history_updates[0]["active_id"] is None
-    assert history_updates[0]["transition_protocol"] == "completion-v2"
-    # Cancellation keeps the generic message: no detail to attribute.
-    notifier.assert_awaited_once_with(recovery_incomplete=True, detail=None)
 
 
 @pytest.mark.anyio
@@ -6807,7 +6601,6 @@ async def test_v2_resubmit_rewind_hooks_are_ordered_and_always_recorded():
     assert observed[0][1].entries == (
         ("n_0000", record.nodes["n_0000"].state["first"]),
     )
-    assert observed[0][1].bootstrap == "recorded"
     assert observed[1][1].entries == (
         (first, record.nodes[first].state["second"]),
     )
@@ -7495,7 +7288,7 @@ async def test_v2_rejects_retry_for_a_completed_exchange_without_mutating():
 
 
 @pytest.mark.anyio
-async def test_v2_recorder_snapshots_chatlas_system_prompt_at_root_close():
+async def test_v2_recorder_snapshots_chatlas_turns_at_root_close():
     adapter = _FakeAdapter(chatlas=True)
     controller, _ = _make_controller(adapter=adapter)
     recorder = controller._exchange_recorder
@@ -7513,7 +7306,7 @@ async def test_v2_recorder_snapshots_chatlas_system_prompt_at_root_close():
     root_state = recorder.record.nodes["n_0000"].state["shinychat:turns"]  # type: ignore[union-attr]
     assert root_state.kind == "chatlas"
     assert root_state.mode == "snapshot"
-    assert root_state.data == adapter.system_turns
+    assert root_state.data == adapter.turns
 
     new_turn = {"role": "assistant", "content": "later"}
     adapter.turns.append(new_turn)

@@ -98,14 +98,6 @@ def test_history_config_defaults_preserved():
     chat = _make_chat(history=HistoryOptions(store="memory"))
     assert chat.history._store == "memory"
     assert chat.history._restore_mode == "browser"  # default preserved
-    assert chat.history._restore_bootstrap == "recorded"
-
-
-def test_history_config_accepts_live_restore_bootstrap():
-    chat = _make_chat(
-        history=HistoryOptions(store="memory", restore_bootstrap="live")
-    )
-    assert chat.history._restore_bootstrap == "live"
 
 
 def test_on_save_registers_callback():
@@ -466,13 +458,11 @@ async def test_chat_without_client_publishes_initial_history_withdrawal() -> Non
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("restore_bootstrap", ["recorded", "live"])
 @pytest.mark.parametrize("target_id", [None, "c_target"])
 async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
-    restore_bootstrap: str,
     target_id: str | None,
 ) -> None:
-    chat_id = f"initial_capture_{restore_bootstrap}_{target_id or 'fresh'}"
+    chat_id = f"initial_capture_{target_id or 'fresh'}"
     session = _LiveSession()
     store = InMemoryConversationStore()
     history_ids = HistoryInputIds.for_chat(ResolvedId(chat_id))
@@ -491,7 +481,6 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
                 store=store,
                 scope="test",
                 restore_mode="browser",
-                restore_bootstrap=restore_bootstrap,  # type: ignore[arg-type]
             ),
         )
 
@@ -535,7 +524,9 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
         # Suppressed stream entry points now raise instead of silently
         # dismissing: the producer is unconsumed and the caller keeps
         # ownership of it (D1).
-        with pytest.raises(RuntimeError, match="chat history is still initializing"):
+        with pytest.raises(
+            RuntimeError, match="chat history is still initializing"
+        ):
             async with chat.message_stream_context() as stream:
                 await stream.append("blocked stream append")
                 await stream.replace("blocked stream replace")
@@ -562,11 +553,11 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
         assert chat._transcript.read() == ()
         assert chat._transcript.active_stream_id is None
         assert recorder.record is None
-        assert [
-            message["action"]["type"] for message in session.messages
-        ] == []
+        assert [message["action"]["type"] for message in session.messages] == []
         assert (
-            await store.list(ConversationPartition(chat_id=chat_id, scope="test"))
+            await store.list(
+                ConversationPartition(chat_id=chat_id, scope="test")
+            )
         ) == stored_before
 
         # Client-triggered slash commands during the window are dropped
@@ -581,9 +572,9 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
 
         with warnings.catch_warnings():
             warnings.simplefilter("error")
-            cast(
-                Any, session.input[chat._slash_command_id]
-            )._set({"command": "blocked", "userText": "nope", "echo": True})
+            cast(Any, session.input[chat._slash_command_id])._set(
+                {"command": "blocked", "userText": "nope", "echo": True}
+            )
             with session_context(cast(Any, session)), reactive.isolate():
                 await handlers["_on_slash_command"]()
         assert slash_calls == []
@@ -607,9 +598,9 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
 
         # Post-admission, the same slash command runs — proving the earlier
         # suppression was the admission guard, not a dead handler.
-        cast(
-            Any, session.input[chat._slash_command_id]
-        )._set({"command": "blocked", "userText": "works", "echo": True})
+        cast(Any, session.input[chat._slash_command_id])._set(
+            {"command": "blocked", "userText": "works", "echo": True}
+        )
         with session_context(cast(Any, session)), reactive.isolate():
             await handlers["_on_slash_command"]()
         assert slash_calls == ["works"]
@@ -1691,7 +1682,9 @@ async def test_v2_initial_restore_preflight_cancellation_recovers_once() -> None
 
 
 @pytest.mark.anyio
-async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> None:
+async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> (
+    None
+):
     chat_id = "initial_restore_cancel"
     session = _LiveSession()
     store = InMemoryConversationStore()
@@ -1728,7 +1721,6 @@ async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> No
                 store=store,
                 scope="test",
                 restore_mode="browser",
-                restore_bootstrap="live",
             ),
         )
 
@@ -1745,9 +1737,7 @@ async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> No
     recorder = controller._exchange_recorder
     assert recorder is not None
 
-    async def cancel_replay(
-        _target: Any, _node_ids: tuple[str, ...]
-    ) -> None:
+    async def cancel_replay(_target: Any, _node_ids: tuple[str, ...]) -> None:
         raise original
 
     controller._replay_exchange_display = cancel_replay  # type: ignore[method-assign]
@@ -1789,13 +1779,16 @@ async def test_v2_initial_restore_cancellation_uses_transaction_recovery() -> No
         await handlers["_init_history"]()
 
     assert settled == [False]
-    assert len(
-        [
-            message
-            for message in session.messages
-            if message["action"]["type"] == "history_update"
-        ]
-    ) == 1
+    assert (
+        len(
+            [
+                message
+                for message in session.messages
+                if message["action"]["type"] == "history_update"
+            ]
+        )
+        == 1
+    )
     with session_context(cast(Any, session)), reactive.isolate():
         await chat._record_accepted_user_input_with_capture(
             ChatMessage(content="fresh after cancellation", role="user")

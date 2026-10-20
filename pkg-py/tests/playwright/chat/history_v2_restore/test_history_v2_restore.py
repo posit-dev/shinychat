@@ -72,9 +72,20 @@ def test_v2_restore_replays_turns_and_continues_provider_context(
     controller.OutputText(page, "turns").expect_value(
         re.compile(r'"turn_count": 2'), timeout=10_000
     )
+    controller.OutputText(page, "turns").expect_value(
+        re.compile(r'"system_prompt": "You are the history echo assistant\."'),
+        timeout=10_000,
+    )
     controller.OutputText(page, "recorder").expect_value(
         re.compile(r'"node_count": 2'), timeout=10_000
     )
+    saved = json.loads(page.locator("#recorder").inner_text())
+    assert saved["root_prompt"] == {
+        "kind": "system_prompt",
+        "version": 1,
+        "mode": "snapshot",
+        "data": "You are the history echo assistant.",
+    }
 
     chat.set_user_input("second question")
     expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
@@ -91,6 +102,49 @@ def test_v2_restore_replays_turns_and_continues_provider_context(
     )
     controller.OutputText(page, "recorder").expect_value(
         re.compile(r'"node_count": 3'), timeout=10_000
+    )
+
+
+def test_v2_saved_system_prompt_survives_restore_and_edit_regeneration(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+    chat.set_user_input("original with prompt")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message("echo: original with prompt", timeout=30_000)
+    page.locator(".shiny-chat-history-trigger").click()
+    expect(
+        page.locator(
+            ".shiny-chat-history-item", has_text="original with prompt"
+        )
+    ).to_have_count(1, timeout=10_000)
+    page.keyboard.press("Escape")
+
+    page.reload()
+    chat.expect_latest_message("echo: original with prompt", timeout=30_000)
+    original = page.locator(".shiny-chat-user-message").first
+    original.hover()
+    original.locator(".shiny-chat-edit-btn").click()
+    editor = original.get_by_role("textbox", name="Chat message")
+    editor.fill("regenerated with prompt")
+    original.locator(".shiny-chat-btn-send").click()
+
+    chat.expect_latest_message("echo: regenerated with prompt", timeout=30_000)
+    controller.OutputText(page, "provider_calls").expect_value("1")
+    controller.OutputText(page, "provider_context").expect_value(
+        "regenerated with prompt", timeout=10_000
+    )
+    expect(_message_count(page)).to_have_count(2, timeout=10_000)
+    controller.InputActionButton(page, "inspect_turns").click()
+    controller.OutputText(page, "turns").expect_value(
+        re.compile(r'"system_prompt": "You are the history echo assistant\."'),
+        timeout=10_000,
+    )
+    controller.OutputText(page, "turns").expect_value(
+        re.compile(r'"turn_count": 2'), timeout=10_000
     )
 
 

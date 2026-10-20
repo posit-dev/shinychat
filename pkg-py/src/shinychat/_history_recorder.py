@@ -38,13 +38,13 @@ from ._history_plan import (
     RestoreHook,
     RewindHook,
     StatePathContext,
-    adapter_is_chatlas,
     canonical_turns,
     turn_entry_kind,
 )
 from ._history_store import ConversationPartition, ConversationStore
 from ._history_title import fallback_title_from_text
 from ._history_types import (
+    SYSTEM_PROMPT_STATE_KEY,
     TURNS_STATE_KEY,
     CapturedMessage,
     ConversationRecordV2,
@@ -99,6 +99,19 @@ class _ExchangeRecorder:
         # adapter's turns no longer extend what was last captured.
         self._turn_baseline: list[str] | None = []
         self._active_id_published_for: ConversationRecordV2 | None = None
+        if (
+            isinstance(host.adapter, TurnsAdapter)
+            and host.adapter.has_system_prompt()
+        ):
+            self._register_capture_hook(
+                SYSTEM_PROMPT_STATE_KEY, self._capture_system_prompt
+            )
+            self._register_restore_hook(
+                SYSTEM_PROMPT_STATE_KEY, self._restore_system_prompt
+            )
+            self._register_rewind_hook(
+                SYSTEM_PROMPT_STATE_KEY, self._rewind_system_prompt
+            )
         self._register_capture_hook(TURNS_STATE_KEY, self._capture_turns)
         self._register_restore_hook(TURNS_STATE_KEY, self._restore_turns)
         self._register_rewind_hook(TURNS_STATE_KEY, self._restore_turns)
@@ -128,12 +141,62 @@ class _ExchangeRecorder:
     def invalidate_turn_baseline(self) -> None:
         self._turn_baseline = None
 
+    def _capture_system_prompt(
+        self, context: CaptureContext
+    ) -> StateEntry | None:
+        assert self.record is not None
+        prompt = self._host.adapter.get_system_prompt()
+        parent_id = self.record.nodes[context.node_id].parent_id
+        while parent_id is not None:
+            parent = self.record.nodes[parent_id]
+            previous = parent.state.get(SYSTEM_PROMPT_STATE_KEY)
+            if previous is not None:
+                if previous.data == prompt:
+                    return None
+                break
+            parent_id = parent.parent_id
+        return StateEntry(
+            kind="system_prompt", version=1, mode="snapshot", data=prompt
+        )
+
+    @staticmethod
+    def _latest_system_prompt(
+        entries: tuple[tuple[str, StateEntry], ...],
+    ) -> StateEntry | None:
+        if not entries:
+            return None
+        entry = entries[-1][1]
+        if (
+            entry.kind != "system_prompt"
+            or entry.version != 1
+            or entry.mode != "snapshot"
+            or not (entry.data is None or isinstance(entry.data, str))
+        ):
+            raise ValueError("Unsupported shinychat:system_prompt state entry.")
+        return entry
+
+    def _restore_system_prompt(self, context: StatePathContext) -> None:
+        entry = self._latest_system_prompt(context.entries)
+        if entry is not None:
+            self._host.adapter.set_system_prompt(cast(str | None, entry.data))
+
+    def _rewind_system_prompt(self, context: StatePathContext) -> None:
+        if context.previous_entries is None:
+            raise RuntimeError(
+                "The recorded source path is required before rewind."
+            )
+        target = self._latest_system_prompt(context.entries)
+        # Compare saved paths, not the live prompt or the node-close capture:
+        # an on_restore override must survive a same-prompt rewind.
+        previous = self._latest_system_prompt(context.previous_entries)
+        if target is not None and (
+            previous is None or target.data != previous.data
+        ):
+            self._host.adapter.set_system_prompt(cast(str | None, target.data))
+
     def _capture_turns(self, context: CaptureContext) -> StateEntry:
         adapter = self._host.adapter
-        include_system_prompt = adapter_is_chatlas(adapter)
-        turns, fingerprints = canonical_turns(
-            adapter.get_turns_json(include_system_prompt=include_system_prompt)
-        )
+        turns, fingerprints = canonical_turns(adapter.get_turns_json())
         baseline = self._turn_baseline
         is_prefix = (
             baseline is not None
@@ -150,9 +213,7 @@ class _ExchangeRecorder:
 
         self._turn_baseline = fingerprints
         assert self.record is not None
-        previous = self.record.nodes[context.node_id].state.get(
-            TURNS_STATE_KEY
-        )
+        previous = self.record.nodes[context.node_id].state.get(TURNS_STATE_KEY)
         if mode == "delta" and previous is not None:
             if not isinstance(previous.data, list):
                 raise ValueError("Turn-state entries must contain a list.")
@@ -184,8 +245,7 @@ class _ExchangeRecorder:
         turns = context.prepared_turns
         adapter = self._host.adapter
         if context.turns_unavailable:
-            if context.bootstrap == "recorded":
-                adapter.set_turns_json([])
+            adapter.set_turns_json([])
             self._set_turn_baseline(turns)
             return
         adapter.set_turns_json(cast(list[TurnDict], turns))

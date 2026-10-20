@@ -10,7 +10,6 @@ from typing import (
     Awaitable,
     Callable,
     Iterator,
-    Literal,
 )
 
 from . import _history_plan
@@ -212,7 +211,6 @@ class HistoryController:
         save_callbacks: "list[Callable[[dict[str, Any]], None]] | None" = None,
         restore_callbacks: "list[Callable[[dict[str, Any]], None]] | None" = None,
         max_store_bytes: int | None = None,
-        restore_bootstrap: Literal["recorded", "live"] = "recorded",
     ):
         self.chat = chat
         self.adapter = adapter
@@ -255,13 +253,12 @@ class HistoryController:
         # where the reload would discard the recovered fresh draft and the
         # failure toast. Modes without destructive None-navigation leave
         # this unset and keep the fallback.
-        self.on_failed_restore_cleared: (
-            Callable[[], Awaitable[None]] | None
-        ) = None
+        self.on_failed_restore_cleared: Callable[[], Awaitable[None]] | None = (
+            None
+        )
         self.on_evict: Callable[[str], Awaitable[None]] | None = None
         self.on_settled: Callable[[bool], Awaitable[None]] | None = None
         self.max_store_bytes: int | None = max_store_bytes
-        self.restore_bootstrap: Literal["recorded", "live"] = restore_bootstrap
         self._title_task: asyncio.Task[None] | None = None
         self._over_budget_warned: bool = False
         self._exchange_recorder = _ExchangeRecorder(self)
@@ -599,25 +596,19 @@ class HistoryController:
     def _prepare_exchange_restore(
         self,
         target: ConversationRecordV2,
-        *,
-        bootstrap: Literal["recorded", "live"] | None = None,
-    ) -> tuple[tuple[str, ...], RestorePlan, Literal["recorded", "live"]]:
+    ) -> tuple[tuple[str, ...], RestorePlan]:
         recorder = self._exchange_recorder
 
         node_ids = tuple(target.path_node_ids())
         if not node_ids or target.active_leaf is None:
             raise ValueError("Exchange-tree record has no active path.")
-        selected_bootstrap = (
-            self.restore_bootstrap if bootstrap is None else bootstrap
-        )
         planned_state = _history_plan.preflight_state(
             target,
             node_ids,
             recorder.restore_hooks,
             adapter=self.adapter,
-            bootstrap=selected_bootstrap,
         )
-        return node_ids, planned_state, selected_bootstrap
+        return node_ids, planned_state
 
     async def _restore_exchange_record_locked(
         self,
@@ -625,19 +616,11 @@ class HistoryController:
         *,
         node_ids: tuple[str, ...],
         planned_state: RestorePlan,
-        bootstrap: Literal["recorded", "live"],
         persist_active_pointer: bool = False,
     ) -> None:
         recorder = self._exchange_recorder
 
         try:
-            with _restore_step("materializing the restored turns"):
-                if bootstrap == "live":
-                    planned_state = (
-                        _history_plan.materialize_live_restore_turns(
-                            planned_state, adapter=self.adapter
-                        )
-                    )
             with _restore_step("replaying the conversation display"):
                 await self._replay_exchange_display(target, node_ids)
             with _restore_step("applying the recorded state entries"):
@@ -654,9 +637,7 @@ class HistoryController:
                     await recorder.persist_record_locked()
             with _restore_step("restoring the app state"):
                 self._restore_app_state(target.values or {})
-            with _restore_step(
-                "sending the restored conversation metadata"
-            ):
+            with _restore_step("sending the restored conversation metadata"):
                 await self._send_exchange_metadata()
                 await self._send_sibling_metadata()
                 if _history_plan.turns_unavailable(planned_state):
@@ -701,8 +682,8 @@ class HistoryController:
                     selected = target.model_copy(deep=True)
                     selected.set_active_leaf(node_id)
                     persist_active_pointer = target.active_leaf != node_id
-                node_ids, planned_state, bootstrap = (
-                    self._prepare_exchange_restore(selected)
+                node_ids, planned_state = self._prepare_exchange_restore(
+                    selected
                 )
         except BaseException as error:
             await self._clear_failed_restore(error)
@@ -714,9 +695,7 @@ class HistoryController:
                     await stack.enter_async_context(
                         self._destructive_mutation()
                     )
-                    await stack.enter_async_context(
-                        self._exchange_mutation()
-                    )
+                    await stack.enter_async_context(self._exchange_mutation())
             except BaseException as error:
                 # Admission failed before the restore body ran: it has no
                 # attribution or cleanup of its own yet, so recover here.
@@ -728,7 +707,6 @@ class HistoryController:
                 selected,
                 node_ids=node_ids,
                 planned_state=planned_state,
-                bootstrap=bootstrap,
                 persist_active_pointer=persist_active_pointer,
             )
 
@@ -759,14 +737,11 @@ class HistoryController:
                     raise RuntimeError(
                         f"Conversation {conv_id!r} no longer exists."
                     )
-                node_ids, planned_state, bootstrap = (
-                    self._prepare_exchange_restore(target)
-                )
+                node_ids, planned_state = self._prepare_exchange_restore(target)
                 await self._restore_exchange_record_locked(
                     target,
                     node_ids=node_ids,
                     planned_state=planned_state,
-                    bootstrap=bootstrap,
                 )
         if self.on_switch_restored is not None:
             try:
@@ -894,14 +869,13 @@ class HistoryController:
             node_ids,
             recorder.rewind_hooks,
             adapter=self.adapter,
+            previous_node_ids=tuple(record.path_node_ids()),
             preserve_live_turns=preserve_live_turns,
             reject_unavailable=True,
             phase="rewind",
         )
 
-        async with self._destructive_mutation(
-            block_input=True
-        ) as transaction:
+        async with self._destructive_mutation(block_input=True) as transaction:
             transcript_prefix = self._transcript_prefix_entries(
                 record, node_ids
             )
@@ -1191,6 +1165,7 @@ class HistoryController:
             node_ids,
             recorder.rewind_hooks,
             adapter=self.adapter,
+            previous_node_ids=tuple(record.path_node_ids()),
             reject_unavailable=True,
             phase="rewind",
         )
@@ -1200,9 +1175,7 @@ class HistoryController:
             async def send_navigation() -> None:
                 # The display replay reads only node content by id, so it
                 # does not depend on the record's leaf pointer.
-                with _restore_step(
-                    "replaying the conversation display"
-                ):
+                with _restore_step("replaying the conversation display"):
                     await self._replay_exchange_display(record, node_ids)
                 with _restore_step("sending the navigation update"):
                     await self._send_sibling_metadata()

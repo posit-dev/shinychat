@@ -86,6 +86,15 @@ class TurnsAdapter:
     def is_chatlas(self) -> bool:
         return is_chatlas_chat_client(self._turns_client())
 
+    def has_system_prompt(self) -> bool:
+        return hasattr(self._turns_client(), "system_prompt")
+
+    def get_system_prompt(self) -> str | None:
+        return self._turns_client().system_prompt  # type: ignore[attr-defined]
+
+    def set_system_prompt(self, prompt: str | None) -> None:
+        self._turns_client().system_prompt = prompt  # type: ignore[attr-defined]
+
     def get_turns_grouped(self) -> list[list[TurnDict]]:
         turns = self.get_turns_json()
         if not is_chatlas_chat_client(self._turns_client()):

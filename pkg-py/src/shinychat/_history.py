@@ -128,11 +128,6 @@ class HistoryOptions:
         ``TitleFn`` callable to use custom logic instead. Pass ``None`` to
         skip LLM titling entirely — the conversation keeps its initial
         timestamp-based name.
-    restore_bootstrap
-        How a v2 exchange-tree restore initializes client turns.
-        ``"recorded"`` reconstructs them entirely from saved state entries.
-        ``"live"`` preserves the app's current turns and skips only the
-        implicit root snapshot before applying later entries.
     """
 
     def __init__(
@@ -142,7 +137,6 @@ class HistoryOptions:
         scope: "str | Callable[..., str] | None" = None,
         title: "TitleFn | Literal['auto'] | None" = "auto",
         max_store_mb: float | None = 100.0,
-        restore_bootstrap: "Literal['recorded', 'live']" = "recorded",
     ) -> None:
         self.restore_mode: "Literal['browser', 'url', 'none', 'bookmark']" = (
             restore_mode
@@ -153,9 +147,6 @@ class HistoryOptions:
         self.scope: "str | Callable[..., str] | None" = scope
         self.title: "TitleFn | Literal['auto'] | None" = title
         self.max_store_mb: float | None = max_store_mb
-        self.restore_bootstrap: "Literal['recorded', 'live']" = (
-            restore_bootstrap
-        )
 
 
 def _history_transition_request_id(value: Any) -> str | None:
@@ -395,9 +386,6 @@ class ChatHistory:
             cfg.restore_mode
         )
         self._max_store_mb: float | None = cfg.max_store_mb
-        self._restore_bootstrap: "Literal['recorded', 'live']" = (
-            cfg.restore_bootstrap
-        )
         self._initial_history_initialized = False
 
     def enable(self) -> None:
@@ -507,6 +495,19 @@ class ChatHistory:
             def _(values):
                 ui.update_navs("tabs", selected=values.get("selected_tab"))
 
+        Restores faithfully reapply the conversation's saved system prompt
+        (the one captured while the conversation was live) before callbacks
+        run. To keep the app's *current* prompt instead — e.g. when the
+        prompt is generated per session — override it here::
+
+            @chat.history.on_restore
+            def use_current_prompt(values):
+                chat_client.system_prompt = CURRENT_PROMPT
+
+        In-session rewinds (resubmits, edits, and sibling navigation)
+        reapply only *recorded* prompt changes. Moving between positions
+        with the same recorded prompt leaves the live override untouched.
+
         Multiple callbacks can be registered and run in registration order.
         Safe to call before ``enabled = True``.
 
@@ -578,7 +579,6 @@ class ChatHistory:
             save_callbacks=self._save_callbacks,
             restore_callbacks=self._restore_callbacks,
             max_store_bytes=max_store_bytes,
-            restore_bootstrap=self._restore_bootstrap,
         )
         self._controller = controller
 
@@ -599,9 +599,9 @@ class ChatHistory:
                 raise ValueError(
                     "restore_mode='bookmark' requires bookmark_store='server' in the Shiny app."
                 )
-            _bookmark_restore_hooks(
-                controller, root_session.bookmark
-            ).apply(controller)
+            _bookmark_restore_hooks(controller, root_session.bookmark).apply(
+                controller
+            )
 
         stamp_key = f"{chat.id}_history_exchange_pointer"
         # Legacy v1 bookmark stamp: a v1 server stamped only the conversation
@@ -786,7 +786,9 @@ class ChatHistory:
                         controller.partition, conversation_id
                     )
                     if target is None:
-                        raise ValueError("Bookmark conversation is unavailable.")
+                        raise ValueError(
+                            "Bookmark conversation is unavailable."
+                        )
                     if node_id is None:
                         # Legacy v1 stamp: no node was stored. Synthesize the
                         # pointer with the record's active leaf so the restore
@@ -955,9 +957,7 @@ class ChatHistory:
                 raise TypeError("Resubmit message index must be an integer.")
             if not isinstance(kind, str):
                 raise TypeError("Resubmit kind must be a string.")
-            await controller.handle_resubmit(
-                index, kind, request_id=request_id
-            )
+            await controller.handle_resubmit(index, kind, request_id=request_id)
 
         @reactive.effect
         @reactive.event(chat._session.input[ids.message_resubmit])
