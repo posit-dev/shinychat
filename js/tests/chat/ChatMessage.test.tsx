@@ -1601,3 +1601,60 @@ describe("ChatMessage touch long-press reveal", () => {
     }
   })
 })
+
+describe("ChatMessage readOnly", () => {
+  it("hides edit and retry while leaving sibling navigation enabled", () => {
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          siblings: { index: 0, total: 2 },
+          exchange: { status: "error", retryable: true },
+        })}
+        onEdit={vi.fn()}
+        onNavigate={vi.fn()}
+        onRetry={vi.fn()}
+        readOnly
+      />,
+    )
+
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
+    // readOnly is not folded into the shared `disabled` prop: sibling
+    // navigation stays interactive.
+    const next = screen.getByRole("button", { name: "Next version" })
+    expect(next).toBeEnabled()
+  })
+
+  it("hides an in-progress editor when the conversation becomes read-only", () => {
+    const onEdit = vi.fn()
+    const message = userMessage({
+      content: "hello world",
+      blocks: [
+        { type: "content", content: "hello world", contentType: "markdown" },
+      ],
+      siblings: { index: 0, total: 2 },
+    })
+    const { rerender } = render(
+      <ChatMessage index={1} message={message} onEdit={onEdit} isEditing />,
+    )
+    expect(screen.getByRole("textbox", { name: "Chat message" })).toBeVisible()
+
+    rerender(
+      <ChatMessage
+        index={1}
+        message={message}
+        onEdit={onEdit}
+        onNavigate={vi.fn()}
+        isEditing
+        readOnly
+      />,
+    )
+
+    expect(screen.queryByRole("textbox", { name: "Chat message" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Save and resend" })).toBeNull()
+    expect(screen.getByText("hello world")).toBeVisible()
+    expect(screen.getByRole("button", { name: "Next version" })).toBeEnabled()
+    expect(onEdit).not.toHaveBeenCalled()
+  })
+})

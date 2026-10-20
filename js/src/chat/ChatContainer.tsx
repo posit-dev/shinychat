@@ -258,6 +258,42 @@ export const ChatContainer = forwardRef<
 
   const [historyOpen, setHistoryOpen] = useState(false)
   const historyTriggerRef = useRef<HTMLButtonElement>(null)
+
+  // Read-only composer (unavailable saved model context). Focus ownership is
+  // tracked via focusin/focusout on the composer rather than
+  // document.activeElement: the swap unmounts the focused element, which
+  // fires no blur event and resets activeElement to <body> before the
+  // transition effect runs — so the flag must survive the unmount.
+  const readOnly = history.readOnly
+  const readOnlyNewChatRef = useRef<HTMLButtonElement>(null)
+  const composerFocusedRef = useRef(false)
+  const wasReadOnlyRef = useRef(readOnly)
+
+  const handleComposerFocusIn = useCallback(() => {
+    composerFocusedRef.current = true
+  }, [])
+  const handleComposerFocusOut = useCallback(
+    (e: React.FocusEvent<HTMLElement>) => {
+      const next = e.relatedTarget as Node | null
+      composerFocusedRef.current =
+        next !== null && (composerRef.current?.contains(next) ?? false)
+    },
+    [],
+  )
+
+  useEffect(() => {
+    const wasReadOnly = wasReadOnlyRef.current
+    wasReadOnlyRef.current = readOnly
+    if (readOnly === wasReadOnly) return
+    // Focus left the composer before the swap (drawer, messages, unrelated
+    // page controls) — don't steal it back.
+    if (!composerFocusedRef.current) return
+    if (readOnly) {
+      readOnlyNewChatRef.current?.focus()
+    } else {
+      chatInputRef.current?.focus()
+    }
+  }, [readOnly])
   const historyOwnedByPage = useMemo(
     () => pageOwnsHistory(elementId),
     [elementId],
@@ -1067,6 +1103,9 @@ export const ChatContainer = forwardRef<
                     onEdit={history.enabled ? onEdit : undefined}
                     onNavigate={history.enabled ? onNavigate : undefined}
                     onRetry={history.enabled ? onRetry : undefined}
+                    // Read-only hides edit/retry without touching the shared
+                    // `disabled` below, so sibling navigation stays usable.
+                    readOnly={readOnly}
                     siblingNavigationPending={siblingNavigationPending}
                     disabled={
                       history.busy ||
@@ -1093,37 +1132,73 @@ export const ChatContainer = forwardRef<
             />
           </div>
 
-          <div className="shiny-chat-composer" ref={composerRef}>
-            <div
-              className={
-                inputDisabled ? "shiny-chat-input disabled" : "shiny-chat-input"
-              }
-              onClick={onContainerClick}
-            >
-              <ChatInput
-                ref={chatInputRef}
-                transport={transport}
-                inputId={inputId}
-                uploadAccept={uploadAccept}
-                maxUploadSize={maxUploadSize}
-                disabled={inputDisabled}
-                historyStore={historyStore}
-                submissionBlocked={submissionBlocked}
-                hasTopShadow={!isAtBottom}
-                placeholder={inputPlaceholder}
-                onSend={onSend}
-                userMessages={userMessages}
-                enableCancel={enableCancel}
-                enableUpload={enableUpload}
-                cancelRequested={cancelRequested}
-                isStreaming={isStreaming}
-                onCancel={cancelStream}
-                slashCommands={slashCommands}
-                slashCommandId={slashCommandId}
-                submitKey={submitKey}
-                iconSend={iconSend}
-              />
-            </div>
+          <div
+            className="shiny-chat-composer"
+            ref={composerRef}
+            onFocus={handleComposerFocusIn}
+            onBlur={handleComposerFocusOut}
+          >
+            {readOnly ? (
+              <div className="shiny-chat-readonly" role="status">
+                <p
+                  className="shiny-chat-readonly-message"
+                  id={`${elementId}-readonly-message`}
+                >
+                  {
+                    "This conversation can be viewed but not continued. Its saved model context couldn't be loaded."
+                  }
+                </p>
+                <button
+                  type="button"
+                  ref={readOnlyNewChatRef}
+                  className="shiny-chat-readonly-new-chat"
+                  // AT that skips the freshly-mounted role=status content
+                  // still reads the explanation when entry focus lands here.
+                  aria-describedby={`${elementId}-readonly-message`}
+                  disabled={
+                    history.busy ||
+                    history.historyTransitionPending !== null ||
+                    !history.connected
+                  }
+                  onClick={historyStore.actions.create}
+                >
+                  New chat
+                </button>
+              </div>
+            ) : (
+              <div
+                className={
+                  inputDisabled
+                    ? "shiny-chat-input disabled"
+                    : "shiny-chat-input"
+                }
+                onClick={onContainerClick}
+              >
+                <ChatInput
+                  ref={chatInputRef}
+                  transport={transport}
+                  inputId={inputId}
+                  uploadAccept={uploadAccept}
+                  maxUploadSize={maxUploadSize}
+                  disabled={inputDisabled}
+                  historyStore={historyStore}
+                  submissionBlocked={submissionBlocked}
+                  hasTopShadow={!isAtBottom}
+                  placeholder={inputPlaceholder}
+                  onSend={onSend}
+                  userMessages={userMessages}
+                  enableCancel={enableCancel}
+                  enableUpload={enableUpload}
+                  cancelRequested={cancelRequested}
+                  isStreaming={isStreaming}
+                  onCancel={cancelStream}
+                  slashCommands={slashCommands}
+                  slashCommandId={slashCommandId}
+                  submitKey={submitKey}
+                  iconSend={iconSend}
+                />
+              </div>
+            )}
 
             {toolbarEl && (
               <RawDOM source={toolbarEl} className="shiny-chat-input-toolbar" />

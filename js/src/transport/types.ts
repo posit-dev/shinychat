@@ -260,6 +260,12 @@ export type ChatAction =
       enabled: boolean
       conversations: ConversationMeta[]
       active_id: string | null
+      /**
+       * True when the active conversation was restored without a usable
+       * model context: viewable but not continuable. Absent/false means
+       * writable (older servers never send it).
+       */
+      active_read_only?: boolean
       transition_protocol?: string
     }
   | {

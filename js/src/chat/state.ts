@@ -144,6 +144,13 @@ export interface ChatHistoryState {
   enabled: boolean
   conversations: ConversationMeta[]
   activeId: string | null
+  /**
+   * True when the active conversation's saved model context could not be
+   * loaded: the transcript is viewable but not continuable. Distinct from
+   * `inputDisabled` (transient streaming/transition state) — streaming and
+   * clear actions never touch it; only `history_update` sets it.
+   */
+  readOnly: boolean
 }
 
 export interface ChatDrawerState {
@@ -221,7 +228,12 @@ export const initialState: ChatState = {
   enableUploadExplicit: false,
   toolGrouping: "tool",
   slashCommands: [],
-  history: { enabled: false, conversations: [], activeId: null },
+  history: {
+    enabled: false,
+    conversations: [],
+    activeId: null,
+    readOnly: false,
+  },
   drawer: {
     enabled: false,
     visible: false,
@@ -1379,6 +1391,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           enabled: action.enabled,
           conversations: action.conversations,
           activeId: action.active_id,
+          // Absent means writable, so messages from older servers (which
+          // never send the flag) leave the conversation continuable.
+          readOnly: action.active_read_only ?? false,
         },
       }
     }

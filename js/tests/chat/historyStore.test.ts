@@ -84,6 +84,28 @@ describe("historyStore", () => {
     unsubscribeSecond()
   })
 
+  it("tracks readOnly from history updates, defaulting to writable", () => {
+    const store = getHistoryStore("chat")
+    expect(store.getSnapshot().readOnly).toBe(false)
+
+    store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      readOnly: true,
+    })
+    expect(store.getSnapshot().readOnly).toBe(true)
+
+    // setBusy (streaming/transition state) never touches the flag.
+    store.setBusy(true)
+    expect(store.getSnapshot().readOnly).toBe(true)
+    store.setBusy(false)
+
+    // An update without the flag clears it (older servers stay writable).
+    store.updateHistory({ enabled: true, conversations, activeId: "first" })
+    expect(store.getSnapshot().readOnly).toBe(false)
+  })
+
   it("isolates histories by resolved chat id", () => {
     const one = getHistoryStore("one")
     const two = getHistoryStore("two")

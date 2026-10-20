@@ -283,6 +283,7 @@ export function ChatApp({
           enabled: action.enabled,
           conversations: action.conversations,
           activeId: action.active_id,
+          readOnly: action.active_read_only ?? false,
           transitionProtocol: action.transition_protocol,
         })
         dispatch({
@@ -531,6 +532,7 @@ export function ChatApp({
   const handleEdit = useCallback(
     (index: number, content: string, attachments: AttachmentPayload[]) => {
       if (
+        historyStore.getSnapshot().readOnly ||
         isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
         historyStore.isMutationBlocked()
       )
@@ -576,6 +578,7 @@ export function ChatApp({
   const handleRetry = useCallback(
     (index: number) => {
       if (
+        historyStore.getSnapshot().readOnly ||
         isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
         historyStore.isMutationBlocked()
       )

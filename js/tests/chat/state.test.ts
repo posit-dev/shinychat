@@ -705,6 +705,7 @@ describe("chatReducer", () => {
         enabled: true,
         conversations,
         activeId: "conv-1",
+        readOnly: false,
       })
     })
 
@@ -1663,6 +1664,7 @@ describe("chatReducer", () => {
         enabled: true,
         conversations,
         activeId: "c1",
+        readOnly: false,
       })
     })
 
@@ -1679,6 +1681,7 @@ describe("chatReducer", () => {
             },
           ],
           activeId: "old",
+          readOnly: true,
         },
       })
       const next = chatReducer(state, {
@@ -1691,6 +1694,7 @@ describe("chatReducer", () => {
         enabled: true,
         conversations: [],
         activeId: null,
+        readOnly: false,
       })
     })
 
@@ -1718,6 +1722,104 @@ describe("chatReducer", () => {
         active_id: null,
       })
       expect(next.drawer).toBe(artifact)
+    })
+
+    it("sets readOnly from active_read_only", () => {
+      const next = chatReducer(initialState, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c1",
+        active_read_only: true,
+      })
+      expect(next.history.readOnly).toBe(true)
+    })
+
+    it("treats absent or false active_read_only as writable", () => {
+      const readOnlyState = chatReducer(initialState, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c1",
+        active_read_only: true,
+      })
+      expect(readOnlyState.history.readOnly).toBe(true)
+
+      // Older servers never send the flag: absent must clear it.
+      const absent = chatReducer(readOnlyState, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c1",
+      })
+      expect(absent.history.readOnly).toBe(false)
+
+      const explicitFalse = chatReducer(readOnlyState, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c1",
+        active_read_only: false,
+      })
+      expect(explicitFalse.history.readOnly).toBe(false)
+    })
+
+    it("keeps readOnly independent from inputDisabled", () => {
+      const readOnlyState = chatReducer(initialState, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c1",
+        active_read_only: true,
+      })
+      expect(readOnlyState.history.readOnly).toBe(true)
+      expect(readOnlyState.inputDisabled).toBe(false)
+
+      const disabledState = chatReducer(makeState({ inputDisabled: true }), {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+      expect(disabledState.history.readOnly).toBe(false)
+      expect(disabledState.inputDisabled).toBe(true)
+    })
+
+    it("retains readOnly across stream start and end", () => {
+      const readOnlyState = chatReducer(initialState, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c1",
+        active_read_only: true,
+      })
+      const streaming = chatReducer(readOnlyState, {
+        type: "chunk_start",
+        message: {
+          role: "assistant",
+          segments: [{ content: "Hel", content_type: "markdown" }],
+        },
+      })
+      expect(streaming.history.readOnly).toBe(true)
+      expect(streaming.inputDisabled).toBe(true)
+
+      const ended = chatReducer(streaming, { type: "chunk_end" })
+      expect(ended.history.readOnly).toBe(true)
+      expect(ended.inputDisabled).toBe(false)
+    })
+
+    it("retains readOnly across clear", () => {
+      const readOnlyState = chatReducer(initialState, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c1",
+        active_read_only: true,
+      })
+      const cleared = chatReducer(readOnlyState, { type: "clear" })
+      expect(cleared.messages).toEqual([])
+      expect(cleared.history).toBe(readOnlyState.history)
+      expect(cleared.history.readOnly).toBe(true)
     })
   })
 

@@ -13,6 +13,12 @@ export interface HistorySnapshot {
   enabled: boolean
   conversations: readonly ConversationMeta[]
   activeId: string | null
+  /**
+   * True when the active conversation's saved model context could not be
+   * loaded: viewable but not continuable. Kept separate from `busy` and
+   * `historyTransitionPending`; stream start/end never clears it.
+   */
+  readOnly: boolean
   busy: boolean
   connected: boolean
   transitionProtocol: TransitionProtocol | null
@@ -31,6 +37,7 @@ const initialSnapshot: HistorySnapshot = Object.freeze({
   enabled: false,
   conversations: Object.freeze([]),
   activeId: null,
+  readOnly: false,
   busy: false,
   connected: false,
   transitionProtocol: null,
@@ -116,11 +123,13 @@ export class HistoryStore {
     enabled,
     conversations,
     activeId,
+    readOnly = false,
     transitionProtocol,
   }: {
     enabled: boolean
     conversations: ConversationMeta[]
     activeId: string | null
+    readOnly?: boolean
     transitionProtocol?: string
   }): void {
     const nextConversations = conversationsEqual(
@@ -140,6 +149,7 @@ export class HistoryStore {
       enabled,
       conversations: nextConversations,
       activeId,
+      readOnly,
       busy: this.snapshot.busy,
       connected: this.snapshot.connected,
       transitionProtocol: normalizedProtocol,
@@ -346,6 +356,7 @@ function snapshotsEqual(a: HistorySnapshot, b: HistorySnapshot): boolean {
     a.enabled === b.enabled &&
     a.conversations === b.conversations &&
     a.activeId === b.activeId &&
+    a.readOnly === b.readOnly &&
     a.busy === b.busy &&
     a.connected === b.connected &&
     a.transitionProtocol === b.transitionProtocol &&
