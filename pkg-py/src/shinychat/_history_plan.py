@@ -46,6 +46,10 @@ class StatePathContext:
     entries: tuple[tuple[str, StateEntry], ...]
     prepared_turns: list[dict[str, Any]] | None = None
     turns_unavailable: bool = False
+    # Concrete classification cause when ``turns_unavailable`` (kind,
+    # version, validation failure, or prompt-capability mismatch); used
+    # for the developer warning at restore time. Never sent to the UI.
+    turns_unavailable_reason: str | None = None
     # Deep-copied per-hook entries the same hook owned on the record's
     # previous path (snapshotted at preflight, before node-close capture);
     # ``None`` when the planner has no previous path to report.
@@ -130,33 +134,71 @@ def _effective_turn_entries(
     return context.entries[last_snapshot if last_snapshot >= 0 else 0 :]
 
 
-def _turn_entries_are_incompatible(
+def _turn_entries_incompatibility(
     entries: tuple[tuple[str, StateEntry], ...],
     *,
     adapter: TurnsAdapter,
-) -> bool:
+) -> str | None:
+    """The concrete cause the entries cannot rebuild live turns, if any.
+
+    Returns ``None`` when the entries are compatible with ``adapter``;
+    otherwise a developer-facing classification (expected/recorded kind,
+    unsupported version, or a validation exception summary). The text is
+    never sent to the client.
+    """
     expected_kind = turn_entry_kind(adapter)
     for _, entry in entries:
-        if entry.kind != expected_kind or entry.version != 1:
-            return True
+        if entry.kind != expected_kind:
+            return (
+                f"recorded turn kind {entry.kind!r} does not match the "
+                f"active client's {expected_kind!r} kind"
+            )
+        if entry.version != 1:
+            return (
+                f"recorded {entry.kind!r} turn-state version "
+                f"{entry.version!r} is unsupported"
+            )
         if expected_kind == "chatlas":
             from chatlas import Turn
 
             try:
                 for turn in cast(list[dict[str, Any]], entry.data):
                     Turn.model_validate(turn)
-            except (TypeError, ValueError):
-                return True
-    return False
+            except (TypeError, ValueError) as error:
+                return f"recorded turns failed chatlas validation: {error}"
+    return None
 
 
-def _turns_are_incompatible(
+def _turns_incompatibility(
     context: StatePathContext,
     *,
     adapter: TurnsAdapter,
-) -> bool:
-    return _turn_entries_are_incompatible(
+) -> str | None:
+    return _turn_entries_incompatibility(
         _effective_turn_entries(context), adapter=adapter
+    )
+
+
+def _system_prompt_capability_mismatch(
+    entries: tuple[tuple[str, StateEntry], ...],
+    *,
+    adapter: TurnsAdapter,
+) -> str | None:
+    """The cause a recorded prompt directive cannot apply, if any.
+
+    Validates the entries even without a registered prompt hook (this is
+    the one known builtin key that is always recognized). A null-only
+    path carries no directive and is not a mismatch; an explicit clear
+    (``""``) is a directive and does require the capability.
+    """
+    if not entries:
+        return None
+    latest = latest_system_prompt(entries)
+    if latest is None or adapter.has_system_prompt():
+        return None
+    return (
+        "the recorded system prompt requires a client with "
+        "system-prompt support"
     )
 
 
@@ -195,58 +237,47 @@ def _validate_restore_state_entry(name: str, entry: StateEntry) -> None:
         ) from e
 
 
-def active_path_turns_are_incompatible(
-    record: ConversationRecordV2,
-    *,
-    adapter: TurnsAdapter,
-) -> bool:
-    """Whether the active path's turn entries cannot rebuild live turns.
+def validate_active_path_state(record: ConversationRecordV2) -> None:
+    """Strictly validate every state entry on the record's active path.
 
-    Raises on structurally invalid state entries along the way, so callers
-    treat malformed state and foreign turn kinds alike: keep the live turns
-    (``preserve_live_turns``) instead of replaying recorded ones.
+    Resubmit rewinds only the parent prefix, but the abandoned target
+    stays on the record: malformed builtin state anywhere on the active
+    path must fail before any mutation, matching restore/navigation.
     """
     if record.active_leaf is None:
         raise ValueError("Exchange-tree record has no active leaf.")
     node_ids = tuple(record.path_node_ids())
+    turn_entries: list[tuple[str, StateEntry]] = []
+    prompt_entries: list[tuple[str, StateEntry]] = []
     for node_id in node_ids:
         for name, entry in record.nodes[node_id].state.items():
             _validate_restore_state_entry(name, entry)
-    entries = tuple(
-        (node_id, record.nodes[node_id].state[TURNS_STATE_KEY])
-        for node_id in node_ids
-        if TURNS_STATE_KEY in record.nodes[node_id].state
-    )
-    _validate_turn_entries(entries)
-    return _turn_entries_are_incompatible(
-        _effective_turn_entries(
-            StatePathContext(
-                conversation_id=record.id,
-                active_leaf=record.active_leaf,
-                node_ids=node_ids,
-                entries=entries,
-            )
-        ),
-        adapter=adapter,
-    )
+            if name == TURNS_STATE_KEY:
+                turn_entries.append((node_id, entry))
+            elif name == SYSTEM_PROMPT_STATE_KEY:
+                prompt_entries.append((node_id, entry))
+    _validate_turn_entries(tuple(turn_entries))
+    if prompt_entries:
+        latest_system_prompt(tuple(prompt_entries))
 
 
 def materialize_restore_turns(
     context: StatePathContext,
     *,
     adapter: TurnsAdapter,
-) -> tuple[list[dict[str, Any]], bool]:
+) -> tuple[list[dict[str, Any]], str | None]:
     """Fold a path's turn entries into the turn list to set.
 
-    Returns the materialized turns and whether they are unusable (``True``
-    means the caller must keep or clear live turns instead of replaying
-    them). Recorded entries rebuild the list from scratch; the live
-    turns never seed it.
+    Returns the materialized turns and the incompatibility cause, if any
+    (a non-``None`` cause means the caller must keep or clear live turns
+    instead of replaying them, and the returned list is empty). Recorded
+    entries rebuild the list from scratch; the live turns never seed it.
     """
     turns: list[Any] = []
     _validate_turn_entries(context.entries)
-    if _turns_are_incompatible(context, adapter=adapter):
-        return canonical_turns(turns)[0], True
+    incompatible = _turns_incompatibility(context, adapter=adapter)
+    if incompatible is not None:
+        return canonical_turns(turns)[0], incompatible
 
     for _node_id, entry in _effective_turn_entries(context):
         entry_turns = cast(list[dict[str, Any]], entry.data)
@@ -255,7 +286,7 @@ def materialize_restore_turns(
         else:
             turns.extend(entry_turns)
 
-    return canonical_turns(turns)[0], False
+    return canonical_turns(turns)[0], None
 
 
 def turns_unavailable(planned: StatePlan) -> bool:
@@ -265,6 +296,17 @@ def turns_unavailable(planned: StatePlan) -> bool:
     )
 
 
+def turns_unavailable_reason(planned: StatePlan) -> str | None:
+    """The classified cause the plan's model context is unavailable."""
+    for name, _, context in planned:
+        if name == TURNS_STATE_KEY and context.turns_unavailable:
+            return (
+                context.turns_unavailable_reason
+                or "recorded turns are incompatible with the active client"
+            )
+    return None
+
+
 def preflight_state(
     record: ConversationRecordV2,
     node_ids: tuple[str, ...],
@@ -272,7 +314,6 @@ def preflight_state(
     *,
     adapter: TurnsAdapter,
     previous_node_ids: tuple[str, ...] | None = None,
-    preserve_live_turns: bool = False,
     reject_unavailable: bool = False,
     phase: Literal["restore", "rewind"] = "restore",
 ) -> StatePlan:
@@ -280,19 +321,32 @@ def preflight_state(
 
     Validates every state entry on ``node_ids`` against ``hooks`` first, so
     malformed state can never move the persisted path. ``phase`` names the
-    flow in validation errors, ``preserve_live_turns`` (rewind only) keeps
-    the adapter's current turns, and ``reject_unavailable`` (rewind only)
-    refuses plans whose recorded turns cannot be reconstructed.
+    flow in validation errors and ``reject_unavailable`` (rewind only)
+    refuses plans whose recorded model context cannot be reconstructed.
     ``previous_node_ids`` (the record's path before the rewind, passed
     before node-close capture) populates ``previous_entries``.
+
+    ``shinychat:system_prompt`` is a known builtin key: it is recognized
+    and validated even without a registered prompt hook (a client without
+    the prompt capability), where a recorded directive degrades the plan
+    to unavailable model context instead of failing preflight.
     """
     if record.active_leaf is None:
         raise ValueError("Exchange-tree record has no active leaf.")
     for node_id in node_ids:
         for name, entry in record.nodes[node_id].state.items():
-            if name not in hooks:
+            if name not in hooks and name != SYSTEM_PROMPT_STATE_KEY:
                 raise ValueError(f"Unsupported {phase} state entry {name!r}.")
             _validate_restore_state_entry(name, entry)
+
+    prompt_mismatch = _system_prompt_capability_mismatch(
+        tuple(
+            (node_id, record.nodes[node_id].state[SYSTEM_PROMPT_STATE_KEY])
+            for node_id in node_ids
+            if SYSTEM_PROMPT_STATE_KEY in record.nodes[node_id].state
+        ),
+        adapter=adapter,
+    )
 
     planned: list[tuple[str, StateHook, StatePathContext]] = []
     for name, hook in hooks.items():
@@ -325,44 +379,41 @@ def preflight_state(
             if previous_entries is not None:
                 latest_system_prompt(previous_entries)
         if name == TURNS_STATE_KEY:
-            if preserve_live_turns:
-                prepared_turns = canonical_turns(adapter.get_turns_json())[0]
-                context = dataclasses.replace(
-                    context,
-                    prepared_turns=prepared_turns,
-                    turns_unavailable=True,
+            prepared_turns, unavailable_reason = materialize_restore_turns(
+                context, adapter=adapter
+            )
+            if unavailable_reason is None and prompt_mismatch is not None:
+                # The turns themselves are compatible, but a recorded
+                # prompt directive cannot apply: the model context is
+                # still unavailable, so live turns are cleared rather
+                # than seeded from an incomplete reconstruction.
+                unavailable_reason = prompt_mismatch
+                prepared_turns = []
+            if reject_unavailable and unavailable_reason is not None:
+                raise ValueError(
+                    "Unsupported shinychat:turns state entry: "
+                    f"{unavailable_reason}."
                 )
-            else:
-                prepared_turns, unavailable = materialize_restore_turns(
-                    context, adapter=adapter
-                )
-                if reject_unavailable and unavailable:
-                    raise ValueError("Unsupported shinychat:turns state entry.")
-                context = dataclasses.replace(
-                    context,
-                    prepared_turns=prepared_turns,
-                    turns_unavailable=unavailable,
-                )
+            context = dataclasses.replace(
+                context,
+                prepared_turns=prepared_turns,
+                turns_unavailable=unavailable_reason is not None,
+                turns_unavailable_reason=unavailable_reason,
+            )
         planned.append((name, hook, context))
     return tuple(planned)
 
 
 async def run_plan(
     planned: StatePlan,
-    *,
-    skip_turns: bool = False,
 ) -> None:
     """Execute a planned state-path application hook by hook.
 
-    ``skip_turns=True`` drops the ``shinychat:turns`` entry: the
-    degraded-resubmit path keeps live turns and rewinds only the rest. A
-    hook that raises wraps its error in :class:`StateHookError`, which
+    A hook that raises wraps its error in :class:`StateHookError`, which
     names the entry; cancellation (any other ``BaseException``)
     propagates unchanged.
     """
     for name, hook, context in planned:
-        if skip_turns and name == TURNS_STATE_KEY:
-            continue
         try:
             result = hook(context)
             if inspect.isawaitable(result):

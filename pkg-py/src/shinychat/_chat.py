@@ -564,7 +564,7 @@ class Chat:
                 user_text = data.get("userText", "")
                 echo = bool(data.get("echo", True))
                 try:
-                    if not self.history._history_action_admitted():
+                    if not self.history._history_submission_admitted():
                         # Client-triggered, not a programmatic append; direct
                         # user actions have their own rejection path (P5.4),
                         # so this stays silent like the user-input sites.
@@ -2451,7 +2451,7 @@ class Chat:
             raise RuntimeError(
                 "Cannot accept user input while switching conversations."
             )
-        if not self.history._history_action_admitted():
+        if not self.history._history_submission_admitted():
             return
         stored = self._as_stored_message(message)
         self._transcript.record_accepted_input(stored)
@@ -2467,7 +2467,7 @@ class Chat:
             raise RuntimeError(
                 "Cannot accept user input while switching conversations."
             )
-        if not self.history._history_action_admitted():
+        if not self.history._history_submission_admitted():
             return
         stored = self._as_stored_message(message)
         await self._transcript.record_accepted_input_and_notify(stored)

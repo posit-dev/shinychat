@@ -19,7 +19,6 @@ from ._attachments import (
 )
 from ._chat_types import (
     ExchangeMetadata,
-    HistoryAcceptedInputProjectionAction,
     HistoryEditProjectionAction,
     HistoryNavigateAction,
     HistoryUpdateAction,
@@ -47,6 +46,8 @@ from ._history_title import (
 # NB: shiny is imported lazily inside methods throughout this module; a
 # top-level import would be circular (shiny.ui._chat imports shinychat).
 from ._history_types import (
+    SYSTEM_PROMPT_STATE_KEY,
+    TURNS_STATE_KEY,
     ConversationRecordV1,
     ConversationRecordV2,
     ExchangeNode,
@@ -64,6 +65,11 @@ if TYPE_CHECKING:
 
 # Exchange statuses from which a retry (or a fresh resubmit) is allowed.
 _RETRYABLE_STATUSES = ("pending", "error", "cancelled")
+
+# Builtin model-state hooks that read-only navigation never invokes: the
+# live client's model state is not rewound while a record is view-only.
+# App-registered rewind hooks keep their ordinary behavior.
+_MODEL_STATE_KEYS = frozenset({TURNS_STATE_KEY, SYSTEM_PROMPT_STATE_KEY})
 
 
 def _attachment_projection(
@@ -526,16 +532,6 @@ class HistoryController:
                 type="error",
             )
 
-    async def _notify_turns_unavailable(self) -> None:
-        from shiny import ui as shiny_ui
-        from shiny.session import session_context
-
-        with session_context(self.chat._session):
-            shiny_ui.notification_show(
-                "Conversation display was restored, but model context was unavailable.",
-                type="warning",
-            )
-
     async def _clear_failed_restore(
         self, failure: BaseException | None = None
     ) -> None:
@@ -619,6 +615,9 @@ class HistoryController:
         persist_active_pointer: bool = False,
     ) -> None:
         recorder = self._exchange_recorder
+        unavailable_reason = _history_plan.turns_unavailable_reason(
+            planned_state
+        )
 
         try:
             with _restore_step("replaying the conversation display"):
@@ -629,7 +628,9 @@ class HistoryController:
                 recorder.invalidate_turn_baseline()
 
             with _restore_step("installing the restored record"):
-                recorder.install_restored_record(target)
+                recorder.install_restored_record(
+                    target, read_only=unavailable_reason is not None
+                )
                 await self._set_active_id(target.id)
                 recorder.mark_active_id_published(target)
             with _restore_step("persisting the restored record"):
@@ -637,11 +638,19 @@ class HistoryController:
                     await recorder.persist_record_locked()
             with _restore_step("restoring the app state"):
                 self._restore_app_state(target.values or {})
+            if unavailable_reason is not None:
+                # Developer-facing classification only; the client learns
+                # about the read-only view through ``active_read_only``.
+                warnings.warn(
+                    "Chat history restored a conversation read-only: its "
+                    "saved model context is unavailable "
+                    f"({unavailable_reason}). The conversation can be "
+                    "viewed but not continued.",
+                    stacklevel=2,
+                )
             with _restore_step("sending the restored conversation metadata"):
                 await self._send_exchange_metadata()
                 await self._send_sibling_metadata()
-                if _history_plan.turns_unavailable(planned_state):
-                    await self._notify_turns_unavailable()
                 await self.send_history_update()
         except BaseException as error:
             await self._clear_failed_restore(error)
@@ -849,13 +858,22 @@ class HistoryController:
         record = recorder.record
         if record is None:
             raise RuntimeError("No exchange-tree conversation is active")
+        if recorder.read_only:
+            # Authoritative guard for edit/retry/regenerate: a read-only
+            # record's saved model context is unavailable, so no resubmit
+            # path may mutate it or consume a model stream.
+            raise RuntimeError(
+                "Cannot resubmit an exchange in a read-only conversation: "
+                "its saved model context is unavailable."
+            )
 
         target, parent_id = self._validate_resubmit_target(
             record, exchange_id, kind
         )
-        preserve_live_turns = _history_plan.active_path_turns_are_incompatible(
-            record, adapter=self.adapter
-        )
+        # The rewind applies only the parent prefix, but malformed state
+        # anywhere on the active path (the abandoned target included)
+        # still fails before any mutation.
+        _history_plan.validate_active_path_state(record)
         assert target.input is not None  # _validate_resubmit_target
         submitted_input = self._normalize_resubmit_input(
             target.input if replacement_input is None else replacement_input
@@ -870,7 +888,6 @@ class HistoryController:
             recorder.rewind_hooks,
             adapter=self.adapter,
             previous_node_ids=tuple(record.path_node_ids()),
-            preserve_live_turns=preserve_live_turns,
             reject_unavailable=True,
             phase="rewind",
         )
@@ -879,17 +896,6 @@ class HistoryController:
             transcript_prefix = self._transcript_prefix_entries(
                 record, node_ids
             )
-            if preserve_live_turns:
-                await self._open_resubmit_sibling_locked(
-                    record,
-                    rewind_state,
-                    parent_id,
-                    submitted_input,
-                    message_index,
-                    transcript_prefix=transcript_prefix,
-                    transaction=transaction,
-                )
-                return
             action: HistoryEditProjectionAction = {
                 "type": "history_edit_projection",
                 "requestId": request_id,
@@ -972,61 +978,6 @@ class HistoryController:
             except BaseException as error:
                 await self._clear_failed_restore(error)
                 raise
-
-    async def _open_resubmit_sibling_locked(
-        self,
-        record: ConversationRecordV2,
-        rewind_state: StatePlan,
-        parent_id: str,
-        submitted_input: StoredMessage,
-        message_index: int,
-        *,
-        transcript_prefix: tuple["TranscriptEntry", ...] | None = None,
-        transaction: object | None = None,
-    ) -> None:
-        """The preserve-live-turns resubmit path: the failed target and
-        its shared parent stay immutable, and non-turn hooks still rewind
-        the ordinary parent prefix before the accepted input opens its
-        sibling."""
-        recorder = self._exchange_recorder
-        async with self._exchange_mutation():
-            if record.active_leaf is None:
-                raise ValueError("Exchange-tree record has no active leaf.")
-            await _history_plan.run_plan(rewind_state, skip_turns=True)
-            recorder.move_active_leaf_locked(record, parent_id)
-            if transcript_prefix is not None:
-                # Same server-transcript sync as the ordinary rewind
-                # path, before the accepted sibling input appends.
-                self.chat._transcript.replace(
-                    transcript_prefix, transaction=transaction
-                )
-            accepted_exchange_id = (
-                self.chat._transcript.record_accepted_input(submitted_input)
-            )
-            await recorder.accepted_resubmit_input_locked(
-                accepted_exchange_id, submitted_input
-            )
-            accepted_input_action: HistoryAcceptedInputProjectionAction = {
-                "type": "history_accepted_input_projection",
-                "index": message_index,
-                "content": str(submitted_input.content),
-                "attachments": _attachment_projection(
-                    submitted_input.attachments
-                ),
-            }
-            projection_error: BaseException | None = None
-            try:
-                await self.chat._send_action(accepted_input_action)
-            except BaseException as error:
-                projection_error = error
-                raise
-            finally:
-                try:
-                    self.chat._publish_accepted_user_input(submitted_input)
-                except BaseException as publication_error:
-                    if projection_error is None:
-                        raise
-                    raise projection_error from publication_error
 
     async def rename(self, conv_id: str, title: str) -> None:
         if self.partition is None:
@@ -1156,6 +1107,7 @@ class HistoryController:
             return
         target = siblings[target_pos]
 
+        read_only = recorder.read_only
         leaf = record.subtree_leaf(target)
         projection = record.model_copy(deep=True)
         projection.set_active_leaf(leaf)
@@ -1166,9 +1118,23 @@ class HistoryController:
             recorder.rewind_hooks,
             adapter=self.adapter,
             previous_node_ids=tuple(record.path_node_ids()),
-            reject_unavailable=True,
+            # Writable navigation keeps the strict target preflight. A
+            # read-only record's model context is already unavailable, so
+            # any valid sibling path can be displayed; structural errors
+            # still fail before mutation either way.
+            reject_unavailable=not read_only,
             phase="rewind",
         )
+        if read_only:
+            # Read-only navigation replays the display and persists the
+            # selected leaf, but never captures live model state (the
+            # recorder suppresses captures) and never invokes the builtin
+            # model rewind hooks. App-registered rewind hooks still run.
+            rewind_state = tuple(
+                planned
+                for planned in rewind_state
+                if planned[0] not in _MODEL_STATE_KEYS
+            )
 
         async with self._destructive_mutation(block_input=True):
 
@@ -1241,6 +1207,10 @@ class HistoryController:
             "active_id": self._active_id_now(),
             "transition_protocol": "completion-v2",
         }
+        if self._exchange_recorder.read_only:
+            # Emitted only for a read-only active record; absent clears
+            # the client's flag, so older messages remain writable.
+            action["active_read_only"] = True
         await self.chat._send_action(action)
 
 

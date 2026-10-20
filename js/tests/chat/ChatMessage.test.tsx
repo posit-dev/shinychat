@@ -1603,6 +1603,35 @@ describe("ChatMessage touch long-press reveal", () => {
 })
 
 describe("ChatMessage readOnly", () => {
+  it("reveals sibling navigation on a touch hold without enabling edits", () => {
+    vi.useFakeTimers()
+    try {
+      const onNavigate = vi.fn()
+      const { container } = render(
+        <ChatMessage
+          index={0}
+          message={userMessage({ siblings: { index: 0, total: 2 } })}
+          onNavigate={onNavigate}
+          readOnly
+        />,
+      )
+      const bubble = container.querySelector(".shiny-chat-user-message")!
+      fireEvent.pointerDown(bubble, {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+      })
+      act(() => vi.advanceTimersByTime(500))
+
+      expect(bubble).toHaveAttribute("data-touch-revealed", "true")
+      expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+      fireEvent.click(screen.getByRole("button", { name: "Next version" }))
+      expect(onNavigate).toHaveBeenCalledWith(0, "next")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("hides edit and retry while leaving sibling navigation enabled", () => {
     render(
       <ChatMessage

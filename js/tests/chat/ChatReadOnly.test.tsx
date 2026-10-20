@@ -170,7 +170,9 @@ describe("read-only composer bar", () => {
       elementId,
       expect.any(String),
     )
-    expect(screen.getByRole("button", { name: "New chat" })).toBeDisabled()
+    expect(newChat).toHaveAttribute("aria-disabled", "true")
+    fireEvent.click(newChat)
+    expect(transport.sendHistoryNew).toHaveBeenCalledTimes(1)
   })
 })
 

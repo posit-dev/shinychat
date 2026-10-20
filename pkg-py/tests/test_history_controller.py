@@ -389,6 +389,9 @@ class _FakeAdapter:
     def is_chatlas(self) -> bool:
         return getattr(self, "chatlas", False)
 
+    def has_system_prompt(self) -> bool:
+        return False
+
     def get_turns_grouped(self) -> list[list[Any]]:
         return [[t] for t in self.get_turns_json()]
 
@@ -3199,7 +3202,7 @@ async def test_v2_restore_preflight_failure_leaves_live_state_untouched(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("incompatibility", ["kind", "version", "content"])
-async def test_v2_restore_degrades_effective_turns_and_keeps_exchange_usable(
+async def test_v2_restore_with_unavailable_model_context_becomes_read_only(
     incompatibility: str,
 ) -> None:
     adapter = _TrackingFakeAdapter(chatlas=incompatibility == "content")
@@ -3212,29 +3215,30 @@ async def test_v2_restore_degrades_effective_turns_and_keeps_exchange_usable(
     entry = target.nodes["n_0000"].state["shinychat:turns"]
     if incompatibility == "kind":
         entry.kind = "unsupported"
+        cause = "kind"
     elif incompatibility == "version":
         entry.version = 2
+        cause = "version"
     else:
         entry.kind = "chatlas"
         entry.data = [{"role": "not-a-chatlas-role"}]
+        cause = "validation"
     target_before = target.model_copy(deep=True)
     events: list[str] = []
-
-    async def warn() -> None:
-        events.append("warning")
 
     async def publish() -> None:
         events.append("history_update")
 
-    controller._notify_turns_unavailable = warn  # type: ignore[method-assign]
     controller.send_history_update = publish  # type: ignore[method-assign]
 
-    await replay_exchange_record(controller, target)
+    with pytest.warns(UserWarning, match=cause):
+        await replay_exchange_record(controller, target)
 
     recorder = controller._exchange_recorder
     assert recorder is not None
     fake_chat = cast(_FakeChat, controller.chat)
     assert recorder.record is target
+    assert recorder.read_only
     assert controller._active_id_now() == target.id
     assert [message["role"] for message in fake_chat.restored_messages] == [
         "user",
@@ -3244,7 +3248,7 @@ async def test_v2_restore_degrades_effective_turns_and_keeps_exchange_usable(
     assert adapter.set_calls == [[]]
     assert adapter.turns == []
     assert target == target_before
-    assert events == ["warning", "history_update"]
+    assert events == ["history_update"]
     expected_metadata = {
         "status": "error",
         "retryable": True,
@@ -3255,21 +3259,19 @@ async def test_v2_restore_degrades_effective_turns_and_keeps_exchange_usable(
         "data": {0: expected_metadata},
     } in fake_chat.actions
 
+    # Read-only captures are suppressed: a node close can never replace
+    # the saved model context with cleared live turns.
     adapter.turns = [{"role": "user", "content": "continued"}]
     if incompatibility == "content":
         adapter.system_turns = list(adapter.turns)
     await recorder.capture_state_locked(exchange_id, "node_close")
-    continued = target.nodes[exchange_id].state["shinychat:turns"]
-    assert continued.mode == "snapshot"
-    assert continued.data == [{"role": "user", "content": "continued"}]
+    assert target == target_before
 
 
 @pytest.mark.anyio
-async def test_v2_degraded_restore_continuation_snapshots_compatible_turns_for_reload(
+async def test_v2_read_only_restore_preserves_saved_context_on_reload(
     tmp_path: Path,
 ) -> None:
-    from shinychat._history_store import FileConversationStore
-
     store = FileConversationStore(tmp_path)
     adapter = _TrackingFakeAdapter()
     controller, _ = _make_controller(
@@ -3279,45 +3281,46 @@ async def test_v2_degraded_restore_continuation_snapshots_compatible_turns_for_r
     target = _restore_target()
     target.nodes["n_0000"].state["shinychat:turns"].kind = "unsupported"
     await store.put(part(), target)
-    warning = AsyncMock()
-    controller._notify_turns_unavailable = warning  # type: ignore[method-assign]
 
-    await replay_exchange_record(controller, target)
+    with pytest.warns(UserWarning, match="read-only"):
+        await replay_exchange_record(controller, target)
 
-    warning.assert_awaited_once()
     recorder = controller._exchange_recorder
     assert recorder is not None
+    assert recorder.read_only
+    target_before = target.model_copy(deep=True)
 
-    compatible_turns = [{"role": "user", "content": "continued"}]
-    adapter.turns = compatible_turns
+    # A forged or late input can neither mutate nor capture into the
+    # saved record, so the stored model context survives intact.
+    adapter.turns = [{"role": "user", "content": "continued"}]
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
     await transcript.record_accepted_input_and_notify(
         _stored_message("user", "continued")
     )
-
-    continued = target.nodes["n_0001"].state["shinychat:turns"]
-    assert continued.mode == "snapshot"
-    assert continued.data == compatible_turns
+    assert target == target_before
 
     stored = await store.get(part(), target.id)
     assert isinstance(stored, ConversationRecordV2)
+    assert stored == target_before
+
     reloaded_adapter = _TrackingFakeAdapter()
     reloaded, _ = _make_controller(
         store=store,
         adapter=reloaded_adapter,
     )
-    reloaded_warning = AsyncMock()
-    reloaded._notify_turns_unavailable = reloaded_warning  # type: ignore[method-assign]
 
-    await replay_exchange_record(reloaded, stored)
+    with pytest.warns(UserWarning, match="read-only"):
+        await replay_exchange_record(reloaded, stored)
 
-    reloaded_warning.assert_not_awaited()
-    assert reloaded_adapter.turns == compatible_turns
+    reloaded_recorder = reloaded._exchange_recorder
+    assert reloaded_recorder is not None
+    assert reloaded_recorder.read_only
+    assert reloaded_adapter.turns == []
 
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("resubmit_kind", ["retry", "edit", "regenerate"])
-async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
+async def test_v2_read_only_resubmit_is_rejected_before_mutation(
     tmp_path: Path, resubmit_kind: str
 ) -> None:
     adapter = _TrackingFakeAdapter()
@@ -3338,309 +3341,228 @@ async def test_v2_degraded_resubmit_preserves_live_turns_and_immutable_target(
         mode="delta",
         data=[],
     )
-    target.nodes["n_0000"].state["parent"] = StateEntry(
-        kind="test",
-        version=1,
-        mode="snapshot",
-        data={"parent": True},
-    )
-    events: list[str] = []
-    rewind_contexts: list[StatePathContext] = []
-
-    async def warn() -> None:
-        events.append("warning")
-
-    async def publish() -> None:
-        events.append("history_update")
-
-    controller._notify_turns_unavailable = warn  # type: ignore[method-assign]
-    controller.send_history_update = publish  # type: ignore[method-assign]
+    await store.put(part(), target)
     recorder = controller._exchange_recorder
     assert recorder is not None
-    await store.put(part(), target)
-    recorder._register_restore_hook("parent", lambda _context: None)
-    rewind_before_branch: list[bool] = []
 
-    def rewind_parent(context: StatePathContext) -> None:
-        rewind_before_branch.append(
-            context.active_leaf == "n_0000"
-            and target.children_of("n_0000") == [exchange_id]
-        )
-        rewind_contexts.append(context)
-
-    recorder._register_rewind_hook("parent", rewind_parent)
-
-    await replay_exchange_record(controller, target)
+    with pytest.warns(UserWarning, match="read-only"):
+        await replay_exchange_record(controller, target)
 
     assert recorder.record is target
-    expected_baseline: list[dict[str, Any]] = []
-    assert adapter.turns == expected_baseline
-    assert events == ["warning", "history_update"]
-    restored_display = list(cast(_FakeChat, controller.chat).restored_messages)
-    restore_set_calls = list(adapter.set_calls)
-    original_node = target.nodes[exchange_id].model_dump_json()
-    parent_before = target.nodes["n_0000"].model_copy(deep=True)
-    assert _history_plan.active_path_turns_are_incompatible(
-        target, adapter=cast(TurnsAdapter, adapter)
-    )
-    original_send_action = cast(_FakeChat, controller.chat)._send_action
-    original_publish = cast(
-        _FakeChat, controller.chat
-    )._publish_accepted_user_input
+    assert recorder.read_only
+    assert adapter.turns == []
+    record_before = target.model_dump()
+    turns_before = list(adapter.turns)
+    set_calls_before = list(adapter.set_calls)
+    chat = cast(_FakeChat, controller.chat)
+    display_before = list(chat.restored_messages)
+    actions_before = list(chat.actions)
+    preflight_before = chat.destructive_preflight_calls
 
-    async def send_projection(action: dict[str, Any]) -> None:
-        events.append("projection")
-        await original_send_action(action)
+    with pytest.raises(RuntimeError, match="read-only"):
+        if resubmit_kind == "edit":
+            await controller.handle_edit(0, "edited", request_id=resubmit_kind)
+        else:
+            await controller.handle_resubmit(
+                0, resubmit_kind, request_id=resubmit_kind
+            )
 
-    def publish_after_projection(message: StoredMessage) -> None:
-        events.append("published")
-        original_publish(message)
-
-    cast(_FakeChat, controller.chat)._send_action = send_projection  # type: ignore[method-assign]
-    cast(
-        _FakeChat, controller.chat
-    )._publish_accepted_user_input = publish_after_projection  # type: ignore[method-assign]
-
-    if resubmit_kind == "edit":
-        await controller.handle_edit(0, "edited", request_id=resubmit_kind)
-    else:
-        await controller.handle_resubmit(
-            0, resubmit_kind, request_id=resubmit_kind
-        )
-
-    sibling = target.active_leaf
-    assert sibling is not None
-    assert sibling != exchange_id
-    assert target.nodes[sibling].parent_id == "n_0000"
-    assert target.nodes[exchange_id].model_dump_json() == original_node
-    assert adapter.set_calls == restore_set_calls
-    assert adapter.turns == expected_baseline
-    assert recorder._turn_baseline == canonical_turns(expected_baseline)[1]
-    assert len(rewind_contexts) == 1
-    assert rewind_before_branch == [True]
-    assert rewind_contexts[0].node_ids == ("n_0000",)
-    assert rewind_contexts[0].entries == (
-        ("n_0000", target.nodes["n_0000"].state["parent"]),
-    )
-    assert (
-        cast(_FakeChat, controller.chat).restored_messages == restored_display
-    )
-    assert events == ["warning", "history_update", "projection", "published"]
-    assert target.nodes["n_0000"].input == parent_before.input
-    assert target.nodes["n_0000"].state == parent_before.state
-    assert target.nodes["n_0000"].messages == parent_before.messages
-    assert target.nodes["n_0000"].status == parent_before.status
-    assert target.nodes["n_0000"].children == [exchange_id, sibling]
-    assert target.nodes["n_0000"].selected_child == sibling
-    sibling_turns = target.nodes[sibling].state["shinychat:turns"]
-    assert sibling_turns.mode == "snapshot"
-    assert sibling_turns.data == expected_baseline
-    assert cast(_FakeChat, controller.chat).published_inputs == [
-        target.nodes[sibling].input
-    ]
-    assert cast(_FakeChat, controller.chat).actions[-1] == {
-        "type": "history_accepted_input_projection",
-        "index": 0,
-        "content": "edited" if resubmit_kind == "edit" else "question",
-        "attachments": [],
-    }
+    assert target.model_dump() == record_before
+    assert target.active_leaf == exchange_id
+    assert adapter.turns == turns_before
+    assert adapter.set_calls == set_calls_before
+    assert chat.restored_messages == display_before
+    assert chat.actions == actions_before
+    assert chat.destructive_preflight_calls == preflight_before
+    assert chat.published_inputs == []
 
     stored = await store.get(part(), target.id)
     assert isinstance(stored, ConversationRecordV2)
-    reloaded_adapter = _TrackingFakeAdapter()
-    reloaded, _ = _make_controller(
-        store=store,
-        adapter=reloaded_adapter,
-    )
-    reloaded_warning = AsyncMock()
-    reloaded._notify_turns_unavailable = reloaded_warning  # type: ignore[method-assign]
-    reloaded_recorder = reloaded._exchange_recorder
-    assert reloaded_recorder is not None
-    reloaded_recorder._register_restore_hook("parent", lambda _context: None)
-
-    await replay_exchange_record(reloaded, stored)
-
-    reloaded_warning.assert_not_awaited()
-    assert reloaded_adapter.turns == expected_baseline
+    assert stored.model_dump() == record_before
 
 
 @pytest.mark.anyio
-async def test_v2_degraded_resubmit_preserves_projection_error_when_publication_fails(
-    tmp_path: Path,
+async def test_v2_read_only_navigation_replays_sibling_without_model_rewind() -> (
+    None
 ):
-    controller, chat, _adapter, _store, first, target = (
-        _make_v2_resubmit_controller()
-    )
-    file_store = FileConversationStore(tmp_path)
-    controller.store = file_store
-    recorder = controller._exchange_recorder
-    assert recorder is not None
-    record = recorder.record
-    assert record is not None
-    record.nodes[target].state["shinychat:turns"].kind = "unsupported"
-
-    projection_error = RuntimeError("projection unavailable")
-    publication_error = RuntimeError("publication unavailable")
-    publication_calls: list[StoredMessage] = []
-
-    async def fail_projection(_action: dict[str, Any]) -> None:
-        raise projection_error
-
-    def fail_publication(message: StoredMessage) -> None:
-        publication_calls.append(message)
-        raise publication_error
-
-    chat._send_action = fail_projection  # type: ignore[method-assign]
-    chat._publish_accepted_user_input = fail_publication  # type: ignore[method-assign]
-
-    with pytest.raises(RuntimeError) as raised:
-        await controller.handle_resubmit(
-            1, "retry", request_id="retry"
-        )
-
-    assert raised.value is projection_error
-    assert raised.value.__cause__ is publication_error
-    assert raised.value.__context__ is publication_error
-    assert len(publication_calls) == 1
-    sibling = record.active_leaf
-    assert sibling is not None
-    assert sibling != target
-    assert record.nodes[sibling].parent_id == first
-    assert record.children_of(first) == [target, sibling]
-    assert publication_calls == [record.nodes[sibling].input]
-
-    stored = await FileConversationStore(tmp_path).get(part(), record.id)
-    assert isinstance(stored, ConversationRecordV2)
-    assert stored.active_leaf == sibling
-    assert stored.nodes[sibling].parent_id == first
-    assert stored.children_of(first) == [target, sibling]
-
-
-@pytest.mark.anyio
-async def test_v2_degraded_resubmit_propagates_publication_failure_after_projection():
-    controller, chat, _adapter, store, first, target = (
-        _make_v2_resubmit_controller()
+    controller, chat, adapter, store, original, replacement = (
+        _make_v2_navigation_controller()
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
     record = recorder.record
     assert record is not None
-    record.nodes[target].state["shinychat:turns"].kind = "unsupported"
-
-    publication_error = RuntimeError("publication unavailable")
-    published_messages: list[StoredMessage] = []
-
-    def fail_publication(message: StoredMessage) -> None:
-        published_messages.append(message)
-        raise publication_error
-
-    chat._publish_accepted_user_input = fail_publication  # type: ignore[method-assign]
-
-    with pytest.raises(RuntimeError) as raised:
-        await controller.handle_resubmit(
-            1, "retry", request_id="retry"
-        )
-
-    assert raised.value is publication_error
-    assert chat.actions == [
-        {
-            "type": "history_accepted_input_projection",
-            "index": 1,
-            "content": "second",
-            "attachments": [],
-        }
-    ]
-    sibling = record.active_leaf
-    assert sibling is not None
-    assert sibling != target
-    assert record.nodes[sibling].parent_id == first
-    assert record.children_of(first) == [target, sibling]
-    assert len(store.put_calls) == 1
-    assert store.put_calls[0][1] is record
-    assert published_messages == [record.nodes[sibling].input]
-
-
-@pytest.mark.anyio
-async def test_v2_degraded_resubmit_rewind_failure_precedes_sibling_mutation():
-    controller, chat, adapter, store, first, target = _make_v2_resubmit_controller()
-    recorder = controller._exchange_recorder
-    assert recorder is not None
-    record = recorder.record
-    assert record is not None
-    record.nodes[target].state["shinychat:turns"].kind = "unsupported"
-    record.nodes[first].state["parent"] = StateEntry(
+    # Every path's recorded model context is unavailable, so the record
+    # restores read-only whichever sibling is selected.
+    for node in record.nodes.values():
+        node.state["shinychat:turns"].kind = "unsupported"
+    record.nodes["exchange-first"].state["app:state"] = StateEntry(
         kind="test",
         version=1,
         mode="snapshot",
-        data={"parent": True},
+        data={"v": 1},
     )
-    before = record.model_dump()
-    transcript_before = chat._transcript.read()
-    turns_before = list(adapter.turns)
-    error = RuntimeError("rewind failed")
+    events: list[str] = []
+    recorder._register_restore_hook("app:state", lambda _context: None)
 
-    async def fail_rewind(_context: StatePathContext) -> None:
-        raise error
+    def rewind_app_state(_context: StatePathContext) -> None:
+        events.append("rewind-app-state")
 
-    recorder._register_rewind_hook("parent", fail_rewind)
+    recorder._register_rewind_hook("app:state", rewind_app_state)
+    set_calls: list[list[Any]] = []
+    original_set_turns = adapter.set_turns_json
 
-    with pytest.raises(_history_plan.StateHookError) as raised:
-        await controller.resubmit(
-            target, kind="retry", request_id="retry", message_index=1
-        )
+    def set_turns(turns: list[Any]) -> None:
+        set_calls.append(list(turns))
+        original_set_turns(turns)
 
-    # The hook's own error stays chained; the wrapper names the entry.
-    assert raised.value.entry_name == "parent"
-    assert raised.value.__cause__ is error
-    assert record.model_dump() == before
-    assert chat._transcript.read() == transcript_before
-    assert adapter.turns == turns_before
-    assert store.put_calls == []
-    assert chat.actions == []
-    assert chat.published_inputs == []
+    adapter.set_turns_json = set_turns  # type: ignore[method-assign]
+
+    with pytest.warns(UserWarning, match="read-only"):
+        await replay_exchange_record(controller, record)
+
+    assert recorder.read_only
+    assert set_calls == [[]]
+    assert adapter.turns == []
+    states_before = {
+        node_id: {
+            name: entry.model_dump() for name, entry in node.state.items()
+        }
+        for node_id, node in record.nodes.items()
+    }
+
+    await controller.handle_navigate(2, "prev", request_id="navigate")
+
+    assert record.active_leaf == original
+    assert [
+        message["segments"][0]["content"] for message in chat.restored_messages
+    ] == [
+        "first",
+        "custom prefix",
+        "original",
+        "original reply",
+    ]
+    # No builtin model rewind and no capture: the adapter is untouched
+    # and saved node state is byte-identical; the view pointer moved.
+    assert set_calls == [[]]
+    assert adapter.turns == []
+    assert {
+        node_id: {
+            name: entry.model_dump() for name, entry in node.state.items()
+        }
+        for node_id, node in record.nodes.items()
+    } == states_before
+    # App-registered rewind hooks retain their ordinary behavior.
+    assert events == ["rewind-app-state"]
+    # The selected leaf is persisted, sibling metadata goes out, and the
+    # client is told the active record is still read-only.
+    assert store.put_calls[-1][1] is record
+    assert any(action["type"] == "update_siblings" for action in chat.actions)
+    history_updates = [
+        action for action in chat.actions if action["type"] == "history_update"
+    ]
+    assert history_updates[-1]["active_read_only"] is True
+    # The flag sticks to the loaded conversation even though this
+    # sibling's own turns would classify the same way on reopen.
+    assert recorder.read_only
 
 
 @pytest.mark.anyio
-async def test_v2_degraded_resubmit_projection_failure_publishes_durable_input_once():
-    controller, chat, _adapter, store, first, target = (
-        _make_v2_resubmit_controller()
-    )
+async def test_v2_read_only_record_suppresses_message_and_stream_captures() -> (
+    None
+):
+    adapter = _TrackingFakeAdapter()
+    controller, store = _make_controller(adapter=adapter)
+    target = _restore_target()
+    target.nodes["n_0000"].state["shinychat:turns"].kind = "unsupported"
+
+    with pytest.warns(UserWarning, match="read-only"):
+        await replay_exchange_record(controller, target)
+
     recorder = controller._exchange_recorder
     assert recorder is not None
-    record = recorder.record
-    assert record is not None
-    record.nodes[target].state["shinychat:turns"].kind = "unsupported"
-    error = RuntimeError("projection unavailable")
-    events: list[str] = []
+    assert recorder.read_only
+    before = target.model_dump()
 
-    async def fail_projection(action: dict[str, Any]) -> None:
-        events.append(action["type"])
-        raise error
+    entry = TranscriptEntry(
+        message=_stored_message("assistant", "unsolicited"), icon=None
+    )
+    await recorder.accepted_input("n_forged", _stored_message("user", "forged"))
+    await recorder.message_committed("n_0001", entry)
+    await recorder.stream_started("s1", "n_0001", entry)
+    await recorder.stream_updated("s1", entry)
+    await recorder.stream_finished("s1", "ok", None)
+    await recorder.capture_state_locked("n_0001", "node_close")
+    assert not await recorder.save_current()
+    assert not await recorder.response_settled()
 
-    original_publish = chat._publish_accepted_user_input
+    assert target.model_dump() == before
+    assert store.put_calls == []
 
-    def publish(message: StoredMessage) -> None:
-        events.append("published")
-        original_publish(message)
+    # View-pointer, rename, and delete writes stay available.
+    await controller.rename(target.id, "renamed")
+    assert target.title == "renamed"
+    assert store.put_calls[-1][1] is target
+    assert target.model_dump()["nodes"] == before["nodes"]
 
-    chat._send_action = fail_projection  # type: ignore[method-assign]
-    chat._publish_accepted_user_input = publish  # type: ignore[method-assign]
 
-    with pytest.raises(RuntimeError) as raised:
-        await controller.resubmit(
-            target, kind="retry", request_id="retry", message_index=1
-        )
+@pytest.mark.anyio
+async def test_v2_read_only_new_chat_clears_flag_and_wire_field() -> None:
+    adapter = _TrackingFakeAdapter()
+    controller, _store = _make_controller(adapter=adapter)
+    target = _restore_target()
+    target.nodes["n_0000"].state["shinychat:turns"].kind = "unsupported"
+    chat = cast(_FakeChat, controller.chat)
 
-    assert raised.value is error
-    sibling = record.active_leaf
-    assert sibling is not None
-    assert sibling != target
-    assert record.nodes[sibling].parent_id == first
-    assert len(store.put_calls) == 1
-    assert store.put_calls[0][1] is record
-    assert chat.published_inputs == [record.nodes[sibling].input]
-    assert events == ["history_accepted_input_projection", "published"]
-    assert chat.clear_messages_calls == 0
+    with pytest.warns(UserWarning, match="read-only"):
+        await replay_exchange_record(controller, target)
+
+    history_updates = [
+        action for action in chat.actions if action["type"] == "history_update"
+    ]
+    assert history_updates[-1]["active_read_only"] is True
+
+    await controller.new_chat()
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    assert not recorder.read_only
+    history_updates = [
+        action for action in chat.actions if action["type"] == "history_update"
+    ]
+    assert "active_read_only" not in history_updates[-1]
+
+
+@pytest.mark.anyio
+async def test_v2_switch_to_writable_conversation_clears_read_only() -> None:
+    store = InMemoryConversationStore()
+    adapter = _TrackingFakeAdapter()
+    controller, _ = _make_controller(store=store, adapter=adapter)
+    readonly_target = _restore_target(id="c_readonly")
+    readonly_target.nodes["n_0000"].state[
+        "shinychat:turns"
+    ].kind = "unsupported"
+    writable_target = _restore_target(id="c_writable")
+    await store.put(part(), readonly_target)
+    await store.put(part(), writable_target)
+
+    with pytest.warns(UserWarning, match="read-only"):
+        await controller.switch_to(readonly_target.id)
+
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    assert recorder.read_only
+
+    await controller.switch_to(writable_target.id)
+
+    assert not recorder.read_only
+    assert recorder.record is writable_target
+    assert adapter.turns == [{"role": "system", "content": "restored"}]
+    chat = cast(_FakeChat, controller.chat)
+    history_updates = [
+        action for action in chat.actions if action["type"] == "history_update"
+    ]
+    assert "active_read_only" not in history_updates[-1]
 
 
 @pytest.mark.anyio
@@ -3856,13 +3778,9 @@ async def test_v2_retry_rejects_incompatible_parent_superseded_by_target_snapsho
     )
     events: list[str] = []
 
-    async def warn() -> None:
-        events.append("warning")
-
     async def publish() -> None:
         events.append("history_update")
 
-    controller._notify_turns_unavailable = warn  # type: ignore[method-assign]
     controller.send_history_update = publish  # type: ignore[method-assign]
 
     await replay_exchange_record(controller, target)
@@ -3870,9 +3788,9 @@ async def test_v2_retry_rejects_incompatible_parent_superseded_by_target_snapsho
     recorder = controller._exchange_recorder
     assert recorder is not None
     chat = cast(_FakeChat, controller.chat)
-    assert not _history_plan.active_path_turns_are_incompatible(
-        target, adapter=cast(TurnsAdapter, adapter)
-    )
+    # The target snapshot supersedes the incompatible parent entry, so
+    # the restored path is writable.
+    assert not recorder.read_only
     assert adapter.turns == [{"role": "system", "content": "target snapshot"}]
     assert events == ["history_update"]
 
@@ -3897,19 +3815,27 @@ async def test_v2_retry_rejects_incompatible_parent_superseded_by_target_snapsho
 
 
 @pytest.mark.anyio
-async def test_v2_degraded_restore_warning_is_provider_neutral() -> None:
-    controller, _ = _make_controller()
+async def test_v2_read_only_restore_warning_is_provider_neutral() -> None:
+    adapter = _TrackingFakeAdapter()
+    controller, _ = _make_controller(adapter=adapter)
+    target = _restore_target()
+    target.nodes["n_0000"].state["shinychat:turns"].kind = "unsupported"
     fake_chat = cast(_FakeChat, controller.chat)
     fake_chat._session = _RealHistorySession()  # type: ignore[attr-defined]
     notification = MagicMock()
 
-    with patch("shiny.ui.notification_show", notification):
-        await controller._notify_turns_unavailable()
+    with (
+        patch("shiny.ui.notification_show", notification),
+        pytest.warns(UserWarning, match="read-only") as warning_record,
+    ):
+        await replay_exchange_record(controller, target)
 
-    notification.assert_called_once_with(
-        "Conversation display was restored, but model context was unavailable.",
-        type="warning",
-    )
+    messages = [str(warning.message) for warning in warning_record]
+    assert any("recorded turn kind 'unsupported'" in m for m in messages)
+    assert all("provider" not in m.lower() for m in messages)
+    # The unavailable-context toast is gone: the client learns about the
+    # read-only view through the history_update wire field instead.
+    notification.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -4848,9 +4774,11 @@ async def test_v2_restore_success_order_and_no_failure_notification():
         events.append("turns")
         original_set_turns(turns)
 
-    def install(record: ConversationRecordV2) -> None:
+    def install(
+        record: ConversationRecordV2, *, read_only: bool = False
+    ) -> None:
         events.append("install")
-        original_install(record)
+        original_install(record, read_only=read_only)
 
     async def active_id(_id: str | None) -> None:
         events.append("active-id")
@@ -6426,63 +6354,6 @@ async def test_v2_resubmit_syncs_real_server_transcript_to_parent_prefix(
     sibling_input = record.nodes[sibling].input
     assert sibling_input is not None
     assert sibling_input.content == replacement
-
-
-@pytest.mark.anyio
-async def test_v2_degraded_resubmit_syncs_real_server_transcript_before_sibling(
-    request: pytest.FixtureRequest,
-) -> None:
-    """The preserve-live-turns resubmit also truncates the server
-    transcript to the parent prefix before accepting its sibling input."""
-    controller, chat, adapter, _store, first, target = (
-        _make_v2_resubmit_real_chat(request, chat_id="resubmit_transcript_degraded")
-    )
-    recorder = controller._exchange_recorder
-    assert recorder is not None
-    record = recorder.record
-    assert record is not None
-    record.nodes[target].status = "error"
-    # Force the degraded path: the live adapter turns no longer extend the
-    # recorded active path, so the failed target must stay immutable.
-    adapter.turns = [{"role": "system", "content": "live"}]
-    record.nodes[target].state["shinychat:turns"] = StateEntry(
-        kind="unsupported", version=1, mode="delta", data=[]
-    )
-    await _seed_resubmit_transcript(chat, first, target)
-    _wire_resubmit_capture(controller, chat)
-    sent = _spy_send_actions(chat)
-
-    await controller.handle_resubmit(2, "retry", request_id="req")
-
-    sibling = record.active_leaf
-    assert sibling is not None
-    assert sibling != target
-    assert record.nodes[sibling].parent_id == first
-    assert record.children_of(first) == [target, sibling]
-    assert sent[-1] == {
-        "type": "history_accepted_input_projection",
-        "index": 2,
-        "content": "second",
-        "attachments": [],
-    }
-
-    # The transcript holds the parent prefix plus the accepted sibling
-    # input only; the abandoned exchange is gone from the server too.
-    messages = chat.messages()
-    assert [m["content"] for m in messages] == [
-        "first",
-        "reply one",
-        "second",
-    ]
-    degraded_attachments = messages[0].get("attachments")
-    assert degraded_attachments is not None
-    assert degraded_attachments[0].name == "notes.txt"
-    assert messages[1].get("status") == "cancelled"
-    assert [m["segments"][0]["content"] for m in chat._messages_for_bookmark()] == [
-        "first",
-        "reply one",
-        "second",
-    ]
 
 
 @pytest.mark.anyio
@@ -9180,7 +9051,7 @@ async def test_v2_titling_not_rescheduled_for_sibling_after_llm_title():
     # another response: the tree-aware count stays at 2 and the LLM title
     # must not be recomputed.
     sibling_id = "sibling-resubmit"
-    await recorder.accepted_resubmit_input_locked(
+    record.open_exchange(
         sibling_id, _stored_message("user", "second question edited")
     )
     await transcript.append(

@@ -100,6 +100,12 @@ class _ExchangeRecorder:
         # adapter's turns no longer extend what was last captured.
         self._turn_baseline: list[str] | None = []
         self._active_id_published_for: ConversationRecordV2 | None = None
+        # Ephemeral flag for the loaded record (never a saved field): a
+        # restored record whose saved model context is unavailable is
+        # view-only. Captures and message mutations are suppressed so
+        # close/switch/New cannot replace the saved context with cleared
+        # live turns; view-pointer, rename, and delete writes stay live.
+        self._read_only: bool = False
         if (
             isinstance(host.adapter, TurnsAdapter)
             and host.adapter.has_system_prompt()
@@ -116,6 +122,18 @@ class _ExchangeRecorder:
         self._register_capture_hook(TURNS_STATE_KEY, self._capture_turns)
         self._register_restore_hook(TURNS_STATE_KEY, self._restore_turns)
         self._register_rewind_hook(TURNS_STATE_KEY, self._restore_turns)
+
+    @property
+    def read_only(self) -> bool:
+        """Whether the loaded record's saved model context is unavailable.
+
+        Set when a restored record is installed; cleared on reset (New
+        chat, delete, failed-restore cleanup) and reclassified on every
+        install. Once set, it is kept for the loaded conversation across
+        sibling navigation, even when another sibling has compatible
+        turns.
+        """
+        return self._read_only
 
     @property
     def restore_hooks(self) -> Mapping[str, RestoreHook]:
@@ -234,6 +252,10 @@ class _ExchangeRecorder:
 
     async def capture_state_locked(self, node_id: str, reason: CaptureReason) -> None:
         assert self.record is not None
+        if self._read_only:
+            # A read-only record's saved state is immutable: close/switch/
+            # New must never replace it with cleared live turns.
+            return
         node = self.record.nodes[node_id]
         context = CaptureContext(node_id=node_id, reason=reason)
         for name, hook in self._capture_hooks.items():
@@ -257,10 +279,13 @@ class _ExchangeRecorder:
         adapter.set_turns_json(cast(list[TurnDict], turns))
         self._set_turn_baseline(turns)
 
-    def install_restored_record(self, record: ConversationRecordV2) -> None:
+    def install_restored_record(
+        self, record: ConversationRecordV2, *, read_only: bool = False
+    ) -> None:
         self.record = record
         self._stream_exchanges.clear()
         self._active_id_published_for = None
+        self._read_only = read_only
 
     async def _new_record(self, *, title: str) -> ConversationRecordV2:
         return new_conversation_record_v2(
@@ -295,6 +320,7 @@ class _ExchangeRecorder:
         # pre-sentinel behavior of the in-place clear.
         self._turn_baseline = []
         self._active_id_published_for = None
+        self._read_only = False
 
     @contextmanager
     def suspend_capture(self):
@@ -347,7 +373,11 @@ class _ExchangeRecorder:
             return await self.save_current_locked()
 
     async def save_current_locked(self) -> bool:
-        if self.record is None or self._host.partition is None:
+        if (
+            self.record is None
+            or self._host.partition is None
+            or self._read_only
+        ):
             return False
         self._capture_app_state()
         await self.persist_record_locked()
@@ -355,7 +385,11 @@ class _ExchangeRecorder:
 
     async def response_settled(self) -> bool:
         async with self.lock:
-            if self.record is None or self._host.partition is None:
+            if (
+                self.record is None
+                or self._host.partition is None
+                or self._read_only
+            ):
                 return False
             self._capture_app_state()
             self.record.response_count += 1
@@ -395,18 +429,6 @@ class _ExchangeRecorder:
         self._capture_app_state()
         await self.persist_record_locked()
         return True
-
-    def move_active_leaf_locked(
-        self, record: ConversationRecordV2, leaf: str
-    ) -> None:
-        """Move the active leaf on the recorder's live record.
-
-        The controller passes the record it validated and preflighted;
-        the assert pins that this can only ever be the live record, so
-        the sole-record-owner invariant cannot silently fork.
-        """
-        assert record is self.record
-        record.set_active_leaf(leaf)
 
     async def persist_active_leaf_locked(
         self, record: ConversationRecordV2, leaf: str
@@ -475,7 +497,7 @@ class _ExchangeRecorder:
     async def accepted_input(
         self, exchange_id: str, message: StoredMessage
     ) -> None:
-        if self._host.partition is None:
+        if self._host.partition is None or self._read_only:
             return
 
         async with self.lock:
@@ -501,24 +523,6 @@ class _ExchangeRecorder:
             if created:
                 await self._host.send_history_update()
 
-    async def accepted_resubmit_input_locked(
-        self, exchange_id: str, message: StoredMessage
-    ) -> None:
-        """Open a degraded-resubmit sibling without closing its shared parent."""
-        if self._host.partition is None:
-            raise RuntimeError("HistoryController not initialized")
-
-        if self.record is None:
-            raise RuntimeError("No exchange-tree conversation is active")
-        self.record.open_exchange(exchange_id, message)
-        self.invalidate_turn_baseline()
-        self.record.nodes[exchange_id].state[TURNS_STATE_KEY] = (
-            self._capture_turns(
-                CaptureContext(node_id=exchange_id, reason="node_close")
-            )
-        )
-        await self.persist_record_locked()
-
     async def message_committed(
         self, exchange_id: str | None, entry: TranscriptEntry
     ) -> None:
@@ -541,7 +545,7 @@ class _ExchangeRecorder:
         *,
         stream_id: str | None = None,
     ) -> None:
-        if self._host.partition is None:
+        if self._host.partition is None or self._read_only:
             return
 
         async with self.lock:
@@ -564,7 +568,7 @@ class _ExchangeRecorder:
     async def stream_updated(
         self, stream_id: str, entry: TranscriptEntry
     ) -> None:
-        if self._host.partition is None:
+        if self._host.partition is None or self._read_only:
             return
 
         async with self.lock:
@@ -585,7 +589,7 @@ class _ExchangeRecorder:
         status: Literal["ok", "cancelled", "error"],
         error: str | None,
     ) -> None:
-        if self._host.partition is None:
+        if self._host.partition is None or self._read_only:
             return
 
         async with self.lock:

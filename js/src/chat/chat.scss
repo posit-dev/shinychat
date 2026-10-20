@@ -747,7 +747,7 @@ shiny-chat-container:not([fill]) {
       border-color 0.15s ease,
       color 0.15s ease;
 
-    &:hover:not(:disabled) {
+    &:hover:not(:disabled):not([aria-disabled="true"]) {
       color: var(--_readonly-accent);
       border-color: var(--_readonly-accent);
     }
@@ -757,7 +757,8 @@ shiny-chat-container:not([fill]) {
       outline-offset: 2px;
     }
 
-    &:disabled {
+    &:disabled,
+    &[aria-disabled="true"] {
       opacity: 0.55;
       cursor: not-allowed;
     }

@@ -647,9 +647,7 @@ async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> N
     original = RuntimeError("restore failed")
     publication_failure = RuntimeError("history update failed")
 
-    async def fail_replay(
-        _target: Any, _node_ids: tuple[str, ...]
-    ) -> None:
+    async def fail_replay(_target: Any, _node_ids: tuple[str, ...]) -> None:
         raise original
 
     async def fail_history_update() -> None:
@@ -1195,9 +1193,7 @@ async def test_v2_initial_restore_failure_real_effect_recovers_without_session_e
 
     toasts: list[str] = []
 
-    def record_notification(
-        message: Any, *_args: Any, **_kwargs: Any
-    ) -> None:
+    def record_notification(message: Any, *_args: Any, **_kwargs: Any) -> None:
         toasts.append(str(message))
 
     import shiny.ui as shiny_ui
@@ -1220,9 +1216,7 @@ async def test_v2_initial_restore_failure_real_effect_recovers_without_session_e
             patch.object(
                 history_plan_module, "preflight_state", fail_preflight
             ),
-            patch.object(
-                shiny_ui, "notification_show", record_notification
-            ),
+            patch.object(shiny_ui, "notification_show", record_notification),
             warnings.catch_warnings(),
         ):
             warnings.simplefilter("ignore")
@@ -1415,9 +1409,7 @@ async def test_v2_failed_switch_notifies_once_with_sanitized_message() -> None:
 
     toasts: list[str] = []
 
-    def record_notification(
-        message: Any, *_args: Any, **_kwargs: Any
-    ) -> None:
+    def record_notification(message: Any, *_args: Any, **_kwargs: Any) -> None:
         toasts.append(str(message))
 
     import shiny.ui as shiny_ui
@@ -1430,9 +1422,7 @@ async def test_v2_failed_switch_notifies_once_with_sanitized_message() -> None:
 
     try:
         with (
-            patch.object(
-                shiny_ui, "notification_show", record_notification
-            ),
+            patch.object(shiny_ui, "notification_show", record_notification),
             session_context(cast(Any, session)),
             reactive.isolate(),
             warnings.catch_warnings(),
@@ -1443,9 +1433,7 @@ async def test_v2_failed_switch_notifies_once_with_sanitized_message() -> None:
 
         with (
             patch.object(history_plan_module, "run_plan", fail_plan),
-            patch.object(
-                shiny_ui, "notification_show", record_notification
-            ),
+            patch.object(shiny_ui, "notification_show", record_notification),
             session_context(cast(Any, session)),
             reactive.isolate(),
             pytest.warns(UserWarning, match="Could not open conversation"),
@@ -1490,18 +1478,14 @@ async def test_v2_select_missing_conversation_still_notifies_rejection() -> None
 
     toasts: list[str] = []
 
-    def record_notification(
-        message: Any, *_args: Any, **_kwargs: Any
-    ) -> None:
+    def record_notification(message: Any, *_args: Any, **_kwargs: Any) -> None:
         toasts.append(str(message))
 
     import shiny.ui as shiny_ui
 
     try:
         with (
-            patch.object(
-                shiny_ui, "notification_show", record_notification
-            ),
+            patch.object(shiny_ui, "notification_show", record_notification),
             session_context(cast(Any, session)),
             reactive.isolate(),
             warnings.catch_warnings(),
@@ -1511,9 +1495,7 @@ async def test_v2_select_missing_conversation_still_notifies_rejection() -> None
         assert chat.history._initial_history_initialized
 
         with (
-            patch.object(
-                shiny_ui, "notification_show", record_notification
-            ),
+            patch.object(shiny_ui, "notification_show", record_notification),
             session_context(cast(Any, session)),
             reactive.isolate(),
             pytest.warns(UserWarning, match="Could not open conversation"),
@@ -1522,10 +1504,173 @@ async def test_v2_select_missing_conversation_still_notifies_rejection() -> None
     finally:
         chat.destroy()
 
-    assert toasts == [
-        "Could not open conversation: Conversation 'c_missing' no longer "
-        "exists."
-    ]
+    assert toasts == ["Could not open conversation"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("operation", "method", "input_name", "payload", "prefix"),
+    [
+        (
+            "select",
+            "switch_to",
+            "select",
+            {"id": "c_other"},
+            "Could not open conversation",
+        ),
+        (
+            "rename",
+            "rename",
+            "rename",
+            {"id": "c_other", "title": "renamed"},
+            "Could not rename conversation",
+        ),
+        ("new", "new_chat", "new", {}, "Could not start a new chat"),
+        (
+            "delete",
+            "delete",
+            "delete",
+            {"id": "c_other"},
+            "Could not delete conversation",
+        ),
+        (
+            "edit",
+            "handle_edit",
+            "message_edit",
+            {"index": 0, "content": "edited"},
+            "Could not edit message",
+        ),
+        (
+            "resubmit",
+            "handle_resubmit",
+            "message_resubmit",
+            {"index": 0, "kind": "retry"},
+            "Could not retry message",
+        ),
+        (
+            "navigate",
+            "handle_navigate",
+            "message_navigate",
+            {"index": 0, "direction": "prev"},
+            "Could not navigate messages",
+        ),
+    ],
+)
+async def test_history_action_errors_keep_exception_details_out_of_notifications(
+    operation: str,
+    method: str,
+    input_name: str,
+    payload: dict[str, Any],
+    prefix: str,
+    request: pytest.FixtureRequest,
+) -> None:
+    session = _LiveSession()
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+    with (
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "sanitized_history_errors",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store="memory", scope="test", restore_mode="none"
+            ),
+        )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    with session_context(cast(Any, session)), reactive.isolate():
+        await handlers["_init_history"]()
+    ids = HistoryInputIds.for_chat(chat.id)
+    cast(Any, session.input[getattr(ids, input_name)])._set(
+        {**payload, "requestId": "sanitized-error"}
+    )
+
+    with (
+        patch.object(
+            controller,
+            method,
+            AsyncMock(side_effect=ValueError("PRIVATE_DETAIL_SENTINEL")),
+        ),
+        patch("shiny.ui.notification_show") as notification,
+        session_context(cast(Any, session)),
+        reactive.isolate(),
+        pytest.warns(UserWarning, match=f"{prefix}: PRIVATE_DETAIL_SENTINEL"),
+    ):
+        await handlers[f"_on_{operation}"]()
+
+    notification.assert_called_once_with(prefix, type="error")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("entry_point", ["sync", "capture", "event", "slash"])
+async def test_read_only_history_rejects_submission_before_acceptance(
+    entry_point: str,
+    request: pytest.FixtureRequest,
+) -> None:
+    session = _LiveSession()
+    store = InMemoryConversationStore()
+    handlers: dict[str, Callable[[], Awaitable[None]]] = {}
+    with (
+        patch.object(reactive, "effect", _capture_history_effects(handlers)),
+        session_context(cast(Any, session)),
+    ):
+        chat = Chat(
+            "read_only_admission",
+            client=cast(Any, _MockClient()),
+            history=HistoryOptions(
+                store=store, scope="test", restore_mode="none"
+            ),
+        )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    partition = ConversationPartition(chat_id=chat.id, scope="test")
+    target = _restore_target()
+    target.nodes[target.root_id].state["shinychat:turns"].version = 2
+    await store.put(partition, target)
+    with session_context(cast(Any, session)), reactive.isolate():
+        await handlers["_init_history"]()
+        with pytest.warns(UserWarning, match="version"):
+            await controller.switch_to(target.id)
+    before = _transcript_snapshot(chat)
+    messages_before = len(session.messages)
+    calls: list[str] = []
+
+    @chat.slash_command("blocked", "Blocked command")
+    async def blocked(user_text: str) -> None:
+        calls.append(user_text)
+
+    with session_context(cast(Any, session)), reactive.isolate():
+        if entry_point == "sync":
+            chat._record_accepted_user_input(
+                ChatMessage(content="forged", role="user")
+            )
+        elif entry_point == "capture":
+            await chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="forged", role="user")
+            )
+        elif entry_point == "event":
+            cast(Any, session.input[chat.user_input_id])._set(
+                {"text": "forged", "attachments": []}
+            )
+            await handlers["_on_user_input"]()
+        else:
+            cast(Any, session.input[chat._slash_command_id])._set(
+                {"command": "blocked", "userText": "forged", "echo": False}
+            )
+            await handlers["_on_slash_command"]()
+        assert chat._latest_user_input() is None
+        assert chat._normal_user_submission() is None
+
+    assert calls == []
+    assert _transcript_snapshot(chat) == before
+    assert await store.get(partition, target.id) == target
+    assert not any(
+        message["action"]["type"] in ("message", "chunk_start")
+        for message in session.messages[messages_before:]
+    )
 
 
 @pytest.mark.anyio
@@ -1595,7 +1740,7 @@ async def test_v2_recovered_initial_error_does_not_hide_a_later_rejection(
     assert toasts == [
         "Could not restore conversation: failed while validating the saved "
         "conversation. A fresh chat is ready.",
-        "Could not open conversation: storage unavailable",
+        "Could not open conversation",
     ]
 
 
@@ -1893,7 +2038,6 @@ async def test_v2_bookmark_switch_restore_soft_navigates_without_reload(
     session = _LiveSession()
     session.bookmark.store = "server"
 
-
     with (
         patch.object(reactive, "effect", _capture_history_effects({})),
         session_context(cast(Any, session)),
@@ -1950,7 +2094,6 @@ async def test_v2_bookmark_eviction_clears_bookmark_state_for_v2_records():
     """
     session = _LiveSession()
     session.bookmark.store = "server"
-
 
     store = InMemoryConversationStore()
     with (
@@ -2023,7 +2166,6 @@ async def test_v2_bookmark_eviction_of_v1_record_clears_state():
     session = _LiveSession()
     session.bookmark.store = "server"
 
-
     store = InMemoryConversationStore()
     with (
         patch.object(reactive, "effect", _capture_history_effects({})),
@@ -2064,7 +2206,6 @@ async def test_v2_non_bookmark_modes_wire_no_switch_restore_navigator(
 ) -> None:
     """Only bookmark mode wires on_switch_restored; other modes must not."""
     session = _LiveSession()
-
 
     with (
         patch.object(reactive, "effect", _capture_history_effects({})),
@@ -2370,7 +2511,9 @@ async def test_v2_new_chat_drawer_action_rejects_before_initial_history_readines
         chat = Chat(
             "forged_new",
             client=cast(Any, _MockClient()),
-            history=HistoryOptions(store=store, scope="test", restore_mode="none"),
+            history=HistoryOptions(
+                store=store, scope="test", restore_mode="none"
+            ),
         )
 
     try:

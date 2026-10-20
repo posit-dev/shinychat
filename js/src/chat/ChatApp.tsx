@@ -332,18 +332,6 @@ export function ChatApp({
         )
         return
       }
-      if (action.type === "history_accepted_input_projection") {
-        dispatch({ type: "TRUNCATE_MESSAGES", index: action.index })
-        dispatch({
-          type: "INPUT_SENT",
-          content: action.content,
-          role: "user",
-          ...(action.attachments.length > 0
-            ? { attachments: action.attachments }
-            : {}),
-        })
-        return
-      }
       if (action.type === "chunk_start") {
         // A prior stream's tail was already completed on arrival (see
         // ENDS_DRAIN), and a fresh stream has nothing buffered worth keeping.

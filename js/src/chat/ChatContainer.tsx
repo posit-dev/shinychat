@@ -1155,10 +1155,11 @@ export const ChatContainer = forwardRef<
                   // AT that skips the freshly-mounted role=status content
                   // still reads the explanation when entry focus lands here.
                   aria-describedby={`${elementId}-readonly-message`}
-                  disabled={
-                    history.busy ||
-                    history.historyTransitionPending !== null ||
-                    !history.connected
+                  disabled={history.busy || !history.connected}
+                  // Keep keyboard focus while New chat settles. The store
+                  // rejects repeated actions during the pending transition.
+                  aria-disabled={
+                    history.historyTransitionPending !== null || undefined
                   }
                   onClick={historyStore.actions.create}
                 >

@@ -215,7 +215,11 @@ export const ChatMessage = memo(function ChatMessage({
   }, [visibleBlocks, thinkingShowAfter])
 
   const touchHoldEnabled =
-    isUser && !!onEdit && !disabled && !isEditing && !readOnly
+    isUser &&
+    !disabled &&
+    (!isEditing || readOnly) &&
+    ((!readOnly && !!onEdit) ||
+      (!!onNavigate && (message.siblings?.total ?? 0) > 1))
 
   const [touchRevealed, setTouchRevealed] = useState(false)
   const touchHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)

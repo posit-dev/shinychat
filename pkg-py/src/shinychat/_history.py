@@ -400,6 +400,12 @@ class ChatHistory:
             or self._initial_history_initialized
         )
 
+    def _history_submission_admitted(self) -> bool:
+        controller = self._controller
+        return self._history_action_admitted() and (
+            controller is None or not controller._exchange_recorder.read_only
+        )
+
     def _teardown(self) -> None:
         """
         Release session-level registrations when the owning `Chat` is destroyed
@@ -677,12 +683,10 @@ class ChatHistory:
             warnings.warn(f"{prefix}: {e}", stacklevel=1)
             if _restore_failure_was_notified(e):
                 # Restore cleanup already showed this failure's one
-                # sanitized toast; a second toast here would repeat the
-                # failure with raw exception text (hook internals
-                # included).
+                # sanitized toast; don't duplicate it at the action boundary.
                 return
             with session_context(session):
-                shiny_ui.notification_show(f"{prefix}: {e}", type="error")
+                shiny_ui.notification_show(prefix, type="error")
 
         async def _run_history_transition(
             input_id: ResolvedId,
