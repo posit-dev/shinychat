@@ -2922,7 +2922,9 @@ def test_chat_destroy_without_history_start_is_safe():
 @pytest.mark.anyio
 @pytest.mark.parametrize("operation", ["message", "stream"])
 async def test_app_output_in_read_only_history_is_displayed_but_not_saved(
-    operation: str, tmp_path: Any, request: pytest.FixtureRequest,
+    operation: str,
+    tmp_path: Any,
+    request: pytest.FixtureRequest,
 ) -> None:
     chat, session, _, store = await _make_initialized_live_v2_chat(
         tmp_path, "read_only_app_output"
@@ -2947,7 +2949,10 @@ async def test_app_output_in_read_only_history_is_displayed_but_not_saved(
             async with chat.message_stream_context() as stream:
                 await stream.append("session-only app output")
 
-    assert chat._transcript.read()[-1].message.content == "session-only app output"
+    assert (
+        chat._transcript.read()[-1].message.content
+        == "session-only app output"
+    )
     assert len(session.messages) > messages_before
     assert await store.get(partition, target.id) == stored_before
     assert controller._exchange_recorder.record == stored_before
