@@ -90,6 +90,8 @@ def turn_entry_kind(adapter: TurnsAdapter) -> Literal["chatlas", "turns"]:
 def latest_system_prompt(
     entries: tuple[tuple[str, StateEntry], ...],
 ) -> StateEntry | None:
+    """Resolve prompt entries: null inherits, empty string explicitly clears."""
+    latest = None
     for _, entry in entries:
         if (
             entry.kind != "system_prompt"
@@ -98,7 +100,9 @@ def latest_system_prompt(
             or not (entry.data is None or isinstance(entry.data, str))
         ):
             raise ValueError("Unsupported shinychat:system_prompt state entry.")
-    return entries[-1][1] if entries else None
+        if entry.data is not None:
+            latest = entry
+    return latest
 
 
 def canonical_turns(

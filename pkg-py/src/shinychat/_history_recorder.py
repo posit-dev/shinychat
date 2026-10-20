@@ -147,23 +147,29 @@ class _ExchangeRecorder:
     ) -> StateEntry | None:
         assert self.record is not None
         prompt = self._host.adapter.get_system_prompt()
+        if prompt is None:
+            prompt = ""
         node = self.record.nodes[context.node_id]
         parent_id = node.parent_id
         ancestor = None
         while parent_id is not None:
             parent = self.record.nodes[parent_id]
             ancestor = parent.state.get(SYSTEM_PROMPT_STATE_KEY)
-            if ancestor is not None:
+            if ancestor is not None and ancestor.data is not None:
                 break
+            ancestor = None
             parent_id = parent.parent_id
 
-        previous = node.state.get(SYSTEM_PROMPT_STATE_KEY, ancestor)
+        previous = node.state.get(SYSTEM_PROMPT_STATE_KEY)
+        if previous is None or previous.data is None:
+            previous = ancestor
         if previous is not None and previous.data != prompt:
             # A rewound shared parent can be recaptured. Keep its old children
             # on their saved prompt before changing their inherited value.
             for child_id in node.children:
                 child = self.record.nodes[child_id]
-                if SYSTEM_PROMPT_STATE_KEY not in child.state:
+                inherited = child.state.get(SYSTEM_PROMPT_STATE_KEY)
+                if inherited is None or inherited.data is None:
                     child.state[SYSTEM_PROMPT_STATE_KEY] = previous.model_copy(
                         deep=True
                     )
@@ -176,7 +182,9 @@ class _ExchangeRecorder:
     def _restore_system_prompt(self, context: StatePathContext) -> None:
         entry = latest_system_prompt(context.entries)
         if entry is not None:
-            self._host.adapter.set_system_prompt(cast(str | None, entry.data))
+            # Chatlas clears with None; a literal empty prompt adds a system
+            # turn instead of removing it.
+            self._host.adapter.set_system_prompt(cast(str, entry.data) or None)
 
     def _rewind_system_prompt(self, context: StatePathContext) -> None:
         if context.previous_entries is None:
@@ -190,7 +198,7 @@ class _ExchangeRecorder:
         if target is not None and (
             previous is None or target.data != previous.data
         ):
-            self._host.adapter.set_system_prompt(cast(str | None, target.data))
+            self._host.adapter.set_system_prompt(cast(str, target.data) or None)
 
     def _capture_turns(self, context: CaptureContext) -> StateEntry:
         adapter = self._host.adapter

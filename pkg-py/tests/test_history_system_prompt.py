@@ -153,6 +153,13 @@ def _prompt_data(record: Any, node_id: str) -> Any:
     return record.nodes[node_id].state[SYSTEM_PROMPT_STATE_KEY].data
 
 
+def _null_prompt_entry() -> StateEntry:
+    """A valid prompt entry that inherits the previous recorded value."""
+    return StateEntry(
+        kind="system_prompt", version=1, mode="snapshot", data=None
+    )
+
+
 def _user_turn(text: str) -> dict[str, Any]:
     return {"role": "user", "content": text}
 
@@ -265,7 +272,13 @@ async def test_system_prompt_records_path_changes_with_turn_deltas():
 async def test_system_prompt_capture_and_restore_none_and_empty(
     prompt: str | None,
 ):
-    """None and "" are recorded values, not an absent entry."""
+    """Raw None and "" both record as "" — the explicit clear value.
+
+    Null/empty are no longer raw-value round trips: they are the same
+    logical clear. Restoring a saved "" applies None (chatlas None
+    removes the system turn; assigning "" would record a "[empty
+    string]" turn), so the sentinel live prompt ends up cleared to None.
+    """
     store = InMemoryConversationStore()
     controller, client = _make_prompt_controller(store=store, prompt=prompt)
     recorder = controller._exchange_recorder
@@ -281,7 +294,7 @@ async def test_system_prompt_capture_and_restore_none_and_empty(
     entry = _prompt_entry(record, record.root_id)
     assert entry is not None
     assert entry.mode == "snapshot"
-    assert entry.data == prompt
+    assert entry.data == ""
 
     stored = await store.get(part(), record.id)
     assert isinstance(stored, ConversationRecordV2)
@@ -290,8 +303,8 @@ async def test_system_prompt_capture_and_restore_none_and_empty(
     )
     await replay_exchange_record(restored, stored)
 
-    assert restored_client.system_prompt == prompt
-    assert prompt in restored_client.prompt_calls()
+    assert restored_client.system_prompt is None
+    assert restored_client.prompt_calls() == [None]
     assert restored_client.turns == [
         _user_turn("one"),
         _assistant_turn("answer one"),
@@ -364,6 +377,142 @@ async def test_system_prompt_restore_uses_latest_entry_on_the_path():
 
     # The leaf-side change wins over the root's earlier value.
     assert restored_client.system_prompt == "B"
+
+
+@pytest.mark.anyio
+async def test_system_prompt_restore_null_entry_falls_through_to_ancestor():
+    """A saved null entry is inheritable absence, not a recorded clear.
+
+    Restoring a path that carries a foreign null entry skips it and falls
+    through to the earlier non-null prompt instead of clearing.
+    """
+    store = InMemoryConversationStore()
+    controller, client = _make_prompt_controller(store=store, prompt="A")
+    recorder = controller._exchange_recorder
+    transcript = _make_transcript(recorder)
+    first = await _drive_exchange(
+        transcript, client, "one", "answer one", stream_id="s1"
+    )
+    await _drive_exchange(
+        transcript, client, "two", "answer two", stream_id="s2"
+    )
+    await controller.on_response()
+    record = recorder.record
+    assert record is not None
+    assert _prompt_data(record, record.root_id) == "A"
+    assert _prompt_entry(record, first) is None
+
+    # A foreign null entry between the root's "A" and the leaf.
+    record.nodes[first].state[SYSTEM_PROMPT_STATE_KEY] = _null_prompt_entry()
+
+    stored = await store.get(part(), record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    restored, restored_client = _make_prompt_controller(prompt="sentinel")
+    await replay_exchange_record(restored, record)
+
+    assert restored_client.system_prompt == "A"
+    assert restored_client.prompt_calls() == ["A"]
+    assert restored_client.turns == [
+        _user_turn("one"),
+        _assistant_turn("answer one"),
+        _user_turn("two"),
+        _assistant_turn("answer two"),
+    ]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "absence",
+    ["root-null", "all-null", "missing-entry"],
+)
+async def test_system_prompt_restore_without_effective_value_is_noop(
+    absence: str,
+):
+    """With no effective prompt on the path (only null entries, or none
+    at all), restore leaves the live prompt entirely untouched."""
+    store = InMemoryConversationStore()
+    controller, client = _make_prompt_controller(store=store, prompt="A")
+    recorder = controller._exchange_recorder
+    transcript = _make_transcript(recorder)
+    first = await _drive_exchange(
+        transcript, client, "one", "answer one", stream_id="s1"
+    )
+    await controller.on_response()
+    record = recorder.record
+    assert record is not None
+
+    if absence == "root-null":
+        record.nodes[record.root_id].state[SYSTEM_PROMPT_STATE_KEY] = (
+            _null_prompt_entry()
+        )
+    elif absence == "all-null":
+        record.nodes[record.root_id].state[SYSTEM_PROMPT_STATE_KEY] = (
+            _null_prompt_entry()
+        )
+        record.nodes[first].state[SYSTEM_PROMPT_STATE_KEY] = (
+            _null_prompt_entry()
+        )
+    else:
+        del record.nodes[record.root_id].state[SYSTEM_PROMPT_STATE_KEY]
+        assert _prompt_entry(record, first) is None
+
+    stored = await store.get(part(), record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    restored, restored_client = _make_prompt_controller(prompt="sentinel")
+    await replay_exchange_record(restored, record)
+
+    # The restore ran (turns replayed) but never touched the prompt.
+    assert restored_client.system_prompt == "sentinel"
+    assert restored_client.prompt_calls() == []
+    assert restored_client.turns == [
+        _user_turn("one"),
+        _assistant_turn("answer one"),
+    ]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("clear", ["", None], ids=["empty-string", "raw-none"])
+async def test_system_prompt_recorded_clear_stops_inheritance(
+    clear: str | None,
+):
+    """A recorded "" on the path blocks fall-through to the root's
+    earlier prompt: restoring the leaf applies the clear as None.
+
+    Both raw "" and raw None record the same explicit clear value "".
+    """
+    store = InMemoryConversationStore()
+    controller, client = _make_prompt_controller(store=store, prompt="A")
+    recorder = controller._exchange_recorder
+    transcript = _make_transcript(recorder)
+    first = await _drive_exchange(
+        transcript, client, "one", "answer one", stream_id="s1"
+    )
+    client.system_prompt = clear
+    await _drive_exchange(
+        transcript, client, "two", "answer two", stream_id="s2"
+    )
+    await controller.on_response()
+
+    record = recorder.record
+    assert record is not None
+    assert _prompt_data(record, record.root_id) == "A"
+    assert _prompt_data(record, first) == ""
+
+    stored = await store.get(part(), record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    restored, restored_client = _make_prompt_controller(
+        store=store, prompt="sentinel"
+    )
+    await replay_exchange_record(restored, stored)
+
+    assert restored_client.system_prompt is None
+    assert restored_client.prompt_calls() == [None]
+    assert restored_client.turns == [
+        _user_turn("one"),
+        _assistant_turn("answer one"),
+        _user_turn("two"),
+        _assistant_turn("answer two"),
+    ]
 
 
 @pytest.mark.anyio
@@ -447,14 +596,15 @@ async def test_system_prompt_edit_and_regenerate_succeed(kind: str):
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "target", [None, "", "A"], ids=["none", "empty-string", "text"]
+    ("target", "expected"),
+    [(None, None), ("", None), ("A", "A")],
+    ids=["none", "empty-string", "text"],
 )
 async def test_system_prompt_edit_across_recorded_change_applies_target(
     target: str | None,
+    expected: str | None,
 ):
-    """Editing a node recorded with prompt B rewinds to a parent recorded
-    with a different prompt (including None): the recorded target value
-    applies to the live client."""
+    """A recorded empty value clears while a nonempty target applies its text."""
     controller, client = _make_prompt_controller(prompt=target)
     recorder = controller._exchange_recorder
     transcript = _make_transcript(recorder)
@@ -482,8 +632,8 @@ async def test_system_prompt_edit_across_recorded_change_applies_target(
         message_index=2,
     )
 
-    assert client.system_prompt == target
-    assert client.prompt_calls()[-1] == target
+    assert client.system_prompt == expected
+    assert client.prompt_calls()[-1] == expected
 
 
 @pytest.mark.anyio
@@ -826,20 +976,27 @@ async def test_system_prompt_generic_client_without_prompt_unchanged():
 
 
 # ---------------------------------------------------------------------------
-# File-store round trip (required null prompt data must survive disk)
+# File-store round trip (explicit clears are stored as empty strings)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "prompt", [None, "", "be precise"], ids=["none", "empty-string", "text"]
+    ("prompt", "saved", "expected"),
+    [
+        (None, "", None),
+        ("", "", None),
+        ("be precise", "be precise", "be precise"),
+    ],
+    ids=["none", "empty-string", "text"],
 )
 async def test_system_prompt_file_store_round_trip(
-    tmp_path: Any, prompt: str | None
+    tmp_path: Any,
+    prompt: str | None,
+    saved: str,
+    expected: str | None,
 ):
-    """FileConversationStore omits optional None fields on write; the
-    prompt entry's required `data` must still survive as explicit null,
-    or the record reads back corrupt (missing `data`)."""
+    """Explicit clears round-trip through disk as empty-string values."""
     store = FileConversationStore(tmp_path)
     controller, client = _make_prompt_controller(store=store, prompt=prompt)
     recorder = controller._exchange_recorder
@@ -859,20 +1016,20 @@ async def test_system_prompt_file_store_round_trip(
         "kind": "system_prompt",
         "version": 1,
         "mode": "snapshot",
-        "data": prompt,
+        "data": saved,
     }
 
     stored = await store.get(part(), record.id)
     assert isinstance(stored, ConversationRecordV2)
     stored_entry = _prompt_entry(stored, record.root_id)
     assert stored_entry is not None
-    assert stored_entry.data == prompt
+    assert stored_entry.data == saved
 
     restored, restored_client = _make_prompt_controller(
         store=store, prompt="sentinel"
     )
     await replay_exchange_record(restored, stored)
-    assert restored_client.system_prompt == prompt
+    assert restored_client.system_prompt == expected
     assert restored_client.turns == [
         _user_turn("one"),
         _assistant_turn("answer one"),
@@ -1054,3 +1211,186 @@ def test_null_state_data_respects_explicit_field_selection(
         kind="system_prompt", version=1, mode="snapshot", data=None
     )
     assert entry.model_dump(exclude_none=exclude_none, **selection) == expected
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("null_position", "expected", "calls"),
+    [("root", "B", []), ("target", "A", ["A"])],
+)
+async def test_system_prompt_rewind_resolves_null_entries(
+    null_position: str,
+    expected: str,
+    calls: list[str],
+):
+    controller, client = _make_prompt_controller(prompt="A")
+    recorder = controller._exchange_recorder
+    transcript = _make_transcript(recorder)
+    first = await _drive_exchange(
+        transcript, client, "one", "answer one", stream_id="s1"
+    )
+    second = await _drive_exchange(
+        transcript,
+        client,
+        "two",
+        "answer two",
+        stream_id="s2",
+        prompt_during="B",
+    )
+    record = recorder.record
+    assert record is not None
+    node_id = record.root_id if null_position == "root" else first
+    record.nodes[node_id].state[SYSTEM_PROMPT_STATE_KEY] = _null_prompt_entry()
+    client.calls.clear()
+
+    await controller.resubmit(
+        second, kind="edit", request_id="edit", message_index=2
+    )
+
+    assert client.system_prompt == expected
+    assert client.prompt_calls() == calls
+    assert client.turns == [_user_turn("one"), _assistant_turn("answer one")]
+    assert record.active_leaf == first
+
+
+@pytest.mark.anyio
+async def test_system_prompt_null_source_keeps_same_prompt_override_on_rewind():
+    controller, client = _make_prompt_controller(prompt="A")
+    recorder = controller._exchange_recorder
+    transcript = _make_transcript(recorder)
+    first = await _drive_exchange(
+        transcript, client, "one", "answer one", stream_id="s1"
+    )
+    second = await _drive_exchange(
+        transcript, client, "two", "answer two", stream_id="s2"
+    )
+    record = recorder.record
+    assert record is not None
+    record.nodes[second].state[SYSTEM_PROMPT_STATE_KEY] = _null_prompt_entry()
+    client.system_prompt = "override"
+    client.calls.clear()
+
+    await controller.resubmit(
+        second, kind="edit", request_id="edit", message_index=2
+    )
+
+    assert client.system_prompt == "override"
+    assert client.prompt_calls() == []
+    assert _prompt_data(record, second) == "override"
+    assert record.active_leaf == first
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("null_position", ["child", "parent", "both"])
+async def test_system_prompt_null_entries_preserve_inherited_branch_on_recapture(
+    null_position: str,
+):
+    controller, client = _make_prompt_controller(prompt="A")
+    recorder = controller._exchange_recorder
+    transcript = _make_transcript(recorder)
+    first = await _drive_exchange(
+        transcript, client, "one", "answer one", stream_id="s1"
+    )
+    original = await _drive_exchange(
+        transcript, client, "two", "answer two", stream_id="s2"
+    )
+    await controller.resubmit(
+        original, kind="edit", request_id="edit", message_index=2
+    )
+    record = recorder.record
+    assert record is not None
+    if null_position in ("parent", "both"):
+        record.nodes[first].state[SYSTEM_PROMPT_STATE_KEY] = (
+            _null_prompt_entry()
+        )
+    if null_position in ("child", "both"):
+        record.nodes[original].state[SYSTEM_PROMPT_STATE_KEY] = (
+            _null_prompt_entry()
+        )
+    client.system_prompt = "B"
+
+    await _drive_exchange(
+        transcript, client, "replacement", "new answer", stream_id="s3"
+    )
+
+    assert _prompt_data(record, first) == "B"
+    assert _prompt_data(record, original) == "A"
+    await controller.handle_navigate(2, "prev", request_id="navigate")
+    assert client.system_prompt == "A"
+    assert client.turns == [
+        _user_turn("one"),
+        _assistant_turn("answer one"),
+        _user_turn("two"),
+        _assistant_turn("answer two"),
+    ]
+
+
+@pytest.mark.anyio
+async def test_system_prompt_real_chatlas_saved_clear_removes_system_turn():
+    import chatlas
+
+    source_client = chatlas.ChatOpenAI(api_key="test")
+    source, _ = _make_prompt_controller(client=source_client)
+    recorder = source._exchange_recorder
+    transcript = _make_transcript(recorder)
+    exchange = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
+    await transcript.start_stream(
+        stream_id="s1",
+        entry=TranscriptEntry(
+            message=_stored_message("assistant", "answer one")
+        ),
+        owner_task=None,
+        exchange_id=exchange,
+        send=_sent,
+    )
+    source_client.set_turns(
+        [
+            chatlas.Turn(role="user", contents="one"),
+            chatlas.Turn(role="assistant", contents="answer one"),
+        ]
+    )
+    await transcript.end_stream(
+        stream_id="s1", status=None, error=None, send=_sent
+    )
+    record = recorder.record
+    assert record is not None
+    assert _prompt_data(record, record.root_id) == ""
+
+    client = chatlas.ChatOpenAI(api_key="test", system_prompt="must be cleared")
+    restored, _ = _make_prompt_controller(client=client)
+    await replay_exchange_record(restored, record)
+
+    assert client.system_prompt is None
+    assert [
+        turn.role for turn in client.get_turns(include_system_prompt=True)
+    ] == ["user", "assistant"]
+
+
+@pytest.mark.anyio
+async def test_system_prompt_file_store_preserves_null_inheritance(
+    tmp_path: Any,
+):
+    store = FileConversationStore(tmp_path)
+    controller, client = _make_prompt_controller(store=store, prompt="A")
+    recorder = controller._exchange_recorder
+    transcript = _make_transcript(recorder)
+    first = await _drive_exchange(
+        transcript, client, "one", "answer one", stream_id="s1"
+    )
+    record = recorder.record
+    assert record is not None
+    record.nodes[first].state[SYSTEM_PROMPT_STATE_KEY] = _null_prompt_entry()
+    await controller.on_response()
+
+    stored = await store.get(part(), record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    assert _prompt_data(stored, first) is None
+    restored, restored_client = _make_prompt_controller(
+        store=store, prompt="sentinel"
+    )
+    await replay_exchange_record(restored, stored)
+
+    assert restored_client.system_prompt == "A"
+    assert restored_client.prompt_calls() == ["A"]
