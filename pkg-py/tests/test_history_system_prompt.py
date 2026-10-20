@@ -470,10 +470,8 @@ async def test_system_prompt_restore_without_effective_value_is_noop(
 async def test_system_prompt_recorded_clear_stops_inheritance(
     clear: str | None,
 ):
-    """A recorded "" on the path blocks fall-through to the root's
-    earlier prompt: restoring the leaf applies the clear as None.
-
-    Both raw "" and raw None record the same explicit clear value "".
+    """A recorded empty string stops inheritance and clears the generic
+    client's prompt by passing that string unchanged.
     """
     store = InMemoryConversationStore()
     controller, client = _make_prompt_controller(store=store, prompt="A")

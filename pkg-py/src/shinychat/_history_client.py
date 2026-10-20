@@ -45,6 +45,10 @@ class ClientWithTurns(Protocol):
     `get_turns()` must return JSON-serializable dicts (or objects with a
     `model_dump(mode="json")`); `set_turns()` must accept what `get_turns()`
     returned after a JSON round trip.
+
+    A client that also exposes a writable `system_prompt` must treat an
+    empty string as no system prompt. History normalizes a None prompt to
+    that clear marker; generic clients receive it unchanged on restore.
     """
 
     def get_turns(self) -> list[Any]: ...
