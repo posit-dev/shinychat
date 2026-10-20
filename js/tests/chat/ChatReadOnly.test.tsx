@@ -141,6 +141,9 @@ describe("read-only composer bar", () => {
     expect(
       screen.getByRole("button", { name: "Retry message" }),
     ).toBeInTheDocument()
+    expect(
+      screen.getByText("The response stream could not be started."),
+    ).toBeInTheDocument()
 
     fireHistoryUpdate(transport, elementId, {
       active_read_only: true,
@@ -152,10 +155,12 @@ describe("read-only composer bar", () => {
     // readOnly is not folded into the shared message `disabled` prop:
     // sibling navigation stays available.
     expect(screen.getByRole("button", { name: "Next version" })).toBeEnabled()
-    // Error text from the exchange metadata is display, not a control.
     expect(
-      screen.getByText("The response stream could not be started."),
-    ).toBeInTheDocument()
+      screen.queryByText("The response stream could not be started."),
+    ).toBeNull()
+    expect(
+      document.querySelector(".shiny-chat-message-footer-error"),
+    ).toBeNull()
   })
 
   it("sends history-new from the bar and disables the button while the transition is pending", () => {

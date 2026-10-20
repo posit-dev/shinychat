@@ -1632,16 +1632,21 @@ describe("ChatMessage readOnly", () => {
     }
   })
 
-  it("hides edit and retry while leaving sibling navigation enabled", () => {
-    render(
+  it("hides edit, retry and inline errors while leaving sibling navigation enabled", () => {
+    const onNavigate = vi.fn()
+    const { container } = render(
       <ChatMessage
         index={0}
         message={userMessage({
           siblings: { index: 0, total: 2 },
-          exchange: { status: "error", retryable: true },
+          exchange: {
+            status: "error",
+            retryable: true,
+            error_message: "The response could not be completed.",
+          },
         })}
         onEdit={vi.fn()}
-        onNavigate={vi.fn()}
+        onNavigate={onNavigate}
         onRetry={vi.fn()}
         readOnly
       />,
@@ -1649,10 +1654,19 @@ describe("ChatMessage readOnly", () => {
 
     expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
+    expect(
+      screen.queryByText("The response could not be completed."),
+    ).toBeNull()
+    expect(container.querySelector(".shiny-chat-retry-error")).toBeNull()
+    expect(
+      container.querySelector(".shiny-chat-message-footer-error"),
+    ).toBeNull()
     // readOnly is not folded into the shared `disabled` prop: sibling
     // navigation stays interactive.
     const next = screen.getByRole("button", { name: "Next version" })
     expect(next).toBeEnabled()
+    fireEvent.click(next)
+    expect(onNavigate).toHaveBeenCalledWith(0, "next")
   })
 
   it("hides an in-progress editor when the conversation becomes read-only", () => {

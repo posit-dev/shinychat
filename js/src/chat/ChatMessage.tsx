@@ -720,6 +720,7 @@ export const ChatMessage = memo(function ChatMessage({
           (message.exchange?.retryable && onRetry && !readOnly)) && (
           <div
             className={`shiny-chat-message-footer${
+              !readOnly &&
               message.exchange?.status === "error" &&
               message.exchange.error_message
                 ? " shiny-chat-message-footer-error"
@@ -782,7 +783,8 @@ export const ChatMessage = memo(function ChatMessage({
                 Retry
               </button>
             )}
-            {message.exchange?.status === "error" &&
+            {!readOnly &&
+              message.exchange?.status === "error" &&
               message.exchange.error_message && (
                 <span className="shiny-chat-retry-error">
                   {message.exchange.error_message}

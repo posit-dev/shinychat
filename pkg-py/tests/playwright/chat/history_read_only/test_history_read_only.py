@@ -35,6 +35,8 @@ def test_incompatible_context_can_be_viewed_and_navigated_but_not_continued(
         chat.loc.get_by_role("button", name="Regenerate message")
     ).to_have_count(0)
     expect(page.locator(".shiny-notification")).to_have_count(0)
+    expect(chat.loc.locator(".shiny-chat-retry-error")).to_have_count(0)
+    expect(chat.loc.locator(".shiny-chat-message-footer-error")).to_have_count(0)
 
     original = chat.loc.locator(".shiny-chat-user-message").first
     original.hover()
