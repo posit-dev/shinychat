@@ -39,6 +39,7 @@ from ._history_plan import (
     RewindHook,
     StatePathContext,
     canonical_turns,
+    latest_system_prompt,
     turn_entry_kind,
 )
 from ._history_store import ConversationPartition, ConversationStore
@@ -146,37 +147,34 @@ class _ExchangeRecorder:
     ) -> StateEntry | None:
         assert self.record is not None
         prompt = self._host.adapter.get_system_prompt()
-        parent_id = self.record.nodes[context.node_id].parent_id
+        node = self.record.nodes[context.node_id]
+        parent_id = node.parent_id
+        ancestor = None
         while parent_id is not None:
             parent = self.record.nodes[parent_id]
-            previous = parent.state.get(SYSTEM_PROMPT_STATE_KEY)
-            if previous is not None:
-                if previous.data == prompt:
-                    return None
+            ancestor = parent.state.get(SYSTEM_PROMPT_STATE_KEY)
+            if ancestor is not None:
                 break
             parent_id = parent.parent_id
+
+        previous = node.state.get(SYSTEM_PROMPT_STATE_KEY, ancestor)
+        if previous is not None and previous.data != prompt:
+            # A rewound shared parent can be recaptured. Keep its old children
+            # on their saved prompt before changing their inherited value.
+            for child_id in node.children:
+                child = self.record.nodes[child_id]
+                if SYSTEM_PROMPT_STATE_KEY not in child.state:
+                    child.state[SYSTEM_PROMPT_STATE_KEY] = previous.model_copy(
+                        deep=True
+                    )
+        if ancestor is not None and ancestor.data == prompt:
+            return None
         return StateEntry(
             kind="system_prompt", version=1, mode="snapshot", data=prompt
         )
 
-    @staticmethod
-    def _latest_system_prompt(
-        entries: tuple[tuple[str, StateEntry], ...],
-    ) -> StateEntry | None:
-        if not entries:
-            return None
-        entry = entries[-1][1]
-        if (
-            entry.kind != "system_prompt"
-            or entry.version != 1
-            or entry.mode != "snapshot"
-            or not (entry.data is None or isinstance(entry.data, str))
-        ):
-            raise ValueError("Unsupported shinychat:system_prompt state entry.")
-        return entry
-
     def _restore_system_prompt(self, context: StatePathContext) -> None:
-        entry = self._latest_system_prompt(context.entries)
+        entry = latest_system_prompt(context.entries)
         if entry is not None:
             self._host.adapter.set_system_prompt(cast(str | None, entry.data))
 
@@ -185,10 +183,10 @@ class _ExchangeRecorder:
             raise RuntimeError(
                 "The recorded source path is required before rewind."
             )
-        target = self._latest_system_prompt(context.entries)
+        target = latest_system_prompt(context.entries)
         # Compare saved paths, not the live prompt or the node-close capture:
         # an on_restore override must survive a same-prompt rewind.
-        previous = self._latest_system_prompt(context.previous_entries)
+        previous = latest_system_prompt(context.previous_entries)
         if target is not None and (
             previous is None or target.data != previous.data
         ):

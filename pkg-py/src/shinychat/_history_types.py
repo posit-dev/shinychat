@@ -11,6 +11,7 @@ from pydantic import (
     BaseModel,
     Field,
     JsonValue,
+    SerializationInfo,
     SerializerFunctionWrapHandler,
     model_serializer,
     model_validator,
@@ -381,12 +382,19 @@ class StateEntry(BaseModel):
 
     @model_serializer(mode="wrap")
     def _serialize(
-        self, handler: SerializerFunctionWrapHandler
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
     ) -> dict[str, Any]:
         serialized = handler(self)
-        # Null is a state value, not an absent entry. File stores omit optional
-        # None fields, but this required field must survive that serialization.
-        if self.data is None:
+        # Null is a state value, not an absent entry. Compact file writes must
+        # retain it, but explicit field selections still belong to the caller.
+        if (
+            self.data is None
+            and info.exclude_none
+            and "data" not in (info.exclude or {})
+            and (info.include is None or "data" in info.include)
+        ):
             serialized["data"] = None
         return serialized
 

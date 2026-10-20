@@ -11,7 +11,6 @@ from _history_test_helpers import replay_exchange_record
 from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
 from shinychat._history_client import TurnsAdapter
 from shinychat._history_controller import HistoryController
-from shinychat._history_plan import StateHookError
 from shinychat._history_store import (
     ConversationStore,
     FileConversationStore,
@@ -896,7 +895,9 @@ async def test_system_prompt_file_store_round_trip(
     ],
     ids=["kind", "version", "mode", "data"],
 )
-async def test_system_prompt_invalid_entry_fails_restore(entry: StateEntry):
+async def test_system_prompt_invalid_entry_rejected_before_restore(
+    entry: StateEntry,
+):
     record = new_conversation_record_v2(
         title="bad prompt entry",
         id="c_bad_prompt_entry",
@@ -907,15 +908,149 @@ async def test_system_prompt_invalid_entry_fails_restore(entry: StateEntry):
         kind="turns", version=1, mode="snapshot", data=[]
     )
 
-    controller, _client = _make_prompt_controller(prompt="live")
+    controller, client = _make_prompt_controller(prompt="live")
     notifier = AsyncMock()
     controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
-    with (
-        pytest.raises(StateHookError) as raised,
-        pytest.warns(UserWarning, match="Chat history restore failed"),
-    ):
+    with pytest.raises(ValueError, match="Unsupported shinychat:system_prompt"):
         await replay_exchange_record(controller, record)
 
-    assert raised.value.entry_name == SYSTEM_PROMPT_STATE_KEY
-    assert isinstance(raised.value.__cause__, ValueError)
+    assert controller._exchange_recorder.record is None
+    assert client.system_prompt == "live"
+    assert client.calls == []
+    notifier.assert_not_called()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("edit_index", [0, 2], ids=["root", "exchange"])
+@pytest.mark.parametrize("prompt", ["A", None], ids=["text", "null"])
+async def test_system_prompt_shared_parent_change_preserves_existing_branch(
+    edit_index: int,
+    prompt: str | None,
+):
+    controller, client = _make_prompt_controller(prompt=prompt)
+    transcript = _make_transcript(controller._exchange_recorder)
+    first = await _drive_exchange(
+        transcript, client, "one", "answer one", stream_id="s1"
+    )
+    second = await _drive_exchange(
+        transcript, client, "two", "answer two", stream_id="s2"
+    )
+    target = first if edit_index == 0 else second
+    await controller.resubmit(
+        target, kind="edit", request_id="edit", message_index=edit_index
+    )
+
+    client.system_prompt = "B"
+    await _drive_exchange(
+        transcript, client, "replacement", "new answer", stream_id="s3"
+    )
+    await controller.handle_navigate(edit_index, "prev", request_id="navigate")
+
+    assert client.system_prompt == prompt
+    assert client.turns == [
+        _user_turn("one"),
+        _assistant_turn("answer one"),
+        _user_turn("two"),
+        _assistant_turn("answer two"),
+    ]
+
+
+@pytest.mark.anyio
+async def test_system_prompt_removing_parent_change_preserves_existing_branch():
+    controller, client = _make_prompt_controller(prompt="A")
+    transcript = _make_transcript(controller._exchange_recorder)
+    await _drive_exchange(
+        transcript, client, "one", "answer one", stream_id="s1"
+    )
+    client.system_prompt = "B"
+    second = await _drive_exchange(
+        transcript, client, "two", "answer two", stream_id="s2"
+    )
+    await controller.resubmit(
+        second, kind="edit", request_id="edit", message_index=2
+    )
+
+    client.system_prompt = "A"
+    await _drive_exchange(
+        transcript, client, "replacement", "new answer", stream_id="s3"
+    )
+    await controller.handle_navigate(2, "prev", request_id="navigate")
+
+    assert client.system_prompt == "B"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("bad_path", ["target", "source"])
+@pytest.mark.parametrize(
+    "entry",
+    [
+        StateEntry(kind="prompt", version=1, mode="snapshot", data="x"),
+        StateEntry(kind="system_prompt", version=2, mode="snapshot", data="x"),
+        StateEntry(kind="system_prompt", version=1, mode="delta", data="x"),
+        StateEntry(kind="system_prompt", version=1, mode="snapshot", data=123),
+    ],
+    ids=["kind", "version", "mode", "data"],
+)
+async def test_system_prompt_invalid_navigation_leaves_live_state_untouched(
+    bad_path: str,
+    entry: StateEntry,
+):
+    controller, client = _make_prompt_controller(prompt="A")
+    recorder = controller._exchange_recorder
+    transcript = _make_transcript(recorder)
+    await _drive_exchange(
+        transcript, client, "one", "answer one", stream_id="s1"
+    )
+    original = await _drive_exchange(
+        transcript, client, "two", "answer two", stream_id="s2"
+    )
+    await controller.resubmit(
+        original, kind="edit", request_id="edit", message_index=2
+    )
+    replacement = await _drive_exchange(
+        transcript, client, "replacement", "new answer", stream_id="s3"
+    )
+    record = recorder.record
+    assert record is not None
+    bad_node = original if bad_path == "target" else replacement
+    record.nodes[bad_node].state[SYSTEM_PROMPT_STATE_KEY] = entry
+    before = record.model_dump()
+    turns_before = list(client.turns)
+    chat = controller.chat
+    actions_before = list(chat.actions)  # type: ignore[attr-defined]
+    client.calls.clear()
+
+    with pytest.raises(ValueError, match="Unsupported shinychat:system_prompt"):
+        await controller.handle_navigate(2, "prev", request_id="navigate")
+
+    assert recorder.record is record
+    assert record.model_dump() == before
+    assert client.system_prompt == "A"
+    assert client.turns == turns_before
+    assert client.calls == []
+    assert chat.actions == actions_before  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    ("selection", "expected"),
+    [
+        (
+            {"exclude": {"data"}},
+            {"kind": "system_prompt", "version": 1, "mode": "snapshot"},
+        ),
+        ({"include": {"kind"}}, {"kind": "system_prompt"}),
+        ({"include": set()}, {}),
+        ({"include": {"data"}}, {"data": None}),
+    ],
+)
+@pytest.mark.parametrize("exclude_none", [False, True])
+def test_null_state_data_respects_explicit_field_selection(
+    selection: dict[str, Any],
+    expected: dict[str, Any],
+    exclude_none: bool,
+):
+    entry = StateEntry(
+        kind="system_prompt", version=1, mode="snapshot", data=None
+    )
+    assert entry.model_dump(exclude_none=exclude_none, **selection) == expected

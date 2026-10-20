@@ -19,7 +19,12 @@ from ._history_client import (
     TurnsAdapter,
     _validate_mapping_keys,
 )
-from ._history_types import TURNS_STATE_KEY, ConversationRecordV2, StateEntry
+from ._history_types import (
+    SYSTEM_PROMPT_STATE_KEY,
+    TURNS_STATE_KEY,
+    ConversationRecordV2,
+    StateEntry,
+)
 
 CaptureReason = Literal["root_close", "stream_finish", "node_close"]
 CaptureHook = Callable[
@@ -80,6 +85,20 @@ def adapter_is_chatlas(adapter: TurnsAdapter) -> bool:
 def turn_entry_kind(adapter: TurnsAdapter) -> Literal["chatlas", "turns"]:
     """Kind marker for turn-state entries captured under ``adapter``."""
     return "chatlas" if adapter_is_chatlas(adapter) else "turns"
+
+
+def latest_system_prompt(
+    entries: tuple[tuple[str, StateEntry], ...],
+) -> StateEntry | None:
+    for _, entry in entries:
+        if (
+            entry.kind != "system_prompt"
+            or entry.version != 1
+            or entry.mode != "snapshot"
+            or not (entry.data is None or isinstance(entry.data, str))
+        ):
+            raise ValueError("Unsupported shinychat:system_prompt state entry.")
+    return entries[-1][1] if entries else None
 
 
 def canonical_turns(
@@ -297,6 +316,10 @@ def preflight_state(
             entries=entries,
             previous_entries=previous_entries,
         )
+        if name == SYSTEM_PROMPT_STATE_KEY:
+            latest_system_prompt(entries)
+            if previous_entries is not None:
+                latest_system_prompt(previous_entries)
         if name == TURNS_STATE_KEY:
             if preserve_live_turns:
                 prepared_turns = canonical_turns(adapter.get_turns_json())[0]
