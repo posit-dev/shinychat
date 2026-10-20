@@ -272,12 +272,10 @@ async def test_system_prompt_records_path_changes_with_turn_deltas():
 async def test_system_prompt_capture_and_restore_none_and_empty(
     prompt: str | None,
 ):
-    """Raw None and "" both record as "" — the explicit clear value.
+    """Raw None and empty both record as the explicit empty-string clear.
 
-    Null/empty are no longer raw-value round trips: they are the same
-    logical clear. Restoring a saved "" applies None (chatlas None
-    removes the system turn; assigning "" would record a "[empty
-    string]" turn), so the sentinel live prompt ends up cleared to None.
+    Generic clients receive that string unchanged; the offline chatlas test
+    separately verifies its native None clear API removes the system turn.
     """
     store = InMemoryConversationStore()
     controller, client = _make_prompt_controller(store=store, prompt=prompt)
@@ -303,8 +301,8 @@ async def test_system_prompt_capture_and_restore_none_and_empty(
     )
     await replay_exchange_record(restored, stored)
 
-    assert restored_client.system_prompt is None
-    assert restored_client.prompt_calls() == [None]
+    assert restored_client.system_prompt == ""
+    assert restored_client.prompt_calls() == [""]
     assert restored_client.turns == [
         _user_turn("one"),
         _assistant_turn("answer one"),
@@ -381,11 +379,7 @@ async def test_system_prompt_restore_uses_latest_entry_on_the_path():
 
 @pytest.mark.anyio
 async def test_system_prompt_restore_null_entry_falls_through_to_ancestor():
-    """A saved null entry is inheritable absence, not a recorded clear.
-
-    Restoring a path that carries a foreign null entry skips it and falls
-    through to the earlier non-null prompt instead of clearing.
-    """
+    """A null entry falls through to the earlier non-null prompt."""
     store = InMemoryConversationStore()
     controller, client = _make_prompt_controller(store=store, prompt="A")
     recorder = controller._exchange_recorder
@@ -402,13 +396,13 @@ async def test_system_prompt_restore_null_entry_falls_through_to_ancestor():
     assert _prompt_data(record, record.root_id) == "A"
     assert _prompt_entry(record, first) is None
 
-    # A foreign null entry between the root's "A" and the leaf.
     record.nodes[first].state[SYSTEM_PROMPT_STATE_KEY] = _null_prompt_entry()
+    await controller.on_response()
 
     stored = await store.get(part(), record.id)
     assert isinstance(stored, ConversationRecordV2)
     restored, restored_client = _make_prompt_controller(prompt="sentinel")
-    await replay_exchange_record(restored, record)
+    await replay_exchange_record(restored, stored)
 
     assert restored_client.system_prompt == "A"
     assert restored_client.prompt_calls() == ["A"]
@@ -455,11 +449,12 @@ async def test_system_prompt_restore_without_effective_value_is_noop(
     else:
         del record.nodes[record.root_id].state[SYSTEM_PROMPT_STATE_KEY]
         assert _prompt_entry(record, first) is None
+    await controller.on_response()
 
     stored = await store.get(part(), record.id)
     assert isinstance(stored, ConversationRecordV2)
     restored, restored_client = _make_prompt_controller(prompt="sentinel")
-    await replay_exchange_record(restored, record)
+    await replay_exchange_record(restored, stored)
 
     # The restore ran (turns replayed) but never touched the prompt.
     assert restored_client.system_prompt == "sentinel"
@@ -505,8 +500,8 @@ async def test_system_prompt_recorded_clear_stops_inheritance(
     )
     await replay_exchange_record(restored, stored)
 
-    assert restored_client.system_prompt is None
-    assert restored_client.prompt_calls() == [None]
+    assert restored_client.system_prompt == ""
+    assert restored_client.prompt_calls() == [""]
     assert restored_client.turns == [
         _user_turn("one"),
         _assistant_turn("answer one"),
@@ -597,7 +592,7 @@ async def test_system_prompt_edit_and_regenerate_succeed(kind: str):
 @pytest.mark.anyio
 @pytest.mark.parametrize(
     ("target", "expected"),
-    [(None, None), ("", None), ("A", "A")],
+    [(None, ""), ("", ""), ("A", "A")],
     ids=["none", "empty-string", "text"],
 )
 async def test_system_prompt_edit_across_recorded_change_applies_target(
@@ -984,8 +979,8 @@ async def test_system_prompt_generic_client_without_prompt_unchanged():
 @pytest.mark.parametrize(
     ("prompt", "saved", "expected"),
     [
-        (None, "", None),
-        ("", "", None),
+        (None, "", ""),
+        ("", "", ""),
         ("be precise", "be precise", "be precise"),
     ],
     ids=["none", "empty-string", "text"],
@@ -1080,10 +1075,13 @@ async def test_system_prompt_invalid_entry_rejected_before_restore(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("edit_index", [0, 2], ids=["root", "exchange"])
-@pytest.mark.parametrize("prompt", ["A", None], ids=["text", "null"])
+@pytest.mark.parametrize(
+    ("prompt", "expected"), [("A", "A"), (None, "")], ids=["text", "clear"]
+)
 async def test_system_prompt_shared_parent_change_preserves_existing_branch(
     edit_index: int,
     prompt: str | None,
+    expected: str,
 ):
     controller, client = _make_prompt_controller(prompt=prompt)
     transcript = _make_transcript(controller._exchange_recorder)
@@ -1104,7 +1102,7 @@ async def test_system_prompt_shared_parent_change_preserves_existing_branch(
     )
     await controller.handle_navigate(edit_index, "prev", request_id="navigate")
 
-    assert client.system_prompt == prompt
+    assert client.system_prompt == expected
     assert client.turns == [
         _user_turn("one"),
         _assistant_turn("answer one"),
@@ -1394,3 +1392,76 @@ async def test_system_prompt_file_store_preserves_null_inheritance(
 
     assert restored_client.system_prompt == "A"
     assert restored_client.prompt_calls() == ["A"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("operation", ["restore", "rewind"])
+async def test_system_prompt_generic_string_client_keeps_empty_clear(
+    operation: str,
+):
+    class StringPromptClient(_PlainClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.system_prompt: str = ""
+
+    client = StringPromptClient()
+    controller, _ = _make_prompt_controller(client=client)
+    recorder = controller._exchange_recorder
+    transcript = _make_transcript(recorder)
+    await _drive_exchange(
+        transcript, client, "one", "answer one", stream_id="s1"
+    )
+    record = recorder.record
+    assert record is not None
+
+    if operation == "restore":
+        client.system_prompt = "sentinel"
+        await replay_exchange_record(controller, record)
+    else:
+        second = await _drive_exchange(
+            transcript,
+            client,
+            "two",
+            "answer two",
+            stream_id="s2",
+            prompt_during="B",
+        )
+        await controller.resubmit(
+            second, kind="edit", request_id="edit", message_index=2
+        )
+
+    assert client.system_prompt == ""
+    assert client.system_prompt.strip() == ""
+
+
+@pytest.mark.anyio
+async def test_system_prompt_unrecorded_children_inherit_new_ancestor_value():
+    controller, client = _make_prompt_controller(prompt="A")
+    recorder = controller._exchange_recorder
+    transcript = _make_transcript(recorder)
+    await _drive_exchange(
+        transcript, client, "one", "answer one", stream_id="s1"
+    )
+    original = await _drive_exchange(
+        transcript, client, "two", "answer two", stream_id="s2"
+    )
+    await controller.resubmit(
+        original, kind="edit", request_id="edit", message_index=2
+    )
+    record = recorder.record
+    assert record is not None
+    # Erase recorded values deliberately: these paths now specify inheritance,
+    # not a historical prompt that could be pinned during parent recapture.
+    record.nodes[record.root_id].state[SYSTEM_PROMPT_STATE_KEY] = (
+        _null_prompt_entry()
+    )
+    record.nodes[original].state[SYSTEM_PROMPT_STATE_KEY] = _null_prompt_entry()
+    client.system_prompt = "B"
+    await _drive_exchange(
+        transcript, client, "replacement", "new answer", stream_id="s3"
+    )
+
+    await controller.handle_navigate(2, "prev", request_id="navigate")
+
+    assert _prompt_data(record, original) is None
+    assert client.system_prompt == "B"

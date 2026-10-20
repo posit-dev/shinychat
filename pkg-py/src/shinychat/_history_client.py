@@ -93,7 +93,12 @@ class TurnsAdapter:
         return self._turns_client().system_prompt  # type: ignore[attr-defined]
 
     def set_system_prompt(self, prompt: str | None) -> None:
-        self._turns_client().system_prompt = prompt  # type: ignore[attr-defined]
+        raw = self._turns_client()
+        if is_chatlas_chat_client(raw) and prompt == "":
+            # Chatlas's None API removes the system turn; an empty string
+            # creates a system turn instead. Generic clients keep the string.
+            prompt = None
+        raw.system_prompt = prompt  # type: ignore[attr-defined]
 
     def get_turns_grouped(self) -> list[list[TurnDict]]:
         turns = self.get_turns_json()

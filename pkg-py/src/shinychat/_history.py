@@ -497,10 +497,11 @@ class ChatHistory:
 
         Restores faithfully reapply the conversation's saved system prompt
         (the one captured while the conversation was live) before callbacks
-        run. History encodes a cleared prompt as an empty string and restores
-        it by setting the client's ``system_prompt`` to ``None``. Null or
-        absent saved prompt entries inherit earlier recorded values; when
-        none exists, history leaves the live prompt unchanged.
+        run. History encodes a cleared prompt as an empty string. For chatlas,
+        restoring it sets ``system_prompt`` to ``None`` to remove the system
+        turn; generic prompt-capable clients receive the empty string unchanged.
+        Null or absent saved prompt entries inherit earlier recorded values;
+        when none exists, history leaves the live prompt unchanged.
 
         To keep the app's *current* prompt instead — e.g. when the
         prompt is generated per session — override it here::

@@ -163,6 +163,8 @@ class _ExchangeRecorder:
         previous = node.state.get(SYSTEM_PROMPT_STATE_KEY)
         if previous is None or previous.data is None:
             previous = ancestor
+        # With no recorded value, null/missing children remain inheritable;
+        # there is no known historical prompt to pin.
         if previous is not None and previous.data != prompt:
             # A rewound shared parent can be recaptured. Keep its old children
             # on their saved prompt before changing their inherited value.
@@ -182,9 +184,7 @@ class _ExchangeRecorder:
     def _restore_system_prompt(self, context: StatePathContext) -> None:
         entry = latest_system_prompt(context.entries)
         if entry is not None:
-            # Chatlas clears with None; a literal empty prompt adds a system
-            # turn instead of removing it.
-            self._host.adapter.set_system_prompt(cast(str, entry.data) or None)
+            self._host.adapter.set_system_prompt(cast(str, entry.data))
 
     def _rewind_system_prompt(self, context: StatePathContext) -> None:
         if context.previous_entries is None:
@@ -198,7 +198,7 @@ class _ExchangeRecorder:
         if target is not None and (
             previous is None or target.data != previous.data
         ):
-            self._host.adapter.set_system_prompt(cast(str, target.data) or None)
+            self._host.adapter.set_system_prompt(cast(str, target.data))
 
     def _capture_turns(self, context: CaptureContext) -> StateEntry:
         adapter = self._host.adapter
