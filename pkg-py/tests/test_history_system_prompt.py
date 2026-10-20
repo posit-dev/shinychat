@@ -1463,3 +1463,107 @@ async def test_system_prompt_unrecorded_children_inherit_new_ancestor_value():
 
     assert _prompt_data(record, original) is None
     assert client.system_prompt == "B"
+
+
+# ---------------------------------------------------------------------------
+# Prompt capability mismatch: recorded directives on a client without the
+# system-prompt capability degrade the restore to a read-only view.
+# ---------------------------------------------------------------------------
+
+
+async def _record_with_root_prompt(
+    prompt_data: Any,
+) -> ConversationRecordV2:
+    """One-exchange record carrying ``prompt_data`` as its root directive."""
+    controller, client = _make_prompt_controller(prompt="be precise")
+    recorder = controller._exchange_recorder
+    transcript = _make_transcript(recorder)
+    await _drive_exchange(
+        transcript, client, "one", "answer one", stream_id="s1"
+    )
+    record = recorder.record
+    assert record is not None
+    record.nodes[record.root_id].state[SYSTEM_PROMPT_STATE_KEY] = StateEntry(
+        kind="system_prompt",
+        version=1,
+        mode="snapshot",
+        data=prompt_data,
+    )
+    return record
+
+
+@pytest.mark.anyio
+async def test_system_prompt_recorded_prompt_without_capability_restores_read_only():
+    record = await _record_with_root_prompt("be precise")
+    record_before = record.model_copy(deep=True)
+
+    restored, plain = _make_prompt_controller(client=_PlainClient())
+    restored_recorder = restored._exchange_recorder
+    # The known builtin key is recognized without a registered prompt hook.
+    assert SYSTEM_PROMPT_STATE_KEY not in restored_recorder.restore_hooks
+
+    with pytest.warns(UserWarning, match="system-prompt support"):
+        await replay_exchange_record(restored, record)
+
+    assert restored_recorder.read_only
+    # The display replays as today, live turns clear, the unsupportable
+    # prompt is not applied, and the saved record is untouched.
+    assert [
+        message["role"]
+        for message in restored.chat.restored_messages  # type: ignore[attr-defined]
+    ] == ["user", "assistant"]
+    assert plain.turns == []
+    assert record == record_before
+
+
+@pytest.mark.anyio
+async def test_system_prompt_recorded_clear_without_capability_restores_read_only():
+    # An explicit clear ("") is a directive: it requires the capability.
+    record = await _record_with_root_prompt("")
+
+    restored, plain = _make_prompt_controller(client=_PlainClient())
+
+    with pytest.warns(UserWarning, match="system-prompt support"):
+        await replay_exchange_record(restored, record)
+
+    assert restored._exchange_recorder.read_only
+    assert plain.turns == []
+
+
+@pytest.mark.anyio
+async def test_system_prompt_null_only_path_without_capability_stays_writable(
+    recwarn: pytest.WarningsRecorder,
+):
+    # A null-only path carries no directive: no capability mismatch.
+    record = await _record_with_root_prompt(None)
+
+    restored, plain = _make_prompt_controller(client=_PlainClient())
+    await replay_exchange_record(restored, record)
+
+    assert not restored._exchange_recorder.read_only
+    assert plain.turns == [_user_turn("one"), _assistant_turn("answer one")]
+    assert [
+        warning
+        for warning in recwarn.list
+        if "read-only" in str(warning.message)
+    ] == []
+
+
+@pytest.mark.anyio
+async def test_system_prompt_malformed_entry_fails_restore_before_mutation():
+    # Structural invalidity is strict even without the capability: the
+    # restore fails preflight instead of degrading to read-only.
+    record = await _record_with_root_prompt(123)
+    record_before = record.model_copy(deep=True)
+
+    restored, plain = _make_prompt_controller(client=_PlainClient())
+    plain.turns = [_user_turn("live")]
+
+    with pytest.raises(ValueError, match="system_prompt"):
+        await replay_exchange_record(restored, record)
+
+    restored_recorder = restored._exchange_recorder
+    assert restored_recorder.record is None
+    assert not restored_recorder.read_only
+    assert plain.turns == [_user_turn("live")]
+    assert record == record_before
