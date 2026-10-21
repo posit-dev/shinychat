@@ -604,7 +604,7 @@ class Chat:
             instance.destroy()
         CHAT_INSTANCES[instance_id] = self
         self._cancel_session_end: CancelCallback | None = (
-            self._session.on_ended(self.destroy)
+            self._session.on_ended(self._end_session)
         )
 
         self.client: "ChatClient | None" = None
@@ -2829,6 +2829,14 @@ class Chat:
             }
             self._greeting_content = str(content)
             await self._send_action(action, html_deps)
+
+    async def _end_session(self) -> None:
+        # This registration precedes history's synchronous cleanup. Complete
+        # pending persistence before destroy() unregisters that cleanup.
+        try:
+            await self.history._flush_pending()
+        finally:
+            self.destroy()
 
     def destroy(self):
         """

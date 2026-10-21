@@ -9,7 +9,7 @@ import warnings
 from contextvars import copy_context
 from datetime import datetime
 from types import SimpleNamespace
-from typing import Any, AsyncIterable, Callable, cast
+from typing import Any, AsyncIterable, Awaitable, Callable, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -714,9 +714,7 @@ def test_v2_terminal_metadata_uses_registered_response_settlement_callback(
         def root_scope(self) -> "_HistorySession":
             return self
 
-        async def send_custom_message(
-            self, type: str, message: Any
-        ) -> None:
+        async def send_custom_message(self, type: str, message: Any) -> None:
             self.sent.append(message["action"])
 
     class _HistoryAdapter:
@@ -1504,10 +1502,12 @@ def test_destroy_and_session_end_cancel_response_settlement_pump():
     class _TeardownSession(_MockSession):
         def __init__(self) -> None:
             super().__init__()
-            self.ended_callbacks: list[Callable[[], None]] = []
+            self.ended_callbacks: list[
+                Callable[[], None | Awaitable[None]]
+            ] = []
 
         def on_ended(self, callback: object) -> Callable[[], None]:
-            callback_fn = cast(Callable[[], None], callback)
+            callback_fn = cast(Callable[[], None | Awaitable[None]], callback)
             self.ended_callbacks.append(callback_fn)
 
             def cancel() -> None:
@@ -1515,9 +1515,11 @@ def test_destroy_and_session_end_cancel_response_settlement_pump():
 
             return cancel
 
-        def end(self) -> None:
+        async def end(self) -> None:
             for callback in list(self.ended_callbacks):
-                callback()
+                result = callback()
+                if inspect.isawaitable(result):
+                    await result
 
     session = _TeardownSession()
     scheduled: list[str] = []
@@ -1536,10 +1538,10 @@ def test_destroy_and_session_end_cancel_response_settlement_pump():
         run_async(reactive.flush)
         assert scheduled == []
         assert not scheduled_chat._pending_response_settlements
-        assert scheduled_chat.destroy not in session.ended_callbacks
+        assert scheduled_chat._end_session not in session.ended_callbacks
 
         active_chat = Chat("settlement_destroy_active", history=False)
-        assert session.ended_callbacks.count(active_chat.destroy) == 1
+        assert session.ended_callbacks.count(active_chat._end_session) == 1
         started = asyncio.Event()
 
         async def active_consumer() -> None:
@@ -1558,10 +1560,10 @@ def test_destroy_and_session_end_cancel_response_settlement_pump():
             runner = active_chat._response_settlement_runner
             assert runner is not None
 
-            session.end()
+            await session.end()
             with pytest.raises(asyncio.CancelledError):
                 await flush
-            assert active_chat.destroy not in session.ended_callbacks
+            assert active_chat._end_session not in session.ended_callbacks
             assert not active_chat._pending_response_settlements
             assert runner.cancelled()
 
@@ -2928,11 +2930,11 @@ def test_nested_stream_context_inside_append_message_stream_works():
 
         run_async(lambda: _run_stream_test(sent, 4, _body))
 
-    types = [action["type"] for action in sent if action["type"] != "history_update"]
-    assert types[0] == "chunk_start" and types[-1] == "chunk_end"
-    contents = [
-        entry.message.content for entry in chat._transcript.read()
+    types = [
+        action["type"] for action in sent if action["type"] != "history_update"
     ]
+    assert types[0] == "chunk_start" and types[-1] == "chunk_end"
+    contents = [entry.message.content for entry in chat._transcript.read()]
     assert len(contents) == 1 and "inner" in contents[0]
 
 
@@ -2959,7 +2961,9 @@ def test_stream_context_after_append_message_stream_raises_deterministically():
 
         run_async(lambda: _run_stream_test(sent, 3, _body))
 
-    types = [action["type"] for action in sent if action["type"] != "history_update"]
+    types = [
+        action["type"] for action in sent if action["type"] != "history_update"
+    ]
     assert types == ["chunk_start", "chunk", "chunk_end"]
 
 
@@ -3011,7 +3015,9 @@ def test_stream_closed_in_flight_before_worker_starts_still_settles():
     # The producer was never advanced, and the worker closed it.
     assert pulled == []
     assert producer.ag_frame is None  # type: ignore[attr-defined]
-    types = [action["type"] for action in sent if action["type"] != "history_update"]
+    types = [
+        action["type"] for action in sent if action["type"] != "history_update"
+    ]
     assert types[-1] == "message"
     assert sent[-1]["message"]["segments"][0]["content"] == "after"
 
@@ -3043,7 +3049,9 @@ def test_append_message_during_active_stream_raises_then_lands_after_stream():
 
         run_async(lambda: _run_stream_test(sent, 4, _after))
 
-    types = [action["type"] for action in sent if action["type"] != "history_update"]
+    types = [
+        action["type"] for action in sent if action["type"] != "history_update"
+    ]
     assert types == ["chunk_start", "chunk", "chunk_end", "message"]
     chunk_actions = [action for action in sent if action["type"] == "chunk"]
     assert [action["content"] for action in chunk_actions] == ["THIRD"]
@@ -3085,7 +3093,9 @@ def test_stream_cancelled_before_body_starts_still_ends():
 
         run_async(lambda: _run_stream_test(sent, 3, _after))
 
-    types = [action["type"] for action in sent if action["type"] != "history_update"]
+    types = [
+        action["type"] for action in sent if action["type"] != "history_update"
+    ]
     assert types == ["chunk_start", "chunk_end", "message"]
     assert sent[-1]["message"]["segments"][0]["content"] == "after"
     entry = chat._transcript.read()[0]
@@ -4783,9 +4793,7 @@ def test_bookmark_legacy_path_persists_ui_for_state_only_client():
     with session_context(session):
         chat = Chat(id="chat_bm_legacy")
         chat.enable_bookmarking(_StateOnlyClient(), bookmark_on=None)
-        chat._record_accepted_user_input(
-            ChatMessage(content="hi", role="user")
-        )
+        chat._record_accepted_user_input(ChatMessage(content="hi", role="user"))
 
     bookmark = cast(Any, session).bookmark
 

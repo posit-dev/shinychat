@@ -10,7 +10,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import shinychat._history as history_module
 import shinychat._history_plan as history_plan_module
+import shinychat._history_recorder as recorder_module
 from shiny import reactive
+from shiny._utils import AsyncCallbacks, wrap_async
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat
@@ -44,7 +46,9 @@ class _MockSession:
 
         self.input = Inputs({}, ns=ResolvedId)
 
-    def on_ended(self, callback: Callable[[], None]) -> Callable[[], None]:
+    def on_ended(
+        self, callback: Callable[[], None] | Callable[[], Awaitable[None]]
+    ) -> Callable[[], None]:
         return lambda: None
 
     def on_destroy(self, callback: object) -> None:
@@ -284,7 +288,9 @@ class _MockBookmark:
 
         return cancel
 
-    def on_bookmarked(self, callback: Callable[[str], Any]) -> Callable[[], None]:
+    def on_bookmarked(
+        self, callback: Callable[[str], Any]
+    ) -> Callable[[], None]:
         self.bookmarked_callbacks.append(callback)
 
         def cancel() -> None:
@@ -312,7 +318,9 @@ class _LiveSession(_MockSession):
     def __init__(self) -> None:
         super().__init__()
         self.bookmark = _MockBookmark()
-        self.ended_callbacks: list[Callable[[], None]] = []
+        self.ended_callbacks: list[
+            Callable[[], None] | Callable[[], Awaitable[None]]
+        ] = []
         self.messages: list[dict[str, Any]] = []
 
     def is_stub_session(self) -> bool:
@@ -321,7 +329,9 @@ class _LiveSession(_MockSession):
     def root_scope(self) -> "_LiveSession":
         return self
 
-    def on_ended(self, callback: Callable[[], None]) -> Callable[[], None]:
+    def on_ended(
+        self, callback: Callable[[], None] | Callable[[], Awaitable[None]]
+    ) -> Callable[[], None]:
         self.ended_callbacks.append(callback)
 
         def _unregister() -> None:
@@ -329,6 +339,14 @@ class _LiveSession(_MockSession):
                 self.ended_callbacks.remove(callback)
 
         return _unregister
+
+    async def end(self) -> None:
+        # Use Shiny's real invocation semantics, including its registration
+        # order and snapshot of callbacks that cleanup can unregister.
+        callbacks = AsyncCallbacks()
+        for callback in self.ended_callbacks:
+            callbacks.register(wrap_async(callback))
+        await callbacks.invoke()
 
     def _decrement_busy_count(self) -> None:
         pass
@@ -435,7 +453,9 @@ async def test_history_disabled_publishes_one_initial_withdrawal(
 
 
 @pytest.mark.anyio
-async def test_chat_without_client_publishes_initial_history_withdrawal() -> None:
+async def test_chat_without_client_publishes_initial_history_withdrawal() -> (
+    None
+):
     session = _LiveSession()
     with session_context(cast(Any, session)):
         chat = Chat("history_unavailable_without_client")
@@ -609,7 +629,9 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
 
 
 @pytest.mark.anyio
-async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> None:
+async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> (
+    None
+):
     chat_id = "initial_readiness_cleanup_send_failure"
     session = _LiveSession()
     store = InMemoryConversationStore()
@@ -739,7 +761,9 @@ async def test_v2_initial_readiness_flips_after_history_update_send() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_successful_bookmark_pointer_suppresses_then_admits_root_append() -> None:
+async def test_v2_successful_bookmark_pointer_suppresses_then_admits_root_append() -> (
+    None
+):
     chat_id = "initial_bookmark_pointer_boundary"
     session = _LiveSession()
     session.bookmark.store = "server"
@@ -953,7 +977,9 @@ async def test_v2_server_bookmark_stamps_atomic_history_pointer_only() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_stale_server_bookmark_pointer_notifies_and_keeps_draft() -> None:
+async def test_v2_stale_server_bookmark_pointer_notifies_and_keeps_draft() -> (
+    None
+):
     session = _LiveSession()
     session.bookmark.store = "server"
     session.bookmark._restore_context = MagicMock(
@@ -1247,7 +1273,9 @@ async def test_v2_initial_restore_failure_real_effect_recovers_without_session_e
 
 
 @pytest.mark.anyio
-async def test_v2_bookmark_initial_restore_failure_clears_url_without_reload() -> None:
+async def test_v2_bookmark_initial_restore_failure_clears_url_without_reload() -> (
+    None
+):
     """Bookmark-mode cleanup of a failed initial restore clears the stale
     ``?_state_id_=`` query with a soft navigation — not the hard reload the
     intentional New chat path uses, which would discard the recovered
@@ -1449,7 +1477,9 @@ async def test_v2_failed_switch_notifies_once_with_sanitized_message() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_select_missing_conversation_still_notifies_rejection() -> None:
+async def test_v2_select_missing_conversation_still_notifies_rejection() -> (
+    None
+):
     """Ordinary pre-restore rejections (no restore cleanup ran) keep their
     direct notification: the handled-failure marker only suppresses the
     duplicate toast after a cleanup already notified."""
@@ -1745,7 +1775,9 @@ async def test_v2_recovered_initial_error_does_not_hide_a_later_rejection(
 
 
 @pytest.mark.anyio
-async def test_v2_initial_restore_preflight_cancellation_recovers_once() -> None:
+async def test_v2_initial_restore_preflight_cancellation_recovers_once() -> (
+    None
+):
     chat_id = "initial_preflight_cancel"
     session = _LiveSession()
     store = InMemoryConversationStore()
@@ -1987,7 +2019,9 @@ async def test_v2_bookmark_settlement_updates_url_and_deletes_replaced_state() -
     assert controller is not None
     recorder = controller._exchange_recorder
     assert recorder is not None
-    controller.partition = ConversationPartition(chat_id="bookmark_settlement", scope="test")
+    controller.partition = ConversationPartition(
+        chat_id="bookmark_settlement", scope="test"
+    )
     record = new_conversation_record_v2(
         title="pointer",
         id="c_pointer",
@@ -2019,9 +2053,10 @@ async def test_v2_bookmark_settlement_updates_url_and_deletes_replaced_state() -
             }
         },
     ]
-    assert [
-        message["action"]["url"] for message in session.messages
-    ] == ["?_state_id_=state-first", "?_state_id_=state-second"]
+    assert [message["action"]["url"] for message in session.messages] == [
+        "?_state_id_=state-first",
+        "?_state_id_=state-second",
+    ]
 
 
 @pytest.mark.anyio
@@ -2624,12 +2659,8 @@ async def test_v2_client_new_chat_closes_record_and_renews_greeting(
             ]
             # ...the configured greeting is resolved again for the fresh
             # conversation (the greeting stays the ambient slot)...
-            greeting_actions = [
-                a for a in actions if a["type"] == "greeting"
-            ]
-            assert [a.get("content") for a in greeting_actions] == [
-                "## Hello"
-            ]
+            greeting_actions = [a for a in actions if a["type"] == "greeting"]
+            assert [a.get("content") for a in greeting_actions] == ["## Hello"]
             # ...and the closed record stays listed with no active conversation.
             updates = [a for a in actions if a["type"] == "history_update"]
             assert updates
@@ -2851,7 +2882,9 @@ def _registered_history_cleanups(session: Any) -> list[Callable[[], None]]:
     ]
 
 
-def test_same_id_reconstruction_tears_down_prior_history():
+def test_same_id_reconstruction_tears_down_prior_history(
+    monkeypatch: pytest.MonkeyPatch,
+):
     session = cast(Any, _LiveSession())
     chat1 = _make_live_chat("recon", session)
     history1 = chat1.history
@@ -2862,6 +2895,8 @@ def test_same_id_reconstruction_tears_down_prior_history():
     assert len(effects1) > 0
     cancel_pending1 = MagicMock()
     history1._controller.cancel_pending = cancel_pending1  # type: ignore[method-assign]
+    flush_pending1 = AsyncMock()
+    monkeypatch.setattr(history1, "_flush_pending", flush_pending1)
 
     chat2 = _make_live_chat("recon", session)
 
@@ -2872,6 +2907,7 @@ def test_same_id_reconstruction_tears_down_prior_history():
     assert history1._effects == []
     assert all(e._destroyed for e in effects1)
     cancel_pending1.assert_called_once()
+    flush_pending1.assert_not_called()
     assert on_end1 not in session.ended_callbacks
     # ...leaving the replacement as the sole live history registration.
     assert chat2.history._controller is not None
@@ -2893,7 +2929,8 @@ def test_repeated_same_id_reconstruction_retains_single_registration():
     ]
 
 
-def test_session_end_runs_history_cleanup_once():
+@pytest.mark.anyio
+async def test_session_end_runs_history_cleanup_once():
     session = cast(Any, _LiveSession())
     chat = _make_live_chat("teardown", session)
     history = chat.history
@@ -2902,9 +2939,8 @@ def test_session_end_runs_history_cleanup_once():
     cancel_pending = MagicMock()
     controller.cancel_pending = cancel_pending  # type: ignore[method-assign]
 
-    # Simulate session teardown: fire every registered on_ended callback.
-    for cb in list(session.ended_callbacks):
-        cb()
+    # The first registration awaits persistence before synchronous cleanup.
+    await session.end()
 
     cancel_pending.assert_called_once()
     assert history._session_end_cancel is None
@@ -2912,6 +2948,155 @@ def test_session_end_runs_history_cleanup_once():
     # A later Chat.destroy() must not re-run the cleanup.
     chat.destroy()
     cancel_pending.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_session_end_waits_for_history_flush_before_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _LiveSession()
+    chat = _make_live_chat("await_end_flush", cast(Any, session))
+    history = chat.history
+    assert history._controller is not None
+    effects = list(history._effects)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def flush() -> None:
+        started.set()
+        await release.wait()
+
+    monkeypatch.setattr(history, "_flush_pending", flush)
+    cleanup = MagicMock()
+    monkeypatch.setattr(history._controller, "cancel_pending", cleanup)
+    ended = asyncio.create_task(session.end())
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        assert not ended.done()
+        assert all(not effect._destroyed for effect in effects)
+        cleanup.assert_not_called()
+    finally:
+        await _finish_held_clear_task(ended, release)
+        chat.destroy()
+
+    assert all(effect._destroyed for effect in effects)
+    cleanup.assert_called_once()
+    assert history._on_session_end is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "error", [RuntimeError("final save failed"), asyncio.CancelledError()]
+)
+async def test_session_end_flush_failure_still_cleans_up(
+    error: BaseException, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _LiveSession()
+    chat = _make_live_chat("failed_end_flush", cast(Any, session))
+    history = chat.history
+    assert history._controller is not None
+    effects = list(history._effects)
+    flush = AsyncMock(side_effect=error)
+    monkeypatch.setattr(history, "_flush_pending", flush)
+    cleanup = MagicMock()
+    monkeypatch.setattr(history._controller, "cancel_pending", cleanup)
+
+    with pytest.raises(type(error)) as caught:
+        await session.end()
+
+    assert caught.value is error
+    flush.assert_awaited_once()
+    assert all(effect._destroyed for effect in effects)
+    assert history._on_session_end is None
+    cleanup.assert_called_once()
+    chat.destroy()
+    cleanup.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_session_end_without_started_history_is_safe() -> None:
+    session = _LiveSession()
+    with session_context(cast(Any, session)):
+        chat = Chat("no_history_end", history=False)
+    await session.end()
+    assert chat.history._controller is None
+    assert chat._cancel_session_end is None
+    chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_session_end_flushes_unscheduled_content_to_file_before_cleanup(
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    # A fixed clock keeps this text chunk inside the gate, so only the real
+    # session-end path can make it durable while the stream is still open.
+    monkeypatch.setattr(recorder_module, "monotonic", lambda: 100.0)
+    chat, session, _, store = await _make_initialized_live_v2_chat(
+        tmp_path, "unscheduled_end_flush"
+    )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    partition = ConversationPartition(chat_id=chat.id, scope="test")
+    with session_context(cast(Any, session)), reactive.isolate():
+        await chat._record_accepted_user_input_with_capture(
+            ChatMessage(content="question", role="user")
+        )
+        async with chat.message_stream_context() as stream:
+            await stream.append("unscheduled tail")
+            record = controller._exchange_recorder.record
+            assert record is not None
+            assert record.active_leaf is not None
+            exchange_id = record.active_leaf
+            before = await FileConversationStore(tmp_path).get(
+                partition, record.id
+            )
+            assert isinstance(before, ConversationRecordV2)
+            assert [
+                message.as_stored_message().content
+                for message in before.nodes[exchange_id].messages
+            ] == [""]
+
+            save_calls: list[str] = []
+
+            @chat.history.on_save
+            def save(values: dict[str, Any]) -> None:
+                save_calls.append("called")
+
+            sent_before = len(session.messages)
+            effects = list(chat.history._effects)
+            started = asyncio.Event()
+            release = asyncio.Event()
+            original_put = store.put
+
+            async def held_put(partition: Any, record: Any) -> None:
+                started.set()
+                await release.wait()
+                await original_put(partition, record)
+
+            monkeypatch.setattr(store, "put", held_put)
+            ended = asyncio.create_task(session.end())
+            try:
+                await asyncio.wait_for(started.wait(), timeout=1)
+                assert not ended.done()
+                assert all(not effect._destroyed for effect in effects)
+            finally:
+                await _finish_held_clear_task(ended, release)
+
+            stored = await FileConversationStore(tmp_path).get(
+                partition, record.id
+            )
+            assert isinstance(stored, ConversationRecordV2)
+            assert [
+                message.as_stored_message().content
+                for message in stored.nodes[exchange_id].messages
+            ] == ["unscheduled tail"]
+            assert stored.nodes[exchange_id].status == "pending"
+            assert all(effect._destroyed for effect in effects)
+            assert save_calls == []
+            assert len(session.messages) == sent_before
 
 
 def test_chat_destroy_without_history_start_is_safe():
@@ -2950,8 +3135,7 @@ async def test_app_output_in_read_only_history_is_displayed_but_not_saved(
                 await stream.append("session-only app output")
 
     assert (
-        chat._transcript.read()[-1].message.content
-        == "session-only app output"
+        chat._transcript.read()[-1].message.content == "session-only app output"
     )
     assert len(session.messages) > messages_before
     assert await store.get(partition, target.id) == stored_before

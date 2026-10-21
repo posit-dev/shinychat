@@ -242,9 +242,7 @@ class _RestoreModeHooks:
 
     # Called with the new conversation id (or None) after any switch that
     # changes the active conversation.
-    on_active_id_change: (
-        Callable[[str | None], Awaitable[None]] | None
-    ) = None
+    on_active_id_change: Callable[[str | None], Awaitable[None]] | None = None
     # Fired after every save with the v2 record the exchange recorder
     # owns; bookmark mode uses it to mint a fresh server bookmark.
     on_response_saved: (
@@ -314,10 +312,11 @@ def _bookmark_restore_hooks(
             if new_state_id is None:
                 return
             try:
-                current, cleanup_state_id = (
-                    await recorder.settle_bookmark_state_id(
-                        conversation_id, node_id, new_state_id
-                    )
+                (
+                    current,
+                    cleanup_state_id,
+                ) = await recorder.settle_bookmark_state_id(
+                    conversation_id, node_id, new_state_id
                 )
             except BaseException:
                 await delete_bookmark_state(new_state_id)
@@ -342,9 +341,7 @@ def _bookmark_restore_hooks(
         if controller.partition is None:
             rec = None
         else:
-            rec = await controller._get_record(
-                controller.partition, conv_id
-            )
+            rec = await controller._get_record(controller.partition, conv_id)
         state_id = rec.bookmark_state_id if rec is not None else None
         if state_id is not None:
             await delete_bookmark_state(state_id)
@@ -380,9 +377,7 @@ class ChatHistory:
         self._controller: HistoryController | None = None
         self._save_callbacks: "list[Callable[[dict[str, Any]], None]]" = []
         self._restore_callbacks: "list[Callable[[dict[str, Any]], None]]" = []
-        self._navigate_callbacks: (
-            "list[Callable[[HistoryNavigateContext], None]]"
-        ) = []
+        self._navigate_callbacks: "list[Callable[[HistoryNavigateContext], None]]" = []
         self._effects: "list[Effect_]" = []
         self._session_end_cancel: "Callable[[], None] | None" = None
         self._on_session_end: "Callable[[], None] | None" = None
@@ -405,16 +400,18 @@ class ChatHistory:
 
     def _history_action_admitted(self) -> bool:
         controller = self._controller
-        return (
-            controller is None
-            or self._initial_history_initialized
-        )
+        return controller is None or self._initial_history_initialized
 
     def _history_submission_admitted(self) -> bool:
         controller = self._controller
         return self._history_action_admitted() and (
             controller is None or not controller._exchange_recorder.read_only
         )
+
+    async def _flush_pending(self) -> None:
+        """Complete captured stream persistence before session cleanup."""
+        if self._controller is not None:
+            await self._controller._exchange_recorder.flush_pending()
 
     def _teardown(self) -> None:
         """
@@ -423,9 +420,10 @@ class ChatHistory:
 
         Destroys the history input effects — which otherwise keep answering the
         shared input ids and retain the old controller for the rest of the
-        session — unregisters the session-end callback, and runs the cleanup
-        that session end would have run. No-op if history never started; safe
-        to call more than once.
+        session — unregisters the session-end callback, and releases pending
+        work. Explicit destruction discards unscheduled stream snapshots;
+        actual session end awaits ``_flush_pending()`` before this cleanup.
+        No-op if history never started; safe to call more than once.
         """
         for effect in self._effects:
             effect.destroy()

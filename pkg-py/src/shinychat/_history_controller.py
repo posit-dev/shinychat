@@ -201,9 +201,7 @@ def _restore_step(step: str) -> Iterator[None]:
     except Exception as error:
         if getattr(error, _RESTORE_STEP_ATTR, None) is None:
             setattr(error, _RESTORE_STEP_ATTR, step)
-            _add_exception_note(
-                error, f"{_RESTORE_STEP_NOTE_PREFIX}{step}"
-            )
+            _add_exception_note(error, f"{_RESTORE_STEP_NOTE_PREFIX}{step}")
         raise
 
 
@@ -424,9 +422,7 @@ class HistoryController:
         ):
             return
         turns_flat = self.adapter.get_turns_json()
-        self._title_task = asyncio.create_task(
-            self.retitle(turns_flat, record)
-        )
+        self._title_task = asyncio.create_task(self.retitle(turns_flat, record))
         self._title_task.add_done_callback(title_task_done)
 
     async def retitle(
@@ -459,9 +455,15 @@ class HistoryController:
         await self.send_history_update()
 
     def cancel_pending(self) -> None:
-        """Cancel in-flight background work (e.g. titling) at teardown."""
+        """Cancel in-flight background work (e.g. titling) at teardown.
+
+        Synchronous destruction is cancellation-only: the recorder drops
+        its unscheduled stream tail (continuation and dirty/urgent marker)
+        without cancelling an already-started put.
+        """
         if self._title_task is not None and not self._title_task.done():
             self._title_task.cancel()
+        self._exchange_recorder.discard_pending()
 
     async def notify_settled(self, restored: bool) -> None:
         """Fires the ``on_settled`` hook.
@@ -560,6 +562,7 @@ class HistoryController:
         self._active_id.set(None)
 
         cleanup_failures: list[BaseException] = []
+
         async def best_effort(operation: Callable[[], Any]) -> None:
             try:
                 result = operation()
@@ -583,10 +586,7 @@ class HistoryController:
             cleanup_failures.append(error)
         else:
             history = getattr(self.chat, "history", None)
-            if (
-                history is not None
-                and not history._initial_history_initialized
-            ):
+            if history is not None and not history._initial_history_initialized:
                 history._initial_history_initialized = True
         try:
             await self._notify_restore_failure(
@@ -827,9 +827,7 @@ class HistoryController:
                 )
         elif kind == "regenerate":
             if target.status != "ok":
-                raise ValueError(
-                    "Only completed exchanges can be regenerated."
-                )
+                raise ValueError("Only completed exchanges can be regenerated.")
         elif kind != "edit":
             raise ValueError(f"Unknown exchange resubmit kind {kind!r}.")
         return target, target.parent_id
@@ -850,7 +848,10 @@ class HistoryController:
         if not isinstance(content, str):
             raise TypeError("Edited message content must be a string.")
         parsed = (
-            [Attachment.model_validate(attachment) for attachment in attachments]
+            [
+                Attachment.model_validate(attachment)
+                for attachment in attachments
+            ]
             if attachments is not None
             else []
         )
@@ -1115,9 +1116,19 @@ class HistoryController:
             async with self._exchange_mutation():
                 if self.on_evict is not None:
                     await self.on_evict(conv_id)
-                await self.store.delete(self.partition, conv_id)
                 exchange_record = self._exchange_recorder.record
-                if exchange_record is not None and exchange_record.id == conv_id:
+                if (
+                    exchange_record is not None
+                    and exchange_record.id == conv_id
+                ):
+                    # Drain the in-flight stream snapshot before deleting so
+                    # it cannot complete afterwards and resurrect the record.
+                    await self._exchange_recorder.drain_stream_put_locked()
+                await self.store.delete(self.partition, conv_id)
+                if (
+                    exchange_record is not None
+                    and exchange_record.id == conv_id
+                ):
                     self._exchange_recorder.reset()
                     await self.clear_active()
                     self.adapter.set_turns_json([])

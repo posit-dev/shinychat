@@ -17,6 +17,8 @@ import asyncio
 import inspect
 import warnings
 from contextlib import contextmanager
+from enum import Enum
+from time import monotonic
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -30,7 +32,7 @@ from typing import (
 from pydantic import JsonValue
 
 from ._chat_transcript import TranscriptEntry
-from ._chat_types import StoredMessage
+from ._chat_types import StoredMessage, StoredSegment, StructuredBlock
 from ._history_client import TurnsAdapter
 from ._history_plan import (
     CaptureContext,
@@ -60,6 +62,33 @@ from ._history_types import (
 
 if TYPE_CHECKING:
     from ._chat import Chat
+
+
+# Minimum interval between ordinary background stream-snapshot writes.
+# Checked on chunk arrival and write completion only; there is no timer.
+_STREAM_WRITE_MIN_INTERVAL = 1.0
+
+_TOOL_BLOCK_TYPES = frozenset({"tool_request", "tool_result"})
+
+
+def _tool_projection(
+    segments: list[StoredSegment | StructuredBlock],
+) -> list[StructuredBlock]:
+    """The structured tool request/result blocks of a captured message."""
+    return [
+        segment
+        for segment in segments
+        if isinstance(segment, dict)
+        and segment.get("type") in _TOOL_BLOCK_TYPES
+    ]
+
+
+class _StreamPending(Enum):
+    """Unsaved stream-tail work known to the recorder."""
+
+    NONE = "none"
+    DIRTY = "dirty"
+    URGENT = "urgent"
 
 
 class RecorderHost(Protocol):
@@ -104,6 +133,15 @@ class _ExchangeRecorder:
         # adapter's turns no longer extend what was last captured.
         self._turn_baseline: list[str] | None = []
         self._active_id_published_for: ConversationRecordV2 | None = None
+        # Throttled stream-persistence state: at most one background put
+        # task (retained after failure as the deferred error carrier), at
+        # most one lock-acquiring continuation chaining a latest-wins
+        # follow-up, a single pending marker, and the monotonic start time
+        # of the last background write. No timer, queue, or second flag.
+        self._put_task: asyncio.Task[None] | None = None
+        self._continuation_task: asyncio.Task[None] | None = None
+        self._pending: _StreamPending = _StreamPending.NONE
+        self._last_write_start: float = float("-inf")
         # Ephemeral flag for the loaded record (never a saved field): a
         # restored record whose saved model context is unavailable is
         # view-only. Captures and message mutations are suppressed so
@@ -350,6 +388,10 @@ class _ExchangeRecorder:
         self._stream_exchanges.clear()
         self._active_id_published_for = None
         self._read_only = read_only
+        # Installation settles the outgoing conversation's tail (the caller
+        # saved it); a later continuation must see no work. A started put
+        # is never cancelled.
+        self.discard_pending()
 
     async def _new_record(self, *, title: str) -> ConversationRecordV2:
         return new_conversation_record_v2(
@@ -385,6 +427,8 @@ class _ExchangeRecorder:
         self._turn_baseline = []
         self._active_id_published_for = None
         self._read_only = False
+        # Clear unscheduled tail work; a started put is never cancelled.
+        self.discard_pending()
 
     @contextmanager
     def suspend_capture(self):
@@ -407,13 +451,167 @@ class _ExchangeRecorder:
                 on_stream_finished=self.stream_finished,
             )
 
+    def _stream_gate_allows(self) -> bool:
+        return (
+            monotonic() - self._last_write_start
+        ) >= _STREAM_WRITE_MIN_INTERVAL
+
+    def _start_stream_put_locked(self) -> None:
+        """Start the single background put on a fresh deep snapshot.
+
+        Called with the recorder lock held: the snapshot is taken here so
+        the put task itself runs entirely outside the lock and never
+        re-acquires it. Starting the write settles everything captured so
+        far, including any urgent work.
+        """
+        record = self.record
+        partition = self._host.partition
+        assert record is not None and partition is not None
+        snapshot = record.model_copy(deep=True)
+        self._pending = _StreamPending.NONE
+        self._last_write_start = monotonic()
+        task = asyncio.create_task(self._host.store.put(partition, snapshot))
+        self._put_task = task
+        task.add_done_callback(self._stream_put_done)
+
+    def _stream_put_done(self, task: asyncio.Task[None]) -> None:
+        if self._put_task is not task:
+            return
+        if task.cancelled():
+            # The recorder never cancels its put; retain the carrier so a
+            # boundary observes the cancellation instead of disowning it.
+            return
+        if task.exception() is not None:
+            # Deferred error carrier: the failure halts further background
+            # writes and is raised once by the next boundary. The tail the
+            # failed snapshot carried is unsaved, so mark it dirty for the
+            # foreground retry (or the final flush).
+            if self._pending is _StreamPending.NONE:
+                self._pending = _StreamPending.DIRTY
+            return
+        self._put_task = None
+        if self._pending is not _StreamPending.NONE:
+            self._chain_stream_continuation()
+
+    def _chain_stream_continuation(self) -> None:
+        continuation = self._continuation_task
+        if continuation is not None and not continuation.done():
+            return
+        self._continuation_task = asyncio.create_task(
+            self._run_stream_continuation()
+        )
+
+    async def _run_stream_continuation(self) -> None:
+        # The one bounded follow-up: recheck pending work under the lock
+        # and snapshot the newest record (latest-wins) instead of queuing
+        # older snapshots. A gated ordinary tail stays pending for the
+        # next chunk or boundary; there is no timer.
+        async with self.lock:
+            if (
+                self.record is None
+                or self._host.partition is None
+                or self._read_only
+                or self._pending is _StreamPending.NONE
+                or self._put_task is not None
+            ):
+                return
+            if (
+                self._pending is _StreamPending.URGENT
+                or self._stream_gate_allows()
+            ):
+                self._start_stream_put_locked()
+
+    async def drain_stream_put_locked(self) -> None:
+        """Await the in-flight background put, raising its failure once.
+
+        Shielded: cancellation of the awaiting boundary propagates but
+        never cancels or disowns the independently running write, and a
+        failed put stops being the error carrier only once its failure
+        has been delivered here.
+        """
+        put = self._put_task
+        if put is None:
+            return
+        try:
+            await asyncio.shield(put)
+        except Exception:
+            self._put_task = None
+            # A boundary can observe a completed failure before the done
+            # callback runs. Retain its unsaved snapshot here as well.
+            if self._pending is _StreamPending.NONE:
+                self._pending = _StreamPending.DIRTY
+            raise
+        self._put_task = None
+
+    def discard_pending(self) -> None:
+        """Synchronous teardown: drop the unscheduled stream tail.
+
+        Cancels the bounded continuation and forgets dirty/urgent work no
+        background write has started on. A started put is never
+        cancelled: it owns a detached deep snapshot and finishes
+        independently.
+        """
+        self._pending = _StreamPending.NONE
+        continuation = self._continuation_task
+        self._continuation_task = None
+        if continuation is not None and not continuation.done():
+            continuation.cancel()
+
+    async def flush_pending(self) -> bool:
+        """Final session flush: save the unsaved captured tail.
+
+        Drains any in-flight background put, then writes the latest
+        snapshot directly when unsaved work remains (a pending tail, or
+        the tail a failed background put carried). Runs no app-state
+        capture, publication, or client messages, and writes nothing when
+        there is no unsaved work. A previously failed background put is
+        still reported after the retry attempt; the flush's own IO
+        errors (and cancellation) propagate to the caller.
+        """
+        if self._host.partition is None:
+            return False
+        async with self.lock:
+            record = self.record
+            partition = self._host.partition
+            assert partition is not None
+            background_error: Exception | None = None
+            try:
+                await self.drain_stream_put_locked()
+            except Exception as error:
+                background_error = error
+            wrote = False
+            if record is not None and self._pending is not _StreamPending.NONE:
+                await self._host.store.put(
+                    partition, record.model_copy(deep=True)
+                )
+                self._pending = _StreamPending.NONE
+                wrote = True
+            if background_error is not None:
+                raise background_error
+            return wrote
+
     async def persist_record_locked(self) -> None:
         record = self.record
         assert record is not None
         record_id = record.id
         partition = self._host.partition
         assert partition is not None
-        await self._host.store.put(partition, record)
+        # Every boundary drains the in-flight stream snapshot first: a
+        # deferred background failure is raised here exactly once, and a
+        # still-running write is shielded rather than disowned.
+        try:
+            await self.drain_stream_put_locked()
+            # The foreground write covers pending chunks and suppresses
+            # any continuation waiting to snapshot the same content.
+            self._pending = _StreamPending.NONE
+            self._last_write_start = monotonic()
+            await self._host.store.put(partition, record)
+        except BaseException:
+            # Boundary mutations precede the drain. Even cancellation while
+            # draining must retain them for a later save or final flush.
+            if self._pending is _StreamPending.NONE:
+                self._pending = _StreamPending.DIRTY
+            raise
         if (
             self.record is not record
             or self._host._active_id_now() != record_id
@@ -661,13 +859,28 @@ class _ExchangeRecorder:
             exchange_id = self._stream_exchanges.get(stream_id)
             if exchange_id is None or self.record is None:
                 return
-            self.record.replace_stream_message(
-                exchange_id,
-                CapturedMessage.from_stored_message(
-                    entry.message, icon=entry.icon
-                ),
+            node = self.record.nodes[exchange_id]
+            captured = CapturedMessage.from_stored_message(
+                entry.message, icon=entry.icon
             )
-            await self.persist_record_locked()
+            # Compare the recorded tool projection with the replacement's
+            # before swapping: newly added or changed tool request/result
+            # blocks make the pending snapshot urgent (gate bypass), while
+            # text appended after an unchanged tool block stays ordinary.
+            urgent = bool(node.messages) and _tool_projection(
+                node.messages[-1].segments
+            ) != _tool_projection(captured.segments)
+            self.record.replace_stream_message(exchange_id, captured)
+            if urgent:
+                self._pending = _StreamPending.URGENT
+            elif self._pending is _StreamPending.NONE:
+                self._pending = _StreamPending.DIRTY
+            # Urgent work stays urgent until a snapshot carrying it starts.
+            if self._put_task is None and (
+                self._pending is _StreamPending.URGENT
+                or self._stream_gate_allows()
+            ):
+                self._start_stream_put_locked()
 
     async def stream_finished(
         self,
