@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
     from ._chat import Chat
     from ._chat_types import ChatGreeting
+    from ._history_types import HistoryNavigateContext
 
 
 @dataclasses.dataclass(frozen=True)
@@ -101,11 +102,17 @@ class HistoryOptions:
         input state alongside the chat.
 
         The ``values`` dict captured by ``@chat.history.on_save`` callbacks
-        is restored by ``@chat.history.on_restore`` in every restore mode,
-        including ``"bookmark"``. Callbacks run after the target conversation
-        becomes active. Raw Shiny input values (sliders, text boxes, etc.) are
+        is recorded per exchange and restored by ``@chat.history.on_restore``
+        in every restore mode, including ``"bookmark"``: the callbacks
+        receive the values recorded at the restored conversation's selected
+        position, after the target conversation becomes active. In-session
+        position moves (edit, retry, regenerate, and sibling navigation) do
+        not fire ``on_restore``; ``@chat.history.on_navigate`` follows them
+        with the recorded values at both the target and the abandoned
+        position. Raw Shiny input values (sliders, text boxes, etc.) are
         not synced automatically; use ``on_restore`` to update them on both
-        page-load restores and in-session switches.
+        page-load restores and in-session switches, and ``on_navigate`` for
+        in-session moves.
     store
         Where conversations are persisted. ``"auto"`` (the default) picks
         ``FileConversationStore`` in most environments and defers to the
@@ -373,6 +380,9 @@ class ChatHistory:
         self._controller: HistoryController | None = None
         self._save_callbacks: "list[Callable[[dict[str, Any]], None]]" = []
         self._restore_callbacks: "list[Callable[[dict[str, Any]], None]]" = []
+        self._navigate_callbacks: (
+            "list[Callable[[HistoryNavigateContext], None]]"
+        ) = []
         self._effects: "list[Effect_]" = []
         self._session_end_cancel: "Callable[[], None] | None" = None
         self._on_session_end: "Callable[[], None] | None" = None
@@ -467,13 +477,23 @@ class ChatHistory:
         """
         Decorator. Register a callback fired whenever the active conversation is saved.
 
-        The callback receives a mutable ``values`` dict; write any per-conversation
-        app state you want to persist into it. Fires on each LLM response (to
-        capture fresh state) and when the user switches to a different conversation::
+        The callback receives a mutable ``values`` dict; write any app
+        state for the active exchange you want to persist into it. Fires on
+        each LLM response (to capture fresh state), at every exchange
+        boundary — before an edit, retry, regenerate, or sibling navigation
+        moves the active position — and when the user switches to a
+        different conversation::
 
             @chat.history.on_save
             def _(values):
                 values["selected_tab"] = current_tab()
+
+        Values are recorded per exchange: the root exchange always records,
+        and later exchanges record only when the values change along their
+        branch. Writing an empty dict records an explicit empty value rather
+        than inheriting the parent exchange's values. Keys must be strings
+        and every value must be JSON-serializable (``NaN`` and non-string
+        keys are rejected, never coerced).
 
         Multiple callbacks can be registered and run in registration order.
         Safe to call before ``enabled = True``.
@@ -495,7 +515,9 @@ class ChatHistory:
         call the appropriate ``ui.update_*()`` functions here.
 
         The callback receives the ``values`` dict that was captured by the
-        corresponding ``on_save`` callback::
+        corresponding ``on_save`` callback at the restored conversation's
+        selected position (a detached copy; mutating it changes nothing
+        stored)::
 
             @chat.history.on_restore
             def _(values):
@@ -520,12 +542,50 @@ class ChatHistory:
         In-session rewinds (resubmits, edits, and sibling navigation)
         reapply only *recorded* prompt changes. Moving between positions
         with the same recorded prompt leaves the live override untouched.
+        Those in-session moves do not fire ``on_restore``; register
+        ``on_navigate`` to follow them.
 
         Multiple callbacks can be registered and run in registration order.
         Safe to call before ``enabled = True``.
 
         """
         self._restore_callbacks.append(fn)
+        return fn
+
+    def on_navigate(
+        self, fn: "Callable[[HistoryNavigateContext], None]"
+    ) -> "Callable[[HistoryNavigateContext], None]":
+        """
+        Decorator. Register a callback fired after an in-session position move.
+
+        Fires after an edit, retry, regenerate, or sibling navigation has
+        completed — the display, server transcript, and model context are
+        already rewound — but before any resubmitted exchange starts, so app
+        state synced here is visible to the replacement response. Use it to
+        keep auxiliary UI state (filters, tabs, selectors) aligned with the
+        exchange the user is looking at::
+
+            @chat.history.on_navigate
+            def _(context):
+                ui.update_text("filter", value=context.values.get("filter"))
+
+        The callback receives a frozen
+        :class:`~shinychat.types.HistoryNavigateContext` naming the
+        ``reason`` (``"edit"``, ``"retry"``, ``"regenerate"``, or
+        ``"navigate"``), the target exchange (``exchange_id``) and the
+        exchange being left (``previous_exchange_id``), plus detached
+        ``values``/``previous_values`` snapshots recorded at those
+        positions. Page-load restores and conversation switches do not fire
+        this hook — use ``on_restore`` for those.
+
+        A failing callback warns the developer and shows at most one generic
+        user notification; the completed move is kept and the remaining
+        callbacks still run.
+
+        Multiple callbacks can be registered and run in registration order.
+        Safe to call before ``enabled = True``.
+        """
+        self._navigate_callbacks.append(fn)
         return fn
 
     def setup_greeting(
@@ -591,6 +651,7 @@ class ChatHistory:
             client=chat_client,
             save_callbacks=self._save_callbacks,
             restore_callbacks=self._restore_callbacks,
+            navigate_callbacks=self._navigate_callbacks,
             max_store_bytes=max_store_bytes,
         )
         self._controller = controller

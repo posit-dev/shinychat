@@ -21,6 +21,7 @@ from shinychat._history_store import (
     sanitize_scope,
 )
 from shinychat._history_types import (
+    VALUES_STATE_KEY,
     ConversationNode,
     ConversationRecordV1,
     ConversationRecordV2,
@@ -1154,7 +1155,15 @@ def test_metadata_is_carried_verbatim() -> None:
     assert imported.title_source == "user"
     assert imported.response_count == 3
     assert imported.client_info == {"provider": "openai", "model": "gpt-4o"}
-    assert imported.values == {"slider": "42"}
+    # The v1 conversation-level values land as a `shinychat:values` entry
+    # on the imported active leaf.
+    leaf = imported.active_leaf
+    assert leaf is not None
+    entry = imported.nodes[leaf].state[VALUES_STATE_KEY]
+    assert entry.kind == "values"
+    assert entry.version == 1
+    assert entry.mode == "snapshot"
+    assert entry.data == {"slider": "42"}
     assert imported.bookmark_state_id == "abc123"
     assert imported.next_node_seq == 7
     assert imported.id == record.id
@@ -1319,5 +1328,9 @@ async def test_imports_v1_records_from_every_released_writer(
     assert imported.title == v1.title
     assert imported.response_count == v1.response_count
     assert imported.client_info == v1.client_info
-    assert imported.values == v1.values
+    # The released v1 values object lands on the imported active leaf,
+    # even when empty: an empty object is an explicit value.
+    leaf = imported.active_leaf
+    assert leaf is not None
+    assert imported.nodes[leaf].state[VALUES_STATE_KEY].data == v1.values
     assert imported.bookmark_state_id == v1.bookmark_state_id

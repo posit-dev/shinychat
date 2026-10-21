@@ -19,6 +19,7 @@ from shinychat._history_store import (
 from shinychat._history_types import (
     SYSTEM_PROMPT_STATE_KEY,
     TURNS_STATE_KEY,
+    VALUES_STATE_KEY,
     ConversationRecordV2,
     StateEntry,
     new_conversation_record_v2,
@@ -956,9 +957,12 @@ async def test_system_prompt_generic_client_without_prompt_unchanged():
     )
     record = recorder.record
     assert record is not None
-    # State stays exactly the turns entry; no prompt key appears.
+    # No prompt key appears; state carries only the turns entry and the
+    # builtin per-exchange values entry.
     for node in record.nodes.values():
-        assert set(node.state) == {TURNS_STATE_KEY}
+        assert TURNS_STATE_KEY in node.state
+        assert SYSTEM_PROMPT_STATE_KEY not in node.state
+        assert set(node.state) <= {TURNS_STATE_KEY, VALUES_STATE_KEY}
 
     restored, restored_client = _make_prompt_controller(client=_PlainClient())
     await replay_exchange_record(restored, record)

@@ -28,6 +28,14 @@
           "data": [
             "<system turn>"
           ]
+        },
+        "shinychat:values": {
+          "kind": "values",
+          "version": 1,
+          "mode": "snapshot",
+          "data": {
+            "filter": "all"
+          }
         }
       },
       "error": null
@@ -145,6 +153,14 @@
             "<user turn>",
             "<assistant turn>"
           ]
+        },
+        "shinychat:values": {
+          "kind": "values",
+          "version": 1,
+          "mode": "snapshot",
+          "data": {
+            "filter": "west"
+          }
         }
       },
       "error": null
@@ -175,6 +191,5 @@
   },
   "next_node_seq": 5,
   "active_leaf": "x_04",
-  "values": {},
   "bookmark_state_id": null
 }
