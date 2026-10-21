@@ -137,7 +137,7 @@ class _ExchangeRecorder:
         # task (retained after failure as the deferred error carrier), at
         # most one lock-acquiring continuation chaining a latest-wins
         # follow-up, a single pending marker, and the monotonic start time
-        # of the last background write. No timer, queue, or second flag.
+        # of the last write. No timer, queue, or second flag.
         self._put_task: asyncio.Task[None] | None = None
         self._continuation_task: asyncio.Task[None] | None = None
         self._pending: _StreamPending = _StreamPending.NONE

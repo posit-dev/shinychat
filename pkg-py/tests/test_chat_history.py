@@ -2985,23 +2985,58 @@ async def test_session_end_waits_for_history_flush_before_cleanup(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize(
-    "error", [RuntimeError("final save failed"), asyncio.CancelledError()]
-)
-async def test_session_end_flush_failure_still_cleans_up(
-    error: BaseException, monkeypatch: pytest.MonkeyPatch
+async def test_session_end_flush_error_is_logged_and_later_cleanup_runs(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     session = _LiveSession()
     chat = _make_live_chat("failed_end_flush", cast(Any, session))
     history = chat.history
     assert history._controller is not None
     effects = list(history._effects)
+    error = RuntimeError("final save failed")
+    flush = AsyncMock(side_effect=error)
+    monkeypatch.setattr(history, "_flush_pending", flush)
+    cleanup = MagicMock()
+    monkeypatch.setattr(history._controller, "cancel_pending", cleanup)
+    later: list[str] = []
+    session.on_ended(lambda: later.append("later cleanup"))
+
+    # Developer reporting must not stop Shiny's callback chain, including
+    # when application warning filters turn warnings into exceptions.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        await session.end()
+
+    flush.assert_awaited_once()
+    assert later == ["later cleanup"]
+    assert any(
+        record.exc_info is not None and record.exc_info[1] is error
+        for record in caplog.records
+    )
+    assert "failed_end_flush" in caplog.text
+    assert all(effect._destroyed for effect in effects)
+    assert history._on_session_end is None
+    cleanup.assert_called_once()
+    chat.destroy()
+    cleanup.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_session_end_cancellation_still_cleans_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _LiveSession()
+    chat = _make_live_chat("cancelled_end_flush", cast(Any, session))
+    history = chat.history
+    assert history._controller is not None
+    effects = list(history._effects)
+    error = asyncio.CancelledError()
     flush = AsyncMock(side_effect=error)
     monkeypatch.setattr(history, "_flush_pending", flush)
     cleanup = MagicMock()
     monkeypatch.setattr(history._controller, "cancel_pending", cleanup)
 
-    with pytest.raises(type(error)) as caught:
+    with pytest.raises(asyncio.CancelledError) as caught:
         await session.end()
 
     assert caught.value is error

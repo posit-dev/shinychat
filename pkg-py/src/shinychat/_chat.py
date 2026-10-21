@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import logging
 import math
 import os
 import re
@@ -2835,6 +2836,13 @@ class Chat:
         # pending persistence before destroy() unregisters that cleanup.
         try:
             await self.history._flush_pending()
+        except Exception:
+            # Shiny stops its end-callback chain on an exception. Report
+            # storage errors without skipping other Chats or user cleanup.
+            logging.getLogger(__name__).exception(
+                "Failed to flush captured history for chat %r before cleanup",
+                self.id,
+            )
         finally:
             self.destroy()
 
