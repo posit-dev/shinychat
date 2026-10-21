@@ -463,6 +463,25 @@ def test_openai_normalization():
     assert m.role == "assistant"
 
 
+def test_openai_chunk_without_choices_normalization():
+    from openai.types.chat import ChatCompletionChunk
+
+    # With `stream_options={"include_usage": True}`, the last chunk has no
+    # choices (it only carries usage)
+    chunk = ChatCompletionChunk(
+        id="foo",
+        object="chat.completion.chunk",
+        model="gpt-4o",
+        created=int(datetime.now().timestamp()),
+        choices=[],
+        usage={"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+    )
+
+    m = message_content_chunk(chunk)
+    assert not m.content
+    assert m.role == "assistant"
+
+
 def test_ollama_normalization():
     from ollama import ChatResponse
     from ollama import Message as OllamaMessage

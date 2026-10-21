@@ -646,6 +646,10 @@ try:
 
     @message_content_chunk.register
     def _(chunk: ChatCompletionChunk):
+        # Some chunks carry no choices, e.g. the final usage chunk sent with
+        # `stream_options={"include_usage": True}`, or Azure's content-filter chunk
+        if not chunk.choices:
+            return ChatMessage(content=None, role="assistant")
         return ChatMessage(
             content=chunk.choices[0].delta.content,
             role="assistant",
