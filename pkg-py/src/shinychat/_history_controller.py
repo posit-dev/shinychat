@@ -201,7 +201,9 @@ def _restore_step(step: str) -> Iterator[None]:
     except Exception as error:
         if getattr(error, _RESTORE_STEP_ATTR, None) is None:
             setattr(error, _RESTORE_STEP_ATTR, step)
-            _add_exception_note(error, f"{_RESTORE_STEP_NOTE_PREFIX}{step}")
+            _add_exception_note(
+                error, f"{_RESTORE_STEP_NOTE_PREFIX}{step}"
+            )
         raise
 
 
@@ -422,7 +424,9 @@ class HistoryController:
         ):
             return
         turns_flat = self.adapter.get_turns_json()
-        self._title_task = asyncio.create_task(self.retitle(turns_flat, record))
+        self._title_task = asyncio.create_task(
+            self.retitle(turns_flat, record)
+        )
         self._title_task.add_done_callback(title_task_done)
 
     async def retitle(
@@ -586,7 +590,10 @@ class HistoryController:
             cleanup_failures.append(error)
         else:
             history = getattr(self.chat, "history", None)
-            if history is not None and not history._initial_history_initialized:
+            if (
+                history is not None
+                and not history._initial_history_initialized
+            ):
                 history._initial_history_initialized = True
         try:
             await self._notify_restore_failure(
@@ -827,7 +834,9 @@ class HistoryController:
                 )
         elif kind == "regenerate":
             if target.status != "ok":
-                raise ValueError("Only completed exchanges can be regenerated.")
+                raise ValueError(
+                    "Only completed exchanges can be regenerated."
+                )
         elif kind != "edit":
             raise ValueError(f"Unknown exchange resubmit kind {kind!r}.")
         return target, target.parent_id
@@ -848,10 +857,7 @@ class HistoryController:
         if not isinstance(content, str):
             raise TypeError("Edited message content must be a string.")
         parsed = (
-            [
-                Attachment.model_validate(attachment)
-                for attachment in attachments
-            ]
+            [Attachment.model_validate(attachment) for attachment in attachments]
             if attachments is not None
             else []
         )

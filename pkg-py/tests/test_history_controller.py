@@ -215,7 +215,9 @@ def test_strip_attachment_content_keeps_empty_attachment_only_message():
 
     cleaned = _strip_attachment_content(stored)
 
-    assert cleaned["segments"] == [{"content": "", "content_type": "markdown"}]
+    assert cleaned["segments"] == [
+        {"content": "", "content_type": "markdown"}
+    ]
     assert cleaned.get("attachment_content_stripped") is True
 
 
@@ -332,9 +334,7 @@ class _RealHistorySession(_RealChatSession):
 class _SameFlushHistoryClient:
     def __init__(self) -> None:
         self.turns: list[dict[str, Any]] = []
-        self.stream_calls: list[
-            tuple[str, tuple[Any, ...], dict[str, Any]]
-        ] = []
+        self.stream_calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
         self.stream_started = asyncio.Event()
         self.release_stream = asyncio.Event()
 
@@ -546,7 +546,9 @@ def test_v2_recorder_rejects_non_string_mapping_keys_recursively(
 
 
 def test_v2_recorder_string_key_reordering_keeps_a_stable_prefix():
-    _, baseline = canonical_turns([{"one": "one", "two": {"nested": "value"}}])
+    _, baseline = canonical_turns(
+        [{"one": "one", "two": {"nested": "value"}}]
+    )
     _, current = canonical_turns(
         [
             {"two": {"nested": "value"}, "one": "one"},
@@ -797,10 +799,7 @@ def _turns_layer_json(record: ConversationRecordV2) -> str:
     """Serialize every node's recorded state entries (the model layer)."""
     return json.dumps(
         {
-            node_id: {
-                name: entry.model_dump(mode="json")
-                for name, entry in node.state.items()
-            }
+            node_id: {name: entry.model_dump(mode="json") for name, entry in node.state.items()}
             for node_id, node in record.nodes.items()
         }
     )
@@ -1199,9 +1198,7 @@ async def test_restore_bookmark_message_warns_on_unknown_block_type() -> None:
         )
 
         message_actions = [
-            item["action"]
-            for item in sent
-            if item["action"]["type"] == "message"
+            item["action"] for item in sent if item["action"]["type"] == "message"
         ]
         assert len(message_actions) == 1
         wire_segments = message_actions[0]["message"]["segments"]
@@ -1220,9 +1217,7 @@ async def test_restore_bookmark_message_warns_on_unknown_block_type() -> None:
         )
 
         # The message action carries the segment's html_deps to the transport.
-        message_items = [
-            item for item in sent if item["action"]["type"] == "message"
-        ]
+        message_items = [item for item in sent if item["action"]["type"] == "message"]
         assert len(message_items) == 1
         assert {"name": "seg-dep"} in (message_items[0]["deps"] or [])
 
@@ -1435,10 +1430,9 @@ async def test_v2_new_chat_closes_old_record_and_starts_fresh():
     ]
     # The root always records its values ({} without `on_save`
     # callbacks); descendants inherit and record nothing.
-    assert (
-        stored_closed.nodes[stored_closed.root_id].state[VALUES_STATE_KEY].data
-        == {}
-    )
+    assert stored_closed.nodes[stored_closed.root_id].state[
+        VALUES_STATE_KEY
+    ].data == {}
     assert all(
         VALUES_STATE_KEY not in node.state
         for nid, node in stored_closed.nodes.items()
@@ -2502,9 +2496,7 @@ async def test_v2_same_flush_input_and_history_selection_preserves_source_dispat
         ] == [("source input", [attachment])]
         assert public_calls == [("source input", [attachment])]
         assert len(client.stream_calls) == 1
-        provider_text, provider_contents, provider_kwargs = client.stream_calls[
-            0
-        ]
+        provider_text, provider_contents, provider_kwargs = client.stream_calls[0]
         assert provider_text == "source input"
         assert provider_kwargs["content"] == "all"
         assert len(provider_contents) == 1
@@ -2615,9 +2607,9 @@ async def test_v2_same_flush_failed_capture_and_history_selection_restores_targe
             assert chat._normal_user_submission() is None
         assert recorder.record is target
         assert controller._active_id_now() == target.id
-        assert [entry.message.content for entry in chat._transcript.read()] == [
-            "target input"
-        ]
+        assert [
+            entry.message.content for entry in chat._transcript.read()
+        ] == ["target input"]
         stored_target = await store.get(controller.partition, target.id)
         assert isinstance(stored_target, ConversationRecordV2)
         assert stored_target.model_dump(mode="json") == target_before
@@ -2681,7 +2673,9 @@ async def test_v2_switch_rejects_active_attached_provider_without_mutating_sourc
     provider_chunk = object()
     provider_text = "terminal response"
 
-    provider.stream_merge_chunks.side_effect = lambda _completion, chunk: chunk
+    provider.stream_merge_chunks.side_effect = (
+        lambda _completion, chunk: chunk
+    )
     provider.stream_content.return_value = [ContentText(text=provider_text)]
     provider.stream_turn.return_value = AssistantTurn(
         contents=[ContentText(text=provider_text)]
@@ -2760,7 +2754,8 @@ async def test_v2_switch_rejects_active_attached_provider_without_mutating_sourc
         target_store = target.model_dump(mode="json")
 
         assert [
-            (message["role"], message["content"]) for message in source_display
+            (message["role"], message["content"])
+            for message in source_display
         ] == [("user", "source"), ("assistant", "")]
         assert [turn.get("role") for turn in source_turns] == [
             "user",
@@ -3755,9 +3750,7 @@ async def test_v2_resubmit_projection_failure_names_the_step():
 
     original_send = chat._send_action
 
-    async def fail_projection_send(
-        action: dict[str, Any], *args: Any, **kwargs: Any
-    ) -> Any:
+    async def fail_projection_send(action: dict[str, Any], *args: Any, **kwargs: Any) -> Any:
         if action.get("type") == "history_edit_projection":
             raise expected
         return await original_send(action, *args, **kwargs)
@@ -3846,10 +3839,7 @@ async def test_v2_resubmit_rejects_missing_partition_before_mutation():
 @pytest.mark.parametrize(
     ("data", "match"),
     [
-        (
-            ["not a turn"],
-            "Turn-state entries must contain a list of JSON objects",
-        ),
+        (["not a turn"], "Turn-state entries must contain a list of JSON objects"),
         ([{1: "not a JSON object"}], "Non-string mapping key"),
     ],
 )
@@ -4105,7 +4095,9 @@ async def test_v2_initial_restore_second_guard_failure_recovers(
         finally:
             fake_chat._destructive_history_transaction = None
 
-    fake_chat._destructive_history_mutation = admit_destructive  # type: ignore[method-assign]
+    fake_chat._destructive_history_mutation = (
+        admit_destructive  # type: ignore[method-assign]
+    )
 
     @asynccontextmanager
     async def fail_exchange_mutation():
@@ -4573,9 +4565,7 @@ async def test_v2_restore_cleanup_continues_after_earlier_failure():
     async def metadata() -> None:
         events.append("metadata")
 
-    async def notify(
-        *, recovery_incomplete: bool, detail: str | None = None
-    ) -> None:
+    async def notify(*, recovery_incomplete: bool, detail: str | None = None) -> None:
         assert recovery_incomplete
         events.append("notification")
 
@@ -5991,13 +5981,9 @@ async def test_v2_navigation_cancellation_clears_to_fresh_draft(
         assert store.put_calls[0][1].active_leaf == original
         assert replayed_display == [
             _stored_message("user", "first").model_dump(mode="json"),
-            _stored_message("assistant", "custom prefix").model_dump(
-                mode="json"
-            ),
+            _stored_message("assistant", "custom prefix").model_dump(mode="json"),
             _stored_message("user", "original").model_dump(mode="json"),
-            _stored_message("assistant", "original reply").model_dump(
-                mode="json"
-            ),
+            _stored_message("assistant", "original reply").model_dump(mode="json"),
         ]
         assert chat.clear_messages_calls == 2
         assert chat.set_greeting_calls == [None, None]
@@ -6133,9 +6119,7 @@ async def test_v2_navigation_preflights_selected_path_before_mutation():
 
 
 @pytest.mark.anyio
-async def test_v2_bookmark_pointer_restores_selected_sibling_and_persists() -> (
-    None
-):
+async def test_v2_bookmark_pointer_restores_selected_sibling_and_persists() -> None:
     controller, chat, adapter, store, original, replacement = (
         _make_v2_navigation_controller()
     )
@@ -6167,9 +6151,7 @@ async def test_v2_bookmark_pointer_restores_selected_sibling_and_persists() -> (
 
 
 @pytest.mark.anyio
-async def test_v2_bookmark_pointer_stale_node_fails_preflight_and_resets_to_fresh_draft() -> (
-    None
-):
+async def test_v2_bookmark_pointer_stale_node_fails_preflight_and_resets_to_fresh_draft() -> None:
     controller, chat, adapter, store, _original, _replacement = (
         _make_v2_navigation_controller()
     )
@@ -6276,8 +6258,8 @@ async def test_v2_resubmit_rewinds_parent_prefix_and_new_input_creates_sibling()
     record = recorder.record
     assert record is not None
     target_input = record.nodes[target].input.model_copy(deep=True)  # type: ignore[union-attr]
-    target_state = (
-        record.nodes[target].state["shinychat:turns"].model_copy(deep=True)
+    target_state = record.nodes[target].state["shinychat:turns"].model_copy(
+        deep=True
     )
 
     await controller.resubmit(
@@ -6435,9 +6417,7 @@ async def test_v2_resubmit_syncs_real_server_transcript_to_parent_prefix(
     and legacy flat-message bookmark serialization match the visible
     conversation instead of retaining abandoned messages."""
     controller, chat, _adapter, _store, first, target = (
-        _make_v2_resubmit_real_chat(
-            request, chat_id=f"resubmit_transcript_{kind}"
-        )
+        _make_v2_resubmit_real_chat(request, chat_id=f"resubmit_transcript_{kind}")
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -6689,9 +6669,7 @@ async def test_v2_edit_resubmit_forwards_validated_attachment_copy():
 
 
 @pytest.mark.anyio
-async def test_v2_edit_nonleaf_rewinds_to_root_and_preserves_old_branch() -> (
-    None
-):
+async def test_v2_edit_nonleaf_rewinds_to_root_and_preserves_old_branch() -> None:
     controller, chat, adapter, store, first, target = (
         _make_v2_resubmit_controller()
     )
@@ -6719,9 +6697,7 @@ async def test_v2_edit_nonleaf_rewinds_to_root_and_preserves_old_branch() -> (
 
 
 @pytest.mark.anyio
-async def test_v2_edit_projection_delivery_failure_clears_to_fresh_draft() -> (
-    None
-):
+async def test_v2_edit_projection_delivery_failure_clears_to_fresh_draft() -> None:
     controller, chat, adapter, _store, _first, _target = (
         _make_v2_resubmit_controller()
     )
@@ -6762,9 +6738,7 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
     cleanup_entry: list[tuple[Any, ...]] = []
     original_clear_failed_restore = controller._clear_failed_restore
 
-    async def capture_cleanup_entry(
-        failure: BaseException | None = None,
-    ) -> None:
+    async def capture_cleanup_entry(failure: BaseException | None = None) -> None:
         cleanup_entry.append(
             (
                 failure,
@@ -7096,9 +7070,8 @@ async def test_v2_error_detail_is_absent_for_inputless_error_node() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_error_projection_does_not_mutate_failed_node_with_partial_display() -> (
-    None
-):
+async def test_v2_error_projection_does_not_mutate_failed_node_with_partial_display(
+) -> None:
     controller, chat, _adapter, _store, first, target = (
         _make_v2_resubmit_controller()
     )
@@ -8680,7 +8653,9 @@ async def test_same_scope_different_chat_ids_are_isolated():
         chat_id="chat-b", scope="browser-1"
     )
 
-    assert await store.get(controller_a.partition, record_a.id) is not None
+    assert (
+        await store.get(controller_a.partition, record_a.id) is not None
+    )
     assert await store.get(controller_b.partition, record_a.id) is None
     assert await store.list(controller_b.partition) == []
 
@@ -9222,7 +9197,9 @@ async def test_v2_titling_fires_after_second_input_exchange_and_publishes():
     update = fake_chat.actions[-1]
     assert update["type"] == "history_update"
     assert update["active_id"] == record.id
-    assert [c["title"] for c in update["conversations"]] == ["Generated Title"]
+    assert [c["title"] for c in update["conversations"]] == [
+        "Generated Title"
+    ]
 
 
 @pytest.mark.anyio
@@ -9670,7 +9647,9 @@ async def _released_v1_record(
 ) -> tuple[ConversationRecordV1, dict[str, Any]]:
     """The py 0.7.0 matrix case as a v1 record, plus its pinned expectation."""
     cases = json.loads(_MATRIX_PATH.read_text(encoding="utf-8"))
-    case = next(c for c in cases if c["name"] == "py_0_7_0_versioned_ui")
+    case = next(
+        c for c in cases if c["name"] == "py_0_7_0_versioned_ui"
+    )
     conv_id = json.loads(case["files"]["record.json"])["id"]
     conv_dir = (
         tmp_path
@@ -9950,7 +9929,9 @@ async def test_lossy_v1_import_warns_once_per_session_per_conversation():
     store.records["c_lossy_2"] = _lossy_v1_record(id="c_lossy_2")
     with pytest.warns(UserWarning) as caught_second:
         await controller._get_record(part(), "c_lossy_2")
-    assert [str(w.message) for w in caught_second] == _lossy_warns("c_lossy_2")
+    assert [str(w.message) for w in caught_second] == _lossy_warns(
+        "c_lossy_2"
+    )
 
     # Per session: a fresh controller over the same store warns again for
     # the same conversation.

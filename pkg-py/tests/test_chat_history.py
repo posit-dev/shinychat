@@ -288,9 +288,7 @@ class _MockBookmark:
 
         return cancel
 
-    def on_bookmarked(
-        self, callback: Callable[[str], Any]
-    ) -> Callable[[], None]:
+    def on_bookmarked(self, callback: Callable[[str], Any]) -> Callable[[], None]:
         self.bookmarked_callbacks.append(callback)
 
         def cancel() -> None:
@@ -453,9 +451,7 @@ async def test_history_disabled_publishes_one_initial_withdrawal(
 
 
 @pytest.mark.anyio
-async def test_chat_without_client_publishes_initial_history_withdrawal() -> (
-    None
-):
+async def test_chat_without_client_publishes_initial_history_withdrawal() -> None:
     session = _LiveSession()
     with session_context(cast(Any, session)):
         chat = Chat("history_unavailable_without_client")
@@ -629,9 +625,7 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
 
 
 @pytest.mark.anyio
-async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> (
-    None
-):
+async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> None:
     chat_id = "initial_readiness_cleanup_send_failure"
     session = _LiveSession()
     store = InMemoryConversationStore()
@@ -761,9 +755,7 @@ async def test_v2_initial_readiness_flips_after_history_update_send() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_successful_bookmark_pointer_suppresses_then_admits_root_append() -> (
-    None
-):
+async def test_v2_successful_bookmark_pointer_suppresses_then_admits_root_append() -> None:
     chat_id = "initial_bookmark_pointer_boundary"
     session = _LiveSession()
     session.bookmark.store = "server"
@@ -977,9 +969,7 @@ async def test_v2_server_bookmark_stamps_atomic_history_pointer_only() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_stale_server_bookmark_pointer_notifies_and_keeps_draft() -> (
-    None
-):
+async def test_v2_stale_server_bookmark_pointer_notifies_and_keeps_draft() -> None:
     session = _LiveSession()
     session.bookmark.store = "server"
     session.bookmark._restore_context = MagicMock(
@@ -1273,9 +1263,7 @@ async def test_v2_initial_restore_failure_real_effect_recovers_without_session_e
 
 
 @pytest.mark.anyio
-async def test_v2_bookmark_initial_restore_failure_clears_url_without_reload() -> (
-    None
-):
+async def test_v2_bookmark_initial_restore_failure_clears_url_without_reload() -> None:
     """Bookmark-mode cleanup of a failed initial restore clears the stale
     ``?_state_id_=`` query with a soft navigation — not the hard reload the
     intentional New chat path uses, which would discard the recovered
@@ -1477,9 +1465,7 @@ async def test_v2_failed_switch_notifies_once_with_sanitized_message() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_select_missing_conversation_still_notifies_rejection() -> (
-    None
-):
+async def test_v2_select_missing_conversation_still_notifies_rejection() -> None:
     """Ordinary pre-restore rejections (no restore cleanup ran) keep their
     direct notification: the handled-failure marker only suppresses the
     duplicate toast after a cleanup already notified."""
@@ -1775,9 +1761,7 @@ async def test_v2_recovered_initial_error_does_not_hide_a_later_rejection(
 
 
 @pytest.mark.anyio
-async def test_v2_initial_restore_preflight_cancellation_recovers_once() -> (
-    None
-):
+async def test_v2_initial_restore_preflight_cancellation_recovers_once() -> None:
     chat_id = "initial_preflight_cancel"
     session = _LiveSession()
     store = InMemoryConversationStore()
@@ -2019,9 +2003,7 @@ async def test_v2_bookmark_settlement_updates_url_and_deletes_replaced_state() -
     assert controller is not None
     recorder = controller._exchange_recorder
     assert recorder is not None
-    controller.partition = ConversationPartition(
-        chat_id="bookmark_settlement", scope="test"
-    )
+    controller.partition = ConversationPartition(chat_id="bookmark_settlement", scope="test")
     record = new_conversation_record_v2(
         title="pointer",
         id="c_pointer",
@@ -2053,10 +2035,9 @@ async def test_v2_bookmark_settlement_updates_url_and_deletes_replaced_state() -
             }
         },
     ]
-    assert [message["action"]["url"] for message in session.messages] == [
-        "?_state_id_=state-first",
-        "?_state_id_=state-second",
-    ]
+    assert [
+        message["action"]["url"] for message in session.messages
+    ] == ["?_state_id_=state-first", "?_state_id_=state-second"]
 
 
 @pytest.mark.anyio
@@ -2659,8 +2640,12 @@ async def test_v2_client_new_chat_closes_record_and_renews_greeting(
             ]
             # ...the configured greeting is resolved again for the fresh
             # conversation (the greeting stays the ambient slot)...
-            greeting_actions = [a for a in actions if a["type"] == "greeting"]
-            assert [a.get("content") for a in greeting_actions] == ["## Hello"]
+            greeting_actions = [
+                a for a in actions if a["type"] == "greeting"
+            ]
+            assert [a.get("content") for a in greeting_actions] == [
+                "## Hello"
+            ]
             # ...and the closed record stays listed with no active conversation.
             updates = [a for a in actions if a["type"] == "history_update"]
             assert updates
@@ -3170,7 +3155,8 @@ async def test_app_output_in_read_only_history_is_displayed_but_not_saved(
                 await stream.append("session-only app output")
 
     assert (
-        chat._transcript.read()[-1].message.content == "session-only app output"
+        chat._transcript.read()[-1].message.content
+        == "session-only app output"
     )
     assert len(session.messages) > messages_before
     assert await store.get(partition, target.id) == stored_before

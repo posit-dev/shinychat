@@ -714,7 +714,9 @@ def test_v2_terminal_metadata_uses_registered_response_settlement_callback(
         def root_scope(self) -> "_HistorySession":
             return self
 
-        async def send_custom_message(self, type: str, message: Any) -> None:
+        async def send_custom_message(
+            self, type: str, message: Any
+        ) -> None:
             self.sent.append(message["action"])
 
     class _HistoryAdapter:
@@ -2934,7 +2936,9 @@ def test_nested_stream_context_inside_append_message_stream_works():
         action["type"] for action in sent if action["type"] != "history_update"
     ]
     assert types[0] == "chunk_start" and types[-1] == "chunk_end"
-    contents = [entry.message.content for entry in chat._transcript.read()]
+    contents = [
+        entry.message.content for entry in chat._transcript.read()
+    ]
     assert len(contents) == 1 and "inner" in contents[0]
 
 
@@ -4793,7 +4797,9 @@ def test_bookmark_legacy_path_persists_ui_for_state_only_client():
     with session_context(session):
         chat = Chat(id="chat_bm_legacy")
         chat.enable_bookmarking(_StateOnlyClient(), bookmark_on=None)
-        chat._record_accepted_user_input(ChatMessage(content="hi", role="user"))
+        chat._record_accepted_user_input(
+            ChatMessage(content="hi", role="user")
+        )
 
     bookmark = cast(Any, session).bookmark
 
