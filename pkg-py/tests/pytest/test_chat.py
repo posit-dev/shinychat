@@ -393,6 +393,50 @@ def test_anthropic_normalization():
     assert m.role == "assistant"
 
 
+def test_anthropic_normalization_skips_non_text_blocks():
+    if sys.version_info < (3, 11):
+        pytest.skip("Anthropic is only available for Python 3.11+")
+
+    from anthropic.types import (  # pyright: ignore[reportMissingImports]
+        InputJSONDelta,
+        Message,
+        TextBlock,
+        ThinkingBlock,
+        ThinkingDelta,
+        ToolUseBlock,
+        Usage,
+    )
+    from anthropic.types.raw_content_block_delta_event import (  # pyright: ignore[reportMissingImports]
+        RawContentBlockDeltaEvent,
+    )
+
+    # A response that starts with thinking and ends with a tool call
+    msg = Message(
+        content=[
+            ThinkingBlock(type="thinking", thinking="Hmm.", signature="sig"),
+            TextBlock(type="text", text="Let me "),
+            TextBlock(type="text", text="check."),
+            ToolUseBlock(type="tool_use", id="t1", name="lookup", input={}),
+        ],
+        role="assistant",
+        id="foo",
+        type="message",
+        model="foo",
+        usage=Usage(input_tokens=0, output_tokens=0),
+    )
+    assert message_content(msg).content == "Let me check."
+
+    # Deltas that are not text add nothing to the response
+    for delta in (
+        ThinkingDelta(type="thinking_delta", thinking="Hmm."),
+        InputJSONDelta(type="input_json_delta", partial_json='{"a"'),
+    ):
+        chunk = RawContentBlockDeltaEvent(
+            delta=delta, type="content_block_delta", index=0
+        )
+        assert message_content_chunk(chunk).content == ""
+
+
 def test_openai_normalization():
     import openai.types.chat.chat_completion as cc
     import openai.types.chat.chat_completion_chunk as ccc

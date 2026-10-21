@@ -665,13 +665,12 @@ try:
 
     @message_content.register
     def _(message: AnthropicMessage):
-        content = message.content[0]
-        if content.type != "text":
-            raise ValueError(
-                f"Anthropic message type {content.type} not supported. "
-                "Only 'text' type is currently supported"
-            )
-        return ChatMessage(content=content.text)
+        # A response can start with a thinking block, or hold tool calls; only
+        # the text blocks are shown.
+        text = "".join(
+            block.text for block in message.content if block.type == "text"
+        )
+        return ChatMessage(content=text)
 
     # Old versions of singledispatch doesn't seem to support union types
     if sys.version_info >= (3, 11):
@@ -682,12 +681,12 @@ try:
         @message_content_chunk.register
         def _(chunk: RawMessageStreamEvent):
             content = ""
-            if chunk.type == "content_block_delta":
-                if chunk.delta.type != "text_delta":
-                    raise ValueError(
-                        f"Anthropic message delta type {chunk.delta.type} not supported. "
-                        "Only 'text_delta' type is supported"
-                    )
+            # Other deltas (thinking, tool call arguments, citations) carry no
+            # text for the chat.
+            if (
+                chunk.type == "content_block_delta"
+                and chunk.delta.type == "text_delta"
+            ):
                 content = chunk.delta.text
 
             return ChatMessage(content=content)
