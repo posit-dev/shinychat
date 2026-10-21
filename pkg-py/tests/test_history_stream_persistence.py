@@ -22,7 +22,10 @@ from shinychat._history_store import (
     FileConversationStore,
     InMemoryConversationStore,
 )
-from shinychat._history_types import ConversationRecordV2
+from shinychat._history_types import (
+    ConversationRecordV2,
+    new_conversation_record_v2,
+)
 from test_history_controller import (
     _drain_stream_writes,
     _FakeChat,
@@ -84,6 +87,17 @@ class _GatedStore(InMemoryConversationStore):
             self.events.append(f"put:{record.id}")
         finally:
             self.concurrent -= 1
+
+    async def get(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> ConversationRecordV2 | None:
+        # Model a detached backend read, not a mutable alias that lets a
+        # failed read-modify-write change persisted data without a put.
+        record = await super().get(partition, conv_id)
+        if record is None:
+            return None
+        assert isinstance(record, ConversationRecordV2)
+        return record.model_copy(deep=True)
 
     async def delete(
         self, partition: ConversationPartition, conv_id: str
@@ -826,9 +840,10 @@ async def test_failed_repair_reports_foreground_error_and_retains_tail(
 
 
 @pytest.mark.anyio
-async def test_delete_observes_write_error_before_bookmark_eviction(
+async def test_delete_logs_old_write_failure_and_completes_bookmark_eviction(
     clock: _FakeClock,
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     from unittest.mock import AsyncMock
 
@@ -847,14 +862,77 @@ async def test_delete_observes_write_error_before_bookmark_eviction(
     evict = AsyncMock()
     monkeypatch.setattr(controller, "on_evict", evict)
 
-    with pytest.raises(RuntimeError, match="background failed"):
-        await controller.delete(conv_id)
-    evict.assert_not_called()
-    assert await store.get(part(), conv_id) is not None
-
     await controller.delete(conv_id)
     evict.assert_awaited_once_with(conv_id)
     assert await store.get(part(), conv_id) is None
+    assert len(caplog.records) == 1
+    assert "background failed" in caplog.text
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("operation", ["delete", "rename"])
+@pytest.mark.parametrize("current_failure", [False, True])
+async def test_unrelated_mutation_reports_old_failure_but_uses_its_own_outcome(
+    clock: _FakeClock,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    operation: str,
+    current_failure: bool,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    store = _GatedStore()
+    controller, _ = _make_controller(store=store)
+    recorder = controller._exchange_recorder
+    transcript, _ = await _open_stream(controller, store)
+    active = recorder.record
+    assert active is not None
+    other = new_conversation_record_v2(
+        id="c_other", title="Other", client_info={}
+    )
+    await store.put(part(), other)
+    clock.advance(1.0)
+    old_error = RuntimeError("old snapshot failed")
+    store.fail_next.append(old_error)
+    await _chunk(transcript, _assistant_message(_text("partial")))
+    put = recorder._put_task
+    assert put is not None
+    with pytest.raises(RuntimeError, match="old snapshot failed"):
+        await put
+
+    current_error = RuntimeError("requested operation failed")
+    if current_failure:
+        if operation == "delete":
+            monkeypatch.setattr(store, "delete", AsyncMock(side_effect=current_error))
+        else:
+            store.fail_next.append(current_error)
+    action = (
+        controller.delete(other.id)
+        if operation == "delete"
+        else controller.rename(other.id, "Renamed")
+    )
+    if current_failure:
+        with pytest.raises(RuntimeError) as caught:
+            await action
+        assert caught.value is current_error
+    else:
+        await action
+
+    stored_other = await store.get(part(), other.id)
+    if not current_failure and operation == "delete":
+        assert stored_other is None
+    else:
+        assert isinstance(stored_other, ConversationRecordV2)
+        assert stored_other.title == (
+            "Renamed" if not current_failure else "Other"
+        )
+    assert recorder.record is active
+    assert len(caplog.records) == 1
+    assert caplog.records[0].exc_info is not None
+    assert caplog.records[0].exc_info[1] is old_error
+    assert await recorder.save_current()
+    assert _stored_contents(store, active.id) == ["partial"]
+    assert len(caplog.records) == 1
 
 
 @pytest.mark.anyio

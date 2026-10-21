@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import inspect
+import logging
 import warnings
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from typing import (
@@ -1106,7 +1107,14 @@ class HistoryController:
             if await recorder.rename_active_locked(conv_id, title):
                 renamed = True
             else:
-                await recorder.drain_stream_put_locked()
+                try:
+                    await recorder.drain_stream_put_locked()
+                except Exception as error:
+                    logging.getLogger(__name__).error(
+                        "Earlier background history write failed before rename of %r",
+                        conv_id,
+                        exc_info=error,
+                    )
                 record = await self._get_record(self.partition, conv_id)
                 if record is not None:
                     record.title = title
@@ -1124,7 +1132,14 @@ class HistoryController:
                 # A failed restore may have reset the active record while
                 # its snapshot still runs. Drain the single writer before
                 # any deletion, not only deletion of the active record.
-                await self._exchange_recorder.drain_stream_put_locked()
+                try:
+                    await self._exchange_recorder.drain_stream_put_locked()
+                except Exception as error:
+                    logging.getLogger(__name__).error(
+                        "Earlier background history write failed before deletion of %r",
+                        conv_id,
+                        exc_info=error,
+                    )
                 exchange_record = self._exchange_recorder.record
                 if self.on_evict is not None:
                     await self.on_evict(conv_id)
