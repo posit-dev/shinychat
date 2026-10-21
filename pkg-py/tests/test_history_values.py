@@ -594,7 +594,19 @@ def test_latest_values_resolves_latest_object() -> None:
 
 
 @pytest.mark.anyio
-async def test_values_malformed_entry_fails_restore_preflight() -> None:
+@pytest.mark.parametrize(
+    "data",
+    [
+        ["not", "a", "dict"],
+        {"x": float("nan")},
+        {"x": float("inf")},
+        {"x": -float("inf")},
+    ],
+    ids=["not-an-object", "nan", "infinity", "negative-infinity"],
+)
+async def test_values_malformed_entry_fails_restore_preflight(
+    data: Any,
+) -> None:
     controller, _ = _make_controller()
     recorder = controller._exchange_recorder
     target = new_conversation_record_v2(
@@ -602,9 +614,7 @@ async def test_values_malformed_entry_fails_restore_preflight() -> None:
         id="c_malformed_values",
         client_info={},
     )
-    target.nodes[target.root_id].state[VALUES_STATE_KEY] = _values_entry(
-        ["not", "a", "dict"]
-    )
+    target.nodes[target.root_id].state[VALUES_STATE_KEY] = _values_entry(data)
     chat = cast(_FakeChat, controller.chat)
 
     with pytest.raises(ValueError, match="shinychat:values"):
