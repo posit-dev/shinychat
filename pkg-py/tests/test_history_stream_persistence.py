@@ -564,8 +564,9 @@ async def test_cancelled_drain_preserves_boundary_mutations_for_file_flush(
 
 
 @pytest.mark.anyio
-async def test_background_failure_raised_once_at_next_boundary_then_retry(
+async def test_background_failure_logged_once_after_boundary_repair(
     clock: _FakeClock,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     store = _GatedStore()
     controller, _ = _make_controller(store=store)
@@ -594,14 +595,15 @@ async def test_background_failure_raised_once_at_next_boundary_then_retry(
     assert recorder._put_task is put
     assert len(store.puts) == puts_before
 
-    # Raised once at the next boundary...
-    with pytest.raises(RuntimeError, match="disk full"):
-        await recorder.save_current()
-    # The latest boundary state was repaired before the prior failure was
-    # reported, and reporting it does not invent another unsaved tail.
+    assert await recorder.save_current()
+    # The latest state is durable and the recovered failure is reported
+    # once, without making a successful operation look like a failed commit.
     assert _stored_contents(store, conv_id) == ["one two three"]
     assert not await recorder.flush_pending()
     assert await recorder.save_current()
+    assert len(caplog.records) == 1
+    assert caplog.records[0].exc_info is not None
+    assert str(caplog.records[0].exc_info[1]) == "disk full"
     assert _stored_contents(store, conv_id) == ["one two three"]
 
 
@@ -622,8 +624,7 @@ async def test_boundary_failure_before_completion_callback_retains_tail(
     # before the put's completion callback runs. Error delivery must not
     # rely on that callback to mark the failed snapshot unsaved.
     boundary = asyncio.create_task(recorder.save_current())
-    with pytest.raises(RuntimeError, match="transient background"):
-        await boundary
+    assert await boundary
 
     assert _stored_contents(store, conv_id) == ["one"]
     assert not await recorder.flush_pending()
@@ -634,6 +635,7 @@ async def test_terminal_boundary_repairs_file_before_reporting_background_error(
     clock: _FakeClock,
     tmp_path: Any,
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     store = FileConversationStore(tmp_path)
     app_values = {"region": "all"}
@@ -669,11 +671,13 @@ async def test_terminal_boundary_repairs_file_before_reporting_background_error(
         await put
     app_values["region"] = "west"
 
-    with pytest.raises(RuntimeError) as caught:
-        await transcript.end_stream(
-            stream_id="stream", status=None, error=None, send=_sent
-        )
-    assert caught.value is background_error
+    await transcript.end_stream(
+        stream_id="stream", status=None, error=None, send=_sent
+    )
+    assert any(
+        entry.exc_info is not None and entry.exc_info[1] is background_error
+        for entry in caplog.records
+    )
     stored = await FileConversationStore(tmp_path).get(part(), record.id)
     assert isinstance(stored, ConversationRecordV2)
     assert stored.nodes[exchange_id].status == "ok"
@@ -685,6 +689,90 @@ async def test_terminal_boundary_repairs_file_before_reporting_background_error(
         "region": "west"
     }
     assert not await recorder.flush_pending()
+
+
+@pytest.mark.anyio
+async def test_bookmark_repair_keeps_live_and_durable_pointer_and_referenced_state(
+    clock: _FakeClock,
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import shinychat._history as history_module
+
+    store = FileConversationStore(tmp_path)
+    controller, _ = _make_controller(store=store)
+    recorder = controller._exchange_recorder
+    transcript = _wire(controller)
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "question")
+    )
+    await _start_stream(transcript, exchange_id)
+    record = recorder.record
+    assert record is not None
+    record.bookmark_state_id = "old-state"
+    assert await recorder.save_current()
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    deleted: list[str] = []
+
+    class HeldBookmark:
+        callback: Any = None
+
+        def on_bookmarked(self, callback: Any) -> Any:
+            self.callback = callback
+
+            def cancel() -> None:
+                self.callback = None
+
+            return cancel
+
+        async def do_bookmark(self) -> None:
+            entered.set()
+            await release.wait()
+            await self.callback("?_state_id_=new-state")
+
+    async def delete_state(state_id: str) -> None:
+        deleted.append(state_id)
+
+    monkeypatch.setattr(history_module, "delete_bookmark_state", delete_state)
+    hooks = history_module._bookmark_restore_hooks(controller, HeldBookmark())
+    assert hooks.on_response_saved is not None
+    mint = asyncio.ensure_future(hooks.on_response_saved(record))
+    original_put = store.put
+    background_error = RuntimeError("background snapshot failed")
+    fail_next = True
+
+    async def fail_once(partition: Any, snapshot: Any) -> None:
+        nonlocal fail_next
+        if fail_next:
+            fail_next = False
+            raise background_error
+        await original_put(partition, snapshot)
+
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        monkeypatch.setattr(store, "put", fail_once)
+        clock.advance(1.0)
+        await _chunk(transcript, _assistant_message(_text("partial")))
+        put = recorder._put_task
+        assert put is not None
+        with pytest.raises(RuntimeError, match="background snapshot failed"):
+            await put
+    finally:
+        release.set()
+    await asyncio.wait_for(mint, 1)
+
+    stored = await FileConversationStore(tmp_path).get(part(), record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    assert stored.bookmark_state_id == record.bookmark_state_id == "new-state"
+    assert deleted == ["old-state"]
+    assert stored.bookmark_state_id not in deleted
+    assert not await recorder.flush_pending()
+    assert any(
+        entry.exc_info is not None and entry.exc_info[1] is background_error
+        for entry in caplog.records
+    )
 
 
 @pytest.mark.anyio

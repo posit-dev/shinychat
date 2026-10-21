@@ -8120,6 +8120,7 @@ async def test_v2_recorder_persists_stream_terminal_status(
 @pytest.mark.anyio
 async def test_stream_recorder_failure_does_not_rollback_sent_transcript(
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ):
     import shinychat._history_recorder as recorder_module
 
@@ -8179,11 +8180,11 @@ async def test_stream_recorder_failure_does_not_rollback_sent_transcript(
     with pytest.raises(RuntimeError, match="durability failure"):
         await put
     store.fail = False
-    # Even though the backend now succeeds, the deferred failure must
-    # raise once at the next boundary; a later boundary retries.
-    with pytest.raises(RuntimeError, match="durability failure"):
-        await recorder.save_current()
+    # The recovered write failure is logged, while the latest boundary
+    # save succeeds rather than signalling a false failed commit.
     assert await recorder.save_current()
+    assert len(caplog.records) == 1
+    assert "durability failure" in caplog.text
 
     stored = await store.get(part(), recorder.record.id)  # type: ignore[union-attr]
     assert isinstance(stored, ConversationRecordV2)

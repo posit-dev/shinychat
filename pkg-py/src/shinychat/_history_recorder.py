@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 import warnings
 from contextlib import contextmanager
 from enum import Enum
@@ -483,7 +484,7 @@ class _ExchangeRecorder:
             return
         if task.exception() is not None:
             # Deferred error carrier: the failure halts further background
-            # writes and is raised once by the next boundary. The tail the
+            # writes and is reported once at the next boundary. The tail the
             # failed snapshot carried is unsaved, so mark it dirty for the
             # foreground retry (or the final flush).
             if self._pending is _StreamPending.NONE:
@@ -615,6 +616,12 @@ class _ExchangeRecorder:
             if background_error is not None and isinstance(error, Exception):
                 raise error from background_error
             raise
+        if background_error is not None:
+            logging.getLogger(__name__).error(
+                "Recovered from a background history write failure for %r",
+                record_id,
+                exc_info=background_error,
+            )
         if (
             self.record is record
             and self._host._active_id_now() == record_id
@@ -623,8 +630,6 @@ class _ExchangeRecorder:
             published = await self._host._publish_active_id(record)
             if published:
                 self._active_id_published_for = record
-        if background_error is not None:
-            raise background_error
 
     def _capture_app_state(self, *, strict: bool = False) -> None:
         """Capture application values at the active leaf, sparsely.
