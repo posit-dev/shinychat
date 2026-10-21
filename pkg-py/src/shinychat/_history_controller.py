@@ -1106,6 +1106,7 @@ class HistoryController:
             if await recorder.rename_active_locked(conv_id, title):
                 renamed = True
             else:
+                await recorder.drain_stream_put_locked()
                 record = await self._get_record(self.partition, conv_id)
                 if record is not None:
                     record.title = title
