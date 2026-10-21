@@ -618,7 +618,7 @@ class _ExchangeRecorder:
             raise
         if background_error is not None:
             logging.getLogger(__name__).error(
-                "Recovered from a background history write failure for %r",
+                "History save for %r recovered from an earlier background write failure",
                 record_id,
                 exc_info=background_error,
             )

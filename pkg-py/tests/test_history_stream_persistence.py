@@ -1003,6 +1003,43 @@ async def test_active_delete_drains_put_and_cannot_resurrect(
 
 
 @pytest.mark.anyio
+async def test_delete_after_restore_reset_drains_old_snapshot_before_removal(
+    clock: _FakeClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    store = _GatedStore()
+    controller, _ = _make_controller(store=store)
+    recorder = controller._exchange_recorder
+    transcript, _ = await _open_stream(controller, store)
+    conv_id = recorder.record.id  # type: ignore[union-attr]
+    clock.advance(1.0)
+    store.blocked = True
+    store.put_entered.clear()
+    await _chunk(transcript, _assistant_message(_text("partial")))
+    await asyncio.wait_for(store.put_entered.wait(), 1)
+    put = recorder._put_task
+    assert put is not None
+    monkeypatch.setattr(controller, "_notify_restore_failure", AsyncMock())
+    with pytest.warns(UserWarning, match="restore failed"):
+        await controller._clear_failed_restore(RuntimeError("restore failed"))
+    assert recorder.record is None
+
+    delete = asyncio.create_task(controller.delete(conv_id))
+    try:
+        await asyncio.sleep(0)
+        assert not delete.done()
+        assert store.events[-1] != f"delete:{conv_id}"
+    finally:
+        store.release.set()
+        await asyncio.wait_for(asyncio.shield(put), 1)
+        await asyncio.wait_for(delete, 1)
+    assert await store.get(part(), conv_id) is None
+    assert store.events[-1] == f"delete:{conv_id}"
+
+
+@pytest.mark.anyio
 async def test_discard_pending_cancels_continuation_but_keeps_started_put(
     clock: _FakeClock,
 ) -> None:

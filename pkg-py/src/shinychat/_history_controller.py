@@ -1120,14 +1120,11 @@ class HistoryController:
             raise RuntimeError("HistoryController not initialized")
         async with self._destructive_mutation():
             async with self._exchange_mutation():
+                # A failed restore may have reset the active record while
+                # its snapshot still runs. Drain the single writer before
+                # any deletion, not only deletion of the active record.
+                await self._exchange_recorder.drain_stream_put_locked()
                 exchange_record = self._exchange_recorder.record
-                if (
-                    exchange_record is not None
-                    and exchange_record.id == conv_id
-                ):
-                    # Drain the in-flight stream snapshot before deleting so
-                    # it cannot complete afterwards and resurrect the record.
-                    await self._exchange_recorder.drain_stream_put_locked()
                 if self.on_evict is not None:
                     await self.on_evict(conv_id)
                 await self.store.delete(self.partition, conv_id)
