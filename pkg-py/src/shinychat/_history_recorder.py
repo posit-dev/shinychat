@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import warnings
 from contextlib import contextmanager
 from typing import (
     TYPE_CHECKING,
@@ -182,15 +183,18 @@ class _ExchangeRecorder:
             context.node_id,
             SYSTEM_PROMPT_STATE_KEY,
             prompt,
-            is_effective=lambda entry: entry is not None
-            and entry.data is not None,
+            is_effective=lambda entry: (
+                entry is not None and entry.data is not None
+            ),
             kind="system_prompt",
         )
 
     def _capture_values(self, context: CaptureContext) -> StateEntry | None:
         return self._capture_values_at(context.node_id)
 
-    def _capture_values_at(self, node_id: str) -> StateEntry | None:
+    def _capture_values_at(
+        self, node_id: str, *, strict: bool = False
+    ) -> StateEntry | None:
         """Run the ``on_save`` callbacks and sparsely record their values.
 
         The callbacks receive a fresh dictionary and run inside
@@ -203,15 +207,45 @@ class _ExchangeRecorder:
         Values treat every validated object -- including ``{}`` -- as
         effective, so an empty object records an explicit value rather
         than inheriting.
+
+        Error policy: an *automatic* capture (``strict=False`` -- root
+        close, stream finish, node close, response settlement, retitle)
+        never lets a failing callback or an invalid payload block the
+        move that triggered it. The error is warned to the developer
+        with its details, and the node keeps its previously recorded
+        entry (deep-copied) -- or stays missing, so inheritance answers
+        -- never losing recorded values to a failed capture. An
+        *explicit* capture (``strict=True``, the ``chat.history.save()``
+        path) re-raises, so the caller learns the save did not record.
+        Only ``Exception`` is caught; cancellation and fatal errors
+        propagate in both modes, and failures here never swallow the
+        store/model-state errors of the surrounding flow.
         """
         assert self.record is not None
         from shiny import reactive
 
-        values: dict[str, Any] = {}
-        with reactive.isolate():
-            for callback in self._host._save_callbacks:
-                callback(values)
-        data = canonical_values(values)
+        try:
+            values: dict[str, Any] = {}
+            with reactive.isolate():
+                for callback in self._host._save_callbacks:
+                    callback(values)
+            data = canonical_values(values)
+        except Exception as error:
+            if strict:
+                raise
+            # Developer diagnostics only: automatic capture failure warns
+            # but completes, with no new user-notification policy.
+            warnings.warn(
+                "Automatic app-state values capture failed at exchange "
+                f"{node_id!r}; keeping the previously recorded values "
+                f"({type(error).__name__}: {error}).",
+                stacklevel=2,
+            )
+            previous = self.record.nodes[node_id].state.get(VALUES_STATE_KEY)
+            if previous is not None:
+                return previous.model_copy(deep=True)
+            return None
+
         return sparse_snapshot_entry(
             self.record,
             node_id,
@@ -278,7 +312,9 @@ class _ExchangeRecorder:
             data=cast(JsonValue, data),
         )
 
-    async def capture_state_locked(self, node_id: str, reason: CaptureReason) -> None:
+    async def capture_state_locked(
+        self, node_id: str, reason: CaptureReason
+    ) -> None:
         assert self.record is not None
         if self._read_only:
             # A read-only record's saved state is immutable: close/switch/
@@ -389,7 +425,7 @@ class _ExchangeRecorder:
             if published:
                 self._active_id_published_for = record
 
-    def _capture_app_state(self) -> None:
+    def _capture_app_state(self, *, strict: bool = False) -> None:
         """Capture application values at the active leaf, sparsely.
 
         The explicit/boundary save points (explicit save, response
@@ -397,29 +433,42 @@ class _ExchangeRecorder:
         entries the full capture-hook cycle owns. The record-on-change
         rule is the same as the hook's: the root always records,
         descendants record only changes against their ancestor path.
+        ``strict`` carries the caller's error policy to
+        ``_capture_values_at``: the public explicit save re-raises
+        callback/payload failures, while the automatic boundary points
+        warn and retain. Read-only suppression wins at this central
+        capture point: even when a retitle still writes its title
+        metadata, live app values never replace the saved record's.
         """
         assert self.record is not None
+        if self._read_only:
+            # A read-only record's saved state is immutable, exactly as
+            # in capture_state_locked; the title writes that share this
+            # path stay live, but the values capture does not.
+            return
         node_id = self.record.active_leaf
         assert node_id is not None
         node = self.record.nodes[node_id]
-        entry = self._capture_values_at(node_id)
+        entry = self._capture_values_at(node_id, strict=strict)
         if entry is None:
             node.state.pop(VALUES_STATE_KEY, None)
         else:
             node.state[VALUES_STATE_KEY] = entry
 
     async def save_current(self) -> bool:
+        # The public save is the explicit one: callback and payload
+        # failures raise to the caller instead of warning.
         async with self.lock:
-            return await self.save_current_locked()
+            return await self.save_current_locked(strict=True)
 
-    async def save_current_locked(self) -> bool:
+    async def save_current_locked(self, *, strict: bool = False) -> bool:
         if (
             self.record is None
             or self._host.partition is None
             or self._read_only
         ):
             return False
-        self._capture_app_state()
+        self._capture_app_state(strict=strict)
         await self.persist_record_locked()
         return True
 
@@ -519,10 +568,7 @@ class _ExchangeRecorder:
             return True, old_state_id if old_state_id != state_id else None
 
     def mark_active_id_published(self, record: ConversationRecordV2) -> None:
-        if (
-            self.record is record
-            and self._host._active_id_now() == record.id
-        ):
+        if self.record is record and self._host._active_id_now() == record.id:
             self._active_id_published_for = record
 
     def _close_root_if_inactive(self) -> None:

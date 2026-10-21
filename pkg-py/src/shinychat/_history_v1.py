@@ -48,6 +48,7 @@ from ._history_client import (
     turn_dict_effective_role,
     turn_fallback_markdown,
 )
+from ._history_plan import canonical_values
 from ._history_types import (
     STORED_UI_VERSION,
     TURNS_STATE_KEY,
@@ -365,11 +366,16 @@ def import_v1_record_with_warnings(
     # leaf is where the v1 conversation's values were live.
     leaf = imported.active_leaf
     assert leaf is not None
+    # Rich values from a typed/custom store (dates, ``Decimal``, ``UUID``…)
+    # normalize through the same pure helper the live capture uses, so
+    # ``JsonValue`` entry validation accepts them; the normalization is
+    # also the detach, so the imported entry never aliases the caller's
+    # record.
     imported.nodes[leaf].state[VALUES_STATE_KEY] = StateEntry(
         kind="values",
         version=1,
         mode="snapshot",
-        data=cast(JsonValue, copy.deepcopy(record.values)),
+        data=cast(JsonValue, canonical_values(record.values)),
     )
     return imported, warns
 

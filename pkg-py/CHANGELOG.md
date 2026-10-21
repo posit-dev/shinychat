@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Conversation history
 
-* `@chat.history.on_save` now records application values per exchange. `@chat.history.on_restore` still runs only when a conversation is loaded, but receives the values saved at the restored position. Custom stores inspecting the current record should read the `shinychat:values` state entries along the active path instead of a conversation-level `values` field; legacy v1 values are imported on the active leaf.
+* `@chat.history.on_save` now records application values per exchange. `@chat.history.on_restore` still runs only when a conversation is loaded, but receives the values saved at the restored position. Pydantic-compatible values such as dates remain supported; automatic callback/serialization failures warn the developer and retain prior values, while explicit `await chat.history.save()` calls still raise. Keys must be strings and non-finite floating-point values are rejected. Custom stores inspecting the current record should read the `shinychat:values` state entries along the active path instead of a conversation-level `values` field; legacy v1 values are imported on the active leaf.
 
 * Added `@chat.history.on_navigate` for syncing application state after editing, retrying, regenerating, or navigating between sibling branches. Its `HistoryNavigateContext` (available from `shinychat.types`) includes the reason, target and previous values, and exchange IDs. The hook runs after the display and model context move; a callback error warns the developer and shows a generic notification without undoing the move. Raw Shiny inputs are not synced automatically—update them in the hook.
 

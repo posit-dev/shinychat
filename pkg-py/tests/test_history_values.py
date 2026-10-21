@@ -5,9 +5,13 @@
 
 import asyncio
 import json
+import warnings
+from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import patch
+from uuid import UUID
 
 import pytest
 from _history_test_helpers import replay_exchange_record
@@ -26,9 +30,11 @@ from shinychat._history_store import (
     sanitize_scope,
 )
 from shinychat._history_types import (
+    TURNS_STATE_KEY,
     VALUES_STATE_KEY,
     ConversationRecordV2,
     StateEntry,
+    TurnDict,
     new_conversation_record,
     new_conversation_record_v2,
 )
@@ -377,7 +383,11 @@ async def test_values_shared_parent_recapture_pins_implicit_empty_default() -> (
         ({"nested": [{2: "y"}]}, ValueError, "Non-string mapping key"),
         ({"pi": float("nan")}, ValueError, "Out of range float values"),
         ({"pi": float("inf")}, ValueError, "Out of range float values"),
-        ({"obj": object()}, TypeError, "not JSON serializable"),
+        (  # Unknown objects stay loudly rejected by the pydantic coercion.
+            {"obj": object()},
+            ValueError,
+            "Unable to serialize unknown type",
+        ),
     ],
 )
 async def test_values_capture_rejects_unserializable_values(
@@ -399,6 +409,8 @@ async def test_values_capture_rejects_unserializable_values(
     )
 
     current = bad
+    # The explicit save stays strict: an invalid payload raises to the
+    # caller (controller.save() is the chat.history.save() path).
     with pytest.raises(error, match=match):
         await controller.save()
 
@@ -442,6 +454,115 @@ async def test_values_callback_dictionary_is_detached_from_record() -> None:
     assert record.nodes[record.root_id].state[VALUES_STATE_KEY].data == {
         "deep": {"n": 1}
     }
+
+
+# Rich app values must keep the old pydantic-compatible encoding: the
+# pre-t829 path stored values in a ``dict[str, Any]`` pydantic field and
+# wrote them with ``model_dump_json``, which serializes date/datetime,
+# Decimal, UUID, tuples, sets, and bytes. Common Shiny values ride on
+# these: ``input.date()`` returns a ``datetime.date`` and
+# ``input.date_range()`` returns a tuple of dates.
+_RICH_VALUES: dict[str, Any] = {
+    "d": date(2024, 1, 31),
+    "dt": datetime(2024, 1, 31, 12, 30, 45),
+    "dr": (date(2024, 1, 1), date(2024, 2, 1)),
+    "n": Decimal("1.25"),
+    "u": UUID("12345678-1234-5678-1234-567812345678"),
+    "s": {1, 2},
+    "b": b"raw",
+}
+
+
+def _rich_expected() -> dict[str, Any]:
+    """The old ``model_dump_json`` encoding of ``_RICH_VALUES``."""
+    return {
+        "d": "2024-01-31",
+        "dt": "2024-01-31T12:30:45",
+        "dr": ["2024-01-01", "2024-02-01"],
+        "n": "1.25",
+        "u": "12345678-1234-5678-1234-567812345678",
+        "s": [1, 2],
+        "b": "raw",
+    }
+
+
+def _assert_rich_encoding(data: Any) -> None:
+    expected = _rich_expected()
+    assert {k: v for k, v in data.items() if k != "s"} == {
+        k: v for k, v in expected.items() if k != "s"
+    }
+    # Sets serialize to a list whose order is not guaranteed.
+    assert sorted(data["s"]) == [1, 2]
+
+
+@pytest.mark.anyio
+async def test_values_rich_app_values_keep_old_encoding() -> None:
+    def save_callback(values: dict[str, Any]) -> None:
+        values.update(_RICH_VALUES)
+
+    controller, _ = _make_controller(
+        store=InMemoryConversationStore(), save_callbacks=[save_callback]
+    )
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "hi")
+    )
+    await controller.save()
+
+    record = recorder.record
+    assert record is not None
+    _assert_rich_encoding(
+        record.nodes[record.root_id].state[VALUES_STATE_KEY].data
+    )
+    # The descendant capture deduped against the rich root entry and
+    # inherits; resolution returns the detached JSON forms.
+    assert VALUES_STATE_KEY not in record.nodes[exchange_id].state
+    _assert_rich_encoding(resolve_path_values(record, exchange_id))
+
+
+@pytest.mark.anyio
+async def test_values_rich_file_store_round_trip(tmp_path: Any) -> None:
+    store = FileConversationStore(dir=tmp_path)
+
+    def save_callback(values: dict[str, Any]) -> None:
+        values.update(_RICH_VALUES)
+
+    controller, _ = _make_controller(
+        store=store, save_callbacks=[save_callback]
+    )
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "hi")
+    )
+    await controller.save()
+    record = recorder.record
+    assert record is not None
+
+    partition = part()
+    record_file = (
+        tmp_path
+        / sanitize_scope(partition.chat_id)
+        / sanitize_scope(partition.scope)
+        / record.id
+        / "record.json"
+    )
+    raw = json.loads(record_file.read_text(encoding="utf-8"))
+    # On disk, the rich values are already their JSON forms -- a file
+    # written by the old model_dump_json path and reloaded agree.
+    _assert_rich_encoding(
+        raw["nodes"][record.root_id]["state"]["shinychat:values"]["data"]
+    )
+
+    reloaded = await FileConversationStore(dir=tmp_path).get(
+        partition, record.id
+    )
+    assert isinstance(reloaded, ConversationRecordV2)
+    leaf = reloaded.active_leaf
+    assert leaf is not None
+    _assert_rich_encoding(resolve_path_values(reloaded, leaf))
 
 
 @pytest.mark.anyio
@@ -611,6 +732,41 @@ def test_v1_import_writes_empty_values_explicitly() -> None:
     # Even an empty v1 values object imports as an explicit empty entry on
     # the active leaf.
     assert imported.nodes[leaf].state[VALUES_STATE_KEY].data == {}
+
+
+def test_v1_import_normalizes_rich_values() -> None:
+    record = new_conversation_record(title="v1 rich values")
+    record.append_linear([{"role": "user", "content": "hello"}])
+    # A typed/custom store can hand the v1 record rich app values; the
+    # same pure normalizer the live capture uses must convert them, so
+    # StateEntry's JsonValue validation accepts them.
+    record.values = dict(_RICH_VALUES)
+
+    imported = import_v1_record(record)
+
+    leaf = imported.active_leaf
+    assert leaf is not None
+    entry = imported.nodes[leaf].state[VALUES_STATE_KEY]
+    assert (entry.kind, entry.version, entry.mode) == (
+        "values",
+        1,
+        "snapshot",
+    )
+    _assert_rich_encoding(entry.data)
+    # The import is detached: later mutation of the v1 record does not
+    # reach the imported entry.
+    record.values["d"] = date(1999, 12, 31)
+    _assert_rich_encoding(imported.nodes[leaf].state[VALUES_STATE_KEY].data)
+
+
+def test_v1_import_rejects_nonfinite_values_loudly() -> None:
+    record = new_conversation_record(title="v1 nan values")
+    record.values = {"x": float("nan")}
+
+    # Non-finite floats are refused after normalization, never silently
+    # coerced to null, exactly as on the live capture path.
+    with pytest.raises(ValueError, match="Out of range float values"):
+        import_v1_record(record)
 
 
 # ---------------------------------------------------------------------------
@@ -886,8 +1042,6 @@ async def test_on_navigate_no_hooks_and_no_restore_on_moves() -> None:
     restored: list[dict[str, Any]] = []
     controller._restore_callbacks.append(restored.append)
 
-    import warnings
-
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         await controller.handle_navigate(2, "prev", request_id="navigation")
@@ -944,6 +1098,357 @@ async def test_on_navigate_read_only_uses_recorded_values_no_live_capture():
     assert context.previous_values == {"f": "replacement"}
     assert record.nodes[replacement].state[VALUES_STATE_KEY].data == {
         "f": "replacement"
+    }
+
+
+# ---------------------------------------------------------------------------
+# Auto-vs-explicit capture error policy
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failure", ["raise", "nan"])
+async def test_values_stream_finish_failure_warns_and_finalizes(
+    failure: str, tmp_path: Path
+) -> None:
+    """A failing values capture at stream finish warns the developer but
+    the exchange still finalizes, persists, and leaves stream tracking
+    popped; the chat continues once the app fixes its callback."""
+    store = FileConversationStore(dir=tmp_path)
+    live: dict[str, Any] = {"filter": "all"}
+    failing = False
+
+    def save_callback(values: dict[str, Any]) -> None:
+        if failing:
+            if failure == "raise":
+                raise RuntimeError("callback exploded")
+            values["filter"] = live["filter"]
+            values["pi"] = float("nan")
+            return
+        values["filter"] = live["filter"]
+
+    controller, _ = _make_controller(
+        store=store, save_callbacks=[save_callback]
+    )
+    recorder = controller._exchange_recorder
+    session = _RealChatSession()
+    with session_context(cast(Any, session)):
+        chat = Chat("history_values_stream_failure", history=False)
+    controller.chat = chat  # type: ignore[assignment]
+    chat._transcript.set_capture_callbacks(
+        on_accepted_input=recorder.accepted_input,
+        on_message_committed=recorder.message_committed,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+
+    exchange_id = await chat._transcript.record_accepted_input_and_notify(
+        _stored_message("user", "west")
+    )
+    stream_id = "stream"
+    await chat._transcript.start_stream(
+        stream_id=stream_id,
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+    live["filter"] = "west"
+    expected_turns: list[TurnDict] = [
+        {"role": "user", "content": "west"},
+        {"role": "assistant", "content": "answer west"},
+    ]
+    controller.adapter.set_turns_json(expected_turns)
+
+    failing = True
+    with pytest.warns(
+        UserWarning, match="Automatic app-state values capture failed"
+    ):
+        await chat._transcript.end_stream(
+            stream_id=stream_id,
+            status="ok",  # type: ignore[arg-type]
+            error=None,
+            send=_sent,
+        )
+
+    record = recorder.record
+    assert record is not None
+    # The exchange finalized instead of staying in streaming status, and
+    # the model-state capture was unaffected by the values failure.
+    assert record.nodes[exchange_id].status == "ok"
+    assert record.nodes[exchange_id].error is None
+    assert (
+        record.nodes[exchange_id].state[TURNS_STATE_KEY].data == expected_turns
+    )
+    # Stream tracking popped even though the values capture failed.
+    assert stream_id not in recorder._stream_exchanges
+    # The root's recorded values are retained; the failed capture at the
+    # exchange left no own entry, so inheritance answers.
+    assert record.nodes[record.root_id].state[VALUES_STATE_KEY].data == {
+        "filter": "all"
+    }
+    assert VALUES_STATE_KEY not in record.nodes[exchange_id].state
+    assert resolve_path_values(record, exchange_id) == {"filter": "all"}
+    # The finished record persisted with its finalized node.
+    persisted = await store.get(part(), record.id)
+    assert isinstance(persisted, ConversationRecordV2)
+    assert persisted is not record
+    assert persisted.nodes[exchange_id].status == "ok"
+    assert (
+        persisted.nodes[exchange_id].state[TURNS_STATE_KEY].data
+        == expected_turns
+    )
+
+    # The chat continues after the fix: the next input's node-close
+    # capture records cleanly.
+    failing = False
+    live["filter"] = "east"
+    second = await chat._transcript.record_accepted_input_and_notify(
+        _stored_message("user", "east")
+    )
+    assert second != exchange_id
+    assert record.nodes[exchange_id].state[VALUES_STATE_KEY].data == {
+        "filter": "east"
+    }
+
+
+@pytest.mark.anyio
+async def test_values_leave_capture_failure_does_not_block_navigation() -> None:
+    controller, _chat, _adapter, _store, original, replacement = (
+        _make_v2_navigation_controller()
+    )
+    recorder = controller._exchange_recorder
+    record = recorder.record
+    assert record is not None
+    record.nodes[record.root_id].state[VALUES_STATE_KEY] = _values_entry(
+        {"f": "root"}
+    )
+    record.nodes[original].state[VALUES_STATE_KEY] = _values_entry(
+        {"f": "original"}
+    )
+    record.nodes[replacement].state[VALUES_STATE_KEY] = _values_entry(
+        {"f": "replacement"}
+    )
+
+    failing = False
+
+    def save_callback(values: dict[str, Any]) -> None:
+        if failing:
+            raise RuntimeError("leave capture exploded")
+        # Agrees with the active exchange's recorded values.
+        values["f"] = "replacement"
+
+    controller._save_callbacks.append(save_callback)
+    contexts: list[HistoryNavigateContext] = []
+    controller._navigate_callbacks.append(contexts.append)
+
+    failing = True
+    with pytest.warns(
+        UserWarning, match="Automatic app-state values capture failed"
+    ):
+        await controller.handle_navigate(2, "prev", request_id="navigation")
+
+    # The move completed despite the failed leave capture; the left
+    # exchange kept its previously recorded entry.
+    assert record.active_leaf == original
+    assert record.nodes[replacement].state[VALUES_STATE_KEY].data == {
+        "f": "replacement"
+    }
+    # The navigation callback still ran, on the retained/recorded values.
+    assert len(contexts) == 1
+    context = contexts[0]
+    assert context.reason == "navigate"
+    assert context.values == {"f": "original"}
+    assert context.previous_values == {"f": "replacement"}
+
+
+@pytest.mark.anyio
+async def test_values_leave_capture_failure_does_not_block_retry() -> None:
+    controller, chat, _adapter, _store, first, target = (
+        _make_v2_resubmit_controller()
+    )
+    recorder = controller._exchange_recorder
+    record = recorder.record
+    assert record is not None
+    record.nodes[target].state[VALUES_STATE_KEY] = _values_entry(
+        {"f": "target"}
+    )
+
+    def save_callback(values: dict[str, Any]) -> None:
+        raise RuntimeError("leave capture exploded")
+
+    controller._save_callbacks.append(save_callback)
+    contexts: list[HistoryNavigateContext] = []
+    controller._navigate_callbacks.append(contexts.append)
+
+    with pytest.warns(
+        UserWarning, match="Automatic app-state values capture failed"
+    ):
+        await controller.handle_resubmit(1, "retry", request_id="retry")
+
+    # Retry completed despite the failed leave capture: the rewind moved
+    # to the rewound parent and the resubmission was sent.
+    assert record.active_leaf == first
+    assert chat.actions
+    assert record.nodes[target].state[VALUES_STATE_KEY].data == {"f": "target"}
+    context = contexts[0]
+    assert context.reason == "retry"
+    assert context.previous_values == {"f": "target"}
+
+
+@pytest.mark.anyio
+async def test_values_root_close_failure_warns_and_continues() -> None:
+    failing = True
+
+    def save_callback(values: dict[str, Any]) -> None:
+        if failing:
+            raise RuntimeError("root capture exploded")
+        values["filter"] = "fixed"
+
+    controller, _ = _make_controller(
+        store=InMemoryConversationStore(), save_callbacks=[save_callback]
+    )
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+
+    with pytest.warns(
+        UserWarning, match="Automatic app-state values capture failed"
+    ):
+        exchange_id = await transcript.record_accepted_input_and_notify(
+            _stored_message("user", "hi")
+        )
+
+    record = recorder.record
+    assert record is not None
+    assert exchange_id in record.nodes
+    # Known fallback when there is no entry: the root stays missing and
+    # resolution answers {}.
+    assert VALUES_STATE_KEY not in record.nodes[record.root_id].state
+    assert resolve_path_values(record, exchange_id) == {}
+
+    # After the fix, the next input's node-close capture records normally.
+    failing = False
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "again")
+    )
+    assert record.nodes[exchange_id].state[VALUES_STATE_KEY].data == {
+        "filter": "fixed"
+    }
+
+
+@pytest.mark.anyio
+async def test_values_boundary_failures_warn_but_explicit_save_raises() -> None:
+    def save_callback(values: dict[str, Any]) -> None:
+        raise RuntimeError("boom")
+
+    controller, _ = _make_controller(
+        store=InMemoryConversationStore(), save_callbacks=[save_callback]
+    )
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+
+    with pytest.warns(
+        UserWarning, match="Automatic app-state values capture failed"
+    ):
+        await transcript.record_accepted_input_and_notify(
+            _stored_message("user", "hi")
+        )
+    record = recorder.record
+    assert record is not None
+
+    # Response settlement: automatic -- warns but completes.
+    with pytest.warns(
+        UserWarning, match="Automatic app-state values capture failed"
+    ):
+        assert await recorder.response_settled() is True
+    assert record.response_count == 1
+
+    # Conversation boundaries warn and finish; they are not explicit saves.
+    target = new_conversation_record_v2(
+        title="target", id="c_capture_target", client_info={}
+    )
+    await controller.store.put(part(), target)
+    with pytest.warns(
+        UserWarning, match="Automatic app-state values capture failed"
+    ):
+        await controller.switch_to(target.id)
+    assert recorder.record is target
+
+    # The explicit save (chat.history.save()): strict -- the callback
+    # failure raises to the caller.
+    with pytest.raises(RuntimeError, match="boom"):
+        await controller.save()
+
+    with pytest.warns(
+        UserWarning, match="Automatic app-state values capture failed"
+    ):
+        await controller.new_chat()
+    assert recorder.record is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "error", [KeyboardInterrupt(), asyncio.CancelledError()]
+)
+async def test_values_capture_fatal_error_propagates(
+    error: BaseException,
+) -> None:
+    # Only ordinary Exceptions are isolated; cancellation and fatal
+    # errors propagate even on automatic capture points.
+    def save_callback(values: dict[str, Any]) -> None:
+        raise error
+
+    controller, _ = _make_controller(
+        store=InMemoryConversationStore(), save_callbacks=[save_callback]
+    )
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+
+    with pytest.raises(type(error)) as caught:
+        await transcript.record_accepted_input_and_notify(
+            _stored_message("user", "hi")
+        )
+    assert caught.value is error
+
+
+@pytest.mark.anyio
+async def test_values_retitle_read_only_suppresses_live_capture() -> None:
+    """Read-only suppression wins even on retitle: the title metadata
+    write stays live, but live app values never replace the saved
+    record's."""
+    controller, _chat, _adapter, _store, original, replacement = (
+        _make_v2_navigation_controller()
+    )
+    recorder = controller._exchange_recorder
+    record = recorder.record
+    assert record is not None
+    record.nodes[record.root_id].state[VALUES_STATE_KEY] = _values_entry(
+        {"f": "root"}
+    )
+    for node in record.nodes.values():
+        node.state["shinychat:turns"].kind = "unsupported"
+
+    with pytest.warns(UserWarning, match="read-only"):
+        await replay_exchange_record(controller, record)
+    assert recorder.read_only
+
+    save_calls: list[dict[str, Any]] = []
+
+    def save_callback(values: dict[str, Any]) -> None:
+        save_calls.append(dict(values))
+        values["f"] = "LIVE"
+
+    controller._save_callbacks.append(save_callback)
+
+    assert record.title_source != "user"
+    assert await recorder.retitle_active_locked(record, "Retitled") is True
+    assert record.title == "Retitled"
+    # Title metadata writes stay live; the live app-value capture never
+    # ran, and the saved values are untouched.
+    assert save_calls == []
+    assert record.nodes[record.root_id].state[VALUES_STATE_KEY].data == {
+        "f": "root"
     }
 
 

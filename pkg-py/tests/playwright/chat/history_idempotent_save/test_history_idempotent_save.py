@@ -99,6 +99,9 @@ def test_restore_does_not_trigger_extra_save(
     conv_a.click()
     page.locator(".shiny-chat-history-drawer").wait_for(state="hidden")
     chat.expect_latest_message("echo: first question", timeout=30_000)
+    # on_restore runs after display and model state replay; its output is
+    # delivered after the restore effect finishes, not on a partial replay.
+    controller.OutputText(page, "restore_count").expect_value("1")
     save_count.expect_value("8", timeout=10_000)
 
     # Restored conversation must be intact: exactly the 2 original messages,
@@ -119,6 +122,7 @@ def test_restore_does_not_trigger_extra_save(
             has_text="first question"
         )
     ).to_be_visible(timeout=10_000)
+    save_count.expect_value("8", timeout=5_000)
 
 
 def test_paused_stream_settles_history_after_terminal_response(
@@ -166,5 +170,6 @@ def test_paused_stream_settles_history_after_terminal_response(
     chat.expect_latest_message(
         "partial: paused question complete", timeout=30_000
     )
+    controller.OutputText(page, "restore_count").expect_value("1")
     expect(message_count(page)).to_have_count(2, timeout=10_000)
     save_count.expect_value("4", timeout=5_000)

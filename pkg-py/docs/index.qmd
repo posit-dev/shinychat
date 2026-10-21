@@ -154,14 +154,20 @@ starts; its tool call then selects `east`. Use the sibling arrows to return to
 the selected branch's values instead. In-session position moves do not call
 `on_restore`.
 
-The hooks are synchronous and run in registration order. `on_save` values must
-be JSON-serializable, with string keys; unchanged values inherit from the parent
-exchange. Empty values explicitly clear the saved object. Register only the
-hooks your app needs: without `on_navigate`, browsing branches does not change
-application state. If a navigation callback raises an exception, the conversation
-stays at the new position, the developer gets a warning with the error, and the
-user sees a generic notification. A read-only conversation still fires
-`on_navigate` when browsing siblings, using its recorded values.
+The hooks are synchronous and run in registration order. Values use Pydantic's
+JSON encoding (for example, dates become strings and tuples become arrays),
+with string keys and no non-finite floating-point values. Unchanged values
+inherit from the parent exchange; an empty dict explicitly clears the saved object. Automatic
+capture failures warn the developer and retain prior values; an explicit
+`await chat.history.save()` raises the error.
+
+Without `on_navigate`, browsing leaves live app state alone, and later captures
+save that live state at the newly selected position. Register the navigation
+hook when app state should follow the branch; omit it when that state is
+independent of the conversation. If a navigation callback raises an exception,
+the conversation stays at the new position, the developer gets a warning with
+the error, and the user sees a generic notification. A read-only conversation
+still fires `on_navigate` when browsing siblings, using its recorded values.
 
 ## Slash commands
 

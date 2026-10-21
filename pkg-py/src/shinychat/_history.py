@@ -488,12 +488,21 @@ class ChatHistory:
             def _(values):
                 values["selected_tab"] = current_tab()
 
-        Values are recorded per exchange: the root exchange always records,
-        and later exchanges record only when the values change along their
-        branch. Writing an empty dict records an explicit empty value rather
-        than inheriting the parent exchange's values. Keys must be strings
-        and every value must be JSON-serializable (``NaN`` and non-string
-        keys are rejected, never coerced).
+        Successful captures record values per exchange: the root always
+        records, and later exchanges record only when values change along
+        their branch. An empty dict explicitly clears the saved object.
+        Values use Pydantic's JSON encoding: dates and UUIDs become strings,
+        and tuples and sets become arrays. Keys must be strings; ``NaN``
+        and infinite floating-point values are rejected.
+
+        If an automatic capture callback or serialization fails, history
+        warns the developer and retains the previously recorded values so
+        the response or navigation can finish. An explicit call to
+        ``await chat.history.save()`` still raises the error.
+
+        Capture always reads live app state. Register ``on_navigate`` if
+        that state should follow a branch; otherwise later captures save
+        the unchanged live state at the newly selected position.
 
         Multiple callbacks can be registered and run in registration order.
         Safe to call before ``enabled = True``.

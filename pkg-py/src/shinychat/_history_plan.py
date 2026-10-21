@@ -17,6 +17,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Awaitable, Callable, Literal, cast
 
 from pydantic import JsonValue
+from pydantic_core import to_jsonable_python
 
 from ._history_client import (
     TurnsAdapter,
@@ -139,16 +140,25 @@ def latest_values(
 def canonical_values(values: Mapping[str, Any]) -> dict[str, Any]:
     """Validate an application-values object; return a detached JSON copy.
 
-    Non-string keys are rejected (JSON object keys must already be
-    strings) and non-finite floats are refused (``allow_nan=False``)
-    rather than silently coerced; the JSON round trip detaches the result
-    from the callback's dictionary.
+    Non-string keys are rejected first (JSON object keys must already
+    be strings), *before* any coercion can quietly rename them. Rich
+    app values are then coerced exactly the way the old
+    ``model_dump_json`` path coerced them (``date``/``datetime``,
+    ``Decimal``, ``UUID``, tuples, sets, and bytes become their JSON
+    forms via ``pydantic_core.to_jsonable_python``; common Shiny
+    values like ``input.date()`` and ``input.date_range()`` keep
+    saving). Unknown objects are still refused loudly, and
+    non-finite floats are rejected after normalization
+    (``allow_nan=False``) rather than silently coerced to ``null``;
+    the JSON round trip detaches the result from the callback's
+    dictionary.
     """
     _validate_mapping_keys(values, what="app state values")
+    normalized = to_jsonable_python(values)
     return cast(
         dict[str, Any],
         json.loads(
-            json.dumps(values, allow_nan=False, separators=(",", ":"))
+            json.dumps(normalized, allow_nan=False, separators=(",", ":"))
         ),
     )
 
