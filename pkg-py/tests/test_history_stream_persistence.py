@@ -17,7 +17,6 @@ import pytest
 import shinychat._history_recorder as recorder_module
 from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
 from shinychat._chat_types import StoredMessage, StoredSegment, StructuredBlock
-from shinychat._history_recorder import _ExchangeRecorder
 from shinychat._history_store import (
     ConversationPartition,
     FileConversationStore,
@@ -25,6 +24,7 @@ from shinychat._history_store import (
 )
 from shinychat._history_types import ConversationRecordV2
 from test_history_controller import (
+    _drain_stream_writes,
     _FakeChat,
     _make_controller,
     _stored_message,
@@ -110,21 +110,6 @@ def _wire(controller: Any) -> ChatTranscript:
 
 async def _sent() -> bool:
     return True
-
-
-async def _drain_stream_writes(recorder: _ExchangeRecorder) -> None:
-    """Await scheduled stream writes (put, then bounded continuation)."""
-    for _ in range(10):
-        put = recorder._put_task
-        if put is not None and not put.done():
-            await put
-            continue
-        continuation = recorder._continuation_task
-        if continuation is not None and not continuation.done():
-            await continuation
-            continue
-        return
-    raise AssertionError("scheduled stream writes did not settle")
 
 
 def _tool_request(request_id: str = "r1") -> StructuredBlock:
@@ -450,14 +435,19 @@ async def test_boundary_drains_inflight_put_without_deadlock(
     await _chunk(transcript, _assistant_message(_text("one")))
     await asyncio.wait_for(store.put_entered.wait(), 1)
 
+    # Newer captured content must survive the foreground boundary as well
+    # as the original detached background snapshot.
+    await _chunk(transcript, _assistant_message(_text(" two")))
     # A boundary save waits for the in-flight background write (the put
     # never needs the recorder lock, so this cannot deadlock), then saves.
     boundary = asyncio.create_task(recorder.save_current())
     await asyncio.sleep(0)
     assert not boundary.done()
+    assert store.concurrent == 1
     store.release.set()
     assert await asyncio.wait_for(boundary, 1)
-    assert _stored_contents(store, conv_id) == ["one"]
+    assert store.max_concurrent == 1
+    assert _stored_contents(store, conv_id) == ["one two"]
 
 
 @pytest.mark.anyio
@@ -607,7 +597,10 @@ async def test_background_failure_raised_once_at_next_boundary_then_retry(
     # Raised once at the next boundary...
     with pytest.raises(RuntimeError, match="disk full"):
         await recorder.save_current()
-    # ...and a later boundary retries and persists the whole tail.
+    # The latest boundary state was repaired before the prior failure was
+    # reported, and reporting it does not invent another unsaved tail.
+    assert _stored_contents(store, conv_id) == ["one two three"]
+    assert not await recorder.flush_pending()
     assert await recorder.save_current()
     assert _stored_contents(store, conv_id) == ["one two three"]
 
@@ -632,8 +625,148 @@ async def test_boundary_failure_before_completion_callback_retains_tail(
     with pytest.raises(RuntimeError, match="transient background"):
         await boundary
 
-    assert await recorder.flush_pending()
     assert _stored_contents(store, conv_id) == ["one"]
+    assert not await recorder.flush_pending()
+
+
+@pytest.mark.anyio
+async def test_terminal_boundary_repairs_file_before_reporting_background_error(
+    clock: _FakeClock,
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FileConversationStore(tmp_path)
+    app_values = {"region": "all"}
+    controller, _ = _make_controller(
+        store=store,
+        save_callbacks=[lambda values: values.update(app_values)],
+    )
+    recorder = controller._exchange_recorder
+    transcript = _wire(controller)
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "question")
+    )
+    await _start_stream(transcript, exchange_id)
+    record = recorder.record
+    assert record is not None
+    original_put = store.put
+    background_error = RuntimeError("transient background")
+    fail_next = True
+
+    async def fail_once(partition: Any, snapshot: Any) -> None:
+        nonlocal fail_next
+        if fail_next:
+            fail_next = False
+            raise background_error
+        await original_put(partition, snapshot)
+
+    monkeypatch.setattr(store, "put", fail_once)
+    clock.advance(1.0)
+    await _chunk(transcript, _assistant_message(_text("answer")))
+    put = recorder._put_task
+    assert put is not None
+    with pytest.raises(RuntimeError, match="transient background"):
+        await put
+    app_values["region"] = "west"
+
+    with pytest.raises(RuntimeError) as caught:
+        await transcript.end_stream(
+            stream_id="stream", status=None, error=None, send=_sent
+        )
+    assert caught.value is background_error
+    stored = await FileConversationStore(tmp_path).get(part(), record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    assert stored.nodes[exchange_id].status == "ok"
+    assert [
+        message.as_stored_message().content
+        for message in stored.nodes[exchange_id].messages
+    ] == ["answer"]
+    assert stored.nodes[exchange_id].state["shinychat:values"].data == {
+        "region": "west"
+    }
+    assert not await recorder.flush_pending()
+
+
+@pytest.mark.anyio
+async def test_cancelled_background_put_is_reported_once_then_save_can_retry(
+    clock: _FakeClock,
+) -> None:
+    store = _GatedStore()
+    controller, _ = _make_controller(store=store)
+    recorder = controller._exchange_recorder
+    transcript, _ = await _open_stream(controller, store)
+    conv_id = recorder.record.id  # type: ignore[union-attr]
+    clock.advance(1.0)
+    store.fail_next.append(asyncio.CancelledError("backend stopped"))
+    await _chunk(transcript, _assistant_message(_text("answer")))
+    await asyncio.sleep(0)
+    put = recorder._put_task
+    assert put is not None and put.cancelled()
+
+    with pytest.raises(asyncio.CancelledError):
+        await recorder.save_current()
+    assert recorder._put_task is None
+    assert await recorder.save_current()
+    assert _stored_contents(store, conv_id) == ["answer"]
+
+
+@pytest.mark.anyio
+async def test_failed_repair_reports_foreground_error_and_retains_tail(
+    clock: _FakeClock,
+) -> None:
+    store = _GatedStore()
+    controller, _ = _make_controller(store=store)
+    recorder = controller._exchange_recorder
+    transcript, _ = await _open_stream(controller, store)
+    conv_id = recorder.record.id  # type: ignore[union-attr]
+    clock.advance(1.0)
+    background_error = RuntimeError("background failed")
+    foreground_error = RuntimeError("repair failed")
+    store.fail_next.extend([background_error, foreground_error])
+    await _chunk(transcript, _assistant_message(_text("answer")))
+    put = recorder._put_task
+    assert put is not None
+    with pytest.raises(RuntimeError, match="background failed"):
+        await put
+
+    with pytest.raises(RuntimeError) as caught:
+        await recorder.save_current()
+    assert caught.value is foreground_error
+    assert caught.value.__cause__ is background_error
+    assert await recorder.flush_pending()
+    assert _stored_contents(store, conv_id) == ["answer"]
+
+
+@pytest.mark.anyio
+async def test_delete_observes_write_error_before_bookmark_eviction(
+    clock: _FakeClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    store = _GatedStore()
+    controller, _ = _make_controller(store=store)
+    recorder = controller._exchange_recorder
+    transcript, _ = await _open_stream(controller, store)
+    conv_id = recorder.record.id  # type: ignore[union-attr]
+    clock.advance(1.0)
+    store.fail_next.append(RuntimeError("background failed"))
+    await _chunk(transcript, _assistant_message(_text("answer")))
+    put = recorder._put_task
+    assert put is not None
+    with pytest.raises(RuntimeError, match="background failed"):
+        await put
+    evict = AsyncMock()
+    monkeypatch.setattr(controller, "on_evict", evict)
+
+    with pytest.raises(RuntimeError, match="background failed"):
+        await controller.delete(conv_id)
+    evict.assert_not_called()
+    assert await store.get(part(), conv_id) is not None
+
+    await controller.delete(conv_id)
+    evict.assert_awaited_once_with(conv_id)
+    assert await store.get(part(), conv_id) is None
 
 
 @pytest.mark.anyio

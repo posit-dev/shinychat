@@ -534,12 +534,13 @@ class _ExchangeRecorder:
             return
         try:
             await asyncio.shield(put)
-        except Exception:
-            self._put_task = None
-            # A boundary can observe a completed failure before the done
-            # callback runs. Retain its unsaved snapshot here as well.
-            if self._pending is _StreamPending.NONE:
-                self._pending = _StreamPending.DIRTY
+        except BaseException:
+            # A completed failure (including store cancellation) is consumed
+            # once. Cancellation of this boundary must retain a running put.
+            if put.done():
+                self._put_task = None
+                if self._pending is _StreamPending.NONE:
+                    self._pending = _StreamPending.DIRTY
             raise
         self._put_task = None
 
@@ -596,32 +597,34 @@ class _ExchangeRecorder:
         record_id = record.id
         partition = self._host.partition
         assert partition is not None
-        # Every boundary drains the in-flight stream snapshot first: a
-        # deferred background failure is raised here exactly once, and a
-        # still-running write is shielded rather than disowned.
+        background_error: Exception | None = None
         try:
-            await self.drain_stream_put_locked()
-            # The foreground write covers pending chunks and suppresses
-            # any continuation waiting to snapshot the same content.
+            try:
+                await self.drain_stream_put_locked()
+            except Exception as error:
+                background_error = error
+            # Repair the latest boundary state even if the older snapshot
+            # failed. Reporting that failure afterwards must not re-dirty
+            # an otherwise successfully persisted record.
             self._pending = _StreamPending.NONE
             self._last_write_start = monotonic()
             await self._host.store.put(partition, record)
-        except BaseException:
-            # Boundary mutations precede the drain. Even cancellation while
-            # draining must retain them for a later save or final flush.
+        except BaseException as error:
             if self._pending is _StreamPending.NONE:
                 self._pending = _StreamPending.DIRTY
+            if background_error is not None and isinstance(error, Exception):
+                raise error from background_error
             raise
         if (
-            self.record is not record
-            or self._host._active_id_now() != record_id
+            self.record is record
+            and self._host._active_id_now() == record_id
+            and self._active_id_published_for is not record
         ):
-            return
-
-        if self._active_id_published_for is not record:
             published = await self._host._publish_active_id(record)
             if published:
                 self._active_id_published_for = record
+        if background_error is not None:
+            raise background_error
 
     def _capture_app_state(self, *, strict: bool = False) -> None:
         """Capture application values at the active leaf, sparsely.
