@@ -2,10 +2,12 @@ import React from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { SlashCommandPalette } from "../SlashCommandPalette"
 import type { SlashCommandDef } from "../../transport/types"
+import type { SubmitKey } from "./submitShortcut"
 
 interface SuggestionRenderProps {
   paletteId: string
   onItemsChange?: (items: SlashCommandDef[]) => void
+  submitKey?: SubmitKey
 }
 
 interface SuggestionCallbackProps {
@@ -19,6 +21,7 @@ interface SuggestionCallbackProps {
 export function createSuggestionRender({
   paletteId,
   onItemsChange,
+  submitKey = "enter",
 }: SuggestionRenderProps) {
   let popup: HTMLDivElement | null = null
   let root: Root | null = null
@@ -58,6 +61,7 @@ export function createSuggestionRender({
       <SlashCommandPalette
         id={paletteId}
         commands={filteredCommands}
+        submitKey={submitKey}
         effectiveIndex={
           highlightedIndex >= 0
             ? Math.min(highlightedIndex, filteredCommands.length - 1)

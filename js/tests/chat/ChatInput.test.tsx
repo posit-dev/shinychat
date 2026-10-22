@@ -86,6 +86,7 @@ function renderChatInput(
       description: string
       echo: boolean
     }>
+    submitKey: "enter" | "enter+modifier"
   }> = {},
   ref?: React.RefObject<ChatInputHandle | null>,
 ) {
@@ -122,6 +123,7 @@ function renderChatInput(
         iconSend={props.iconSend}
         slashCommandId={props.slashCommandId}
         slashCommands={props.slashCommands}
+        submitKey={props.submitKey}
       />
     </ChatDispatchContext.Provider>,
   )
@@ -509,6 +511,35 @@ describe("ChatInput", () => {
         text: "/tmp",
         attachments: [],
       })
+    })
+
+    it("says Enter sends when no command matches", async () => {
+      const { editorEl } = renderChatInput({
+        slashCommandId: "test-slash-command",
+        slashCommands: helpCommand,
+      })
+      const editor = editorOf(editorEl)
+
+      await typeIntoEditor(editor, "/tmp")
+
+      expect(
+        document.querySelector(".shiny-chat-slash-palette-empty")?.textContent,
+      ).toBe("No matching commands. Press Enter to send as a message.")
+    })
+
+    it("names the modifier when the submit key needs one", async () => {
+      const { editorEl } = renderChatInput({
+        slashCommandId: "test-slash-command",
+        slashCommands: helpCommand,
+        submitKey: "enter+modifier",
+      })
+      const editor = editorOf(editorEl)
+
+      await typeIntoEditor(editor, "/tmp")
+
+      expect(
+        document.querySelector(".shiny-chat-slash-palette-empty")?.textContent,
+      ).toBe("No matching commands. Press Ctrl+Enter to send as a message.")
     })
 
     it("still picks the listed command on Enter", async () => {

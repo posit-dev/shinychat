@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
-* Pressing Enter now sends a message that starts with `/` when the slash-command menu has no command to offer. Previously the menu opened even in a chat with no slash commands, and Enter did nothing, so typing `/help` and pressing Enter sent nothing. The menu now opens only when the chat has slash commands. (#440)
+* Pressing Enter now sends a message that starts with `/` when the slash-command menu has no command to offer. Previously the menu opened even in a chat with no slash commands, and Enter did nothing, so typing `/help` and pressing Enter sent nothing. The menu now opens only when the chat has slash commands, and when it lists no match it says that Enter sends the text as a message. (#440)
 
 * Expanding a running tool call's row in a tool group now shows its arguments. Previously the panel stayed empty until the call finished. (#424)
 
