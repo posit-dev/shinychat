@@ -283,6 +283,7 @@ export function ChatApp({
           enabled: action.enabled,
           conversations: action.conversations,
           activeId: action.active_id,
+          readOnly: action.active_read_only ?? false,
           transitionProtocol: action.transition_protocol,
         })
         dispatch({
@@ -329,18 +330,6 @@ export function ChatApp({
             ? { text: action.content, attachments: action.attachments }
             : action.content,
         )
-        return
-      }
-      if (action.type === "history_accepted_input_projection") {
-        dispatch({ type: "TRUNCATE_MESSAGES", index: action.index })
-        dispatch({
-          type: "INPUT_SENT",
-          content: action.content,
-          role: "user",
-          ...(action.attachments.length > 0
-            ? { attachments: action.attachments }
-            : {}),
-        })
         return
       }
       if (action.type === "chunk_start") {
@@ -531,6 +520,7 @@ export function ChatApp({
   const handleEdit = useCallback(
     (index: number, content: string, attachments: AttachmentPayload[]) => {
       if (
+        historyStore.getSnapshot().readOnly ||
         isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
         historyStore.isMutationBlocked()
       )
@@ -576,6 +566,7 @@ export function ChatApp({
   const handleRetry = useCallback(
     (index: number) => {
       if (
+        historyStore.getSnapshot().readOnly ||
         isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
         historyStore.isMutationBlocked()
       )

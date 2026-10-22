@@ -101,6 +101,8 @@ interface ChatMessageProps {
   onRetry?: (index: number) => void
   siblingNavigationPending?: boolean
   disabled?: boolean
+  /** Read-only conversation: edit/retry are hidden and guarded; sibling nav is not. */
+  readOnly?: boolean
   inputId?: string
   submitKey?: SubmitKey
   isEditing?: boolean
@@ -121,6 +123,7 @@ export const ChatMessage = memo(function ChatMessage({
   onRetry,
   siblingNavigationPending = false,
   disabled,
+  readOnly = false,
   inputId,
   submitKey = "enter",
   isEditing = false,
@@ -211,7 +214,12 @@ export const ChatMessage = memo(function ChatMessage({
     return () => clearTimeout(timer)
   }, [visibleBlocks, thinkingShowAfter])
 
-  const touchHoldEnabled = isUser && !!onEdit && !disabled && !isEditing
+  const touchHoldEnabled =
+    isUser &&
+    !disabled &&
+    (!isEditing || readOnly) &&
+    ((!readOnly && !!onEdit) ||
+      (!!onNavigate && (message.siblings?.total ?? 0) > 1))
 
   const [touchRevealed, setTouchRevealed] = useState(false)
   const touchHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -242,12 +250,12 @@ export const ChatMessage = memo(function ChatMessage({
 
   const handleSaveEdit = useCallback(
     (content: string): boolean => {
-      if (disabled) return false
+      if (disabled || readOnly) return false
       onEdit?.(index, content, getPayloads())
       onCancelEdit?.()
       return true
     },
-    [onEdit, onCancelEdit, index, disabled, getPayloads],
+    [onEdit, onCancelEdit, index, disabled, readOnly, getPayloads],
   )
   // Lets Enter submit an attachments-only edit even though the editor doc is
   // empty (TiptapInput blocks empty submits otherwise).
@@ -617,7 +625,7 @@ export const ChatMessage = memo(function ChatMessage({
         className="shiny-chat-message-content"
         data-pending={showInlinePendingDots || undefined}
       >
-        {isEditing ? (
+        {isEditing && !readOnly ? (
           <div
             className="shiny-chat-edit-wrap"
             onKeyDownCapture={(e) => {
@@ -706,12 +714,13 @@ export const ChatMessage = memo(function ChatMessage({
         )}
       </div>
       {isUser &&
-        !isEditing &&
-        ((onEdit && !disabled) ||
+        (!isEditing || readOnly) &&
+        ((onEdit && !disabled && !readOnly) ||
           (message.siblings && message.siblings.total > 1) ||
-          (message.exchange?.retryable && onRetry)) && (
+          (message.exchange?.retryable && onRetry && !readOnly)) && (
           <div
             className={`shiny-chat-message-footer${
+              !readOnly &&
               message.exchange?.status === "error" &&
               message.exchange.error_message
                 ? " shiny-chat-message-footer-error"
@@ -749,7 +758,7 @@ export const ChatMessage = memo(function ChatMessage({
                 </button>
               </div>
             )}
-            {onEdit && !disabled && (
+            {onEdit && !disabled && !readOnly && (
               <button
                 type="button"
                 className="shiny-chat-edit-btn"
@@ -762,7 +771,7 @@ export const ChatMessage = memo(function ChatMessage({
                 dangerouslySetInnerHTML={{ __html: pencil }}
               />
             )}
-            {message.exchange?.retryable && onRetry && (
+            {message.exchange?.retryable && onRetry && !readOnly && (
               <button
                 type="button"
                 className="shiny-chat-retry-btn"
@@ -774,7 +783,8 @@ export const ChatMessage = memo(function ChatMessage({
                 Retry
               </button>
             )}
-            {message.exchange?.status === "error" &&
+            {!readOnly &&
+              message.exchange?.status === "error" &&
               message.exchange.error_message && (
                 <span className="shiny-chat-retry-error">
                   {message.exchange.error_message}

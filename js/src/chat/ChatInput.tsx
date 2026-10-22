@@ -120,8 +120,11 @@ export const ChatInput = memo(
 
     const submitValue = useCallback(
       (content: string): boolean => {
+        // Read the live snapshot: history_update can arrive before React
+        // unmounts the input, so a same-tick send must not render acceptance.
         if (
           submissionBlocked ||
+          historyStore.getSnapshot().readOnly ||
           isHistorySubmissionBlocked(historyStore.getSnapshot())
         )
           return false
@@ -244,6 +247,7 @@ export const ChatInput = memo(
 
           if (
             submissionBlocked ||
+            historyStore.getSnapshot().readOnly ||
             isHistorySubmissionBlocked(historyStore.getSnapshot())
           ) {
             if (focus) tiptap.focus()

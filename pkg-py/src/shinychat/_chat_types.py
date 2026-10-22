@@ -391,6 +391,10 @@ class HistoryUpdateAction(TypedDict):
     conversations: list[dict[str, Any]]  # ConversationMeta dumps
     active_id: str | None
     transition_protocol: NotRequired[Literal["completion-v1", "completion-v2"]]
+    # True only while the active record's saved model context is
+    # unavailable (view-only); absent/false means writable, so older
+    # peers that never send it keep the writable default.
+    active_read_only: NotRequired[bool]
 
 
 class HistoryNavigateAction(TypedDict):
@@ -408,13 +412,6 @@ class HistoryTransitionCompleteAction(TypedDict):
 class HistoryEditProjectionAction(TypedDict):
     type: Literal["history_edit_projection"]
     requestId: str
-    index: int
-    content: str
-    attachments: list[dict[str, Any]]
-
-
-class HistoryAcceptedInputProjectionAction(TypedDict):
-    type: Literal["history_accepted_input_projection"]
     index: int
     content: str
     attachments: list[dict[str, Any]]
@@ -461,7 +458,6 @@ ChatAction = Union[
     HistoryNavigateAction,
     HistoryTransitionCompleteAction,
     HistoryEditProjectionAction,
-    HistoryAcceptedInputProjectionAction,
     UpdateSiblingsAction,
     UpdateExchangeMetadataAction,
 ]

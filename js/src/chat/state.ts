@@ -144,6 +144,15 @@ export interface ChatHistoryState {
   enabled: boolean
   conversations: ConversationMeta[]
   activeId: string | null
+  /**
+   * True when the active conversation's saved model context could not be
+   * loaded: the transcript is viewable but not continuable. Distinct from
+   * `inputDisabled` (transient streaming/transition state) — streaming and
+   * clear actions never touch it; only `history_update` sets it. This is
+   * a deliberate server-metadata mirror, like enabled/activeId/conversations;
+   * rendering and same-tick guards use HistoryStore's synchronous snapshot.
+   */
+  readOnly: boolean
 }
 
 export interface ChatDrawerState {
@@ -221,7 +230,12 @@ export const initialState: ChatState = {
   enableUploadExplicit: false,
   toolGrouping: "tool",
   slashCommands: [],
-  history: { enabled: false, conversations: [], activeId: null },
+  history: {
+    enabled: false,
+    conversations: [],
+    activeId: null,
+    readOnly: false,
+  },
   drawer: {
     enabled: false,
     visible: false,
@@ -1379,6 +1393,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           enabled: action.enabled,
           conversations: action.conversations,
           activeId: action.active_id,
+          // Absent means writable, so messages from older servers (which
+          // never send the flag) leave the conversation continuable.
+          readOnly: action.active_read_only ?? false,
         },
       }
     }
@@ -1396,10 +1413,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     case "history_edit_projection":
       // Matching is owned by ChatApp and HistoryStore, which synchronously
       // truncate and dispatch the normal INPUT_SENT action.
-      return state
-
-    case "history_accepted_input_projection":
-      // ChatApp renders the server-accepted input without dispatching it back.
       return state
 
     case "update_siblings": {

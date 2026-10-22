@@ -7,7 +7,15 @@ import unicodedata
 from datetime import datetime, timezone
 from typing import Any, Iterator, Literal, cast
 
-from pydantic import BaseModel, Field, JsonValue, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    JsonValue,
+    SerializationInfo,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 from ._attachments import Attachment
 from ._chat_types import (
@@ -40,6 +48,7 @@ TitleSource = Literal["llm", "user"]
 
 # The blessed state-entry name for the turn-state capture/restore hooks.
 TURNS_STATE_KEY = "shinychat:turns"
+SYSTEM_PROMPT_STATE_KEY = "shinychat:system_prompt"
 
 MAX_HISTORY_ERROR_MESSAGE = 256
 HISTORY_ERROR_GENERIC = "The response could not be completed."
@@ -370,6 +379,24 @@ class StateEntry(BaseModel):
     version: int
     mode: Literal["delta", "snapshot"]
     data: JsonValue
+
+    @model_serializer(mode="wrap")
+    def _serialize(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        serialized = handler(self)
+        # Null is a state value, not an absent entry. Compact file writes must
+        # retain it, but explicit field selections still belong to the caller.
+        if (
+            self.data is None
+            and info.exclude_none
+            and "data" not in (info.exclude or {})
+            and (info.include is None or "data" in info.include)
+        ):
+            serialized["data"] = None
+        return serialized
 
 
 class ErrorEntry(BaseModel):
