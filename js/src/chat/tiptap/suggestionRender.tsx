@@ -2,9 +2,12 @@ import React from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { SlashCommandPalette } from "../SlashCommandPalette"
 import type { SlashCommandDef } from "../../transport/types"
+import type { SubmitKey } from "./submitShortcut"
 
 interface SuggestionRenderProps {
   paletteId: string
+  onItemsChange?: (items: SlashCommandDef[]) => void
+  submitKey?: SubmitKey
 }
 
 interface SuggestionCallbackProps {
@@ -15,7 +18,11 @@ interface SuggestionCallbackProps {
   decorationNode?: Element | null
 }
 
-export function createSuggestionRender({ paletteId }: SuggestionRenderProps) {
+export function createSuggestionRender({
+  paletteId,
+  onItemsChange,
+  submitKey = "enter",
+}: SuggestionRenderProps) {
   let popup: HTMLDivElement | null = null
   let root: Root | null = null
   let highlightedIndex = 0
@@ -54,6 +61,7 @@ export function createSuggestionRender({ paletteId }: SuggestionRenderProps) {
       <SlashCommandPalette
         id={paletteId}
         commands={filteredCommands}
+        submitKey={submitKey}
         effectiveIndex={
           highlightedIndex >= 0
             ? Math.min(highlightedIndex, filteredCommands.length - 1)
@@ -97,6 +105,7 @@ export function createSuggestionRender({ paletteId }: SuggestionRenderProps) {
   return {
     onStart(props: SuggestionCallbackProps) {
       filteredCommands = props.items ?? []
+      onItemsChange?.(filteredCommands)
       highlightedIndex = 0
       currentCommand = props.command
 
@@ -128,6 +137,7 @@ export function createSuggestionRender({ paletteId }: SuggestionRenderProps) {
 
     onUpdate(props: SuggestionCallbackProps) {
       filteredCommands = props.items ?? []
+      onItemsChange?.(filteredCommands)
       highlightedIndex = 0
       currentCommand = props.command
       renderPalette()
@@ -173,6 +183,7 @@ export function createSuggestionRender({ paletteId }: SuggestionRenderProps) {
     },
 
     onExit() {
+      onItemsChange?.([])
       cleanup()
     },
   }

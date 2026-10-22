@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react"
 import type { SlashCommandDef } from "../transport/types"
+import { submitKeyLabel, type SubmitKey } from "./tiptap/submitShortcut"
 
 export interface SlashCommandPaletteProps {
   id: string
@@ -9,6 +10,7 @@ export interface SlashCommandPaletteProps {
   effectiveIndex: number
   onSelect: (command: SlashCommandDef) => void
   onHighlight: (index: number) => void
+  submitKey?: SubmitKey
 }
 
 export function filterSlashCommands(
@@ -25,6 +27,7 @@ export function SlashCommandPalette({
   effectiveIndex,
   onSelect,
   onHighlight,
+  submitKey = "enter",
 }: SlashCommandPaletteProps): React.JSX.Element | null {
   const listRef = useRef<HTMLUListElement>(null)
 
@@ -46,7 +49,8 @@ export function SlashCommandPalette({
     >
       {commands.length === 0 ? (
         <li className="shiny-chat-slash-palette-empty" role="presentation">
-          No matching commands
+          No matching commands. Press {submitKeyLabel(submitKey)} to send as a
+          message.
         </li>
       ) : (
         commands.map((cmd, i) => (

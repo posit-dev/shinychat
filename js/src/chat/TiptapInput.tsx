@@ -10,6 +10,7 @@ import { createSuggestionRender } from "./tiptap/suggestionRender"
 import { SuggestionPluginKey } from "@tiptap/suggestion"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 import { filterSlashCommands } from "./SlashCommandPalette"
+import { paletteOwnsEnter, slashPaletteAllowed } from "./tiptap/slashSuggestion"
 import { useInputHistory } from "./useInputHistory"
 import type { SlashCommandDef } from "../transport/types"
 
@@ -122,6 +123,7 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
     const resetRef = useRef(reset)
     resetRef.current = reset
     const editorInstanceRef = useRef<Editor | null>(null)
+    const listedCommandsRef = useRef<SlashCommandDef[]>([])
 
     const editor = useEditor({
       extensions: [
@@ -137,7 +139,8 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
               const suggestionState = SuggestionPluginKey.getState(
                 this.editor.view.state,
               )
-              if (suggestionState?.active) return false
+              if (paletteOwnsEnter(suggestionState, listedCommandsRef.current))
+                return false
               const content = serializeEditor(this.editor)
               const isBlank = this.editor.isEmpty || content.trim().length === 0
               if (isBlank && !canSubmitEmptyRef.current?.()) return false
@@ -166,7 +169,7 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
             char: "/",
             allowSpaces: false,
             allow({ range }: { range: { from: number } }) {
-              return range.from === 0
+              return slashPaletteAllowed(range.from, slashCommandsRef.current)
             },
             items: ({ query }: { query: string }) => {
               return filterSlashCommands(slashCommandsRef.current, query)
@@ -174,6 +177,10 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
             render: () =>
               createSuggestionRender({
                 paletteId: `${inputId}-slash-palette`,
+                submitKey,
+                onItemsChange: (items) => {
+                  listedCommandsRef.current = items
+                },
               }),
             command: ({
               editor: ed,
