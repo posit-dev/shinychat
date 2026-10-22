@@ -189,6 +189,8 @@ slash_command_registry <- function(id, session) {
   )
 
   shiny::observe(label = "sync_slash_commands", domain = session, {
+    # A re-rendered chat_ui() starts with an empty palette and asks again.
+    session$input[[paste0(id, "_slash_commands_request")]]
     cmds <- slash_commands()
     if (!is.null(cmds)) {
       defs <- lapply(cmds, `[[`, "definition")

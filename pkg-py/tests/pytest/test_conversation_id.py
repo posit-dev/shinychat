@@ -730,3 +730,36 @@ def test_history_disabled_stays_none():
         assert mock.conversation_id is None
 
     run_async(main)
+
+
+def test_slash_commands_resent_when_chat_ui_requests_them():
+    async def main() -> None:
+        chat, _, session = make_chat(history=False)
+        # Pre-seed a settable Value (see make_chat()).
+        session.input["chat_slash_commands_request"] = reactive.Value()
+        with session_context(session):
+            chat.slash_command("help", "Help", fn=lambda: None)
+
+        def slash_syncs() -> list[Any]:
+            sent = cast(Any, session).sent
+            return [
+                m["message"]["action"]["commands"]
+                for m in sent
+                if m["message"]["action"]["type"] == "update_slash_commands"
+            ]
+
+        # The initial sync must not wait for a request that hasn't arrived.
+        await reactive.flush()
+        assert len(slash_syncs()) == 1
+
+        # A re-rendered chat UI starts with an empty palette and asks again.
+        session.input["chat_slash_commands_request"].set(1)
+        await reactive.flush()
+
+        syncs = slash_syncs()
+        assert len(syncs) == 2
+        assert syncs[-1] == [
+            {"name": "help", "description": "Help", "echo": True}
+        ]
+
+    run_async(main)
