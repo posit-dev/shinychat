@@ -9,7 +9,16 @@ from .._history_store import (
     ConversationStore,
     FileConversationStore,
 )
-from .._history_types import ConversationMeta, ConversationRecord
+from .._history_types import (
+    ConversationMeta,
+    # `ConversationRecord` is the version-tracking validation/construction
+    # entry point; the runtime type the controller/recorder build -- and
+    # that stores receive in put() and should isinstance-check against --
+    # is `ConversationRecordV2`.
+    ConversationRecord,
+    ConversationRecordV1,
+    ConversationRecordV2,
+)
 from .._page_chat import ChatDrawer, ChatNavPanel, ChatSidebar
 
 try:
@@ -38,6 +47,8 @@ __all__ = [
     "ConversationMeta",
     "ConversationPartition",
     "ConversationRecord",
+    "ConversationRecordV1",
+    "ConversationRecordV2",
     "ConversationStore",
     "FileConversationStore",
     "ToolResultDisplay",
