@@ -375,8 +375,9 @@ ready-state icon without changing the button's surface.
 
 **Custom icon.** Pass an SVG from
 [`bsicons::bs_icon()`](https://rdrr.io/pkg/bsicons/man/bs_icon.html) or
-`faicons::icon_svg()`. The button provides the surface, so a bare glyph
-gets the same filled-circle treatment as the default arrow:
+[`fontawesome::fa()`](https://rstudio.github.io/fontawesome/reference/fa.html).
+The button provides the surface, so a bare glyph gets the same
+filled-circle treatment as the default arrow:
 
     chat_ui("chat", icon_send = bsicons::bs_icon("send-fill"))
 

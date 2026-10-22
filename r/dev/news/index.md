@@ -2,6 +2,45 @@
 
 ## shinychat (development version)
 
+### New features and improvements
+
+- Text file attachments are now sent to the model via
+  [`ellmer::content_document_url()`](https://ellmer.tidyverse.org/reference/content_document_file.html)
+  rather than a hand-assembled `<file-attachment>` text wrapper, so
+  providers that handle documents natively receive a real document. This
+  raises the minimum required ellmer version to 0.5.0.
+  ([\#415](https://github.com/posit-dev/shinychat/issues/415))
+
+- Streamed responses now reveal smoothly at a typing-like pace instead
+  of in abrupt server-sized chunks, with far fewer re-renders along the
+  way. Bursts of text catch up quickly, the reveal never flashes a
+  partial HTML tag, and stopping a response reveals any buffered text
+  immediately. The trailing dot now appears only once a stream has
+  stalled (or before any text has arrived), rather than hopping along
+  with every update.
+  ([\#411](https://github.com/posit-dev/shinychat/issues/411))
+
+### Bug fixes
+
+- Expanding a running tool call’s row in a tool group now shows its
+  arguments. Previously the panel stayed empty until the call finished.
+  ([\#424](https://github.com/posit-dev/shinychat/issues/424))
+
+- Stopping an in-progress response now returns focus to the chat input,
+  even inside a Shiny modal. During streaming, Escape dismisses an open
+  slash-command menu or history drawer first; a subsequent Escape
+  cancels the response without closing the modal. (thanks
+  [@taekop](https://github.com/taekop),
+  [\#416](https://github.com/posit-dev/shinychat/issues/416))
+
+- Fixed conversation history being silently lost on redeploy on Posit
+  Connect when `CONNECT_CONTENT_DATA_DIR` is unavailable; it now
+  correctly persists to Connect’s bookmark storage instead.
+
+## shinychat 0.5.0
+
+CRAN release: 2026-09-09
+
 ### API additions
 
 - Added
