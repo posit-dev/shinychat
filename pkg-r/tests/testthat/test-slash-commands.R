@@ -486,6 +486,56 @@ test_that("a promise-returning handler keeps the loading state until it resolves
   })
 })
 
+test_that("a non-echo command does not clear loading state", {
+  sent <- record_chat_actions()
+  calls <- 0
+
+  shiny::testServer(bare_server, {
+    chat_slash_command(
+      "chat",
+      "clear",
+      "Clear",
+      function() calls <<- calls + 1,
+      echo = FALSE
+    )
+    session$setInputs(
+      chat_slash_command = list(command = "clear", userText = "", echo = FALSE)
+    )
+
+    expect_equal(calls, 1)
+    # The invocation created no loading state on the client, so there is
+    # nothing to remove.
+    expect_length(actions_of_type(sent, "remove_loading"), 0)
+  })
+})
+
+test_that("a non-echo command settling while a newer request is pending clears nothing", {
+  sent <- record_chat_actions()
+  resolve_reply <- NULL
+
+  shiny::testServer(bare_server, {
+    chat_slash_command(
+      "chat",
+      "clear",
+      "Clear",
+      function() {
+        promises::promise(function(resolve, reject) resolve_reply <<- resolve)
+      },
+      echo = FALSE
+    )
+    session$setInputs(
+      chat_slash_command = list(command = "clear", userText = "", echo = FALSE)
+    )
+    later::run_now(0.05)
+
+    # A newer echoed request would have created loading state here. Settling
+    # this invocation's promise must not send remove_loading for it.
+    resolve_reply(NULL)
+    later::run_now(0.05)
+    expect_length(actions_of_type(sent, "remove_loading"), 0)
+  })
+})
+
 test_that("a promise-returning handler that rejects is reported and clears the loading state", {
   sent <- record_chat_actions()
 

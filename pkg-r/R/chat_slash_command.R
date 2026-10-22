@@ -169,8 +169,18 @@ slash_command_registry <- function(id, session) {
         )
       }
 
+      # A non-echo invocation never put the client in a loading state (its
+      # composer stays enabled), so there is nothing to clean up. Sending
+      # remove_loading anyway could clear a newer request's placeholder if
+      # the user submitted one while this invocation was in flight. Use the
+      # invocation's echo, which browser event handlers can override, not
+      # the registered default. A missing echo means an echoed invocation:
+      # the client always sends it, and registration defaults handler-bearing
+      # commands to echo = TRUE.
       remove_loading <- function() {
-        send_chat_action(id, list(type = "remove_loading"), session = session)
+        if (!isFALSE(data$echo)) {
+          send_chat_action(id, list(type = "remove_loading"), session = session)
+        }
       }
       # Don't return the promise from the observer: Shiny holds a session's
       # later inputs until async observers settle.
