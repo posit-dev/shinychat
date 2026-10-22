@@ -100,6 +100,12 @@ export interface ChatMessageData {
   cancelled?: boolean
   /** Sibling navigation metadata (index within a set of edited variants, total variants). */
   siblings?: { index: number; total: number }
+  /** Ephemeral v2 exchange state projected after restoring a stored path. */
+  exchange?: {
+    status: "pending" | "ok" | "error" | "cancelled"
+    retryable: boolean
+    error_message?: string
+  }
 }
 
 export interface GreetingData {
@@ -195,6 +201,7 @@ export type UIAction =
       awaitResponse?: boolean
       attachments?: AttachmentPayload[]
     }
+  | { type: "TRUNCATE_MESSAGES"; index: number }
   | { type: "greeting_dismissed" }
   | { type: "greeting_settle"; restored: boolean }
   | { type: "CANCEL_REQUESTED" }
@@ -664,6 +671,13 @@ function extractTopics(text: string, buffer: string): TopicResult {
 
 export function chatReducer(state: ChatState, action: AnyAction): ChatState {
   switch (action.type) {
+    case "TRUNCATE_MESSAGES":
+      return {
+        ...state,
+        messages: state.messages.slice(0, action.index),
+        streamingMessage: null,
+      }
+
     case "INPUT_SENT": {
       const userMsg: ChatMessageData = {
         id: uuid(),
@@ -1374,6 +1388,20 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       return state
     }
 
+    case "history_transition_complete": {
+      // HistoryStore owns the matching request marker.
+      return state
+    }
+
+    case "history_edit_projection":
+      // Matching is owned by ChatApp and HistoryStore, which synchronously
+      // truncate and dispatch the normal INPUT_SENT action.
+      return state
+
+    case "history_accepted_input_projection":
+      // ChatApp renders the server-accepted input without dispatching it back.
+      return state
+
     case "update_siblings": {
       const updated = state.messages.map((msg, i) => {
         const siblingData = action.data[i]
@@ -1383,6 +1411,16 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         if (msg.siblings) {
           return { ...msg, siblings: undefined }
         }
+        return msg
+      })
+      return { ...state, messages: updated }
+    }
+
+    case "update_exchange_metadata": {
+      const updated = state.messages.map((msg, i) => {
+        const exchange = action.data[i]
+        if (exchange) return { ...msg, exchange }
+        if (msg.exchange) return { ...msg, exchange: undefined }
         return msg
       })
       return { ...state, messages: updated }

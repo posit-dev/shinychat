@@ -6,6 +6,7 @@ import {
   useMemo,
   useState,
   useCallback,
+  useSyncExternalStore,
 } from "react"
 import {
   ShinyLifecycleContext,
@@ -33,7 +34,11 @@ import {
   useSupersededRequests,
 } from "./useSupersededRequests"
 import { ChatContainer, type ChatContainerHandle } from "./ChatContainer"
-import { acquireHistoryStore, getHistoryStore } from "./historyStore"
+import {
+  acquireHistoryStore,
+  getHistoryStore,
+  isHistorySubmissionBlocked,
+} from "./historyStore"
 import { StreamSmoother } from "../streaming/StreamSmoother"
 import type {
   ChatTransport,
@@ -197,6 +202,12 @@ export function ChatApp({
   }, [resolvedToolGrouping])
 
   const historyStore = useMemo(() => getHistoryStore(elementId), [elementId])
+  const historySnapshot = useSyncExternalStore(
+    historyStore.subscribe,
+    historyStore.getSnapshot,
+    historyStore.getSnapshot,
+  )
+  const submissionBlocked = isHistorySubmissionBlocked(historySnapshot)
 
   useEffect(() => {
     return acquireHistoryStore(elementId, transport).release
@@ -272,6 +283,7 @@ export function ChatApp({
           enabled: action.enabled,
           conversations: action.conversations,
           activeId: action.active_id,
+          transitionProtocol: action.transition_protocol,
         })
         dispatch({
           type: "greeting_settle",
@@ -280,11 +292,55 @@ export function ChatApp({
         if (action.enabled) {
           setCurrentConversationId(elementId, action.active_id)
         }
-        if (siblingNavigationPendingRef.current) {
+        if (
+          siblingNavigationPendingRef.current &&
+          historyStore.getSnapshot().historyTransitionPending === null
+        ) {
           siblingNavigationPendingRef.current = false
           setSiblingNavigationPending(false)
           containerRef.current?.endSiblingNavigation()
         }
+        return
+      }
+      if (action.type === "history_transition_complete") {
+        if (historyStore.completeHistoryTransition(action.requestId)) {
+          if (siblingNavigationPendingRef.current) {
+            siblingNavigationPendingRef.current = false
+            setSiblingNavigationPending(false)
+            containerRef.current?.endSiblingNavigation()
+          }
+        }
+        return
+      }
+      if (action.type === "history_edit_projection") {
+        if (!historyStore.acceptEditProjection(action.requestId)) return
+        dispatch({ type: "TRUNCATE_MESSAGES", index: action.index })
+        dispatch({
+          type: "INPUT_SENT",
+          content: action.content,
+          role: "user",
+          ...(action.attachments.length > 0
+            ? { attachments: action.attachments }
+            : {}),
+        })
+        transport.sendInput(
+          inputId,
+          state.enableUpload || action.attachments.length > 0
+            ? { text: action.content, attachments: action.attachments }
+            : action.content,
+        )
+        return
+      }
+      if (action.type === "history_accepted_input_projection") {
+        dispatch({ type: "TRUNCATE_MESSAGES", index: action.index })
+        dispatch({
+          type: "INPUT_SENT",
+          content: action.content,
+          role: "user",
+          ...(action.attachments.length > 0
+            ? { attachments: action.attachments }
+            : {}),
+        })
         return
       }
       if (action.type === "chunk_start") {
@@ -352,7 +408,7 @@ export function ChatApp({
       deferred = []
       unsubscribe()
     }
-  }, [transport, elementId, historyStore])
+  }, [transport, elementId, historyStore, inputId, state.enableUpload])
 
   // Stopping should stop the motion: reveal whatever is buffered at once. If
   // the stream already ended and only its tail was draining, there is nothing
@@ -460,26 +516,75 @@ export function ChatApp({
   }, [greetingIsDismissed, elementId])
 
   useLayoutEffect(() => {
-    historyStore.setBusy(state.streamingMessage !== null)
-  }, [historyStore, state.streamingMessage])
+    historyStore.setBusy(
+      state.streamingMessage !== null ||
+        (historySnapshot.transitionProtocol === "completion-v2" &&
+          state.inputDisabled),
+    )
+  }, [
+    historyStore,
+    historySnapshot.transitionProtocol,
+    state.inputDisabled,
+    state.streamingMessage,
+  ])
 
   const handleEdit = useCallback(
     (index: number, content: string, attachments: AttachmentPayload[]) => {
-      transport.sendMessageEdit(elementId, index, content, attachments)
+      if (
+        isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
+        historyStore.isMutationBlocked()
+      )
+        return
+      const requestId = historyStore.beginEditTransition()
+      if (requestId === null) {
+        transport.sendMessageEdit(elementId, index, content, attachments)
+      } else {
+        transport.sendMessageEdit(
+          elementId,
+          index,
+          content,
+          attachments,
+          requestId,
+        )
+      }
     },
-    [transport, elementId],
+    [transport, elementId, historyStore],
   )
 
   const handleNavigate = useCallback(
     (index: number, direction: "prev" | "next") => {
-      if (siblingNavigationPendingRef.current) return
+      if (
+        siblingNavigationPendingRef.current ||
+        isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
+        historyStore.isMutationBlocked()
+      )
+        return
 
+      const requestId = historyStore.beginNavigationTransition()
       siblingNavigationPendingRef.current = true
       setSiblingNavigationPending(true)
       containerRef.current?.beginSiblingNavigation()
-      transport.sendMessageNavigate(elementId, index, direction)
+      if (requestId === null) {
+        transport.sendMessageNavigate(elementId, index, direction)
+      } else {
+        transport.sendMessageNavigate(elementId, index, direction, requestId)
+      }
     },
-    [transport, elementId],
+    [transport, elementId, historyStore],
+  )
+
+  const handleRetry = useCallback(
+    (index: number) => {
+      if (
+        isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
+        historyStore.isMutationBlocked()
+      )
+        return
+      const requestId = historyStore.beginEditTransition()
+      if (requestId === null) return
+      transport.sendMessageResubmit(elementId, index, "retry", requestId)
+    },
+    [transport, elementId, historyStore],
   )
 
   const supersededRequests = useSupersededRequests(
@@ -507,6 +612,7 @@ export function ChatApp({
                 messages={state.messages}
                 streamingMessage={state.streamingMessage}
                 inputDisabled={state.inputDisabled}
+                submissionBlocked={submissionBlocked}
                 inputPlaceholder={state.inputPlaceholder}
                 iconAssistant={iconAssistant}
                 iconSend={iconSend}
@@ -529,6 +635,7 @@ export function ChatApp({
                 historyStore={historyStore}
                 onEdit={handleEdit}
                 onNavigate={handleNavigate}
+                onRetry={handleRetry}
                 siblingNavigationPending={siblingNavigationPending}
                 showHistory={showHistory}
                 drawer={state.drawer}

@@ -61,6 +61,7 @@ def test_greeting_dismissed_on_user_message(
     expect(chat.loc_greeting).to_be_visible(timeout=10_000)
 
     chat.set_user_input("Hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
 
     expect(chat.loc_greeting).not_to_be_visible(timeout=10_000)
@@ -77,6 +78,7 @@ def test_greeting_reappears_after_clear_chat(
 
     # Send a message to dismiss the greeting
     chat.set_user_input("Hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("You said: Hello", timeout=10_000)
     expect(chat.loc_greeting).not_to_be_visible(timeout=10_000)
@@ -102,6 +104,7 @@ def test_clear_chat_and_greeting_regenerates(
 
     # Send a message to dismiss
     chat.set_user_input("Hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("You said: Hello", timeout=10_000)
 
@@ -120,10 +123,12 @@ def test_messages_gone_after_clear(page: Page, local_app: ShinyAppProc) -> None:
 
     # Send two messages
     chat.set_user_input("First")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("You said: First", timeout=10_000)
 
     chat.set_user_input("Second")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("You said: Second", timeout=10_000)
 

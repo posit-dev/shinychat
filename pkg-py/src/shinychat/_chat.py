@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import math
 import os
 import re
 import warnings
+from collections import deque
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -19,7 +22,6 @@ from typing import (
     NamedTuple,
     Optional,
     Sequence,
-    Tuple,
     Union,
     cast,
     overload,
@@ -56,13 +58,15 @@ from ._chat_normalize import (
     normalize_message_chunk,
 )
 from ._chat_segments import (
-    StreamSegment,
     append_chunk_segments,
-    copy_segments,
     has_mixed_content_types,
     segments_content,
     segments_deps,
-    serialize_segments,
+)
+from ._chat_transcript import (
+    _STREAM_UNOWNED,
+    ChatTranscript,
+    TranscriptEntry,
 )
 from ._chat_types import (
     ChatAction,
@@ -79,7 +83,6 @@ from ._chat_types import (
     StringSegment,
     _assemble_stored_message,
     chat_greeting,
-    ensure_string_segment,
     flatten_segments_content,
     initial_message_payload,
     is_structured_segment,
@@ -91,6 +94,10 @@ from ._history_client import (
     TurnsAdapter,
     as_turns_adapter,
     normalize_turn_group,
+)
+from ._history_types import (
+    HISTORY_ERROR_STREAM_START,
+    HISTORY_ERROR_STREAM_TERMINAL,
 )
 from ._html_deps_py_shiny import shinychat_dependency
 from ._page_chat import (
@@ -165,6 +172,31 @@ UserSubmitFunction = Union[
     UserSubmitFunction1,
     UserSubmitFunction2,
 ]
+ResponseSettlementCallback = Callable[[], Awaitable[None]]
+
+
+@dataclass(eq=False)
+class _ResponseSettlementConsumer:
+    callback: ResponseSettlementCallback
+    cancelled: bool = False
+
+
+_ResponseSettlementDelivery = tuple[
+    "Chat", tuple[_ResponseSettlementConsumer, ...]
+]
+
+_ResponseSettlementDeliveries = tuple[_ResponseSettlementDelivery, ...]
+
+_response_settlement_deliveries: ContextVar[_ResponseSettlementDeliveries] = (
+    ContextVar("_response_settlement_deliveries", default=())
+)
+
+
+def _consume_task_result(task: asyncio.Future[Any]) -> None:
+    try:
+        task.result()
+    except BaseException:
+        pass
 
 
 @dataclass(frozen=True)
@@ -181,12 +213,25 @@ class UserInput(NamedTuple):
 
 ChunkOption = Literal["start", "end", True, False]
 
-PendingMessage = Tuple[
-    Any,
-    ChunkOption,
-    Literal["append", "replace"],
-    Union[str, None],
-]
+# Raised when a stream entry point is rejected because the v2 initial history
+# decision is still pending. The message names the consequence for the caller:
+# the producer was never consumed and nothing will be replayed later. Appends
+# stay silent (they are already-realized content); a stream is an unconsumed,
+# expensive producer, so it fails loudly instead (D1, phase-5.6 mechanism).
+_STREAM_SUPPRESSED_MESSAGE = (
+    "Cannot start a message stream while chat history is still initializing. "
+    "No accepted-transcript work can start yet, so the stream was rejected "
+    "before its message iterable was consumed; it will not be replayed."
+)
+
+# Warned when a programmatic append is suppressed during the v2 initial history
+# decision window. The message is a module-level constant so callers can filter
+# on it; it names the consequence: the append was ignored, not sent, and will
+# not be replayed (D5, phase-5.6 mechanism).
+_SUPPRESSED_APPEND_WARNING = (
+    "The append was ignored because conversation history is still "
+    "initializing; it was not sent and will not be replayed."
+)
 
 
 class Chat:
@@ -379,14 +424,6 @@ class Chat:
 
         self.on_error = on_error
 
-        # Chunked messages get accumulated (using this property) before changing state
-        self._current_stream_segments: list[StreamSegment] = []
-        self._current_stream_id: str | None = None
-        self._pending_messages: list[PendingMessage] = []
-
-        # For tracking message stream state when entering/exiting nested streams
-        self._message_stream_segments_checkpoint: list[StreamSegment] = []
-
         # Keep track of effects so we can destroy them when the chat is destroyed
         self._effects: list["Effect_"] = []
         history_config = (
@@ -397,14 +434,35 @@ class Chat:
         self.drawer: ChatDrawerController = ChatDrawerController(self)
         self._cancel_bookmarking_callbacks: CancelCallback | None = None
         self._greeting_content: str | None = None
+        self._response_settlement_callbacks: list[
+            _ResponseSettlementConsumer
+        ] = []
+        self._pending_response_settlements: deque[
+            tuple[_ResponseSettlementConsumer, ...]
+        ] = deque()
+        self._response_settlement_runner: asyncio.Task[None] | None = None
+        self._cancel_response_settlement_wakeup: CancelCallback | None = None
+        self._response_settlement_destroyed = False
+        self._destructive_history_transaction: object | None = None
+        self._destructive_history_task: asyncio.Task[Any] | None = None
+        self._destructive_history_depth = 0
+        self._destructive_history_blocks_input = False
 
         # Initialize chat state and user input effect
         from shiny import reactive
         from shiny.session import session_context
 
         with session_context(self._session):
-            self._messages: reactive.Value[tuple[StoredMessage, ...]] = (
-                reactive.Value(())
+            self._transcript_revision: reactive.Value[int] = reactive.Value(0)
+
+            def _notify_transcript_change() -> None:
+                with reactive.isolate():
+                    revision = self._transcript_revision()
+                self._transcript_revision.set(revision + 1)
+
+            self._transcript = ChatTranscript(
+                on_change=_notify_transcript_change,
+                on_stream_terminal=self._schedule_response_settlement,
             )
 
             # `None` until the first registration, which lets us skip the
@@ -418,6 +476,10 @@ class Chat:
             self._latest_user_input: reactive.Value[StoredMessage | None] = (
                 reactive.Value(None)
             )
+            self._normal_user_submission: reactive.Value[
+                tuple[int, StoredMessage] | None
+            ] = reactive.Value(None)
+            self._normal_user_submission_sequence = 0
 
             @reactive.extended_task
             async def _mock_task() -> str:
@@ -429,21 +491,45 @@ class Chat:
 
             # TODO: deprecate messages once we start promoting managing LLM message
             # state through other means
-            async def _append_init_messages():
+            async def _append_init_messages(
+                transaction: object | None = None,
+            ) -> None:
                 for msg in messages:
-                    await self.append_message(msg)
+                    await self._append_complete_message(
+                        msg, settle=False, transaction=transaction
+                    )
 
             @reactive.effect
             async def _init_chat():
                 await _append_init_messages()
+                if not self._history_enabled:
+                    await self._send_action(
+                        {
+                            "type": "history_update",
+                            "enabled": False,
+                            "conversations": [],
+                            "active_id": None,
+                        }
+                    )
+
+            @reactive.effect
+            async def _withdraw_unavailable_history_seed():
+                if self._history_enabled and self.client is None:
+                    await self._send_action(
+                        {
+                            "type": "history_update",
+                            "enabled": False,
+                            "conversations": [],
+                            "active_id": None,
+                        }
+                    )
 
             self._append_init_messages = _append_init_messages
             self._init_chat = _init_chat
 
-            # Record the latest submission into `_latest_user_input`, which
-            # backs the public `user_input()` method. priority=9999 ensures
-            # this runs before `on_user_submit`/other effects so `user_input()`
-            # reflects the latest submission.
+            # Record accepted raw input before effects that consume the
+            # accepted-input signal. priority=9999 ensures those effects see
+            # the committed latest input.
             @reactive.effect(priority=9999)
             @reactive.event(self._user_input)
             async def _on_user_input():
@@ -454,7 +540,7 @@ class Chat:
                         role="user",
                         attachments=attachments,
                     )
-                    self._store_message(msg)
+                    await self._record_accepted_user_input_with_capture(msg)
                 except Exception as e:
                     await self._raise_exception(e)
 
@@ -477,13 +563,20 @@ class Chat:
                 command = data.get("command", "")
                 user_text = data.get("userText", "")
                 echo = bool(data.get("echo", True))
-                if echo:
-                    full_text = f"/{command} {user_text}".rstrip()
-                    msg = ChatMessage(content=full_text, role="user")
-                    self._store_message(msg)
-                cmds = self._slash_commands()
-                reg = cmds.get(command) if cmds else None
                 try:
+                    if not self.history._history_action_admitted():
+                        # Client-triggered, not a programmatic append; direct
+                        # user actions have their own rejection path (P5.4),
+                        # so this stays silent like the user-input sites.
+                        return
+                    if echo:
+                        full_text = f"/{command} {user_text}".rstrip()
+                        msg = ChatMessage(content=full_text, role="user")
+                        await self._record_accepted_user_input_with_capture(
+                            msg, dispatch_user_submit=False
+                        )
+                    cmds = self._slash_commands()
+                    reg = cmds.get(command) if cmds else None
                     if reg is not None and reg.handler is not None:
                         if reg.takes_args:
                             await _utils.wrap_async(
@@ -499,6 +592,7 @@ class Chat:
                     await self._remove_loading_message()
 
             self._effects.append(_init_chat)
+            self._effects.append(_withdraw_unavailable_history_seed)
             self._effects.append(_on_user_input)
             self._effects.append(_sync_slash_commands)
             self._effects.append(_on_slash_command)
@@ -509,6 +603,9 @@ class Chat:
         if instance is not None:
             instance.destroy()
         CHAT_INSTANCES[instance_id] = self
+        self._cancel_session_end: CancelCallback | None = (
+            self._session.on_ended(self.destroy)
+        )
 
         self.client: "ChatClient | None" = None
         if client is not None:
@@ -670,22 +767,26 @@ class Chat:
 
             fn_params = inspect.signature(fn).parameters
 
-            @reactive.effect
-            @reactive.event(self._user_input)
+            @reactive.effect(priority=9998)
+            @reactive.event(self._normal_user_submission)
             async def handle_user_input():
                 try:
+                    submission = self._normal_user_submission()
+                    if submission is None:
+                        return
+                    _, stored = submission
+                    user_input = UserInput(
+                        text=str(stored.content),
+                        attachments=stored.attachments,
+                    )
                     if len(fn_params) > 2:
                         raise ValueError(
                             "An on_user_submit function should not take more than 2 arguments"
                         )
                     elif len(fn_params) == 2:
                         afunc = _utils.wrap_async(cast(UserSubmitFunction2, fn))
-                        user_input = self.user_input()
-                        assert user_input is not None
                         await afunc(*user_input)
                     elif len(fn_params) == 1:
-                        user_input = self.user_input()
-                        assert user_input is not None
                         text, _ = user_input
                         afunc = _utils.wrap_async(cast(UserSubmitFunction1, fn))
                         await afunc(text)
@@ -881,6 +982,10 @@ class Chat:
 
         Note
         ----
+        This reflects accepted user input and messages successfully sent by the
+        server. It updates synchronously after accepted input and successful
+        appends; streamed messages are visible as their sent chunks accumulate.
+
         Returns
         -------
         tuple[ChatMessageDict, ...]
@@ -903,15 +1008,27 @@ class Chat:
                 "Use your LLM provider (e.g., chatlas, LangChain) to manage conversation context instead."
             )
 
-        messages = self._messages()
+        try:
+            self._transcript_revision()
+        except RuntimeError as error:
+            if str(error) != "No current reactive context":
+                raise
+            from shiny import reactive
 
+            with reactive.isolate():
+                self._transcript_revision()
         res: list[ChatMessageDict] = []
-        for m in messages:
+        for entry in self._transcript.read():
+            m = entry.message
             chat_msg = ChatMessageDict(content=str(m.content), role=m.role)
             if m.html_deps:
                 chat_msg["html_deps"] = m.html_deps
             if m.attachments:
                 chat_msg["attachments"] = m.attachments
+            if entry.status is not None:
+                chat_msg["status"] = entry.status
+            if entry.error is not None:
+                chat_msg["error"] = entry.error
             res.append(chat_msg)
 
         return tuple(res)
@@ -1054,21 +1171,57 @@ class Chat:
         similar) is specified in model's completion method.
         :::
         """
-        # If we're in a stream, queue the message
-        if self._current_stream_id:
-            self._pending_messages.append((message, False, "append", None))
+        if not self.history._history_action_admitted():
+            # Warn here, at the public entry point, so stacklevel=2 names the
+            # caller; internal callers of _append_complete_message (init
+            # seeding, restore replay) stay silent.
+            warnings.warn(_SUPPRESSED_APPEND_WARNING, stacklevel=2)
             return
+        await self._append_complete_message(message, icon=icon, settle=True)
 
-        msg = normalize_message(message)
-        msg = await self._transform_message(msg)
-        if msg is None:
+    async def _append_complete_message(
+        self,
+        message: Any,
+        *,
+        icon: HTML | Tag | TagList | bool | None = None,
+        settle: bool,
+        transaction: object | None = None,
+    ) -> None:
+        if not self.history._history_action_admitted():
             return
-        self._store_message(msg)
-        await self._send_append_message(
-            message=msg,
-            chunk=False,
-            icon=icon,
+        exchange_id = self._transcript.open_exchange_id
+        transaction, release = self._transcript._use_transaction(
+            transaction, self._transcript._reserve_complete_append
         )
+        try:
+            msg = normalize_message(message)
+            msg = await self._transform_message(msg)
+            if msg is None:
+                return
+            stored = self._as_stored_message(msg)
+            entry = TranscriptEntry(
+                message=stored,
+                icon=_resolve_icon_attr(icon),
+            )
+
+            async def send() -> bool:
+                return await self._send_append_message(
+                    message=stored,
+                    chunk=False,
+                    icon=icon,
+                )
+
+            committed = await self._transcript.append(
+                entry,
+                exchange_id=exchange_id,
+                send=send,
+                transaction=transaction,
+            )
+            if committed and settle and stored.role == "assistant":
+                self._schedule_response_settlement()
+        finally:
+            if release:
+                self._transcript._release_transaction(transaction)
 
     @asynccontextmanager
     async def message_stream_context(self):
@@ -1130,6 +1283,10 @@ class Chat:
         `.replace("")` the stream back to it's initial state when ready to display the
         "final" content.
 
+        Starting a root stream while conversation history is still initializing
+        raises `RuntimeError` before any content is produced; nested streams are
+        unaffected.
+
         Note
         ----
         `.replace()` resets the stream to the checkpoint captured when this context was
@@ -1139,35 +1296,81 @@ class Chat:
         `.message_stream_context()` before the mixed content if you need a clean
         checkpoint to replace back to.
         """
-        # Checkpoint the current stream state so operation="replace" can return to it
-        old_checkpoint = self._message_stream_segments_checkpoint
-        self._message_stream_segments_checkpoint = copy_segments(
-            self._current_stream_segments
-        )
-
-        # No stream currently exists, start one
-        stream_id = self._current_stream_id
+        stream_id = self._transcript.active_stream_id
         is_root_stream = stream_id is None
+        started = False
         if is_root_stream:
+            if not self.history._history_action_admitted():
+                raise RuntimeError(_STREAM_SUPPRESSED_MESSAGE)
             stream_id = _utils.private_random_id()
-            await self._append_message_chunk(
-                "", chunk="start", stream_id=stream_id
+            try:
+                started = await self._append_message_chunk(
+                    "", chunk="start", stream_id=stream_id
+                )
+            except BaseException:
+                if self._transcript.active_stream_id == stream_id:
+                    try:
+                        await self._append_message_chunk(
+                            "",
+                            chunk="end",
+                            stream_id=stream_id,
+                            status="error",
+                            error=HISTORY_ERROR_STREAM_START,
+                        )
+                    except BaseException:
+                        if self._transcript.active_stream_id == stream_id:
+                            try:
+                                await self._transcript.abort_stream(
+                                    stream_id,
+                                    status="error",
+                                    error=HISTORY_ERROR_STREAM_START,
+                                )
+                            except BaseException:
+                                pass
+                raise
+            if not started:
+                raise RuntimeError("Could not start a message stream.")
+        elif not self._transcript.stream_is_owned_by(asyncio.current_task()):
+            raise RuntimeError(
+                "Cannot start a second message stream while a message stream is active."
             )
+
+        old_checkpoint = self._transcript.stream_checkpoint(stream_id)
+        self._transcript.set_stream_checkpoint(
+            stream_id, self._transcript.stream_segments(stream_id)
+        )
+        status: Literal["cancelled", "error"] | None = None
+        error: str | None = None
 
         try:
             yield MessageStream(self, stream_id)
+        except asyncio.CancelledError:
+            status = "cancelled"
+            raise
+        except BaseException as e:
+            status = "error"
+            error = str(e)
+            raise
         finally:
-            # Restore the checkpoint
-            self._message_stream_segments_checkpoint = old_checkpoint
+            self._transcript.set_stream_checkpoint(stream_id, old_checkpoint)
 
             # If this was the root stream, end it
-            if is_root_stream:
-                await self._append_message_chunk(
-                    "",
-                    chunk="end",
-                    stream_id=stream_id,
-                )
-                await self._flush_pending_messages()
+            if is_root_stream and started:
+                try:
+                    await self._append_message_chunk(
+                        "",
+                        chunk="end",
+                        stream_id=stream_id,
+                        status=status,
+                        error=error,
+                    )
+                except BaseException as terminal_error:
+                    await self._recover_failed_stream_end(
+                        stream_id,
+                        status=status,
+                        error=error,
+                        terminal_error=terminal_error,
+                    )
 
     async def _append_message_chunk(
         self,
@@ -1177,22 +1380,55 @@ class Chat:
         stream_id: str,
         operation: Literal["append", "replace"] = "append",
         icon: HTML | Tag | TagList | bool | None = None,
-    ) -> None:
-        # If currently we're in a *different* stream, queue the message chunk
-        if self._current_stream_id and self._current_stream_id != stream_id:
-            self._pending_messages.append(
-                (message, chunk, operation, stream_id)
-            )
-            return
-
-        self._current_stream_id = stream_id
-
+        status: Literal["cancelled", "error"] | None = None,
+        error: str | None = None,
+    ) -> bool:
         # Normalize various message types into a ChatMessage()
+        if chunk == "start":
+            if not self.history._history_action_admitted():
+                # Defense in depth: the public stream entry points raise
+                # before reaching this, so only private misuse lands here —
+                # make it loud like the public paths.
+                raise RuntimeError(_STREAM_SUPPRESSED_MESSAGE)
+            exchange_id = self._transcript.open_exchange_id
+            transaction = self._transcript._reserve_stream_start()
+            try:
+                msg = normalize_message_chunk(message)
+                if self._needs_transform(msg):
+                    msg = await self._transform_message(msg, chunk=chunk)
+                    if msg is None:
+                        return False
+                stored = self._as_stored_message(msg)
+                entry = TranscriptEntry(
+                    message=stored,
+                    icon=_resolve_icon_attr(icon),
+                )
+
+                async def send_start() -> bool:
+                    return await self._send_append_message(
+                        message=stored,
+                        chunk=chunk,
+                        operation=operation,
+                        icon=icon,
+                    )
+
+                return await self._transcript.start_stream(
+                    stream_id=stream_id,
+                    entry=entry,
+                    owner_task=asyncio.current_task(),
+                    exchange_id=exchange_id,
+                    send=send_start,
+                    transaction=transaction,
+                )
+            finally:
+                self._transcript._release_transaction(transaction)
+
         msg = normalize_message_chunk(message)
+        current_segments = self._transcript.stream_segments(stream_id)
 
         if operation == "replace":
             if has_mixed_content_types(
-                self._message_stream_segments_checkpoint
+                self._transcript.stream_checkpoint(stream_id)
             ):
                 raise ValueError(
                     "Cannot `.replace()` a stream whose checkpoint spans multiple "
@@ -1201,64 +1437,109 @@ class Chat:
                     "cannot be restored. Open a `.message_stream_context()` before the "
                     "mixed content to get a clean checkpoint, or use `.append()`."
                 )
-            self._current_stream_segments = copy_segments(
-                self._message_stream_segments_checkpoint
-            )
+            current_segments = self._transcript.stream_checkpoint(stream_id)
 
-        append_chunk_segments(
-            self._current_stream_segments, msg, self._serialize_html_deps
-        )
+        append_chunk_segments(current_segments, msg, self._serialize_html_deps)
 
-        stream_content = segments_content(self._current_stream_segments)
+        stream_content = segments_content(current_segments)
 
         if operation == "replace":
             msg.content = stream_content
 
-        try:
-            if self._needs_transform(msg):
-                # Transforming may change the meaning of msg.content to be a *replace*
-                # not *append*. So, update msg.content and the operation accordingly.
-                chunk_content = msg.content
-                msg.content = stream_content
-                operation = "replace"
-                msg = await self._transform_message(
-                    msg, chunk=chunk, chunk_content=chunk_content
+        if self._needs_transform(msg):
+            # Transforming may change the meaning of msg.content to be a *replace*
+            # not *append*. So, update msg.content and the operation accordingly.
+            chunk_content = msg.content
+            msg.content = stream_content
+            operation = "replace"
+            msg = await self._transform_message(
+                msg, chunk=chunk, chunk_content=chunk_content
+            )
+            # A suppressed terminal transform still needs to close the stream.
+            if msg is None:
+                self._transcript.commit_stream_source(
+                    stream_id, current_segments
                 )
-                # Act like nothing happened if transformed to None
-                if msg is None:
-                    return
                 if chunk == "end":
-                    stream_deps = segments_deps(self._current_stream_segments)
-                    serialized_deps = self._serialize_html_deps(stream_deps)
-                    # _transform_message returns a single-segment StoredMessage, so all stream
-                    # deps belong on segments[0].
-                    if serialized_deps and msg.segments:
-                        first = msg.segments[0]
-                        if isinstance(first, StoredSegment):
-                            first.html_deps = serialized_deps
-                    self._store_message(msg)
-            elif chunk == "end":
-                stored_segments = serialize_segments(
-                    self._current_stream_segments,
-                    self._serialize_html_deps,
-                )
-                ensure_string_segment(stored_segments, msg.content_type)
-                self._store_message(
-                    StoredMessage(role=msg.role, segments=stored_segments),
-                )
 
-            # Send the message to the client
-            await self._send_append_message(
-                message=msg,
-                chunk=chunk,
+                    async def send_end() -> bool:
+                        await self._send_action({"type": "chunk_end"})
+                        return True
+
+                    return await self._transcript.end_stream(
+                        stream_id=stream_id,
+                        status=status,
+                        error=error,
+                        send=send_end,
+                    )
+                return True
+            stream_deps = segments_deps(current_segments)
+            serialized_deps = self._serialize_html_deps(stream_deps)
+            # A transformed chunk replaces the visible stream content, so its
+            # wire spec owns every dependency accumulated by the source stream.
+            string_segments = [
+                segment
+                for segment in msg.segments
+                if isinstance(segment, StoredSegment)
+            ]
+            if serialized_deps and string_segments:
+                transformed_deps = msg.html_deps or []
+                merged_deps = [
+                    *serialized_deps,
+                    *(
+                        dep
+                        for dep in transformed_deps
+                        if dep not in serialized_deps
+                    ),
+                ]
+                for segment in string_segments:
+                    segment.html_deps = None
+                string_segments[0].html_deps = merged_deps
+
+        stored = self._as_stored_message(msg)
+
+        async def send_transition() -> bool:
+            return await self._send_append_message(
+                message=stored,
+                chunk=True,
                 operation=operation,
                 icon=icon,
             )
-        finally:
-            if chunk == "end":
-                self._current_stream_id = None
-                self._current_stream_segments = []
-                self._message_stream_segments_checkpoint = []
+
+        if chunk == "end":
+            # A terminal transformed message is a separate observable chunk
+            # send. Commit it before sending chunk_end so a failed close cannot
+            # erase content that reached the browser.
+            if any(
+                isinstance(segment, dict) or segment.content
+                for segment in stored.segments
+            ):
+                await self._transcript.transition_stream(
+                    stream_id=stream_id,
+                    source_segments=current_segments,
+                    message=stored,
+                    operation=operation,
+                    send=send_transition,
+                )
+
+            async def send_end() -> bool:
+                await self._send_action({"type": "chunk_end"})
+                return True
+
+            return await self._transcript.end_stream(
+                stream_id=stream_id,
+                status=status,
+                error=error,
+                send=send_end,
+            )
+
+        return await self._transcript.transition_stream(
+            stream_id=stream_id,
+            source_segments=current_segments,
+            message=stored,
+            operation=operation,
+            send=send_transition,
+        )
 
     async def append_message_stream(
         self,
@@ -1399,34 +1680,98 @@ class Chat:
         specified in model's completion method.
         ```
 
+        Raises
+        ------
+        :
+            `RuntimeError` if conversation history is still initializing: the
+            stream is rejected before the message iterable is consumed and it
+            will not be replayed. `RuntimeError` if another message stream is
+            active (this package rejects a second stream at the call site
+            rather than queueing it). Errors from starting the stream (a
+            message-transform failure, or a send/persist failure on the start
+            chunk) propagate from this call rather than surfacing through the
+            returned task.
+
         Returns
         -------
         :
             An extended task that represents the streaming task. The `.result()` method
             of the task can be called in a reactive context to get the final state of the
-            stream.
+            stream. The result is an empty string when the stream produced no
+            content, including when the reserved stream was closed before the
+            task's first step (the transcript's terminal status carries the
+            reason; the task itself completes successfully).
         """
         from shiny import reactive
 
+        if not self.history._history_action_admitted():
+            # Rejected before the message iterable is wrapped or touched, so
+            # zero chunks are pulled and the caller keeps ownership of the
+            # (possibly expensive) producer to close or gate it.
+            raise RuntimeError(_STREAM_SUPPRESSED_MESSAGE)
+
         message = _utils.wrap_async_iterable(message)
+
+        # Start the stream now, not when the task runs, so any work started
+        # after this call (e.g. an append_message()) cannot overtake the
+        # stream (#417).
+        stream_id = _utils.private_random_id()
+        started = await self._start_message_stream(stream_id, icon=icon)
+
+        body_started = False
 
         # Run the stream in the background to get non-blocking behavior
         @reactive.extended_task
         async def _stream_task():
-            return await self._append_message_stream(message, icon=icon)
+            nonlocal body_started
+            body_started = True
+            if not started:
+                return ""
+            return await self._append_message_stream(message, stream_id)
 
         _stream_task()
 
         self._latest_stream.set(_stream_task)
 
-        # Since the task runs in the background (outside/beyond the current context,
-        # if any), we need to manually raise any exceptions that occur
         @reactive.effect
-        async def _handle_error():
-            e = _stream_task.error()
-            if e:
-                await self._raise_exception(e)
-            _handle_error.destroy()  # type: ignore
+        async def _handle_done():
+            status = _stream_task.status()
+            if status == "running":
+                return
+            _handle_done.destroy()  # type: ignore
+            # Since the task runs in the background (outside/beyond the current
+            # context, if any), we need to manually raise any exceptions that
+            # occur
+            if status == "error":
+                e = _stream_task.error()
+                if e:
+                    await self._raise_exception(e)
+            elif status == "cancelled" and not body_started and started:
+                # Cancelled before the body's first step, so the worker's
+                # `finally` never ran: the stream this method opened
+                # synchronously is still reserved. Close the producer — in
+                # the auto-wired path it may hold an open upstream request
+                # — then end the stream through the
+                # transcript's end/abort path so later work is not stuck
+                # behind a dead stream.
+                aclose = getattr(message, "aclose", None)
+                if aclose is not None:
+                    await aclose()
+                empty = ChatMessageDict(content="", role="assistant")
+                try:
+                    await self._append_message_chunk(
+                        empty,
+                        chunk="end",
+                        stream_id=stream_id,
+                        status="cancelled",
+                    )
+                except BaseException as terminal_error:
+                    await self._recover_failed_stream_end(
+                        stream_id,
+                        status="cancelled",
+                        error=None,
+                        terminal_error=terminal_error,
+                    )
 
         return _stream_task
 
@@ -1459,40 +1804,175 @@ class Chat:
         """
         return self._latest_stream()
 
+    async def _recover_failed_stream_end(
+        self,
+        stream_id: str,
+        *,
+        status: Literal["cancelled", "error"] | None,
+        error: str | None,
+        terminal_error: BaseException,
+    ) -> None:
+        """Close a stream whose ``chunk="end"`` send failed.
+
+        Sends a best-effort raw ``chunk_end`` action, then settles the stream
+        through ``ChatTranscript.abort_stream``, so capture and response
+        settlement still observe a finished stream. Re-raises ``terminal_error``
+        when the stream body itself had completed normally (``status is None``)
+        so the terminal failure is not swallowed; when the body already failed
+        or was cancelled, the in-flight exception keeps propagating.
+        """
+        if self._transcript.active_stream_id == stream_id:
+            try:
+                await self._send_action({"type": "chunk_end"})
+            except BaseException:
+                pass
+            terminal_status = (
+                "cancelled"
+                if status is None
+                and isinstance(terminal_error, asyncio.CancelledError)
+                else status or "error"
+            )
+            await self._transcript.abort_stream(
+                stream_id,
+                status=terminal_status,
+                error=(
+                    None
+                    if terminal_status == "cancelled"
+                    else (
+                        error
+                        if error is not None
+                        else HISTORY_ERROR_STREAM_TERMINAL
+                    )
+                ),
+            )
+        if status is None:
+            raise terminal_error
+
+    async def _start_message_stream(
+        self,
+        stream_id: str,
+        *,
+        icon: HTML | Tag | bool | None = None,
+    ) -> bool:
+        """Open a stream synchronously: send the start chunk, reserving the
+        stream before any task runs so work started after this call cannot
+        overtake it (#417).
+
+        A failed start is classified as a stream-start failure
+        (``HISTORY_ERROR_STREAM_START``) and, when the transcript still holds
+        the reserved stream, closed through the end/abort path before
+        re-raising. Returns whether the stream started; ``False`` means the
+        start chunk was dropped (e.g. by a message transform) and no stream
+        is open.
+        """
+        empty = ChatMessageDict(content="", role="assistant")
+        started = False
+        status: Literal["cancelled", "error"] | None = None
+        error: str | None = None
+        try:
+            started = await self._append_message_chunk(
+                empty, chunk="start", stream_id=stream_id, icon=icon
+            )
+            if started:
+                # The start ran in the caller's task, but the caller does not
+                # consume the stream — the worker task does (it claims the
+                # stream when it starts). Leave no owner until then, so a
+                # message_stream_context() entered here before the worker
+                # runs deterministically raises instead of being misread as
+                # a nested stream.
+                self._transcript.claim_stream(stream_id, _STREAM_UNOWNED)
+            return started
+        except asyncio.CancelledError:
+            status = "cancelled"
+            raise
+        except BaseException:
+            status = "error"
+            error = HISTORY_ERROR_STREAM_START
+            raise
+        finally:
+            if status is not None:
+                started = (
+                    started or self._transcript.active_stream_id == stream_id
+                )
+                if started:
+                    try:
+                        await self._append_message_chunk(
+                            empty,
+                            chunk="end",
+                            stream_id=stream_id,
+                            status=status,
+                            error=error,
+                        )
+                    except BaseException as terminal_error:
+                        await self._recover_failed_stream_end(
+                            stream_id,
+                            status=status,
+                            error=error,
+                            terminal_error=terminal_error,
+                        )
+
     async def _append_message_stream(
         self,
         message: AsyncIterable[Any],
-        icon: HTML | Tag | bool | None = None,
+        stream_id: str,
     ):
-        id = _utils.private_random_id()
+        """Send a stream's content chunks, then its end chunk.
 
+        The caller must have opened the stream with ``_start_message_stream()``
+        before invoking this worker; ``append_message_stream()`` does so
+        synchronously in its prologue.
+        """
+        # The stream was reserved in the caller's task (unowned); this
+        # worker consumes it, so nested message_stream_context() checks must
+        # see this task as the owner. If the stream was already closed or
+        # replaced in flight, don't pull from a producer whose output can no
+        # longer be sent — close it and settle empty.
+        if self._transcript.active_stream_id != stream_id:
+            aclose = getattr(message, "aclose", None)
+            if aclose is not None:
+                await aclose()
+            return ""
+        self._transcript.claim_stream(stream_id, asyncio.current_task())
         empty = ChatMessageDict(content="", role="assistant")
-        await self._append_message_chunk(
-            empty, chunk="start", stream_id=id, icon=icon
-        )
-
+        # The stream was open when this worker started. Keep the end chunk
+        # flowing even if an in-flight transition somehow closed it first.
+        started = True
+        status: Literal["cancelled", "error"] | None = None
+        error: str | None = None
         try:
             async for msg in message:
-                await self._append_message_chunk(msg, chunk=True, stream_id=id)
-            # Same string spelling as the stored message's .content
-            return flatten_segments_content(self._current_stream_segments)
-        finally:
-            await self._append_message_chunk(empty, chunk="end", stream_id=id)
-            await self._flush_pending_messages()
-
-    async def _flush_pending_messages(self):
-        pending = self._pending_messages
-        self._pending_messages = []
-        for msg, chunk, operation, stream_id in pending:
-            if chunk is False:
-                await self.append_message(msg)
-            else:
                 await self._append_message_chunk(
-                    msg,
-                    chunk=chunk,
-                    operation=operation,
-                    stream_id=cast(str, stream_id),
+                    msg, chunk=True, stream_id=stream_id
                 )
+            # Same string spelling as the stored message's .content
+            return flatten_segments_content(
+                self._transcript.stream_segments(stream_id)
+            )
+        except asyncio.CancelledError:
+            status = "cancelled"
+            raise
+        except BaseException as e:
+            status = "error"
+            if error is None:
+                error = str(e)
+            raise
+        finally:
+            if started:
+                try:
+                    await self._append_message_chunk(
+                        empty,
+                        chunk="end",
+                        stream_id=stream_id,
+                        status=status,
+                        error=error,
+                    )
+                except BaseException as terminal_error:
+                    await self._recover_failed_stream_end(
+                        stream_id,
+                        status=status,
+                        error=error,
+                        terminal_error=terminal_error,
+                    )
 
     # Send a message to the UI
     async def _send_append_message(
@@ -1500,12 +1980,12 @@ class Chat:
         message: StoredMessage | ChatMessage,
         chunk: ChunkOption = False,
         operation: Literal["append", "replace"] = "append",
-        icon: HTML | Tag | TagList | bool | None = None,
-    ):
+        icon: HTML | Tag | TagList | bool | str | None = None,
+    ) -> bool:
         message = self._as_stored_message(message)
 
         if message.role == "system":
-            return
+            return False
 
         msg_payload: MessagePayload = {
             "role": message.role,
@@ -1530,6 +2010,7 @@ class Chat:
         else:
             action = {"type": "message", "message": msg_payload}
             await self._send_action(action, message.html_deps)
+        return True
 
     async def _send_block_inserts(self, message: StoredMessage) -> None:
         """Send one ``block_insert`` action per structured block in the message."""
@@ -1580,20 +2061,198 @@ class Chat:
                     await self._send_action(chunk_action, message.html_deps)
 
     def _messages_for_bookmark(self) -> list[dict[str, Any]]:
-        from shiny import reactive
-
-        with reactive.isolate():
-            messages = self._messages()
-
+        """Return server-owned message specs for bookmark persistence."""
         dumps: list[dict[str, Any]] = []
-        for m in messages:
-            d = m.model_dump(exclude_none=True)
-            if not d.get("attachments"):
-                d.pop("attachments", None)
-            dumps.append(d)
+        for entry in self._transcript.read():
+            message = entry.message.model_dump(exclude_none=True)
+            if not message.get("attachments"):
+                message.pop("attachments", None)
+            dumps.append(message)
         return dumps
 
-    async def _restore_bookmark_message(self, message_dict: Any) -> None:
+    def _on_response_settled(
+        self, callback: ResponseSettlementCallback
+    ) -> CancelCallback:
+        """Register a private callback for a completed response lifecycle."""
+        consumer = _ResponseSettlementConsumer(callback)
+        self._response_settlement_callbacks.append(consumer)
+
+        def cancel() -> None:
+            consumer.cancelled = True
+            try:
+                self._response_settlement_callbacks.remove(consumer)
+            except ValueError:
+                pass
+
+        return cancel
+
+    def _schedule_response_settlement(self) -> None:
+        if self._response_settlement_destroyed:
+            return
+
+        consumers = tuple(self._response_settlement_callbacks)
+        if not consumers:
+            return
+
+        self._pending_response_settlements.append(consumers)
+        self._schedule_response_settlement_wakeup()
+
+    def _schedule_response_settlement_wakeup(self) -> None:
+        if self._cancel_response_settlement_wakeup is not None:
+            return
+
+        from shiny import reactive
+
+        async def deliver_on_flushed() -> None:
+            self._cancel_response_settlement_wakeup = None
+            if self._response_settlement_destroyed:
+                return
+            await self._join_response_settlement_pump()
+
+        self._cancel_response_settlement_wakeup = reactive.on_flushed(
+            deliver_on_flushed, once=True
+        )
+
+    def _start_response_settlement_pump(self) -> asyncio.Task[None] | None:
+        if self._response_settlement_destroyed:
+            return None
+
+        task = self._response_settlement_runner
+        if task is not None:
+            return task
+
+        if not self._pending_response_settlements:
+            return None
+
+        task = asyncio.create_task(self._run_response_settlement_pump())
+        task.add_done_callback(_consume_task_result)
+        self._response_settlement_runner = task
+        return task
+
+    async def _join_response_settlement_pump(self) -> None:
+        task = self._start_response_settlement_pump()
+        if task is not None:
+            await asyncio.shield(task)
+
+    async def _run_response_settlement_pump(self) -> None:
+        try:
+            while self._pending_response_settlements:
+                consumers = self._pending_response_settlements[0]
+                await self._run_response_settlement(consumers)
+                self._pending_response_settlements.popleft()
+        finally:
+            self._response_settlement_runner = None
+
+    async def _run_response_settlement(
+        self, consumers: tuple[_ResponseSettlementConsumer, ...]
+    ) -> None:
+        from shiny import reactive
+        from shiny.session import session_context
+
+        context = reactive.Context()
+        with session_context(self._session), context():
+            for consumer in consumers:
+                if consumer.cancelled:
+                    continue
+                delivery_token = _response_settlement_deliveries.set(
+                    _response_settlement_deliveries.get() + ((self, consumers),)
+                )
+                try:
+                    await self._deliver_response_settlement_consumer(consumer)
+                finally:
+                    _response_settlement_deliveries.reset(delivery_token)
+
+    async def _deliver_response_settlement_consumer(
+        self, consumer: _ResponseSettlementConsumer
+    ) -> None:
+        """Deliver one consumer while keeping cancellation ownership explicit."""
+        try:
+            consumer_task = asyncio.ensure_future(consumer.callback())
+        except BaseException as error:
+            try:
+                warnings.warn(
+                    f"Chat response settlement callback failed: {error}",
+                    stacklevel=2,
+                )
+            except BaseException:
+                pass
+            return
+        consumer_task.add_done_callback(_consume_task_result)
+
+        try:
+            await asyncio.wait((consumer_task,))
+        except asyncio.CancelledError:
+            consumer_task.cancel()
+            try:
+                await asyncio.wait((consumer_task,))
+            except BaseException:
+                pass
+            try:
+                consumer_task.result()
+            except BaseException:
+                pass
+            raise
+
+        try:
+            consumer_task.result()
+        except BaseException as error:
+            try:
+                warnings.warn(
+                    f"Chat response settlement callback failed: {error}",
+                    stacklevel=2,
+                )
+            except BaseException:
+                pass
+
+    @asynccontextmanager
+    async def _destructive_history_mutation(self, *, block_input: bool = False):
+        """Reserve destructive transcript admission through settlement and mutation."""
+        task = asyncio.current_task()
+        deliveries = _response_settlement_deliveries.get()
+        if any(
+            delivered_consumers is consumers
+            for source_chat, delivered_consumers in deliveries
+            for consumers in source_chat._pending_response_settlements
+        ):
+            raise RuntimeError(
+                "Cannot clear or restore messages while response settlement is being delivered."
+            )
+
+        transaction = self._destructive_history_transaction
+        if transaction is not None and self._destructive_history_task is task:
+            self._destructive_history_depth += 1
+            try:
+                yield transaction
+            finally:
+                self._destructive_history_depth -= 1
+            return
+
+        transaction = self._transcript._reserve_clear_or_restore()
+        self._destructive_history_transaction = transaction
+        self._destructive_history_task = task
+        self._destructive_history_depth = 1
+        self._destructive_history_blocks_input = block_input
+        try:
+            cancel_wakeup = self._cancel_response_settlement_wakeup
+            self._cancel_response_settlement_wakeup = None
+            if cancel_wakeup is not None:
+                cancel_wakeup()
+            await self._join_response_settlement_pump()
+            yield transaction
+        finally:
+            self._destructive_history_depth -= 1
+            if self._destructive_history_depth == 0:
+                self._transcript._release_transaction(transaction)
+                self._destructive_history_transaction = None
+                self._destructive_history_task = None
+                self._destructive_history_blocks_input = False
+
+    async def _restore_bookmark_message(
+        self,
+        message_dict: Any,
+        *,
+        icon: str | None = None,
+    ) -> None:
         try:
             stored = StoredMessage.model_validate(message_dict)
         except ValidationError as e:
@@ -1617,8 +2276,19 @@ class Chat:
                 stacklevel=2,
             )
             return
-        self._store_message(stored)
-        await self._send_append_message(stored)
+
+        async with self._destructive_history_mutation() as transaction:
+            entry = TranscriptEntry(message=stored, icon=icon)
+
+            async def send() -> bool:
+                return await self._send_append_message(stored, icon=icon)
+
+            await self._transcript.append(
+                entry,
+                exchange_id=self._transcript.open_exchange_id,
+                send=send,
+                transaction=transaction,
+            )
 
     async def _restore_turns_ui(self, adapter: "TurnsAdapter") -> None:
         """Re-derive and append UI messages from the client's current turns.
@@ -1632,7 +2302,19 @@ class Chat:
             msg = normalize_turn_group(group)
             if msg is None:
                 continue
-            await self._send_append_message(msg)
+            stored = self._as_stored_message(msg)
+            async with self._destructive_history_mutation() as transaction:
+                entry = TranscriptEntry(message=stored)
+
+                async def send(stored: StoredMessage = stored) -> bool:
+                    return await self._send_append_message(stored)
+
+                await self._transcript.append(
+                    entry,
+                    exchange_id=self._transcript.open_exchange_id,
+                    send=send,
+                    transaction=transaction,
+                )
 
     def transform_user_input(self, *args: object, **kwargs: object) -> object:
         raise TypeError(
@@ -1761,18 +2443,50 @@ class Chat:
 
         return _assemble_stored_message(message, self._serialize_html_deps)
 
-    def _store_message(
+    def _record_accepted_user_input(
         self,
-        message: StoredMessage | ChatMessage,
+        message: ChatMessage,
     ) -> None:
-        from shiny import reactive
-
+        if self._destructive_history_blocks_input:
+            raise RuntimeError(
+                "Cannot accept user input while switching conversations."
+            )
+        if not self.history._history_action_admitted():
+            return
         stored = self._as_stored_message(message)
-        with reactive.isolate():
-            messages = self._messages()
-        self._messages.set((*messages, stored))
-        if stored.role == "user":
-            self._latest_user_input.set(stored)
+        self._transcript.record_accepted_input(stored)
+        self._publish_accepted_user_input(stored)
+
+    async def _record_accepted_user_input_with_capture(
+        self,
+        message: ChatMessage,
+        *,
+        dispatch_user_submit: bool = True,
+    ) -> None:
+        if self._destructive_history_blocks_input:
+            raise RuntimeError(
+                "Cannot accept user input while switching conversations."
+            )
+        if not self.history._history_action_admitted():
+            return
+        stored = self._as_stored_message(message)
+        await self._transcript.record_accepted_input_and_notify(stored)
+        self._publish_accepted_user_input(
+            stored, dispatch_user_submit=dispatch_user_submit
+        )
+
+    def _publish_accepted_user_input(
+        self,
+        stored: StoredMessage,
+        *,
+        dispatch_user_submit: bool = True,
+    ) -> None:
+        self._latest_user_input.set(stored)
+        if dispatch_user_submit:
+            self._normal_user_submission_sequence += 1
+            self._normal_user_submission.set(
+                (self._normal_user_submission_sequence, stored)
+            )
 
     def user_input(self) -> "UserInput | None":
         """
@@ -1913,12 +2627,17 @@ class Chat:
             react to the request to generate a new one via
             :meth:`~shinychat.Chat.set_greeting`.
         """
-        self._messages.set(())
         action: ClearAction = {"type": "clear"}
         if greeting:
-            self._greeting_content = None
             action["greeting"] = True
-        await self._send_action(action)
+
+        async def send() -> None:
+            await self._send_action(action)
+
+        async with self._destructive_history_mutation() as transaction:
+            await self._transcript.clear(send=send, transaction=transaction)
+            if greeting:
+                self._greeting_content = None
 
     def get_greeting(self) -> str | None:
         """
@@ -2103,9 +2822,26 @@ class Chat:
         """
         Destroy the chat instance.
         """
+        cancel_session_end = self._cancel_session_end
+        self._cancel_session_end = None
+        if cancel_session_end is not None:
+            cancel_session_end()
+        self._destroy_response_settlements()
         self._destroy_effects()
         self._destroy_bookmarking()
         self.history._teardown()
+
+    def _destroy_response_settlements(self) -> None:
+        self._response_settlement_destroyed = True
+        self._response_settlement_callbacks.clear()
+        cancel_wakeup = self._cancel_response_settlement_wakeup
+        self._cancel_response_settlement_wakeup = None
+        if cancel_wakeup is not None:
+            cancel_wakeup()
+        self._pending_response_settlements.clear()
+        runner = self._response_settlement_runner
+        if runner is not None and not runner.done():
+            runner.cancel()
 
     def _destroy_effects(self):
         for x in self._effects:
@@ -2242,23 +2978,15 @@ class Chat:
                 _update_query_string_on_bookmarked
             )
 
-        effect_auto_bookmark = None
+        cancel_response_settlement = None
         if bookmark_on == "response":
 
-            @reactive.effect
-            @reactive.event(self.messages, ignore_init=True)
             async def _auto_bookmark() -> None:
-                messages = self.messages()
+                await session.bookmark()
 
-                if len(messages) == 0:
-                    return
-
-                last_message = messages[-1]
-
-                if last_message.get("role") == "assistant":
-                    await session.bookmark()
-
-            effect_auto_bookmark = _auto_bookmark
+            cancel_response_settlement = self._on_response_settled(
+                _auto_bookmark
+            )
 
         ###############
         # Client Bookmarking
@@ -2325,27 +3053,28 @@ class Chat:
             # and `self.messages()` are never initialized due to
             # calling `self._init_chat.destroy()` above
 
-            if turns_adapter is not None:
-                # Re-derive the UI from the client's turns.
-                if resolved_bookmark_id_str not in state.values:
-                    await self._append_init_messages()
+            async with self._destructive_history_mutation() as transaction:
+                if turns_adapter is not None:
+                    # Re-derive the UI from the client's turns.
+                    if resolved_bookmark_id_str not in state.values:
+                        await self._append_init_messages(transaction)
+                        return
+                    await self._restore_turns_ui(turns_adapter)
                     return
-                await self._restore_turns_ui(turns_adapter)
-                return
 
-            if resolved_bookmark_id_msgs_str not in state.values:
-                # If no messages to restore, display the `__init__(messages=)` messages
-                await self._append_init_messages()
-                return
+                if resolved_bookmark_id_msgs_str not in state.values:
+                    # If no messages to restore, display the `__init__(messages=)` messages
+                    await self._append_init_messages(transaction)
+                    return
 
-            msgs: list[Any] = state.values[resolved_bookmark_id_msgs_str]
-            if not isinstance(msgs, list):
-                raise ValueError(
-                    f"Bookmark value with id (`{resolved_bookmark_id_msgs_str}`) must be a list of messages."
-                )
+                msgs: list[Any] = state.values[resolved_bookmark_id_msgs_str]
+                if not isinstance(msgs, list):
+                    raise ValueError(
+                        f"Bookmark value with id (`{resolved_bookmark_id_msgs_str}`) must be a list of messages."
+                    )
 
-            for message_dict in msgs:
-                await self._restore_bookmark_message(message_dict)
+                for message_dict in msgs:
+                    await self._restore_bookmark_message(message_dict)
 
         @root_session.bookmark.on_restore
         async def _on_restore_greeting(state: RestoreState):
@@ -2358,8 +3087,8 @@ class Chat:
         def _cancel_bookmarking():
             if cancel_on_bookmarked is not None:
                 cancel_on_bookmarked()
-            if effect_auto_bookmark is not None:
-                effect_auto_bookmark.destroy()
+            if cancel_response_settlement is not None:
+                cancel_response_settlement()
             _on_bookmark_client()
             _on_bookmark_ui()
             _on_bookmark_greeting()
@@ -2596,7 +3325,7 @@ class ChatExpress(Chat):
 
 
 def _resolve_icon_attr(
-    icon: "HTML | Tag | TagList | bool | None",
+    icon: "HTML | Tag | TagList | bool | str | None",
 ) -> "str | None":
     """Translate an icon value into its wire attribute.
 
@@ -3039,6 +3768,7 @@ def chat_ui(
         allow_attachments=allow_attachments_attr,
         attachment_accept=attachment_accept_attr,
         max_attachment_size=max_attachment_size_attr,
+        data_shinychat_history_transition_protocol="completion-v2",
         # Also include icon on the parent so that when messages are dynamically added,
         # we know the default icon has changed
         icon_assistant=icon_attr,
@@ -3077,7 +3807,7 @@ class MessageStream:
     An object to yield from a `.message_stream_context()` context manager.
     """
 
-    def __init__(self, chat: Chat, stream_id: str):
+    def __init__(self, chat: Chat, stream_id: str | None):
         self._chat = chat
         self._stream_id = stream_id
 
@@ -3090,10 +3820,13 @@ class MessageStream:
         message_chunk
             The new content to replace the current content.
         """
+        stream_id = self._stream_id
+        if stream_id is None:
+            return
         await self._chat._append_message_chunk(
             message_chunk,
             operation="replace",
-            stream_id=self._stream_id,
+            stream_id=stream_id,
         )
 
     async def append(self, message_chunk: Any):
@@ -3105,9 +3838,12 @@ class MessageStream:
         message_chunk
             A message chunk to append to this stream
         """
+        stream_id = self._stream_id
+        if stream_id is None:
+            return
         await self._chat._append_message_chunk(
             message_chunk,
-            stream_id=self._stream_id,
+            stream_id=stream_id,
         )
 
 

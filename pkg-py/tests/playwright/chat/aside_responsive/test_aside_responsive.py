@@ -17,6 +17,7 @@ def submit_message(
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
     chat.set_user_input("go")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
 
     pill = page.locator(".shiny-aside-pill")

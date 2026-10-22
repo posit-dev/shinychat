@@ -15,6 +15,7 @@ def test_web_citations(page: Page, local_app: ShinyAppProc) -> None:
     expect(chat.loc_input_button).to_be_disabled()
 
     chat.set_user_input("tell me about e-bike motors")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
 
     # Wait for the stream to finish: three aside groups should appear.
@@ -161,6 +162,7 @@ def test_web_activity_timeline_alignment(
     expect(chat.loc).to_be_visible(timeout=30 * 1000)
 
     chat.set_user_input("tell me about e-bike motors")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
 
     activity = page.locator(".shiny-web-activity").first
