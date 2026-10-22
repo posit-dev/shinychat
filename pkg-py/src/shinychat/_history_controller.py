@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import inspect
+import logging
 import warnings
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from typing import (
@@ -459,9 +460,15 @@ class HistoryController:
         await self.send_history_update()
 
     def cancel_pending(self) -> None:
-        """Cancel in-flight background work (e.g. titling) at teardown."""
+        """Cancel in-flight background work (e.g. titling) at teardown.
+
+        Synchronous destruction is cancellation-only: the recorder drops
+        its unscheduled stream tail (continuation and dirty/urgent marker)
+        without cancelling an already-started put.
+        """
         if self._title_task is not None and not self._title_task.done():
             self._title_task.cancel()
+        self._exchange_recorder.discard_pending()
 
     async def notify_settled(self, restored: bool) -> None:
         """Fires the ``on_settled`` hook.
@@ -560,6 +567,7 @@ class HistoryController:
         self._active_id.set(None)
 
         cleanup_failures: list[BaseException] = []
+
         async def best_effort(operation: Callable[[], Any]) -> None:
             try:
                 result = operation()
@@ -1099,6 +1107,14 @@ class HistoryController:
             if await recorder.rename_active_locked(conv_id, title):
                 renamed = True
             else:
+                try:
+                    await recorder.drain_stream_put_locked()
+                except Exception as error:
+                    logging.getLogger(__name__).error(
+                        "Earlier background history write failed before rename of %r",
+                        conv_id,
+                        exc_info=error,
+                    )
                 record = await self._get_record(self.partition, conv_id)
                 if record is not None:
                     record.title = title
@@ -1113,11 +1129,25 @@ class HistoryController:
             raise RuntimeError("HistoryController not initialized")
         async with self._destructive_mutation():
             async with self._exchange_mutation():
+                # A failed restore may have reset the active record while
+                # its snapshot still runs. Drain the single writer before
+                # any deletion, not only deletion of the active record.
+                try:
+                    await self._exchange_recorder.drain_stream_put_locked()
+                except Exception as error:
+                    logging.getLogger(__name__).error(
+                        "Earlier background history write failed before deletion of %r",
+                        conv_id,
+                        exc_info=error,
+                    )
+                exchange_record = self._exchange_recorder.record
                 if self.on_evict is not None:
                     await self.on_evict(conv_id)
                 await self.store.delete(self.partition, conv_id)
-                exchange_record = self._exchange_recorder.record
-                if exchange_record is not None and exchange_record.id == conv_id:
+                if (
+                    exchange_record is not None
+                    and exchange_record.id == conv_id
+                ):
                     self._exchange_recorder.reset()
                     await self.clear_active()
                     self.adapter.set_turns_json([])

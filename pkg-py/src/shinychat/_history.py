@@ -416,6 +416,11 @@ class ChatHistory:
             controller is None or not controller._exchange_recorder.read_only
         )
 
+    async def _flush_pending(self) -> None:
+        """Complete captured stream persistence before session cleanup."""
+        if self._controller is not None:
+            await self._controller._exchange_recorder.flush_pending()
+
     def _teardown(self) -> None:
         """
         Release session-level registrations when the owning `Chat` is destroyed
@@ -423,9 +428,10 @@ class ChatHistory:
 
         Destroys the history input effects — which otherwise keep answering the
         shared input ids and retain the old controller for the rest of the
-        session — unregisters the session-end callback, and runs the cleanup
-        that session end would have run. No-op if history never started; safe
-        to call more than once.
+        session — unregisters the session-end callback, and releases pending
+        work. Explicit destruction discards unscheduled stream snapshots;
+        actual session end awaits ``_flush_pending()`` before this cleanup.
+        No-op if history never started; safe to call more than once.
         """
         for effect in self._effects:
             effect.destroy()
