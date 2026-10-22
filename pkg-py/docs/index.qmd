@@ -76,6 +76,99 @@ region while keeping the chat mounted as users move between pages. See
 [Page chat](page-chat.qmd) for Core and Express examples, migration guidance,
 and composition boundaries.
 
+## Application state and conversation branches
+
+If a chat changes a filter, editing a message should not leave the filter showing
+a different region from the conversation. Capture that application state with
+`on_save`, restore it when a conversation loads with `on_restore`, and follow
+edits, retries, regenerations, and sibling navigation with `on_navigate`.
+
+This complete app lets a model select regions through a tool. Set
+`OPENAI_API_KEY` in the app's environment before running it. The reactive value
+holds the server's filter immediately; `ui.update_text()` updates the visible
+input asynchronously.
+
+```{.python file="app.py"}
+from chatlas import ChatOpenAI
+from shiny import App, reactive, render, ui
+from shinychat import Chat, chat_ui
+from shinychat.types import HistoryNavigateContext, HistoryOptions
+
+app_ui = ui.page_fillable(
+    ui.input_text("region", "Region filter", value="all"),
+    ui.output_text("selected_region"),
+    chat_ui("chat"),
+)
+
+
+def server(input, output, session):
+    selected = reactive.Value("all")
+    client = ChatOpenAI(
+        system_prompt="Use select_region when asked to choose a region."
+    )
+    chat = Chat(
+        "chat", client=client, history=HistoryOptions(store="file", title=None)
+    )
+
+    def sync_region(region):
+        selected.set(region)
+        ui.update_text("region", value=region)
+
+    @reactive.effect
+    @reactive.event(input.region)
+    def accept_region_input():
+        selected.set(input.region())
+
+    @chat.history.on_save
+    def save_region(values):
+        values["region"] = selected.get()
+
+    @chat.history.on_restore
+    def restore_region(values):
+        sync_region(values.get("region", "all"))
+
+    @chat.history.on_navigate
+    def navigate_region(context: HistoryNavigateContext):
+        sync_region(context.values.get("region", "all"))
+
+    def select_region(region: str) -> str:
+        """Select the region used to filter the app's data."""
+        sync_region(region)
+        return f"Selected {region}"
+
+    client.register_tool(select_region)
+
+    @render.text
+    def selected_region():
+        return selected.get()
+
+
+app = App(app_ui, server)
+```
+
+Ask the model to select `west`, then edit that message to ask for `east`. The
+edit hook receives the parent's values (`all`) before the replacement response
+starts; its tool call then selects `east`. Use the sibling arrows to return to
+`west`: the navigation context's `values` contains `west`, and its
+`previous_values` contains `east`. Reloading the page calls `on_restore` with
+the selected branch's values instead. In-session position moves do not call
+`on_restore`.
+
+The hooks are synchronous and run in registration order. Values use Pydantic's
+JSON encoding (for example, dates become strings and tuples become arrays),
+with string keys and no non-finite floating-point values. Unchanged values
+inherit from the parent exchange; an empty dict explicitly clears the saved object. Automatic
+capture failures warn the developer and retain prior values; an explicit
+`await chat.history.save()` raises the error.
+
+Without `on_navigate`, browsing leaves live app state alone, and later captures
+save that live state at the newly selected position. Register the navigation
+hook when app state should follow the branch; omit it when that state is
+independent of the conversation. If a navigation callback raises an exception,
+the conversation stays at the new position, the developer gets a warning with
+the error, and the user sees a generic notification. A read-only conversation
+still fires `on_navigate` when browsing siblings, using its recorded values.
+
 ## Slash commands
 
 Slash commands give users discoverable shortcuts — like `/search`, `/clear`, or `/help` — that run a server-side handler you define. Register a command with `@chat.slash_command(name, description)`. When a user runs it, the matching handler fires *instead* of `@chat.on_user_submit`, and what happens next is entirely up to the handler.

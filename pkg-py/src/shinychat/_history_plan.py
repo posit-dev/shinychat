@@ -9,11 +9,15 @@ executes a plan without touching any hook registry.
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import inspect
 import json
 from collections.abc import Mapping, Sequence
 from typing import Any, Awaitable, Callable, Literal, cast
+
+from pydantic import JsonValue
+from pydantic_core import to_jsonable_python
 
 from ._history_client import (
     TurnsAdapter,
@@ -22,6 +26,7 @@ from ._history_client import (
 from ._history_types import (
     SYSTEM_PROMPT_STATE_KEY,
     TURNS_STATE_KEY,
+    VALUES_STATE_KEY,
     ConversationRecordV2,
     StateEntry,
 )
@@ -107,6 +112,155 @@ def latest_system_prompt(
         if entry.data is not None:
             latest = entry
     return latest
+
+
+def latest_values(
+    entries: tuple[tuple[str, StateEntry], ...],
+) -> StateEntry | None:
+    """Resolve values entries: every validated JSON object is effective.
+
+    Unlike the system prompt, values have no null/empty inheritance
+    semantics: an empty object is an explicit value, ``null`` is not a
+    values object, and only a *missing* entry inherits the nearest
+    recorded ancestor.
+    """
+    latest = None
+    for _, entry in entries:
+        if (
+            entry.kind != "values"
+            or entry.version != 1
+            or entry.mode != "snapshot"
+            or not isinstance(entry.data, dict)
+        ):
+            raise ValueError("Unsupported shinychat:values state entry.")
+        latest = entry
+    return latest
+
+
+def canonical_values(values: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate an application-values object; return a detached JSON copy.
+
+    Non-string keys are rejected first (JSON object keys must already
+    be strings), *before* any coercion can quietly rename them. Rich
+    app values are then coerced exactly the way the old
+    ``model_dump_json`` path coerced them (``date``/``datetime``,
+    ``Decimal``, ``UUID``, tuples, sets, and bytes become their JSON
+    forms via ``pydantic_core.to_jsonable_python``; common Shiny
+    values like ``input.date()`` and ``input.date_range()`` keep
+    saving). Unknown objects are still refused loudly, and
+    non-finite floats are rejected after normalization
+    (``allow_nan=False``) rather than silently coerced to ``null``;
+    the JSON round trip detaches the result from the callback's
+    dictionary.
+    """
+    _validate_mapping_keys(values, what="app state values")
+    normalized = to_jsonable_python(values)
+    return cast(
+        dict[str, Any],
+        json.loads(
+            json.dumps(normalized, allow_nan=False, separators=(",", ":"))
+        ),
+    )
+
+
+def _canonical_data(data: JsonValue) -> str:
+    """Canonical JSON for value comparison.
+
+    Python equality conflates distinct JSON values (``True == 1``,
+    ``False == 0``), which would silently drop real boolean/numeric
+    changes; the canonical form also ignores dictionary order. Computed
+    locally per comparison -- no persistent fingerprints or baselines.
+    """
+    return json.dumps(
+        data, sort_keys=True, allow_nan=False, separators=(",", ":")
+    )
+
+
+def sparse_snapshot_entry(
+    record: ConversationRecordV2,
+    node_id: str,
+    key: str,
+    data: JsonValue,
+    *,
+    is_effective: Callable[[StateEntry | None], bool],
+    kind: str,
+    default_entry: StateEntry | None = None,
+) -> StateEntry | None:
+    """The shared sparse per-node snapshot operation.
+
+    The root always records; a descendant records only when ``data``
+    differs (canonical JSON comparison: ``True``/``1`` are distinct, and
+    dictionary order is ignored) from the nearest effective ancestor
+    entry for ``key``. ``default_entry`` is the effective value for a
+    path with no recorded entry at all: it answers the previous-value
+    fallback, the descendant dedupe, and the child anchoring alike
+    (values pass an explicit ``{}`` entry, since a path without any entry
+    resolves to ``{}``; the system prompt passes nothing, so unrecorded
+    paths keep their record-everywhere behavior). Before a shared
+    parent's recapture changes what its existing children inherit,
+    children without their own effective entry are pinned to the previous
+    effective value -- including the default, so a first recording cannot
+    silently rewrite what an older branch resolves to. ``is_effective``
+    carries the per-key inheritance semantics (the system prompt treats
+    null as inheriting; values treat every recorded object as effective).
+    Returns ``None`` when a descendant's value is unchanged and it should
+    inherit instead of record.
+    """
+    node = record.nodes[node_id]
+    ancestor: StateEntry | None = None
+    parent_id = node.parent_id
+    while parent_id is not None:
+        parent = record.nodes[parent_id]
+        candidate = parent.state.get(key)
+        if is_effective(candidate):
+            ancestor = candidate
+            break
+        parent_id = parent.parent_id
+    effective_ancestor = ancestor if ancestor is not None else default_entry
+    previous = node.state.get(key)
+    if not is_effective(previous):
+        previous = effective_ancestor
+    canonical = _canonical_data(data)
+    if (
+        previous is not None
+        and _canonical_data(previous.data) != canonical
+    ):
+        for child_id in node.children:
+            child = record.nodes[child_id]
+            if not is_effective(child.state.get(key)):
+                child.state[key] = previous.model_copy(deep=True)
+    if (
+        node.parent_id is not None
+        and effective_ancestor is not None
+        and _canonical_data(effective_ancestor.data) == canonical
+    ):
+        # A descendant with an unchanged value inherits instead of
+        # recording; the root always records.
+        return None
+    return StateEntry(kind=kind, version=1, mode="snapshot", data=data)
+
+
+def resolve_path_values(
+    record: ConversationRecordV2, node_id: str
+) -> dict[str, Any]:
+    """The detached effective application values at ``node_id``.
+
+    The nearest recorded ``shinychat:values`` entry on the ancestor path
+    (inclusive) wins; a path without any entry resolves to ``{}``. The
+    winning entry is envelope-validated (``latest_values``), and the
+    returned object is a deep copy: callers (and the callbacks they hand
+    it to) can never mutate the stored entry.
+    """
+    cursor: str | None = node_id
+    while cursor is not None:
+        node = record.nodes[cursor]
+        entry = node.state.get(VALUES_STATE_KEY)
+        if entry is not None:
+            winning = latest_values(((cursor, entry),))
+            assert winning is not None
+            return copy.deepcopy(cast(dict[str, Any], winning.data))
+        cursor = node.parent_id
+    return {}
 
 
 def canonical_turns(
@@ -202,6 +356,25 @@ def _system_prompt_capability_mismatch(
     )
 
 
+# Builtin state keys recognized (and validated) without a registered hook.
+_KNOWN_BUILTIN_STATE_KEYS = frozenset(
+    {SYSTEM_PROMPT_STATE_KEY, VALUES_STATE_KEY}
+)
+
+
+def _validate_values_entries(
+    record: ConversationRecordV2, node_ids: Sequence[str]
+) -> None:
+    if not node_ids:
+        return
+    latest_values(
+        tuple(
+            (node_id, record.nodes[node_id].state[VALUES_STATE_KEY])
+            for node_id in node_ids
+        )
+    )
+
+
 def _validate_turn_entries(
     entries: tuple[tuple[str, StateEntry], ...],
 ) -> None:
@@ -249,6 +422,7 @@ def validate_active_path_state(record: ConversationRecordV2) -> None:
     node_ids = tuple(record.path_node_ids())
     turn_entries: list[tuple[str, StateEntry]] = []
     prompt_entries: list[tuple[str, StateEntry]] = []
+    values_entries: list[tuple[str, StateEntry]] = []
     for node_id in node_ids:
         for name, entry in record.nodes[node_id].state.items():
             _validate_restore_state_entry(name, entry)
@@ -256,9 +430,13 @@ def validate_active_path_state(record: ConversationRecordV2) -> None:
                 turn_entries.append((node_id, entry))
             elif name == SYSTEM_PROMPT_STATE_KEY:
                 prompt_entries.append((node_id, entry))
+            elif name == VALUES_STATE_KEY:
+                values_entries.append((node_id, entry))
     _validate_turn_entries(tuple(turn_entries))
     if prompt_entries:
         latest_system_prompt(tuple(prompt_entries))
+    if values_entries:
+        latest_values(tuple(values_entries))
 
 
 def materialize_restore_turns(
@@ -330,14 +508,31 @@ def preflight_state(
     and validated even without a registered prompt hook (a client without
     the prompt capability), where a recorded directive degrades the plan
     to unavailable model context instead of failing preflight.
+    ``shinychat:values`` is likewise a known builtin key: it is recognized
+    and validated even though it owns no restore/rewind hook (application
+    values are delivered to ``on_restore``/``on_navigate`` callbacks, not
+    applied to the model client).
     """
     if record.active_leaf is None:
         raise ValueError("Exchange-tree record has no active leaf.")
+    values_node_ids: list[str] = []
     for node_id in node_ids:
         for name, entry in record.nodes[node_id].state.items():
-            if name not in hooks and name != SYSTEM_PROMPT_STATE_KEY:
+            if name not in hooks and name not in _KNOWN_BUILTIN_STATE_KEYS:
                 raise ValueError(f"Unsupported {phase} state entry {name!r}.")
             _validate_restore_state_entry(name, entry)
+        if VALUES_STATE_KEY in record.nodes[node_id].state:
+            values_node_ids.append(node_id)
+    _validate_values_entries(record, values_node_ids)
+    if previous_node_ids is not None:
+        _validate_values_entries(
+            record,
+            [
+                node_id
+                for node_id in previous_node_ids
+                if VALUES_STATE_KEY in record.nodes[node_id].state
+            ],
+        )
 
     prompt_mismatch = _system_prompt_capability_mismatch(
         tuple(

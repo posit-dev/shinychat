@@ -125,6 +125,7 @@ quartodoc:
         include_functions: true
       contents:
         - types.HistoryOptions
+        - types.HistoryNavigateContext
         - types.ConversationPartition
         - types.ConversationStore
         - types.FileConversationStore

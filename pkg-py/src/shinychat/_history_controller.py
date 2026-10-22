@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import inspect
 import warnings
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
@@ -10,6 +11,7 @@ from typing import (
     Awaitable,
     Callable,
     Iterator,
+    cast,
 )
 
 from . import _history_plan
@@ -51,6 +53,8 @@ from ._history_types import (
     ConversationRecordV1,
     ConversationRecordV2,
     ExchangeNode,
+    HistoryNavigateContext,
+    HistoryNavigateReason,
     TurnDict,
     check_schema_version,
     new_conversation_id,
@@ -65,6 +69,7 @@ if TYPE_CHECKING:
 
 # Exchange statuses from which a retry (or a fresh resubmit) is allowed.
 _RETRYABLE_STATUSES = ("pending", "error", "cancelled")
+
 
 # Builtin model-state hooks that read-only navigation never invokes: the
 # live client's model state is not rewound while a record is view-only.
@@ -216,6 +221,9 @@ class HistoryController:
         client: Any,
         save_callbacks: "list[Callable[[dict[str, Any]], None]] | None" = None,
         restore_callbacks: "list[Callable[[dict[str, Any]], None]] | None" = None,
+        navigate_callbacks: (
+            "list[Callable[[HistoryNavigateContext], None]] | None"
+        ) = None,
         max_store_bytes: int | None = None,
     ):
         self.chat = chat
@@ -230,6 +238,9 @@ class HistoryController:
         self._restore_callbacks: list[Callable[[dict[str, Any]], None]] = (
             restore_callbacks if restore_callbacks is not None else []
         )
+        self._navigate_callbacks: list[
+            Callable[[HistoryNavigateContext], None]
+        ] = navigate_callbacks if navigate_callbacks is not None else []
 
         # Conversation ids whose lossy v1-import warnings already surfaced
         # this session; the read-gate warns once per session per conversation.
@@ -637,7 +648,14 @@ class HistoryController:
                 if persist_active_pointer:
                     await recorder.persist_record_locked()
             with _restore_step("restoring the app state"):
-                self._restore_app_state(target.values or {})
+                # Position-specific: the restored conversation's callbacks
+                # receive the values recorded at its selected leaf, not a
+                # conversation-wide object.
+                active_leaf = target.active_leaf
+                assert active_leaf is not None
+                self._restore_app_state(
+                    _history_plan.resolve_path_values(target, active_leaf)
+                )
             if unavailable_reason is not None:
                 # Developer-facing classification only; the client learns
                 # about the read-only view through ``active_read_only``.
@@ -892,6 +910,11 @@ class HistoryController:
             phase="rewind",
         )
 
+        # The target position's values come from the preflight copy,
+        # before the destructive replay/rewind and before the replacement
+        # exchange captures its own fresh values.
+        target_values = _history_plan.resolve_path_values(prefix, parent_id)
+
         async with self._destructive_mutation(block_input=True) as transaction:
             transcript_prefix = self._transcript_prefix_entries(
                 record, node_ids
@@ -918,6 +941,8 @@ class HistoryController:
                 send=send_resubmission,
                 transcript_prefix=transcript_prefix,
                 transaction=transaction,
+                reason=cast(HistoryNavigateReason, kind),
+                target_values=target_values,
             )
 
     def _transcript_prefix_entries(
@@ -951,15 +976,30 @@ class HistoryController:
         send: Callable[[], Awaitable[None]],
         transcript_prefix: tuple["TranscriptEntry", ...] | None = None,
         transaction: object | None = None,
+        reason: HistoryNavigateReason,
+        target_values: dict[str, Any],
     ) -> None:
         """The shared rewind skeleton: capture the close, run the plan,
-        move and persist the leaf, send, clear a failed restore."""
+        move and persist the leaf, send, clear a failed restore, then
+        dispatch the navigation callbacks for a completed move.
+
+        ``target_values`` carries the target position's values, resolved
+        from the preflight record copy before the destructive
+        replay/rewind; the position being left is resolved here, after
+        its node-close capture."""
         recorder = self._exchange_recorder
         async with self._exchange_mutation():
             current_leaf = record.active_leaf
             if current_leaf is None:
                 raise ValueError("Exchange-tree record has no active leaf.")
             await recorder.capture_state_locked(current_leaf, "node_close")
+            # The source position's values resolve only after the
+            # node-close capture of the exchange being left (a read-only
+            # record's capture is suppressed, so its recorded values
+            # answer instead).
+            previous_values = _history_plan.resolve_path_values(
+                record, current_leaf
+            )
             try:
                 with _restore_step(save_step):
                     await _history_plan.run_plan(rewind_state)
@@ -978,6 +1018,74 @@ class HistoryController:
             except BaseException as error:
                 await self._clear_failed_restore(error)
                 raise
+            # The move completed: display, server transcript, model
+            # rewind, and the authoritative update all landed. The
+            # dispatch stays outside the cleanup block above, so a
+            # failing hook never clears the selected conversation; and
+            # it precedes the caller's return, so any resubmitted work
+            # the client starts afterwards observes the synced app
+            # state.
+            await self._dispatch_navigate(
+                reason=reason,
+                values=target_values,
+                previous_values=previous_values,
+                exchange_id=leaf,
+                previous_exchange_id=current_leaf,
+            )
+
+    async def _dispatch_navigate(
+        self,
+        *,
+        reason: HistoryNavigateReason,
+        values: dict[str, Any],
+        previous_values: dict[str, Any],
+        exchange_id: str,
+        previous_exchange_id: str,
+    ) -> None:
+        """Fire the app ``on_navigate`` callbacks for a completed move.
+
+        Callbacks run in registration order, each with its own detached
+        context snapshots so cross-callback mutation cannot reach saved
+        data. An ordinary failure warns the developer, shows at most one
+        sanitized user notification per move (no raw exception text), and
+        does not stop the remaining callbacks; cancellation and other
+        fatal exceptions propagate.
+        """
+        callbacks = self._navigate_callbacks
+        if not callbacks:
+            return
+        notified = False
+        for callback in callbacks:
+            context = HistoryNavigateContext(
+                reason=reason,
+                values=copy.deepcopy(values),
+                previous_values=copy.deepcopy(previous_values),
+                exchange_id=exchange_id,
+                previous_exchange_id=previous_exchange_id,
+            )
+            try:
+                callback(context)
+            except Exception as error:
+                warnings.warn(
+                    f"Chat history on_navigate callback failed: {error!r}",
+                    stacklevel=2,
+                )
+                if not notified:
+                    notified = True
+                    try:
+                        from shiny import ui as shiny_ui
+                        from shiny.session import session_context
+
+                        with session_context(self.chat._session):
+                            shiny_ui.notification_show(
+                                "A conversation navigation hook failed; "
+                                "some app state may be out of sync.",
+                                type="error",
+                            )
+                    except Exception:
+                        # Without a live session there is nowhere to
+                        # notify; the developer warning already fired.
+                        pass
 
     async def rename(self, conv_id: str, title: str) -> None:
         if self.partition is None:
@@ -1136,6 +1244,10 @@ class HistoryController:
                 if planned[0] not in _MODEL_STATE_KEYS
             )
 
+        # The target position's values come from the preflight copy,
+        # before the destructive replay/rewind.
+        target_values = _history_plan.resolve_path_values(projection, leaf)
+
         async with self._destructive_mutation(block_input=True):
 
             async def send_navigation() -> None:
@@ -1154,6 +1266,8 @@ class HistoryController:
                 leaf,
                 save_step="saving the navigation change",
                 send=send_navigation,
+                reason="navigate",
+                target_values=target_values,
             )
 
     async def handle_edit(

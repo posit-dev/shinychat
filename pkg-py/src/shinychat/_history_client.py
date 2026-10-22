@@ -12,20 +12,20 @@ from ._chat_types import ChatMessage, Role
 from ._history_types import TurnDict
 
 
-def _validate_mapping_keys(value: Any) -> None:
+def _validate_mapping_keys(value: Any, *, what: str = "turn data") -> None:
     if isinstance(value, Mapping):
         for key, nested in value.items():
             if not isinstance(key, str):
                 raise ValueError(
-                    "Non-string mapping key in turn data; "
+                    f"Non-string mapping key in {what}; "
                     "JSON object keys must already be strings."
                 )
-            _validate_mapping_keys(nested)
+            _validate_mapping_keys(nested, what=what)
     elif isinstance(value, (str, bytes)):
         return
     elif isinstance(value, (Sequence, Set, deque)):
         for nested in value:
-            _validate_mapping_keys(nested)
+            _validate_mapping_keys(nested, what=what)
 
 
 def _serialize_model_turn(turn: Any) -> dict[str, Any]:

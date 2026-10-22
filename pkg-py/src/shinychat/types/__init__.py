@@ -18,6 +18,7 @@ from .._history_types import (
     ConversationRecord,
     ConversationRecordV1,
     ConversationRecordV2,
+    HistoryNavigateContext,
 )
 from .._page_chat import ChatDrawer, ChatNavPanel, ChatSidebar
 
@@ -51,6 +52,7 @@ __all__ = [
     "ConversationRecordV2",
     "ConversationStore",
     "FileConversationStore",
+    "HistoryNavigateContext",
     "ToolResultDisplay",
     "ChatDrawer",
     "ChatNavPanel",

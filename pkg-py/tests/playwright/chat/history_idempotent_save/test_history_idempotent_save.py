@@ -66,12 +66,12 @@ def test_restore_does_not_trigger_extra_save(
     save_count = controller.OutputTextVerbatim(page, "save_count")
     save_count.expect_value("0")
 
-    # --- Conversation A: one exchange, one save. ---
+    # Root close, stream finish, and response settlement each capture values.
     chat.set_user_input("first question")
     expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: first question", timeout=30_000)
-    save_count.expect_value("1", timeout=10_000)
+    save_count.expect_value("3", timeout=10_000)
     expect(message_count(page)).to_have_count(2, timeout=10_000)
 
     # --- Start a second conversation so there's something to switch away to. ---
@@ -81,13 +81,13 @@ def test_restore_does_not_trigger_extra_save(
     open_drawer(page)
     page.locator(".shiny-chat-history-new").click()
     page.locator(".shiny-chat-history-drawer").wait_for(state="hidden")
-    save_count.expect_value("2", timeout=10_000)
+    save_count.expect_value("4", timeout=10_000)
 
     chat.set_user_input("second question")
     expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: second question", timeout=30_000)
-    save_count.expect_value("3", timeout=10_000)
+    save_count.expect_value("7", timeout=10_000)
 
     # --- Switch back to conversation A: this is the restore path under test. ---
     # `switch_to()` also unconditionally calls `save_current()` (saving B
@@ -99,17 +99,17 @@ def test_restore_does_not_trigger_extra_save(
     conv_a.click()
     page.locator(".shiny-chat-history-drawer").wait_for(state="hidden")
     chat.expect_latest_message("echo: first question", timeout=30_000)
-    save_count.expect_value("4", timeout=10_000)
+    # on_restore runs after display and model state replay; its output is
+    # delivered after the restore effect finishes, not on a partial replay.
+    controller.OutputText(page, "restore_count").expect_value("1")
+    save_count.expect_value("8", timeout=10_000)
 
     # Restored conversation must be intact: exactly the 2 original messages,
     # not truncated and not duplicated.
     expect(message_count(page)).to_have_count(2, timeout=10_000)
 
-    # Give any spurious lifecycle work time to run.
-    page.wait_for_timeout(1_500)
-
-    # save_count must still be 4: replay does not settle another response.
-    save_count.expect_value("4", timeout=5_000)
+    # Replay does not invoke another application-values capture.
+    save_count.expect_value("8", timeout=5_000)
 
     # Re-open the drawer: still exactly 2 conversations (no phantom save
     # created a 3rd entry), and conversation A is active again.
@@ -122,6 +122,7 @@ def test_restore_does_not_trigger_extra_save(
             has_text="first question"
         )
     ).to_be_visible(timeout=10_000)
+    save_count.expect_value("8", timeout=5_000)
 
 
 def test_paused_stream_settles_history_after_terminal_response(
@@ -143,10 +144,9 @@ def test_paused_stream_settles_history_after_terminal_response(
         "paused question\npartial: paused question", timeout=10_000
     )
 
-    # The public owner projection has the sent partial, while history does not
-    # settle until the stream reaches a terminal response.
-    page.wait_for_timeout(500)
-    save_count.expect_value("0", timeout=5_000)
+    # Root values were captured before accepting the input; a partial stream
+    # does not capture response values until it reaches a terminal boundary.
+    save_count.expect_value("1", timeout=5_000)
 
     page.locator("#release").click()
     chat.expect_latest_message(
@@ -155,12 +155,12 @@ def test_paused_stream_settles_history_after_terminal_response(
     owner_messages.expect_value(
         "paused question\npartial: paused question complete", timeout=10_000
     )
-    save_count.expect_value("1", timeout=10_000)
+    save_count.expect_value("3", timeout=10_000)
 
     open_drawer(page)
     page.locator(".shiny-chat-history-new").click()
     page.locator(".shiny-chat-history-drawer").wait_for(state="hidden")
-    save_count.expect_value("2", timeout=10_000)
+    save_count.expect_value("4", timeout=10_000)
 
     open_drawer(page)
     page.locator(".shiny-chat-history-item").filter(
@@ -170,5 +170,6 @@ def test_paused_stream_settles_history_after_terminal_response(
     chat.expect_latest_message(
         "partial: paused question complete", timeout=30_000
     )
+    controller.OutputText(page, "restore_count").expect_value("1")
     expect(message_count(page)).to_have_count(2, timeout=10_000)
-    save_count.expect_value("2", timeout=5_000)
+    save_count.expect_value("4", timeout=5_000)

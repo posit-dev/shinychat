@@ -701,7 +701,7 @@ async def test_store_fixture_matrix_doubles_round_trip(
     await store.put(part(), rec)
 
     got = await store.get(part(), rec.id)
-    assert got is not None
+    assert isinstance(got, ConversationRecordV1)
     assert got.values["pi"] == value
 
 

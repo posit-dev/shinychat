@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 import secrets
 import time
 import unicodedata
@@ -49,6 +50,45 @@ TitleSource = Literal["llm", "user"]
 # The blessed state-entry name for the turn-state capture/restore hooks.
 TURNS_STATE_KEY = "shinychat:turns"
 SYSTEM_PROMPT_STATE_KEY = "shinychat:system_prompt"
+# The blessed state-entry name for per-exchange application values (the
+# per-exchange form of what `on_save` callbacks write and `on_restore` /
+# `on_navigate` callbacks read).
+VALUES_STATE_KEY = "shinychat:values"
+
+# The position moves that fire `Chat.history.on_navigate` callbacks.
+HistoryNavigateReason = Literal["edit", "retry", "regenerate", "navigate"]
+
+
+@dataclasses.dataclass(frozen=True)
+class HistoryNavigateContext:
+    """The position-move description passed to ``on_navigate`` callbacks.
+
+    Frozen means the fields cannot be reassigned; ``values`` and
+    ``previous_values`` are detached snapshots (mutating them changes
+    nothing stored), not recursively immutable mappings.
+
+    Attributes
+    ----------
+    reason : str
+        ``"edit"``, ``"retry"``, ``"regenerate"``, or ``"navigate"``.
+    values : dict[str, Any]
+        Application values at the target position: the parent exchange for
+        edit/retry/regenerate, or the selected leaf for sibling navigation.
+    previous_values : dict[str, Any]
+        Application values at the position being left, captured before the
+        move. Read-only navigation uses that position's recorded values.
+    exchange_id : str
+        The target exchange ID (the rewound parent for resubmission).
+    previous_exchange_id : str
+        The active exchange ID being left.
+    """
+
+    reason: HistoryNavigateReason
+    values: dict[str, Any]
+    previous_values: dict[str, Any]
+    exchange_id: str
+    previous_exchange_id: str
+
 
 MAX_HISTORY_ERROR_MESSAGE = 256
 HISTORY_ERROR_GENERIC = "The response could not be completed."
@@ -356,7 +396,10 @@ class CapturedMessage(BaseModel):
             segments=[copy.deepcopy(segment) for segment in message.segments],
             icon=icon,
             attachments=(
-                [attachment.model_copy(deep=True) for attachment in message.attachments]
+                [
+                    attachment.model_copy(deep=True)
+                    for attachment in message.attachments
+                ]
                 if message.attachments
                 else None
             ),
@@ -367,7 +410,10 @@ class CapturedMessage(BaseModel):
             role=self.role,
             segments=[copy.deepcopy(segment) for segment in self.segments],
             attachments=(
-                [attachment.model_copy(deep=True) for attachment in self.attachments]
+                [
+                    attachment.model_copy(deep=True)
+                    for attachment in self.attachments
+                ]
                 if self.attachments is not None
                 else []
             ),
@@ -454,7 +500,6 @@ class ConversationRecordV2(BaseModel):
     nodes: dict[str, ExchangeNode] = Field(default_factory=dict)
     next_node_seq: int = 1
     active_leaf: str | None = None
-    values: dict[str, Any] = Field(default_factory=dict)
     bookmark_state_id: str | None = None
 
     @property
@@ -615,7 +660,9 @@ class ConversationRecordV2(BaseModel):
         self.updated_at = utcnow()
         return exchange_id
 
-    def append_message(self, exchange_id: str, message: CapturedMessage) -> None:
+    def append_message(
+        self, exchange_id: str, message: CapturedMessage
+    ) -> None:
         node = self.nodes.get(exchange_id)
         if node is None:
             raise ValueError(f"Unknown exchange id {exchange_id!r}")
