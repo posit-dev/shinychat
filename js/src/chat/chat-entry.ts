@@ -316,6 +316,14 @@ class ChatContainerElement extends HTMLElement {
         `${elementId}_history_url_id`,
         getConversationIdFromUrl() ?? "",
       )
+      // A re-rendered chat_ui() mounts a new element that starts with an
+      // empty palette, while the server only pushes commands when they
+      // change. Ask for them on every mount.
+      window.Shiny?.setInputValue?.(
+        `${elementId}_slash_commands_request`,
+        Date.now(),
+        { priority: "event" },
+      )
     })
 
     this.appProps = {

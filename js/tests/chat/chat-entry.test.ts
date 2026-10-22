@@ -831,3 +831,52 @@ describe("browser token delivery", () => {
     expect(typeof tokenCallsAfter[0]![1]).toBe("string")
   })
 })
+
+describe("slash command request", () => {
+  function mountChat(id: string): HTMLElement {
+    const host = document.createElement("shiny-chat-container")
+    host.setAttribute("id", id)
+    host.innerHTML = `
+      <shiny-chat-messages></shiny-chat-messages>
+      <shiny-chat-input></shiny-chat-input>
+    `
+    document.body.appendChild(host)
+    return host
+  }
+
+  function slashCommandRequests(id: string) {
+    const setInputValue = window.Shiny!.setInputValue as ReturnType<
+      typeof vi.fn
+    >
+    return setInputValue.mock.calls.filter(
+      (args) => args[0] === `${id}_slash_commands_request`,
+    )
+  }
+
+  it("asks the server for slash commands each time a chat with the same id mounts", async () => {
+    let first!: HTMLElement
+    await act(async () => {
+      first = mountChat("remount-chat")
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(slashCommandRequests("remount-chat")).toHaveLength(1)
+
+    // A re-rendered chat_ui() replaces the element with a new one that has
+    // the same id and starts with an empty palette.
+    await act(async () => {
+      first.remove()
+      mountChat("remount-chat")
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const requests = slashCommandRequests("remount-chat")
+    expect(requests).toHaveLength(2)
+    // Event priority, so the server sees the second request even if the
+    // value happens to repeat.
+    expect(requests[1]![2]).toEqual({ priority: "event" })
+  })
+})

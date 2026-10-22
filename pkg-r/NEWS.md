@@ -10,6 +10,8 @@
 
 ## Bug fixes
 
+* Slash commands now show up in a chat UI that is rendered dynamically (for example, with `renderUI()`) or re-rendered later. Previously its command palette stayed empty, because commands were only sent to the browser when they changed.
+
 * A slash command handler that returns a promise now keeps the chat in its loading state, with the input disabled, until the promise settles. Previously the loading indicator disappeared and the input re-enabled as soon as the handler returned, before an asynchronous reply arrived. A rejected promise is now reported like a handler error.
 
 * Expanding a running tool call's row in a tool group now shows its arguments. Previously the panel stayed empty until the call finished. (#424)

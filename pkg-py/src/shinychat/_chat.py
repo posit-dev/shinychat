@@ -361,6 +361,9 @@ class Chat:
         self.id = resolve_id(id)
         self.user_input_id = ResolvedId(f"{self.id}_user_input")
         self._slash_command_id = ResolvedId(f"{self.id}_slash_command")
+        self._slash_commands_request_id = ResolvedId(
+            f"{self.id}_slash_commands_request"
+        )
         self._transform_user: TransformUserInputAsync | None = None
         self._transform_assistant: (
             TransformAssistantResponseChunkAsync | None
@@ -460,6 +463,12 @@ class Chat:
 
             @reactive.effect
             async def _sync_slash_commands():
+                # A re-rendered chat UI starts with an empty palette and asks
+                # again. is_set() first, since reading an unset input would
+                # cancel this effect.
+                request = self._session.input[self._slash_commands_request_id]
+                if request.is_set():
+                    request()
                 cmds = self._slash_commands()
                 if cmds is None:
                     return

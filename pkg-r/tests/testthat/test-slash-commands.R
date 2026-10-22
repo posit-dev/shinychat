@@ -507,3 +507,22 @@ test_that("a promise-returning handler that rejects is reported and clears the l
     )
   })
 })
+
+test_that("chat_slash_command resends commands when a re-rendered chat_ui asks for them", {
+  sent <- record_chat_actions()
+
+  shiny::testServer(bare_server, {
+    chat_slash_command("chat", "help", "Help", function() NULL)
+    session$flushReact()
+    syncs_before <- length(actions_of_type(sent, "update_slash_commands"))
+
+    session$setInputs(chat_slash_commands_request = 1)
+
+    syncs <- actions_of_type(sent, "update_slash_commands")
+    expect_length(syncs, syncs_before + 1)
+    expect_equal(
+      syncs[[length(syncs)]]$action$commands,
+      list(list(name = "help", description = "Help", echo = TRUE))
+    )
+  })
+})
