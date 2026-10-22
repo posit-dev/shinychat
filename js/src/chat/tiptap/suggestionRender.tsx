@@ -5,6 +5,7 @@ import type { SlashCommandDef } from "../../transport/types"
 
 interface SuggestionRenderProps {
   paletteId: string
+  onItemsChange?: (items: SlashCommandDef[]) => void
 }
 
 interface SuggestionCallbackProps {
@@ -15,7 +16,10 @@ interface SuggestionCallbackProps {
   decorationNode?: Element | null
 }
 
-export function createSuggestionRender({ paletteId }: SuggestionRenderProps) {
+export function createSuggestionRender({
+  paletteId,
+  onItemsChange,
+}: SuggestionRenderProps) {
   let popup: HTMLDivElement | null = null
   let root: Root | null = null
   let highlightedIndex = 0
@@ -97,6 +101,7 @@ export function createSuggestionRender({ paletteId }: SuggestionRenderProps) {
   return {
     onStart(props: SuggestionCallbackProps) {
       filteredCommands = props.items ?? []
+      onItemsChange?.(filteredCommands)
       highlightedIndex = 0
       currentCommand = props.command
 
@@ -128,6 +133,7 @@ export function createSuggestionRender({ paletteId }: SuggestionRenderProps) {
 
     onUpdate(props: SuggestionCallbackProps) {
       filteredCommands = props.items ?? []
+      onItemsChange?.(filteredCommands)
       highlightedIndex = 0
       currentCommand = props.command
       renderPalette()
@@ -173,6 +179,7 @@ export function createSuggestionRender({ paletteId }: SuggestionRenderProps) {
     },
 
     onExit() {
+      onItemsChange?.([])
       cleanup()
     },
   }

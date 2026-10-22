@@ -8,6 +8,8 @@
 
 ## Bug fixes
 
+* Pressing Enter now sends a message that starts with `/` when the slash-command menu has no command to offer. Previously the menu opened even in a chat with no slash commands, and Enter did nothing, so typing `/help` and pressing Enter sent nothing. The menu now opens only when the chat has slash commands. (#440)
+
 * Expanding a running tool call's row in a tool group now shows its arguments. Previously the panel stayed empty until the call finished. (#424)
 
 * Stopping an in-progress response now returns focus to the chat input, even inside a Shiny modal. During streaming, Escape dismisses an open slash-command menu or history drawer first; a subsequent Escape cancels the response without closing the modal. (thanks @taekop, #416)

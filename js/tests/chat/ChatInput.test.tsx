@@ -37,6 +37,8 @@ import {
 import { ChatDispatchContext } from "../../src/chat/context"
 import type { ChatTransport } from "../../src/transport/types"
 import { createRef, type RefObject } from "react"
+import type { Editor } from "@tiptap/core"
+import { SuggestionPluginKey } from "@tiptap/suggestion"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -129,6 +131,14 @@ function renderChatInput(
   }) as HTMLDivElement
 
   return { ...result, editorEl, dispatch, transport, ref: internalRef }
+}
+
+function commandChipNames(editor: Editor): string[] {
+  const names: string[] = []
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === "commandMention") names.push(node.attrs.name)
+  })
+  return names
 }
 
 // ---------------------------------------------------------------------------
@@ -421,6 +431,163 @@ describe("ChatInput", () => {
 
     it.skip("does not open the palette when the input does not start with '/'", () => {
       // Same as above — palette state is internal to TipTap's Suggestion plugin.
+    })
+  })
+
+  describe("slash menu and Enter", () => {
+    const helpCommand = [
+      {
+        name: "help",
+        description: "Show help",
+        echo: false,
+      },
+    ]
+
+    function editorOf(editorEl: HTMLElement): Editor {
+      return (editorEl as unknown as { editor: Editor }).editor
+    }
+
+    async function typeIntoEditor(editor: Editor, text: string) {
+      await act(async () => {
+        editor.commands.insertContent(text)
+      })
+    }
+
+    function pressEnter(editor: Editor) {
+      act(() => {
+        editor.view.someProp("handleKeyDown", (handler) =>
+          handler(editor.view, new KeyboardEvent("keydown", { key: "Enter" })),
+        )
+      })
+    }
+
+    function menuIsActive(editor: Editor) {
+      return SuggestionPluginKey.getState(editor.state)?.active
+    }
+
+    it("does not open the menu in a chat with no commands", async () => {
+      const { editorEl } = renderChatInput({
+        slashCommandId: "test-slash-command",
+        slashCommands: [],
+      })
+      const editor = editorOf(editorEl)
+
+      await typeIntoEditor(editor, "/help")
+
+      expect(menuIsActive(editor)).toBeFalsy()
+      expect(document.querySelector(".shiny-chat-slash-palette")).toBeNull()
+    })
+
+    it("sends /help on Enter in a chat with no commands", async () => {
+      const { editorEl, transport } = renderChatInput({
+        slashCommandId: "test-slash-command",
+        slashCommands: [],
+      })
+      const editor = editorOf(editorEl)
+
+      await typeIntoEditor(editor, "/help")
+      pressEnter(editor)
+
+      expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+        text: "/help",
+        attachments: [],
+      })
+    })
+
+    it("sends text the menu cannot complete on Enter", async () => {
+      const { editorEl, transport } = renderChatInput({
+        slashCommandId: "test-slash-command",
+        slashCommands: helpCommand,
+      })
+      const editor = editorOf(editorEl)
+
+      await typeIntoEditor(editor, "/tmp")
+      expect(menuIsActive(editor)).toBe(true)
+      pressEnter(editor)
+
+      expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+        text: "/tmp",
+        attachments: [],
+      })
+    })
+
+    it("still picks the listed command on Enter", async () => {
+      const { editorEl, transport } = renderChatInput({
+        slashCommandId: "test-slash-command",
+        slashCommands: helpCommand,
+      })
+      const editor = editorOf(editorEl)
+
+      await typeIntoEditor(editor, "/he")
+      expect(menuIsActive(editor)).toBe(true)
+      pressEnter(editor)
+
+      expect(commandChipNames(editor)).toEqual(["help"])
+      expect(transport.sendInput).not.toHaveBeenCalled()
+    })
+  })
+
+  describe("slash menu when commands change under it", () => {
+    function chatInputElement(
+      transport: ChatTransport,
+      commands: Array<{
+        name: string
+        description: string
+        echo: boolean
+      }>,
+    ) {
+      return (
+        <ChatDispatchContext.Provider value={vi.fn()}>
+          <ChatInput
+            transport={transport}
+            inputId="test-input"
+            uploadAccept={[]}
+            maxUploadSize={30_000_000}
+            disabled={false}
+            placeholder="Type here..."
+            userMessages={[]}
+            enableUpload={true}
+            slashCommandId="test-slash-command"
+            slashCommands={commands}
+          />
+        </ChatDispatchContext.Provider>
+      )
+    }
+
+    it("Enter follows the command the menu is still listing", async () => {
+      const transport = createMockTransport()
+      const help = [
+        {
+          name: "help",
+          description: "Show help",
+          echo: false,
+        },
+      ]
+      const { rerender } = render(chatInputElement(transport, help))
+      const editor = (
+        screen.getByRole("textbox", { name: "Chat message" }) as unknown as {
+          editor: Editor
+        }
+      ).editor
+
+      await act(async () => {
+        editor.commands.insertContent("/he")
+      })
+      expect(SuggestionPluginKey.getState(editor.state)?.active).toBe(true)
+
+      await act(async () => {
+        rerender(chatInputElement(transport, []))
+      })
+      expect(document.querySelector(".shiny-chat-slash-palette")).not.toBeNull()
+
+      await act(async () => {
+        editor.view.someProp("handleKeyDown", (handler) =>
+          handler(editor.view, new KeyboardEvent("keydown", { key: "Enter" })),
+        )
+      })
+
+      expect(commandChipNames(editor)).toEqual(["help"])
+      expect(transport.sendInput).not.toHaveBeenCalled()
     })
   })
 
