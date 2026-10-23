@@ -24,7 +24,9 @@ def test_capture_failure_notification_and_new_chat_recovery(
     expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     notification = page.locator(".shiny-notification-error")
+    expect(notification).to_be_visible(timeout=30_000)
     expect(notification).to_contain_text("Message not sent", timeout=30_000)
+    expect(chat.loc.locator(".shiny-chat-user-message").last).to_contain_text("not sent")
     expect(notification).to_contain_text("saved checkpoint is unchanged")
     expect(notification).to_contain_text("New chat")
     expect(page.locator("#dispatch_count")).to_have_text(

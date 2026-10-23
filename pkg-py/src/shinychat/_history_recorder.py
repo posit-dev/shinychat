@@ -522,9 +522,14 @@ class _ExchangeRecorder:
             self.record.finish_exchange(root_id, "ok", None)
 
     async def accepted_input(
-        self, exchange_id: str, message: StoredMessage
+        self,
+        exchange_id: str,
+        message: StoredMessage,
+        commit: Callable[[], None],
     ) -> None:
+        """Commit both input owners after model capture, before persistence."""
         if self._host.partition is None or self._read_only:
+            commit()
             return
 
         async with self.lock:
@@ -551,6 +556,7 @@ class _ExchangeRecorder:
                     self.record = None
                 raise
             self.record.open_exchange(exchange_id, message)
+            commit()
             await self.persist_record_locked()
             if created:
                 await self._host.send_history_update()

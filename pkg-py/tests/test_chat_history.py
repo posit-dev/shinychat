@@ -3484,3 +3484,241 @@ async def test_slash_response_capture_failure_keeps_live_error_handling(
             entry.message.content == "already dispatched reply"
             for entry in chat._transcript.read()
         )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("entry_point", ["normal", "slash"])
+@pytest.mark.parametrize("failure", ["first_put", "later_put", "created_update"])
+async def test_postcommit_input_failure_keeps_shared_owner_without_dispatch(
+    tmp_path: Any, request: Any, entry_point: str, failure: str
+) -> None:
+    chat, session, _, store = await _make_initialized_live_v2_chat(
+        tmp_path, "shared_commit_failure"
+    )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    next(
+        effect
+        for effect in chat._effects
+        if effect._fn.__name__ == "handle_user_input"
+    ).destroy()
+    dispatches: list[str] = []
+    observations: list[Any] = []
+
+    @chat.on_user_submit
+    async def submitted(text: str) -> None:
+        dispatches.append(text)
+
+    @chat.slash_command("send", "Send")
+    async def slash(text: str) -> None:
+        dispatches.append(text)
+
+    @reactive.effect
+    def observe_messages() -> None:
+        observations.append(chat.messages())
+
+    request.addfinalizer(observe_messages.destroy)
+    error = RuntimeError(f"injected {failure} failure")
+    live_error = AsyncMock()
+    chat._raise_exception = live_error  # type: ignore[method-assign]
+    original_put = store.put
+    original_update = controller.send_history_update
+    with session_context(cast(Any, session)), reactive.isolate():
+        await reactive.flush()
+        if failure == "later_put":
+            await chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="prior", role="user"),
+                dispatch_user_submit=False,
+            )
+            await reactive.flush()
+        if failure == "created_update":
+            controller.send_history_update = AsyncMock(side_effect=error)  # type: ignore[method-assign]
+        else:
+            store.put = AsyncMock(side_effect=error)  # type: ignore[method-assign]
+        before_observations = len(observations)
+        notification = MagicMock()
+        try:
+            with patch("shiny.ui.notification_show", notification):
+                if entry_point == "normal":
+                    cast(Any, session.input[chat.user_input_id])._set(
+                        {"text": "committed", "attachments": [], "seq": 1}
+                    )
+                else:
+                    cast(Any, session.input[chat._slash_command_id])._set(
+                        {
+                            "command": "send",
+                            "userText": "committed",
+                            "echo": True,
+                        }
+                    )
+                # Uses Chat's real synchronous revision listener under recorder.lock.
+                await asyncio.wait_for(reactive.flush(), timeout=2)
+        finally:
+            store.put = original_put  # type: ignore[method-assign]
+            controller.send_history_update = original_update  # type: ignore[method-assign]
+        live_error.assert_awaited_once_with(error)
+        notification.assert_not_called()
+        assert dispatches == []
+        published = chat.user_input()
+        assert published is None or published.text == "prior"
+        assert chat._normal_user_submission() is None
+        assert len(observations) == before_observations + 1
+        assert recorder.record is not None
+        exchange_id = chat._transcript.open_exchange_id
+        assert exchange_id is not None
+        assert exchange_id == recorder.record.active_leaf
+        accepted = chat._transcript.read()[-1]
+        assert accepted.exchange_id == exchange_id
+        assert recorder.record.nodes[exchange_id].input == accepted.message
+        assert (
+            len(
+                [
+                    item
+                    for item in chat._transcript.read()
+                    if item.exchange_id == exchange_id
+                ]
+            )
+            == 1
+        )
+        await chat.append_message("independent app output")
+        assert chat._transcript.read()[-1].exchange_id == exchange_id
+        saved = await store.get(
+            ConversationPartition(chat_id=chat.id, scope="test"),
+            recorder.record.id,
+        )
+        assert isinstance(saved, ConversationRecordV2)
+        assert saved.nodes[exchange_id].input == accepted.message
+        assert (
+            saved.nodes[exchange_id]
+            .messages[-1]
+            .model_dump(mode="json")["segments"][0]["content"]
+            == "independent app output"
+        )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("entry_point", ["normal", "slash"])
+async def test_first_model_capture_failure_commits_neither_input_owner(
+    tmp_path: Any, request: Any, entry_point: str
+) -> None:
+    chat, session, client, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "first_capture_failure"
+    )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    client._turns = [{"role": "assistant", "content": object()}]
+    with session_context(cast(Any, session)), reactive.isolate():
+        notification = MagicMock()
+        with (
+            patch("shiny.ui.notification_show", notification),
+            pytest.warns(UserWarning, match="not JSON serializable"),
+        ):
+            if entry_point == "normal":
+                cast(Any, session.input[chat.user_input_id])._set(
+                    {"text": "rejected", "attachments": [], "seq": 1}
+                )
+            else:
+                cast(Any, session.input[chat._slash_command_id])._set(
+                    {"command": "send", "userText": "rejected", "echo": True}
+                )
+            await reactive.flush()
+        assert "Message not sent" in notification.call_args.args[0]
+        assert recorder.record is None
+        assert recorder._turn_baseline == []
+        assert chat._transcript.read() == ()
+        assert chat._transcript.open_exchange_id is None
+        assert chat.messages() == ()
+        assert chat.user_input() is None
+        assert chat._normal_user_submission() is None
+
+
+@pytest.mark.anyio
+async def test_app_output_during_failed_input_put_targets_shared_committed_exchange(
+    tmp_path: Any, request: Any
+) -> None:
+    chat, session, _, store = await _make_initialized_live_v2_chat(
+        tmp_path, "blocked_input_put"
+    )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    putting = asyncio.Event()
+    release = asyncio.Event()
+    output_committed = asyncio.Event()
+    original_put = store.put
+    put_count = 0
+
+    async def fail_first_put(partition: Any, record: Any) -> None:
+        nonlocal put_count
+        put_count += 1
+        if put_count == 1:
+            putting.set()
+            await release.wait()
+            raise RuntimeError("input put failed")
+        await original_put(partition, record)
+
+    async def observe_output(exchange_id: str | None, entry: Any) -> None:
+        output_committed.set()
+        await recorder.message_committed(exchange_id, entry)
+
+    store.put = fail_first_put  # type: ignore[method-assign]
+    chat._transcript._on_message_committed = observe_output
+    with session_context(cast(Any, session)), reactive.isolate():
+        accepting = asyncio.create_task(
+            chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="input", role="user")
+            )
+        )
+        appending = None
+        try:
+            await asyncio.wait_for(putting.wait(), timeout=2)
+            assert recorder.lock.locked()
+            assert recorder.record is not None
+            exchange_id = chat._transcript.open_exchange_id
+            assert (
+                exchange_id is not None
+                and exchange_id == recorder.record.active_leaf
+            )
+            assert chat._transcript_revision() == 1
+            appending = asyncio.create_task(
+                chat.append_message("concurrent app output")
+            )
+            await asyncio.wait_for(output_committed.wait(), timeout=2)
+            assert chat._transcript.read()[-1].exchange_id == exchange_id
+            assert (
+                chat._transcript.open_exchange_id == recorder.record.active_leaf
+            )
+            release.set()
+            with pytest.raises(RuntimeError, match="input put failed"):
+                await accepting
+            await asyncio.wait_for(appending, timeout=2)
+            assert chat.user_input() is None
+            assert chat._normal_user_submission() is None
+            saved = await store.get(
+                ConversationPartition(chat_id=chat.id, scope="test"),
+                recorder.record.id,
+            )
+            assert isinstance(saved, ConversationRecordV2)
+            assert (
+                saved.nodes[exchange_id].input
+                == chat._transcript.read()[0].message
+            )
+            assert (
+                saved.nodes[exchange_id]
+                .messages[-1]
+                .model_dump(mode="json")["segments"][0]["content"]
+                == "concurrent app output"
+            )
+        finally:
+            release.set()
+            await asyncio.gather(
+                accepting,
+                *([appending] if appending is not None else []),
+                return_exceptions=True,
+            )
+            store.put = original_put  # type: ignore[method-assign]

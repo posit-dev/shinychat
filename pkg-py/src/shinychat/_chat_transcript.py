@@ -12,7 +12,9 @@ AsyncCommitSend = Callable[[], Awaitable[bool]]
 AsyncActionSend = Callable[[], Awaitable[None]]
 ChangeCallback = Callable[[], None]
 StreamTerminalCallback = Callable[[], None]
-AcceptedInputCallback = Callable[[str, StoredMessage], Awaitable[None]]
+AcceptedInputCallback = Callable[
+    [str, StoredMessage, Callable[[], None]], Awaitable[None]
+]
 MessageCommittedCallback = Callable[
     [str | None, "TranscriptEntry"], Awaitable[None]
 ]
@@ -158,17 +160,30 @@ class ChatTranscript:
     async def record_accepted_input_and_notify(
         self, message: StoredMessage
     ) -> str:
-        """Propose input to its observer, then synchronously commit on success."""
+        """Let the observer commit after capture, before persistence/UI awaits.
+
+        A registered observer owns the single synchronous commit call. With
+        no observer, commit directly. The prepared entry is detached before
+        awaiting either capture or persistence.
+        """
         prepared = TranscriptEntry(
             message=message.model_copy(deep=True),
             exchange_id=_utils.private_random_id(),
         )
         assert prepared.exchange_id is not None
-        if self._on_accepted_input is not None:
+
+        def commit() -> None:
+            self._commit_accepted_input(prepared)
+
+        if self._on_accepted_input is None:
+            commit()
+        else:
             await self._on_accepted_input(
-                prepared.exchange_id, prepared.message.model_copy(deep=True)
+                prepared.exchange_id,
+                prepared.message.model_copy(deep=True),
+                commit,
             )
-        return self._commit_accepted_input(prepared)
+        return prepared.exchange_id
 
     def set_capture_callbacks(
         self,

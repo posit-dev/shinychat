@@ -1824,7 +1824,7 @@ async def test_v2_restore_materializes_turn_path_once_and_resets_baseline():
     assert recorder.record is record
 
     adapter.turns.append({"role": "assistant", "content": "next delta"})
-    await recorder.accepted_input("n_0004", _stored_message("user", "next"))
+    await recorder.accepted_input("n_0004", _stored_message("user", "next"), lambda: None)
     captured = record.nodes[leaf].state["shinychat:turns"]
     assert captured.mode == "delta"
     assert captured.data == [
@@ -2158,10 +2158,10 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore(
     original_accepted_input = recorder.accepted_input
 
     async def record_accepted_input(
-        exchange_id: str, message: StoredMessage
+        exchange_id: str, message: StoredMessage, commit: Callable[[], None]
     ) -> None:
         recorder_inputs.append(message.content)
-        await original_accepted_input(exchange_id, message)
+        await original_accepted_input(exchange_id, message, commit)
 
     chat._transcript.set_capture_callbacks(
         on_accepted_input=record_accepted_input,
@@ -2457,7 +2457,7 @@ async def test_v2_same_flush_failed_capture_and_history_selection_restores_targe
         target_before = target.model_dump(mode="json")
 
         async def fail_capture(
-            exchange_id: str, message: StoredMessage
+            exchange_id: str, message: StoredMessage, commit: Callable[[], None]
         ) -> None:
             del exchange_id
             del message
@@ -3482,7 +3482,7 @@ async def test_v2_read_only_record_suppresses_message_and_stream_captures() -> (
     entry = TranscriptEntry(
         message=_stored_message("assistant", "unsolicited"), icon=None
     )
-    await recorder.accepted_input("n_forged", _stored_message("user", "forged"))
+    await recorder.accepted_input("n_forged", _stored_message("user", "forged"), lambda: None)
     await recorder.message_committed("n_0001", entry)
     await recorder.stream_started("s1", "n_0001", entry)
     await recorder.stream_updated("s1", entry)
@@ -8012,7 +8012,7 @@ async def test_stream_recorder_failure_does_not_rollback_sent_transcript():
 
 
 @pytest.mark.anyio
-async def test_input_persistence_failure_leaves_record_open_but_transcript_uncommitted():
+async def test_input_persistence_failure_keeps_record_and_transcript_owners_in_agreement():
     class FailingStore(InMemoryConversationStore):
         async def put(
             self, partition: ConversationPartition, record: Any
@@ -8030,13 +8030,17 @@ async def test_input_persistence_failure_leaves_record_open_but_transcript_uncom
             _stored_message("user", "accepted but not durable")
         )
 
-    assert transcript.open_exchange_id is None
-    assert transcript.read() == ()
+    assert transcript.open_exchange_id is not None
+    assert transcript.read()[-1].message.content == "accepted but not durable"
     assert isinstance(recorder.record, ConversationRecordV2)
     exchange_id = recorder.record.active_leaf
     assert exchange_id is not None
+    assert exchange_id == transcript.open_exchange_id
+    assert transcript.read()[-1].exchange_id == exchange_id
     assert recorder.record.nodes[exchange_id].input is not None
-    assert "accepted but not durable" in str(recorder.record.nodes[exchange_id].input)
+    assert "accepted but not durable" in str(
+        recorder.record.nodes[exchange_id].input
+    )
     assert await store.list(part()) == []
 
 
@@ -9960,3 +9964,28 @@ async def test_concurrent_input_proposals_commit_in_recorder_open_order(
             *([second] if second is not None else []),
             return_exceptions=True,
         )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("mode", ["no_callback", "no_partition", "read_only"])
+async def test_input_commit_has_one_owner_without_writable_history(mode: str):
+    controller, _ = _make_controller()
+    recorder = controller._exchange_recorder
+    notifications: list[tuple[TranscriptEntry, ...]] = []
+    if mode == "no_partition":
+        controller.partition = None
+    elif mode == "read_only":
+        recorder._read_only = True
+    transcript = ChatTranscript(
+        on_accepted_input=None
+        if mode == "no_callback"
+        else recorder.accepted_input,
+        on_change=lambda: notifications.append(transcript.read()),
+    )
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "direct")
+    )
+    assert transcript.open_exchange_id == exchange_id
+    assert [item.message.content for item in transcript.read()] == ["direct"]
+    assert len(notifications) == 1
+    assert recorder.record is None

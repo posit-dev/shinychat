@@ -406,7 +406,7 @@ def test_failed_normal_capture_does_not_publish_input():
         chat = Chat("failed_normal_capture", history=False)
 
         async def _fail_capture(
-            exchange_id: str, message: StoredMessage
+            exchange_id: str, message: StoredMessage, commit: Callable[[], None]
         ) -> None:
             del exchange_id
             del message
@@ -524,10 +524,13 @@ async def test_submission_waits_for_capture_before_dispatch(
         chat = Chat("awaited_capture", history=False)
         request.addfinalizer(chat.destroy)
 
-        async def capture(exchange_id: str, message: StoredMessage) -> None:
+        async def capture(
+            exchange_id: str, message: StoredMessage, commit: Callable[[], None]
+        ) -> None:
             captured.append((exchange_id, message.content))
             capture_started.set()
             await release_capture.wait()
+            commit()
 
         chat._transcript.set_capture_callbacks(
             on_accepted_input=capture,

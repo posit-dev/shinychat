@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import Callable, cast
 
 import anyio
 import pytest
@@ -93,12 +93,17 @@ async def test_append_sends_before_committing() -> None:
 
 
 @pytest.mark.anyio
-async def test_input_observer_sees_proposal_and_message_observer_sees_commit() -> None:
+async def test_input_observer_sees_proposal_and_message_observer_sees_commit() -> (
+    None
+):
     events: list[tuple[str, str, int]] = []
 
-    async def accepted_input(exchange_id: str, message: StoredMessage) -> None:
+    async def accepted_input(
+        exchange_id: str, message: StoredMessage, commit: Callable[[], None]
+    ) -> None:
         events.append(("input", exchange_id, len(transcript.read())))
         assert message.content == "question"
+        commit()
 
     async def message_committed(
         exchange_id: str | None, message: TranscriptEntry
@@ -833,11 +838,14 @@ async def test_input_proposal_is_detached_before_awaiting_observer() -> None:
     captured: list[str] = []
     source = entry("user", "prepared").message
 
-    async def observe(_exchange_id: str, message: StoredMessage) -> None:
+    async def observe(
+        _exchange_id: str, message: StoredMessage, commit: Callable[[], None]
+    ) -> None:
         captured.append(message.content)
         proposed.set()
         await release.wait()
         cast(StoredSegment, message.segments[0]).content = "observer mutation"
+        commit()
 
     transcript = ChatTranscript(on_accepted_input=observe)
     async with anyio.create_task_group() as group:
@@ -861,11 +869,14 @@ async def test_failed_proposal_preserves_intervening_commits_and_owner(
     release = anyio.Event()
     changes: list[tuple[TranscriptEntry, ...]] = []
 
-    async def observe(_exchange_id: str, message: StoredMessage) -> None:
+    async def observe(
+        _exchange_id: str, message: StoredMessage, commit: Callable[[], None]
+    ) -> None:
         if message.content == "rejected":
             proposed.set()
             await release.wait()
             raise RuntimeError("capture rejected")
+        commit()
 
     transcript = ChatTranscript(
         on_accepted_input=observe,
