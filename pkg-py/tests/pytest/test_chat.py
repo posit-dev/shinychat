@@ -511,7 +511,9 @@ def test_normal_submissions_dispatch_their_own_input_and_repeat():
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("entry_point", ["normal", "slash"])
-async def test_submission_waits_for_capture_before_dispatch(entry_point: str, request):
+async def test_submission_waits_for_capture_before_dispatch(
+    entry_point: str, request
+):
     session = cast(Session, _MockSession())
     capture_started = asyncio.Event()
     release_capture = asyncio.Event()
@@ -559,19 +561,23 @@ async def test_submission_waits_for_capture_before_dispatch(entry_point: str, re
             await asyncio.wait_for(capture_started.wait(), timeout=2)
             assert not flush.done()
             assert calls == []
-            assert [
-                entry.message.content for entry in chat._transcript.read()
-            ] == [accepted_text]
-            assert captured == [
-                (chat._transcript.open_exchange_id, accepted_text)
-            ]
+            assert chat._transcript.read() == ()
+            assert chat._transcript.open_exchange_id is None
+            assert len(captured) == 1
+            assert captured[0][0] is not None
+            assert captured[0][1] == accepted_text
             with reactive.isolate():
                 assert chat.user_input() is None
+                assert chat._normal_user_submission() is None
         finally:
             release_capture.set()
             await flush
 
         assert calls == ["hello"]
+        assert [entry.message.content for entry in chat._transcript.read()] == [
+            accepted_text
+        ]
+        assert chat._transcript.open_exchange_id == captured[0][0]
         with reactive.isolate():
             latest = chat.user_input()
             assert latest is not None

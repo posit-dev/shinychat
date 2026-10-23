@@ -3329,8 +3329,12 @@ async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
     assert controller is not None
     recorder = controller._exchange_recorder
     if capture_source == "system_prompt":
+
         def retained_prompt() -> str:
-            if any(turn.get("content") == "unreadable prompt" for turn in client._turns):
+            if any(
+                turn.get("content") == "unreadable prompt"
+                for turn in client._turns
+            ):
                 raise RuntimeError("retained system prompt could not be read")
             return "healthy prompt"
 
@@ -3370,6 +3374,18 @@ async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
         await submit("initial", 1)
         assert calls == ["initial"]
         assert recorder.record is not None
+        transcript_before = _transcript_snapshot(chat)
+        prior_open_id = chat._transcript.open_exchange_id
+        assert prior_open_id is not None
+        seen_messages: list[Any] = []
+
+        @reactive.effect
+        def observe_messages() -> None:
+            seen_messages.append(chat.messages())
+
+        request.addfinalizer(observe_messages.destroy)
+        await reactive.flush()
+        assert len(seen_messages) == 1
         before = recorder.record.model_dump(mode="json")
         baseline = deepcopy(recorder._turn_baseline)
         partition = ConversationPartition(chat_id=chat.id, scope="test")
@@ -3380,7 +3396,9 @@ async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
             client._turns = [{"role": "assistant", "content": object()}]
             cause = "not JSON serializable"
         else:
-            client._turns = [{"role": "assistant", "content": "unreadable prompt"}]
+            client._turns = [
+                {"role": "assistant", "content": "unreadable prompt"}
+            ]
             cause = "retained system prompt could not be read"
         notification = MagicMock()
         with patch("shiny.ui.notification_show", notification):
@@ -3388,6 +3406,10 @@ async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
                 with pytest.warns(UserWarning, match=cause):
                     await submit("rejected", seq)
                 assert calls == ["initial"]
+                assert _transcript_snapshot(chat) == transcript_before
+                assert chat._transcript.open_exchange_id == prior_open_id
+                assert len(seen_messages) == 1
+                assert "rejected" not in str(chat.messages())
                 assert recorder.record.model_dump(mode="json") == before
                 assert recorder._turn_baseline == baseline
                 saved = await store.get(partition, recorder.record.id)
@@ -3411,6 +3433,20 @@ async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
         assert calls == ["initial", "recovered"]
         assert recorder.record is not None
         assert "rejected" not in str(recorder.record.model_dump(mode="json"))
+        recovered_id = chat._transcript.open_exchange_id
+        assert recovered_id is not None and recovered_id != prior_open_id
+        await chat.append_message("fresh response")
+        saved = await store.get(partition, recorder.record.id)
+        assert isinstance(saved, ConversationRecordV2)
+        assert saved.nodes[recovered_id].input is not None
+        assert "recovered" in str(saved.nodes[recovered_id].input)
+        assert (
+            saved.nodes[recovered_id]
+            .messages[-1]
+            .model_dump(mode="json")["segments"][0]["content"]
+            == "fresh response"
+        )
+        assert chat._transcript.read()[-1].exchange_id == recovered_id
 
 
 @pytest.mark.anyio

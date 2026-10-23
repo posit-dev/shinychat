@@ -139,30 +139,36 @@ class ChatTranscript:
             if release:
                 self._release_transaction(transaction)
 
+    def _commit_accepted_input(self, prepared: TranscriptEntry) -> str:
+        assert prepared.exchange_id is not None
+        self._entries = (*self._entries, prepared)
+        self._open_exchange_id = prepared.exchange_id
+        self._notify_change()
+        return prepared.exchange_id
+
     def record_accepted_input(self, message: StoredMessage) -> str:
-        """Commit an accepted optimistic user message and open its exchange."""
-        exchange_id = _utils.private_random_id()
-        self._entries = (
-            *self._entries,
+        """Commit an accepted user message and open its exchange."""
+        return self._commit_accepted_input(
             TranscriptEntry(
                 message=message.model_copy(deep=True),
-                exchange_id=exchange_id,
-            ),
+                exchange_id=_utils.private_random_id(),
+            )
         )
-        self._open_exchange_id = exchange_id
-        self._notify_change()
-        return exchange_id
 
     async def record_accepted_input_and_notify(
         self, message: StoredMessage
     ) -> str:
-        """Commit accepted input, then await its post-commit observer."""
-        exchange_id = self.record_accepted_input(message)
+        """Propose input to its observer, then synchronously commit on success."""
+        prepared = TranscriptEntry(
+            message=message.model_copy(deep=True),
+            exchange_id=_utils.private_random_id(),
+        )
+        assert prepared.exchange_id is not None
         if self._on_accepted_input is not None:
             await self._on_accepted_input(
-                exchange_id, message.model_copy(deep=True)
+                prepared.exchange_id, prepared.message.model_copy(deep=True)
             )
-        return exchange_id
+        return self._commit_accepted_input(prepared)
 
     def set_capture_callbacks(
         self,

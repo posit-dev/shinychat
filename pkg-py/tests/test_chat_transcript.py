@@ -93,7 +93,7 @@ async def test_append_sends_before_committing() -> None:
 
 
 @pytest.mark.anyio
-async def test_capture_events_are_awaited_after_their_commits() -> None:
+async def test_input_observer_sees_proposal_and_message_observer_sees_commit() -> None:
     events: list[tuple[str, str, int]] = []
 
     async def accepted_input(exchange_id: str, message: StoredMessage) -> None:
@@ -120,7 +120,7 @@ async def test_capture_events_are_awaited_after_their_commits() -> None:
     )
 
     assert events == [
-        ("input", exchange_id, 1),
+        ("input", exchange_id, 0),
         ("message", exchange_id, 2),
     ]
 
@@ -824,3 +824,99 @@ async def test_clear_and_restore_reject_active_stream_and_defensive_projection()
 
     assert transcript.read() == ()
     assert transcript.active_stream_id is None
+
+
+@pytest.mark.anyio
+async def test_input_proposal_is_detached_before_awaiting_observer() -> None:
+    proposed = anyio.Event()
+    release = anyio.Event()
+    captured: list[str] = []
+    source = entry("user", "prepared").message
+
+    async def observe(_exchange_id: str, message: StoredMessage) -> None:
+        captured.append(message.content)
+        proposed.set()
+        await release.wait()
+        cast(StoredSegment, message.segments[0]).content = "observer mutation"
+
+    transcript = ChatTranscript(on_accepted_input=observe)
+    async with anyio.create_task_group() as group:
+        group.start_soon(transcript.record_accepted_input_and_notify, source)
+        await proposed.wait()
+        cast(StoredSegment, source.segments[0]).content = "caller mutation"
+        assert transcript.read() == ()
+        release.set()
+    assert captured == ["prepared"]
+    assert transcript.read()[0].message.content == "prepared"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "intervention", ["stream", "append", "clear", "newer", "clear_then_newer"]
+)
+async def test_failed_proposal_preserves_intervening_commits_and_owner(
+    intervention: str,
+) -> None:
+    proposed = anyio.Event()
+    release = anyio.Event()
+    changes: list[tuple[TranscriptEntry, ...]] = []
+
+    async def observe(_exchange_id: str, message: StoredMessage) -> None:
+        if message.content == "rejected":
+            proposed.set()
+            await release.wait()
+            raise RuntimeError("capture rejected")
+
+    transcript = ChatTranscript(
+        on_accepted_input=observe,
+        on_change=lambda: changes.append(transcript.read()),
+    )
+    old_id = transcript.record_accepted_input(entry("user", "old").message)
+    owner = object()
+    if intervention == "stream":
+        await start_stream(transcript, owner_task=owner)
+
+    async def fail() -> None:
+        with pytest.raises(RuntimeError, match="capture rejected"):
+            await transcript.record_accepted_input_and_notify(
+                entry("user", "rejected").message
+            )
+
+    expected = transcript.read()
+    expected_id = transcript.open_exchange_id
+    notifications = len(changes)
+    async with anyio.create_task_group() as group:
+        group.start_soon(fail)
+        await proposed.wait()
+        assert transcript.open_exchange_id == old_id
+        if intervention == "stream":
+            await transcript.transition_stream(
+                stream_id="stream",
+                source_segments=[segment("old response")],
+                message=entry("assistant", "old response").message,
+                operation="append",
+                send=sent,
+            )
+        elif intervention == "append":
+            await transcript.append(
+                entry("assistant", "old response"),
+                exchange_id=old_id,
+                send=sent,
+            )
+        if intervention in ("clear", "clear_then_newer"):
+            await transcript.clear(send=sent_action)
+        if intervention in ("newer", "clear_then_newer"):
+            await transcript.record_accepted_input_and_notify(
+                entry("user", "newer").message
+            )
+        expected = transcript.read()
+        expected_id = transcript.open_exchange_id
+        notifications = len(changes)
+        release.set()
+    assert transcript.read() == expected
+    assert transcript.open_exchange_id == expected_id
+    assert len(changes) == notifications
+    assert all(item.message.content != "rejected" for item in transcript.read())
+    if intervention == "stream":
+        assert transcript.stream_is_owned_by(owner)
+        assert transcript.active_stream_id == "stream"

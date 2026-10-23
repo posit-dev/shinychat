@@ -8012,7 +8012,7 @@ async def test_stream_recorder_failure_does_not_rollback_sent_transcript():
 
 
 @pytest.mark.anyio
-async def test_accepted_input_persistence_failure_is_open_and_preserves_input():
+async def test_input_persistence_failure_leaves_record_open_but_transcript_uncommitted():
     class FailingStore(InMemoryConversationStore):
         async def put(
             self, partition: ConversationPartition, record: Any
@@ -8030,11 +8030,13 @@ async def test_accepted_input_persistence_failure_is_open_and_preserves_input():
             _stored_message("user", "accepted but not durable")
         )
 
-    exchange_id = transcript.open_exchange_id
-    assert exchange_id is not None
-    assert transcript.read()[-1].message.content == "accepted but not durable"
+    assert transcript.open_exchange_id is None
+    assert transcript.read() == ()
     assert isinstance(recorder.record, ConversationRecordV2)
-    assert exchange_id in recorder.record.nodes
+    exchange_id = recorder.record.active_leaf
+    assert exchange_id is not None
+    assert recorder.record.nodes[exchange_id].input is not None
+    assert "accepted but not durable" in str(recorder.record.nodes[exchange_id].input)
     assert await store.list(part()) == []
 
 
@@ -9879,3 +9881,82 @@ async def test_failed_capture_commits_neither_hook_entries_nor_turn_baseline():
     assert recorder._turn_baseline != baseline
     assert "test:remove" not in root.state
     assert root.state["test:add"].data == "new"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("first_fails", [False, True])
+async def test_concurrent_input_proposals_commit_in_recorder_open_order(
+    first_fails: bool,
+):
+    first_capturing = asyncio.Event()
+    release_first = asyncio.Event()
+    second_capturing = asyncio.Event()
+    release_second = asyncio.Event()
+    controller, _ = _make_controller()
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    capture_count = 0
+
+    async def capture(_context: Any) -> None:
+        nonlocal capture_count
+        capture_count += 1
+        if capture_count == 1:
+            first_capturing.set()
+            await release_first.wait()
+            if first_fails:
+                raise RuntimeError("first proposal failed")
+        else:
+            second_capturing.set()
+            await release_second.wait()
+
+    recorder._register_capture_hook("test:proposal-gate", capture)
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    first = asyncio.create_task(
+        transcript.record_accepted_input_and_notify(
+            _stored_message("user", "A")
+        )
+    )
+    second = None
+    try:
+        await asyncio.wait_for(first_capturing.wait(), timeout=2)
+        second = asyncio.create_task(
+            transcript.record_accepted_input_and_notify(
+                _stored_message("user", "B")
+            )
+        )
+        assert transcript.read() == ()
+        release_first.set()
+        await asyncio.wait_for(second_capturing.wait(), timeout=2)
+        if first_fails:
+            with pytest.raises(RuntimeError, match="first proposal failed"):
+                await first
+            assert transcript.read() == ()
+            assert transcript.open_exchange_id is None
+        else:
+            first_id = await first
+            assert [item.exchange_id for item in transcript.read()] == [
+                first_id
+            ]
+        release_second.set()
+        second_id = await second
+        assert recorder.record is not None
+        opened = [
+            node_id
+            for node_id, node in recorder.record.nodes.items()
+            if node.input is not None
+        ]
+        committed = [item.exchange_id for item in transcript.read()]
+        assert committed == opened
+        assert len(set(committed)) == (1 if first_fails else 2)
+        assert transcript.open_exchange_id == second_id
+        assert [item.message.content for item in transcript.read()] == (
+            ["B"] if first_fails else ["A", "B"]
+        )
+    finally:
+        release_first.set()
+        release_second.set()
+        await asyncio.gather(
+            first,
+            *([second] if second is not None else []),
+            return_exceptions=True,
+        )
