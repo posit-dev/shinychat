@@ -209,9 +209,10 @@ class _ExchangeRecorder:
         response settlement, and explicit save. Stream finish fires inside
         the stream task, where reactive reads are denied, and callbacks
         legitimately read reactive state (``input``, reactive values)
-        without taking reactive dependencies. The result is validated as
-        JSON (non-string keys and non-finite floats are refused, never
-        coerced) and detached from the callback's object.
+        without taking reactive dependencies. Serializer-supported keys
+        become JSON strings; colliding keys keep the later dictionary entry.
+        Non-finite floating-point values are refused. The JSON round trip
+        detaches the result from the callback's object.
         Values treat every validated object -- including ``{}`` -- as
         effective, so an empty object records an explicit value rather
         than inheriting.

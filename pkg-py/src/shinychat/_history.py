@@ -493,8 +493,12 @@ class ChatHistory:
         root is not captured merely because an input is accepted. An empty
         dict explicitly clears a previously saved object.
         Values use Pydantic's JSON encoding: dates and UUIDs become strings,
-        and tuples and sets become arrays. Keys must be strings; ``NaN``
-        and infinite floating-point values are rejected.
+        and tuples and sets become arrays. Serializer-supported keys become
+        strings (for example, ``1`` becomes ``"1"`` and ``None`` becomes
+        ``"None"``); restore returns that JSON representation. When keys
+        normalize to the same string, the later dictionary entry wins.
+        Authors own those conversions; no separate collision check is added.
+        ``NaN`` and infinite floating-point values are rejected.
 
         If an automatic capture callback or serialization fails, history
         warns the developer and retains the previously recorded values so
