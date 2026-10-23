@@ -1,0 +1,207 @@
+---
+title: "Migrate from 0.7.2"
+---
+
+This guide covers the conversation history and streaming changes made since shinychat 0.7.2. Compare against the released 0.7.2 behavior, not an unreleased build. The [CHANGELOG](https://github.com/posit-dev/shinychat/blob/main/pkg-py/CHANGELOG.md) lists every change.
+
+## Back up conversation history before upgrading
+
+::: {.callout-warning title="Back up the complete history directory first"}
+Upgrading converts each conversation from the v1 format to v2 the next time that conversation is saved. The conversion has no built-in reverse step, and the old v1 files are removed after a successful save.
+
+- Copy the entire conversation history directory before you upgrade. Restoring that copy is the only way back to v1 data, and it discards every change made after the copy was taken.
+- Downgrading the package does not convert v2 conversations back. Shinychat 0.7.2 cannot read v2 conversations: it rejects them on a direct read and omits them from the conversation list.
+- v2 conversations stay readable by a compatible newer version of shinychat. They are hidden from 0.7.2, not deleted.
+:::
+
+Shinychat stores conversations in this location by default:
+
+1. `CONNECT_CONTENT_DATA_DIR/<history id>`, when that environment variable is set.
+2. On Posit Connect, the bookmark directory that Shiny provides.
+3. Otherwise, `.shinychat/conversations/` in the app's working directory.
+
+To choose the location yourself, pass a `FileConversationStore` with the directory you want to use:
+
+```python
+from chatlas import ChatAnthropic
+from shinychat import Chat
+from shinychat.types import FileConversationStore, HistoryOptions
+
+client = ChatAnthropic(system_prompt="You are a helpful assistant.")
+
+# Inside your server function:
+chat = Chat(
+    "chat",
+    client=client,
+    history=HistoryOptions(store=FileConversationStore("conversation-history")),
+)
+```
+
+## Stream sequencing: wait for a response before you follow up
+
+In 0.7.2, a complete append made while a response was streaming was queued and landed after the response. Now such a call raises `RuntimeError` at the call site, and so does a second `append_message_stream()` while a stream is active. Sequence the follow-up explicitly.
+
+- `await chat.append_message_stream(...)` starts the stream and returns immediately. It does not wait for the response to finish.
+- `chat.latest_message_stream` returns the stream's task. It is not awaitable, so do not `await` it.
+- Read the task's `status()` inside a reactive effect. Its values are `initial`, `running`, `success`, `error`, and `cancelled`.
+- Run follow-up work only when the status is `success`. Shinychat reports a failed response through `Chat(on_error=...)`, as it did before.
+
+```python
+from shiny import App, reactive, ui
+from shinychat import Chat, chat_ui
+
+app_ui = ui.page_fillable(chat_ui("chat"))
+
+
+async def answer_chunks(prompt: str):
+    # A deterministic stand-in for a streamed model response.
+    for word in f"You asked: {prompt}".split():
+        yield word + " "
+
+
+def server(input, output, session):
+    chat = Chat("chat")
+
+    @chat.on_user_submit
+    async def _(user_input: str):
+        # Starts the stream and returns right away. Awaiting this call does
+        # not wait for the response to finish.
+        await chat.append_message_stream(answer_chunks(user_input))
+
+    @reactive.effect
+    async def _after_answer():
+        status = chat.latest_message_stream.status()
+        if status in ("initial", "running"):
+            # Nothing has finished yet. This effect runs again when the
+            # status changes.
+            return
+        if status == "success":
+            # The answer completed, so the follow-up lands after it.
+            await chat.append_message("Anything else I can help with?")
+            return
+        # "error" and "cancelled": no follow-up is sent. Handle the failure
+        # in your own code if the conversation needs it.
+        return
+
+
+app = App(app_ui, server)
+```
+
+| Status | Meaning | Follow-up |
+|---|---|---|
+| `initial` | No stream has started | None |
+| `running` | The response is still streaming | None (the effect runs again) |
+| `success` | The response completed | Send the follow-up |
+| `error` | The response failed | None |
+| `cancelled` | The response was stopped | None |
+
+Read the final text of a response in a reactive render function with `chat.latest_message_stream.result()`. In a reactive context, `result()` returns the text on `success`, raises the stored error on `error`, and stops rendering silently in the other states.
+
+## Startup writes and greetings
+
+Until conversation history finishes its initial decision (restoring a saved conversation or starting a fresh one), shinychat does not accept writes that would enter the transcript:
+
+- `append_message()` emits a `UserWarning` and drops the message. The message is not sent and is not replayed later.
+- `append_message_stream()`, and the root `message_stream_context()`, raise `RuntimeError` before they consume the message iterable. The caller still owns that iterable and should close or skip it.
+- The composer holds submissions until history initializes.
+
+Use `Chat(greeting=...)` for welcome text. A greeting can be a string, or a callable that returns content. `chat_greeting()` accepts streamed content. A restored conversation does not show its greeting; a fresh chat shows it after the decision.
+
+```python
+from shinychat import Chat
+
+chat = Chat("chat", greeting="Hello! Ask me about your data.")
+```
+
+A greeting is display text. It does not set up the model or the transcript. Shinychat does not provide a public signal for "history is ready". Do not use delays or timing to decide when startup work can run.
+
+## Custom conversation stores
+
+The store interface changed in two ways:
+
+- `ConversationStore.put()` takes a `ConversationRecordV1 | ConversationRecordV2` record. In 0.7.2 it took `ConversationRecord`.
+- `get()` may return either version. The controller upgrades a v1 record in memory when it reads it.
+
+Import the record types from `shinychat.types`. The controller and recorder write `ConversationRecordV2`, so check for that class at runtime with `isinstance`. `ConversationRecord` is the validation and construction class. Plain `ConversationRecordV2` instances do not pass `isinstance(record, ConversationRecord)`.
+
+The field schema changed:
+
+| Level | v1 (`ConversationRecordV1`, same field names as 0.7.2) | v2 (`ConversationRecordV2`) |
+|---|---|---|
+| Record | `current_leaf` | `active_leaf` |
+| Record | `nodes: dict[str, ConversationNode]` | `nodes: dict[str, ExchangeNode]` |
+| Node | `parent`, `children`, `turns`, `ui`, `selected_child` | `parent_id`, `children`, `input`, `messages`, `state`, `status`, `error`, `selected_child` |
+
+A store that reads v1 internals such as `current_leaf`, `turns`, or `ui` must read the v2 fields instead. A store that only serializes whole records must be checked with a round trip.
+
+This sample is a complete in-memory store. It stores each record as JSON, reads it back as the version it was written in, and lists conversations newest first.
+
+```python
+import json
+
+from chatlas import ChatAnthropic
+from shiny import App, ui
+from shinychat import Chat, chat_ui
+from shinychat.types import (
+    ConversationMeta,
+    ConversationPartition,
+    ConversationRecordV1,
+    ConversationRecordV2,
+    ConversationStore,
+    HistoryOptions,
+)
+
+
+def _load(data: str) -> ConversationRecordV1 | ConversationRecordV2:
+    if json.loads(data).get("schema_version") == 2:
+        return ConversationRecordV2.model_validate_json(data)
+    return ConversationRecordV1.model_validate_json(data)
+
+
+class MemoryConversationStore(ConversationStore):
+    def __init__(self) -> None:
+        self._json: dict[tuple[ConversationPartition, str], str] = {}
+
+    async def list(self, partition: ConversationPartition) -> list[ConversationMeta]:
+        metas = [
+            _load(data).meta(size_bytes=len(data.encode()))
+            for (part, _), data in self._json.items()
+            if part == partition
+        ]
+        return sorted(metas, key=lambda m: m.created_at, reverse=True)
+
+    async def get(
+        self, partition: ConversationPartition, conv_id: str
+    ) -> ConversationRecordV1 | ConversationRecordV2 | None:
+        data = self._json.get((partition, conv_id))
+        return None if data is None else _load(data)
+
+    async def put(
+        self,
+        partition: ConversationPartition,
+        record: ConversationRecordV1 | ConversationRecordV2,
+    ) -> None:
+        self._json[(partition, record.id)] = record.model_dump_json()
+
+    async def delete(self, partition: ConversationPartition, conv_id: str) -> None:
+        self._json.pop((partition, conv_id), None)
+
+
+app_ui = ui.page_fillable(chat_ui("chat"))
+
+
+def server(input, output, session):
+    client = ChatAnthropic(system_prompt="You are a helpful assistant.")
+    chat = Chat(
+        "chat",
+        client=client,
+        history=HistoryOptions(store=MemoryConversationStore()),
+    )
+
+
+app = App(app_ui, server)
+```
+
+## Restore and history messages
+
+In 0.7.2, a failed restore showed the raw exception text in a notification. Now the notification shows a safe message. The message names the state entry or restore step that failed. Developer details are reported as a Python warning, `Chat history restore failed (...)`. Live response errors still follow `Chat(on_error=...)`, as they did in 0.7.2.
