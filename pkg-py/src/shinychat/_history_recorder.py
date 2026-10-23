@@ -457,17 +457,16 @@ class _ExchangeRecorder:
     def _capture_app_state(self, *, strict: bool = False) -> None:
         """Capture application values at the active leaf, sparsely.
 
-        The explicit/boundary save points (explicit save, response
-        settlement, retitle) capture only values -- never the model-state
+        Accepted input, response settlement, and explicit save capture
+        only values here -- never the model-state
         entries the full capture-hook cycle owns. The record-on-change
         rule is the same as the hook's: the root always records,
         descendants record only changes against their ancestor path.
         ``strict`` carries the caller's error policy to
         ``_capture_values_at``: the public explicit save re-raises
-        callback/payload failures, while the automatic boundary points
-        warn and retain. Read-only suppression wins at this central
-        capture point: even when a retitle still writes its title
-        metadata, live app values never replace the saved record's.
+        callback/payload failures, while automatic checkpoints warn and
+        retain. Read-only suppression wins at this central capture point:
+        live app values never replace the saved read-only record's.
         """
         assert self.record is not None
         if self._read_only:
