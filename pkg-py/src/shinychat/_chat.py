@@ -957,9 +957,8 @@ class Chat:
         from ._history_recorder import _ModelCaptureError
 
         if isinstance(e, _ModelCaptureError):
-            import sys
-
             controller = self.history._controller
+            delivery_error: BaseException | None = None
             try:
                 if (
                     isinstance(client_message_id, str)
@@ -973,8 +972,10 @@ class Chat:
                         )
                         await controller._send_exchange_metadata()
                         await controller._send_sibling_metadata()
+            except BaseException as err:
+                delivery_error = err
+                raise
             finally:
-                delivery_error = sys.exc_info()[1]
                 try:
                     try:
                         # Idempotent, including slash-command finally cleanup.

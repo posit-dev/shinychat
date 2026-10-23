@@ -3872,6 +3872,70 @@ async def test_capture_rejection_cleanup_survives_metadata_failure_or_legacy_inp
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("client_message_id", [None, "rejected-client"])
+@pytest.mark.parametrize("cleanup", ["loading", "notification"])
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_capture_cleanup_propagates_failure_while_capture_error_is_handled(
+    tmp_path: Any,
+    request: Any,
+    client_message_id: str | None,
+    cleanup: str,
+    cancelled: bool,
+) -> None:
+    from shinychat._history_recorder import _ModelCaptureError
+
+    chat, session, _, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "handled_capture_cleanup"
+    )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    cleanup_error = (
+        asyncio.CancelledError("cancelled cleanup")
+        if cancelled
+        else RuntimeError("failed cleanup")
+    )
+    capture_error = _ModelCaptureError("capture failed")
+    capture_error.__cause__ = ValueError("private capture cause")
+    with (
+        session_context(cast(Any, session)),
+        patch.object(chat, "_send_action") as delivery,
+        patch.object(controller, "_send_exchange_metadata") as metadata,
+        patch.object(controller, "_send_sibling_metadata") as siblings,
+        patch.object(
+            chat,
+            "_remove_loading_message",
+            side_effect=cleanup_error if cleanup == "loading" else None,
+        ) as loading,
+        patch(
+            "shiny.ui.notification_show",
+            side_effect=cleanup_error if cleanup == "notification" else None,
+        ) as notification,
+        pytest.warns(UserWarning, match="private capture cause"),
+        pytest.raises(BaseException) as raised,
+    ):
+        # Both reactive entry points call this while handling capture failure.
+        try:
+            raise capture_error
+        except _ModelCaptureError as e:
+            await chat._handle_input_exception(e, client_message_id)
+    assert raised.value is cleanup_error
+    loading.assert_awaited_once()
+    notification.assert_called_once()
+    assert "private capture cause" not in notification.call_args.args[0]
+    if client_message_id is None:
+        delivery.assert_not_called()
+        metadata.assert_not_called()
+        siblings.assert_not_called()
+    else:
+        delivery.assert_awaited_once_with(
+            {"type": "remove_message", "id": client_message_id}
+        )
+        metadata.assert_awaited_once()
+        siblings.assert_awaited_once()
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("cancelled", [False, True])
 async def test_capture_cleanup_preserves_primary_delivery_failure_when_transport_closed(
     tmp_path: Any, request: Any, cancelled: bool
@@ -3907,7 +3971,10 @@ async def test_capture_cleanup_preserves_primary_delivery_failure_when_transport
         pytest.warns(UserWarning, match="private capture cause"),
         pytest.raises(BaseException) as raised,
     ):
-        await chat._handle_input_exception(capture_error, "rejected-client")
+        try:
+            raise capture_error
+        except _ModelCaptureError as e:
+            await chat._handle_input_exception(e, "rejected-client")
     assert raised.value is primary
     loading.assert_awaited_once()
     notification.assert_called_once()
