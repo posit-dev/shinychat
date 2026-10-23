@@ -511,7 +511,7 @@ def test_normal_submissions_dispatch_their_own_input_and_repeat():
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("entry_point", ["normal", "slash"])
-async def test_submission_waits_for_capture_before_dispatch(entry_point: str):
+async def test_submission_waits_for_capture_before_dispatch(entry_point: str, request):
     session = cast(Session, _MockSession())
     capture_started = asyncio.Event()
     release_capture = asyncio.Event()
@@ -520,6 +520,7 @@ async def test_submission_waits_for_capture_before_dispatch(entry_point: str):
 
     with session_context(session):
         chat = Chat("awaited_capture", history=False)
+        request.addfinalizer(chat.destroy)
 
         async def capture(exchange_id: str, message: StoredMessage) -> None:
             captured.append((exchange_id, message.content))
@@ -2625,13 +2626,14 @@ def test_slash_command_fn_none_with_explicit_echo_true():
             assert cmds["clientecho"].handler is None
 
 
-def test_bookmark_round_trips_echoed_slash_command():
+def test_bookmark_round_trips_echoed_slash_command(request):
     # Exercise command dispatch, not just a user message shaped like a command.
     from shiny import reactive
 
     session = cast(Session, _MockSession())
     with session_context(session):
         chat = Chat(id="chat")
+        request.addfinalizer(chat.destroy)
 
         @chat.slash_command("greet", "Greet the user")
         async def greet(text: str) -> None:
@@ -2697,7 +2699,7 @@ def test_bookmark_round_trips_echoed_slash_command():
     ]
 
 
-def test_bookmark_omits_side_effect_only_slash_command():
+def test_bookmark_omits_side_effect_only_slash_command(request):
     # A side-effect-only command (echo=False) never reports anything to the
     # client, so it never contributes to the bookmark even though its
     # handler runs.
@@ -2707,6 +2709,7 @@ def test_bookmark_omits_side_effect_only_slash_command():
     calls: list[str] = []
     with session_context(session):
         chat = Chat(id="chat")
+        request.addfinalizer(chat.destroy)
 
         @chat.slash_command("note", "Side-effect only", echo=False)
         async def note(text: str) -> None:
