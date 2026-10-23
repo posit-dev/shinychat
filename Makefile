@@ -130,6 +130,8 @@ r-sync-fixtures: ## [r] Sync shared history test fixtures into pkg-r
 		$(PATH_PKG_R)/tests/testthat/fixtures/history-store-fixture-matrix.json
 	cp tests/shared/history-v1-import-matrix.json \
 		$(PATH_PKG_R)/tests/testthat/fixtures/history-v1-import-matrix.json
+	cp tests/shared/message-transcript-matrix.json \
+		$(PATH_PKG_R)/tests/testthat/fixtures/message-transcript-matrix.json
 
 .PHONY: r-update-dist
 r-update-dist: r-sync-fixtures ## [r] Update shinychat web assets
