@@ -155,6 +155,16 @@ replacement continues from. The replacement's tool call selects `east`, and
 when it completes, `on_save` records `east` on the new exchange. The `west`
 exchange keeps `west`.
 
+Editing or retrying the first message invokes `on_restore({})`, because the
+synthetic root has no saved application values. Your callback decides whether
+to supply defaults or raise an error; history does not automatically reset
+application state. An unhandled ordinary error retains the original branch
+read-only. For writable in-session browsing and resubmits, the model is already
+rewound when the callback runs, but `chat.messages()` and the display still
+show the outgoing branch. The resubmit parent pointer commits only after the
+callback succeeds. Load and conversation switch replay the target display
+before invoking callbacks.
+
 Use the sibling arrows to return to `west`. `on_restore` receives `west`. A
 follow-up from `west` records its own values on its new exchange and leaves the
 `east` branch unchanged. Reloading the page restores the selected position the

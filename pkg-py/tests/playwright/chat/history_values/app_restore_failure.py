@@ -25,6 +25,7 @@ class FilterChatClient(chatlas.Chat):
         get_filter: Callable[[], str],
         set_filter: Callable[[str], None],
         before_filter: reactive.Value[str],
+        provider_calls: reactive.Value[int],
     ) -> None:
         provider = MagicMock()
         provider.name = "filter-echo"
@@ -33,10 +34,12 @@ class FilterChatClient(chatlas.Chat):
         self.get_filter = get_filter
         self.set_filter = set_filter
         self.before_filter = before_filter
+        self.provider_calls = provider_calls
 
     async def stream_async(
         self, *args: Any, **kwargs: Any
     ) -> AsyncGenerator[str, None]:  # type: ignore[override]
+        self.provider_calls.set(self.provider_calls.get() + 1)
         region = str(args[0])
         self.before_filter.set(self.get_filter())
         # Like a tool that updates both app state and its visible control.
@@ -67,6 +70,8 @@ app_ui = ui.page_fillable(
     ui.output_text("restore_count"),
     ui.output_text("restore_attempts"),
     ui.output_text("second_restore_calls"),
+    ui.output_text("provider_calls"),
+    ui.input_checkbox("fail_empty_restore", "Fail empty root restore"),
     chat_ui("chat"),
 )
 
@@ -77,6 +82,7 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     restores: reactive.Value[list[dict[str, Any]]] = reactive.Value([])
     attempts = reactive.Value(0)
     second_calls = reactive.Value(0)
+    calls = reactive.Value(0)
 
     def sync_filter(region: str) -> None:
         # Server state changes immediately; the input update travels to the
@@ -84,7 +90,9 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         selected_filter.set(region)
         ui.update_text("region_filter", value=region)
 
-    client = FilterChatClient(selected_filter.get, sync_filter, before_filter)
+    client = FilterChatClient(
+        selected_filter.get, sync_filter, before_filter, calls
+    )
     chat = Chat(
         "chat",
         client=client,
@@ -105,6 +113,8 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     @chat.history.on_restore
     def restore_filter(values: dict[str, Any]) -> None:
         attempts.set(attempts.get() + 1)
+        if not values and input.fail_empty_restore():
+            raise KeyError("filter")
         if values.get("filter") == "broken":
             # An ordinary app failure: the saved region no longer exists.
             raise RuntimeError("Region 'broken' is not available in this build")
@@ -115,6 +125,10 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     def record_second_restore(values: dict[str, Any]) -> None:
         # Fail-first: this callback must not run after restore_filter fails.
         second_calls.set(second_calls.get() + 1)
+
+    @render.text
+    def provider_calls() -> str:
+        return str(calls.get())
 
     @render.text
     def current_filter() -> str:

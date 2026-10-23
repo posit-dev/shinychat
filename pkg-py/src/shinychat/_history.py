@@ -516,8 +516,12 @@ class ChatHistory:
         Fires on page-load restores in every ``restore_mode``, including
         ``"bookmark"``; on in-session conversation switches; when browsing to
         a sibling or another position; and before an edit, retry, or
-        regenerate starts replacement work from the retained parent. The target
-        position is active before callbacks run. Use it to sync auxiliary
+        regenerate starts replacement work from the retained parent. Callbacks
+        receive the target values; for writable in-session changes, model
+        state has already been rewound, but ``chat.messages()`` and the
+        display still show the outgoing branch. A resubmit commits its parent
+        pointer only after callbacks succeed. Load and switch instead replay
+        the target display before callbacks run. Use it to sync auxiliary
         UI state (active tabs, model selectors, etc.) to match the selected
         position. Raw Shiny input values are not synced automatically;
         call the appropriate ``ui.update_*()`` functions here.
@@ -529,6 +533,12 @@ class ChatHistory:
             @chat.history.on_restore
             def _(values):
                 ui.update_navs("tabs", selected=values.get("selected_tab"))
+
+        Editing or retrying the first message calls ``on_restore({})``:
+        the synthetic root has no saved app values. The author callback
+        decides whether to supply defaults or fail; history does not
+        automatically reset application state. An unhandled ordinary failure
+        retains the original branch read-only, as described below.
 
         Starting a new chat does not fire ``on_restore``: the new chat has
         no saved target, and authors set up its state themselves.

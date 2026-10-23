@@ -745,3 +745,59 @@ async def test_new_chat_neither_captures_outgoing_nor_restores() -> None:
     assert stored.nodes[active.active_leaf].state[VALUES_STATE_KEY].data == {
         "tab": "saved"
     }
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("operation", ["browse", "edit"])
+async def test_in_session_restore_callback_sees_outgoing_transcript_after_model_rewind(
+    request: pytest.FixtureRequest, operation: str
+) -> None:
+    if operation == "edit":
+        controller, chat, adapter, _store, first, target = (
+            _make_v2_resubmit_real_chat(request, chat_id="callback_phase_edit")
+        )
+        await _seed_resubmit_transcript(chat, first, target)
+    else:
+        controller, _fake, adapter, _store, first, target = (
+            _make_v2_navigation_controller()
+        )
+        session = _RealChatSession()
+        with session_context(cast(Any, session)):
+            chat = Chat("callback_phase_browse", history=False)
+        request.addfinalizer(chat.destroy)
+        controller.chat = chat
+        record = controller._exchange_recorder.record
+        assert record is not None
+        await controller._replay_exchange_display(
+            record, tuple(record.path_node_ids())
+        )
+    _wire_resubmit_capture(controller, chat)
+    _spy_send_actions(chat)
+    record = controller._exchange_recorder.record
+    assert record is not None
+    outgoing = chat.messages()
+    original_leaf = record.active_leaf
+    observations: list[tuple[Any, Any, Any, dict[str, Any]]] = []
+
+    def observe(_values: dict[str, Any]) -> None:
+        observations.append(
+            (chat.messages(), list(adapter.turns), record.active_leaf, dict(_values))
+        )
+
+    controller._restore_callbacks.append(observe)
+    if operation == "edit":
+        await controller.handle_edit(2, "replacement", request_id="phase")
+        expected_turns = [
+            {"role": "system", "content": "bootstrap"},
+            {"role": "user", "content": "first"},
+        ]
+        expected_leaf = original_leaf
+    else:
+        await controller.handle_navigate(2, "prev", request_id="phase")
+        expected_turns = [
+            {"role": "system", "content": "bootstrap"},
+            {"role": "user", "content": "first"},
+            {"role": "user", "content": "original"},
+        ]
+        expected_leaf = first
+    assert observations == [(outgoing, expected_turns, expected_leaf, {})]
