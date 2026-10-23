@@ -678,6 +678,8 @@ class ChatHistory:
 
             from shiny import ui as shiny_ui
 
+            # History notifications are safe regardless of app.sanitize_errors;
+            # Chat.on_error only governs live input/response failures.
             # The raw exception text stays in the warning (developer
             # diagnostics) either way.
             warnings.warn(f"{prefix}: {e}", stacklevel=1)

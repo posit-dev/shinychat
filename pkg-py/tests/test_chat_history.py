@@ -4,6 +4,7 @@ import asyncio
 import sys
 import warnings
 from copy import deepcopy
+from types import SimpleNamespace
 from typing import Any, Awaitable, Callable, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1376,13 +1377,17 @@ async def test_v2_bookmark_new_chat_keeps_hard_reload() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_failed_switch_notifies_once_with_sanitized_message() -> None:
+@pytest.mark.parametrize("sanitize_errors", [False, True])
+async def test_v2_failed_switch_notifies_once_with_sanitized_message(
+    sanitize_errors: bool,
+) -> None:
     """A failed in-session switch shows exactly one toast — the cleanup's
     sanitized message — through the real ``_on_select`` boundary. The
     outer handler keeps the raw exception in its developer warning instead
     of a second toast carrying hook internals."""
     chat_id = "switch_single_notification"
     session = _LiveSession()
+    session.app = SimpleNamespace(sanitize_errors=sanitize_errors)
     store = InMemoryConversationStore()
     history_ids = HistoryInputIds.for_chat(ResolvedId(chat_id))
     session.input[history_ids.browser_token] = reactive.Value("token")
@@ -1556,7 +1561,9 @@ async def test_v2_select_missing_conversation_still_notifies_rejection() -> None
         ),
     ],
 )
+@pytest.mark.parametrize("sanitize_errors", [False, True])
 async def test_history_action_errors_keep_exception_details_out_of_notifications(
+    sanitize_errors: bool,
     operation: str,
     method: str,
     input_name: str,
@@ -1565,6 +1572,7 @@ async def test_history_action_errors_keep_exception_details_out_of_notifications
     request: pytest.FixtureRequest,
 ) -> None:
     session = _LiveSession()
+    session.app = SimpleNamespace(sanitize_errors=sanitize_errors)
     handlers: dict[str, Callable[[], Awaitable[None]]] = {}
     with (
         patch.object(reactive, "effect", _capture_history_effects(handlers)),
@@ -1580,6 +1588,7 @@ async def test_history_action_errors_keep_exception_details_out_of_notifications
     request.addfinalizer(chat.destroy)
     controller = chat.history._controller
     assert controller is not None
+    assert chat.on_error == ("sanitize" if sanitize_errors else "actual")
     with session_context(cast(Any, session)), reactive.isolate():
         await handlers["_init_history"]()
     ids = HistoryInputIds.for_chat(chat.id)

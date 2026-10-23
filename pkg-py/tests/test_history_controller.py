@@ -21,6 +21,7 @@ from contextlib import (
 )
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -6852,8 +6853,9 @@ async def test_v2_projects_retry_metadata_for_restored_interrupted_exchanges(
         ("legacy \n unsafe", HISTORY_ERROR_GENERIC),
     ],
 )
+@pytest.mark.parametrize("sanitize_errors", [False, True])
 async def test_v2_error_catalogue_is_bounded_at_write_and_projection(
-    message: str, expected: str
+    message: str, expected: str, sanitize_errors: bool
 ) -> None:
     controller, chat, _adapter, _store, first, target = (
         _make_v2_resubmit_controller()
@@ -6865,6 +6867,9 @@ async def test_v2_error_catalogue_is_bounded_at_write_and_projection(
     record.nodes[first].status = "ok"
     record.nodes[target].status = "error"
     record.finish_exchange(target, "error", message)
+    chat._session = SimpleNamespace(
+        app=SimpleNamespace(sanitize_errors=sanitize_errors)
+    )
 
     await controller._send_exchange_metadata()
 
@@ -6947,7 +6952,9 @@ async def test_v2_error_detail_is_absent_for_inputless_error_node() -> None:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("sanitize_errors", [False, True])
 async def test_v2_error_projection_does_not_mutate_failed_node_with_partial_display(
+    sanitize_errors: bool,
 ) -> None:
     controller, chat, _adapter, _store, first, target = (
         _make_v2_resubmit_controller()
@@ -6966,6 +6973,9 @@ async def test_v2_error_projection_does_not_mutate_failed_node_with_partial_disp
         )
     )
     before = record.nodes[target].model_dump_json()
+    chat._session = SimpleNamespace(
+        app=SimpleNamespace(sanitize_errors=sanitize_errors)
+    )
 
     await controller._send_exchange_metadata()
 
