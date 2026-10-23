@@ -627,10 +627,12 @@ class HistoryController:
     def _prepare_exchange_restore(
         self,
         target: ConversationRecordV2,
+        *,
+        source_isolated: bool = False,
     ) -> tuple[tuple[str, ...], RestorePlan, bool]:
         recorder = self._exchange_recorder
 
-        source_isolated = self._unresolved_record(target)
+        source_isolated = source_isolated or self._unresolved_record(target)
         if source_isolated:
             assert target.active_leaf is not None
             target.set_active_leaf(
@@ -746,11 +748,12 @@ class HistoryController:
                     selected = target.model_copy(deep=True)
                     selected.set_active_leaf(node_id)
                     persist_active_pointer = target.active_leaf != node_id
-                source_unresolved = self._unresolved_record(target)
                 node_ids, planned_state, source_isolated = (
-                    self._prepare_exchange_restore(selected)
+                    self._prepare_exchange_restore(
+                        selected,
+                        source_isolated=self._unresolved_record(target),
+                    )
                 )
-                source_isolated = source_isolated or source_unresolved
         except BaseException as error:
             await self._clear_failed_restore(error)
             raise

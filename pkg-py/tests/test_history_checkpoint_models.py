@@ -424,6 +424,23 @@ async def test_live_partial_response_then_new_input_then_rename_stores_no_pendin
     assert "partial old" not in renamed.model_dump_json()
     assert "legacy" not in renamed.model_dump_json()
 
+    # The older response may finish after another input was accepted. Its
+    # actual checkpoint is saved without settling the newer pending leaf.
+    terminal_model: list[TurnDict] = [
+        {"role": "user", "content": "question"},
+        {"role": "assistant", "content": "finished old"},
+    ]
+    writer.adapter.set_turns_json(terminal_model)
+    await _chunk(transcript, _assistant_message(_text("finished old")))
+    await _end_stream(transcript)
+    terminal = await _saved(backend, conv_id)
+    assert terminal.active_leaf == new_id
+    assert terminal.nodes[new_id].status == "pending"
+    assert terminal.nodes[new_id].messages == []
+    assert TURNS_STATE_KEY not in terminal.nodes[new_id].state
+    assert terminal.nodes[old_id].status == "ok"
+    assert terminal.nodes[old_id].state[TURNS_STATE_KEY].data == terminal_model
+
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
@@ -672,3 +689,75 @@ async def test_non_assistant_output_does_not_open_independent_response_child(
     assert set(record.nodes) == before
     assert record.active_leaf == exchange_id
     assert record.nodes[exchange_id].status == "ok"
+
+
+@pytest.mark.anyio
+async def test_initial_bookmark_into_unresolved_source_scrubs_pending_siblings(
+    backend: _Backend,
+) -> None:
+    writer, _ = _make_controller(
+        store=backend.store, adapter=_prompt_adapter()
+    )
+    writer.adapter.set_system_prompt(SAVED_PROMPT)
+    transcript, coherent_id = await _open_stream(writer)
+    coherent_model = [
+        *writer.adapter.get_turns_json(),
+        {"role": "assistant", "content": "coherent answer"},
+    ]
+    writer.adapter.set_turns_json(coherent_model)
+    await _chunk(transcript, _assistant_message(_text("coherent answer")))
+    await _end_stream(transcript)
+    record = _live(writer._exchange_recorder)
+    record.set_active_leaf(record.root_id)
+    pending_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "unfinished sibling")
+    )
+    from test_history_stream_persistence import _start_stream
+
+    await _start_stream(transcript, pending_id)
+    source = await _saved(backend, record.id)
+    source.nodes[pending_id].messages.append(
+        CapturedMessage.from_stored_message(
+            _stored_message("assistant", "unsafe legacy partial"), icon=None
+        )
+    )
+    source.nodes[pending_id].state[TURNS_STATE_KEY] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[{"role": "assistant", "content": "unsafe legacy model"}],
+    )
+    await backend.store.put(part(), source)
+    frozen = source.model_dump_json()
+
+    viewer, _ = _make_controller(
+        store=backend.reader, adapter=_prompt_adapter()
+    )
+    await viewer._restore_initial_exchange_record(source, node_id=coherent_id)
+
+    local = _live(viewer._exchange_recorder)
+    assert viewer._exchange_recorder.source_isolated
+    assert viewer._exchange_recorder.read_only
+    assert local.active_leaf == coherent_id
+    assert viewer.adapter.get_turns_json() == coherent_model
+    assert viewer.adapter.get_system_prompt() == SAVED_PROMPT
+    assert (
+        local.nodes[coherent_id].messages == source.nodes[coherent_id].messages
+    )
+    assert local.nodes[pending_id].input is None
+    assert local.nodes[pending_id].messages == []
+    assert local.nodes[pending_id].state == {}
+    await viewer.handle_navigate(0, "next", request_id="unsafe-sibling")
+    assert local.active_leaf == record.root_id
+    assert not await viewer._exchange_recorder.flush_pending()
+    assert source.model_dump_json() == frozen
+    assert (await _saved(backend, record.id)).model_dump_json() == frozen
+
+    terminal_model: list[TurnDict] = [{"role": "assistant", "content": "writer finished"}]
+    writer.adapter.set_turns_json(terminal_model)
+    await _chunk(transcript, _assistant_message(_text("writer finished")))
+    await _end_stream(transcript)
+    saved = await _saved(backend, record.id)
+    assert saved.nodes[pending_id].status == "ok"
+    assert saved.nodes[pending_id].state[TURNS_STATE_KEY].data == terminal_model
+    assert source.model_dump_json() == frozen
