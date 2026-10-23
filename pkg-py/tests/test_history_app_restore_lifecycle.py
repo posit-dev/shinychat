@@ -9,6 +9,7 @@ and other fatal errors keep the full restore cleanup.
 """
 
 import asyncio
+from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
@@ -17,7 +18,10 @@ from _history_test_helpers import replay_exchange_record
 from shiny.session import session_context
 from shinychat import Chat
 from shinychat._chat_transcript import TranscriptEntry
-from shinychat._history_store import InMemoryConversationStore
+from shinychat._history_store import (
+    FileConversationStore,
+    InMemoryConversationStore,
+)
 from shinychat._history_types import (
     VALUES_STATE_KEY,
     ConversationRecordV2,
@@ -342,10 +346,13 @@ async def test_read_only_browsing_stays_read_only_without_retry() -> None:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("message_index", [0, 2])
 async def test_failed_retained_parent_restore_suppresses_edit_projection(
     request: pytest.FixtureRequest,
+    message_index: int,
+    tmp_path: Path,
 ) -> None:
-    controller, chat, _adapter, _store, first, target = (
+    controller, chat, adapter, _store, first, target = (
         _make_v2_resubmit_real_chat(request, chat_id="lifecycle_parent_fail")
     )
     recorder = controller._exchange_recorder
@@ -356,14 +363,64 @@ async def test_failed_retained_parent_restore_suppresses_edit_projection(
     await _seed_resubmit_transcript(chat, first, target)
     _wire_resubmit_capture(controller, chat)
     sent = _spy_send_actions(chat)
+    store = FileConversationStore(tmp_path)
+    controller.store = store
+    assert controller.partition is not None
+    await store.put(controller.partition, record)
+    adapter.turns.append({"role": "assistant", "content": "fresh model close"})
+    record.nodes[first].state[VALUES_STATE_KEY] = StateEntry(
+        kind="values", version=1, mode="snapshot", data={"value": "first"}
+    )
+    values_seen: list[dict[str, Any]] = []
 
-    def failing(_values: dict[str, Any]) -> None:
+    def failing(values: dict[str, Any]) -> None:
+        values_seen.append(dict(values))
+        if message_index == 0:
+            values["region"]
         raise RuntimeError("retained parent app restore failed")
 
     controller._restore_callbacks.append(failing)
 
     with pytest.warns(UserWarning, match="on_restore callback failed"):
-        await controller.handle_edit(2, "second edited", request_id="req")
+        await controller.handle_edit(message_index, "edited", request_id="req")
+
+    assert record.active_leaf == target
+    assert [
+        cast(Any, entry.message).segments[0].content
+        for entry in chat._transcript.read()
+    ] == ["first", "reply one", "second", "reply two"]
+    stored = await store.get(controller.partition, record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    assert stored.active_leaf == target
+    assert tuple(stored.path_node_ids()) == tuple(record.path_node_ids())
+    assert stored is not record
+    assert stored.nodes[target].state == record.nodes[target].state
+    assert stored.nodes[target].state["shinychat:turns"].data == [
+        {"role": "user", "content": "second"},
+        {"role": "assistant", "content": "fresh model close"},
+    ]
+    # The model remains rewound, inert under the central read-only guards.
+    assert adapter.turns == (
+        [{"role": "system", "content": "bootstrap"}]
+        if message_index == 0
+        else [
+            {"role": "system", "content": "bootstrap"},
+            {"role": "user", "content": "first"},
+        ]
+    )
+    assert values_seen == ([{}] if message_index == 0 else [{"value": "first"}])
+
+    # Reopening uses the persisted full branch, not the interior parent.
+    reloaded, _reload_store = _make_controller()
+    reload_chat = cast(_FakeChat, reloaded.chat)
+    with pytest.warns(UserWarning, match="on_restore callback failed"):
+        reloaded._restore_callbacks.append(failing)
+        await replay_exchange_record(reloaded, stored)
+    assert reloaded._exchange_recorder.record is not None
+    assert reloaded._exchange_recorder.record.active_leaf == target
+    assert [
+        m["segments"][0]["content"] for m in reload_chat.restored_messages
+    ] == ["first", "reply one", "second", "reply two"]
 
     # The replacement provider kickoff never went out: no edit projection,
     # while the metadata/display update did, marked view-only.

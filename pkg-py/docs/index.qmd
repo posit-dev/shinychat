@@ -149,7 +149,8 @@ app = App(app_ui, server)
 Ask the model to select `west`. The tool call sets the filter, and when the
 response completes, `on_save` records `west` on that exchange. Then edit that
 message to ask for `east`. Before the replacement response starts, `on_restore`
-receives the parent's values (`all`), so the filter matches the position the
+receives the root's empty values (`{}`); the callback's default supplies
+`all`, so the filter matches the position the
 replacement continues from. The replacement's tool call selects `east`, and
 when it completes, `on_save` records `east` on the new exchange. The `west`
 exchange keeps `west`.

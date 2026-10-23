@@ -537,7 +537,12 @@ class ChatHistory:
         exception, so later callbacks never mask it. The conversation stays
         visible but becomes read-only (the composer explains that its app
         state could not be fully restored), and the error is warned to the
-        developer. Callbacks that can recover from a known case should
+        developer. Failed edit, retry, and regenerate preparation retains
+        the original full branch rather than selecting its parent; failed
+        browsing retains the selected target. After failed resubmit
+        preparation, the live model client may still hold the parent prefix,
+        not the displayed branch; read-only blocks continuation and saved
+        state capture until a full restore or new chat. Callbacks that can recover from a known case should
         handle it themselves. Cancellation and other fatal errors take the
         usual full restore cleanup. Read-only conversations keep their
         saved values; a later successful switch or restore of the

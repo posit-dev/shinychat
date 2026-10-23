@@ -965,13 +965,15 @@ class HistoryController:
                 with _restore_step("sending the resubmission"):
                     await self.chat._send_action(action)
 
-            async def send_read_only_parent() -> None:
-                # The retained parent is shown view-only: the display and
+            async def send_read_only_branch() -> None:
+                # The original branch is shown view-only: the display and
                 # metadata update go out, but never the edit projection,
                 # because that projection starts the replacement's
                 # provider work.
                 with _restore_step("replaying the conversation display"):
-                    await self._replay_exchange_display(record, node_ids)
+                    await self._replay_exchange_display(
+                        record, tuple(record.path_node_ids())
+                    )
                 with _restore_step("sending the read-only update"):
                     await self._send_sibling_metadata()
                     await self._send_exchange_metadata()
@@ -983,7 +985,7 @@ class HistoryController:
                 parent_id,
                 save_step="saving the resubmission",
                 send=send_resubmission,
-                send_read_only=send_read_only_parent,
+                send_read_only=send_read_only_branch,
                 transcript_prefix=transcript_prefix,
                 transaction=transaction,
                 target_values=target_values,
@@ -1024,15 +1026,15 @@ class HistoryController:
         target_values: dict[str, Any],
     ) -> None:
         """The shared rewind skeleton: capture the close, run the plan,
-        move and persist the leaf, restore the target's app state, then
-        send.
+        restore the target's app state, commit the resubmit pointer, then send.
 
         ``on_restore`` runs for the target position before ``send``. An
-        ordinary app failure keeps the rewound position displayed but
+        ordinary app failure keeps the original resubmit branch displayed
         view-only, and sends ``send_read_only`` instead of ``send`` (for
         resubmits: the metadata and display without the edit projection,
         which is the replacement's provider kickoff). Without
-        ``send_read_only`` the display update is the same either way.
+        ``send_read_only``, browsing commits and displays the target even
+        when app restoration fails.
         Any other failure takes the full cleanup.
         """
         recorder = self._exchange_recorder
@@ -1044,8 +1046,20 @@ class HistoryController:
             try:
                 with _restore_step(save_step):
                     await _history_plan.run_plan(rewind_state)
-                    await recorder.persist_active_leaf_locked(record, leaf)
-                    if transcript_prefix is not None:
+                    if send_read_only is None:
+                        await recorder.persist_active_leaf_locked(record, leaf)
+                restored = self._restore_app_state(target_values)
+                with _restore_step(save_step):
+                    if send_read_only is not None:
+                        if restored:
+                            await recorder.persist_active_leaf_locked(
+                                record, leaf
+                            )
+                        else:
+                            # Close capture is in-memory only. Preserve it under
+                            # the original leaf without committing the parent.
+                            await recorder.persist_record_locked()
+                    if restored and transcript_prefix is not None:
                         # Sync the append-only server transcript to the
                         # same parent prefix the record/adapter rewound
                         # to, so the replacement input appends after the
@@ -1055,7 +1069,7 @@ class HistoryController:
                         self.chat._transcript.replace(
                             transcript_prefix, transaction=transaction
                         )
-                if self._restore_app_state(target_values):
+                if restored:
                     await send()
                 else:
                     await (send_read_only or send)()
