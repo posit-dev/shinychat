@@ -172,6 +172,10 @@ def test_v2_path_sibling_metadata_tracks_the_selected_exchange():
     rec.set_active_leaf(first)
     rec.open_exchange(replacement, _v2_user_message("replacement"))
 
+    rec.finish_exchange(original, "ok", None)
+    rec.finish_exchange(replacement, "ok", None)
+    rec.nodes[original].checkpoint = "valid"
+    rec.nodes[replacement].checkpoint = "valid"
     assert rec.path_sibling_metadata() == {replacement: (1, 2)}
 
     rec.set_active_leaf(original)

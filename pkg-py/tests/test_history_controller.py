@@ -1400,10 +1400,9 @@ async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
     ].data == {"restored": "target"}
     # The callbacks run only at explicit/boundary saves and terminal or
     # settlement captures; leaving a conversation does not add an entry.
-    # Root close, the stream terminal, response settlement, and the stream
-    # boundary captures all run the callback before the explicit save.
+    # Root close, accepted input, and post-flush response settlement capture
+    # values. The stream terminal is model-only.
     assert saved_values == [
-        "response",
         "response",
         "response",
         "response",
@@ -1955,6 +1954,7 @@ async def test_v2_restore_materializes_turn_path_once_and_resets_baseline():
     # The coherent leaf is terminal; the pending ancestors stay pending so
     # the restore path still covers unfinished ancestors.
     record.finish_exchange(leaf, "ok", None)
+    record.nodes[leaf].checkpoint = "valid"
 
     await replay_exchange_record(controller, record)
 
@@ -2085,6 +2085,7 @@ async def test_v2_switch_uses_restore_transaction_and_controller_active_id():
     )
     target.open_exchange("n_0001", _stored_message("user", "restore me"))
     target.finish_exchange("n_0001", "ok", None)
+    target.nodes["n_0001"].checkpoint = "valid"
     await store.put(part(), target)
     recorder.record = existing
     controller._active_id.set(existing.id)
@@ -2395,6 +2396,7 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore(
     # is completed first; the switch's save of that checkpoint is then held.
     assert source.active_leaf is not None
     source.finish_exchange(source.active_leaf, "ok", None)
+    source.nodes[source.active_leaf].checkpoint = "valid"
     store.block_id = source.id
     switch = asyncio.create_task(controller.switch_to(target.id))
     await asyncio.wait_for(store.source_save_entered.wait(), 2)
@@ -2616,6 +2618,7 @@ async def test_v2_same_flush_failed_capture_and_history_selection_restores_targe
         )
         target.open_exchange("n_0001", _stored_message("user", "target input"))
         target.finish_exchange("n_0001", "ok", None)
+        target.nodes["n_0001"].checkpoint = "valid"
         await store.put(controller.partition, target)
         target_before = target.model_dump(mode="json")
 
@@ -3013,6 +3016,7 @@ async def test_cancelled_v2_switch_releases_real_chat_input_admission(
     # leaf so the switch's save of that checkpoint is the one held.
     assert source.active_leaf is not None
     source.finish_exchange(source.active_leaf, "ok", None)
+    source.nodes[source.active_leaf].checkpoint = "valid"
     store.block_id = source.id
     switch = asyncio.create_task(controller.switch_to(target.id))
     await asyncio.wait_for(store.source_save_entered.wait(), 2)
@@ -3169,6 +3173,7 @@ async def test_v2_switch_saves_source_before_target_preflight_failure() -> None:
 
     source.open_exchange("n_0001", _stored_message("user", "latest source"))
     source.finish_exchange("n_0001", "ok", None)
+    source.nodes["n_0001"].checkpoint = "valid"
     saved_value = "latest value"
     target = new_conversation_record_v2(
         title="invalid target",
@@ -3230,6 +3235,7 @@ async def test_v2_restore_hooks_are_ordered_and_receive_keyed_path_context():
     )
     record.open_exchange("n_0001", _stored_message("user", "first"))
     record.finish_exchange("n_0001", "ok", None)
+    record.nodes["n_0001"].checkpoint = "valid"
     record.nodes["n_0001"].state["second"] = StateEntry(
         kind="test",
         version=1,
@@ -3311,6 +3317,7 @@ def _restore_target(*, id: str = "c_target") -> ConversationRecordV2:
                 _stored_message("assistant", content), icon=None
             ),
         )
+    record.nodes[exchange_id].checkpoint = "valid"
     return record
 
 
@@ -5570,6 +5577,10 @@ def _make_v2_resubmit_controller() -> tuple[
         mode="delta",
         data=[{"role": "user", "content": "second"}],
     )
+    record.finish_exchange(first, "ok", None)
+    record.nodes[first].checkpoint = "valid"
+    record.finish_exchange(target, "cancelled", None)
+    record.nodes[target].checkpoint = "valid"
     recorder.record = record
     controller._active_id.set(record.id)
     adapter.turns = [
@@ -5650,6 +5661,8 @@ def _make_v2_navigation_controller() -> tuple[
             _stored_message("assistant", "replacement reply"), icon=None
         ),
     )
+    for node in record.nodes.values():
+        node.checkpoint = "valid"
     recorder.record = record
     controller._active_id.set(record.id)
     adapter.turns = [
@@ -5807,6 +5820,8 @@ def _make_v2_navigation_controller_with_remembered_descendants() -> tuple[
         ),
     )
 
+    for node in record.nodes.values():
+        node.checkpoint = "valid"
     recorder.record = record
     controller._active_id.set(record.id)
     adapter.turns = [
@@ -6429,6 +6444,8 @@ def _make_v2_resubmit_real_chat(
             _stored_message("assistant", "reply two"), icon=None
         ),
     )
+    record.nodes[first].checkpoint = "valid"
+    record.nodes[target].checkpoint = "valid"
     session = _RealChatSession()
     with session_context(cast(Any, session)):
         chat = Chat(chat_id, history=False)
@@ -7062,6 +7079,7 @@ async def test_v2_projects_retry_metadata_for_restored_interrupted_exchanges(
     record = recorder.record
     assert record is not None
     record.nodes[first].status = "ok"
+    record.nodes[first].checkpoint = "valid"
     record.nodes[target].status = cast(Any, status)
 
     await controller._send_exchange_metadata()
@@ -7102,8 +7120,11 @@ async def test_v2_error_catalogue_is_bounded_at_write_and_projection(
     record = recorder.record
     assert record is not None
     record.nodes[first].status = "ok"
+    record.nodes[first].checkpoint = "valid"
     record.nodes[target].status = "error"
+    record.nodes[target].checkpoint = "valid"
     record.finish_exchange(target, "error", message)
+    record.nodes[target].checkpoint = "valid"
 
     await controller._send_exchange_metadata()
 
@@ -7153,6 +7174,7 @@ async def test_v2_error_detail_is_absent_for_non_error_or_inputless_nodes(
     record = recorder.record
     assert record is not None
     record.nodes[first].status = "ok"
+    record.nodes[first].checkpoint = "valid"
     record.nodes[target].status = cast(Any, status)
     record.nodes[target].error = None
     await controller._send_exchange_metadata()
@@ -7173,7 +7195,9 @@ async def test_v2_error_detail_is_absent_for_inputless_error_node() -> None:
     record = recorder.record
     assert record is not None
     record.nodes[first].status = "ok"
+    record.nodes[first].checkpoint = "valid"
     record.nodes[target].status = "error"
+    record.nodes[target].checkpoint = "valid"
     record.nodes[target].input = None
     record.nodes[target].error = ErrorEntry(message=HISTORY_ERROR_GENERIC)
 
@@ -7197,7 +7221,9 @@ async def test_v2_error_projection_does_not_mutate_failed_node_with_partial_disp
     record = recorder.record
     assert record is not None
     record.nodes[first].status = "ok"
+    record.nodes[first].checkpoint = "valid"
     record.nodes[target].status = "error"
+    record.nodes[target].checkpoint = "valid"
     record.nodes[target].error = ErrorEntry(message="unknown legacy error")
     record.nodes[target].messages.append(
         CapturedMessage.from_stored_message(
@@ -7223,6 +7249,7 @@ async def test_v2_compatible_retry_rewinds_stored_parent_turns():
     record = recorder.record
     assert record is not None
     record.nodes[target].status = "error"
+    record.nodes[target].checkpoint = "valid"
     original = record.nodes[target].input.model_copy(deep=True)  # type: ignore[union-attr]
 
     await controller.handle_resubmit(1, "retry", request_id="retry")
@@ -7288,6 +7315,7 @@ async def test_v2_retry_restores_partial_exchange_before_creating_sibling(
     )
     if status == "cancelled":
         record.finish_exchange(target, "cancelled", None)
+        record.nodes[target].checkpoint = "valid"
 
     recorder.record = record
     controller._active_id.set(record.id)
@@ -7299,9 +7327,9 @@ async def test_v2_retry_restores_partial_exchange_before_creating_sibling(
         on_stream_finished=recorder.stream_finished,
     )
 
+    parent_id = record.nodes[target].parent_id
     await replay_exchange_record(controller, record)
     parent_prefix = [{"role": "system", "content": "parent prefix"}]
-    parent_id = record.nodes[target].parent_id
     assert parent_id == "n_0000"
 
     if status == "pending":
@@ -7325,7 +7353,7 @@ async def test_v2_retry_restores_partial_exchange_before_creating_sibling(
             await controller.handle_resubmit(0, "retry", request_id="retry")
 
         assert restored.model_dump(mode="json") == before
-        assert restored.nodes[target].status == "pending"
+        assert target not in restored.nodes
         assert adapter.turns == parent_prefix
         assert len(store.put_calls) == puts_before
         return
@@ -7399,6 +7427,7 @@ async def test_v2_regenerate_uses_the_real_resubmit_primitive():
     record = recorder.record
     assert record is not None
     record.nodes[target].status = "ok"
+    record.nodes[target].checkpoint = "valid"
     original = record.nodes[target].input.model_copy(deep=True)  # type: ignore[union-attr]
 
     await controller.handle_resubmit(1, "regenerate", request_id="regenerate")
@@ -7429,6 +7458,7 @@ async def test_v2_rejects_retry_for_a_completed_exchange_without_mutating():
     record = recorder.record
     assert record is not None
     record.nodes[target].status = "ok"
+    record.nodes[target].checkpoint = "valid"
     before = record.model_dump()
 
     with pytest.raises(ValueError, match="Only interrupted or failed"):
@@ -8798,6 +8828,7 @@ async def test_explicit_save_captures_state_without_counting_response():
         _stored_message("user", "hello")
     )
     await _finish_pending_exchange(transcript, recorder)
+    await controller.on_response()
     assert recorder.record is not None
     response_count = recorder.record.response_count
 

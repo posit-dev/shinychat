@@ -48,6 +48,7 @@ async def test_completed_checkpoint_retains_latest_model_only_changes(
     transcript, exchange_id = await _open_stream(writer)
     await _chunk(transcript, _assistant_message(_text("displayed answer")))
     await _end_stream(transcript)
+    await writer.on_response()
     record = writer._exchange_recorder.record
     assert record is not None
     conv_id = record.id
@@ -143,6 +144,7 @@ async def test_completed_leaf_with_pending_root_saves_latest_model_on_disconnect
             _stored_message("assistant", "completed"), icon=None
         ),
     )
+    record.nodes[leaf].checkpoint = None  # Legacy record predates classification.
     record.nodes[leaf].state["shinychat:turns"] = StateEntry(
         kind="turns",
         version=1,
@@ -257,6 +259,8 @@ def _legacy_structural_record(conv_id: str) -> ConversationRecordV2:
             ),
         )
     record.set_active_leaf("n_0001")
+    for node in record.nodes.values():
+        node.checkpoint = None  # This fixture represents pre-classification JSON.
     return record
 
 
@@ -355,7 +359,7 @@ async def test_model_only_disconnect_snapshot_serves_both_siblings(
 
 
 @pytest.mark.anyio
-async def test_live_partial_response_then_new_input_then_rename_stores_no_pending_model_state(
+async def test_live_partial_response_then_new_input_preserves_untrusted_legacy_state(
     backend: _Backend,
 ) -> None:
     values = {"v": "old"}
@@ -400,7 +404,9 @@ async def test_live_partial_response_then_new_input_then_rename_stores_no_pendin
     )
 
     saved = await _saved(backend, conv_id)
-    _assert_pending_nodes_store_no_model_state(saved)
+    assert saved.nodes[old_id].checkpoint_state == "invalid"
+    assert saved.nodes[old_id].state[TURNS_STATE_KEY] == legacy_old.state[TURNS_STATE_KEY]
+    assert TURNS_STATE_KEY not in saved.nodes[new_id].state
     assert saved.active_leaf == new_id
     new_input = saved.nodes[new_id].input
     assert new_input is not None
@@ -408,16 +414,22 @@ async def test_live_partial_response_then_new_input_then_rename_stores_no_pendin
     # Sparse values: the old node inherits the root's "old" and records none.
     assert saved.nodes[new_id].state[VALUES_STATE_KEY].data == {"v": "new"}
     assert "partial old" not in saved.model_dump_json()
-    assert "legacy" not in saved.model_dump_json()
+    # Recoverable state is retained, but neither unfinished position is selectable.
+    viewer, _ = _make_controller(store=backend.reader, adapter=_prompt_adapter())
+    await viewer.switch_to(conv_id)
+    assert viewer._exchange_recorder.read_only
+    assert viewer._exchange_recorder.record is not None
+    assert set(viewer._exchange_recorder.record.nodes) == {saved.root_id}
 
     await writer.rename(conv_id, "Renamed live")
 
     renamed = await _saved(backend, conv_id)
     assert renamed.title == "Renamed live"
     assert renamed.title_source == "user"
-    _assert_pending_nodes_store_no_model_state(renamed)
+    assert renamed.nodes[old_id].checkpoint_state == "invalid"
+    assert renamed.nodes[old_id].state == saved.nodes[old_id].state
     assert "partial old" not in renamed.model_dump_json()
-    assert "legacy" not in renamed.model_dump_json()
+    assert renamed.nodes[old_id].state[SYSTEM_PROMPT_STATE_KEY].data == "legacy prompt"
 
     # The older response may finish after another input was accepted. Its
     # actual checkpoint is saved without settling the newer pending leaf.
@@ -428,12 +440,14 @@ async def test_live_partial_response_then_new_input_then_rename_stores_no_pendin
     writer.adapter.set_turns_json(terminal_model)
     await _chunk(transcript, _assistant_message(_text("finished old")))
     await _end_stream(transcript)
+    await writer.on_response()
     terminal = await _saved(backend, conv_id)
     assert terminal.active_leaf == new_id
     assert terminal.nodes[new_id].status == "pending"
     assert terminal.nodes[new_id].messages == []
     assert TURNS_STATE_KEY not in terminal.nodes[new_id].state
     assert terminal.nodes[old_id].status == "ok"
+    assert terminal.nodes[old_id].checkpoint_state == "invalid"
     assert terminal.nodes[old_id].state[TURNS_STATE_KEY].data == terminal_model
 
 
@@ -589,6 +603,7 @@ async def test_independent_response_preserves_previous_checkpoint_and_isolates_r
             await viewer.delete(record.id)
         assert not await viewer._exchange_recorder.flush_pending()
         await _end_stream(transcript)
+    await writer.on_response()
     saved = await _saved(backend, record.id)
     assert (
         saved.nodes[exchange_id].model_dump(
@@ -643,8 +658,9 @@ async def test_complete_append_failure_keeps_live_display_and_safe_saved_checkpo
         m.as_stored_message().content
         for m in record.nodes[exchange_id].messages
     ] == ["live"]
-    assert record.nodes[exchange_id].status == (
-        "pending" if failure == "capture" else "ok"
+    assert record.nodes[exchange_id].status == "ok"
+    assert record.nodes[exchange_id].checkpoint_state == (
+        "invalid" if failure == "capture" else "valid"
     )
     assert transcript.read()[-1].message.content == "live"
     assert record.response_count == 0
@@ -655,9 +671,8 @@ async def test_complete_append_failure_keeps_live_display_and_safe_saved_checkpo
         async with recorder.lock:
             await recorder.rename_active_locked(record.id, "metadata")
         saved = await _saved(backend, record.id)
-        assert saved.nodes[exchange_id].status == "pending"
-        assert saved.nodes[exchange_id].messages == []
-        assert TURNS_STATE_KEY not in saved.nodes[exchange_id].state
+        assert saved.nodes[exchange_id].status == "ok"
+        assert saved.nodes[exchange_id].checkpoint_state == "invalid"
     else:
         assert record.nodes[exchange_id].state[TURNS_STATE_KEY].data == expected
 
@@ -687,7 +702,7 @@ async def test_non_assistant_output_does_not_open_independent_response_child(
 
 
 @pytest.mark.anyio
-async def test_initial_bookmark_into_unresolved_source_scrubs_pending_siblings(
+async def test_initial_bookmark_into_unresolved_source_drops_uncheckpointed_siblings(
     backend: _Backend,
 ) -> None:
     writer, _ = _make_controller(
@@ -702,6 +717,7 @@ async def test_initial_bookmark_into_unresolved_source_scrubs_pending_siblings(
     writer.adapter.set_turns_json(coherent_model)
     await _chunk(transcript, _assistant_message(_text("coherent answer")))
     await _end_stream(transcript)
+    await writer.on_response()
     record = _live(writer._exchange_recorder)
     record.set_active_leaf(record.root_id)
     pending_id = await transcript.record_accepted_input_and_notify(
@@ -739,11 +755,10 @@ async def test_initial_bookmark_into_unresolved_source_scrubs_pending_siblings(
     assert (
         local.nodes[coherent_id].messages == source.nodes[coherent_id].messages
     )
-    assert local.nodes[pending_id].input is None
-    assert local.nodes[pending_id].messages == []
-    assert local.nodes[pending_id].state == {}
+    assert pending_id not in local.nodes
+    assert local.path_sibling_metadata() == {}
     await viewer.handle_navigate(0, "next", request_id="unsafe-sibling")
-    assert local.active_leaf == record.root_id
+    assert local.active_leaf == coherent_id
     assert not await viewer._exchange_recorder.flush_pending()
     assert source.model_dump_json() == frozen
     assert (await _saved(backend, record.id)).model_dump_json() == frozen
@@ -752,6 +767,7 @@ async def test_initial_bookmark_into_unresolved_source_scrubs_pending_siblings(
     writer.adapter.set_turns_json(terminal_model)
     await _chunk(transcript, _assistant_message(_text("writer finished")))
     await _end_stream(transcript)
+    await writer.on_response()
     saved = await _saved(backend, record.id)
     assert saved.nodes[pending_id].status == "ok"
     assert saved.nodes[pending_id].state[TURNS_STATE_KEY].data == terminal_model

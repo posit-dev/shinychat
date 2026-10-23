@@ -171,21 +171,60 @@ still fires `on_navigate` when browsing siblings, using its recorded values.
 
 ### Response checkpoints and interrupted conversations
 
-History attempts to save a streamed response at completion, handled error, or
-cancellation, with its captured model state. If model capture fails, no newer
-display checkpoint is published; capture and storage errors still propagate.
-It does not save streamed display fragments between those points. A hard process
-crash can therefore lose the unfinished question and answer; restoration uses the
-last coherent model/display checkpoint, not invented model turns from the displayed
-text.
+History captures SDK turns and the system prompt when a streamed response ends,
+whether it completes, errors, or is cancelled. If the app registers `on_save`
+callbacks, that position remains a candidate until the existing post-reactive-flush
+response settlement captures and validates the app values. These callbacks do not
+run at stream end inside the still-running task, so they can read
+`chat.latest_message_stream.result()` at settlement. An unchanged value is a
+successful capture; no callbacks means no additional app-values requirement.
 
-If a saved record has an unfinished active exchange, the restored session is an
-isolated read-only viewer. It cannot save or rename that source conversation.
+A model capture failure makes the new position invalid and propagates the error.
+An automatic app capture failure warns the developer, retains prior recoverable
+values, and makes the new position invalid; it does not report a successful
+response save. Later app-only success cannot repair a failed model capture.
+Earlier valid checkpoints remain available. Provider outcome and checkpoint
+validity are separate: a cancelled or errored response can still be a valid
+checkpoint when all required state was captured reliably. A store-write error
+with reliable state is a durability failure, not a state-capture failure.
+
+History does not save streamed display fragments between terminal boundaries.
+A hard process crash can therefore lose the unfinished question and answer.
+For a source-isolated restored viewer, history projects paths to coherent
+checkpoints and keeps the ancestor input/state needed to resolve sparse values,
+prompts, and legacy turn deltas. It retains ended ancestor answers on paths to
+valid descendants, whose full SDK prefixes include that observed history; this
+does not make those ancestors valid checkpoint destinations. Pending response
+fragments and branches with no valid destination are excluded from the isolated
+view and its sibling controls. Writable and ordinary model-unavailable restores
+retain the full tree and recoverable state, while checkpoint eligibility filters
+navigation. Restore never invents model turns from displayed text.
+
+If the saved active position is a candidate or invalid, the restored session is
+an isolated read-only viewer. It cannot save or rename that source conversation.
+An empty fresh root is a writable starting position, but a failed root response
+does not become a writable empty draft when its display is filtered out.
 Choose **New chat** to continue chatting. Reloading does not necessarily cancel
 the original response task: it may still finish and save its terminal checkpoint,
 but the restored viewer does not reconnect to it or live-update. Completed
 conversations still use last-writer-wins storage; this does not provide general
 multi-tab ownership or conflict protection.
+
+SDK state is captured at response end; app values are captured at settlement.
+App code that mutates the SDK client between these boundaries can therefore pair
+terminal-time model state with settlement-time app values. History neither detects
+nor fences such mutations, and SDK calls made outside `Chat` are not tracked.
+If newer input or an independent response supersedes an ended candidate before
+settlement, that older position is invalidated rather than paired with the newer
+response's app values. Only the latest eligible active position can settle.
+
+Custom stores may see the nullable `ExchangeNode.checkpoint` field in schema 2:
+`candidate`, `valid`, or `invalid`. `checkpoint_state` centralizes the fallback for
+records without the field (or with `null`): terminal nodes are assumed valid,
+pending nodes are candidates, except for an empty starting root. This preserves
+older v2 records; it cannot retrospectively identify their unrecorded capture
+failures. New records classify positions explicitly. Schema 2 is still unreleased,
+so this additive field does not introduce a new schema version.
 
 Coherent checkpoints store full client turn lists and system prompts. Repeating
 long prefixes across exchanges can make total stored model state grow

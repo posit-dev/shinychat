@@ -402,6 +402,7 @@ async def test_flush_at_completed_position_captures_model_only_without_app_callb
     conv_id = _live(recorder).id
     await _chunk(transcript, _assistant_message(_text("answer")))
     await _end_stream(transcript)
+    await controller.on_response()
     save_calls.clear()
     chat.actions.clear()
 
@@ -609,6 +610,7 @@ async def test_terminal_persists_latest_app_values_and_status(
 
     app_values["region"] = "west"
     await _end_stream(transcript)
+    await controller.on_response()
 
     saved = await _saved(backend, conv_id)
     assert saved.nodes[exchange_id].status == "ok"

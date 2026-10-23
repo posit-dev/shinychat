@@ -86,6 +86,7 @@ async def seed_conversation() -> None:
         ),
     )
     record.nodes["original"].status = "error"
+    record.nodes["original"].checkpoint = "valid"
     record.nodes["original"].error = ErrorEntry(message="saved failure")
     record.set_active_leaf(root_id)
     record.open_exchange(
@@ -114,6 +115,7 @@ async def seed_conversation() -> None:
         ),
     )
     record.nodes["alternative"].status = "ok"
+    record.nodes["alternative"].checkpoint = "valid"
     record.set_active_leaf("original")
     await store.put(partition, record)
     interrupted = new_conversation_record_v2(

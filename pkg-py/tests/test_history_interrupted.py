@@ -160,9 +160,11 @@ def _interrupted_source() -> ConversationRecordV2:
     record.nodes[root].status = "ok"
     record.open_exchange(Q1, _stored_message("user", "question one"))
     record.append_message(Q1, _captured("assistant", "answer one"))
+    record.nodes[Q1].checkpoint = "valid"
     record.set_active_leaf(root)
     record.open_exchange(Q1_ALT, _stored_message("user", "question alt"))
     record.append_message(Q1_ALT, _captured("assistant", "alt answer"))
+    record.nodes[Q1_ALT].checkpoint = "valid"
     record.set_active_leaf(Q1)
     record.open_exchange(Q2, _stored_message("user", "question two"))
     return record
@@ -480,6 +482,7 @@ def _pending_root_with_input() -> _Shape:
     )
     root = record.root_id
     record.nodes[root].input = _stored_message("user", "unsent request")
+    record.nodes[root].checkpoint = "candidate"
     return _Shape(record, root, True, [])
 
 
@@ -499,6 +502,7 @@ def _completed_first_exchange() -> ConversationRecordV2:
     record.nodes[record.root_id].status = "ok"
     record.open_exchange(Q1, _stored_message("user", "question one"))
     record.append_message(Q1, _captured("assistant", "answer one"))
+    record.nodes[Q1].checkpoint = "valid"
     return record
 
 
@@ -519,6 +523,7 @@ def _completed_leaf_with_pending_ancestor() -> _Shape:
     )
     record.open_exchange(CHILD, _stored_message("user", "child"))
     record.append_message(CHILD, _captured("assistant", "child answer"))
+    record.nodes[CHILD].checkpoint = "valid"
     return _Shape(
         record, CHILD, False, ["pending parent", "child", "child answer"]
     )

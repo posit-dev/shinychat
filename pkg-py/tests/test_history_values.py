@@ -63,6 +63,7 @@ def _finish_pending(record: ConversationRecordV2 | None) -> None:
     for node_id, node in record.nodes.items():
         if node.status == "pending":
             record.finish_exchange(node_id, "ok", None)
+            record.nodes[node_id].checkpoint = "valid"
 
 
 def _values_entry(data: Any) -> StateEntry:
@@ -268,7 +269,7 @@ async def test_values_stream_finish_captures_tool_like_change() -> None:
 
 
 @pytest.mark.anyio
-async def test_values_capture_reads_reactive_state_inside_stream_task() -> None:
+async def test_values_capture_reads_reactive_state_after_stream_task_terminal() -> None:
     # `on_save` callbacks legitimately read reactive state; the stream
     # task's denial context must not break them (the capture runs inside
     # `reactive.isolate()`).
@@ -305,6 +306,7 @@ async def test_values_capture_reads_reactive_state_inside_stream_task() -> None:
             send=_sent,
         )
 
+    await controller.on_response()
     record = recorder.record
     assert record is not None
     assert record.nodes[exchange_id].state[VALUES_STATE_KEY].data == {
@@ -948,8 +950,7 @@ async def test_on_navigate_edit_retry_regenerate_and_sibling_navigation() -> (
             error="failed" if status == "error" else None,
             send=_sent,
         )
-        if status == "ok":
-            await controller.on_response()
+        await controller.on_response()
         return exchange_id
 
     ex_west = await drive_exchange("west", "west")
@@ -1208,12 +1209,10 @@ async def test_on_navigate_read_only_uses_recorded_values_no_live_capture():
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("failure", ["raise", "nan"])
-async def test_values_stream_finish_failure_warns_and_finalizes(
+async def test_values_settlement_failure_warns_and_invalidates_terminal_checkpoint(
     failure: str, tmp_path: Path
 ) -> None:
-    """A failing values capture at stream finish warns the developer but
-    the exchange still finalizes, persists, and leaves stream tracking
-    popped; the chat continues once the app fixes its callback."""
+    """APP failure keeps the terminal outcome and SDK frame, not a valid checkpoint."""
     store = FileConversationStore(dir=tmp_path)
     live: dict[str, Any] = {"filter": "all"}
     failing = False
@@ -1262,15 +1261,13 @@ async def test_values_stream_finish_failure_warns_and_finalizes(
     controller.adapter.set_turns_json(expected_turns)
 
     failing = True
+    await chat._transcript.end_stream(
+        stream_id=stream_id, status=None, error=None, send=_sent
+    )
     with pytest.warns(
         UserWarning, match="Automatic app-state values capture failed"
     ):
-        await chat._transcript.end_stream(
-            stream_id=stream_id,
-            status="ok",  # type: ignore[arg-type]
-            error=None,
-            send=_sent,
-        )
+        assert not await recorder.response_settled()
 
     record = recorder.record
     assert record is not None
@@ -1281,7 +1278,7 @@ async def test_values_stream_finish_failure_warns_and_finalizes(
     assert (
         record.nodes[exchange_id].state[TURNS_STATE_KEY].data == expected_turns
     )
-    # Stream tracking popped even though the values capture failed.
+    # Stream tracking was released before the post-flush values capture.
     assert stream_id not in recorder._stream_exchanges
     # The root's recorded values are retained; the failed capture at the
     # exchange left no own entry, so inheritance answers.
@@ -1295,6 +1292,7 @@ async def test_values_stream_finish_failure_warns_and_finalizes(
     assert isinstance(persisted, ConversationRecordV2)
     assert persisted is not record
     assert persisted.nodes[exchange_id].status == "ok"
+    assert persisted.nodes[exchange_id].checkpoint_state == "invalid"
     assert (
         persisted.nodes[exchange_id].state[TURNS_STATE_KEY].data
         == expected_turns
@@ -1373,6 +1371,7 @@ async def test_values_leave_never_invokes_on_save_during_retry() -> None:
     assert record is not None
     # Retry only applies to a failed exchange: the target finished in error.
     record.finish_exchange(target, "error", "failed")
+    record.nodes[target].checkpoint = "valid"
     _finish_pending(record)
     record.nodes[target].state[VALUES_STATE_KEY] = _values_entry(
         {"f": "target"}
@@ -1443,7 +1442,7 @@ async def test_values_root_close_failure_warns_and_continues() -> None:
 
 
 @pytest.mark.anyio
-async def test_values_automatic_settlement_warns_and_completes() -> None:
+async def test_values_automatic_settlement_warns_and_invalidates_candidate() -> None:
     def save_callback(values: dict[str, Any]) -> None:
         raise RuntimeError("boom")
 
@@ -1460,15 +1459,18 @@ async def test_values_automatic_settlement_warns_and_completes() -> None:
             _stored_message("user", "hi")
         )
     _finish_pending(recorder.record)
+    assert recorder.record is not None
+    recorder.record.nodes[exchange_id].checkpoint = "candidate"
 
-    # Response settlement is automatic: it warns but completes.
+    # Automatic settlement warns, retains recoverable values, and refuses validity.
     with pytest.warns(
         UserWarning, match="Automatic app-state values capture failed"
     ):
-        assert await recorder.response_settled() is True
+        assert await recorder.response_settled() is False
     record = recorder.record
     assert record is not None
     assert record.response_count == 1
+    assert record.nodes[exchange_id].checkpoint_state == "invalid"
     # The failed capture kept no entry, so the exchange still resolves.
     assert VALUES_STATE_KEY not in record.nodes[exchange_id].state
 

@@ -67,7 +67,16 @@ class EchoChatClient(chatlas.Chat):
             and user_input not in _failed_inputs
         ):
             _failed_inputs.add(user_input)
-            raise RuntimeError("intentional retry fixture failure")
+            self._turns.append(Turn(role="user", contents=user_input))
+
+            async def failed_response() -> AsyncGenerator[str, None]:
+                # Fail after Chat starts the stream, so the saved error point
+                # has an actual terminal SDK capture, not merely pending input.
+                raise RuntimeError("intentional retry fixture failure")
+                if False:
+                    yield ""
+
+            return failed_response()
         self._turns.extend(
             [
                 Turn(role="user", contents=user_input),
@@ -194,6 +203,8 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
                 {
                     "conversation_id": record.id,
                     "node_count": len(record.nodes),
+                    "checkpoint": active.checkpoint_state,
+                    "status": active.status,
                     "root_prompt": record.nodes[record.root_id]
                     .state["shinychat:system_prompt"]
                     .model_dump(mode="json"),

@@ -459,6 +459,21 @@ class ExchangeNode(BaseModel):
     messages: list[CapturedMessage] = Field(default_factory=list)
     state: dict[str, StateEntry] = Field(default_factory=dict)
     error: ErrorEntry | None = None
+    checkpoint: Literal["candidate", "valid", "invalid"] | None = None
+
+    @property
+    def checkpoint_state(self) -> Literal["candidate", "valid", "invalid"]:
+        if self.checkpoint is not None:
+            return self.checkpoint
+        if self.status != "pending":
+            return "valid"
+        if self.parent_id is None and self.input is None and not self.messages:
+            return "valid"
+        return "candidate"
+
+    @property
+    def is_checkpoint(self) -> bool:
+        return self.checkpoint_state == "valid"
 
 
 def _ancestor_path(
@@ -552,6 +567,76 @@ class ConversationRecordV2(BaseModel):
             raise ValueError(f"Unknown exchange id {node_id!r}")
         return self.children_of(node.parent_id)
 
+    def require_checkpoint(self, node_id: str) -> ExchangeNode:
+        node = self.nodes.get(node_id)
+        if node is None:
+            raise ValueError(f"Unknown exchange id {node_id!r}")
+        if not node.is_checkpoint:
+            raise ValueError(
+                "The requested position is not a valid checkpoint."
+            )
+        return node
+
+    def newest_child(self, children: list[str]) -> str | None:
+        """Newest eligible child; insertion order breaks timestamp ties."""
+        return (
+            max(
+                enumerate(children),
+                key=lambda item: (self.nodes[item[1]].created_at, item[0]),
+            )[1]
+            if children
+            else None
+        )
+
+    def _checkpoint_leaves(self, roots: list[str]) -> dict[str, str | None]:
+        """Resolve coherent subtree destinations in one iterative postorder pass."""
+        leaves: dict[str, str | None] = {}
+        visiting: set[str] = set()
+        for root in roots:
+            stack = [(root, False)]
+            while stack:
+                key, expanded = stack.pop()
+                node = self.nodes.get(key)
+                if node is None:
+                    raise ValueError(f"Unknown exchange id {key!r}")
+                if key in leaves:
+                    continue
+                if not expanded:
+                    if key in visiting:
+                        raise ValueError(
+                            f"Cycle detected in conversation nodes at {key!r}"
+                        )
+                    visiting.add(key)
+                    stack.append((key, True))
+                    stack.extend(
+                        (child, False) for child in reversed(node.children)
+                    )
+                    continue
+                eligible = [
+                    child
+                    for child in node.children
+                    if leaves[child] is not None
+                ]
+                selected = node.selected_child
+                if selected not in eligible:
+                    selected = self.newest_child(eligible)
+                leaves[key] = (
+                    leaves[selected]
+                    if selected is not None
+                    else (key if node.is_checkpoint else None)
+                )
+                visiting.remove(key)
+        return leaves
+
+    def checkpoint_leaf(self, node_id: str) -> str | None:
+        """Remembered coherent destination within a subtree, never its parent."""
+        return self._checkpoint_leaves([node_id])[node_id]
+
+    def checkpoint_siblings(self, node_id: str) -> list[str]:
+        siblings = self.siblings_of(node_id)
+        leaves = self._checkpoint_leaves(siblings)
+        return [key for key in siblings if leaves[key] is not None]
+
     def set_active_leaf(self, node_id: str) -> None:
         if node_id not in self.nodes:
             raise ValueError(f"Unknown exchange id {node_id!r}")
@@ -618,9 +703,14 @@ class ConversationRecordV2(BaseModel):
 
     def path_sibling_metadata(self) -> dict[str, tuple[int, int]]:
         result: dict[str, tuple[int, int]] = {}
+        leaves = self._checkpoint_leaves([self.root_id])
         for node_id in self.path_node_ids():
-            siblings = self.siblings_of(node_id)
-            if len(siblings) > 1:
+            siblings = [
+                key
+                for key in self.siblings_of(node_id)
+                if leaves[key] is not None
+            ]
+            if node_id in siblings and len(siblings) > 1:
                 result[node_id] = (siblings.index(node_id), len(siblings))
         return result
 
@@ -632,6 +722,7 @@ class ConversationRecordV2(BaseModel):
             parent_id=parent_id,
             created_at=utcnow(),
             status="pending",
+            checkpoint="candidate",
             input=message.model_copy(deep=True),
         )
         if parent_id is not None:
@@ -651,6 +742,7 @@ class ConversationRecordV2(BaseModel):
             parent_id=parent_id,
             created_at=utcnow(),
             status="pending",
+            checkpoint="candidate",
         )
         if parent_id is not None:
             self.nodes[parent_id].children.append(exchange_id)
@@ -668,6 +760,7 @@ class ConversationRecordV2(BaseModel):
             raise ValueError(f"Unknown exchange id {exchange_id!r}")
         node.messages.append(message)
         if message.role == "assistant":
+            node.checkpoint = "candidate"
             node.status = "ok"
             node.error = None
         self.updated_at = utcnow()
@@ -680,6 +773,7 @@ class ConversationRecordV2(BaseModel):
             raise ValueError(f"Unknown exchange id {exchange_id!r}")
         node.messages.append(message)
         node.status = "pending"
+        node.checkpoint = "candidate"
         node.error = None
         self.updated_at = utcnow()
 
@@ -815,6 +909,7 @@ def new_conversation_record_v2(
                 parent_id=None,
                 created_at=now,
                 status="pending",
+                checkpoint="valid",
             )
         },
         active_leaf=root_id,

@@ -600,24 +600,16 @@ class HistoryController:
 
     @staticmethod
     def _unresolved_record(record: ConversationRecordV2) -> bool:
-        # A terminal active leaf captures the entire prefix, even when a
-        # historical inputless ancestor or abandoned sibling is still pending.
-        # An empty pending root is a draft, not an accepted request.
         leaf = record.active_leaf
-        if leaf is None:
-            return False
-        node = record.nodes.get(leaf)
-        if node is None:
-            return False  # Path validation reports the malformed pointer.
-        return node.status == "pending" and (
-            leaf != record.root_id
-            or node.input is not None
-            or bool(node.messages)
+        return (
+            leaf is not None
+            and leaf in record.nodes
+            and not record.nodes[leaf].is_checkpoint
         )
 
     @staticmethod
     def _coherent_leaf(record: ConversationRecordV2, leaf: str) -> str:
-        while record.nodes[leaf].status == "pending":
+        while not record.nodes[leaf].is_checkpoint:
             parent = record.nodes[leaf].parent_id
             if parent is None:
                 return leaf
@@ -632,19 +624,41 @@ class HistoryController:
     ) -> tuple[tuple[str, ...], RestorePlan, bool]:
         recorder = self._exchange_recorder
 
+        if not target.path_node_ids() or target.active_leaf is None:
+            raise ValueError("Exchange-tree record has no active path.")
         source_isolated = source_isolated or self._unresolved_record(target)
+        assert target.active_leaf is not None
+        target.active_leaf = self._coherent_leaf(target, target.active_leaf)
         if source_isolated:
-            assert target.active_leaf is not None
-            target.set_active_leaf(
-                self._coherent_leaf(target, target.active_leaf)
-            )
-            # Old display-only checkpoints must not become trusted history.
+            # Keep complete paths to coherent checkpoints. Ancestor input/state
+            # remains structural data for sparse values and legacy delta frames.
+            keep = {target.root_id}
+            for key, node in target.nodes.items():
+                if node.is_checkpoint:
+                    cursor: str | None = key
+                    while cursor is not None and cursor not in keep:
+                        keep.add(cursor)
+                        cursor = target.nodes[cursor].parent_id
+            target.nodes = {
+                key: node for key, node in target.nodes.items() if key in keep
+            }
             for node in target.nodes.values():
+                node.children = [key for key in node.children if key in keep]
+                if (
+                    node.selected_child is not None
+                    and node.selected_child not in node.children
+                ):
+                    node.selected_child = target.newest_child(node.children)
                 if node.status == "pending":
                     node.messages.clear()
-                    if node.input is not None:
-                        node.state.clear()
-                    node.input = None
+            if target.active_leaf not in keep:
+                target.active_leaf = target.root_id
+            if (
+                keep == {target.root_id}
+                and not target.nodes[target.root_id].is_checkpoint
+            ):
+                target.nodes[target.root_id].input = None
+                target.nodes[target.root_id].messages.clear()
         node_ids = tuple(target.path_node_ids())
         if not node_ids or target.active_leaf is None:
             raise ValueError("Exchange-tree record has no active path.")
@@ -746,6 +760,7 @@ class HistoryController:
             with _restore_step("validating the saved conversation"):
                 if node_id is not None:
                     selected = target.model_copy(deep=True)
+                    selected.require_checkpoint(node_id)
                     selected.set_active_leaf(node_id)
                     persist_active_pointer = target.active_leaf != node_id
                 node_ids, planned_state, source_isolated = (
@@ -876,6 +891,8 @@ class HistoryController:
                 raise ValueError("Only completed exchanges can be regenerated.")
         elif kind != "edit":
             raise ValueError(f"Unknown exchange resubmit kind {kind!r}.")
+        # The accepted input is causal data, not the rewind destination.
+        record.require_checkpoint(target.parent_id)
         return target, target.parent_id
 
     @staticmethod
@@ -1035,6 +1052,7 @@ class HistoryController:
         replay/rewind; the position being left is resolved here, after
         its node-close capture."""
         recorder = self._exchange_recorder
+        record.require_checkpoint(leaf)
         async with self._exchange_mutation():
             current_leaf = record.active_leaf
             if current_leaf is None:
@@ -1219,6 +1237,11 @@ class HistoryController:
         data: dict[int, ExchangeMetadata] = {}
         for node_id, message_index in recorder.record.iter_visible_inputs():
             node = recorder.record.nodes[node_id]
+            if not node.is_checkpoint or (
+                node.parent_id is not None
+                and not recorder.record.nodes[node.parent_id].is_checkpoint
+            ):
+                continue
             metadata: ExchangeMetadata = {
                 "status": node.status,
                 "retryable": node.status in _RETRYABLE_STATUSES,
@@ -1273,7 +1296,9 @@ class HistoryController:
             return
 
         node_id = record.exchange_id_for_user_message_index(message_index)
-        siblings = record.siblings_of(node_id)
+        siblings = record.checkpoint_siblings(node_id)
+        if node_id not in siblings:
+            raise ValueError("The requested position has no valid checkpoint.")
         current_pos = siblings.index(node_id)
         step = -1 if direction == "prev" else 1
         target_pos = current_pos + step
@@ -1282,9 +1307,10 @@ class HistoryController:
         target = siblings[target_pos]
 
         read_only = recorder.read_only
-        leaf = record.subtree_leaf(target)
-        if recorder.source_isolated:
-            leaf = self._coherent_leaf(record, leaf)
+        leaf = record.checkpoint_leaf(target)
+        if leaf is None:
+            raise ValueError("The requested position has no valid checkpoint.")
+        record.require_checkpoint(leaf)
         projection = record.model_copy(deep=True)
         projection.set_active_leaf(leaf)
         node_ids = tuple(projection.path_node_ids())
