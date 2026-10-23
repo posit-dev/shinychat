@@ -88,7 +88,8 @@ checkpoints, so browsing a branch never overwrites its saved state.
 This complete app lets a model select regions through a tool. Set
 `OPENAI_API_KEY` in the app's environment before running it. The reactive value
 holds the server's filter immediately; `ui.update_text()` updates the visible
-input asynchronously.
+input asynchronously. Read the text input only when the user clicks Apply, so a
+later browser echo cannot overwrite state restored by the callback.
 
 ```{.python file="app.py"}
 from chatlas import ChatOpenAI
@@ -98,6 +99,7 @@ from shinychat.types import HistoryOptions
 
 app_ui = ui.page_fillable(
     ui.input_text("region", "Region filter", value="all"),
+    ui.input_action_button("apply_region", "Apply region"),
     ui.output_text("selected_region"),
     chat_ui("chat"),
 )
@@ -117,9 +119,9 @@ def server(input, output, session):
         ui.update_text("region", value=region)
 
     @reactive.effect
-    @reactive.event(input.region)
-    def accept_region_input():
-        selected.set(input.region())
+    @reactive.event(input.apply_region, ignore_init=True)
+    def apply_region_input():
+        sync_region(input.region())
 
     @chat.history.on_save
     def save_region(values):
