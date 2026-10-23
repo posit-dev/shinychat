@@ -284,6 +284,7 @@ export function ChatApp({
           conversations: action.conversations,
           activeId: action.active_id,
           readOnly: action.active_read_only ?? false,
+          readOnlyReason: action.active_read_only_reason,
           transitionProtocol: action.transition_protocol,
         })
         dispatch({

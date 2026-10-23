@@ -106,6 +106,28 @@ describe("historyStore", () => {
     expect(store.getSnapshot().readOnly).toBe(false)
   })
 
+  it("publishes an explanation change while already read-only", () => {
+    const store = getHistoryStore("chat")
+    store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      readOnly: true,
+      readOnlyReason: "model_unavailable",
+    })
+    const listener = vi.fn()
+    store.subscribe(listener)
+    store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      readOnly: true,
+      readOnlyReason: "app_restore_failed",
+    })
+    expect(listener).toHaveBeenCalledOnce()
+    expect(store.getSnapshot().readOnlyReason).toBe("app_restore_failed")
+  })
+
   it("isolates histories by resolved chat id", () => {
     const one = getHistoryStore("one")
     const two = getHistoryStore("two")

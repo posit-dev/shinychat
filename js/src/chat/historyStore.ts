@@ -14,11 +14,12 @@ export interface HistorySnapshot {
   conversations: readonly ConversationMeta[]
   activeId: string | null
   /**
-   * True when the active conversation's saved model context could not be
-   * loaded: viewable but not continuable. Kept separate from `busy` and
+   * True when the active conversation could not be fully restored:
+   * viewable but not continuable. Kept separate from `busy` and
    * `historyTransitionPending`; stream start/end never clears it.
    */
   readOnly: boolean
+  readOnlyReason?: "model_unavailable" | "app_restore_failed"
   busy: boolean
   connected: boolean
   transitionProtocol: TransitionProtocol | null
@@ -124,11 +125,13 @@ export class HistoryStore {
     conversations,
     activeId,
     readOnly = false,
+    readOnlyReason,
     transitionProtocol,
   }: {
     enabled: boolean
     conversations: ConversationMeta[]
     activeId: string | null
+    readOnlyReason?: "model_unavailable" | "app_restore_failed"
     readOnly?: boolean
     transitionProtocol?: string
   }): void {
@@ -150,6 +153,7 @@ export class HistoryStore {
       conversations: nextConversations,
       activeId,
       readOnly,
+      readOnlyReason: readOnly ? readOnlyReason : undefined,
       busy: this.snapshot.busy,
       connected: this.snapshot.connected,
       transitionProtocol: normalizedProtocol,
@@ -357,6 +361,7 @@ function snapshotsEqual(a: HistorySnapshot, b: HistorySnapshot): boolean {
     a.conversations === b.conversations &&
     a.activeId === b.activeId &&
     a.readOnly === b.readOnly &&
+    a.readOnlyReason === b.readOnlyReason &&
     a.busy === b.busy &&
     a.connected === b.connected &&
     a.transitionProtocol === b.transitionProtocol &&

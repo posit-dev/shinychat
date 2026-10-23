@@ -145,14 +145,15 @@ export interface ChatHistoryState {
   conversations: ConversationMeta[]
   activeId: string | null
   /**
-   * True when the active conversation's saved model context could not be
-   * loaded: the transcript is viewable but not continuable. Distinct from
+   * True when the active conversation could not be fully restored:
+   * the transcript is viewable but not continuable. Distinct from
    * `inputDisabled` (transient streaming/transition state) — streaming and
    * clear actions never touch it; only `history_update` sets it. This is
    * a deliberate server-metadata mirror, like enabled/activeId/conversations;
    * rendering and same-tick guards use HistoryStore's synchronous snapshot.
    */
   readOnly: boolean
+  readOnlyReason?: "model_unavailable" | "app_restore_failed"
 }
 
 export interface ChatDrawerState {
@@ -1396,6 +1397,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           // Absent means writable, so messages from older servers (which
           // never send the flag) leave the conversation continuable.
           readOnly: action.active_read_only ?? false,
+          readOnlyReason: action.active_read_only
+            ? action.active_read_only_reason
+            : undefined,
         },
       }
     }
