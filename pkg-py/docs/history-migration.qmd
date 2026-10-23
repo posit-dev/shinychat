@@ -2,14 +2,14 @@
 title: "Migrate from 0.7.2"
 ---
 
-This guide covers the conversation history and streaming changes made since shinychat 0.7.2. Compare against the released 0.7.2 behavior, not an unreleased build. The [CHANGELOG](https://github.com/posit-dev/shinychat/blob/main/pkg-py/CHANGELOG.md) lists every change.
+This guide covers the conversation history and streaming changes made since shinychat 0.7.2. See the [changelog](https://github.com/posit-dev/shinychat/blob/main/pkg-py/CHANGELOG.md) for release notes.
 
 ## Back up conversation history before upgrading
 
 ::: {.callout-warning title="Back up the complete history directory first"}
 Upgrading converts each conversation from the v1 format to v2 the next time that conversation is saved. The conversion has no built-in reverse step, and the old v1 files are removed after a successful save.
 
-- Copy the entire conversation history directory before you upgrade. Restoring that copy is the only way back to v1 data, and it discards every change made after the copy was taken.
+- Copy the entire conversation history directory before you upgrade. There is no built-in reverse conversion; restore a pre-upgrade copy to return to v1. Restoring it discards every change made after the copy was taken.
 - Downgrading the package does not convert v2 conversations back. Shinychat 0.7.2 cannot read v2 conversations: it rejects them on a direct read and omits them from the conversation list.
 - v2 conversations stay readable by a compatible newer version of shinychat. They are hidden from 0.7.2, not deleted.
 :::
@@ -188,6 +188,8 @@ class MemoryConversationStore(ConversationStore):
 
 
 app_ui = ui.page_fillable(chat_ui("chat"))
+# Share the store between sessions so a reload can find the saved records.
+store = MemoryConversationStore()
 
 
 def server(input, output, session):
@@ -195,7 +197,7 @@ def server(input, output, session):
     chat = Chat(
         "chat",
         client=client,
-        history=HistoryOptions(store=MemoryConversationStore()),
+        history=HistoryOptions(store=store),
     )
 
 

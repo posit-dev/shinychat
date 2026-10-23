@@ -15,19 +15,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Streamed responses now reveal smoothly at a typing-like pace instead of in abrupt server-sized chunks, with far fewer re-renders along the way. Bursts of text catch up quickly, the reveal never flashes a partial HTML tag, and stopping a response reveals any buffered text immediately. The trailing dot now appears only once a stream has stalled (or before any text has arrived), rather than hopping along with every update. (#411)
 
-* `Chat.append_message_stream()` now starts its stream before returning. In 0.7.2, a complete `append_message()` or a second stream made during an active stream was queued and delivered after the response. It now raises `RuntimeError` at the call site. Sequence follow-up work from the stream's status; see the [migration guide](history-migration.qmd). (#417, #418; thanks @schloerke)
+* `Chat.append_message_stream()` now starts its stream before returning. In 0.7.2, a complete `append_message()` or a second stream made during an active stream was queued and delivered after the response. It now raises `RuntimeError` at the call site. Sequence follow-up work from the stream's status; see the [migration guide](docs/history-migration.qmd). (#417, #418; thanks @schloerke)
 
 * Until conversation history finishes its initial restore or fresh-chat decision, `Chat.append_message()` emits a `UserWarning` and drops the message: it is not sent and is not replayed. `Chat.append_message_stream()` and the root `Chat.message_stream_context()` raise `RuntimeError` before they consume their message iterable, so the caller keeps ownership of the producer. Submissions are held during this window. 0.7.2 did not drop these calls. Use `Chat(greeting=...)` for welcome text.
 
 ### Conversation history
 
-* Conversation history is stored as an exchange tree (schema version 2). Conversations saved by 0.7.2 (v1) are converted the next time each one is saved; there is no bulk migration. **Back up the complete conversation history directory before upgrading.** A successful save removes that conversation's v1 side files. 0.7.2 cannot read v2 conversations, so downgrading hides them and does not restore v1 data. Restoring the backup returns to v1 and discards changes made after it. See the [migration guide](history-migration.qmd).
+* Conversation history is stored as an exchange tree (schema version 2). Conversations saved by 0.7.2 (v1) are converted the next time each one is saved; there is no bulk migration. **Back up the complete conversation history directory before upgrading.** A successful save removes that conversation's v1 side files. 0.7.2 cannot read v2 conversations, so downgrading hides them and does not restore v1 data. Restoring the backup returns to v1 and discards changes made after it. See the [migration guide](docs/history-migration.qmd).
 
-* Custom `ConversationStore.put()` takes `ConversationRecordV1 | ConversationRecordV2`, and `get()` may return either version; the controller upgrades v1 records on read. Check the runtime type with `isinstance(record, ConversationRecordV2)`. `ConversationRecord` is the validation class, not the type of every record. Stores that read v1 internals (`current_leaf`, node `turns`/`ui`) must read the v2 fields (`active_leaf`, exchange nodes). The four method names are unchanged. See the [migration guide](history-migration.qmd).
+* Custom `ConversationStore.put()` takes `ConversationRecordV1 | ConversationRecordV2`, and `get()` may return either version; the controller upgrades v1 records on read. Check the runtime type with `isinstance(record, ConversationRecordV2)`. `ConversationRecord` is the validation class, not the type of every record. Stores that read v1 internals (`current_leaf`, node `turns`/`ui`) must read the v2 fields (`active_leaf`, exchange nodes). The four method names are unchanged. See the [migration guide](docs/history-migration.qmd).
 
 * Editing, retrying, and navigating between sibling branches restore the model context for the selected position, not only the displayed messages.
 
-* A conversation whose saved model context cannot be loaded safely opens read-only. You can browse its messages, but nothing is saved and its model context is not recovered.
+* A conversation whose saved model context cannot be loaded safely opens read-only. You can browse its messages, but submissions and edit/retry actions are disabled. App output remains display-only; read-only mode does not prohibit title or selected-position metadata updates.
 
 * A failed, cancelled, or interrupted response shows a Retry control immediately. Read-only conversations do not show it.
 
