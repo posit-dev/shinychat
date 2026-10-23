@@ -1578,6 +1578,14 @@ class Chat:
         """
         Append a message as a stream of message chunks.
 
+        Awaiting this method starts a background
+        :class:`~shiny.reactive.ExtendedTask`; it does not wait for the response
+        to finish. The returned task and :attr:`latest_message_stream` are not
+        awaitable. In a reactive effect, read the task's ``status()`` and run
+        follow-up appends only on ``"success"``; ``"initial"`` and
+        ``"running"`` have no completed response, and ``"error"`` or
+        ``"cancelled"`` require an explicit failure/cancellation decision.
+
         As with :meth:`append_message`, app output in a restored read-only
         conversation is displayed but not saved and does not recover its model
         context.
@@ -1830,6 +1838,13 @@ class Chat:
 
         Note
         ----
+        This property returns a task, not an awaitable. Calling
+        ``await chat.append_message_stream(...)`` starts that task without
+        awaiting its completion. Observe ``status()`` or ``result()`` in a
+        reactive context instead; a complete append or independent stream
+        while the current stream is active raises ``RuntimeError`` rather
+        than joining a queue.
+
         If no stream has yet been started when this method is called, then it returns an
         extended task with `.status()` of `"initial"` and that it status doesn't change
         state until a message is streamed.
