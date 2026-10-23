@@ -1,13 +1,13 @@
 [
   {
-    "name": "empty_root_and_unchanged_descendants",
-    "root": {},
+    "name": "empty_first_input_unchanged_descendants",
+    "at_first_input": {},
     "exchanges": [{}, {}, {}],
     "entries": [null, null, null]
   },
   {
     "name": "changes_return_and_explicit_empty",
-    "root": {"filter": "A"},
+    "at_first_input": {"filter": "A"},
     "exchanges": [
       {"filter": "A"},
       {"filter": "B"},
@@ -27,7 +27,7 @@
   },
   {
     "name": "nested_boolean_number_and_return",
-    "root": {"settings": {"enabled": true}, "counts": [1]},
+    "at_first_input": {"settings": {"enabled": true}, "counts": [1]},
     "exchanges": [
       {"settings": {"enabled": 1}, "counts": [1]},
       {"settings": {"enabled": true}, "counts": [1]},
@@ -43,7 +43,7 @@
   },
   {
     "name": "object_key_order_is_not_a_change",
-    "root": {"filter": "west", "limit": 10},
+    "at_first_input": {"filter": "west", "limit": 10},
     "exchanges": [{"limit": 10, "filter": "west"}],
     "entries": [{"filter": "west", "limit": 10}]
   }

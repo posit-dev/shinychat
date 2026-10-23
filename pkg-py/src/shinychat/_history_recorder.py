@@ -204,20 +204,22 @@ class _ExchangeRecorder:
         """Run the ``on_save`` callbacks and sparsely record their values.
 
         The callbacks receive a fresh dictionary and run inside
-        ``reactive.isolate()``: this capture also fires at stream finish,
-        inside the stream task where reactive reads are denied, and
-        callbacks legitimately read reactive state (``input``, reactive
-        values) without taking reactive dependencies. The result is
-        validated as JSON (non-string keys and non-finite floats are
-        refused, never coerced) and detached from the callback's object.
+        ``reactive.isolate()``. This capture runs at exactly four
+        checkpoints: accepted input (on the new exchange), stream finish,
+        response settlement, and explicit save. Stream finish fires inside
+        the stream task, where reactive reads are denied, and callbacks
+        legitimately read reactive state (``input``, reactive values)
+        without taking reactive dependencies. The result is validated as
+        JSON (non-string keys and non-finite floats are refused, never
+        coerced) and detached from the callback's object.
         Values treat every validated object -- including ``{}`` -- as
         effective, so an empty object records an explicit value rather
         than inheriting.
 
-        Error policy: an *automatic* capture (``strict=False`` -- root
-        close, stream finish, node close, response settlement, retitle)
-        never lets a failing callback or an invalid payload block the
-        move that triggered it. The error is warned to the developer
+        Error policy: an *automatic* capture (``strict=False`` --
+        accepted input, stream finish, response settlement) never lets a
+        failing callback or an invalid payload block the move that
+        triggered it. The error is warned to the developer
         with its details, and the node keeps its previously recorded
         entry (deep-copied) -- or stays missing, so inheritance answers
         -- never losing recorded values to a failed capture. An
@@ -457,11 +459,15 @@ class _ExchangeRecorder:
     def _capture_app_state(self, *, strict: bool = False) -> None:
         """Capture application values at the active leaf, sparsely.
 
-        Accepted input, response settlement, and explicit save capture
-        only values here -- never the model-state
-        entries the full capture-hook cycle owns. The record-on-change
-        rule is the same as the hook's: the root always records,
-        descendants record only changes against their ancestor path.
+        Accepted input, response settlement, and explicit save call this
+        directly. Stream finish reaches the values hook through
+        ``capture_state_locked``. Only these checkpoints capture values;
+        the model-state entries the full capture-hook cycle owns are never
+        written here. Root close, node close, and retitle never capture
+        values automatically, and the synthetic root is never captured by
+        an automatic checkpoint. An explicit save on a selected root can
+        still record it. Record-on-change follows ``sparse_snapshot_entry``:
+        a descendant records only changes against its ancestor path.
         ``strict`` carries the caller's error policy to
         ``_capture_values_at``: the public explicit save re-raises
         callback/payload failures, while automatic checkpoints warn and

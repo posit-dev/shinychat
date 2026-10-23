@@ -78,7 +78,9 @@ def _wire_transcript(recorder: Any) -> ChatTranscript:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("with_callback", [False, True])
-async def test_values_root_always_records_empty(with_callback: bool) -> None:
+async def test_values_root_close_no_automatic_capture(
+    with_callback: bool,
+) -> None:
     def save_callback(values: dict[str, Any]) -> None:
         # Writes nothing: the values object stays empty.
         pass
@@ -94,9 +96,11 @@ async def test_values_root_always_records_empty(with_callback: bool) -> None:
         _stored_message("user", "hi")
     )
 
-    # Checkpoint-only (nr6b): the synthetic root never captures values, and
-    # an empty object is the implicit default for a path without entries,
-    # so the first exchange's empty capture records nothing and inherits.
+    # Checkpoint-only (nr6b): root close never captures values, so the
+    # synthetic root stays empty. An explicit save captures only the
+    # selected exchange, and an empty object is the implicit default for a
+    # path without entries, so the first exchange's empty capture records
+    # nothing and inherits.
     assert await controller.save()
     record = recorder.record
     assert record is not None
@@ -1103,11 +1107,17 @@ async def test_values_capture_fatal_error_propagates(
 
 
 @pytest.mark.anyio
-async def test_values_retitle_read_only_suppresses_live_capture() -> None:
-    """Read-only suppression wins even on retitle: the title metadata
-    write stays live, but live app values never replace the saved
-    record's."""
-    controller, _chat, _adapter, _store, original, replacement = (
+@pytest.mark.parametrize(
+    "read_only", [False, True], ids=["writable", "read_only"]
+)
+async def test_values_retitle_never_calls_on_save(read_only: bool) -> None:
+    """Retitle never runs on_save, writable or read-only.
+
+    The title metadata write stays live in both modes. The writable case
+    is the one that discriminates: a retitle that captured values would
+    run on_save there, while read-only suppression would hide it.
+    """
+    controller, _chat, _adapter, _store, _original, _replacement = (
         _make_v2_navigation_controller()
     )
     recorder = controller._exchange_recorder
@@ -1116,12 +1126,14 @@ async def test_values_retitle_read_only_suppresses_live_capture() -> None:
     record.nodes[record.root_id].state[VALUES_STATE_KEY] = _values_entry(
         {"f": "root"}
     )
-    for node in record.nodes.values():
-        node.state["shinychat:turns"].kind = "unsupported"
-
-    with pytest.warns(UserWarning, match="read-only"):
-        await replay_exchange_record(controller, record)
-    assert recorder.read_only
+    if read_only:
+        for node in record.nodes.values():
+            node.state["shinychat:turns"].kind = "unsupported"
+        with pytest.warns(UserWarning, match="read-only"):
+            await replay_exchange_record(controller, record)
+        assert recorder.read_only
+    else:
+        assert not recorder.read_only
 
     save_calls: list[dict[str, Any]] = []
 
@@ -1134,8 +1146,8 @@ async def test_values_retitle_read_only_suppresses_live_capture() -> None:
     assert record.title_source != "user"
     assert await recorder.retitle_active_locked(record, "Retitled") is True
     assert record.title == "Retitled"
-    # Title metadata writes stay live; the live app-value capture never
-    # ran, and the saved values are untouched.
+    # Title metadata writes stay live; on_save never runs, and the saved
+    # values are untouched.
     assert save_calls == []
     assert record.nodes[record.root_id].state[VALUES_STATE_KEY].data == {
         "f": "root"
@@ -1183,7 +1195,7 @@ _VALUES_MATRIX = json.loads(
 @pytest.mark.parametrize("case", _VALUES_MATRIX, ids=lambda case: case["name"])
 async def test_values_shared_capture_matrix(case: dict[str, Any]) -> None:
     assert case["exchanges"], "Capture matrix cases require an exchange"
-    current = case["root"]
+    current = case["at_first_input"]
 
     def save_callback(values: dict[str, Any]) -> None:
         values.update(current)

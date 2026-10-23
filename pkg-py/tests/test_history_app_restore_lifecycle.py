@@ -218,6 +218,67 @@ async def test_ordinary_restore_failure_keeps_record_read_only_and_stops() -> (
 
 
 @pytest.mark.anyio
+async def test_ordinary_browse_restore_failure_marks_writable_record_read_only() -> (
+    None
+):
+    """A writable sibling browse whose on_restore raises an ordinary error
+    moves and persists the leaf, shows the target, and goes view-only."""
+    controller, fake_chat, adapter, store, original, _replacement = (
+        _make_v2_navigation_controller()
+    )
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    record = recorder.record
+    assert record is not None
+    assert recorder.read_only is False
+
+    later_calls: list[str] = []
+    save_calls: list[str] = []
+
+    def failing(_values: dict[str, Any]) -> None:
+        raise RuntimeError("nav boom")
+
+    controller._restore_callbacks.extend(
+        [failing, lambda _values: later_calls.append("later")]
+    )
+    controller._save_callbacks.append(lambda _values: save_calls.append("save"))
+
+    with pytest.warns(
+        UserWarning, match="on_restore callback failed"
+    ) as caught:
+        await controller.handle_navigate(2, "prev", request_id="nav-fail")
+
+    # The browse moved and persisted the sibling leaf before the restore.
+    assert record.active_leaf == original
+    assert store.put_calls[-1][1].active_leaf == original
+    # The target is displayed with its model context; no continuation turn.
+    assert [
+        message["segments"][0]["content"]
+        for message in fake_chat.restored_messages
+    ] == ["first", "custom prefix", "original", "original reply"]
+    assert adapter.turns == [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+        {"role": "user", "content": "original"},
+    ]
+    # The warning carries the raw cause for developers.
+    assert any(
+        "RuntimeError('nav boom')" in str(warning.message) for warning in caught
+    )
+    # The first failure stopped dispatch.
+    assert later_calls == []
+    # The record is view-only with the specific reason.
+    assert recorder.read_only is True
+    assert recorder.read_only_reason == "app_restore_failed"
+    update = _read_only_actions(fake_chat)[-1]
+    assert update["active_read_only"] is True
+    assert update["active_read_only_reason"] == "app_restore_failed"
+    # Later on_save checkpoints are suppressed on the view-only record.
+    assert await controller.save() is False
+    assert save_calls == []
+
+
+@pytest.mark.anyio
 async def test_read_only_retention_reports_app_failure_not_model_context() -> (
     None
 ):
