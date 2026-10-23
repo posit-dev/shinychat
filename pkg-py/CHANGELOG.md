@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Custom `ConversationStore.put()` takes `ConversationRecordV1 | ConversationRecordV2`, and `get()` may return either version; the controller upgrades v1 records on read. Check the runtime type with `isinstance(record, ConversationRecordV2)`. `ConversationRecord` is the validation class, not the type of every record. Stores that read v1 internals (`current_leaf`, node `turns`/`ui`) must read the v2 fields (`active_leaf`, exchange nodes). The four method names are unchanged. See the [migration guide](docs/history-migration.qmd).
 
+* Saved model and application state follow a JSON round-trip contract, including ordinary serializer-supported conversion of mapping keys to strings. Python key types and colliding entries are not preserved. Unsupported values and non-finite numbers still fail capture. A model-state capture failure before input acceptance reports that the message was not sent, removes its correlated optimistic row, and leaves the saved checkpoint unchanged. Correct the invalid client state and submit again, or use New chat; no input is automatically replayed.
+
 * Editing, retrying, and navigating between sibling branches restore the model context for the selected position, not only the displayed messages.
 
 * A conversation whose saved model context cannot be loaded safely opens read-only. You can browse its messages, but submissions and edit/retry actions are disabled. App output remains display-only; read-only mode does not prohibit title or selected-position metadata updates.
@@ -33,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Submissions are held until conversation history finishes its initial restore. A "Restoring conversation…" status appears if the restore takes longer than 500 ms.
 
-* Restore and history messages are safe user text, independent of `Chat(on_error=...)`. 0.7.2 showed the raw exception text. Developer details are reported as Python warnings (`Chat history restore failed (...)`). Live response errors are unchanged and still follow `Chat(on_error=...)`.
+* Restore and history messages are safe user text, independent of Shiny's error-sanitization setting and `Chat(on_error=...)`. 0.7.2 showed the raw exception text. Developer details are reported as Python warnings (`Chat history restore failed (...)`). Live response errors are unchanged and still follow `Chat(on_error=...)`.
 
 * In bookmark restore mode, in-session conversation switches no longer reload the page to the target conversation's bookmark URL. The switch happens in place, and the address bar updates to the target's `?_state_id_=...` URL. Because the page no longer reloads on a switch, raw input controls are not re-populated from the bookmark; your app must restore any inputs it needs. Page-load restores are unchanged.
 

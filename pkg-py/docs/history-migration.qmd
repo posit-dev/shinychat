@@ -16,7 +16,7 @@ Upgrading converts each conversation from the v1 format to v2 the next time that
 
 Shinychat stores conversations in this location by default:
 
-1. `CONNECT_CONTENT_DATA_DIR/<history id>`, when that environment variable is set.
+1. `CONNECT_CONTENT_DATA_DIR/shinychat-conversations`, when that environment variable is set.
 2. On Posit Connect, the bookmark directory that Shiny provides.
 3. Otherwise, `.shinychat/conversations/` in the app's working directory.
 
@@ -122,7 +122,7 @@ The store interface changed in two ways:
 - `ConversationStore.put()` takes a `ConversationRecordV1 | ConversationRecordV2` record. In 0.7.2 it took `ConversationRecord`.
 - `get()` may return either version. The controller upgrades a v1 record in memory when it reads it.
 
-Import the record types from `shinychat.types`. The controller and recorder write `ConversationRecordV2`, so check for that class at runtime with `isinstance`. `ConversationRecord` is the validation and construction class. Plain `ConversationRecordV2` instances do not pass `isinstance(record, ConversationRecord)`.
+Import the record types from `shinychat.types`. The controller and recorder write `ConversationRecordV2`; use `isinstance(record, ConversationRecordV2)` to recognize v2 records. `ConversationRecord` is a validation and construction subclass of `ConversationRecordV2`. A plain `ConversationRecordV2` instance does not pass `isinstance(record, ConversationRecord)`.
 
 The field schema changed:
 
@@ -130,7 +130,7 @@ The field schema changed:
 |---|---|---|
 | Record | `current_leaf` | `active_leaf` |
 | Record | `nodes: dict[str, ConversationNode]` | `nodes: dict[str, ExchangeNode]` |
-| Node | `parent`, `children`, `turns`, `ui`, `selected_child` | `parent_id`, `children`, `input`, `messages`, `state`, `status`, `error`, `selected_child` |
+| Node | `parent`, `children`, `turns`, `ui`, `selected_child` | `parent_id`, `children`, `created_at`, `input`, `messages`, `state`, `status`, `error`, `selected_child` |
 
 A store that reads v1 internals such as `current_leaf`, `turns`, or `ui` must read the v2 fields instead. A store that only serializes whole records must be checked with a round trip.
 
@@ -204,6 +204,12 @@ def server(input, output, session):
 app = App(app_ui, server)
 ```
 
+## Captured state uses a JSON round trip
+
+Saved model and application state use their JSON representation, not the original Python objects. Ordinary serializer-supported mapping keys become JSON string keys. Key types and colliding entries are not preserved; shinychat does not add a separate collision check. App and tool authors must account for that representation when consuming restored state.
+
+Unsupported values and non-finite numbers still fail capture. If model-state capture fails before accepting a submission, shinychat reports that the message was not sent: it is not dispatched to the app, and the saved checkpoint is unchanged. Correct the invalid client state and submit again, or choose **New chat** to leave that conversation and start fresh. There is no automatic resubmission or silent removal of model turns. App authors remain responsible for valid fresh-chat application state.
+
 ## Restore and history messages
 
-In 0.7.2, a failed restore showed the raw exception text in a notification. Now the notification shows a safe message. The message names the state entry or restore step that failed. Developer details are reported as a Python warning, `Chat history restore failed (...)`. Live response errors still follow `Chat(on_error=...)`, as they did in 0.7.2.
+In 0.7.2, a failed restore showed the raw exception text in a notification. Now the notification shows a safe message, independently of Shiny's error-sanitization setting. The message names the state entry or restore step that failed. Developer details are reported as a Python warning, `Chat history restore failed (...)`. Live response errors still follow `Chat(on_error=...)`, as they did in 0.7.2.
