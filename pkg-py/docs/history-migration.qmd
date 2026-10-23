@@ -27,9 +27,8 @@ from chatlas import ChatAnthropic
 from shinychat import Chat
 from shinychat.types import FileConversationStore, HistoryOptions
 
-client = ChatAnthropic(system_prompt="You are a helpful assistant.")
-
 # Inside your server function:
+client = ChatAnthropic(system_prompt="You are a helpful assistant.")
 chat = Chat(
     "chat",
     client=client,
@@ -110,6 +109,7 @@ Use `Chat(greeting=...)` for welcome text. A greeting can be a string, or a call
 ```python
 from shinychat import Chat
 
+# Inside your server function:
 chat = Chat("chat", greeting="Hello! Ask me about your data.")
 ```
 
