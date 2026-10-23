@@ -137,7 +137,7 @@ def latest_values(
     return latest
 
 
-def canonical_values(values: Mapping[str, Any]) -> dict[str, Any]:
+def canonical_values(values: Mapping[Any, Any]) -> dict[str, Any]:
     """Return a detached JSON copy of an application-values object.
 
     Values are normalized by ``pydantic_core.to_jsonable_python``, then

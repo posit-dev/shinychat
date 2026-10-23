@@ -431,13 +431,21 @@ def test_canonical_values_detaches_and_preserves_types() -> None:
 
 def test_canonical_values_normalizes_non_string_keys_like_serializer() -> None:
     # Keys follow the serializer's normalization; this is not a custom
-    # mapping. Collisions after normalization are not checked here.
+    # mapping.
     raw: dict[Any, Any] = {1: "int", 2.5: "float", None: {True: [None]}}
     assert canonical_values(raw) == {
         "1": "int",
         "2.5": "float",
         "None": {"true": [None]},
     }
+
+
+def test_canonical_values_key_collisions_keep_later_entry() -> None:
+    # Ordinary serializer behavior, and the author's responsibility: keys
+    # that normalize to the same JSON key do not raise, and the later
+    # dictionary entry is kept. No collision check exists.
+    assert canonical_values({1: "a", "1": "b"}) == {"1": "b"}
+    assert canonical_values({"1": "b", 1: "a"}) == {"1": "a"}
 
 
 @pytest.mark.anyio
