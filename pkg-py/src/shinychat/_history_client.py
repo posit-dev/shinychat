@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import warnings
-from collections import deque
-from collections.abc import Mapping, Sequence, Set
 from typing import Any, Protocol, cast, runtime_checkable
 
 from ._chat_bookmark import is_chatlas_chat_client, serialize_chatlas_turn
@@ -10,31 +8,6 @@ from ._chat_client import ChatClient
 from ._chat_normalize import normalize_message
 from ._chat_types import ChatMessage, Role
 from ._history_types import TurnDict
-
-
-def _validate_mapping_keys(value: Any) -> None:
-    if isinstance(value, Mapping):
-        for key, nested in value.items():
-            if not isinstance(key, str):
-                raise ValueError(
-                    "Non-string mapping key in turn data; "
-                    "JSON object keys must already be strings."
-                )
-            _validate_mapping_keys(nested)
-    elif isinstance(value, (str, bytes)):
-        return
-    elif isinstance(value, (Sequence, Set, deque)):
-        for nested in value:
-            _validate_mapping_keys(nested)
-
-
-def _serialize_model_turn(turn: Any) -> dict[str, Any]:
-    try:
-        python_dump = turn.model_dump(mode="python")
-    except TypeError:
-        return turn.model_dump(mode="json")
-    _validate_mapping_keys(python_dump)
-    return turn.model_dump(mode="json")
 
 
 @runtime_checkable
@@ -71,14 +44,13 @@ class TurnsAdapter:
             turns = raw.get_turns(include_system_prompt=include_system_prompt)
             serialized: list[dict[str, Any]] = []
             for turn in turns:
-                _validate_mapping_keys(turn.model_dump(mode="python"))
                 serialized.append(serialize_chatlas_turn(turn))
             return cast(list[TurnDict], serialized)
         turns = raw.get_turns()
         serialized = []
         for turn in turns:
             if hasattr(turn, "model_dump"):
-                serialized.append(_serialize_model_turn(turn))
+                serialized.append(turn.model_dump(mode="json"))
             else:
                 serialized.append(turn)
         return cast(list[TurnDict], serialized)
