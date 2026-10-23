@@ -138,22 +138,27 @@ def latest_values(
 
 
 def canonical_values(values: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate an application-values object; return a detached JSON copy.
+    """Return a detached JSON copy of an application-values object.
 
-    Non-string keys are rejected first (JSON object keys must already
-    be strings), *before* any coercion can quietly rename them. Rich
-    app values are then coerced exactly the way the old
-    ``model_dump_json`` path coerced them (``date``/``datetime``,
-    ``Decimal``, ``UUID``, tuples, sets, and bytes become their JSON
-    forms via ``pydantic_core.to_jsonable_python``; common Shiny
-    values like ``input.date()`` and ``input.date_range()`` keep
-    saving). Unknown objects are still refused loudly, and
-    non-finite floats are rejected after normalization
-    (``allow_nan=False``) rather than silently coerced to ``null``;
-    the JSON round trip detaches the result from the callback's
+    Values are normalized by ``pydantic_core.to_jsonable_python``, then
+    serialized and re-parsed with ``allow_nan=False``. Rich app values
+    keep their existing encoding: ``date``/``datetime``, ``Decimal``,
+    ``UUID``, tuples, sets, and bytes become their JSON forms, so common
+    Shiny values like ``input.date()`` and ``input.date_range()`` keep
+    saving.
+
+    Mapping keys are normalized by the serializer, with no separate key
+    check and no Python-key preservation. For example, ``1`` becomes
+    ``"1"``, ``True`` becomes ``"true"``, ``None`` becomes ``"None"``,
+    and nested keys follow the same rule. Keys that collide after
+    normalization are the author's responsibility; the later key in
+    dictionary order wins and no collision is reported.
+
+    Unknown objects are still refused loudly, and non-finite floats are
+    rejected after normalization rather than silently coerced to
+    ``null``. The JSON round trip detaches the result from the callback's
     dictionary.
     """
-    _validate_mapping_keys(values, what="app state values")
     normalized = to_jsonable_python(values)
     return cast(
         dict[str, Any],

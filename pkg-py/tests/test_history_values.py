@@ -383,8 +383,6 @@ async def test_values_empty_default_resolves_for_unrecorded_branches() -> None:
 @pytest.mark.parametrize(
     "bad,error,match",
     [
-        ({1: "x"}, ValueError, "Non-string mapping key"),
-        ({"nested": [{2: "y"}]}, ValueError, "Non-string mapping key"),
         ({"pi": float("nan")}, ValueError, "Out of range float values"),
         ({"pi": float("inf")}, ValueError, "Out of range float values"),
         (  # Unknown objects stay loudly rejected by the pydantic coercion.
@@ -429,6 +427,73 @@ def test_canonical_values_detaches_and_preserves_types() -> None:
     # JSON types are preserved exactly: bool never becomes int.
     assert canonical["a"][0] is True
     assert canonical["a"][1] == 1.5
+
+
+def test_canonical_values_normalizes_non_string_keys_like_serializer() -> None:
+    # Keys follow the serializer's normalization; this is not a custom
+    # mapping. Collisions after normalization are not checked here.
+    raw: dict[Any, Any] = {1: "int", 2.5: "float", None: {True: [None]}}
+    assert canonical_values(raw) == {
+        "1": "int",
+        "2.5": "float",
+        "None": {"true": [None]},
+    }
+
+
+@pytest.mark.anyio
+async def test_values_checkpoint_normalizes_non_string_keys_and_restores() -> (
+    None
+):
+    store = InMemoryConversationStore()
+    source: dict[Any, Any] = {
+        1: "int",
+        2.5: "float",
+        None: "none",
+        "flag": {True: "bool"},
+        "nested": {3: {4: None}},
+    }
+    # `1` and `True` are the same Python dict key, so the bool key sits
+    # in a nested dict to keep both normalizations observable.
+    expected = {
+        "1": "int",
+        "2.5": "float",
+        "None": "none",
+        "flag": {"true": "bool"},
+        "nested": {"3": {"4": None}},
+    }
+
+    def save_callback(values: dict[str, Any]) -> None:
+        values.update(source)
+
+    controller, _ = _make_controller(
+        store=store, save_callbacks=[save_callback]
+    )
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "hi")
+    )
+    assert await controller.save()
+
+    record = recorder.record
+    assert record is not None
+    # The checkpoint stores the serializer's JSON keys on the exchange.
+    stored = record.nodes[exchange_id].state[VALUES_STATE_KEY].data
+    assert stored == expected
+    # The saved state is detached from the callback's live Python object.
+    source["nested"][3][4] = "MUTATED"
+    assert record.nodes[exchange_id].state[VALUES_STATE_KEY].data == expected
+
+    # Restore reads the same normalized JSON values back.
+    await store.put(part(), record)
+    restored: list[dict[str, Any]] = []
+    fresh, _ = _make_controller(store=store)
+    fresh._restore_callbacks.append(restored.append)
+    await fresh.switch_to(record.id)
+
+    assert restored == [expected]
+    restored[0]["nested"]["3"]["4"] = "MUTATED"
+    assert record.nodes[exchange_id].state[VALUES_STATE_KEY].data == expected
 
 
 @pytest.mark.anyio
