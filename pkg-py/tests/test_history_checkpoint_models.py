@@ -471,3 +471,204 @@ async def test_unsupported_retained_client_turn_blocks_new_input_admission(
     assert new_input is not None
     assert new_input.content == "second"
     _assert_pending_nodes_store_no_model_state(saved)
+
+
+async def _complete_append(
+    writer: Any, transcript: Any, exchange_id: str, text: str
+) -> None:
+    from shinychat._chat_transcript import TranscriptEntry
+    from test_history_stream_persistence import _sent
+
+    transcript.set_capture_callbacks(
+        on_message_committed=writer._exchange_recorder.message_committed,
+        on_accepted_input=writer._exchange_recorder.accepted_input,
+        on_stream_started=writer._exchange_recorder.stream_started,
+        on_stream_updated=writer._exchange_recorder.stream_updated,
+        on_stream_finished=writer._exchange_recorder.stream_finished,
+    )
+    await transcript.append(
+        TranscriptEntry(message=_stored_message("assistant", text)),
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+
+
+@pytest.mark.anyio
+async def test_complete_assistant_append_restores_full_model_and_settles(
+    backend: _Backend,
+) -> None:
+    from test_history_stream_persistence import _open_input
+
+    writer, _ = _make_controller(store=backend.store)
+    transcript, exchange_id = await _open_input(writer)
+    expected = [
+        *writer.adapter.get_turns_json(),
+        {"role": "assistant", "content": "complete"},
+    ]
+    writer.adapter.set_turns_json(expected)
+    await _complete_append(writer, transcript, exchange_id, "complete")
+    recorder = writer._exchange_recorder
+    assert await recorder.response_settled()
+    record = _live(recorder)
+    assert await recorder.settle_bookmark_state_id(
+        record.id, exchange_id, "complete-bookmark"
+    ) == (True, None)
+    saved = await _saved(backend, record.id)
+    assert saved.response_count == 1
+    assert saved.bookmark_state_id == "complete-bookmark"
+    assert saved.nodes[exchange_id].status == "ok"
+    assert [
+        m.as_stored_message().content for m in saved.nodes[exchange_id].messages
+    ] == ["complete"]
+    viewer, _ = _make_controller(store=backend.reader)
+    await viewer.switch_to(record.id)
+    assert viewer.adapter.get_turns_json() == expected
+    assert not viewer._exchange_recorder.read_only
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("second", ["append", "stream"])
+async def test_independent_response_preserves_previous_checkpoint_and_isolates_reload(
+    backend: _Backend,
+    second: str,
+) -> None:
+    from test_history_stream_persistence import _open_input, _start_stream
+
+    writer, _ = _make_controller(store=backend.store)
+    transcript, exchange_id = await _open_input(writer)
+    first_model = [
+        *writer.adapter.get_turns_json(),
+        {"role": "assistant", "content": "first"},
+    ]
+    writer.adapter.set_turns_json(first_model)
+    await _complete_append(writer, transcript, exchange_id, "first")
+    recorder = writer._exchange_recorder
+    record = _live(recorder)
+    first = record.nodes[exchange_id].model_dump(
+        exclude={"children", "selected_child"}
+    )
+    second_model = [*first_model, {"role": "assistant", "content": "second"}]
+    writer.adapter.set_turns_json(second_model)
+    if second == "append":
+        await _complete_append(writer, transcript, exchange_id, "second")
+    else:
+        await _start_stream(transcript, exchange_id)
+        await _chunk(transcript, _assistant_message(_text("second")))
+        async with recorder.lock:
+            await recorder.rename_active_locked(
+                record.id, "metadata during response"
+            )
+        saved = await _saved(backend, record.id)
+        assert (
+            saved.nodes[exchange_id].model_dump(
+                exclude={"children", "selected_child"}
+            )
+            == first
+        )
+        assert saved.active_leaf is not None
+        assert saved.nodes[saved.active_leaf].status == "pending"
+        viewer, _ = _make_controller(store=backend.reader)
+        await viewer.switch_to(record.id)
+        assert viewer._exchange_recorder.read_only
+        assert viewer.adapter.get_turns_json() == first_model
+        with pytest.raises(RuntimeError, match="read-only"):
+            await viewer.rename(record.id, "viewer overwrite")
+        with pytest.raises(RuntimeError, match="read-only"):
+            await viewer.delete(record.id)
+        assert not await viewer._exchange_recorder.flush_pending()
+        await _end_stream(transcript)
+    saved = await _saved(backend, record.id)
+    assert (
+        saved.nodes[exchange_id].model_dump(
+            exclude={"children", "selected_child"}
+        )
+        == first
+    )
+    assert saved.active_leaf is not None
+    assert saved.active_leaf != exchange_id
+    assert saved.nodes[saved.active_leaf].input is None
+    assert saved.nodes[saved.active_leaf].status == "ok"
+    assert [
+        m.as_stored_message().content
+        for m in saved.nodes[saved.active_leaf].messages
+    ] == ["second"]
+    viewer, _ = _make_controller(store=backend.reader)
+    await viewer.switch_to(record.id)
+    assert viewer.adapter.get_turns_json() == second_model
+    assert not viewer._exchange_recorder.read_only
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failure", ["capture", "store"])
+async def test_complete_append_failure_keeps_live_display_and_safe_saved_checkpoint(
+    backend: _Backend,
+    failure: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from test_history_stream_persistence import _open_input
+
+    writer, _ = _make_controller(store=backend.store)
+    transcript, exchange_id = await _open_input(writer)
+    recorder = writer._exchange_recorder
+    record = _live(recorder)
+    before = (await _saved(backend, record.id)).model_dump_json()
+    expected = [
+        *writer.adapter.get_turns_json(),
+        {"role": "assistant", "content": "live"},
+    ]
+    writer.adapter.set_turns_json(expected)
+    if failure == "capture":
+
+        def unavailable() -> Any:
+            raise ValueError("capture failed")
+
+        monkeypatch.setattr(writer.adapter, "get_turns_json", unavailable)
+    else:
+        backend.control.failures.append(ValueError("store failed"))
+    with pytest.raises(ValueError, match=f"{failure} failed"):
+        await _complete_append(writer, transcript, exchange_id, "live")
+    assert [
+        m.as_stored_message().content
+        for m in record.nodes[exchange_id].messages
+    ] == ["live"]
+    assert record.nodes[exchange_id].status == (
+        "pending" if failure == "capture" else "ok"
+    )
+    assert transcript.read()[-1].message.content == "live"
+    assert record.response_count == 0
+    assert (await _saved(backend, record.id)).model_dump_json() == before
+    if failure == "capture":
+        assert not await recorder.response_settled()
+        assert not await recorder.flush_pending()
+        async with recorder.lock:
+            await recorder.rename_active_locked(record.id, "metadata")
+        saved = await _saved(backend, record.id)
+        assert saved.nodes[exchange_id].status == "pending"
+        assert saved.nodes[exchange_id].messages == []
+        assert TURNS_STATE_KEY not in saved.nodes[exchange_id].state
+    else:
+        assert record.nodes[exchange_id].state[TURNS_STATE_KEY].data == expected
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("role", ["user", "system"])
+async def test_non_assistant_output_does_not_open_independent_response_child(
+    backend: _Backend,
+    role: str,
+) -> None:
+    from shinychat._chat_transcript import TranscriptEntry
+    from test_history_stream_persistence import _open_input
+
+    writer, _ = _make_controller(store=backend.store)
+    transcript, exchange_id = await _open_input(writer)
+    await _complete_append(writer, transcript, exchange_id, "first")
+    recorder = writer._exchange_recorder
+    record = _live(recorder)
+    before = set(record.nodes)
+    await recorder.message_committed(
+        exchange_id,
+        TranscriptEntry(message=_stored_message(role, "display only")),
+    )
+    assert set(record.nodes) == before
+    assert record.active_leaf == exchange_id
+    assert record.nodes[exchange_id].status == "ok"

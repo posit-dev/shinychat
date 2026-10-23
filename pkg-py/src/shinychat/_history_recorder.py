@@ -772,6 +772,14 @@ class _ExchangeRecorder:
             return
 
         async with self.lock:
+            if (
+                entry.message.role == "assistant"
+                and self.record is not None
+                and exchange_id in self.record.nodes
+                and self.record.nodes[exchange_id].status != "pending"
+            ):
+                # Independent responses must not reopen a coherent checkpoint.
+                exchange_id = None
             target, created = await self._content_exchange(exchange_id)
             if target is None:
                 return
@@ -780,11 +788,24 @@ class _ExchangeRecorder:
                 entry.message, icon=entry.icon
             )
             if stream_id is None:
+                if entry.message.role == "assistant":
+                    try:
+                        await self.capture_state_locked(target, "node_close")
+                    except Exception:
+                        # The transcript has already committed this display.
+                        # Retain it locally without publishing an unmatched
+                        # terminal checkpoint or advancing settlement.
+                        self.record.nodes[target].messages.append(captured)
+                        raise
                 self.record.append_message(target, captured)
             else:
                 self._stream_exchanges[stream_id] = target
                 self.record.append_stream_message(target, captured)
-            if stream_id is None:
+            if stream_id is None or (
+                target != self.record.root_id
+                and self.record.nodes[target].input is None
+            ):
+                # Publish an unresolved child marker, never streamed content.
                 await self.persist_record_locked()
             if created:
                 await self._host.send_history_update()

@@ -7658,7 +7658,7 @@ async def test_v2_recorder_rejects_chatlas_key_collision_before_file_store(
 
 
 @pytest.mark.anyio
-async def test_v2_recorder_captures_delta_then_snapshot_on_earlier_turn_rewrite():
+async def test_v2_recorder_captures_new_snapshot_on_earlier_turn_rewrite():
     adapter = _FakeAdapter()
     controller, _ = _make_controller(adapter=adapter)
     recorder = controller._exchange_recorder
@@ -7704,7 +7704,11 @@ async def test_v2_recorder_captures_delta_then_snapshot_on_earlier_turn_rewrite(
         error=None,
         send=_sent,
     )
-    state = recorder.record.nodes[exchange_id].state["shinychat:turns"]  # type: ignore[union-attr]
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    assert record.active_leaf is not None
+    assert record.active_leaf != exchange_id
+    state = record.nodes[record.active_leaf].state["shinychat:turns"]
     assert state.mode == "snapshot"
     assert state.data == adapter.turns
 
@@ -8010,7 +8014,7 @@ async def test_v2_recorder_ignores_prepartition_content_without_failing_send():
         ("cancelled", None),
     ],
 )
-async def test_v2_recorder_reopens_terminal_exchange_for_a_new_stream(
+async def test_v2_recorder_preserves_terminal_exchange_and_opens_child_for_new_stream(
     status: str | None, error: str | None
 ) -> None:
     store = InMemoryConversationStore()
@@ -8040,6 +8044,10 @@ async def test_v2_recorder_reopens_terminal_exchange_for_a_new_stream(
         error=error,
         send=_sent,
     )
+    record = recorder.record
+    assert isinstance(record, ConversationRecordV2)
+    error_entry = record.nodes[exchange_id].error
+    original_error = error_entry.model_copy(deep=True) if error_entry else None
     await transcript.start_stream(
         stream_id="second",
         entry=TranscriptEntry(message=_stored_message("assistant", "")),
@@ -8050,7 +8058,14 @@ async def test_v2_recorder_reopens_terminal_exchange_for_a_new_stream(
 
     record = recorder.record
     assert isinstance(record, ConversationRecordV2)
-    node = record.nodes[exchange_id]
+    parent = record.nodes[exchange_id]
+    assert parent.status == (status or "ok")
+    assert parent.error == original_error
+    assert record.active_leaf is not None
+    assert record.active_leaf != exchange_id
+    node = record.nodes[record.active_leaf]
+    assert node.parent_id == exchange_id
+    assert node.input is None
     assert node.status == "pending"
     assert node.error is None
 
