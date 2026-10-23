@@ -9850,6 +9850,14 @@ async def test_failed_capture_commits_neither_hook_entries_nor_turn_baseline():
     recorder._register_capture_hook(
         "shinychat:system_prompt", recorder._capture_system_prompt
     )
+    root.state["test:remove"] = StateEntry(
+        kind="test", version=1, mode="snapshot", data="old"
+    )
+    recorder._register_capture_hook("test:remove", lambda _context: None)
+    recorder._register_capture_hook(
+        "test:add",
+        lambda _context: StateEntry(kind="test", version=1, mode="snapshot", data="new"),
+    )
     # Turn capture succeeds first; a later hook must not advance its baseline.
     before = record.model_dump(mode="json")
     baseline = copy.deepcopy(recorder._turn_baseline)
@@ -9869,3 +9877,5 @@ async def test_failed_capture_commits_neither_hook_entries_nor_turn_baseline():
     assert root.state["shinychat:system_prompt"].data == "new"
     assert record.nodes["child"].state["shinychat:system_prompt"].data == "old"
     assert recorder._turn_baseline != baseline
+    assert "test:remove" not in root.state
+    assert root.state["test:add"].data == "new"
