@@ -3765,3 +3765,150 @@ async def test_app_output_during_failed_input_put_targets_shared_committed_excha
                 return_exceptions=True,
             )
             store.put = original_put  # type: ignore[method-assign]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("entry_point", ["normal", "slash"])
+@pytest.mark.parametrize("failure", ["metadata", "legacy"])
+async def test_capture_rejection_cleanup_survives_metadata_failure_or_legacy_input(
+    tmp_path: Any, request: Any, capsys: Any, entry_point: str, failure: str
+) -> None:
+    chat, session, client, store = await _make_initialized_live_v2_chat(
+        tmp_path, "capture_cleanup"
+    )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    next(
+        effect
+        for effect in chat._effects
+        if effect._fn.__name__ == "handle_user_input"
+    ).destroy()
+    dispatched: list[str] = []
+
+    @chat.on_user_submit
+    async def submitted(text: str) -> None:
+        dispatched.append(text)
+
+    @chat.slash_command("send", "Send")
+    async def slash(text: str) -> None:
+        dispatched.append(text)
+
+    with session_context(cast(Any, session)), reactive.isolate():
+        await chat.append_message("existing checkpoint")
+        await reactive.flush()
+        assert recorder.record is not None
+        before = recorder.record.model_dump(mode="json")
+        transcript_before = _transcript_snapshot(chat)
+        baseline = deepcopy(recorder._turn_baseline)
+        partition = ConversationPartition(chat_id=chat.id, scope="test")
+        saved = await store.get(partition, recorder.record.id)
+        assert saved is not None
+        checkpoint = saved.model_dump(mode="json")
+        session.messages.clear()
+        client._turns = [{"role": "assistant", "content": object()}]
+        payload: dict[str, Any] = (
+            {"text": "rejected", "attachments": [], "seq": 1}
+            if entry_point == "normal"
+            else {
+                "command": "send",
+                "userText": "rejected",
+                "echo": True,
+                "seq": 1,
+            }
+        )
+        if failure == "metadata":
+            payload["client_message_id"] = "rejected-client"
+        notification = MagicMock()
+        with (
+            patch.object(
+                controller,
+                "_send_exchange_metadata",
+                side_effect=RuntimeError("metadata delivery failed"),
+            ) as metadata,
+            patch.object(controller, "_send_sibling_metadata") as siblings,
+            patch("shiny.ui.notification_show", notification),
+            pytest.warns(UserWarning, match="not JSON serializable"),
+        ):
+            input_id = (
+                chat.user_input_id
+                if entry_point == "normal"
+                else chat._slash_command_id
+            )
+            cast(Any, session.input[input_id])._set(payload)
+            if failure == "metadata":
+                # Normal effects propagate transport failure; slash retains its
+                # existing live-error wrapper. Neither claims successful delivery.
+                await reactive.flush()
+                assert "metadata delivery failed" in capsys.readouterr().err
+                metadata.assert_awaited_once()
+            else:
+                await reactive.flush()
+                metadata.assert_not_called()
+            siblings.assert_not_called()
+        actions = [message["action"] for message in session.messages]
+        assert {"type": "remove_loading"} in actions
+        removals = [
+            action for action in actions if action["type"] == "remove_message"
+        ]
+        assert removals == (
+            [{"type": "remove_message", "id": "rejected-client"}]
+            if failure == "metadata"
+            else []
+        )
+        reports = [call.args[0] for call in notification.call_args_list]
+        unsent = [report for report in reports if "Message not sent" in report]
+        assert len(unsent) == 1
+        report = unsent[0]
+        assert "not JSON serializable" not in report
+        assert dispatched == []
+        assert _transcript_snapshot(chat) == transcript_before
+        assert recorder.record.model_dump(mode="json") == before
+        assert recorder._turn_baseline == baseline
+        saved = await store.get(partition, recorder.record.id)
+        assert saved is not None
+        assert saved.model_dump(mode="json") == checkpoint
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_capture_cleanup_preserves_primary_delivery_failure_when_transport_closed(
+    tmp_path: Any, request: Any, cancelled: bool
+) -> None:
+    from shinychat._history_recorder import _ModelCaptureError
+
+    chat, session, _, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "closed_capture_transport"
+    )
+    request.addfinalizer(chat.destroy)
+    primary = (
+        asyncio.CancelledError("cancelled removal")
+        if cancelled
+        else RuntimeError("closed removal")
+    )
+    cause = ValueError("private capture cause")
+    capture_error = _ModelCaptureError("capture failed")
+    capture_error.__cause__ = cause
+    controller = chat.history._controller
+    assert controller is not None
+    with (
+        session_context(cast(Any, session)),
+        patch.object(chat, "_send_action", side_effect=primary),
+        patch.object(
+            chat,
+            "_remove_loading_message",
+            side_effect=RuntimeError("closed loading"),
+        ) as loading,
+        patch(
+            "shiny.ui.notification_show",
+            side_effect=RuntimeError("closed notification"),
+        ) as notification,
+        pytest.warns(UserWarning, match="private capture cause"),
+        pytest.raises(BaseException) as raised,
+    ):
+        await chat._handle_input_exception(capture_error, "rejected-client")
+    assert raised.value is primary
+    loading.assert_awaited_once()
+    notification.assert_called_once()
+    assert "private capture cause" not in notification.call_args.args[0]

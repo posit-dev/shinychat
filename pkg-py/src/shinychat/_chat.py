@@ -957,24 +957,42 @@ class Chat:
         from ._history_recorder import _ModelCaptureError
 
         if isinstance(e, _ModelCaptureError):
+            import sys
+
             controller = self.history._controller
-            if isinstance(client_message_id, str) and controller is not None:
-                # Capture has exited the recorder lock. Serialize removal and the
-                # positional refresh with any subsequent accepted exchange.
-                async with controller._exchange_recorder.lock:
-                    await self._send_action(
-                        {"type": "remove_message", "id": client_message_id}
-                    )
-                    await controller._send_exchange_metadata()
-                    await controller._send_sibling_metadata()
-            # Idempotent, including the slash-command finally cleanup.
-            await self._remove_loading_message()
-            await self.history._notify_history_error(
-                "Message not sent. The saved checkpoint is unchanged. "
-                "Start a New chat to recover, or try again after the app's "
-                "model state has been corrected.",
-                e.__cause__ if isinstance(e.__cause__, Exception) else e,
-            )
+            try:
+                if (
+                    isinstance(client_message_id, str)
+                    and controller is not None
+                ):
+                    # Capture has exited the recorder lock. Serialize removal and
+                    # positional refresh with any subsequent accepted exchange.
+                    async with controller._exchange_recorder.lock:
+                        await self._send_action(
+                            {"type": "remove_message", "id": client_message_id}
+                        )
+                        await controller._send_exchange_metadata()
+                        await controller._send_sibling_metadata()
+            finally:
+                delivery_error = sys.exc_info()[1]
+                try:
+                    try:
+                        # Idempotent, including slash-command finally cleanup.
+                        await self._remove_loading_message()
+                    finally:
+                        await self.history._notify_history_error(
+                            "Message not sent. The saved checkpoint is unchanged. "
+                            "Start a New chat to recover, or try again after the "
+                            "app's model state has been corrected.",
+                            e.__cause__
+                            if isinstance(e.__cause__, Exception)
+                            else e,
+                        )
+                except BaseException:
+                    # Cleanup must not replace a delivery failure or cancellation.
+                    if delivery_error is not None:
+                        raise delivery_error
+                    raise
             return
         await self._raise_exception(e)
 
