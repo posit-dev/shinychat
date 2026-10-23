@@ -572,9 +572,15 @@ class Chat:
                     if echo:
                         full_text = f"/{command} {user_text}".rstrip()
                         msg = ChatMessage(content=full_text, role="user")
-                        await self._record_accepted_user_input_with_capture(
-                            msg, dispatch_user_submit=False
-                        )
+                        from ._history_recorder import _ModelCaptureError
+
+                        try:
+                            await self._record_accepted_user_input_with_capture(
+                                msg, dispatch_user_submit=False
+                            )
+                        except _ModelCaptureError as e:
+                            await self._handle_input_exception(e)
+                            return
                     cmds = self._slash_commands()
                     reg = cmds.get(command) if cmds else None
                     if reg is not None and reg.handler is not None:
@@ -587,7 +593,7 @@ class Chat:
                                 cast(UserSubmitFunction0, reg.handler)
                             )()
                 except Exception as e:
-                    await self._handle_input_exception(e)
+                    await self._raise_exception(e)
                 finally:
                     await self._remove_loading_message()
 

@@ -3393,3 +3393,40 @@ async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
         assert calls == ["initial", "recovered"]
         assert recorder.record is not None
         assert "rejected" not in str(recorder.record.model_dump(mode="json"))
+
+
+@pytest.mark.anyio
+async def test_slash_response_capture_failure_keeps_live_error_handling(
+    tmp_path: Any, request: Any
+) -> None:
+    chat, session, client, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "slash_response_capture"
+    )
+    request.addfinalizer(chat.destroy)
+    errors = AsyncMock()
+    chat._raise_exception = errors  # type: ignore[method-assign]
+
+    @chat.slash_command("reply", "Reply")
+    async def reply() -> None:
+        client._turns = [{"role": "assistant", "content": object()}]
+
+        async def response():
+            yield "already dispatched reply"
+
+        await chat.append_message_stream(response())
+
+    with session_context(cast(Any, session)), reactive.isolate():
+        notification = MagicMock()
+        with patch("shiny.ui.notification_show", notification):
+            cast(Any, session.input[chat._slash_command_id])._set(
+                {"command": "reply", "userText": "", "echo": True}
+            )
+            await reactive.flush()
+        notification.assert_not_called()
+        errors.assert_awaited()
+        assert "not JSON serializable" in str(errors.call_args.args[0])
+        assert chat.user_input() is not None
+        assert any(
+            entry.message.content == "already dispatched reply"
+            for entry in chat._transcript.read()
+        )

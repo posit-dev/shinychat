@@ -59,7 +59,7 @@ if TYPE_CHECKING:
 
 
 class _ModelCaptureError(RuntimeError):
-    """Model checkpoint capture failed before input publication."""
+    """Model-turn checkpoint capture failed without committing state."""
 
 
 class RecorderHost(Protocol):
@@ -167,10 +167,13 @@ class _ExchangeRecorder:
     def _capture_system_prompt(
         self, context: CaptureContext
     ) -> StateEntry | None:
+        return self._prepare_system_prompt_capture(context)[0]
+
+    def _prepare_system_prompt_capture(
+        self, context: CaptureContext
+    ) -> tuple[StateEntry | None, dict[str, StateEntry]]:
         assert self.record is not None
-        prompt = self._host.adapter.get_system_prompt()
-        if prompt is None:
-            prompt = ""
+        prompt = self._host.adapter.get_system_prompt() or ""
         node = self.record.nodes[context.node_id]
         parent_id = node.parent_id
         ancestor = None
@@ -181,42 +184,23 @@ class _ExchangeRecorder:
                 break
             ancestor = None
             parent_id = parent.parent_id
-
-        if ancestor is not None and ancestor.data == prompt:
-            return None
-        return StateEntry(
-            kind="system_prompt", version=1, mode="snapshot", data=prompt
-        )
-
-    def _stage_system_prompt_children(
-        self, context: CaptureContext
-    ) -> dict[str, StateEntry]:
-        assert self.record is not None
-        node = self.record.nodes[context.node_id]
         previous = node.state.get(SYSTEM_PROMPT_STATE_KEY)
-        parent_id = node.parent_id
-        while (
-            previous is None or previous.data is None
-        ) and parent_id is not None:
-            parent = self.record.nodes[parent_id]
-            previous = parent.state.get(SYSTEM_PROMPT_STATE_KEY)
-            parent_id = parent.parent_id
-        prompt = self._host.adapter.get_system_prompt() or ""
-        # A rewound shared parent keeps its children on the old prompt.
-        # Without a recorded prompt, children remain inheritable.
-        if previous is None or previous.data is None or previous.data == prompt:
-            return {}
-        return {
-            child_id: previous.model_copy(deep=True)
-            for child_id in node.children
-            if (
-                entry := self.record.nodes[child_id].state.get(
+        if previous is None or previous.data is None:
+            previous = ancestor
+        children: dict[str, StateEntry] = {}
+        if previous is not None and previous.data != prompt:
+            # Pin the old inherited prompt only if the full capture succeeds.
+            for child_id in node.children:
+                inherited = self.record.nodes[child_id].state.get(
                     SYSTEM_PROMPT_STATE_KEY
                 )
-            )
-            is None
-            or entry.data is None
-        }
+                if inherited is None or inherited.data is None:
+                    children[child_id] = previous.model_copy(deep=True)
+        if ancestor is not None and ancestor.data == prompt:
+            return None, children
+        return StateEntry(
+            kind="system_prompt", version=1, mode="snapshot", data=prompt
+        ), children
 
     def _restore_system_prompt(self, context: StatePathContext) -> None:
         entry = latest_system_prompt(context.entries)
@@ -297,10 +281,13 @@ class _ExchangeRecorder:
                     name == SYSTEM_PROMPT_STATE_KEY
                     and hook == self._capture_system_prompt
                 ):
-                    children = self._stage_system_prompt_children(context)
-                entry = hook(context)
-                if inspect.isawaitable(entry):
-                    entry = await entry
+                    entry, children = self._prepare_system_prompt_capture(
+                        context
+                    )
+                else:
+                    entry = hook(context)
+                    if inspect.isawaitable(entry):
+                        entry = await entry
             entries[name] = entry
         # Commit only after every hook succeeds, including deletions.
         for name, entry in entries.items():
