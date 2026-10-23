@@ -538,8 +538,11 @@ class ChatHistory:
             def _(values):
                 ui.update_navs("tabs", selected=values.get("selected_tab"))
 
-        Editing or retrying the first message calls ``on_restore({})``:
-        the synthetic root has no saved app values. The author callback
+        Editing or retrying the first message normally calls
+        ``on_restore({})``: accepting input does not capture app values on
+        the synthetic root. If values were explicitly saved on the root,
+        or captured with an earlier inputless response, those values are
+        restored instead. The author callback
         decides whether to supply defaults or fail; history does not
         automatically reset application state. An unhandled ordinary failure
         retains the original branch read-only, as described below.

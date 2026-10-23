@@ -155,8 +155,10 @@ replacement continues from. The replacement's tool call selects `east`, and
 when it completes, `on_save` records `east` on the new exchange. The `west`
 exchange keeps `west`.
 
-Editing or retrying the first message invokes `on_restore({})`, because the
-synthetic root has no saved application values. Your callback decides whether
+Editing or retrying the first message normally invokes `on_restore({})`:
+accepting input does not capture values on the synthetic root. An explicit
+root save or an earlier inputless response can give the root saved values;
+those are restored instead. Your callback decides whether
 to supply defaults or raise an error; history does not automatically reset
 application state. An unhandled ordinary error retains the original branch
 read-only. For writable in-session browsing and resubmits, the model is already
