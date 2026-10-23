@@ -48,6 +48,7 @@ from shinychat._history import (
 from shinychat._history_client import TurnsAdapter
 from shinychat._history_controller import HistoryController
 from shinychat._history_plan import StatePathContext, canonical_turns
+from shinychat._history_recorder import _ModelCaptureError
 from shinychat._history_store import (
     ConversationPartition,
     ConversationStore,
@@ -559,7 +560,7 @@ async def test_v2_recorder_rejects_nonfinite_turn_values_before_file_store(
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
 
-    with pytest.raises(ValueError, match="Out of range float values"):
+    with pytest.raises(_ModelCaptureError, match="Out of range float values"):
         await transcript.record_accepted_input_and_notify(
             _stored_message("user", "one")
         )
@@ -591,7 +592,7 @@ async def test_v2_recorder_rejects_non_string_keys_before_file_store(
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
 
-    with pytest.raises(ValueError, match="Non-string mapping key"):
+    with pytest.raises(_ModelCaptureError, match="Non-string mapping key"):
         await transcript.record_accepted_input_and_notify(
             _stored_message("user", "one")
         )
@@ -7297,7 +7298,7 @@ async def test_v2_recorder_rejects_model_key_collision_before_file_store(
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
 
-    with pytest.raises(ValueError, match="Non-string mapping key"):
+    with pytest.raises(_ModelCaptureError, match="Non-string mapping key"):
         await transcript.record_accepted_input_and_notify(
             _stored_message("user", "one")
         )
@@ -7333,7 +7334,7 @@ async def test_v2_recorder_rejects_nested_deque_key_before_file_store(
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
 
-    with pytest.raises(ValueError, match="Non-string mapping key"):
+    with pytest.raises(_ModelCaptureError, match="Non-string mapping key"):
         await transcript.record_accepted_input_and_notify(
             _stored_message("user", "one")
         )
@@ -7372,7 +7373,7 @@ async def test_v2_recorder_rejects_chatlas_key_collision_before_file_store(
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
 
-    with pytest.raises(ValueError, match="Non-string mapping key"):
+    with pytest.raises(_ModelCaptureError, match="Non-string mapping key"):
         await transcript.record_accepted_input_and_notify(
             _stored_message("user", "one")
         )
@@ -9830,3 +9831,41 @@ async def test_switch_to_same_active_id_is_noop():
 
     assert recorder.record.model_dump(mode="json") == before
     assert controller._active_id_now() == active_id
+
+
+@pytest.mark.anyio
+async def test_failed_capture_commits_neither_hook_entries_nor_turn_baseline():
+    controller, _ = _make_controller()
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    recorder.record = new_conversation_record_v2(id="staged", title="Staged", client_info={})
+    record = recorder.record
+    root = record.nodes[record.root_id]
+    record.open_exchange("child", _stored_message("user", "hello"))
+    # A prompt edit would pin the previous inherited prompt on the child.
+    root.state["shinychat:system_prompt"] = StateEntry(
+        kind="system_prompt", version=1, mode="snapshot", data="old"
+    )
+    controller.adapter.get_system_prompt = lambda: "new"  # type: ignore[attr-defined]
+    recorder._register_capture_hook(
+        "shinychat:system_prompt", recorder._capture_system_prompt
+    )
+    # Turn capture succeeds first; a later hook must not advance its baseline.
+    before = record.model_dump(mode="json")
+    baseline = copy.deepcopy(recorder._turn_baseline)
+
+    def fail(_context: Any) -> StateEntry:
+        raise RuntimeError("later hook failed")
+
+    recorder._register_capture_hook("test:last", fail)
+    with pytest.raises(RuntimeError, match="later hook failed"):
+        await recorder.capture_state_locked(record.root_id, "root_close")
+    assert record.model_dump(mode="json") == before
+    assert recorder._turn_baseline == baseline
+    assert "shinychat:system_prompt" not in record.nodes["child"].state
+
+    recorder._capture_hooks.pop("test:last")
+    await recorder.capture_state_locked(record.root_id, "root_close")
+    assert root.state["shinychat:system_prompt"].data == "new"
+    assert record.nodes["child"].state["shinychat:system_prompt"].data == "old"
+    assert recorder._turn_baseline != baseline

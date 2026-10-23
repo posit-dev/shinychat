@@ -690,6 +690,8 @@ class ChatHistory:
             with session_context(session):
                 shiny_ui.notification_show(prefix, type="error")
 
+        self._notify_history_error = notify_error
+
         async def _run_history_transition(
             input_id: ResolvedId,
             error_prefix: str,

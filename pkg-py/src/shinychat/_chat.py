@@ -542,7 +542,7 @@ class Chat:
                     )
                     await self._record_accepted_user_input_with_capture(msg)
                 except Exception as e:
-                    await self._raise_exception(e)
+                    await self._handle_input_exception(e)
 
             @reactive.effect
             async def _sync_slash_commands():
@@ -587,7 +587,7 @@ class Chat:
                                 cast(UserSubmitFunction0, reg.handler)
                             )()
                 except Exception as e:
-                    await self._raise_exception(e)
+                    await self._handle_input_exception(e)
                 finally:
                     await self._remove_loading_message()
 
@@ -939,6 +939,20 @@ class Chat:
             self.remove_slash_command(name)
 
         return remove
+
+    async def _handle_input_exception(self, e: Exception) -> None:
+        from ._history_recorder import _ModelCaptureError
+
+        if isinstance(e, _ModelCaptureError):
+            await self._remove_loading_message()
+            await self.history._notify_history_error(
+                "Message not sent. The saved checkpoint is unchanged. "
+                "Start a New chat to recover, or try again after the app's "
+                "model state has been corrected.",
+                e.__cause__ if isinstance(e.__cause__, Exception) else e,
+            )
+            return
+        await self._raise_exception(e)
 
     async def _raise_exception(
         self,

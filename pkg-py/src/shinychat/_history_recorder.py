@@ -58,6 +58,10 @@ if TYPE_CHECKING:
     from ._chat import Chat
 
 
+class _ModelCaptureError(RuntimeError):
+    """Model checkpoint capture failed before input publication."""
+
+
 class RecorderHost(Protocol):
     """The host surface ``_ExchangeRecorder`` reads from its controller.
 
@@ -178,26 +182,41 @@ class _ExchangeRecorder:
             ancestor = None
             parent_id = parent.parent_id
 
-        previous = node.state.get(SYSTEM_PROMPT_STATE_KEY)
-        if previous is None or previous.data is None:
-            previous = ancestor
-        # With no recorded value, null/missing children remain inheritable;
-        # there is no known historical prompt to pin.
-        if previous is not None and previous.data != prompt:
-            # A rewound shared parent can be recaptured. Keep its old children
-            # on their saved prompt before changing their inherited value.
-            for child_id in node.children:
-                child = self.record.nodes[child_id]
-                inherited = child.state.get(SYSTEM_PROMPT_STATE_KEY)
-                if inherited is None or inherited.data is None:
-                    child.state[SYSTEM_PROMPT_STATE_KEY] = previous.model_copy(
-                        deep=True
-                    )
         if ancestor is not None and ancestor.data == prompt:
             return None
         return StateEntry(
             kind="system_prompt", version=1, mode="snapshot", data=prompt
         )
+
+    def _stage_system_prompt_children(
+        self, context: CaptureContext
+    ) -> dict[str, StateEntry]:
+        assert self.record is not None
+        node = self.record.nodes[context.node_id]
+        previous = node.state.get(SYSTEM_PROMPT_STATE_KEY)
+        parent_id = node.parent_id
+        while (
+            previous is None or previous.data is None
+        ) and parent_id is not None:
+            parent = self.record.nodes[parent_id]
+            previous = parent.state.get(SYSTEM_PROMPT_STATE_KEY)
+            parent_id = parent.parent_id
+        prompt = self._host.adapter.get_system_prompt() or ""
+        # A rewound shared parent keeps its children on the old prompt.
+        # Without a recorded prompt, children remain inheritable.
+        if previous is None or previous.data is None or previous.data == prompt:
+            return {}
+        return {
+            child_id: previous.model_copy(deep=True)
+            for child_id in node.children
+            if (
+                entry := self.record.nodes[child_id].state.get(
+                    SYSTEM_PROMPT_STATE_KEY
+                )
+            )
+            is None
+            or entry.data is None
+        }
 
     def _restore_system_prompt(self, context: StatePathContext) -> None:
         entry = latest_system_prompt(context.entries)
@@ -219,6 +238,11 @@ class _ExchangeRecorder:
             self._host.adapter.set_system_prompt(cast(str, target.data))
 
     def _capture_turns(self, context: CaptureContext) -> StateEntry:
+        return self._prepare_turn_capture(context)[0]
+
+    def _prepare_turn_capture(
+        self, context: CaptureContext
+    ) -> tuple[StateEntry, list[str]]:
         adapter = self._host.adapter
         turns, fingerprints = canonical_turns(adapter.get_turns_json())
         baseline = self._turn_baseline
@@ -235,7 +259,6 @@ class _ExchangeRecorder:
             mode = "delta"
             data = turns[len(baseline) :]
 
-        self._turn_baseline = fingerprints
         assert self.record is not None
         previous = self.record.nodes[context.node_id].state.get(TURNS_STATE_KEY)
         if mode == "delta" and previous is not None:
@@ -248,9 +271,11 @@ class _ExchangeRecorder:
             version=1,
             mode=mode,
             data=cast(JsonValue, data),
-        )
+        ), fingerprints
 
-    async def capture_state_locked(self, node_id: str, reason: CaptureReason) -> None:
+    async def capture_state_locked(
+        self, node_id: str, reason: CaptureReason
+    ) -> None:
         assert self.record is not None
         if self._read_only:
             # A read-only record's saved state is immutable: close/switch/
@@ -258,14 +283,34 @@ class _ExchangeRecorder:
             return
         node = self.record.nodes[node_id]
         context = CaptureContext(node_id=node_id, reason=reason)
+        entries: dict[str, StateEntry | None] = {}
+        baseline = self._turn_baseline
+        children: dict[str, StateEntry] = {}
         for name, hook in self._capture_hooks.items():
-            entry = hook(context)
-            if inspect.isawaitable(entry):
-                entry = await entry
+            if name == TURNS_STATE_KEY and hook == self._capture_turns:
+                try:
+                    entry, baseline = self._prepare_turn_capture(context)
+                except Exception as e:
+                    raise _ModelCaptureError(str(e)) from e
+            else:
+                if (
+                    name == SYSTEM_PROMPT_STATE_KEY
+                    and hook == self._capture_system_prompt
+                ):
+                    children = self._stage_system_prompt_children(context)
+                entry = hook(context)
+                if inspect.isawaitable(entry):
+                    entry = await entry
+            entries[name] = entry
+        # Commit only after every hook succeeds, including deletions.
+        for name, entry in entries.items():
             if entry is None:
                 node.state.pop(name, None)
             else:
                 node.state[name] = entry
+        for child_id, entry in children.items():
+            self.record.nodes[child_id].state[SYSTEM_PROMPT_STATE_KEY] = entry
+        self._turn_baseline = baseline
 
     async def _restore_turns(self, context: StatePathContext) -> None:
         if context.prepared_turns is None:
@@ -479,10 +524,7 @@ class _ExchangeRecorder:
             return True, old_state_id if old_state_id != state_id else None
 
     def mark_active_id_published(self, record: ConversationRecordV2) -> None:
-        if (
-            self.record is record
-            and self._host._active_id_now() == record.id
-        ):
+        if self.record is record and self._host._active_id_now() == record.id:
             self._active_id_published_for = record
 
     def _close_root_if_inactive(self) -> None:
@@ -509,15 +551,20 @@ class _ExchangeRecorder:
             is_first_input = not any(
                 node.input is not None for node in self.record.nodes.values()
             )
-            if is_first_input:
-                await self.capture_state_locked(
-                    self.record.root_id, "root_close"
-                )
-                self._close_root_if_inactive()
-            else:
-                active_leaf = self.record.active_leaf
-                assert active_leaf is not None
-                await self.capture_state_locked(active_leaf, "node_close")
+            try:
+                if is_first_input:
+                    await self.capture_state_locked(
+                        self.record.root_id, "root_close"
+                    )
+                    self._close_root_if_inactive()
+                else:
+                    active_leaf = self.record.active_leaf
+                    assert active_leaf is not None
+                    await self.capture_state_locked(active_leaf, "node_close")
+            except BaseException:
+                if created:
+                    self.record = None
+                raise
             self.record.open_exchange(exchange_id, message)
             await self.persist_record_locked()
             if created:

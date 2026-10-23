@@ -3302,3 +3302,94 @@ async def test_v2_clear_retains_input_admitted_after_clear_dispatch(
             )
     finally:
         chat.destroy()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("entry_point", ["normal", "slash"])
+@pytest.mark.parametrize("sanitize_errors", [False, True])
+@pytest.mark.parametrize("recovery", ["new_chat", "corrected_state"])
+@pytest.mark.parametrize("on_error", ["sanitize", "actual", "unhandled"])
+async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
+    tmp_path: Any,
+    request: Any,
+    entry_point: str,
+    sanitize_errors: bool,
+    recovery: str,
+    on_error: Any,
+) -> None:
+    chat, session, client, store = await _make_initialized_live_v2_chat(
+        tmp_path, "capture_recovery"
+    )
+    request.addfinalizer(chat.destroy)
+    session.app = SimpleNamespace(sanitize_errors=sanitize_errors)
+    chat.on_error = on_error
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    # Replace the built-in provider consumer with this app's dispatch callback.
+    # Keep the accepted-input effects and recorder wiring real.
+    next(
+        effect
+        for effect in chat._effects
+        if effect._fn.__name__ == "handle_user_input"
+    ).destroy()
+    calls: list[str] = []
+
+    @chat.on_user_submit
+    async def submitted(text: str) -> None:
+        calls.append(text)
+
+    @chat.slash_command("send", "Send")
+    async def slash(text: str) -> None:
+        calls.append(text)
+
+    async def submit(text: str, seq: int) -> None:
+        if entry_point == "normal":
+            cast(Any, session.input[chat.user_input_id])._set(
+                {"text": text, "attachments": [], "seq": seq}
+            )
+        else:
+            cast(Any, session.input[chat._slash_command_id])._set(
+                {"command": "send", "userText": text, "echo": True, "seq": seq}
+            )
+        await reactive.flush()
+
+    with session_context(cast(Any, session)), reactive.isolate():
+        await submit("initial", 1)
+        assert calls == ["initial"]
+        assert recorder.record is not None
+        before = recorder.record.model_dump(mode="json")
+        baseline = deepcopy(recorder._turn_baseline)
+        partition = ConversationPartition(chat_id=chat.id, scope="test")
+        saved = await store.get(partition, recorder.record.id)
+        assert saved is not None
+        checkpoint = saved.model_dump(mode="json")
+        client._turns = [{"role": "assistant", "content": object()}]
+        notification = MagicMock()
+        with patch("shiny.ui.notification_show", notification):
+            for seq in (2, 3):
+                with pytest.warns(UserWarning, match="not JSON serializable"):
+                    await submit("rejected", seq)
+                assert calls == ["initial"]
+                assert recorder.record.model_dump(mode="json") == before
+                assert recorder._turn_baseline == baseline
+                saved = await store.get(partition, recorder.record.id)
+                assert saved is not None
+                assert saved.model_dump(mode="json") == checkpoint
+                assert "rejected" not in str(chat.user_input())
+        assert notification.call_count == 2
+        report = notification.call_args.args[0]
+        assert "Message not sent" in report
+        assert "saved checkpoint is unchanged" in report
+        assert "New chat" in report
+        if recovery == "new_chat":
+            await controller.new_chat()
+            assert client._turns == []
+            assert recorder._turn_baseline == []
+        else:
+            client._turns = [{"role": "assistant", "content": "corrected"}]
+        assert calls == ["initial"]  # Recovery never resubmits automatically.
+        await submit("recovered", 4)
+        assert calls == ["initial", "recovered"]
+        assert recorder.record is not None
+        assert "rejected" not in str(recorder.record.model_dump(mode="json"))
