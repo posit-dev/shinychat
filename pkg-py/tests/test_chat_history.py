@@ -846,9 +846,6 @@ async def test_v2_initial_readiness_rejects_direct_input_without_mutation() -> (
     controller.partition = ConversationPartition(chat_id=chat_id, scope="test")
 
     with session_context(cast(Any, session)), reactive.isolate():
-        chat._record_accepted_user_input(
-            ChatMessage(content="forged input", role="user")
-        )
         await chat._record_accepted_user_input_with_capture(
             ChatMessage(content="direct input", role="user")
         )
@@ -1613,7 +1610,7 @@ async def test_history_action_errors_keep_exception_details_out_of_notifications
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("entry_point", ["sync", "capture", "event", "slash"])
+@pytest.mark.parametrize("entry_point", ["capture", "event", "slash"])
 async def test_read_only_history_rejects_submission_before_acceptance(
     entry_point: str,
     request: pytest.FixtureRequest,
@@ -1652,11 +1649,7 @@ async def test_read_only_history_rejects_submission_before_acceptance(
         calls.append(user_text)
 
     with session_context(cast(Any, session)), reactive.isolate():
-        if entry_point == "sync":
-            chat._record_accepted_user_input(
-                ChatMessage(content="forged", role="user")
-            )
-        elif entry_point == "capture":
+        if entry_point == "capture":
             await chat._record_accepted_user_input_with_capture(
                 ChatMessage(content="forged", role="user")
             )

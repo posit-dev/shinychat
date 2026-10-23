@@ -2220,13 +2220,6 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore(
                 RuntimeError,
                 match="Cannot accept user input while switching conversations",
             ):
-                chat._record_accepted_user_input(
-                    ChatMessage(content=f"{content} sync", role="user")
-                )
-            with pytest.raises(
-                RuntimeError,
-                match="Cannot accept user input while switching conversations",
-            ):
                 await chat._record_accepted_user_input_with_capture(
                     ChatMessage(content=content, role="user")
                 )

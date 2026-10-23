@@ -509,14 +509,84 @@ def test_normal_submissions_dispatch_their_own_input_and_repeat():
     ]
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize("entry_point", ["normal", "slash"])
+async def test_submission_waits_for_capture_before_dispatch(entry_point: str):
+    session = cast(Session, _MockSession())
+    capture_started = asyncio.Event()
+    release_capture = asyncio.Event()
+    calls: list[str] = []
+    captured: list[tuple[str, str]] = []
+
+    with session_context(session):
+        chat = Chat("awaited_capture", history=False)
+
+        async def capture(exchange_id: str, message: StoredMessage) -> None:
+            captured.append((exchange_id, message.content))
+            capture_started.set()
+            await release_capture.wait()
+
+        chat._transcript.set_capture_callbacks(
+            on_accepted_input=capture,
+            on_message_committed=None,
+            on_stream_started=None,
+            on_stream_updated=None,
+            on_stream_finished=None,
+        )
+
+        @chat.on_user_submit
+        async def normal(text: str) -> None:
+            calls.append(text)
+
+        @chat.slash_command("greet", "Greet")
+        async def slash(text: str) -> None:
+            calls.append(text)
+
+        if entry_point == "normal":
+            cast(Any, session.input[chat.user_input_id])._set(
+                {"text": "hello", "attachments": [], "seq": 1}
+            )
+            accepted_text = "hello"
+        else:
+            cast(Any, session.input[chat._slash_command_id])._set(
+                {"command": "greet", "userText": "hello", "echo": True}
+            )
+            accepted_text = "/greet hello"
+
+        flush = asyncio.create_task(reactive.flush())
+        try:
+            await asyncio.wait_for(capture_started.wait(), timeout=2)
+            assert not flush.done()
+            assert calls == []
+            assert [
+                entry.message.content for entry in chat._transcript.read()
+            ] == [accepted_text]
+            assert captured == [
+                (chat._transcript.open_exchange_id, accepted_text)
+            ]
+            with reactive.isolate():
+                assert chat.user_input() is None
+        finally:
+            release_capture.set()
+            await flush
+
+        assert calls == ["hello"]
+        with reactive.isolate():
+            latest = chat.user_input()
+            assert latest is not None
+            assert latest.text == accepted_text
+
+
 def test_accepted_input_records_while_an_older_stream_is_active():
     session = cast(Session, _MockSession())
     callback_state: list[tuple[list[str], str | None]] = []
 
     with session_context(session):
         chat = Chat("input_during_stream", history=False)
-        chat._record_accepted_user_input(
-            ChatMessage(content="older exchange", role="user")
+        run_async(
+            lambda: chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="older exchange", role="user")
+            )
         )
         older_exchange = chat._transcript.open_exchange_id
         run_async(
@@ -1652,8 +1722,10 @@ def test_response_settlement_ignores_nonterminal_transcript_mutations():
         chat._on_response_settled(on_settled)
         run_async(reactive.flush)
         run_async(chat.clear_messages)
-        chat._record_accepted_user_input(
-            ChatMessage(content="accepted", role="user")
+        run_async(
+            lambda: chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="accepted", role="user")
+            )
         )
         run_async(
             lambda: chat._restore_bookmark_message(
@@ -1752,8 +1824,10 @@ def test_old_stream_terminal_settles_after_newer_input():
 
     with session_context(test_session):
         chat = Chat("response_settlement_old_stream", history=False)
-        chat._record_accepted_user_input(
-            ChatMessage(content="older input", role="user")
+        run_async(
+            lambda: chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="older input", role="user")
+            )
         )
 
         async def on_settled() -> None:
@@ -1767,7 +1841,7 @@ def test_old_stream_terminal_settles_after_newer_input():
             await chat._append_message_chunk(
                 "", chunk="start", stream_id="older-stream"
             )
-            chat._record_accepted_user_input(
+            await chat._record_accepted_user_input_with_capture(
                 ChatMessage(content="newer input", role="user")
             )
             await chat._append_message_chunk(
@@ -2552,17 +2626,21 @@ def test_slash_command_fn_none_with_explicit_echo_true():
 
 
 def test_bookmark_round_trips_echoed_slash_command():
-    # An echoed slash command stores the `/cmd args` text as a normal user
-    # message (mirroring `_on_slash_command`), so it rides the generic
-    # stored-message bookmark mechanism: saved, then restored as a static entry.
+    # Exercise command dispatch, not just a user message shaped like a command.
     from shiny import reactive
 
-    with session_context(test_session):
+    session = cast(Session, _MockSession())
+    with session_context(session):
         chat = Chat(id="chat")
-        chat._record_accepted_user_input(
-            ChatMessage(content="/greet world", role="user")
+
+        @chat.slash_command("greet", "Greet the user")
+        async def greet(text: str) -> None:
+            await chat.append_message(f"Hello! You said: {text}")
+
+        cast(Any, session.input[chat._slash_command_id])._set(
+            {"command": "greet", "userText": "world", "echo": True}
         )
-        run_async(lambda: chat.append_message("Hello! You said: world"))
+        run_async(reactive.flush)
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
 
@@ -2625,14 +2703,27 @@ def test_bookmark_omits_side_effect_only_slash_command():
     # handler runs.
     from shiny import reactive
 
-    with session_context(test_session):
+    session = cast(Session, _MockSession())
+    calls: list[str] = []
+    with session_context(session):
         chat = Chat(id="chat")
-        chat.slash_command("note", "Side-effect only", echo=False)
-        chat._record_accepted_user_input(
-            ChatMessage(content="real message", role="user")
+
+        @chat.slash_command("note", "Side-effect only", echo=False)
+        async def note(text: str) -> None:
+            calls.append(text)
+
+        cast(Any, session.input[chat.user_input_id])._set(
+            {"text": "real message", "attachments": [], "seq": 1}
         )
+        run_async(reactive.flush)
+        cast(Any, session.input[chat._slash_command_id])._set(
+            {"command": "note", "userText": "private note", "echo": False}
+        )
+        run_async(reactive.flush)
         with reactive.isolate():
             saved = chat._messages_for_bookmark()
+
+    assert calls == ["private note"]
 
     assert saved == [
         {
@@ -3759,8 +3850,10 @@ def test_stream_cancellation_preserves_sent_partial():
 def test_stream_captures_exchange_before_newer_input():
     with session_context(test_session):
         chat = Chat(id="stream_exchange", history=False)
-        chat._record_accepted_user_input(
-            ChatMessage(content="old request", role="user")
+        run_async(
+            lambda: chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="old request", role="user")
+            )
         )
         old_exchange = chat._transcript.open_exchange_id
 
@@ -3768,7 +3861,7 @@ def test_stream_captures_exchange_before_newer_input():
             await chat._append_message_chunk(
                 "", chunk="start", stream_id="old-stream"
             )
-            chat._record_accepted_user_input(
+            await chat._record_accepted_user_input_with_capture(
                 ChatMessage(content="new request", role="user")
             )
             await chat._append_message_chunk(
@@ -3789,8 +3882,10 @@ def test_stream_captures_exchange_before_newer_input():
 def test_complete_append_captures_exchange_before_async_transform():
     with session_context(test_session):
         chat = Chat(id="complete_transform_exchange", history=False)
-        chat._record_accepted_user_input(
-            ChatMessage(content="old request", role="user")
+        run_async(
+            lambda: chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="old request", role="user")
+            )
         )
         old_exchange = chat._transcript.open_exchange_id
         transform_started = asyncio.Event()
@@ -3806,7 +3901,7 @@ def test_complete_append_captures_exchange_before_async_transform():
         async def _exercise() -> None:
             append = asyncio.create_task(chat.append_message("old response"))
             await transform_started.wait()
-            chat._record_accepted_user_input(
+            await chat._record_accepted_user_input_with_capture(
                 ChatMessage(content="new request", role="user")
             )
             release_transform.set()
@@ -3821,8 +3916,10 @@ def test_complete_append_captures_exchange_before_async_transform():
 def test_stream_start_captures_exchange_before_async_transform():
     with session_context(test_session):
         chat = Chat(id="stream_transform_exchange", history=False)
-        chat._record_accepted_user_input(
-            ChatMessage(content="old request", role="user")
+        run_async(
+            lambda: chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="old request", role="user")
+            )
         )
         old_exchange = chat._transcript.open_exchange_id
         transform_started = asyncio.Event()
@@ -3842,7 +3939,7 @@ def test_stream_start_captures_exchange_before_async_transform():
                 )
             )
             await transform_started.wait()
-            chat._record_accepted_user_input(
+            await chat._record_accepted_user_input_with_capture(
                 ChatMessage(content="new request", role="user")
             )
             release_transform.set()
@@ -4783,8 +4880,10 @@ def test_bookmark_legacy_path_persists_ui_for_state_only_client():
     with session_context(session):
         chat = Chat(id="chat_bm_legacy")
         chat.enable_bookmarking(_StateOnlyClient(), bookmark_on=None)
-        chat._record_accepted_user_input(
-            ChatMessage(content="hi", role="user")
+        run_async(
+            lambda: chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="hi", role="user")
+            )
         )
 
     bookmark = cast(Any, session).bookmark

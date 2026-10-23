@@ -2455,20 +2455,6 @@ class Chat:
 
         return _assemble_stored_message(message, self._serialize_html_deps)
 
-    def _record_accepted_user_input(
-        self,
-        message: ChatMessage,
-    ) -> None:
-        if self._destructive_history_blocks_input:
-            raise RuntimeError(
-                "Cannot accept user input while switching conversations."
-            )
-        if not self.history._history_submission_admitted():
-            return
-        stored = self._as_stored_message(message)
-        self._transcript.record_accepted_input(stored)
-        self._publish_accepted_user_input(stored)
-
     async def _record_accepted_user_input_with_capture(
         self,
         message: ChatMessage,
