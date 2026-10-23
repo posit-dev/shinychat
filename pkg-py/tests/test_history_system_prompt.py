@@ -175,7 +175,7 @@ def _assistant_turn(text: str) -> dict[str, Any]:
 
 
 @pytest.mark.anyio
-async def test_system_prompt_captured_at_root_and_not_while_unchanged():
+async def test_system_prompt_full_snapshot_captured_at_every_boundary():
     controller, client = _make_prompt_controller(prompt="be precise")
     recorder = controller._exchange_recorder
     transcript = _make_transcript(recorder)
@@ -195,10 +195,10 @@ async def test_system_prompt_captured_at_root_and_not_while_unchanged():
     assert root_entry.version == 1
     assert root_entry.mode == "snapshot"
     assert root_entry.data == "be precise"
-    # Unchanged descendants record nothing: the latest entry on the path
-    # (here the root's) already covers them.
-    assert _prompt_entry(record, first) is None
-    assert _prompt_entry(record, second) is None
+    # Every boundary writes the full prompt, so an unchanged descendant carries
+    # its own snapshot instead of inheriting the root's.
+    assert _prompt_data(record, first) == "be precise"
+    assert _prompt_data(record, second) == "be precise"
     # The prompt entry's hooks register before the turns hooks, so restore
     # applies the prompt before replaying turns.
     assert list(recorder.restore_hooks) == [
@@ -221,8 +221,31 @@ async def test_system_prompt_captured_at_root_and_not_while_unchanged():
 
 
 @pytest.mark.anyio
-async def test_system_prompt_records_path_changes_with_turn_deltas():
-    """A -> B -> A records each change; unchanged nodes record nothing."""
+async def test_system_prompt_pending_predecessor_is_validated_not_captured():
+    controller, client = _make_prompt_controller(prompt="A")
+    recorder = controller._exchange_recorder
+    transcript = _make_transcript(recorder)
+
+    pending = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
+    client.system_prompt = "B"
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "two")
+    )
+
+    record = recorder.record
+    assert record is not None
+    assert record.nodes[pending].status == "pending"
+    # The unresolved predecessor was validated against the live client, not
+    # checkpointed: neither its prompt nor its turns were written.
+    assert _prompt_entry(record, pending) is None
+    assert TURNS_STATE_KEY not in record.nodes[pending].state
+
+
+@pytest.mark.anyio
+async def test_system_prompt_records_path_changes_with_full_snapshots():
+    """A -> B -> A records each change; every boundary carries full snapshots."""
     controller, client = _make_prompt_controller(prompt="A")
     recorder = controller._exchange_recorder
     transcript = _make_transcript(recorder)
@@ -251,21 +274,39 @@ async def test_system_prompt_records_path_changes_with_turn_deltas():
     assert _prompt_data(record, record.root_id) == "A"
     assert _prompt_data(record, first) == "B"
     assert _prompt_data(record, second) == "A"
-    assert _prompt_entry(record, third) is None
-    assert _prompt_entry(record, fourth) is None
-    # Prompt-only changes never force a turns snapshot: each exchange's
-    # turns stay a small delta extending the root's snapshot.
+    # Boundaries with an unchanged prompt still carry the full prompt.
+    assert _prompt_data(record, third) == "A"
+    assert _prompt_data(record, fourth) == "A"
+    # Turns are full snapshots of the path at each boundary, so a prompt
+    # change never changes how the turns are captured.
     root_turns = record.nodes[record.root_id].state[TURNS_STATE_KEY]
     assert root_turns.mode == "snapshot"
-    for node_id, new_turns in [
+    for node_id, path_turns in [
         (first, [_user_turn("one"), _assistant_turn("answer one")]),
-        (second, [_user_turn("two"), _assistant_turn("answer two")]),
-        (third, [_user_turn("three"), _assistant_turn("answer three")]),
-        (fourth, [_user_turn("four"), _assistant_turn("answer four")]),
+        (
+            second,
+            [
+                _user_turn("one"),
+                _assistant_turn("answer one"),
+                _user_turn("two"),
+                _assistant_turn("answer two"),
+            ],
+        ),
+        (
+            third,
+            [
+                _user_turn("one"),
+                _assistant_turn("answer one"),
+                _user_turn("two"),
+                _assistant_turn("answer two"),
+                _user_turn("three"),
+                _assistant_turn("answer three"),
+            ],
+        ),
     ]:
         entry = record.nodes[node_id].state[TURNS_STATE_KEY]
-        assert entry.mode == "delta"
-        assert entry.data == new_turns
+        assert entry.mode == "snapshot"
+        assert entry.data == path_turns
 
 
 @pytest.mark.anyio
@@ -395,7 +436,7 @@ async def test_system_prompt_restore_null_entry_falls_through_to_ancestor():
     record = recorder.record
     assert record is not None
     assert _prompt_data(record, record.root_id) == "A"
-    assert _prompt_entry(record, first) is None
+    assert _prompt_data(record, first) == "A"
 
     record.nodes[first].state[SYSTEM_PROMPT_STATE_KEY] = _null_prompt_entry()
     await controller.on_response()
@@ -436,10 +477,14 @@ async def test_system_prompt_restore_without_effective_value_is_noop(
     record = recorder.record
     assert record is not None
 
+    # The writer captures the full prompt at every boundary, so each path
+    # without an effective value is an explicit legacy fixture.
     if absence == "root-null":
+        # A legacy sparse leaf recorded nothing of its own under a null root.
         record.nodes[record.root_id].state[SYSTEM_PROMPT_STATE_KEY] = (
             _null_prompt_entry()
         )
+        del record.nodes[first].state[SYSTEM_PROMPT_STATE_KEY]
     elif absence == "all-null":
         record.nodes[record.root_id].state[SYSTEM_PROMPT_STATE_KEY] = (
             _null_prompt_entry()
@@ -449,7 +494,7 @@ async def test_system_prompt_restore_without_effective_value_is_noop(
         )
     else:
         del record.nodes[record.root_id].state[SYSTEM_PROMPT_STATE_KEY]
-        assert _prompt_entry(record, first) is None
+        del record.nodes[first].state[SYSTEM_PROMPT_STATE_KEY]
     await controller.on_response()
 
     stored = await store.get(part(), record.id)
@@ -615,7 +660,7 @@ async def test_system_prompt_edit_across_recorded_change_applies_target(
     )
     record = recorder.record
     assert record is not None
-    assert _prompt_entry(record, first) is None
+    assert _prompt_data(record, first) == (target or "")
     assert _prompt_data(record, second) == "B"
 
     await controller.resubmit(
@@ -790,7 +835,7 @@ async def test_system_prompt_on_restore_override_survives_navigation():
     )
     record = recorder.record
     assert record is not None
-    assert _prompt_entry(record, replacement) is None
+    assert _prompt_data(record, replacement) == "P"
 
     client.system_prompt = "OVERRIDE"
     client.calls.clear()
@@ -1241,6 +1286,10 @@ async def test_system_prompt_rewind_resolves_null_entries(
     assert record is not None
     node_id = record.root_id if null_position == "root" else first
     record.nodes[node_id].state[SYSTEM_PROMPT_STATE_KEY] = _null_prompt_entry()
+    if null_position == "root":
+        # A legacy sparse leaf recorded no prompt of its own, so the null root
+        # leaves nothing effective on the path.
+        del record.nodes[first].state[SYSTEM_PROMPT_STATE_KEY]
     client.calls.clear()
 
     await controller.resubmit(
@@ -1441,7 +1490,7 @@ async def test_system_prompt_unrecorded_children_inherit_new_ancestor_value():
     controller, client = _make_prompt_controller(prompt="A")
     recorder = controller._exchange_recorder
     transcript = _make_transcript(recorder)
-    await _drive_exchange(
+    first = await _drive_exchange(
         transcript, client, "one", "answer one", stream_id="s1"
     )
     original = await _drive_exchange(
@@ -1452,12 +1501,12 @@ async def test_system_prompt_unrecorded_children_inherit_new_ancestor_value():
     )
     record = recorder.record
     assert record is not None
-    # Erase recorded values deliberately: these paths now specify inheritance,
-    # not a historical prompt that could be pinned during parent recapture.
-    record.nodes[record.root_id].state[SYSTEM_PROMPT_STATE_KEY] = (
-        _null_prompt_entry()
-    )
-    record.nodes[original].state[SYSTEM_PROMPT_STATE_KEY] = _null_prompt_entry()
+    # Erase recorded prompts deliberately: the whole path specifies inheritance,
+    # not a historical prompt that a shared ancestor's recapture would pin.
+    for node_id in (record.root_id, first, original):
+        record.nodes[node_id].state[SYSTEM_PROMPT_STATE_KEY] = (
+            _null_prompt_entry()
+        )
     client.system_prompt = "B"
     await _drive_exchange(
         transcript, client, "replacement", "new answer", stream_id="s3"
@@ -1540,6 +1589,11 @@ async def test_system_prompt_null_only_path_without_capability_stays_writable(
 ):
     # A null-only path carries no directive: no capability mismatch.
     record = await _record_with_root_prompt(None)
+    # The writer also captured the full prompt at the leaf: make the whole
+    # path null-only, as a legacy record would be.
+    leaf = record.active_leaf
+    assert leaf is not None
+    record.nodes[leaf].state[SYSTEM_PROMPT_STATE_KEY] = _null_prompt_entry()
 
     restored, plain = _make_prompt_controller(client=_PlainClient())
     await replay_exchange_record(restored, record)

@@ -116,6 +116,27 @@ async def seed_conversation() -> None:
     record.nodes["alternative"].status = "ok"
     record.set_active_leaf("original")
     await store.put(partition, record)
+    interrupted = new_conversation_record_v2(
+        id="saved_interrupted",
+        title="Saved interrupted response",
+        client_info={},
+    )
+    interrupted.nodes[interrupted.root_id].state["shinychat:turns"] = (
+        StateEntry(kind="chatlas", version=1, mode="snapshot", data=[])
+    )
+    interrupted.finish_exchange(interrupted.root_id, "ok", None)
+    interrupted.open_exchange(
+        "unfinished",
+        StoredMessage(
+            role="user",
+            segments=[
+                StoredSegment(
+                    content="unfinished question", content_type="markdown"
+                )
+            ],
+        ),
+    )
+    await store.put(partition, interrupted)
 
 
 app_ui = ui.page_fillable(chat_ui("chat"))

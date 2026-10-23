@@ -395,6 +395,9 @@ class HistoryUpdateAction(TypedDict):
     # unavailable (view-only); absent/false means writable, so older
     # peers that never send it keep the writable default.
     active_read_only: NotRequired[bool]
+    active_read_only_reason: NotRequired[
+        Literal["model_unavailable", "app_restore_failed", "interrupted"]
+    ]
 
 
 class HistoryNavigateAction(TypedDict):

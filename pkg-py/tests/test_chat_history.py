@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import shinychat._history as history_module
 import shinychat._history_plan as history_plan_module
-import shinychat._history_recorder as recorder_module
 from shiny import reactive
 from shiny._utils import AsyncCallbacks, wrap_async
 from shiny.module import ResolvedId
@@ -288,7 +287,9 @@ class _MockBookmark:
 
         return cancel
 
-    def on_bookmarked(self, callback: Callable[[str], Any]) -> Callable[[], None]:
+    def on_bookmarked(
+        self, callback: Callable[[str], Any]
+    ) -> Callable[[], None]:
         self.bookmarked_callbacks.append(callback)
 
         def cancel() -> None:
@@ -451,7 +452,9 @@ async def test_history_disabled_publishes_one_initial_withdrawal(
 
 
 @pytest.mark.anyio
-async def test_chat_without_client_publishes_initial_history_withdrawal() -> None:
+async def test_chat_without_client_publishes_initial_history_withdrawal() -> (
+    None
+):
     session = _LiveSession()
     with session_context(cast(Any, session)):
         chat = Chat("history_unavailable_without_client")
@@ -625,7 +628,9 @@ async def test_v2_initial_readiness_suppresses_capture_until_initial_decision(
 
 
 @pytest.mark.anyio
-async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> None:
+async def test_v2_initial_readiness_stays_false_when_cleanup_update_fails() -> (
+    None
+):
     chat_id = "initial_readiness_cleanup_send_failure"
     session = _LiveSession()
     store = InMemoryConversationStore()
@@ -755,7 +760,9 @@ async def test_v2_initial_readiness_flips_after_history_update_send() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_successful_bookmark_pointer_suppresses_then_admits_root_append() -> None:
+async def test_v2_successful_bookmark_pointer_suppresses_then_admits_root_append() -> (
+    None
+):
     chat_id = "initial_bookmark_pointer_boundary"
     session = _LiveSession()
     session.bookmark.store = "server"
@@ -969,7 +976,9 @@ async def test_v2_server_bookmark_stamps_atomic_history_pointer_only() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_stale_server_bookmark_pointer_notifies_and_keeps_draft() -> None:
+async def test_v2_stale_server_bookmark_pointer_notifies_and_keeps_draft() -> (
+    None
+):
     session = _LiveSession()
     session.bookmark.store = "server"
     session.bookmark._restore_context = MagicMock(
@@ -1263,7 +1272,9 @@ async def test_v2_initial_restore_failure_real_effect_recovers_without_session_e
 
 
 @pytest.mark.anyio
-async def test_v2_bookmark_initial_restore_failure_clears_url_without_reload() -> None:
+async def test_v2_bookmark_initial_restore_failure_clears_url_without_reload() -> (
+    None
+):
     """Bookmark-mode cleanup of a failed initial restore clears the stale
     ``?_state_id_=`` query with a soft navigation — not the hard reload the
     intentional New chat path uses, which would discard the recovered
@@ -1465,7 +1476,9 @@ async def test_v2_failed_switch_notifies_once_with_sanitized_message() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_select_missing_conversation_still_notifies_rejection() -> None:
+async def test_v2_select_missing_conversation_still_notifies_rejection() -> (
+    None
+):
     """Ordinary pre-restore rejections (no restore cleanup ran) keep their
     direct notification: the handled-failure marker only suppresses the
     duplicate toast after a cleanup already notified."""
@@ -1761,7 +1774,9 @@ async def test_v2_recovered_initial_error_does_not_hide_a_later_rejection(
 
 
 @pytest.mark.anyio
-async def test_v2_initial_restore_preflight_cancellation_recovers_once() -> None:
+async def test_v2_initial_restore_preflight_cancellation_recovers_once() -> (
+    None
+):
     chat_id = "initial_preflight_cancel"
     session = _LiveSession()
     store = InMemoryConversationStore()
@@ -2003,7 +2018,9 @@ async def test_v2_bookmark_settlement_updates_url_and_deletes_replaced_state() -
     assert controller is not None
     recorder = controller._exchange_recorder
     assert recorder is not None
-    controller.partition = ConversationPartition(chat_id="bookmark_settlement", scope="test")
+    controller.partition = ConversationPartition(
+        chat_id="bookmark_settlement", scope="test"
+    )
     record = new_conversation_record_v2(
         title="pointer",
         id="c_pointer",
@@ -2035,9 +2052,10 @@ async def test_v2_bookmark_settlement_updates_url_and_deletes_replaced_state() -
             }
         },
     ]
-    assert [
-        message["action"]["url"] for message in session.messages
-    ] == ["?_state_id_=state-first", "?_state_id_=state-second"]
+    assert [message["action"]["url"] for message in session.messages] == [
+        "?_state_id_=state-first",
+        "?_state_id_=state-second",
+    ]
 
 
 @pytest.mark.anyio
@@ -2640,12 +2658,8 @@ async def test_v2_client_new_chat_closes_record_and_renews_greeting(
             ]
             # ...the configured greeting is resolved again for the fresh
             # conversation (the greeting stays the ambient slot)...
-            greeting_actions = [
-                a for a in actions if a["type"] == "greeting"
-            ]
-            assert [a.get("content") for a in greeting_actions] == [
-                "## Hello"
-            ]
+            greeting_actions = [a for a in actions if a["type"] == "greeting"]
+            assert [a.get("content") for a in greeting_actions] == ["## Hello"]
             # ...and the closed record stays listed with no active conversation.
             updates = [a for a in actions if a["type"] == "history_update"]
             assert updates
@@ -3045,16 +3059,12 @@ async def test_session_end_without_started_history_is_safe() -> None:
 
 
 @pytest.mark.anyio
-async def test_session_end_flushes_unscheduled_content_to_file_before_cleanup(
+async def test_session_end_keeps_last_checkpoint_then_old_stream_finishes(
     tmp_path: Any,
-    monkeypatch: pytest.MonkeyPatch,
     request: pytest.FixtureRequest,
 ) -> None:
-    # A fixed clock keeps this text chunk inside the gate, so only the real
-    # session-end path can make it durable while the stream is still open.
-    monkeypatch.setattr(recorder_module, "monotonic", lambda: 100.0)
-    chat, session, _, store = await _make_initialized_live_v2_chat(
-        tmp_path, "unscheduled_end_flush"
+    chat, session, _, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "terminal_end_checkpoint"
     )
     request.addfinalizer(chat.destroy)
     controller = chat.history._controller
@@ -3065,58 +3075,39 @@ async def test_session_end_flushes_unscheduled_content_to_file_before_cleanup(
             ChatMessage(content="question", role="user")
         )
         async with chat.message_stream_context() as stream:
-            await stream.append("unscheduled tail")
+            await stream.append("unsaved live response")
             record = controller._exchange_recorder.record
-            assert record is not None
-            assert record.active_leaf is not None
+            assert record is not None and record.active_leaf is not None
             exchange_id = record.active_leaf
             before = await FileConversationStore(tmp_path).get(
                 partition, record.id
             )
             assert isinstance(before, ConversationRecordV2)
-            assert [
-                message.as_stored_message().content
-                for message in before.nodes[exchange_id].messages
-            ] == [""]
-
+            assert before.nodes[exchange_id].messages == []
             save_calls: list[str] = []
 
             @chat.history.on_save
             def save(values: dict[str, Any]) -> None:
                 save_calls.append("called")
 
-            sent_before = len(session.messages)
             effects = list(chat.history._effects)
-            started = asyncio.Event()
-            release = asyncio.Event()
-            original_put = store.put
-
-            async def held_put(partition: Any, record: Any) -> None:
-                started.set()
-                await release.wait()
-                await original_put(partition, record)
-
-            monkeypatch.setattr(store, "put", held_put)
-            ended = asyncio.create_task(session.end())
-            try:
-                await asyncio.wait_for(started.wait(), timeout=1)
-                assert not ended.done()
-                assert all(not effect._destroyed for effect in effects)
-            finally:
-                await _finish_held_clear_task(ended, release)
-
+            await session.end()
             stored = await FileConversationStore(tmp_path).get(
                 partition, record.id
             )
-            assert isinstance(stored, ConversationRecordV2)
-            assert [
-                message.as_stored_message().content
-                for message in stored.nodes[exchange_id].messages
-            ] == ["unscheduled tail"]
-            assert stored.nodes[exchange_id].status == "pending"
+            assert stored == before
             assert all(effect._destroyed for effect in effects)
             assert save_calls == []
-            assert len(session.messages) == sent_before
+        # Session destruction does not fence the old response task's terminal put.
+        terminal = await FileConversationStore(tmp_path).get(
+            partition, record.id
+        )
+        assert isinstance(terminal, ConversationRecordV2)
+        assert terminal.nodes[exchange_id].status == "ok"
+        assert [
+            m.as_stored_message().content
+            for m in terminal.nodes[exchange_id].messages
+        ] == ["unsaved live response"]
 
 
 def test_chat_destroy_without_history_start_is_safe():
@@ -3155,8 +3146,7 @@ async def test_app_output_in_read_only_history_is_displayed_but_not_saved(
                 await stream.append("session-only app output")
 
     assert (
-        chat._transcript.read()[-1].message.content
-        == "session-only app output"
+        chat._transcript.read()[-1].message.content == "session-only app output"
     )
     assert len(session.messages) > messages_before
     assert await store.get(partition, target.id) == stored_before

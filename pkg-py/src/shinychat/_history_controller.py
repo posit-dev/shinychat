@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import copy
 import inspect
-import logging
 import warnings
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from typing import (
@@ -202,9 +201,7 @@ def _restore_step(step: str) -> Iterator[None]:
     except Exception as error:
         if getattr(error, _RESTORE_STEP_ATTR, None) is None:
             setattr(error, _RESTORE_STEP_ATTR, step)
-            _add_exception_note(
-                error, f"{_RESTORE_STEP_NOTE_PREFIX}{step}"
-            )
+            _add_exception_note(error, f"{_RESTORE_STEP_NOTE_PREFIX}{step}")
         raise
 
 
@@ -358,7 +355,7 @@ class HistoryController:
                 raise ValueError(
                     "Conversation record schema does not match the active history path."
                 )
-        return record
+        return record.model_copy(deep=True) if record is not None else None
 
     @asynccontextmanager
     async def _destructive_mutation(self, *, block_input: bool = False):
@@ -425,9 +422,7 @@ class HistoryController:
         ):
             return
         turns_flat = self.adapter.get_turns_json()
-        self._title_task = asyncio.create_task(
-            self.retitle(turns_flat, record)
-        )
+        self._title_task = asyncio.create_task(self.retitle(turns_flat, record))
         self._title_task.add_done_callback(title_task_done)
 
     async def retitle(
@@ -462,13 +457,11 @@ class HistoryController:
     def cancel_pending(self) -> None:
         """Cancel in-flight background work (e.g. titling) at teardown.
 
-        Synchronous destruction is cancellation-only: the recorder drops
-        its unscheduled stream tail (continuation and dirty/urgent marker)
-        without cancelling an already-started put.
+        This does not cancel the response task: it may still publish its
+        coherent terminal checkpoint after the original session disconnects.
         """
         if self._title_task is not None and not self._title_task.done():
             self._title_task.cancel()
-        self._exchange_recorder.discard_pending()
 
     async def notify_settled(self, restored: bool) -> None:
         """Fires the ``on_settled`` hook.
@@ -591,10 +584,7 @@ class HistoryController:
             cleanup_failures.append(error)
         else:
             history = getattr(self.chat, "history", None)
-            if (
-                history is not None
-                and not history._initial_history_initialized
-            ):
+            if history is not None and not history._initial_history_initialized:
                 history._initial_history_initialized = True
         try:
             await self._notify_restore_failure(
@@ -608,12 +598,51 @@ class HistoryController:
                 # failure; otherwise an outer boundary must still notify.
                 _mark_restore_failure_notified(failure)
 
+    @staticmethod
+    def _unresolved_record(record: ConversationRecordV2) -> bool:
+        # A terminal active leaf captures the entire prefix, even when a
+        # historical inputless ancestor or abandoned sibling is still pending.
+        # An empty pending root is a draft, not an accepted request.
+        leaf = record.active_leaf
+        if leaf is None:
+            return False
+        node = record.nodes.get(leaf)
+        if node is None:
+            return False  # Path validation reports the malformed pointer.
+        return node.status == "pending" and (
+            leaf != record.root_id
+            or node.input is not None
+            or bool(node.messages)
+        )
+
+    @staticmethod
+    def _coherent_leaf(record: ConversationRecordV2, leaf: str) -> str:
+        while record.nodes[leaf].status == "pending":
+            parent = record.nodes[leaf].parent_id
+            if parent is None:
+                return leaf
+            leaf = parent
+        return leaf
+
     def _prepare_exchange_restore(
         self,
         target: ConversationRecordV2,
-    ) -> tuple[tuple[str, ...], RestorePlan]:
+    ) -> tuple[tuple[str, ...], RestorePlan, bool]:
         recorder = self._exchange_recorder
 
+        source_isolated = self._unresolved_record(target)
+        if source_isolated:
+            assert target.active_leaf is not None
+            target.set_active_leaf(
+                self._coherent_leaf(target, target.active_leaf)
+            )
+            # Old display-only checkpoints must not become trusted history.
+            for node in target.nodes.values():
+                if node.status == "pending":
+                    node.messages.clear()
+                    if node.input is not None:
+                        node.state.clear()
+                    node.input = None
         node_ids = tuple(target.path_node_ids())
         if not node_ids or target.active_leaf is None:
             raise ValueError("Exchange-tree record has no active path.")
@@ -623,7 +652,7 @@ class HistoryController:
             recorder.restore_hooks,
             adapter=self.adapter,
         )
-        return node_ids, planned_state
+        return node_ids, planned_state, source_isolated
 
     async def _restore_exchange_record_locked(
         self,
@@ -632,6 +661,7 @@ class HistoryController:
         node_ids: tuple[str, ...],
         planned_state: RestorePlan,
         persist_active_pointer: bool = False,
+        source_isolated: bool = False,
     ) -> None:
         recorder = self._exchange_recorder
         unavailable_reason = _history_plan.turns_unavailable_reason(
@@ -643,12 +673,11 @@ class HistoryController:
                 await self._replay_exchange_display(target, node_ids)
             with _restore_step("applying the recorded state entries"):
                 await _history_plan.run_plan(planned_state)
-            if _history_plan.turns_unavailable(planned_state):
-                recorder.invalidate_turn_baseline()
-
             with _restore_step("installing the restored record"):
                 recorder.install_restored_record(
-                    target, read_only=unavailable_reason is not None
+                    target,
+                    read_only=unavailable_reason is not None or source_isolated,
+                    source_isolated=source_isolated,
                 )
                 await self._set_active_id(target.id)
                 recorder.mark_active_id_published(target)
@@ -709,7 +738,7 @@ class HistoryController:
         node_id: str | None = None,
     ) -> None:
         """Restore an initial target, recovering only preflight failures."""
-        selected = target
+        selected = target.model_copy(deep=True)
         persist_active_pointer = False
         try:
             with _restore_step("validating the saved conversation"):
@@ -717,9 +746,11 @@ class HistoryController:
                     selected = target.model_copy(deep=True)
                     selected.set_active_leaf(node_id)
                     persist_active_pointer = target.active_leaf != node_id
-                node_ids, planned_state = self._prepare_exchange_restore(
-                    selected
+                source_unresolved = self._unresolved_record(target)
+                node_ids, planned_state, source_isolated = (
+                    self._prepare_exchange_restore(selected)
                 )
+                source_isolated = source_isolated or source_unresolved
         except BaseException as error:
             await self._clear_failed_restore(error)
             raise
@@ -743,6 +774,7 @@ class HistoryController:
                 node_ids=node_ids,
                 planned_state=planned_state,
                 persist_active_pointer=persist_active_pointer,
+                source_isolated=source_isolated,
             )
 
     async def switch_to(self, conv_id: str) -> None:
@@ -772,11 +804,14 @@ class HistoryController:
                     raise RuntimeError(
                         f"Conversation {conv_id!r} no longer exists."
                     )
-                node_ids, planned_state = self._prepare_exchange_restore(target)
+                node_ids, planned_state, source_isolated = (
+                    self._prepare_exchange_restore(target)
+                )
                 await self._restore_exchange_record_locked(
                     target,
                     node_ids=node_ids,
                     planned_state=planned_state,
+                    source_isolated=source_isolated,
                 )
         if self.on_switch_restored is not None:
             try:
@@ -835,9 +870,7 @@ class HistoryController:
                 )
         elif kind == "regenerate":
             if target.status != "ok":
-                raise ValueError(
-                    "Only completed exchanges can be regenerated."
-                )
+                raise ValueError("Only completed exchanges can be regenerated.")
         elif kind != "edit":
             raise ValueError(f"Unknown exchange resubmit kind {kind!r}.")
         return target, target.parent_id
@@ -858,7 +891,10 @@ class HistoryController:
         if not isinstance(content, str):
             raise TypeError("Edited message content must be a string.")
         parsed = (
-            [Attachment.model_validate(attachment) for attachment in attachments]
+            [
+                Attachment.model_validate(attachment)
+                for attachment in attachments
+            ]
             if attachments is not None
             else []
         )
@@ -1000,7 +1036,9 @@ class HistoryController:
             current_leaf = record.active_leaf
             if current_leaf is None:
                 raise ValueError("Exchange-tree record has no active leaf.")
-            await recorder.capture_state_locked(current_leaf, "node_close")
+            await recorder.capture_state_locked(
+                current_leaf, "node_close", model_only=True
+            )
             # The source position's values resolve only after the
             # node-close capture of the exchange being left (a read-only
             # record's capture is suppressed, so its recorded values
@@ -1107,16 +1145,12 @@ class HistoryController:
             if await recorder.rename_active_locked(conv_id, title):
                 renamed = True
             else:
-                try:
-                    await recorder.drain_stream_put_locked()
-                except Exception as error:
-                    logging.getLogger(__name__).error(
-                        "Earlier background history write failed before rename of %r",
-                        conv_id,
-                        exc_info=error,
-                    )
                 record = await self._get_record(self.partition, conv_id)
                 if record is not None:
+                    if self._unresolved_record(record):
+                        raise RuntimeError(
+                            "Cannot rename an interrupted read-only conversation."
+                        )
                     record.title = title
                     record.title_source = "user"
                     await self.store.put(self.partition, record)
@@ -1129,16 +1163,15 @@ class HistoryController:
             raise RuntimeError("HistoryController not initialized")
         async with self._destructive_mutation():
             async with self._exchange_mutation():
-                # A failed restore may have reset the active record while
-                # its snapshot still runs. Drain the single writer before
-                # any deletion, not only deletion of the active record.
-                try:
-                    await self._exchange_recorder.drain_stream_put_locked()
-                except Exception as error:
-                    logging.getLogger(__name__).error(
-                        "Earlier background history write failed before deletion of %r",
-                        conv_id,
-                        exc_info=error,
+                recorder = self._exchange_recorder
+                source = await self._get_record(self.partition, conv_id)
+                if (
+                    recorder.source_isolated
+                    and recorder.record is not None
+                    and recorder.record.id == conv_id
+                ) or (source is not None and self._unresolved_record(source)):
+                    raise RuntimeError(
+                        "Cannot delete an interrupted read-only conversation."
                     )
                 exchange_record = self._exchange_recorder.record
                 if self.on_evict is not None:
@@ -1247,6 +1280,8 @@ class HistoryController:
 
         read_only = recorder.read_only
         leaf = record.subtree_leaf(target)
+        if recorder.source_isolated:
+            leaf = self._coherent_leaf(record, leaf)
         projection = record.model_copy(deep=True)
         projection.set_active_leaf(leaf)
         node_ids = tuple(projection.path_node_ids())
@@ -1355,6 +1390,11 @@ class HistoryController:
             # Emitted only for a read-only active record; absent clears
             # the client's flag, so older messages remain writable.
             action["active_read_only"] = True
+            action["active_read_only_reason"] = (
+                "interrupted"
+                if self._exchange_recorder.source_isolated
+                else "model_unavailable"
+            )
         await self.chat._send_action(action)
 
 

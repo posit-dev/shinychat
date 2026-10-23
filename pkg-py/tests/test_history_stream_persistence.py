@@ -1,20 +1,28 @@
-# Throttled stream persistence (sa1m): deterministic, event-gated tests
-# for the recorder's background snapshot writer.
+# Terminal-only stream persistence: deterministic behavioral tests for the
+# exchange recorder.
 #
-# The controlled store is genuinely asynchronous: its put latency is held
-# on an event until the test releases it, which is what proves chunk
-# delivery does not pace on storage. This is not a claim that the
-# production File store's IO is nonblocking.
+# Contract under test: stream chunks and stream start mutate only the
+# recorder's in-memory record. Durable writes happen at foreground boundaries
+# (accepted input, explicit save, flush, terminal stream finish, bookmark and
+# rename/delete mutations). Each write hands the store a detached deep copy,
+# and streamed content of a still-pending exchange is never durable.
 #
-# Gate timing uses a fake clock injected into the recorder module's
-# ``monotonic`` symbol (imported as ``from time import monotonic``), never
-# asyncio loop time, and never sleeps.
+# Every behavioral test runs against three store backends:
+#   - "memory": InMemoryConversationStore
+#   - "custom": a custom store that retains the object it is handed and
+#     returns that same object on read (an aliasing backend, so any missing
+#     detach shows up as a changed stored snapshot)
+#   - "file": FileConversationStore, read back through a fresh instance so
+#     the assertions see what reached disk, not an in-memory alias.
+#
+# Write observation is done by wrapping each store's ``put`` the same way for
+# all backends, so tests count hand-offs without depending on store internals.
 
 import asyncio
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
-import shinychat._history_recorder as recorder_module
 from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
 from shinychat._chat_types import StoredMessage, StoredSegment, StructuredBlock
 from shinychat._history_store import (
@@ -23,11 +31,12 @@ from shinychat._history_store import (
     InMemoryConversationStore,
 )
 from shinychat._history_types import (
+    TURNS_STATE_KEY,
+    VALUES_STATE_KEY,
     ConversationRecordV2,
     new_conversation_record_v2,
 )
 from test_history_controller import (
-    _drain_stream_writes,
     _FakeChat,
     _make_controller,
     _stored_message,
@@ -35,80 +44,88 @@ from test_history_controller import (
 )
 
 
-class _FakeClock:
-    def __init__(self, start: float = 100.0) -> None:
-        self.now = start
+class _AliasingStore(InMemoryConversationStore):
+    """A custom backend that keeps the exact object it is handed.
 
-    def __call__(self) -> float:
-        return self.now
+    No copy on put and no copy on get: a persist that forgot to detach would
+    leave the stored object aliased to the live working record.
+    """
 
-    def advance(self, seconds: float) -> None:
-        self.now += seconds
-
-
-@pytest.fixture
-def clock(monkeypatch: pytest.MonkeyPatch) -> _FakeClock:
-    fake = _FakeClock()
-    monkeypatch.setattr(recorder_module, "monotonic", fake)
-    return fake
+    async def put(self, partition: ConversationPartition, record: Any) -> None:
+        self._data.setdefault(partition, {})[record.id] = record
+        self._meta_cache.pop(partition, None)
 
 
-class _GatedStore(InMemoryConversationStore):
-    """An async store whose put latency is test-controlled by events.
+class _PutControl:
+    """Test handle on every ``put`` a backend receives.
 
-    ``blocked`` holds every put on ``release``; ``puts`` records the
-    order/identity of every record handed to the store (foreground and
-    background alike); ``events`` orders puts against deletes for the
-    resurrection checks.
+    ``received`` holds each object handed to the store with its model dump at
+    hand-off time, so a later mutation of a retained object is detectable.
+    ``hold`` blocks the next puts until released; ``failures`` raises queued
+    errors in order before the write reaches the backend.
     """
 
     def __init__(self) -> None:
-        super().__init__()
-        self.blocked = False
-        self.release = asyncio.Event()
-        self.put_entered = asyncio.Event()
-        self.puts: list[Any] = []
-        self.events: list[str] = []
-        self.concurrent = 0
-        self.max_concurrent = 0
-        self.fail_next: list[BaseException] = []
+        self.hold: asyncio.Event | None = None
+        self.entered = asyncio.Event()
+        self.failures: list[BaseException] = []
+        self.received: list[tuple[Any, Any]] = []
 
-    async def put(self, partition: ConversationPartition, record: Any) -> None:
-        self.concurrent += 1
-        self.max_concurrent = max(self.max_concurrent, self.concurrent)
-        self.put_entered.set()
-        try:
-            if self.blocked:
-                await self.release.wait()
-            if self.fail_next:
-                raise self.fail_next.pop(0)
-            await super().put(partition, record)
-            self.puts.append(record)
-            self.events.append(f"put:{record.id}")
-        finally:
-            self.concurrent -= 1
 
-    async def get(
-        self, partition: ConversationPartition, conv_id: str
-    ) -> ConversationRecordV2 | None:
-        # Model a detached backend read, not a mutable alias that lets a
-        # failed read-modify-write change persisted data without a put.
-        record = await super().get(partition, conv_id)
-        if record is None:
-            return None
-        assert isinstance(record, ConversationRecordV2)
-        return record.model_copy(deep=True)
+def _instrument_puts(
+    store: Any, monkeypatch: pytest.MonkeyPatch
+) -> _PutControl:
+    control = _PutControl()
+    original = store.put
 
-    async def delete(
-        self, partition: ConversationPartition, conv_id: str
-    ) -> None:
-        await super().delete(partition, conv_id)
-        self.events.append(f"delete:{conv_id}")
+    async def put(partition: ConversationPartition, record: Any) -> None:
+        control.received.append((record, record.model_dump()))
+        control.entered.set()
+        if control.hold is not None:
+            await control.hold.wait()
+        if control.failures:
+            raise control.failures.pop(0)
+        await original(partition, record)
 
-    def stored(self, conv_id: str) -> ConversationRecordV2:
-        record = self._data[part()][conv_id]
-        assert isinstance(record, ConversationRecordV2)
-        return record
+    monkeypatch.setattr(store, "put", put)
+    return control
+
+
+class _Backend:
+    def __init__(
+        self, kind: str, store: Any, reader: Any, control: _PutControl
+    ):
+        self.kind = kind
+        self.store = store
+        # The store to read saved state back from: the same instance for
+        # in-process backends, a fresh disk-backed instance for "file".
+        self.reader = reader
+        self.control = control
+
+
+@pytest.fixture(params=["memory", "custom", "file"])
+def backend(
+    request: pytest.FixtureRequest,
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> _Backend:
+    kind = request.param
+    if kind == "memory":
+        store: Any = InMemoryConversationStore()
+        reader: Any = store
+    elif kind == "custom":
+        store = _AliasingStore()
+        reader = store
+    else:
+        store = FileConversationStore(tmp_path)
+        reader = FileConversationStore(tmp_path)
+    return _Backend(kind, store, reader, _instrument_puts(store, monkeypatch))
+
+
+def _live(recorder: Any) -> ConversationRecordV2:
+    """The active working record, asserting it exists for type checking."""
+    assert recorder.record is not None
+    return recorder.record
 
 
 def _wire(controller: Any) -> ChatTranscript:
@@ -124,6 +141,10 @@ def _wire(controller: Any) -> ChatTranscript:
 
 async def _sent() -> bool:
     return True
+
+
+def _text(content: str) -> StoredSegment:
+    return StoredSegment(content=content, content_type="markdown")
 
 
 def _tool_request(request_id: str = "r1") -> StructuredBlock:
@@ -149,8 +170,13 @@ def _assistant_message(*segments: Any) -> StoredMessage:
     return StoredMessage(role="assistant", segments=list(segments))
 
 
-def _text(content: str) -> StoredSegment:
-    return StoredSegment(content=content, content_type="markdown")
+async def _open_input(controller: Any) -> tuple[ChatTranscript, str]:
+    """Accepted input only (a foreground boundary), no stream started."""
+    transcript = _wire(controller)
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "question")
+    )
+    return transcript, exchange_id
 
 
 async def _start_stream(transcript: ChatTranscript, exchange_id: str) -> None:
@@ -173,20 +199,36 @@ async def _chunk(transcript: ChatTranscript, message: StoredMessage) -> None:
     )
 
 
-async def _open_stream(
-    controller: Any, store: _GatedStore
-) -> tuple[ChatTranscript, str]:
-    """Input + stream start (both foreground), returning the exchange id."""
-    transcript = _wire(controller)
-    exchange_id = await transcript.record_accepted_input_and_notify(
-        _stored_message("user", "question")
+async def _end_stream(transcript: ChatTranscript, status: Any = None) -> None:
+    await transcript.end_stream(
+        stream_id="stream", status=status, error=None, send=_sent
     )
+
+
+async def _open_stream(controller: Any) -> tuple[ChatTranscript, str]:
+    """Accepted input plus stream start, returning the exchange id."""
+    transcript, exchange_id = await _open_input(controller)
     await _start_stream(transcript, exchange_id)
     return transcript, exchange_id
 
 
-def _stored_contents(store: _GatedStore, conv_id: str) -> list[str]:
-    record = store.stored(conv_id)
+async def _settle() -> None:
+    """Yield to the loop so any work scheduled by a call can run.
+
+    Terminal-only persistence schedules nothing, so after this yield the
+    store must still show no new hand-off.
+    """
+    for _ in range(3):
+        await asyncio.sleep(0)
+
+
+async def _saved(backend: _Backend, conv_id: str) -> ConversationRecordV2:
+    record = await backend.reader.get(part(), conv_id)
+    assert isinstance(record, ConversationRecordV2)
+    return record
+
+
+def _contents(record: ConversationRecordV2) -> list[str]:
     return [
         message.as_stored_message().content
         for node in record.nodes.values()
@@ -194,538 +236,409 @@ def _stored_contents(store: _GatedStore, conv_id: str) -> list[str]:
     ]
 
 
-@pytest.mark.anyio
-async def test_chunks_do_not_pace_on_slow_async_store(
-    clock: _FakeClock,
-) -> None:
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    clock.advance(1.0)
-    conv_id = recorder.record.id  # type: ignore[union-attr]
-    foreground_puts = len(store.puts)
-
-    store.blocked = True
-    store.put_entered.clear()
-    # The first chunk schedules the single background snapshot and returns
-    # without waiting for storage.
-    await asyncio.wait_for(
-        _chunk(transcript, _assistant_message(_text("one"))), 1
-    )
-    await asyncio.wait_for(store.put_entered.wait(), 1)
-    # Later chunks return promptly even though the put is still in flight.
-    await asyncio.wait_for(
-        _chunk(transcript, _assistant_message(_text(" two"))), 1
-    )
-    await asyncio.wait_for(
-        _chunk(transcript, _assistant_message(_text(" three"))), 1
-    )
-    assert store.concurrent == 1
-    assert store.max_concurrent == 1
-    # No write has completed since the stream opened: the in-flight put is
-    # the only background write.
-    assert len(store.puts) == foreground_puts
-
-    # Releasing the in-flight write lets the bounded continuation deliver
-    # the latest tail once the gate has elapsed (latest-wins: the
-    # intermediate "one two" snapshot is never written).
-    clock.advance(1.1)
-    store.release.set()
-    await _drain_stream_writes(recorder)
-    assert store.max_concurrent == 1
-    assert _stored_contents(store, conv_id) == ["one two three"]
-
-
-@pytest.mark.anyio
-async def test_background_snapshot_is_a_detached_deep_copy(
-    clock: _FakeClock,
-) -> None:
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    clock.advance(1.0)
-    record = recorder.record
-    assert record is not None
-
-    store.blocked = True
-    store.put_entered.clear()
-    await _chunk(transcript, _assistant_message(_text("partial")))
-    await asyncio.wait_for(store.put_entered.wait(), 1)
-    snapshot_put = recorder._put_task
-    assert snapshot_put is not None
-
-    # Mutate the live record while the write is in flight: the snapshot
-    # handed to the store must not follow.
-    clock.advance(1.1)
-    store.release.set()
-    await snapshot_put
-    first = store.puts[-1]
-    assert first is not record
-    assert [
-        message.as_stored_message().content
-        for node in first.nodes.values()
-        for message in node.messages
-    ] == ["partial"]
-
-    await _chunk(transcript, _assistant_message(_text(" later")))
-    await _drain_stream_writes(recorder)
-    assert _stored_contents(store, record.id) == ["partial later"]
-    # The first snapshot object stays frozen at its own content.
-    assert [
-        message.as_stored_message().content
-        for node in first.nodes.values()
-        for message in node.messages
-    ] == ["partial"]
-
-
-@pytest.mark.anyio
-async def test_ordinary_chunks_gate_one_per_second_without_timer(
-    clock: _FakeClock,
-) -> None:
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    conv_id = recorder.record.id  # type: ignore[union-attr]
-    foreground_puts = len(store.puts)
-
-    # Stream start is a foreground write, so an immediate text chunk
-    # stays pending rather than causing another write inside the gate.
-    await _chunk(transcript, _assistant_message(_text("one")))
-    assert len(store.puts) == foreground_puts
-    assert recorder._put_task is None
-
-    clock.advance(1.0)
-    await _chunk(transcript, _assistant_message(_text(" two")))
-    await _drain_stream_writes(recorder)
-    assert len(store.puts) == foreground_puts + 1
-
-    # A later chunk inside the gate remains unsaved; no timer starts a put.
-    await _chunk(transcript, _assistant_message(_text(" three")))
-    assert recorder._pending is recorder_module._StreamPending.DIRTY
-    assert recorder._put_task is None
-    for _ in range(3):
-        await asyncio.sleep(0)
-    continuation = recorder._continuation_task
-    if continuation is not None:
-        await continuation
-    assert recorder._put_task is None
-    assert len(store.puts) == foreground_puts + 1
-    assert _stored_contents(store, conv_id) == ["one two"]
-
-    # After the interval the next chunk's snapshot is eligible and
-    # latest-wins: one write carries both pending chunks.
-    clock.advance(1.0)
-    await _chunk(transcript, _assistant_message(_text(" four")))
-    await _drain_stream_writes(recorder)
-    assert len(store.puts) == foreground_puts + 2
-    assert _stored_contents(store, conv_id) == ["one two three four"]
-
-
-@pytest.mark.anyio
-async def test_tool_request_and_result_chunks_bypass_gate(
-    clock: _FakeClock,
-) -> None:
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, exchange_id = await _open_stream(controller, store)
-
-    await _chunk(transcript, _assistant_message(_text("one")))
-    await _drain_stream_writes(recorder)
-    puts_before = len(store.puts)
-
-    # A new tool request inside the gate writes immediately.
-    await _chunk(transcript, _assistant_message(_tool_request()))
-    await _drain_stream_writes(recorder)
-    assert len(store.puts) == puts_before + 1
-    stored = store.stored(recorder.record.id)  # type: ignore[union-attr]
-    blocks = [
-        segment
-        for segment in stored.nodes[exchange_id].messages[-1].segments
+def _block_types(record: ConversationRecordV2, node_id: str) -> list[str]:
+    return [
+        segment["type"]
+        for message in record.nodes[node_id].messages
+        for segment in message.segments
         if isinstance(segment, dict)
     ]
-    assert [block["type"] for block in blocks] == ["tool_request"]
 
-    # A matching tool result inside the gate also writes immediately.
-    await _chunk(transcript, _assistant_message(_tool_result()))
-    await _drain_stream_writes(recorder)
-    assert len(store.puts) == puts_before + 2
-    stored = store.stored(recorder.record.id)  # type: ignore[union-attr]
-    blocks = [
-        segment
-        for segment in stored.nodes[exchange_id].messages[-1].segments
-        if isinstance(segment, dict)
-    ]
-    assert [block["type"] for block in blocks] == [
-        "tool_request",
-        "tool_result",
-    ]
 
-    # Trailing text after the unchanged tool blocks is ordinary: no write
-    # inside the gate.
-    await _chunk(transcript, _assistant_message(_text(" done")))
-    assert recorder._pending is recorder_module._StreamPending.DIRTY
-    assert recorder._put_task is None
-    assert len(store.puts) == puts_before + 2
+async def _completed(backend: _Backend) -> tuple[Any, Any, str]:
+    """A saved conversation whose one exchange finished with ``answer``."""
+    controller, _ = _make_controller(store=backend.store)
+    recorder = controller._exchange_recorder
+    transcript, _ = await _open_stream(controller)
+    await _chunk(transcript, _assistant_message(_text("answer")))
+    await _end_stream(transcript)
+    assert recorder.record is not None
+    return controller, recorder, _live(recorder).id
 
 
 @pytest.mark.anyio
-async def test_tool_change_queued_inflight_stays_urgent_until_snapshot(
-    clock: _FakeClock,
+async def test_stream_start_and_chunks_do_not_write_before_terminal(
+    backend: _Backend,
 ) -> None:
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
+    controller, _ = _make_controller(store=backend.store)
     recorder = controller._exchange_recorder
-    transcript, exchange_id = await _open_stream(controller, store)
-    clock.advance(1.0)
+    transcript, exchange_id = await _open_input(controller)
+    assert recorder.record is not None
+    conv_id = _live(recorder).id
+    written_before_stream = len(backend.control.received)
 
-    puts_before = len(store.puts)
-
-    # A tool block arriving while a write is in flight queues urgent work;
-    # the follow-up after completion bypasses the gate even though the
-    # interval has not elapsed.
-    store.blocked = True
-    store.put_entered.clear()
-    await _chunk(transcript, _assistant_message(_text("one")))
-    await asyncio.wait_for(store.put_entered.wait(), 1)
-    # An ordinary text chunk while the write is in flight is dirty...
-    await _chunk(transcript, _assistant_message(_text(" two")))
-    assert recorder._pending is recorder_module._StreamPending.DIRTY
-    # ...and a new tool block escalates the same tail to urgent.
-    await _chunk(transcript, _assistant_message(_tool_request()))
-    assert recorder._pending is recorder_module._StreamPending.URGENT
-
-    store.release.set()
-    await _drain_stream_writes(recorder)
-    # No clock advance since the in-flight put started, yet the urgent
-    # tail was written.
-    assert len(store.puts) == puts_before + 2
-    stored = store.stored(recorder.record.id)  # type: ignore[union-attr]
-    blocks = [
-        segment
-        for segment in stored.nodes[exchange_id].messages[-1].segments
-        if isinstance(segment, dict)
-    ]
-    assert [block["type"] for block in blocks] == ["tool_request"]
-
-
-@pytest.mark.anyio
-async def test_unchanged_tool_projection_does_not_retrigger_urgency(
-    clock: _FakeClock,
-) -> None:
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-
-    # Start with a tool block, persisted urgently.
-    await _chunk(transcript, _assistant_message(_tool_request()))
-    await _drain_stream_writes(recorder)
-    puts_before = len(store.puts)
-
-    # Streaming more text with the same tool projection stays ordinary.
-    await _chunk(transcript, _assistant_message(_text("thinking")))
-    assert recorder._pending is recorder_module._StreamPending.DIRTY
-    assert recorder._put_task is None
-    assert len(store.puts) == puts_before
-
-
-@pytest.mark.anyio
-async def test_boundary_drains_inflight_put_without_deadlock(
-    clock: _FakeClock,
-) -> None:
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    clock.advance(1.0)
-    conv_id = recorder.record.id  # type: ignore[union-attr]
-
-    store.blocked = True
-    store.put_entered.clear()
-    await _chunk(transcript, _assistant_message(_text("one")))
-    await asyncio.wait_for(store.put_entered.wait(), 1)
-
-    # Newer captured content must survive the foreground boundary as well
-    # as the original detached background snapshot.
-    await _chunk(transcript, _assistant_message(_text(" two")))
-    # A boundary save waits for the in-flight background write (the put
-    # never needs the recorder lock, so this cannot deadlock), then saves.
-    boundary = asyncio.create_task(recorder.save_current())
-    await asyncio.sleep(0)
-    assert not boundary.done()
-    assert store.concurrent == 1
-    store.release.set()
-    assert await asyncio.wait_for(boundary, 1)
-    assert store.max_concurrent == 1
-    assert _stored_contents(store, conv_id) == ["one two"]
-
-
-@pytest.mark.anyio
-async def test_boundary_cancellation_retains_running_writer(
-    clock: _FakeClock,
-) -> None:
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    clock.advance(1.0)
-    conv_id = recorder.record.id  # type: ignore[union-attr]
-
-    store.blocked = True
-    store.put_entered.clear()
-    await _chunk(transcript, _assistant_message(_text("one")))
-    await asyncio.wait_for(store.put_entered.wait(), 1)
-    put = recorder._put_task
-    assert put is not None
-
-    # Cancelling the draining boundary propagates but must not cancel or
-    # disown the independently running write.
-    boundary = asyncio.create_task(recorder.save_current())
-    await asyncio.sleep(0)
-    boundary.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await boundary
-    assert not put.cancelled()
-    assert recorder._put_task is put
-
-    store.release.set()
-    await put
-    assert _stored_contents(store, conv_id) == ["one"]
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize("boundary_kind", ["input", "finish"])
-async def test_cancelled_drain_preserves_boundary_mutations_for_file_flush(
-    clock: _FakeClock,
-    tmp_path: Any,
-    monkeypatch: pytest.MonkeyPatch,
-    boundary_kind: str,
-) -> None:
-    store = FileConversationStore(tmp_path)
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript = _wire(controller)
-    exchange_id = await transcript.record_accepted_input_and_notify(
-        _stored_message("user", "question")
-    )
     await _start_stream(transcript, exchange_id)
-    record = recorder.record
-    assert record is not None
-    clock.advance(1.0)
-    entered = asyncio.Event()
-    release = asyncio.Event()
-    original_put = store.put
+    await _chunk(transcript, _assistant_message(_text("one")))
+    await _chunk(transcript, _assistant_message(_tool_request()))
+    await _chunk(transcript, _assistant_message(_tool_result()))
+    await _chunk(transcript, _assistant_message(_text(" done")))
+    await _settle()
 
-    async def held_put(partition: Any, snapshot: Any) -> None:
-        entered.set()
-        await release.wait()
-        await original_put(partition, snapshot)
+    # Neither stream start nor any chunk (tool blocks included) hands the
+    # store anything; the content lives only in the working record.
+    assert len(backend.control.received) == written_before_stream
+    assert _contents(_live(recorder)) == ["one done"]
 
-    monkeypatch.setattr(store, "put", held_put)
+    await _end_stream(transcript)
+    assert len(backend.control.received) == written_before_stream + 1
+    saved = await _saved(backend, conv_id)
+    assert _contents(saved) == ["one done"]
+    assert _block_types(saved, exchange_id) == ["tool_request", "tool_result"]
+    assert saved.nodes[exchange_id].status == "ok"
+
+
+@pytest.mark.anyio
+async def test_terminal_snapshot_is_detached_from_live_record(
+    backend: _Backend,
+) -> None:
+    controller, _ = _make_controller(store=backend.store)
+    recorder = controller._exchange_recorder
+    transcript, _ = await _open_stream(controller)
+    assert recorder.record is not None
+    conv_id = _live(recorder).id
     await _chunk(transcript, _assistant_message(_text("partial")))
-    put = recorder._put_task
-    assert put is not None
-    try:
-        await asyncio.wait_for(entered.wait(), 1)
-        if boundary_kind == "input":
-            operation = transcript.record_accepted_input_and_notify(
-                _stored_message("user", "second input")
-            )
-        else:
-            operation = transcript.end_stream(
-                stream_id="stream", status=None, error=None, send=_sent
-            )
-        boundary = asyncio.create_task(operation)
-        await asyncio.sleep(0)
-        if boundary_kind == "input":
-            assert [
-                node.input.content
-                for node in record.nodes.values()
-                if node.input is not None
-            ] == ["question", "second input"]
-        else:
-            assert record.nodes[exchange_id].status == "ok"
-        boundary.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await boundary
-        assert recorder._put_task is put
-        assert not put.cancelled()
-    finally:
-        release.set()
-        await asyncio.wait_for(asyncio.shield(put), 1)
+    title = _live(recorder).title
+
+    await _end_stream(transcript)
+    snapshot, frozen = backend.control.received[-1]
+    assert snapshot is not recorder.record
+
+    # A later edit to the live record must not move the object already
+    # handed to the store, nor what the store holds.
+    _live(recorder).title = "Edited after terminal"
+    assert snapshot.model_dump() == frozen
+    assert (await _saved(backend, conv_id)).title == title
+
+
+@pytest.mark.anyio
+async def test_later_chunks_leave_earlier_terminal_snapshot_unchanged(
+    backend: _Backend,
+) -> None:
+    controller, _ = _make_controller(store=backend.store)
+    recorder = controller._exchange_recorder
+    transcript, _ = await _open_stream(controller)
+    assert recorder.record is not None
+    conv_id = _live(recorder).id
+    await _chunk(transcript, _assistant_message(_text("one")))
+    await _end_stream(transcript)
+    first, first_frozen = backend.control.received[-1]
+
+    second_exchange = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "second")
+    )
+    await _start_stream(transcript, second_exchange)
+    written = len(backend.control.received)
+    await _chunk(transcript, _assistant_message(_text(" two")))
+    await _settle()
+
+    # The second stream's chunks neither write nor disturb the first snapshot.
+    assert len(backend.control.received) == written
+    assert first.model_dump() == first_frozen
+    assert _contents(await _saved(backend, conv_id)) == ["one"]
+
+    await _end_stream(transcript)
+    assert len(backend.control.received) == written + 1
+    assert first.model_dump() == first_frozen
+    assert _contents(await _saved(backend, conv_id)) == ["one", " two"]
+
+
+@pytest.mark.anyio
+async def test_accepted_input_persists_exchange_metadata_without_streamed_content(
+    backend: _Backend,
+) -> None:
+    controller, _ = _make_controller(store=backend.store)
+    recorder = controller._exchange_recorder
+    transcript, exchange_id = await _open_input(controller)
+    assert recorder.record is not None
+    conv_id = _live(recorder).id
+
+    saved = await _saved(backend, conv_id)
+    saved_input = saved.nodes[exchange_id].input
+    assert saved_input is not None
+    assert saved_input.content == "question"
+    assert saved.nodes[exchange_id].status == "pending"
+
+    await _start_stream(transcript, exchange_id)
+    await _chunk(transcript, _assistant_message(_text("partial")))
+    assert _contents(_live(recorder)) == ["partial"]
+    assert _contents(await _saved(backend, conv_id)) == []
+
+
+@pytest.mark.anyio
+async def test_flush_mid_stream_ignores_pending_exchange(
+    backend: _Backend,
+) -> None:
+    controller, _ = _make_controller(store=backend.store)
+    recorder = controller._exchange_recorder
+    transcript, exchange_id = await _open_stream(controller)
+    assert recorder.record is not None
+    conv_id = _live(recorder).id
+    await _chunk(transcript, _assistant_message(_text("partial")))
+
+    await recorder.flush_pending()
+
+    # The leaf is pending, so no model capture runs and the streamed text is
+    # not made durable: the persisted exchange stays a pending shell.
+    saved = await _saved(backend, conv_id)
+    assert saved.nodes[exchange_id].status == "pending"
+    assert saved.nodes[exchange_id].messages == []
+    assert TURNS_STATE_KEY not in saved.nodes[exchange_id].state
+    assert _contents(_live(recorder)) == ["partial"]
+
+
+@pytest.mark.anyio
+async def test_flush_at_completed_position_captures_model_only_without_app_callbacks(
+    backend: _Backend,
+) -> None:
+    save_calls: list[dict[str, Any]] = []
+    controller, _ = _make_controller(
+        store=backend.store, save_callbacks=[save_calls.append]
+    )
+    recorder = controller._exchange_recorder
+    chat = controller.chat
+    assert isinstance(chat, _FakeChat)
+    transcript, _ = await _open_stream(controller)
+    assert recorder.record is not None
+    conv_id = _live(recorder).id
+    await _chunk(transcript, _assistant_message(_text("answer")))
+    await _end_stream(transcript)
+    save_calls.clear()
+    chat.actions.clear()
 
     assert await recorder.flush_pending()
-    # A separate store verifies the record actually saved on disk, not an
-    # aliased in-memory copy of the boundary-mutated live record.
-    stored = await FileConversationStore(tmp_path).get(part(), record.id)
-    assert isinstance(stored, ConversationRecordV2)
-    assert [
-        message.as_stored_message().content
-        for message in stored.nodes[exchange_id].messages
-    ] == ["partial"]
-    if boundary_kind == "input":
-        assert [
-            node.input.content
-            for node in stored.nodes.values()
-            if node.input is not None
-        ] == ["question", "second input"]
-    else:
-        assert stored.nodes[exchange_id].status == "ok"
+
+    # Model-only capture at a coherent completed exchange: the app-state
+    # callbacks do not run and no client messages are sent.
+    assert save_calls == []
+    assert chat.actions == []
+    assert _contents(await _saved(backend, conv_id)) == ["answer"]
 
 
 @pytest.mark.anyio
-async def test_background_failure_logged_once_after_boundary_repair(
-    clock: _FakeClock,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
+async def test_flush_without_record_writes_nothing(backend: _Backend) -> None:
+    controller, _ = _make_controller(store=backend.store)
     recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    clock.advance(1.0)
-    conv_id = recorder.record.id  # type: ignore[union-attr]
 
-    await _chunk(transcript, _assistant_message(_text("one")))
-    await _drain_stream_writes(recorder)
-    puts_before = len(store.puts)
+    assert not await recorder.flush_pending()
+    assert backend.control.received == []
 
-    # The next background snapshot fails; further background writes halt
-    # until a boundary drains the carrier.
-    store.fail_next.append(RuntimeError("disk full"))
-    clock.advance(1.1)
-    await _chunk(transcript, _assistant_message(_text(" two")))
-    put = recorder._put_task
-    assert put is not None
+
+@pytest.mark.anyio
+async def test_flush_on_read_only_record_writes_nothing(
+    backend: _Backend,
+) -> None:
+    controller, _ = _make_controller(store=backend.store)
+    recorder = controller._exchange_recorder
+    record = new_conversation_record_v2(
+        title="Saved", id="c_read_only", client_info={}
+    )
+    await backend.store.put(part(), record)
+    recorder.install_restored_record(record, read_only=True)
+    written = len(backend.control.received)
+
+    assert not await recorder.flush_pending()
+    assert len(backend.control.received) == written
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("entry", ["save", "flush"])
+async def test_failed_foreground_save_reports_error_and_retry_persists(
+    backend: _Backend,
+    entry: str,
+) -> None:
+    _, recorder, conv_id = await _completed(backend)
+    title_before = _live(recorder).title
+    _live(recorder).title = "Edited"
+    backend.control.failures.append(RuntimeError("disk full"))
+    save = recorder.save_current if entry == "save" else recorder.flush_pending
+
     with pytest.raises(RuntimeError, match="disk full"):
-        await put
-    assert recorder._put_task is put  # retained as the error carrier
+        await save()
+    # The failed write left the previously saved state in place.
+    assert (await _saved(backend, conv_id)).title == title_before
 
-    # Chunks still arrive and stay unsaved, with no new background write.
-    await _chunk(transcript, _assistant_message(_text(" three")))
-    assert recorder._put_task is put
-    assert len(store.puts) == puts_before
-
-    assert await recorder.save_current()
-    # The latest state is durable and the recovered failure is reported
-    # once, without making a successful operation look like a failed commit.
-    assert _stored_contents(store, conv_id) == ["one two three"]
-    assert not await recorder.flush_pending()
-    assert await recorder.save_current()
-    assert len(caplog.records) == 1
-    assert caplog.records[0].exc_info is not None
-    assert str(caplog.records[0].exc_info[1]) == "disk full"
-    assert _stored_contents(store, conv_id) == ["one two three"]
+    assert await save()
+    saved = await _saved(backend, conv_id)
+    assert saved.title == "Edited"
+    assert _contents(saved) == ["answer"]
 
 
 @pytest.mark.anyio
-async def test_boundary_failure_before_completion_callback_retains_tail(
-    clock: _FakeClock,
+async def test_cancelled_foreground_save_releases_lock_and_retry_persists(
+    backend: _Backend,
 ) -> None:
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    conv_id = recorder.record.id  # type: ignore[union-attr]
-    clock.advance(1.0)
-    store.fail_next.append(RuntimeError("transient background"))
-    await _chunk(transcript, _assistant_message(_text("one")))
+    _, recorder, conv_id = await _completed(backend)
+    title_before = _live(recorder).title
+    _live(recorder).title = "Edited"
+    backend.control.hold = asyncio.Event()
+    backend.control.entered.clear()
 
-    # Both tasks are ready: the put fails, then this boundary observes it
-    # before the put's completion callback runs. Error delivery must not
-    # rely on that callback to mark the failed snapshot unsaved.
-    boundary = asyncio.create_task(recorder.save_current())
-    assert await boundary
+    save = asyncio.create_task(recorder.save_current())
+    await asyncio.wait_for(backend.control.entered.wait(), 1)
+    save.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await save
 
-    assert _stored_contents(store, conv_id) == ["one"]
-    assert not await recorder.flush_pending()
+    # The cancelled write never reached the backend, and the record stays
+    # live for the next boundary.
+    assert recorder.record is not None
+    assert (await _saved(backend, conv_id)).title == title_before
+    backend.control.hold = None
+    assert await asyncio.wait_for(recorder.save_current(), 1)
+    assert (await _saved(backend, conv_id)).title == "Edited"
 
 
 @pytest.mark.anyio
-async def test_terminal_boundary_repairs_file_before_reporting_background_error(
-    clock: _FakeClock,
-    tmp_path: Any,
+async def test_failed_restore_reset_discards_unsaved_stream_tail(
+    backend: _Backend,
     monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    store = FileConversationStore(tmp_path)
+    controller, _ = _make_controller(store=backend.store)
+    recorder = controller._exchange_recorder
+    transcript, _ = await _open_stream(controller)
+    assert recorder.record is not None
+    conv_id = _live(recorder).id
+    await _chunk(transcript, _assistant_message(_text("partial")))
+    monkeypatch.setattr(controller, "_notify_restore_failure", AsyncMock())
+
+    with pytest.warns(UserWarning, match="restore failed"):
+        await controller._clear_failed_restore(RuntimeError("restore failed"))
+    assert recorder.record is None
+
+    written = len(backend.control.received)
+    await _end_stream(transcript)
+    await _settle()
+    assert len(backend.control.received) == written
+    assert _contents(await _saved(backend, conv_id)) == []
+
+
+@pytest.mark.anyio
+async def test_delete_of_unfinished_conversation_is_refused_and_stream_still_persists(
+    backend: _Backend,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller, _ = _make_controller(store=backend.store)
+    recorder = controller._exchange_recorder
+    transcript, _ = await _open_stream(controller)
+    active = recorder.record
+    assert active is not None
+    conv_id = active.id
+    await _chunk(transcript, _assistant_message(_text("partial")))
+    evict = AsyncMock()
+    monkeypatch.setattr(controller, "on_evict", evict)
+
+    # A stored record with an unfinished exchange is refused by delete: the
+    # refusal happens before eviction or removal, so the record and the
+    # live stream are untouched.
+    with pytest.raises(RuntimeError, match="Cannot delete an interrupted"):
+        await controller.delete(conv_id)
+    evict.assert_not_awaited()
+    assert await backend.reader.get(part(), conv_id) is not None
+    assert recorder.record is active
+
+    await _end_stream(transcript)
+    assert _contents(await _saved(backend, conv_id)) == ["partial"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("operation", ["delete", "rename"])
+@pytest.mark.parametrize("current_failure", [False, True])
+async def test_unrelated_mutation_uses_its_own_outcome_and_leaves_stream_intact(
+    backend: _Backend,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    current_failure: bool,
+) -> None:
+    controller, _ = _make_controller(store=backend.store)
+    recorder = controller._exchange_recorder
+    transcript, _ = await _open_stream(controller)
+    active = recorder.record
+    assert active is not None
+    other = new_conversation_record_v2(
+        id="c_other", title="Other", client_info={}
+    )
+    await backend.store.put(part(), other)
+    await _chunk(transcript, _assistant_message(_text("partial")))
+
+    current_error = RuntimeError("requested operation failed")
+    if current_failure:
+        if operation == "delete":
+            monkeypatch.setattr(
+                backend.store, "delete", AsyncMock(side_effect=current_error)
+            )
+        else:
+            backend.control.failures.append(current_error)
+    action = (
+        controller.delete(other.id)
+        if operation == "delete"
+        else controller.rename(other.id, "Renamed")
+    )
+    if current_failure:
+        with pytest.raises(RuntimeError) as caught:
+            await action
+        assert caught.value is current_error
+    else:
+        await action
+
+    stored_other = await backend.reader.get(part(), other.id)
+    if not current_failure and operation == "delete":
+        assert stored_other is None
+    else:
+        assert isinstance(stored_other, ConversationRecordV2)
+        assert stored_other.title == ("Other" if current_failure else "Renamed")
+    assert recorder.record is active
+
+    await _end_stream(transcript)
+    assert _contents(await _saved(backend, active.id)) == ["partial"]
+
+
+@pytest.mark.anyio
+async def test_terminal_persists_latest_app_values_and_status(
+    backend: _Backend,
+) -> None:
     app_values = {"region": "all"}
     controller, _ = _make_controller(
-        store=store,
+        store=backend.store,
         save_callbacks=[lambda values: values.update(app_values)],
     )
     recorder = controller._exchange_recorder
-    transcript = _wire(controller)
-    exchange_id = await transcript.record_accepted_input_and_notify(
-        _stored_message("user", "question")
-    )
-    await _start_stream(transcript, exchange_id)
-    record = recorder.record
-    assert record is not None
-    original_put = store.put
-    background_error = RuntimeError("transient background")
-    fail_next = True
-
-    async def fail_once(partition: Any, snapshot: Any) -> None:
-        nonlocal fail_next
-        if fail_next:
-            fail_next = False
-            raise background_error
-        await original_put(partition, snapshot)
-
-    monkeypatch.setattr(store, "put", fail_once)
-    clock.advance(1.0)
+    transcript, exchange_id = await _open_stream(controller)
+    assert recorder.record is not None
+    conv_id = _live(recorder).id
     await _chunk(transcript, _assistant_message(_text("answer")))
-    put = recorder._put_task
-    assert put is not None
-    with pytest.raises(RuntimeError, match="transient background"):
-        await put
-    app_values["region"] = "west"
 
-    await transcript.end_stream(
-        stream_id="stream", status=None, error=None, send=_sent
-    )
-    assert any(
-        entry.exc_info is not None and entry.exc_info[1] is background_error
-        for entry in caplog.records
-    )
-    stored = await FileConversationStore(tmp_path).get(part(), record.id)
-    assert isinstance(stored, ConversationRecordV2)
-    assert stored.nodes[exchange_id].status == "ok"
-    assert [
-        message.as_stored_message().content
-        for message in stored.nodes[exchange_id].messages
-    ] == ["answer"]
-    assert stored.nodes[exchange_id].state["shinychat:values"].data == {
+    app_values["region"] = "west"
+    await _end_stream(transcript)
+
+    saved = await _saved(backend, conv_id)
+    assert saved.nodes[exchange_id].status == "ok"
+    assert _contents(saved) == ["answer"]
+    assert saved.nodes[exchange_id].state[VALUES_STATE_KEY].data == {
         "region": "west"
     }
-    assert not await recorder.flush_pending()
 
 
 @pytest.mark.anyio
-async def test_bookmark_repair_keeps_live_and_durable_pointer_and_referenced_state(
-    clock: _FakeClock,
-    tmp_path: Any,
+async def test_bookmark_persist_keeps_pointer_live_and_streamed_tail_undurable(
+    backend: _Backend,
     monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     import shinychat._history as history_module
 
-    store = FileConversationStore(tmp_path)
-    controller, _ = _make_controller(store=store)
+    controller, _ = _make_controller(store=backend.store)
     recorder = controller._exchange_recorder
-    transcript = _wire(controller)
-    exchange_id = await transcript.record_accepted_input_and_notify(
-        _stored_message("user", "question")
-    )
-    await _start_stream(transcript, exchange_id)
+    transcript, _ = await _open_stream(controller)
+    await _chunk(transcript, _assistant_message(_text("one")))
+    await _end_stream(transcript)
     record = recorder.record
     assert record is not None
+    conv_id = record.id
     record.bookmark_state_id = "old-state"
     assert await recorder.save_current()
+    second = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "second")
+    )
+    await _start_stream(transcript, second)
     entered = asyncio.Event()
     release = asyncio.Event()
     deleted: list[str] = []
@@ -753,444 +666,15 @@ async def test_bookmark_repair_keeps_live_and_durable_pointer_and_referenced_sta
     hooks = history_module._bookmark_restore_hooks(controller, HeldBookmark())
     assert hooks.on_response_saved is not None
     mint = asyncio.ensure_future(hooks.on_response_saved(record))
-    original_put = store.put
-    background_error = RuntimeError("background snapshot failed")
-    fail_next = True
-
-    async def fail_once(partition: Any, snapshot: Any) -> None:
-        nonlocal fail_next
-        if fail_next:
-            fail_next = False
-            raise background_error
-        await original_put(partition, snapshot)
-
     try:
         await asyncio.wait_for(entered.wait(), 1)
-        monkeypatch.setattr(store, "put", fail_once)
-        clock.advance(1.0)
         await _chunk(transcript, _assistant_message(_text("partial")))
-        put = recorder._put_task
-        assert put is not None
-        with pytest.raises(RuntimeError, match="background snapshot failed"):
-            await put
     finally:
         release.set()
     await asyncio.wait_for(mint, 1)
 
-    stored = await FileConversationStore(tmp_path).get(part(), record.id)
-    assert isinstance(stored, ConversationRecordV2)
-    assert stored.bookmark_state_id == record.bookmark_state_id == "new-state"
+    saved = await _saved(backend, conv_id)
+    assert saved.bookmark_state_id == record.bookmark_state_id == "new-state"
     assert deleted == ["old-state"]
-    assert stored.bookmark_state_id not in deleted
-    assert not await recorder.flush_pending()
-    assert any(
-        entry.exc_info is not None and entry.exc_info[1] is background_error
-        for entry in caplog.records
-    )
-
-
-@pytest.mark.anyio
-async def test_cancelled_background_put_is_reported_once_then_save_can_retry(
-    clock: _FakeClock,
-) -> None:
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    conv_id = recorder.record.id  # type: ignore[union-attr]
-    clock.advance(1.0)
-    store.fail_next.append(asyncio.CancelledError("backend stopped"))
-    await _chunk(transcript, _assistant_message(_text("answer")))
-    await asyncio.sleep(0)
-    put = recorder._put_task
-    assert put is not None and put.cancelled()
-
-    with pytest.raises(asyncio.CancelledError):
-        await recorder.save_current()
-    assert recorder._put_task is None
-    assert await recorder.save_current()
-    assert _stored_contents(store, conv_id) == ["answer"]
-
-
-@pytest.mark.anyio
-async def test_failed_repair_reports_foreground_error_and_retains_tail(
-    clock: _FakeClock,
-) -> None:
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    conv_id = recorder.record.id  # type: ignore[union-attr]
-    clock.advance(1.0)
-    background_error = RuntimeError("background failed")
-    foreground_error = RuntimeError("repair failed")
-    store.fail_next.extend([background_error, foreground_error])
-    await _chunk(transcript, _assistant_message(_text("answer")))
-    put = recorder._put_task
-    assert put is not None
-    with pytest.raises(RuntimeError, match="background failed"):
-        await put
-
-    with pytest.raises(RuntimeError) as caught:
-        await recorder.save_current()
-    assert caught.value is foreground_error
-    assert caught.value.__cause__ is background_error
-    assert await recorder.flush_pending()
-    assert _stored_contents(store, conv_id) == ["answer"]
-
-
-@pytest.mark.anyio
-async def test_delete_logs_old_write_failure_and_completes_bookmark_eviction(
-    clock: _FakeClock,
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    from unittest.mock import AsyncMock
-
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    conv_id = recorder.record.id  # type: ignore[union-attr]
-    clock.advance(1.0)
-    store.fail_next.append(RuntimeError("background failed"))
-    await _chunk(transcript, _assistant_message(_text("answer")))
-    put = recorder._put_task
-    assert put is not None
-    with pytest.raises(RuntimeError, match="background failed"):
-        await put
-    evict = AsyncMock()
-    monkeypatch.setattr(controller, "on_evict", evict)
-
-    await controller.delete(conv_id)
-    evict.assert_awaited_once_with(conv_id)
-    assert await store.get(part(), conv_id) is None
-    assert len(caplog.records) == 1
-    assert "background failed" in caplog.text
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize("operation", ["delete", "rename"])
-@pytest.mark.parametrize("current_failure", [False, True])
-async def test_unrelated_mutation_reports_old_failure_but_uses_its_own_outcome(
-    clock: _FakeClock,
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-    operation: str,
-    current_failure: bool,
-) -> None:
-    from unittest.mock import AsyncMock
-
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    active = recorder.record
-    assert active is not None
-    other = new_conversation_record_v2(
-        id="c_other", title="Other", client_info={}
-    )
-    await store.put(part(), other)
-    clock.advance(1.0)
-    old_error = RuntimeError("old snapshot failed")
-    store.fail_next.append(old_error)
-    await _chunk(transcript, _assistant_message(_text("partial")))
-    put = recorder._put_task
-    assert put is not None
-    with pytest.raises(RuntimeError, match="old snapshot failed"):
-        await put
-
-    current_error = RuntimeError("requested operation failed")
-    if current_failure:
-        if operation == "delete":
-            monkeypatch.setattr(store, "delete", AsyncMock(side_effect=current_error))
-        else:
-            store.fail_next.append(current_error)
-    action = (
-        controller.delete(other.id)
-        if operation == "delete"
-        else controller.rename(other.id, "Renamed")
-    )
-    if current_failure:
-        with pytest.raises(RuntimeError) as caught:
-            await action
-        assert caught.value is current_error
-    else:
-        await action
-
-    stored_other = await store.get(part(), other.id)
-    if not current_failure and operation == "delete":
-        assert stored_other is None
-    else:
-        assert isinstance(stored_other, ConversationRecordV2)
-        assert stored_other.title == (
-            "Renamed" if not current_failure else "Other"
-        )
-    assert recorder.record is active
-    assert len(caplog.records) == 1
-    assert caplog.records[0].exc_info is not None
-    assert caplog.records[0].exc_info[1] is old_error
-    assert await recorder.save_current()
-    assert _stored_contents(store, active.id) == ["partial"]
-    assert len(caplog.records) == 1
-
-
-@pytest.mark.anyio
-async def test_failed_foreground_save_retains_dirty_tail_for_final_flush(
-    clock: _FakeClock,
-) -> None:
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    clock.advance(1.0)
-    conv_id = recorder.record.id  # type: ignore[union-attr]
-
-    await _chunk(transcript, _assistant_message(_text("one")))
-    await _drain_stream_writes(recorder)
-
-    # A gated tail exists when the foreground save fails; the failure
-    # raises but the tail stays pending for the final flush.
-    clock.advance(1.1)
-    await _chunk(transcript, _assistant_message(_text(" two")))
-    await _drain_stream_writes(recorder)
-    clock.advance(0.2)
-    await _chunk(transcript, _assistant_message(_text(" three")))
-    assert recorder._pending is recorder_module._StreamPending.DIRTY
-
-    store.fail_next.append(RuntimeError("transient"))
-    with pytest.raises(RuntimeError, match="transient"):
-        await recorder.save_current()
-    assert recorder._pending is recorder_module._StreamPending.DIRTY
-
-    assert await recorder.flush_pending()
-    assert _stored_contents(store, conv_id) == ["one two three"]
-
-
-@pytest.mark.anyio
-async def test_flush_pending_writes_only_unsaved_tail_without_side_effects(
-    clock: _FakeClock,
-) -> None:
-    store = _GatedStore()
-    save_calls: list[dict[str, Any]] = []
-    controller, _ = _make_controller(
-        store=store, save_callbacks=[save_calls.append]
-    )
-    recorder = controller._exchange_recorder
-    chat = controller.chat
-    assert isinstance(chat, _FakeChat)
-
-    # No record at all: nothing to flush, no write.
-    assert not await recorder.flush_pending()
-    assert store.puts == []
-
-    transcript, _ = await _open_stream(controller, store)
-    clock.advance(1.0)
-    conv_id = recorder.record.id  # type: ignore[union-attr]
-    save_calls.clear()
-    chat.actions.clear()
-
-    # Everything saved: the flush writes nothing and returns False.
-    await _chunk(transcript, _assistant_message(_text("one")))
-    await _drain_stream_writes(recorder)
-    puts_before = len(store.puts)
-    assert not await recorder.flush_pending()
-    assert len(store.puts) == puts_before
-
-    # A gated tail is written directly: no app-state capture callbacks, no
-    # publication, no client messages.
-    await _chunk(transcript, _assistant_message(_text(" two")))
-    assert recorder._pending is recorder_module._StreamPending.DIRTY
-    actions_before = list(chat.actions)
-    assert await recorder.flush_pending()
-    assert _stored_contents(store, conv_id) == ["one two"]
-    assert save_calls == []
-    assert chat.actions == actions_before
-
-
-@pytest.mark.anyio
-async def test_flush_pending_recovers_then_reports_background_failure(
-    clock: _FakeClock,
-) -> None:
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    clock.advance(1.0)
-    conv_id = recorder.record.id  # type: ignore[union-attr]
-
-    await _chunk(transcript, _assistant_message(_text("one")))
-    await _drain_stream_writes(recorder)
-
-    store.fail_next.append(RuntimeError("transient background"))
-    clock.advance(1.1)
-    await _chunk(transcript, _assistant_message(_text(" two")))
-    put = recorder._put_task
-    assert put is not None
-    with pytest.raises(RuntimeError, match="transient background"):
-        await put
-
-    # The final flush still attempts the latest snapshot (recovery), then
-    # reports the earlier background failure.
-    with pytest.raises(RuntimeError, match="transient background"):
-        await recorder.flush_pending()
-    assert _stored_contents(store, conv_id) == ["one two"]
-
-    # A final IO error of the flush itself propagates.
-    clock.advance(0.1)
-    await _chunk(transcript, _assistant_message(_text(" three")))
-    store.fail_next.append(RuntimeError("final io"))
-    with pytest.raises(RuntimeError, match="final io"):
-        await recorder.flush_pending()
-
-
-@pytest.mark.anyio
-async def test_active_delete_drains_put_and_cannot_resurrect(
-    clock: _FakeClock,
-) -> None:
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    clock.advance(1.0)
-    conv_id = recorder.record.id  # type: ignore[union-attr]
-
-    store.blocked = True
-    store.put_entered.clear()
-    await _chunk(transcript, _assistant_message(_text("one")))
-    await asyncio.wait_for(store.put_entered.wait(), 1)
-
-    # The delete drains the in-flight snapshot first: the write completes
-    # before the delete, never after it.
-    delete = asyncio.create_task(controller.delete(conv_id))
-    await asyncio.sleep(0)
-    assert not delete.done()
-    store.release.set()
-    await asyncio.wait_for(delete, 1)
-
-    assert store.events == [
-        f"put:{conv_id}",
-        f"put:{conv_id}",
-        f"put:{conv_id}",
-        f"delete:{conv_id}",
-    ]
-    assert await store.get(part(), conv_id) is None
-    # No follow-up write resurrects the record.
-    await _drain_stream_writes(recorder)
-    assert await store.get(part(), conv_id) is None
-
-
-@pytest.mark.anyio
-async def test_delete_after_restore_reset_drains_old_snapshot_before_removal(
-    clock: _FakeClock,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from unittest.mock import AsyncMock
-
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    conv_id = recorder.record.id  # type: ignore[union-attr]
-    clock.advance(1.0)
-    store.blocked = True
-    store.put_entered.clear()
-    await _chunk(transcript, _assistant_message(_text("partial")))
-    await asyncio.wait_for(store.put_entered.wait(), 1)
-    put = recorder._put_task
-    assert put is not None
-    monkeypatch.setattr(controller, "_notify_restore_failure", AsyncMock())
-    with pytest.warns(UserWarning, match="restore failed"):
-        await controller._clear_failed_restore(RuntimeError("restore failed"))
-    assert recorder.record is None
-
-    delete = asyncio.create_task(controller.delete(conv_id))
-    try:
-        await asyncio.sleep(0)
-        assert not delete.done()
-        assert store.events[-1] != f"delete:{conv_id}"
-    finally:
-        store.release.set()
-        await asyncio.wait_for(asyncio.shield(put), 1)
-        await asyncio.wait_for(delete, 1)
-    assert await store.get(part(), conv_id) is None
-    assert store.events[-1] == f"delete:{conv_id}"
-
-
-@pytest.mark.anyio
-async def test_rename_after_restore_reset_waits_and_preserves_latest_content(
-    clock: _FakeClock,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from unittest.mock import AsyncMock
-
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    conv_id = recorder.record.id  # type: ignore[union-attr]
-    clock.advance(1.0)
-    store.blocked = True
-    store.put_entered.clear()
-    await _chunk(transcript, _assistant_message(_text("partial")))
-    await asyncio.wait_for(store.put_entered.wait(), 1)
-    put = recorder._put_task
-    assert put is not None
-    monkeypatch.setattr(controller, "_notify_restore_failure", AsyncMock())
-    with pytest.warns(UserWarning, match="restore failed"):
-        await controller._clear_failed_restore(RuntimeError("restore failed"))
-    assert recorder.record is None
-
-    rename = asyncio.create_task(controller.rename(conv_id, "Renamed"))
-    try:
-        await asyncio.sleep(0)
-        assert not rename.done()
-        assert store.concurrent == 1
-    finally:
-        store.release.set()
-        await asyncio.wait_for(asyncio.shield(put), 1)
-        await asyncio.wait_for(rename, 1)
-    stored = await store.get(part(), conv_id)
-    assert isinstance(stored, ConversationRecordV2)
-    assert stored.title == "Renamed"
-    assert _stored_contents(store, conv_id) == ["partial"]
-    assert store.max_concurrent == 1
-
-
-@pytest.mark.anyio
-async def test_discard_pending_cancels_continuation_but_keeps_started_put(
-    clock: _FakeClock,
-) -> None:
-    store = _GatedStore()
-    controller, _ = _make_controller(store=store)
-    recorder = controller._exchange_recorder
-    transcript, _ = await _open_stream(controller, store)
-    clock.advance(1.0)
-
-    store.blocked = True
-    store.put_entered.clear()
-    await _chunk(transcript, _assistant_message(_text("one")))
-    await asyncio.wait_for(store.put_entered.wait(), 1)
-    put = recorder._put_task
-    assert put is not None
-    await _chunk(transcript, _assistant_message(_text(" two")))
-    assert recorder._pending is recorder_module._StreamPending.DIRTY
-
-    # Synchronous teardown drops the unscheduled tail; the started put is
-    # never cancelled.
-    controller.cancel_pending()
-    assert recorder._pending is recorder_module._StreamPending.NONE
-    assert recorder._put_task is put
-    assert not put.cancelled()
-
-    puts_before = len(store.puts)
-    store.release.set()
-    await put
-    for _ in range(3):
-        await asyncio.sleep(0)
-    continuation = recorder._continuation_task
-    if continuation is not None:
-        await continuation
-    # The discarded tail never schedules another write.
-    assert len(store.puts) == puts_before + 1
-    assert recorder._put_task is None
+    # The bookmark write persisted the pointer but not the unfinished tail.
+    assert _contents(saved) == ["one"]

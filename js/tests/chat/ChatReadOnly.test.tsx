@@ -74,6 +74,25 @@ afterEach(() => {
 })
 
 describe("read-only composer bar", () => {
+  it("explains interrupted history and keeps New chat as the escape", () => {
+    const transport = createMockTransport()
+    const elementId = renderChat(transport)
+    fireHistoryUpdate(transport, elementId, {
+      active_read_only: true,
+      active_read_only_reason: "interrupted",
+      transition_protocol: "completion-v2",
+    })
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "This conversation was interrupted and can be viewed but not continued.",
+    )
+    expect(screen.queryByRole("textbox", { name: "Chat message" })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }))
+    expect(transport.sendHistoryNew).toHaveBeenCalledExactlyOnceWith(
+      elementId,
+      expect.any(String),
+    )
+  })
+
   it("replaces the chat input with a status bar and restores it when writable again", () => {
     const transport = createMockTransport()
     const elementId = renderChat(transport)

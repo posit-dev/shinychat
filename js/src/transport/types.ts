@@ -266,6 +266,10 @@ export type ChatAction =
        * writable (older servers never send it).
        */
       active_read_only?: boolean
+      active_read_only_reason?:
+        | "model_unavailable"
+        | "app_restore_failed"
+        | "interrupted"
       transition_protocol?: string
     }
   | {

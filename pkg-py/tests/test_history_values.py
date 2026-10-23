@@ -52,8 +52,37 @@ from test_history_controller import (
 )
 
 
+def _finish_pending(record: ConversationRecordV2 | None) -> None:
+    """Terminal-finish every pending exchange.
+
+    A completed response leaves no pending node, and explicit saves and
+    response settlement refuse a pending active leaf. Fixtures that accept
+    input without streaming finish it here so the record is coherent.
+    """
+    assert record is not None
+    for node_id, node in record.nodes.items():
+        if node.status == "pending":
+            record.finish_exchange(node_id, "ok", None)
+
+
 def _values_entry(data: Any) -> StateEntry:
     return StateEntry(kind="values", version=1, mode="snapshot", data=data)
+
+
+def _capture_values_on(recorder: Any, node_id: str) -> None:
+    """Explicit values capture on ``node_id``, which need not be the leaf.
+
+    Accepted inputs capture values only at the node they open, so a shared
+    parent is recaptured explicitly through this helper. That recapture is
+    what pins existing children to the parent's previous value.
+    """
+    record = recorder.record
+    entry = recorder._capture_values_at(node_id)
+    node = record.nodes[node_id]
+    if entry is None:
+        node.state.pop(VALUES_STATE_KEY, None)
+    else:
+        node.state[VALUES_STATE_KEY] = entry
 
 
 def _wire_transcript(recorder: Any) -> ChatTranscript:
@@ -89,6 +118,7 @@ async def test_values_root_always_records_empty(with_callback: bool) -> None:
         _stored_message("user", "hi")
     )
 
+    _finish_pending(recorder.record)
     # Capture the descendant too: its empty value inherits from the root.
     assert await controller.save()
     record = recorder.record
@@ -123,16 +153,19 @@ async def test_values_sparse_record_on_change_and_back() -> None:
     first = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "one")
     )
+    _finish_pending(recorder.record)
     current = {"filter": "b"}
     assert await controller.save()
     second = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "two")
     )
+    _finish_pending(recorder.record)
     current = {"filter": "a"}
     assert await controller.save()
     third = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "three")
     )
+    _finish_pending(recorder.record)
     current = {}
     assert await controller.save()
 
@@ -168,11 +201,13 @@ async def test_values_bool_and_numeric_changes_are_not_conflated() -> None:
     first = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "one")
     )
+    _finish_pending(recorder.record)
     current = {"nested": [1, 1]}
     assert await controller.save()
     second = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "two")
     )
+    _finish_pending(recorder.record)
     current = {"flag": True}
     assert await controller.save()
     current = {"flag": 1}
@@ -301,12 +336,14 @@ async def test_values_shared_parent_recapture_pins_inheriting_children() -> (
     abandoned = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "original")
     )
+    _finish_pending(recorder.record)
     # Unchanged from the root: the exchange inherits and records nothing.
     await controller.on_response()
     await controller.handle_edit(0, "alternative", request_id="edit-1")
     sibling = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "alternative")
     )
+    _finish_pending(recorder.record)
     await controller.on_response()
 
     live["v"] = "changed"
@@ -314,17 +351,29 @@ async def test_values_shared_parent_recapture_pins_inheriting_children() -> (
     replacement = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "alternative two")
     )
+    _finish_pending(recorder.record)
 
     record = recorder.record
     assert record is not None
-    # The root's recapture to the new value pinned the abandoned branch's
-    # previous inherited value before the replacement opened.
+    # Accepted inputs capture values only at the node they open: the new
+    # exchange records the changed value and the root keeps its old one.
+    assert record.nodes[record.root_id].state[VALUES_STATE_KEY].data == {
+        "v": "same"
+    }
+    assert record.nodes[replacement].state[VALUES_STATE_KEY].data == {
+        "v": "changed"
+    }
+    assert VALUES_STATE_KEY not in record.nodes[abandoned].state
+    assert VALUES_STATE_KEY not in record.nodes[sibling].state
+    # The explicit recapture of the shared parent pins the existing children
+    # that inherited its previous value before the parent changed.
+    _capture_values_on(recorder, record.root_id)
     assert record.nodes[record.root_id].state[VALUES_STATE_KEY].data == {
         "v": "changed"
     }
     assert record.nodes[abandoned].state[VALUES_STATE_KEY].data == {"v": "same"}
     assert resolve_path_values(record, abandoned) == {"v": "same"}
-    assert resolve_path_values(record, sibling) == {"v": "changed"}
+    assert record.nodes[sibling].state[VALUES_STATE_KEY].data == {"v": "same"}
     assert resolve_path_values(record, replacement) == {"v": "changed"}
 
 
@@ -362,12 +411,56 @@ async def test_values_shared_parent_recapture_pins_implicit_empty_default() -> (
         _stored_message("user", "second")
     )
 
+    # The accepted input recorded only its own node; the shared parent keeps
+    # its implicit default until it is recaptured explicitly.
+    assert VALUES_STATE_KEY not in record.nodes[first].state
+    assert resolve_path_values(record, first) == {}
+    assert record.nodes[replacement].state[VALUES_STATE_KEY].data == {"f": "x"}
+    _capture_values_on(recorder, first)
+
     assert record.nodes[first].state[VALUES_STATE_KEY].data == {"f": "x"}
     # Pinned explicit empty object: the abandoned target still resolves to
     # the implicit value it had before the parent first recorded.
     assert record.nodes[target].state[VALUES_STATE_KEY].data == {}
     assert resolve_path_values(record, target) == {}
     assert resolve_path_values(record, replacement) == {"f": "x"}
+
+
+@pytest.mark.anyio
+async def test_values_pending_predecessor_is_validated_not_captured() -> None:
+    # An unresolved predecessor is validated when the next input arrives, but
+    # it never becomes a checkpoint: the live value lands on the new node.
+    live = {"v": "same"}
+
+    def save_callback(values: dict[str, Any]) -> None:
+        values["v"] = live["v"]
+
+    controller, _ = _make_controller(
+        store=InMemoryConversationStore(),
+        save_callbacks=[save_callback],
+    )
+    recorder = controller._exchange_recorder
+    transcript = _wire_transcript(recorder)
+
+    pending = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
+    live["v"] = "changed"
+    following = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "two")
+    )
+
+    record = recorder.record
+    assert record is not None
+    assert record.nodes[pending].status == "pending"
+    assert VALUES_STATE_KEY not in record.nodes[pending].state
+    assert record.nodes[record.root_id].state[VALUES_STATE_KEY].data == {
+        "v": "same"
+    }
+    assert record.nodes[following].state[VALUES_STATE_KEY].data == {
+        "v": "changed"
+    }
+    assert resolve_path_values(record, pending) == {"v": "same"}
 
 
 # ---------------------------------------------------------------------------
@@ -407,6 +500,7 @@ async def test_values_capture_rejects_unserializable_values(
     await transcript.record_accepted_input_and_notify(
         _stored_message("user", "hi")
     )
+    _finish_pending(recorder.record)
 
     current = bad
     # The explicit save stays strict: an invalid payload raises to the
@@ -951,6 +1045,7 @@ async def test_on_navigate_failure_keeps_move_notifies_once_and_continues():
     recorder = controller._exchange_recorder
     record = recorder.record
     assert record is not None
+    _finish_pending(record)
     record.nodes[record.root_id].state[VALUES_STATE_KEY] = _values_entry(
         {"f": "root"}
     )
@@ -960,12 +1055,6 @@ async def test_on_navigate_failure_keeps_move_notifies_once_and_continues():
     record.nodes[replacement].state[VALUES_STATE_KEY] = _values_entry(
         {"f": "replacement"}
     )
-    # The live save callback agrees with the active exchange's recorded
-    # values, so the leave capture keeps them.
-    controller._save_callbacks.append(
-        lambda values: values.update({"f": "replacement"})
-    )
-
     calls: list[str] = []
     contexts: list[HistoryNavigateContext] = []
 
@@ -1023,6 +1112,7 @@ async def test_on_navigate_cancellation_propagates_without_cleanup() -> None:
     recorder = controller._exchange_recorder
     record = recorder.record
     assert record is not None
+    _finish_pending(record)
 
     def cancelling(_context: HistoryNavigateContext) -> None:
         raise asyncio.CancelledError()
@@ -1210,27 +1300,31 @@ async def test_values_stream_finish_failure_warns_and_finalizes(
         == expected_turns
     )
 
-    # The chat continues after the fix: the next input's node-close
-    # capture records cleanly.
+    # The chat continues after the fix: the new exchange's own capture
+    # records cleanly.
     failing = False
     live["filter"] = "east"
     second = await chat._transcript.record_accepted_input_and_notify(
         _stored_message("user", "east")
     )
     assert second != exchange_id
-    assert record.nodes[exchange_id].state[VALUES_STATE_KEY].data == {
+    assert record.nodes[second].state[VALUES_STATE_KEY].data == {
         "filter": "east"
     }
 
 
 @pytest.mark.anyio
-async def test_values_leave_capture_failure_does_not_block_navigation() -> None:
+async def test_values_leave_never_invokes_on_save_during_navigation() -> None:
+    """Leaving a position for a sibling is model-only: on_save never runs,
+    so a failing callback neither warns nor blocks the move, and the
+    navigation context carries the recorded values of both positions."""
     controller, _chat, _adapter, _store, original, replacement = (
         _make_v2_navigation_controller()
     )
     recorder = controller._exchange_recorder
     record = recorder.record
     assert record is not None
+    _finish_pending(record)
     record.nodes[record.root_id].state[VALUES_STATE_KEY] = _values_entry(
         {"f": "root"}
     )
@@ -1241,31 +1335,25 @@ async def test_values_leave_capture_failure_does_not_block_navigation() -> None:
         {"f": "replacement"}
     )
 
-    failing = False
+    saves: list[str] = []
 
-    def save_callback(values: dict[str, Any]) -> None:
-        if failing:
-            raise RuntimeError("leave capture exploded")
-        # Agrees with the active exchange's recorded values.
-        values["f"] = "replacement"
+    def failing_save(values: dict[str, Any]) -> None:
+        saves.append("save")
+        raise RuntimeError("leave must not run on_save")
 
-    controller._save_callbacks.append(save_callback)
+    controller._save_callbacks.append(failing_save)
     contexts: list[HistoryNavigateContext] = []
     controller._navigate_callbacks.append(contexts.append)
 
-    failing = True
-    with pytest.warns(
-        UserWarning, match="Automatic app-state values capture failed"
-    ):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         await controller.handle_navigate(2, "prev", request_id="navigation")
 
-    # The move completed despite the failed leave capture; the left
-    # exchange kept its previously recorded entry.
+    assert saves == []
     assert record.active_leaf == original
     assert record.nodes[replacement].state[VALUES_STATE_KEY].data == {
         "f": "replacement"
     }
-    # The navigation callback still ran, on the retained/recorded values.
     assert len(contexts) == 1
     context = contexts[0]
     assert context.reason == "navigate"
@@ -1274,34 +1362,41 @@ async def test_values_leave_capture_failure_does_not_block_navigation() -> None:
 
 
 @pytest.mark.anyio
-async def test_values_leave_capture_failure_does_not_block_retry() -> None:
+async def test_values_leave_never_invokes_on_save_during_retry() -> None:
+    """Retrying leaves the target model-only: on_save never runs, and the
+    target keeps its recorded values for the navigation context."""
     controller, chat, _adapter, _store, first, target = (
         _make_v2_resubmit_controller()
     )
     recorder = controller._exchange_recorder
     record = recorder.record
     assert record is not None
+    # Retry only applies to a failed exchange: the target finished in error.
+    record.finish_exchange(target, "error", "failed")
+    _finish_pending(record)
     record.nodes[target].state[VALUES_STATE_KEY] = _values_entry(
         {"f": "target"}
     )
 
-    def save_callback(values: dict[str, Any]) -> None:
-        raise RuntimeError("leave capture exploded")
+    saves: list[str] = []
 
-    controller._save_callbacks.append(save_callback)
+    def failing_save(values: dict[str, Any]) -> None:
+        saves.append("save")
+        raise RuntimeError("leave must not run on_save")
+
+    controller._save_callbacks.append(failing_save)
     contexts: list[HistoryNavigateContext] = []
     controller._navigate_callbacks.append(contexts.append)
 
-    with pytest.warns(
-        UserWarning, match="Automatic app-state values capture failed"
-    ):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         await controller.handle_resubmit(1, "retry", request_id="retry")
 
-    # Retry completed despite the failed leave capture: the rewind moved
-    # to the rewound parent and the resubmission was sent.
+    assert saves == []
     assert record.active_leaf == first
     assert chat.actions
     assert record.nodes[target].state[VALUES_STATE_KEY].data == {"f": "target"}
+    assert len(contexts) == 1
     context = contexts[0]
     assert context.reason == "retry"
     assert context.previous_values == {"f": "target"}
@@ -1337,18 +1432,18 @@ async def test_values_root_close_failure_warns_and_continues() -> None:
     assert VALUES_STATE_KEY not in record.nodes[record.root_id].state
     assert resolve_path_values(record, exchange_id) == {}
 
-    # After the fix, the next input's node-close capture records normally.
+    # After the fix, the new exchange's own capture records normally.
     failing = False
-    await transcript.record_accepted_input_and_notify(
+    again = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "again")
     )
-    assert record.nodes[exchange_id].state[VALUES_STATE_KEY].data == {
+    assert record.nodes[again].state[VALUES_STATE_KEY].data == {
         "filter": "fixed"
     }
 
 
 @pytest.mark.anyio
-async def test_values_boundary_failures_warn_but_explicit_save_raises() -> None:
+async def test_values_automatic_settlement_warns_and_completes() -> None:
     def save_callback(values: dict[str, Any]) -> None:
         raise RuntimeError("boom")
 
@@ -1361,40 +1456,143 @@ async def test_values_boundary_failures_warn_but_explicit_save_raises() -> None:
     with pytest.warns(
         UserWarning, match="Automatic app-state values capture failed"
     ):
-        await transcript.record_accepted_input_and_notify(
+        exchange_id = await transcript.record_accepted_input_and_notify(
             _stored_message("user", "hi")
         )
-    record = recorder.record
-    assert record is not None
+    _finish_pending(recorder.record)
 
-    # Response settlement: automatic -- warns but completes.
+    # Response settlement is automatic: it warns but completes.
     with pytest.warns(
         UserWarning, match="Automatic app-state values capture failed"
     ):
         assert await recorder.response_settled() is True
+    record = recorder.record
+    assert record is not None
     assert record.response_count == 1
+    # The failed capture kept no entry, so the exchange still resolves.
+    assert VALUES_STATE_KEY not in record.nodes[exchange_id].state
 
-    # Conversation boundaries warn and finish; they are not explicit saves.
-    target = new_conversation_record_v2(
-        title="target", id="c_capture_target", client_info={}
+
+@pytest.mark.anyio
+async def test_values_explicit_save_raises_callback_failure() -> None:
+    def save_callback(values: dict[str, Any]) -> None:
+        raise RuntimeError("boom")
+
+    controller, _ = _make_controller(
+        store=InMemoryConversationStore(), save_callbacks=[save_callback]
     )
-    await controller.store.put(part(), target)
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
     with pytest.warns(
         UserWarning, match="Automatic app-state values capture failed"
     ):
-        await controller.switch_to(target.id)
-    assert recorder.record is target
+        exchange_id = await transcript.record_accepted_input_and_notify(
+            _stored_message("user", "hi")
+        )
+    _finish_pending(recorder.record)
 
-    # The explicit save (chat.history.save()): strict -- the callback
-    # failure raises to the caller.
+    # The explicit save (chat.history.save()) is strict: the callback
+    # failure raises to the caller instead of warning.
     with pytest.raises(RuntimeError, match="boom"):
         await controller.save()
+    record = recorder.record
+    assert record is not None
+    assert VALUES_STATE_KEY not in record.nodes[exchange_id].state
 
-    with pytest.warns(
-        UserWarning, match="Automatic app-state values capture failed"
-    ):
-        await controller.new_chat()
-    assert recorder.record is None
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("leave", ["switch", "new_chat", "disconnect"])
+async def test_values_leaving_never_invokes_on_save(leave: str) -> None:
+    """Leaving (switch, New chat, or session disconnect) is a model-only
+    save: on_save never runs, so a value changed since the last capture is
+    not recorded and no capture warning fires."""
+    live = {"filter": "west"}
+    saves: list[str] = []
+
+    def save_callback(values: dict[str, Any]) -> None:
+        saves.append(live["filter"])
+        values["filter"] = live["filter"]
+
+    store = InMemoryConversationStore()
+    controller, _ = _make_controller(
+        store=store, save_callbacks=[save_callback]
+    )
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "west")
+    )
+    _finish_pending(recorder.record)
+    record = recorder.record
+    assert record is not None
+
+    target = new_conversation_record_v2(
+        title="target", id="c_leave_target", client_info={}
+    )
+    await store.put(part(), target)
+    live["filter"] = "changed"
+    leaves = {
+        "switch": lambda: controller.switch_to(target.id),
+        "new_chat": controller.new_chat,
+        "disconnect": recorder.flush_pending,
+    }
+
+    saves_before = len(saves)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        await leaves[leave]()
+
+    assert len(saves) == saves_before
+    # The changed value was never captured at the position being left.
+    assert VALUES_STATE_KEY not in record.nodes[exchange_id].state
+    assert resolve_path_values(record, exchange_id) == {"filter": "west"}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("model_only", "expected_saves", "expected_values"),
+    [(True, 0, None), (False, 1, {"filter": "changed"})],
+    ids=["model-only-skips-values", "full-cycle-runs-on-save"],
+)
+async def test_capture_state_model_only_filters_values(
+    model_only: bool,
+    expected_saves: int,
+    expected_values: dict[str, Any] | None,
+) -> None:
+    live = {"filter": "west"}
+    saves: list[str] = []
+
+    def save_callback(values: dict[str, Any]) -> None:
+        saves.append(live["filter"])
+        values["filter"] = live["filter"]
+
+    controller, _ = _make_controller(
+        store=InMemoryConversationStore(), save_callbacks=[save_callback]
+    )
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
+    _finish_pending(recorder.record)
+    record = recorder.record
+    assert record is not None
+
+    saves.clear()
+    live["filter"] = "changed"
+    controller.adapter.set_turns_json([{"role": "user", "content": "one"}])
+    await recorder.capture_state_locked(
+        exchange_id, "node_close", model_only=model_only
+    )
+
+    node = record.nodes[exchange_id]
+    # Turns are captured either way; only the values hook is filtered.
+    assert node.state[TURNS_STATE_KEY].data == [
+        {"role": "user", "content": "one"}
+    ]
+    assert len(saves) == expected_saves
+    entry = node.state.get(VALUES_STATE_KEY)
+    assert (None if entry is None else entry.data) == expected_values
 
 
 @pytest.mark.anyio
@@ -1522,6 +1720,7 @@ async def test_on_restore_receives_selected_position_values_detached() -> None:
     target.nodes["n_0001"].state[VALUES_STATE_KEY] = _values_entry(
         {"f": "leaf"}
     )
+    _finish_pending(target)
     await store.put(part(), target)
 
     restored: list[dict[str, Any]] = []
@@ -1565,6 +1764,7 @@ async def test_values_shared_capture_matrix(case: dict[str, Any]) -> None:
         exchange_id = await transcript.record_accepted_input_and_notify(
             _stored_message("user", f"exchange {index}")
         )
+        _finish_pending(recorder.record)
         current = values
         assert await controller.save()
 

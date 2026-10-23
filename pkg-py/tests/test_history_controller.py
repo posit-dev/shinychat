@@ -215,9 +215,7 @@ def test_strip_attachment_content_keeps_empty_attachment_only_message():
 
     cleaned = _strip_attachment_content(stored)
 
-    assert cleaned["segments"] == [
-        {"content": "", "content_type": "markdown"}
-    ]
+    assert cleaned["segments"] == [{"content": "", "content_type": "markdown"}]
     assert cleaned.get("attachment_content_stripped") is True
 
 
@@ -334,7 +332,9 @@ class _RealHistorySession(_RealChatSession):
 class _SameFlushHistoryClient:
     def __init__(self) -> None:
         self.turns: list[dict[str, Any]] = []
-        self.stream_calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
+        self.stream_calls: list[
+            tuple[str, tuple[Any, ...], dict[str, Any]]
+        ] = []
         self.stream_started = asyncio.Event()
         self.release_stream = asyncio.Event()
 
@@ -396,6 +396,9 @@ class _FakeAdapter:
 
     def has_system_prompt(self) -> bool:
         return False
+
+    def get_system_prompt(self) -> str | None:
+        return None
 
     def get_turns_grouped(self) -> list[list[Any]]:
         return [[t] for t in self.get_turns_json()]
@@ -486,27 +489,6 @@ def _make_controller(
     return controller, resolved_store
 
 
-async def _drain_stream_writes(recorder: Any) -> None:
-    """Await the recorder's scheduled stream snapshot writes to settle.
-
-    Deterministic event-loop coordination (no sleeps): the single put
-    task and the bounded continuation are awaited in turn until neither
-    is pending. A failed put propagates its error here, as a boundary
-    drain would.
-    """
-    for _ in range(10):
-        put = recorder._put_task
-        if put is not None and not put.done():
-            await put
-            continue
-        continuation = recorder._continuation_task
-        if continuation is not None and not continuation.done():
-            await continuation
-            continue
-        return
-    raise AssertionError("scheduled stream writes did not settle")
-
-
 @pytest.mark.anyio
 async def test_v2_history_update_advertises_completion_v2() -> None:
     controller, _ = _make_controller()
@@ -546,9 +528,7 @@ def test_v2_recorder_rejects_non_string_mapping_keys_recursively(
 
 
 def test_v2_recorder_string_key_reordering_keeps_a_stable_prefix():
-    _, baseline = canonical_turns(
-        [{"one": "one", "two": {"nested": "value"}}]
-    )
+    _, baseline = canonical_turns([{"one": "one", "two": {"nested": "value"}}])
     _, current = canonical_turns(
         [
             {"two": {"nested": "value"}, "one": "one"},
@@ -799,7 +779,10 @@ def _turns_layer_json(record: ConversationRecordV2) -> str:
     """Serialize every node's recorded state entries (the model layer)."""
     return json.dumps(
         {
-            node_id: {name: entry.model_dump(mode="json") for name, entry in node.state.items()}
+            node_id: {
+                name: entry.model_dump(mode="json")
+                for name, entry in node.state.items()
+            }
             for node_id, node in record.nodes.items()
         }
     )
@@ -1198,7 +1181,9 @@ async def test_restore_bookmark_message_warns_on_unknown_block_type() -> None:
         )
 
         message_actions = [
-            item["action"] for item in sent if item["action"]["type"] == "message"
+            item["action"]
+            for item in sent
+            if item["action"]["type"] == "message"
         ]
         assert len(message_actions) == 1
         wire_segments = message_actions[0]["message"]["segments"]
@@ -1217,7 +1202,9 @@ async def test_restore_bookmark_message_warns_on_unknown_block_type() -> None:
         )
 
         # The message action carries the segment's html_deps to the transport.
-        message_items = [item for item in sent if item["action"]["type"] == "message"]
+        message_items = [
+            item for item in sent if item["action"]["type"] == "message"
+        ]
         assert len(message_items) == 1
         assert {"name": "seg-dep"} in (message_items[0]["deps"] or [])
 
@@ -1325,13 +1312,36 @@ async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
     assert recorder is not None
 
     def restore_callback(values: dict[str, Any]) -> None:
-        assert recorder.record is target
+        # Restore installs a detached copy of the stored record, so compare
+        # identity by conversation id rather than object identity.
+        assert recorder.record is not None
+        assert recorder.record.id == target.id
         restored_values.append(dict(values))
 
     controller._restore_callbacks.append(restore_callback)
-    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
     exchange_id = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "source")
+    )
+    # Complete the exchange through a real stream terminal so the save
+    # checkpoints below are coherent completed positions.
+    await transcript.start_stream(
+        stream_id="values-stream",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+    await transcript.end_stream(
+        stream_id="values-stream",
+        status=None,
+        error=None,
+        send=_sent,
     )
     assert recorder.record is not None
     source_id = recorder.record.id
@@ -1349,6 +1359,8 @@ async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
 
     current_value = "save"
     assert await controller.save()
+    source = await store.get(part(), source_id)
+    assert isinstance(source, ConversationRecordV2)
     assert source.nodes[exchange_id].state[VALUES_STATE_KEY].data == {
         "value": "save"
     }
@@ -1368,19 +1380,35 @@ async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
 
     current_value = "switch"
     await controller.switch_to(target.id)
+    source = await store.get(part(), source_id)
+    assert isinstance(source, ConversationRecordV2)
+    # Leaving is a model-only capture: the app-values callback does not run,
+    # so the exchange keeps its last explicitly saved value.
     assert source.nodes[exchange_id].state[VALUES_STATE_KEY].data == {
-        "value": "switch"
+        "value": "save"
     }
     assert restored_values == [{"restored": "target"}]
 
     current_value = "new"
     await controller.new_chat()
-    assert target.nodes[target.root_id].state[VALUES_STATE_KEY].data == {
-        "value": "new"
-    }
-    # The callbacks run at every capture point (root close, response
-    # settlement, and each explicit/boundary save); record writes dedupe.
-    assert saved_values == ["response", "response", "save", "switch", "new"]
+    stored_target = await store.get(part(), target.id)
+    assert isinstance(stored_target, ConversationRecordV2)
+    # Leaving a conversation (New chat) is model-only: it does not run the
+    # app-values callback, so the target's stored values are unchanged.
+    assert stored_target.nodes[stored_target.root_id].state[
+        VALUES_STATE_KEY
+    ].data == {"restored": "target"}
+    # The callbacks run only at explicit/boundary saves and terminal or
+    # settlement captures; leaving a conversation does not add an entry.
+    # Root close, the stream terminal, response settlement, and the stream
+    # boundary captures all run the callback before the explicit save.
+    assert saved_values == [
+        "response",
+        "response",
+        "response",
+        "response",
+        "save",
+    ]
 
 
 def _v2_record_contents(record: ConversationRecordV2) -> list[str]:
@@ -1430,9 +1458,10 @@ async def test_v2_new_chat_closes_old_record_and_starts_fresh():
     ]
     # The root always records its values ({} without `on_save`
     # callbacks); descendants inherit and record nothing.
-    assert stored_closed.nodes[stored_closed.root_id].state[
-        VALUES_STATE_KEY
-    ].data == {}
+    assert (
+        stored_closed.nodes[stored_closed.root_id].state[VALUES_STATE_KEY].data
+        == {}
+    )
     assert all(
         VALUES_STATE_KEY not in node.state
         for nid, node in stored_closed.nodes.items()
@@ -1571,7 +1600,7 @@ async def test_v2_initial_programmatic_message_persists_and_publishes_metadata()
 
 
 @pytest.mark.anyio
-async def test_v2_initial_programmatic_stream_persists_without_chunk_metadata():
+async def test_v2_initial_programmatic_stream_persists_only_at_terminal():
     store = InMemoryConversationStore()
     controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
@@ -1591,9 +1620,11 @@ async def test_v2_initial_programmatic_stream_persists_without_chunk_metadata():
         send=_sent,
     )
 
+    # Stream start creates the live record and notifies the client, but
+    # writes nothing to the store: no pending root is saved before terminal.
     assert recorder.record is not None
-    stored = await store.get(part(), recorder.record.id)
-    assert isinstance(stored, ConversationRecordV2)
+    conv_id = recorder.record.id
+    assert await store.get(part(), conv_id) is None
     controller.send_history_update.assert_awaited_once()
 
     assert await transcript.transition_stream(
@@ -1603,14 +1634,11 @@ async def test_v2_initial_programmatic_stream_persists_without_chunk_metadata():
         operation="append",
         send=_sent,
     )
-    # The chunk snapshot is a scheduled background write; await its
-    # completion before reading back (chunks never await storage).
-    await _drain_stream_writes(recorder)
-    stored = await store.get(part(), recorder.record.id)
-    assert isinstance(stored, ConversationRecordV2)
+    # Chunks mutate only the live record; the store is still untouched.
+    assert await store.get(part(), conv_id) is None
     assert [
         message.as_stored_message().content
-        for node in stored.nodes.values()
+        for node in recorder.record.nodes.values()
         for message in node.messages
     ] == ["partial"]
     controller.send_history_update.assert_awaited_once()
@@ -1621,21 +1649,21 @@ async def test_v2_initial_programmatic_stream_persists_without_chunk_metadata():
         error=None,
         send=_sent,
     )
-    stored = await store.get(part(), recorder.record.id)
+    stored = await store.get(part(), conv_id)
     assert isinstance(stored, ConversationRecordV2)
+    assert [
+        message.as_stored_message().content
+        for node in stored.nodes.values()
+        for message in node.messages
+    ] == ["partial"]
     controller.send_history_update.assert_awaited_once()
 
 
 @pytest.mark.anyio
-async def test_v2_stream_chunks_are_durable_without_metadata_until_terminal(
+async def test_v2_stream_chunks_are_durable_only_after_terminal(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import shinychat._history_recorder as recorder_module
     from shinychat._history_store import FileConversationStore
-
-    now = [100.0]
-    monkeypatch.setattr(recorder_module, "monotonic", lambda: now[0])
 
     store = FileConversationStore(tmp_path)
     controller, _ = _make_controller(store=store)
@@ -1650,6 +1678,7 @@ async def test_v2_stream_chunks_are_durable_without_metadata_until_terminal(
     exchange_id = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "question")
     )
+    conv_id = recorder.record.id  # type: ignore[union-attr]
     controller.send_history_update = AsyncMock()  # type: ignore[method-assign]
 
     await transcript.start_stream(
@@ -1659,7 +1688,6 @@ async def test_v2_stream_chunks_are_durable_without_metadata_until_terminal(
         exchange_id=exchange_id,
         send=_sent,
     )
-    now[0] += 1.0
     await transcript.transition_stream(
         stream_id="stream",
         source_segments=[],
@@ -1667,19 +1695,6 @@ async def test_v2_stream_chunks_are_durable_without_metadata_until_terminal(
         operation="append",
         send=_sent,
     )
-    # The eligible chunk snapshot is awaited before reading it from disk.
-    await _drain_stream_writes(recorder)
-
-    stored = await store.get(part(), recorder.record.id)  # type: ignore[union-attr]
-    assert isinstance(stored, ConversationRecordV2)
-    assert [
-        message.as_stored_message().content
-        for message in stored.nodes[exchange_id].messages
-    ] == ["partial"]
-    controller.send_history_update.assert_not_awaited()
-
-    # A chunk inside the one-second gate is not yet durable: no timer
-    # rechecks the gate, only chunk arrival and write completion do.
     await transcript.transition_stream(
         stream_id="stream",
         source_segments=[],
@@ -1687,31 +1702,17 @@ async def test_v2_stream_chunks_are_durable_without_metadata_until_terminal(
         operation="append",
         send=_sent,
     )
-    await _drain_stream_writes(recorder)
-    stored = await store.get(part(), recorder.record.id)  # type: ignore[union-attr]
-    assert isinstance(stored, ConversationRecordV2)
-    assert [
-        message.as_stored_message().content
-        for message in stored.nodes[exchange_id].messages
-    ] == ["partial"]
 
-    # Once the gate interval has elapsed the next chunk's snapshot is
-    # eligible and completes on disk with the latest content.
-    now[0] += 1.1
-    await transcript.transition_stream(
-        stream_id="stream",
-        source_segments=[],
-        message=_stored_message("assistant", " later"),
-        operation="append",
-        send=_sent,
-    )
-    await _drain_stream_writes(recorder)
-    stored = await store.get(part(), recorder.record.id)  # type: ignore[union-attr]
+    # Stream start and chunks leave the saved record at its accepted-input
+    # checkpoint: the streamed text lives only in the live record.
+    stored = await store.get(part(), conv_id)
     assert isinstance(stored, ConversationRecordV2)
+    assert stored.nodes[exchange_id].messages == []
+    assert stored.nodes[exchange_id].status == "pending"
     assert [
         message.as_stored_message().content
-        for message in stored.nodes[exchange_id].messages
-    ] == ["partial gated later"]
+        for message in recorder.record.nodes[exchange_id].messages  # type: ignore[union-attr]
+    ] == ["partial gated"]
     controller.send_history_update.assert_not_awaited()
 
     await transcript.end_stream(
@@ -1720,6 +1721,14 @@ async def test_v2_stream_chunks_are_durable_without_metadata_until_terminal(
         error=None,
         send=_sent,
     )
+    # The terminal is the first durable write of the streamed content.
+    stored = await store.get(part(), conv_id)
+    assert isinstance(stored, ConversationRecordV2)
+    assert [
+        message.as_stored_message().content
+        for message in stored.nodes[exchange_id].messages
+    ] == ["partial gated"]
+    assert stored.nodes[exchange_id].status == "ok"
     controller.send_history_update.assert_not_awaited()
 
     await controller.on_response()
@@ -1735,7 +1744,9 @@ async def test_v2_restore_marks_exact_record_published_after_callback() -> None:
     published: list[str | None] = []
 
     async def active_id_callback(record_id: str | None) -> None:
-        assert recorder.record is target
+        # Restore installs a detached copy: match the active record by id.
+        assert recorder.record is not None
+        assert recorder.record.id == target.id
         assert recorder._active_id_published_for is None
         published.append(record_id)
 
@@ -1779,9 +1790,28 @@ async def test_v2_active_rename_waits_for_recorder_capture_lock() -> None:
     transcript = ChatTranscript(
         on_accepted_input=recorder.accepted_input,
         on_message_committed=recorder.message_committed,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
     )
-    await transcript.record_accepted_input_and_notify(
+    exchange_id = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "question")
+    )
+    # Complete the source exchange through a real stream terminal: leaving a
+    # pending exchange is not a coherent checkpoint and writes nothing, so the
+    # held put below must come from a completed source.
+    await transcript.start_stream(
+        stream_id="source-stream",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+    await transcript.end_stream(
+        stream_id="source-stream",
+        status=None,
+        error=None,
+        send=_sent,
     )
     assert recorder.record is not None
     source = recorder.record
@@ -1794,14 +1824,15 @@ async def test_v2_active_rename_waits_for_recorder_capture_lock() -> None:
 
     store.block_id = source.id
     switch = asyncio.create_task(controller.switch_to(target.id))
-    await store.entered.wait()
+    # Bounded waits: a regression must fail here, never hang the suite.
+    await asyncio.wait_for(store.entered.wait(), 2)
     rename = asyncio.create_task(controller.rename(source.id, "Renamed source"))
     await asyncio.sleep(0)
     assert not rename.done()
 
     store.release.set()
-    await switch
-    await rename
+    await asyncio.wait_for(switch, 2)
+    await asyncio.wait_for(rename, 2)
 
     stored_source = await store.get(part(), source.id)
     stored_target = await store.get(part(), target.id)
@@ -1809,7 +1840,9 @@ async def test_v2_active_rename_waits_for_recorder_capture_lock() -> None:
     assert isinstance(stored_target, ConversationRecordV2)
     assert stored_source.title == "Renamed source"
     assert stored_target.title == "target"
-    assert recorder.record is target
+    # Restore installs a detached copy, so the active record matches by id.
+    assert recorder.record is not None
+    assert recorder.record.id == target.id
     assert controller._active_id_now() == target.id
 
 
@@ -1919,6 +1952,9 @@ async def test_v2_restore_materializes_turn_path_once_and_resets_baseline():
         mode="delta",
         data=[{"role": "user", "content": "after snapshot"}],
     )
+    # The coherent leaf is terminal; the pending ancestors stay pending so
+    # the restore path still covers unfinished ancestors.
+    record.finish_exchange(leaf, "ok", None)
 
     await replay_exchange_record(controller, record)
 
@@ -1933,11 +1969,8 @@ async def test_v2_restore_materializes_turn_path_once_and_resets_baseline():
     adapter.turns.append({"role": "assistant", "content": "next delta"})
     await recorder.accepted_input("n_0004", _stored_message("user", "next"))
     captured = record.nodes[leaf].state["shinychat:turns"]
-    assert captured.mode == "delta"
-    assert captured.data == [
-        {"role": "user", "content": "after snapshot"},
-        {"role": "assistant", "content": "next delta"},
-    ]
+    assert captured.mode == "snapshot"
+    assert captured.data == adapter.turns
 
 
 @pytest.mark.anyio
@@ -2051,6 +2084,7 @@ async def test_v2_switch_uses_restore_transaction_and_controller_active_id():
         data=[{"role": "system", "content": "restored"}],
     )
     target.open_exchange("n_0001", _stored_message("user", "restore me"))
+    target.finish_exchange("n_0001", "ok", None)
     await store.put(part(), target)
     recorder.record = existing
     controller._active_id.set(existing.id)
@@ -2058,7 +2092,9 @@ async def test_v2_switch_uses_restore_transaction_and_controller_active_id():
     await controller.switch_to(target.id)
 
     fake_chat = cast(_FakeChat, controller.chat)
-    assert recorder.record is target
+    # Restore installs a detached copy: match the active record by id.
+    assert recorder.record is not None
+    assert recorder.record.id == target.id
     assert [
         message["segments"][0]["content"]
         for message in fake_chat.restored_messages
@@ -2152,7 +2188,9 @@ async def test_v2_switch_hook_failure_is_swallowed_with_warning():
         await controller.switch_to(target.id)
 
     # The restore committed: the active record switched to the target.
-    assert recorder.record is target
+    # Restore installs a detached copy: match the active record by id.
+    assert recorder.record is not None
+    assert recorder.record.id == target.id
     assert controller._active_id_now() == target.id
 
 
@@ -2175,7 +2213,9 @@ async def test_v2_switch_without_hook_emits_no_navigate():
     await controller.switch_to(target.id)
 
     assert _nav_actions(cast(_FakeChat, controller.chat)) == []
-    assert recorder.record is target
+    # Restore installs a detached copy: match the active record by id.
+    assert recorder.record is not None
+    assert recorder.record.id == target.id
 
 
 @pytest.mark.anyio
@@ -2351,9 +2391,13 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore(
         finally:
             chat._as_stored_message = original_as_stored_message  # type: ignore[method-assign]
 
+    # Leaving a pending exchange writes nothing, so the source's coherent leaf
+    # is completed first; the switch's save of that checkpoint is then held.
+    assert source.active_leaf is not None
+    source.finish_exchange(source.active_leaf, "ok", None)
     store.block_id = source.id
     switch = asyncio.create_task(controller.switch_to(target.id))
-    await store.source_save_entered.wait()
+    await asyncio.wait_for(store.source_save_entered.wait(), 2)
 
     source_transcript = chat._transcript.read()
     with reactive.isolate():
@@ -2397,7 +2441,9 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore(
 
     stored_target = await store.get(part(), target.id)
     assert isinstance(stored_target, ConversationRecordV2)
-    assert recorder.record is target
+    # Restore installs a detached copy: match the active record by id.
+    assert recorder.record is not None
+    assert recorder.record.id == target.id
     assert [
         node.input.content
         for node in stored_target.nodes.values()
@@ -2496,7 +2542,9 @@ async def test_v2_same_flush_input_and_history_selection_preserves_source_dispat
         ] == [("source input", [attachment])]
         assert public_calls == [("source input", [attachment])]
         assert len(client.stream_calls) == 1
-        provider_text, provider_contents, provider_kwargs = client.stream_calls[0]
+        provider_text, provider_contents, provider_kwargs = client.stream_calls[
+            0
+        ]
         assert provider_text == "source input"
         assert provider_kwargs["content"] == "all"
         assert len(provider_contents) == 1
@@ -2567,6 +2615,7 @@ async def test_v2_same_flush_failed_capture_and_history_selection_restores_targe
             client_info={},
         )
         target.open_exchange("n_0001", _stored_message("user", "target input"))
+        target.finish_exchange("n_0001", "ok", None)
         await store.put(controller.partition, target)
         target_before = target.model_dump(mode="json")
 
@@ -2605,11 +2654,13 @@ async def test_v2_same_flush_failed_capture_and_history_selection_restores_targe
         with reactive.isolate():
             assert chat.user_input() is None
             assert chat._normal_user_submission() is None
-        assert recorder.record is target
+        # Restore installs a detached copy: match the active record by id.
+        assert recorder.record is not None
+        assert recorder.record.id == target.id
         assert controller._active_id_now() == target.id
-        assert [
-            entry.message.content for entry in chat._transcript.read()
-        ] == ["target input"]
+        assert [entry.message.content for entry in chat._transcript.read()] == [
+            "target input"
+        ]
         stored_target = await store.get(controller.partition, target.id)
         assert isinstance(stored_target, ConversationRecordV2)
         assert stored_target.model_dump(mode="json") == target_before
@@ -2673,9 +2724,7 @@ async def test_v2_switch_rejects_active_attached_provider_without_mutating_sourc
     provider_chunk = object()
     provider_text = "terminal response"
 
-    provider.stream_merge_chunks.side_effect = (
-        lambda _completion, chunk: chunk
-    )
+    provider.stream_merge_chunks.side_effect = lambda _completion, chunk: chunk
     provider.stream_content.return_value = [ContentText(text=provider_text)]
     provider.stream_turn.return_value = AssistantTurn(
         contents=[ContentText(text=provider_text)]
@@ -2754,8 +2803,7 @@ async def test_v2_switch_rejects_active_attached_provider_without_mutating_sourc
         target_store = target.model_dump(mode="json")
 
         assert [
-            (message["role"], message["content"])
-            for message in source_display
+            (message["role"], message["content"]) for message in source_display
         ] == [("user", "source"), ("assistant", "")]
         assert [turn.get("role") for turn in source_turns] == [
             "user",
@@ -2961,9 +3009,13 @@ async def test_cancelled_v2_switch_releases_real_chat_input_admission(
     )
     await store.put(part(), target)
 
+    # Leaving a pending exchange writes nothing: complete the source's coherent
+    # leaf so the switch's save of that checkpoint is the one held.
+    assert source.active_leaf is not None
+    source.finish_exchange(source.active_leaf, "ok", None)
     store.block_id = source.id
     switch = asyncio.create_task(controller.switch_to(target.id))
-    await store.source_save_entered.wait()
+    await asyncio.wait_for(store.source_save_entered.wait(), 2)
     assert chat._destructive_history_blocks_input
 
     switch.cancel()
@@ -3016,6 +3068,7 @@ async def test_error_v2_switch_releases_real_chat_input_admission(
     await chat._record_accepted_user_input_with_capture(
         ChatMessage(content="source", role="user")
     )
+    await _finish_pending_exchange(chat._transcript, recorder, "answer")
     assert recorder.record is not None
     source = recorder.record
     store.source_id = source.id
@@ -3038,6 +3091,7 @@ async def test_error_v2_switch_releases_real_chat_input_admission(
     )
     assert [entry.message.content for entry in chat._transcript.read()] == [
         "source",
+        "answer",
         "accepted after error",
     ]
     assert recorder.record is source
@@ -3114,6 +3168,7 @@ async def test_v2_switch_saves_source_before_target_preflight_failure() -> None:
     await store.put(part(), source)
 
     source.open_exchange("n_0001", _stored_message("user", "latest source"))
+    source.finish_exchange("n_0001", "ok", None)
     saved_value = "latest value"
     target = new_conversation_record_v2(
         title="invalid target",
@@ -3131,6 +3186,9 @@ async def test_v2_switch_saves_source_before_target_preflight_failure() -> None:
     fake_chat = cast(_FakeChat, controller.chat)
     fake_chat.messages = [_stored_message("assistant", "live source")]
 
+    # Switching away is model-only: the app-values callback runs only on an
+    # explicit save, so persist the latest values before the switch attempt.
+    assert await controller.save()
     with pytest.raises(ValueError, match="Unsupported restore state entry"):
         await controller.switch_to(target.id)
 
@@ -3171,6 +3229,7 @@ async def test_v2_restore_hooks_are_ordered_and_receive_keyed_path_context():
         data={"root": True},
     )
     record.open_exchange("n_0001", _stored_message("user", "first"))
+    record.finish_exchange("n_0001", "ok", None)
     record.nodes["n_0001"].state["second"] = StateEntry(
         kind="test",
         version=1,
@@ -3350,7 +3409,9 @@ async def test_v2_restore_with_unavailable_model_context_becomes_read_only(
     recorder = controller._exchange_recorder
     assert recorder is not None
     fake_chat = cast(_FakeChat, controller.chat)
-    assert recorder.record is target
+    # Restore installs a detached copy: match the active record by id.
+    assert recorder.record is not None
+    assert recorder.record.id == target.id
     assert recorder.read_only
     assert controller._active_id_now() == target.id
     assert [message["role"] for message in fake_chat.restored_messages] == [
@@ -3461,7 +3522,9 @@ async def test_v2_read_only_resubmit_is_rejected_before_mutation(
     with pytest.warns(UserWarning, match="read-only"):
         await replay_exchange_record(controller, target)
 
-    assert recorder.record is target
+    # Restore installs a detached copy: match the active record by id.
+    assert recorder.record is not None
+    assert recorder.record.id == target.id
     assert recorder.read_only
     assert adapter.turns == []
     record_before = target.model_dump()
@@ -3569,7 +3632,7 @@ async def test_v2_read_only_navigation_replays_sibling_without_model_rewind() ->
     assert events == ["rewind-app-state"]
     # The selected leaf is persisted, sibling metadata goes out, and the
     # client is told the active record is still read-only.
-    assert store.put_calls[-1][1] is record
+    assert store.put_calls[-1][1] == record
     assert any(action["type"] == "update_siblings" for action in chat.actions)
     history_updates = [
         action for action in chat.actions if action["type"] == "history_update"
@@ -3615,7 +3678,7 @@ async def test_v2_read_only_record_suppresses_message_and_stream_captures() -> (
     # View-pointer, rename, and delete writes stay available.
     await controller.rename(target.id, "renamed")
     assert target.title == "renamed"
-    assert store.put_calls[-1][1] is target
+    assert store.put_calls[-1][1] == target
     assert target.model_dump()["nodes"] == before["nodes"]
 
 
@@ -3669,7 +3732,7 @@ async def test_v2_switch_to_writable_conversation_clears_read_only() -> None:
     await controller.switch_to(writable_target.id)
 
     assert not recorder.read_only
-    assert recorder.record is writable_target
+    assert recorder.record == writable_target
     assert adapter.turns == [{"role": "system", "content": "restored"}]
     chat = cast(_FakeChat, controller.chat)
     history_updates = [
@@ -3750,7 +3813,9 @@ async def test_v2_resubmit_projection_failure_names_the_step():
 
     original_send = chat._send_action
 
-    async def fail_projection_send(action: dict[str, Any], *args: Any, **kwargs: Any) -> Any:
+    async def fail_projection_send(
+        action: dict[str, Any], *args: Any, **kwargs: Any
+    ) -> Any:
         if action.get("type") == "history_edit_projection":
             raise expected
         return await original_send(action, *args, **kwargs)
@@ -3839,7 +3904,10 @@ async def test_v2_resubmit_rejects_missing_partition_before_mutation():
 @pytest.mark.parametrize(
     ("data", "match"),
     [
-        (["not a turn"], "Turn-state entries must contain a list of JSON objects"),
+        (
+            ["not a turn"],
+            "Turn-state entries must contain a list of JSON objects",
+        ),
         ([{1: "not a JSON object"}], "Non-string mapping key"),
     ],
 )
@@ -4095,9 +4163,7 @@ async def test_v2_initial_restore_second_guard_failure_recovers(
         finally:
             fake_chat._destructive_history_transaction = None
 
-    fake_chat._destructive_history_mutation = (
-        admit_destructive  # type: ignore[method-assign]
-    )
+    fake_chat._destructive_history_mutation = admit_destructive  # type: ignore[method-assign]
 
     @asynccontextmanager
     async def fail_exchange_mutation():
@@ -4565,7 +4631,9 @@ async def test_v2_restore_cleanup_continues_after_earlier_failure():
     async def metadata() -> None:
         events.append("metadata")
 
-    async def notify(*, recovery_incomplete: bool, detail: str | None = None) -> None:
+    async def notify(
+        *, recovery_incomplete: bool, detail: str | None = None
+    ) -> None:
         assert recovery_incomplete
         events.append("notification")
 
@@ -4852,7 +4920,9 @@ async def test_v2_restore_suppresses_real_transcript_capture_then_restores_it():
     fake_chat._restore_bookmark_message = replay_through_transcript  # type: ignore[method-assign]
     await replay_exchange_record(controller, target)
 
-    assert recorder.record is target
+    # Restore installs a detached copy: match the active record by id.
+    assert recorder.record is not None
+    assert recorder.record.id == target.id
     assert len(target.nodes) == 2
     await fake_chat._transcript.record_accepted_input_and_notify(
         _stored_message("user", "after restore")
@@ -4894,10 +4964,15 @@ async def test_v2_restore_success_order_and_no_failure_notification():
         original_set_turns(turns)
 
     def install(
-        record: ConversationRecordV2, *, read_only: bool = False
+        record: ConversationRecordV2,
+        *,
+        read_only: bool = False,
+        source_isolated: bool = False,
     ) -> None:
         events.append("install")
-        original_install(record, read_only=read_only)
+        original_install(
+            record, read_only=read_only, source_isolated=source_isolated
+        )
 
     async def active_id(_id: str | None) -> None:
         events.append("active-id")
@@ -5059,7 +5134,11 @@ async def test_v2_active_delete_waits_for_blocked_write_and_clears_state():
         async def put(
             self, partition: ConversationPartition, record: Any
         ) -> None:
-            if self.first_put:
+            terminal = (
+                record.active_leaf is not None
+                and record.nodes[record.active_leaf].status != "pending"
+            )
+            if self.first_put and terminal:
                 self.first_put = False
                 self.started.set()
                 await self.release.wait()
@@ -5089,29 +5168,37 @@ async def test_v2_active_delete_waits_for_blocked_write_and_clears_state():
         store.events.append("evict")
 
     controller.on_evict = on_evict
-    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
     fake_chat._transcript = transcript
 
-    first_write = asyncio.create_task(
-        transcript.record_accepted_input_and_notify(
-            _stored_message("user", "A")
-        )
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "A")
     )
-    await store.started.wait()
     first_id = controller._active_id_now()
     assert first_id is not None
+    assert store.events == ["put"]
 
     controller.adapter.set_turns_json([{"role": "user", "content": "A"}])
+    # The terminal write is the gated one: delete must wait behind it.
+    terminal_write = asyncio.create_task(
+        _finish_pending_exchange(transcript, recorder, "answer")
+    )
+    await store.started.wait()
     delete_task = asyncio.create_task(controller.delete(first_id))
     await asyncio.sleep(0)
     assert not delete_task.done()
-    assert store.events == []
+    assert store.events == ["put"]
 
     store.release.set()
-    await first_write
+    await terminal_write
     await delete_task
 
-    assert store.events == ["put", "evict", "delete"]
+    assert store.events == ["put", "put", "evict", "delete"]
     assert published == [first_id, None]
     assert await store.get(part(), first_id) is None
     assert recorder.record is None
@@ -5217,7 +5304,7 @@ async def test_v2_callback_failure_or_cancellation_retries_for_same_record(
     second_id = recorder.record.id
     assert second_id != first_id
     assert calls == [first_id, first_id, None, second_id]
-    assert await store.get(part(), second_id) is recorder.record
+    assert await store.get(part(), second_id) == recorder.record
 
 
 @pytest.mark.anyio
@@ -5229,11 +5316,17 @@ async def test_active_delete_clears_local_state_before_callback_failure(
     controller, _ = _make_controller(store=store)
     fake_chat = cast(_FakeChat, controller.chat)
     recorder = controller._exchange_recorder
-    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
     fake_chat._transcript = transcript
     await transcript.record_accepted_input_and_notify(
         _stored_message("user", "input")
     )
+    await _finish_pending_exchange(transcript, recorder)
     assert recorder.record is not None
     active_id = recorder.record.id
 
@@ -5297,10 +5390,16 @@ async def test_v2_destructive_active_id_callback_observes_reset(
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
-    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
     await transcript.record_accepted_input_and_notify(
         _stored_message("user", "hello")
     )
+    await _finish_pending_exchange(transcript, recorder)
     assert recorder.record is not None
 
     observed: list[ConversationRecordV2 | None] = []
@@ -5478,7 +5577,6 @@ def _make_v2_resubmit_controller() -> tuple[
         {"role": "user", "content": "first"},
         {"role": "user", "content": "second"},
     ]
-    recorder._set_turn_baseline(adapter.turns)
     fake_chat._transcript.set_capture_callbacks(
         on_accepted_input=recorder.accepted_input,
         on_message_committed=recorder.message_committed,
@@ -5559,7 +5657,6 @@ def _make_v2_navigation_controller() -> tuple[
         {"role": "user", "content": "first"},
         {"role": "user", "content": "replacement"},
     ]
-    recorder._set_turn_baseline(adapter.turns)
     return controller, fake_chat, adapter, store, original, replacement
 
 
@@ -5718,7 +5815,6 @@ def _make_v2_navigation_controller_with_remembered_descendants() -> tuple[
         {"role": "user", "content": "replacement"},
         {"role": "user", "content": "replacement followup"},
     ]
-    recorder._set_turn_baseline(adapter.turns)
     return (
         controller,
         chat,
@@ -5862,7 +5958,6 @@ async def test_v2_navigation_persistence_failure_clears_to_fresh_draft():
     )
     assert recorder.record is None
     assert controller._active_id_now() is None
-    assert recorder._turn_baseline == []
     assert adapter.turns == []
     assert chat.messages == []
     assert chat._transcript.read() == ()
@@ -5981,9 +6076,13 @@ async def test_v2_navigation_cancellation_clears_to_fresh_draft(
         assert store.put_calls[0][1].active_leaf == original
         assert replayed_display == [
             _stored_message("user", "first").model_dump(mode="json"),
-            _stored_message("assistant", "custom prefix").model_dump(mode="json"),
+            _stored_message("assistant", "custom prefix").model_dump(
+                mode="json"
+            ),
             _stored_message("user", "original").model_dump(mode="json"),
-            _stored_message("assistant", "original reply").model_dump(mode="json"),
+            _stored_message("assistant", "original reply").model_dump(
+                mode="json"
+            ),
         ]
         assert chat.clear_messages_calls == 2
         assert chat.set_greeting_calls == [None, None]
@@ -5996,7 +6095,6 @@ async def test_v2_navigation_cancellation_clears_to_fresh_draft(
         assert chat.set_greeting_calls == [None]
     assert recorder.record is None
     assert controller._active_id_now() is None
-    assert recorder._turn_baseline == []
     assert adapter.turns == []
     assert chat.messages == []
     assert chat._transcript.read() == ()
@@ -6066,7 +6164,6 @@ async def test_v2_navigation_rewind_hook_failure_keeps_persisted_leaf() -> None:
     # store was never moved.
     assert recorder.record is None
     assert controller._active_id_now() is None
-    assert recorder._turn_baseline == []
     assert adapter.turns == []
     assert chat.messages == []
     assert chat._transcript.read() == ()
@@ -6119,7 +6216,9 @@ async def test_v2_navigation_preflights_selected_path_before_mutation():
 
 
 @pytest.mark.anyio
-async def test_v2_bookmark_pointer_restores_selected_sibling_and_persists() -> None:
+async def test_v2_bookmark_pointer_restores_selected_sibling_and_persists() -> (
+    None
+):
     controller, chat, adapter, store, original, replacement = (
         _make_v2_navigation_controller()
     )
@@ -6151,7 +6250,9 @@ async def test_v2_bookmark_pointer_restores_selected_sibling_and_persists() -> N
 
 
 @pytest.mark.anyio
-async def test_v2_bookmark_pointer_stale_node_fails_preflight_and_resets_to_fresh_draft() -> None:
+async def test_v2_bookmark_pointer_stale_node_fails_preflight_and_resets_to_fresh_draft() -> (
+    None
+):
     controller, chat, adapter, store, _original, _replacement = (
         _make_v2_navigation_controller()
     )
@@ -6258,9 +6359,6 @@ async def test_v2_resubmit_rewinds_parent_prefix_and_new_input_creates_sibling()
     record = recorder.record
     assert record is not None
     target_input = record.nodes[target].input.model_copy(deep=True)  # type: ignore[union-attr]
-    target_state = record.nodes[target].state["shinychat:turns"].model_copy(
-        deep=True
-    )
 
     await controller.resubmit(
         target, kind="retry", request_id="request", message_index=1
@@ -6282,7 +6380,18 @@ async def test_v2_resubmit_rewinds_parent_prefix_and_new_input_creates_sibling()
     }
     assert len(store.put_calls) == 1
     assert record.nodes[target].input == target_input
-    assert record.nodes[target].state["shinychat:turns"] == target_state
+    # Leaving the target branch captures its full turn snapshot (the live
+    # model context at that point), replacing the seeded delta.
+    assert record.nodes[target].state["shinychat:turns"] == StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[
+            {"role": "system", "content": "bootstrap"},
+            {"role": "user", "content": "first"},
+            {"role": "user", "content": "second"},
+        ],
+    )
 
     exchange_id = await chat._transcript.record_accepted_input_and_notify(
         _stored_message("user", "second")
@@ -6417,7 +6526,9 @@ async def test_v2_resubmit_syncs_real_server_transcript_to_parent_prefix(
     and legacy flat-message bookmark serialization match the visible
     conversation instead of retaining abandoned messages."""
     controller, chat, _adapter, _store, first, target = (
-        _make_v2_resubmit_real_chat(request, chat_id=f"resubmit_transcript_{kind}")
+        _make_v2_resubmit_real_chat(
+            request, chat_id=f"resubmit_transcript_{kind}"
+        )
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -6669,7 +6780,9 @@ async def test_v2_edit_resubmit_forwards_validated_attachment_copy():
 
 
 @pytest.mark.anyio
-async def test_v2_edit_nonleaf_rewinds_to_root_and_preserves_old_branch() -> None:
+async def test_v2_edit_nonleaf_rewinds_to_root_and_preserves_old_branch() -> (
+    None
+):
     controller, chat, adapter, store, first, target = (
         _make_v2_resubmit_controller()
     )
@@ -6697,7 +6810,9 @@ async def test_v2_edit_nonleaf_rewinds_to_root_and_preserves_old_branch() -> Non
 
 
 @pytest.mark.anyio
-async def test_v2_edit_projection_delivery_failure_clears_to_fresh_draft() -> None:
+async def test_v2_edit_projection_delivery_failure_clears_to_fresh_draft() -> (
+    None
+):
     controller, chat, adapter, _store, _first, _target = (
         _make_v2_resubmit_controller()
     )
@@ -6738,7 +6853,9 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
     cleanup_entry: list[tuple[Any, ...]] = []
     original_clear_failed_restore = controller._clear_failed_restore
 
-    async def capture_cleanup_entry(failure: BaseException | None = None) -> None:
+    async def capture_cleanup_entry(
+        failure: BaseException | None = None,
+    ) -> None:
         cleanup_entry.append(
             (
                 failure,
@@ -6768,7 +6885,8 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
         )
 
     assert raised.value is expected
-    assert put_attempts == [record]
+    assert len(put_attempts) == 1
+    assert put_attempts[0].active_leaf == _first
     # The rewind hooks ran before the failed persist, so the cleanup
     # snapshot sees the rewound parent-prefix turns, not the live ones.
     rewound_turns = [
@@ -6790,7 +6908,6 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
     ]
     assert recorder.record is None
     assert controller._active_id_now() is None
-    assert recorder._turn_baseline == []
     assert adapter.turns == []
     assert chat.clear_messages_calls == 1
     assert chat.messages == []
@@ -6865,7 +6982,6 @@ async def test_v2_resubmit_rewind_hook_failure_keeps_persisted_leaf() -> None:
     # store was never moved.
     assert recorder.record is None
     assert controller._active_id_now() is None
-    assert recorder._turn_baseline == []
     assert adapter.turns == []
     assert chat.messages == []
     assert chat.clear_messages_calls == 1
@@ -7070,8 +7186,9 @@ async def test_v2_error_detail_is_absent_for_inputless_error_node() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_error_projection_does_not_mutate_failed_node_with_partial_display(
-) -> None:
+async def test_v2_error_projection_does_not_mutate_failed_node_with_partial_display() -> (
+    None
+):
     controller, chat, _adapter, _store, first, target = (
         _make_v2_resubmit_controller()
     )
@@ -7132,7 +7249,7 @@ async def test_v2_retry_restores_partial_exchange_before_creating_sibling(
     status: str,
 ) -> None:
     adapter = _TrackingFakeAdapter()
-    controller, _store = _make_controller(
+    controller, store = _make_controller(
         adapter=adapter,
     )
     chat = cast(_FakeChat, controller.chat)
@@ -7183,6 +7300,35 @@ async def test_v2_retry_restores_partial_exchange_before_creating_sibling(
     )
 
     await replay_exchange_record(controller, record)
+    parent_prefix = [{"role": "system", "content": "parent prefix"}]
+    parent_id = record.nodes[target].parent_id
+    assert parent_id == "n_0000"
+
+    if status == "pending":
+        # An unresolved restore is isolated and read-only: only the parent
+        # prefix replays, and a retry of the pending exchange is rejected
+        # without touching the record, the model, or the store.
+        restored = recorder.record
+        assert restored is not None
+        assert recorder.read_only
+        assert [
+            message["segments"][0]["content"]
+            for message in chat.restored_messages
+        ] == []
+        assert adapter.turns == parent_prefix
+        before = restored.model_dump(mode="json")
+        puts_before = len(store.put_calls)
+
+        # The unresolved exchange is not addressable on the coherent path,
+        # so the retry is rejected at message-index resolution.
+        with pytest.raises(IndexError, match="out of range"):
+            await controller.handle_resubmit(0, "retry", request_id="retry")
+
+        assert restored.model_dump(mode="json") == before
+        assert restored.nodes[target].status == "pending"
+        assert adapter.turns == parent_prefix
+        assert len(store.put_calls) == puts_before
+        return
 
     assert [
         message["segments"][0]["content"] for message in chat.restored_messages
@@ -7192,9 +7338,9 @@ async def test_v2_retry_restores_partial_exchange_before_creating_sibling(
         {"role": "user", "content": "retry this"},
         {"role": "assistant", "content": "partial response"},
     ]
-    original_node_json = record.nodes[target].model_dump_json()
-    parent_id = record.nodes[target].parent_id
-    assert parent_id == "n_0000"
+    original_node = record.nodes[target].model_dump(
+        mode="json", exclude={"state"}
+    )
 
     await controller.handle_resubmit(0, "retry", request_id="retry")
 
@@ -7205,16 +7351,29 @@ async def test_v2_retry_restores_partial_exchange_before_creating_sibling(
         "content": "retry this",
         "attachments": [],
     }
-    assert adapter.turns == [
-        {"role": "system", "content": "parent prefix"},
-    ]
+    assert adapter.turns == parent_prefix
     assert record.active_leaf == parent_id
-    assert record.nodes[target].model_dump_json() == original_node_json
+    assert (
+        record.nodes[target].model_dump(mode="json", exclude={"state"})
+        == original_node
+    )
     assert record.nodes[target].status == status
     assert [
         message.as_stored_message().content
         for message in record.nodes[target].messages
     ] == ["partial response"]
+    # Leaving the retried branch captures its full turn snapshot, replacing
+    # the seeded delta.
+    assert record.nodes[target].state["shinychat:turns"] == StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[
+            {"role": "system", "content": "parent prefix"},
+            {"role": "user", "content": "retry this"},
+            {"role": "assistant", "content": "partial response"},
+        ],
+    )
 
     await chat._transcript.record_accepted_input_and_notify(original_input)
 
@@ -7223,10 +7382,11 @@ async def test_v2_retry_restores_partial_exchange_before_creating_sibling(
     assert sibling != target
     assert record.nodes[sibling].parent_id == parent_id
     assert record.nodes[sibling].input == original_input
-    assert adapter.turns == [
-        {"role": "system", "content": "parent prefix"},
-    ]
-    assert record.nodes[target].model_dump_json() == original_node_json
+    assert adapter.turns == parent_prefix
+    assert (
+        record.nodes[target].model_dump(mode="json", exclude={"state"})
+        == original_node
+    )
 
 
 @pytest.mark.anyio
@@ -7318,8 +7478,8 @@ async def test_v2_recorder_snapshots_chatlas_turns_at_root_close():
         send=_sent,
     )
     state = recorder.record.nodes[exchange_id].state["shinychat:turns"]  # type: ignore[union-attr]
-    assert state.mode == "delta"
-    assert state.data == [new_turn]
+    assert state.mode == "snapshot"
+    assert state.data == adapter.turns
 
 
 @pytest.mark.anyio
@@ -7526,8 +7686,8 @@ async def test_v2_recorder_captures_delta_then_snapshot_on_earlier_turn_rewrite(
         send=_sent,
     )
     state = recorder.record.nodes[exchange_id].state["shinychat:turns"]  # type: ignore[union-attr]
-    assert state.mode == "delta"
-    assert state.data == [{"role": "user", "content": "one"}]
+    assert state.mode == "snapshot"
+    assert state.data == adapter.turns
 
     adapter.turns[0]["content"] = "rewritten"
     adapter.turns.append({"role": "assistant", "content": "later"})
@@ -7580,8 +7740,8 @@ async def test_v2_recorder_captures_terminal_turns_verbatim(status: str):
     )
 
     state = recorder.record.nodes[exchange_id].state["shinychat:turns"]  # type: ignore[union-attr]
-    assert state.mode == "delta"
-    assert state.data == [{"role": "assistant", "content": "partial"}]
+    assert state.mode == "snapshot"
+    assert state.data == adapter.turns
 
 
 @pytest.mark.anyio
@@ -7595,6 +7755,8 @@ async def test_v2_recorder_captures_active_node_before_next_input():
         _stored_message("user", "one")
     )
     adapter.turns.append({"role": "user", "content": "one"})
+    validated: list[bool] = []
+    adapter.get_system_prompt = lambda: validated.append(True)  # type: ignore[attr-defined,method-assign]
 
     await transcript.record_accepted_input_and_notify(
         _stored_message("user", "two")
@@ -7602,10 +7764,10 @@ async def test_v2_recorder_captures_active_node_before_next_input():
 
     node = recorder.record.nodes[first_exchange]  # type: ignore[union-attr]
     assert node.status == "pending"
-    assert node.state["shinychat:turns"].mode == "delta"
-    assert node.state["shinychat:turns"].data == [
-        {"role": "user", "content": "one"}
-    ]
+    # A pending predecessor writes no turns state; the next input still
+    # runs the live client's model-state validation.
+    assert "shinychat:turns" not in node.state
+    assert validated
 
 
 @pytest.mark.anyio
@@ -7642,8 +7804,8 @@ async def test_v2_recorder_keeps_terminal_turn_delta_at_node_close():
     )
 
     state = recorder.record.nodes[first_exchange].state["shinychat:turns"]  # type: ignore[union-attr]
-    assert state.mode == "delta"
-    assert state.data == [{"role": "assistant", "content": "answer"}]
+    assert state.mode == "snapshot"
+    assert state.data == adapter.turns
 
 
 @pytest.mark.anyio
@@ -7701,9 +7863,8 @@ async def test_v2_recorder_replaces_stream_projection_on_its_opening_exchange():
     assert [
         message.as_stored_message().content for message in first.messages
     ] == ["partial"]
-    assert first.state["shinychat:turns"].data == [
-        {"role": "assistant", "content": "late first response"}
-    ]
+    assert first.state["shinychat:turns"].mode == "snapshot"
+    assert first.state["shinychat:turns"].data == adapter.turns
     assert record.nodes[second_exchange].status == "pending"
     assert "shinychat:turns" not in record.nodes[second_exchange].state
     assert record.active_leaf == second_exchange
@@ -7752,7 +7913,8 @@ async def test_v2_recorder_persists_pre_input_stream_on_pending_root() -> None:
         _stored_message("user", "question")
     )
     assert record.nodes[root_id].status == "pending"
-    assert record.nodes[root_id].state["shinychat:turns"].mode == "snapshot"
+    # A pending root writes no turns state until its exchange settles.
+    assert "shinychat:turns" not in record.nodes[root_id].state
     await transcript.end_stream(
         stream_id="stream",
         status=None,
@@ -7932,45 +8094,8 @@ async def test_v2_recorder_creates_inputless_child_for_unowned_content() -> (
 
 
 @pytest.mark.anyio
-async def test_next_input_save_waits_for_background_stream_snapshot(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    import shinychat._history_recorder as recorder_module
-
-    now = [100.0]
-    monkeypatch.setattr(recorder_module, "monotonic", lambda: now[0])
-
-    class BlockingSnapshotStore(ConversationStore):
-        def __init__(self) -> None:
-            self.records: dict[str, ConversationRecordV2] = {}
-            self.block_next_put = False
-            self.blocked = asyncio.Event()
-            self.release = asyncio.Event()
-
-        async def list(self, partition: ConversationPartition) -> list[Any]:
-            return []
-
-        async def get(
-            self, partition: ConversationPartition, conv_id: str
-        ) -> ConversationRecordV2 | None:
-            return self.records.get(conv_id)
-
-        async def put(
-            self, partition: ConversationPartition, record: Any
-        ) -> None:
-            snapshot = record.model_copy(deep=True)
-            if self.block_next_put:
-                self.block_next_put = False
-                self.blocked.set()
-                await self.release.wait()
-            self.records[snapshot.id] = snapshot
-
-        async def delete(
-            self, partition: ConversationPartition, conv_id: str
-        ) -> None:
-            self.records.pop(conv_id, None)
-
-    store = BlockingSnapshotStore()
+async def test_next_input_persists_without_unsaved_streamed_tail() -> None:
+    store = InMemoryConversationStore()
     controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
@@ -7989,43 +8114,33 @@ async def test_next_input_save_waits_for_background_stream_snapshot(
         exchange_id=first_exchange,
         send=_sent,
     )
-
-    store.block_next_put = True
-    now[0] += 1.0
-    update = asyncio.create_task(
-        transcript.transition_stream(
-            stream_id="stream",
-            source_segments=[],
-            message=_stored_message("assistant", "partial"),
-            operation="append",
-            send=_sent,
-        )
+    assert await transcript.transition_stream(
+        stream_id="stream",
+        source_segments=[],
+        message=_stored_message("assistant", "partial"),
+        operation="append",
+        send=_sent,
     )
-    try:
-        await asyncio.wait_for(store.blocked.wait(), timeout=1)
-        # The chunk returned despite the held put; the new input's save
-        # must still wait for that older snapshot before writing its node.
-        assert update.done()
-        next_input = asyncio.create_task(
-            transcript.record_accepted_input_and_notify(
-                _stored_message("user", "second")
-            )
-        )
-        await asyncio.sleep(0)
-        assert not next_input.done()
-    finally:
-        store.release.set()
-        await asyncio.wait_for(update, timeout=1)
-    second_exchange = await asyncio.wait_for(next_input, timeout=1)
+
+    # The first exchange is still streaming: its chunk is live-only. The next
+    # input's save persists its own node and the first exchange's pending
+    # shell, never the unfinished streamed tail.
+    second_exchange = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "second")
+    )
 
     record = recorder.record
     assert isinstance(record, ConversationRecordV2)
-    stored = store.records[record.id]
+    stored = await store.get(part(), record.id)
+    assert isinstance(stored, ConversationRecordV2)
     assert stored.active_leaf == second_exchange
     assert second_exchange in stored.nodes
-    assert stored.nodes[first_exchange].messages[
-        -1
-    ].as_stored_message().content == ("partial")
+    assert stored.nodes[first_exchange].messages == []
+    assert stored.nodes[first_exchange].status == "pending"
+    assert [
+        message.as_stored_message().content
+        for message in record.nodes[first_exchange].messages
+    ] == ["partial"]
 
 
 @pytest.mark.anyio
@@ -8095,11 +8210,6 @@ async def test_stream_recorder_failure_does_not_rollback_sent_transcript(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ):
-    import shinychat._history_recorder as recorder_module
-
-    now = [100.0]
-    monkeypatch.setattr(recorder_module, "monotonic", lambda: now[0])
-
     class FailingStore(InMemoryConversationStore):
         fail = False
 
@@ -8134,7 +8244,6 @@ async def test_stream_recorder_failure_does_not_rollback_sent_transcript(
     )
 
     store.fail = True
-    now[0] += 1.0
     # Chunks never await storage: the failed background snapshot does not
     # roll back the sent transcript and does not raise at the chunk.
     await transcript.transition_stream(
@@ -8148,16 +8257,11 @@ async def test_stream_recorder_failure_does_not_rollback_sent_transcript(
     assert transcript.read()[-1].message.content == "sent partial"
     assert transcript.active_stream_id == "stream"
 
-    put = recorder._put_task
-    assert put is not None
     with pytest.raises(RuntimeError, match="durability failure"):
-        await put
+        await recorder.stream_finished("stream", "error", "provider failed")
+    assert transcript.read()[-1].message.content == "sent partial"
     store.fail = False
-    # The recovered write failure is logged, while the latest boundary
-    # save succeeds rather than signalling a false failed commit.
-    assert await recorder.save_current()
-    assert len(caplog.records) == 1
-    assert "durability failure" in caplog.text
+    await recorder.stream_finished("stream", "error", "provider failed")
 
     stored = await store.get(part(), recorder.record.id)  # type: ignore[union-attr]
     assert isinstance(stored, ConversationRecordV2)
@@ -8241,9 +8345,8 @@ async def test_terminal_state_capture_failure_propagates_without_rollback():
         )
 
     node = recorder.record.nodes[exchange_id]  # type: ignore[union-attr]
-    assert node.state["shinychat:turns"].data == [
-        {"role": "assistant", "content": "partial"}
-    ]
+    assert node.state["shinychat:turns"].mode == "snapshot"
+    assert node.state["shinychat:turns"].data == adapter.turns
     assert node.status == "error"
     assert transcript.active_stream_id is None
 
@@ -8252,18 +8355,16 @@ async def test_terminal_state_capture_failure_propagates_without_rollback():
 @pytest.mark.parametrize(
     ("checkpoint", "expected_content", "expected_status", "expected_error"),
     [
-        ("pre-input-start", [""], "pending", None),
+        # Nothing is written before the input checkpoint, so a kill before
+        # any terminal leaves no saved record at all.
+        ("pre-input-start", None, None, None),
         ("input", [], "pending", None),
-        ("start", [""], "pending", None),
-        # A chunk after the gate interval is killed after snapshot completion.
-        ("update-one", ["first"], "pending", None),
-        # A chunk inside the one-second gate is intentionally not durable.
-        ("update-gated", ["first"], "pending", None),
-        # The next chunk after the gate interval persists the latest tail.
-        ("update-periodic", ["first second"], "pending", None),
-        # A new tool block bypasses the gate.
-        ("update-tool", ["first"], "pending", None),
-        # Terminal boundaries save the gated tail before the kill.
+        ("start", [], "pending", None),
+        # Chunks (text or tool blocks) are live-only until the terminal, so a
+        # kill mid-stream leaves the accepted-input checkpoint on disk.
+        ("update-one", [], "pending", None),
+        ("update-tool", [], "pending", None),
+        # The terminal persists the full streamed tail.
         ("ok", ["first second"], "ok", None),
         ("error", ["first second"], "error", HISTORY_ERROR_GENERIC),
         ("cancelled", ["first second"], "cancelled", None),
@@ -8355,23 +8456,6 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
             )
             controller.chat = SimpleNamespace(_transcript=transcript)
 
-            # Deterministic gate control: chunk snapshots are throttled
-            # against this monotonic clock, never a timer.
-            import shinychat._history_recorder as recorder_module
-
-            now = [100.0]
-            recorder_module.monotonic = lambda: now[0]
-
-            async def await_scheduled_put(required):
-                # Explicit write-completion coordination: the scheduled
-                # snapshot write is awaited, never slept on.
-                put = recorder._put_task
-                assert (put is not None) == required, (
-                    f"scheduled put presence mismatch at {sys.argv[2]}"
-                )
-                if put is not None:
-                    await put
-
             if sys.argv[2] == "pre-input-start":
                 await transcript.start_stream(
                     stream_id="stream",
@@ -8395,7 +8479,6 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
             )
             if sys.argv[2] == "start":
                 os.kill(os.getpid(), signal.SIGKILL)
-            now[0] += 1.0
             await transcript.transition_stream(
                 stream_id="stream",
                 source_segments=[],
@@ -8403,53 +8486,26 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
                 operation="append",
                 send=sent,
             )
-            if sys.argv[2] == "update-one":
-                await await_scheduled_put(required=True)
+            if sys.argv[2] in ("update-one", "update-tool"):
+                if sys.argv[2] == "update-tool":
+                    await transcript.transition_stream(
+                        stream_id="stream",
+                        source_segments=[],
+                        message=StoredMessage(
+                            role="assistant",
+                            segments=[
+                                {
+                                    "type": "tool_request",
+                                    "version": 1,
+                                    "request_id": "r1",
+                                    "tool_name": "get_weather",
+                                }
+                            ],
+                        ),
+                        operation="append",
+                        send=sent,
+                    )
                 os.kill(os.getpid(), signal.SIGKILL)
-            await await_scheduled_put(required=True)
-            if sys.argv[2] == "update-gated":
-                await transcript.transition_stream(
-                    stream_id="stream",
-                    source_segments=[],
-                    message=message("assistant", " second"),
-                    operation="append",
-                    send=sent,
-                )
-                await await_scheduled_put(required=False)
-                os.kill(os.getpid(), signal.SIGKILL)
-            if sys.argv[2] == "update-periodic":
-                now[0] += 1.1
-                await transcript.transition_stream(
-                    stream_id="stream",
-                    source_segments=[],
-                    message=message("assistant", " second"),
-                    operation="append",
-                    send=sent,
-                )
-                await await_scheduled_put(required=True)
-                os.kill(os.getpid(), signal.SIGKILL)
-            if sys.argv[2] == "update-tool":
-                await transcript.transition_stream(
-                    stream_id="stream",
-                    source_segments=[],
-                    message=StoredMessage(
-                        role="assistant",
-                        segments=[
-                            {
-                                "type": "tool_request",
-                                "version": 1,
-                                "request_id": "r1",
-                                "tool_name": "get_weather",
-                            }
-                        ],
-                    ),
-                    operation="append",
-                    send=sent,
-                )
-                await await_scheduled_put(required=True)
-                os.kill(os.getpid(), signal.SIGKILL)
-            # Terminal checkpoints: leave the second chunk inside the gate
-            # so the boundary's foreground save is what makes it durable.
             await transcript.transition_stream(
                 stream_id="stream",
                 source_segments=[],
@@ -8457,7 +8513,6 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
                 operation="append",
                 send=sent,
             )
-            await await_scheduled_put(required=False)
             status = None if sys.argv[2] == "ok" else sys.argv[2]
             error = "provider timeout" if status == "error" else None
             await transcript.end_stream(
@@ -8484,33 +8539,46 @@ async def test_stream_capture_survives_process_kill_and_file_store_reload(
     metas = await store.list(
         ConversationPartition(chat_id="kill", scope="scope")
     )
+    if checkpoint == "pre-input-start":
+        assert metas == []
+        return
     assert len(metas) == 1
     record = await store.get(
         ConversationPartition(chat_id="kill", scope="scope"), metas[0].id
     )
     assert isinstance(record, ConversationRecordV2)
-    if checkpoint == "pre-input-start":
-        assert record.title == "New chat"
-        node = record.nodes["n_0000"]
-        assert node.input is None
-    else:
-        node = next(
-            node for node in record.nodes.values() if node.input is not None
-        )
+    node = next(
+        node for node in record.nodes.values() if node.input is not None
+    )
     assert node.status == expected_status
     assert [
         message.as_stored_message().content for message in node.messages
     ] == expected_content
-    if checkpoint == "update-tool":
-        # The gate-bypassing snapshot carried the new tool block to disk.
-        block = node.messages[-1].segments[-1]
-        assert isinstance(block, dict)
-        assert block["type"] == "tool_request"
-        assert block["request_id"] == "r1"
     assert (
         node.error is None
         if expected_error is None
         else node.error is not None and node.error.message == expected_error
+    )
+
+
+async def _finish_pending_exchange(
+    transcript: ChatTranscript, recorder: Any, content: str = ""
+) -> None:
+    """Complete the active accepted-input exchange through a stream terminal.
+
+    Writable restore, save, and delete are only coherent once the exchange
+    is terminal; a bare accepted input leaves it pending (interrupted).
+    """
+    assert recorder.record is not None
+    await transcript.start_stream(
+        stream_id="finish-pending",
+        entry=TranscriptEntry(message=_stored_message("assistant", content)),
+        owner_task=None,
+        exchange_id=recorder.record.active_leaf,
+        send=_sent,
+    )
+    await transcript.end_stream(
+        stream_id="finish-pending", status=None, error=None, send=_sent
     )
 
 
@@ -8524,17 +8592,24 @@ async def test_v2_response_settlement_writes_through_recorder_once():
     controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
-    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
 
     await transcript.record_accepted_input_and_notify(
         _stored_message("user", "one")
     )
-    assert len(store.put_calls) == 1
-    assert isinstance(store.put_calls[0][1], ConversationRecordV2)
+    # Settlement is coherent only for a completed exchange: finish it first.
+    await _finish_pending_exchange(transcript, recorder, "answer")
+    assert isinstance(store.put_calls[-1][1], ConversationRecordV2)
+    settled_puts = len(store.put_calls)
 
     await controller.on_response()
 
-    assert len(store.put_calls) == 2
+    assert len(store.put_calls) == settled_puts + 1
     assert isinstance(store.put_calls[-1][1], ConversationRecordV2)
     assert all(
         isinstance(record, ConversationRecordV2)
@@ -8550,11 +8625,17 @@ async def test_v2_response_persistence_does_not_depend_on_bookmark_settlement() 
     controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
     assert recorder is not None
-    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
 
     await transcript.record_accepted_input_and_notify(
         _stored_message("user", "durable before bookmark")
     )
+    await _finish_pending_exchange(transcript, recorder, "answer")
     record = recorder.record
     assert record is not None
 
@@ -8653,9 +8734,7 @@ async def test_same_scope_different_chat_ids_are_isolated():
         chat_id="chat-b", scope="browser-1"
     )
 
-    assert (
-        await store.get(controller_a.partition, record_a.id) is not None
-    )
+    assert await store.get(controller_a.partition, record_a.id) is not None
     assert await store.get(controller_b.partition, record_a.id) is None
     assert await store.list(controller_b.partition) == []
 
@@ -8692,10 +8771,16 @@ async def test_explicit_save_captures_state_without_counting_response():
     store = InMemoryConversationStore()
     controller, _ = _make_controller(store=store, save_callbacks=[capture])
     recorder = controller._exchange_recorder
-    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
     await transcript.record_accepted_input_and_notify(
         _stored_message("user", "hello")
     )
+    await _finish_pending_exchange(transcript, recorder)
     assert recorder.record is not None
     response_count = recorder.record.response_count
 
@@ -8716,9 +8801,10 @@ async def test_explicit_save_captures_state_without_counting_response():
     assert resolve_path_values(recorder.record, leaf) == {
         "artifact": {"version": 2}
     }
-    # The callback ran at the root close (accepted input) and again at
-    # this explicit save; the save itself persisted exactly once.
-    assert len(saved_values) == 2
+    # The callback runs at every capture point: root close, the stream
+    # terminal's settlement captures, and this explicit save. The save
+    # itself persisted exactly once.
+    assert len(saved_values) == 4
     assert put_count == 1
     assert controller._title_task is None
 
@@ -8736,10 +8822,16 @@ async def test_explicit_save_does_not_start_title_generation():
     controller.title_enabled = True
     controller.title_fn = title_fn
     recorder = controller._exchange_recorder
-    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
     await transcript.record_accepted_input_and_notify(
         _stored_message("user", "hello")
     )
+    await _finish_pending_exchange(transcript, recorder)
     assert recorder.record is not None
     assert controller._title_task is None
 
@@ -8753,10 +8845,16 @@ async def test_explicit_save_runs_history_lifecycle_after_persist():
     store = InMemoryConversationStore()
     controller, _ = _make_controller(store=store)
     recorder = controller._exchange_recorder
-    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
     await transcript.record_accepted_input_and_notify(
         _stored_message("user", "hello")
     )
+    await _finish_pending_exchange(transcript, recorder)
     assert recorder.record is not None
     events: list[str] = []
 
@@ -8874,7 +8972,7 @@ async def test_active_stream_rejects_destructive_history_paths_before_mutation(
     assert active is not None
     active_id = active.id
     assert controller._active_id_now() == active_id
-    assert store.put_calls[-1][1] is active
+    assert store.put_calls[-1][1] == active
 
     @asynccontextmanager
     async def reject_active_stream():
@@ -9197,9 +9295,7 @@ async def test_v2_titling_fires_after_second_input_exchange_and_publishes():
     update = fake_chat.actions[-1]
     assert update["type"] == "history_update"
     assert update["active_id"] == record.id
-    assert [c["title"] for c in update["conversations"]] == [
-        "Generated Title"
-    ]
+    assert [c["title"] for c in update["conversations"]] == ["Generated Title"]
 
 
 @pytest.mark.anyio
@@ -9647,9 +9743,7 @@ async def _released_v1_record(
 ) -> tuple[ConversationRecordV1, dict[str, Any]]:
     """The py 0.7.0 matrix case as a v1 record, plus its pinned expectation."""
     cases = json.loads(_MATRIX_PATH.read_text(encoding="utf-8"))
-    case = next(
-        c for c in cases if c["name"] == "py_0_7_0_versioned_ui"
-    )
+    case = next(c for c in cases if c["name"] == "py_0_7_0_versioned_ui")
     conv_id = json.loads(case["files"]["record.json"])["id"]
     conv_dir = (
         tmp_path
@@ -9777,7 +9871,7 @@ async def test_v1_era_custom_store_model_validate_yields_v2(tmp_path: Path):
     # The validator's v2 record went through untouched: the restored record
     # is the very object the store returned.
     assert controller._exchange_recorder is not None
-    assert controller._exchange_recorder.record is store.returned
+    assert controller._exchange_recorder.record == store.returned
 
 
 @pytest.mark.anyio
@@ -9837,7 +9931,7 @@ async def test_upgraded_v1_record_writes_back_as_v2_on_its_next_save(
 
     stored = await store.get(part(), v1_record.id)
     assert isinstance(stored, ConversationRecordV2)
-    assert stored is recorder.record
+    assert stored == recorder.record
     assert stored.schema_version == 2
 
 
@@ -9929,9 +10023,7 @@ async def test_lossy_v1_import_warns_once_per_session_per_conversation():
     store.records["c_lossy_2"] = _lossy_v1_record(id="c_lossy_2")
     with pytest.warns(UserWarning) as caught_second:
         await controller._get_record(part(), "c_lossy_2")
-    assert [str(w.message) for w in caught_second] == _lossy_warns(
-        "c_lossy_2"
-    )
+    assert [str(w.message) for w in caught_second] == _lossy_warns("c_lossy_2")
 
     # Per session: a fresh controller over the same store warns again for
     # the same conversation.

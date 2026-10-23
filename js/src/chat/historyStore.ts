@@ -19,6 +19,7 @@ export interface HistorySnapshot {
    * `historyTransitionPending`; stream start/end never clears it.
    */
   readOnly: boolean
+  readOnlyReason?: "model_unavailable" | "app_restore_failed" | "interrupted"
   busy: boolean
   connected: boolean
   transitionProtocol: TransitionProtocol | null
@@ -124,12 +125,14 @@ export class HistoryStore {
     conversations,
     activeId,
     readOnly = false,
+    readOnlyReason,
     transitionProtocol,
   }: {
     enabled: boolean
     conversations: ConversationMeta[]
     activeId: string | null
     readOnly?: boolean
+    readOnlyReason?: HistorySnapshot["readOnlyReason"]
     transitionProtocol?: string
   }): void {
     const nextConversations = conversationsEqual(
@@ -150,6 +153,7 @@ export class HistoryStore {
       conversations: nextConversations,
       activeId,
       readOnly,
+      readOnlyReason: readOnly ? readOnlyReason : undefined,
       busy: this.snapshot.busy,
       connected: this.snapshot.connected,
       transitionProtocol: normalizedProtocol,
@@ -357,6 +361,7 @@ function snapshotsEqual(a: HistorySnapshot, b: HistorySnapshot): boolean {
     a.conversations === b.conversations &&
     a.activeId === b.activeId &&
     a.readOnly === b.readOnly &&
+    a.readOnlyReason === b.readOnlyReason &&
     a.busy === b.busy &&
     a.connected === b.connected &&
     a.transitionProtocol === b.transitionProtocol &&

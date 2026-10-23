@@ -1142,9 +1142,9 @@ export const ChatContainer = forwardRef<
                   role="status"
                   id={`${elementId}-readonly-message`}
                 >
-                  {
-                    "This conversation can be viewed but not continued. Its saved model context couldn't be loaded."
-                  }
+                  {history.readOnlyReason === "interrupted"
+                    ? "This conversation was interrupted and can be viewed but not continued. Start a New chat to continue chatting."
+                    : "This conversation can be viewed but not continued. Its saved model context couldn't be loaded."}
                 </p>
                 <button
                   type="button"

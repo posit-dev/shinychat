@@ -169,6 +169,34 @@ the conversation stays at the new position, the developer gets a warning with
 the error, and the user sees a generic notification. A read-only conversation
 still fires `on_navigate` when browsing siblings, using its recorded values.
 
+### Response checkpoints and interrupted conversations
+
+History attempts to save a streamed response at completion, handled error, or
+cancellation, with its captured model state. If model capture fails, no newer
+display checkpoint is published; capture and storage errors still propagate.
+It does not save streamed display fragments between those points. A hard process
+crash can therefore lose the unfinished question and answer; restoration uses the
+last coherent model/display checkpoint, not invented model turns from the displayed
+text.
+
+If a saved record has an unfinished active exchange, the restored session is an
+isolated read-only viewer. It cannot save or rename that source conversation.
+Choose **New chat** to continue chatting. Reloading does not necessarily cancel
+the original response task: it may still finish and save its terminal checkpoint,
+but the restored viewer does not reconnect to it or live-update. Completed
+conversations still use last-writer-wins storage; this does not provide general
+multi-tab ownership or conflict protection.
+
+Coherent checkpoints store full client turn lists and system prompts. Repeating
+long prefixes across exchanges can make total stored model state grow
+quadratically with conversation length. Existing delta-based records remain
+readable. The file store's `max_store_mb` budget still applies (100 MB by default);
+this change does not increase the quota or change its defaults.
+
+Leaving a coherent completed position or disconnecting captures the latest model
+state without invoking app-state `on_save` callbacks. Explicit `history.save()`
+continues to capture app state at coherent positions.
+
 ## Slash commands
 
 Slash commands give users discoverable shortcuts — like `/search`, `/clear`, or `/help` — that run a server-side handler you define. Register a command with `@chat.slash_command(name, description)`. When a user runs it, the matching handler fires *instead* of `@chat.on_user_submit`, and what happens next is entirely up to the handler.
@@ -313,7 +341,7 @@ Key points:
 - `StreamController()` is created once and reused — it automatically resets between streams.
 - Pass the controller to `stream_async(controller=ctrl)` so chatlas can honour the cancellation signal.
 - The cancel input fires as `input.<id>_cancel` (e.g. `input.chat_cancel`). Observe it with `@reactive.event` to call `ctrl.cancel()`. This is needed in both Express and Core apps.
-- Partial responses are automatically preserved in chat history by chatlas when a stream is cancelled.
+- chatlas retains the partial response in live client history on cancellation. Persistent Shiny history saves it only at a coherent terminal/error/cancel checkpoint with matching captured model state, and only if capture and storage succeed. A hard kill can lose the unfinished exchange. After reload, the original task may still finish and save, but the restored viewer does not automatically adopt its display or client context.
 
 ## File attachments
 
