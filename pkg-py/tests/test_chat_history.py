@@ -3309,6 +3309,7 @@ async def test_v2_clear_retains_input_admitted_after_clear_dispatch(
 @pytest.mark.parametrize("sanitize_errors", [False, True])
 @pytest.mark.parametrize("recovery", ["new_chat", "corrected_state"])
 @pytest.mark.parametrize("on_error", ["sanitize", "actual", "unhandled"])
+@pytest.mark.parametrize("capture_source", ["turns", "system_prompt"])
 async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
     tmp_path: Any,
     request: Any,
@@ -3316,6 +3317,7 @@ async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
     sanitize_errors: bool,
     recovery: str,
     on_error: Any,
+    capture_source: str,
 ) -> None:
     chat, session, client, store = await _make_initialized_live_v2_chat(
         tmp_path, "capture_recovery"
@@ -3326,6 +3328,16 @@ async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
     controller = chat.history._controller
     assert controller is not None
     recorder = controller._exchange_recorder
+    if capture_source == "system_prompt":
+        def retained_prompt() -> str:
+            if any(turn.get("content") == "unreadable prompt" for turn in client._turns):
+                raise RuntimeError("retained system prompt could not be read")
+            return "healthy prompt"
+
+        controller.adapter.get_system_prompt = retained_prompt  # type: ignore[method-assign]
+        recorder._register_capture_hook(
+            "shinychat:system_prompt", recorder._capture_system_prompt
+        )
     # Replace the built-in provider consumer with this app's dispatch callback.
     # Keep the accepted-input effects and recorder wiring real.
     next(
@@ -3364,11 +3376,16 @@ async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
         saved = await store.get(partition, recorder.record.id)
         assert saved is not None
         checkpoint = saved.model_dump(mode="json")
-        client._turns = [{"role": "assistant", "content": object()}]
+        if capture_source == "turns":
+            client._turns = [{"role": "assistant", "content": object()}]
+            cause = "not JSON serializable"
+        else:
+            client._turns = [{"role": "assistant", "content": "unreadable prompt"}]
+            cause = "retained system prompt could not be read"
         notification = MagicMock()
         with patch("shiny.ui.notification_show", notification):
             for seq in (2, 3):
-                with pytest.warns(UserWarning, match="not JSON serializable"):
+                with pytest.warns(UserWarning, match=cause):
                     await submit("rejected", seq)
                 assert calls == ["initial"]
                 assert recorder.record.model_dump(mode="json") == before
@@ -3382,6 +3399,7 @@ async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
         assert "Message not sent" in report
         assert "saved checkpoint is unchanged" in report
         assert "New chat" in report
+        assert cause not in report
         if recovery == "new_chat":
             await controller.new_chat()
             assert client._turns == []

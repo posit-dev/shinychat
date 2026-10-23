@@ -59,7 +59,7 @@ if TYPE_CHECKING:
 
 
 class _ModelCaptureError(RuntimeError):
-    """Model-turn checkpoint capture failed without committing state."""
+    """Built-in model-state capture failed without committing state."""
 
 
 class RecorderHost(Protocol):
@@ -271,23 +271,21 @@ class _ExchangeRecorder:
         baseline = self._turn_baseline
         children: dict[str, StateEntry] = {}
         for name, hook in self._capture_hooks.items():
-            if name == TURNS_STATE_KEY and hook == self._capture_turns:
+            if (name, hook) in (
+                (TURNS_STATE_KEY, self._capture_turns),
+                (SYSTEM_PROMPT_STATE_KEY, self._capture_system_prompt),
+            ):
                 try:
-                    entry, baseline = self._prepare_turn_capture(context)
+                    if name == TURNS_STATE_KEY:
+                        entry, baseline = self._prepare_turn_capture(context)
+                    else:
+                        entry, children = self._prepare_system_prompt_capture(context)
                 except Exception as e:
                     raise _ModelCaptureError(str(e)) from e
             else:
-                if (
-                    name == SYSTEM_PROMPT_STATE_KEY
-                    and hook == self._capture_system_prompt
-                ):
-                    entry, children = self._prepare_system_prompt_capture(
-                        context
-                    )
-                else:
-                    entry = hook(context)
-                    if inspect.isawaitable(entry):
-                        entry = await entry
+                entry = hook(context)
+                if inspect.isawaitable(entry):
+                    entry = await entry
             entries[name] = entry
         # Commit only after every hook succeeds, including deletions.
         for name, entry in entries.items():
