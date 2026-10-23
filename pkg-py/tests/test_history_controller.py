@@ -212,9 +212,7 @@ def test_strip_attachment_content_keeps_empty_attachment_only_message():
 
     cleaned = _strip_attachment_content(stored)
 
-    assert cleaned["segments"] == [
-        {"content": "", "content_type": "markdown"}
-    ]
+    assert cleaned["segments"] == [{"content": "", "content_type": "markdown"}]
     assert cleaned.get("attachment_content_stripped") is True
 
 
@@ -331,7 +329,9 @@ class _RealHistorySession(_RealChatSession):
 class _SameFlushHistoryClient:
     def __init__(self) -> None:
         self.turns: list[dict[str, Any]] = []
-        self.stream_calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
+        self.stream_calls: list[
+            tuple[str, tuple[Any, ...], dict[str, Any]]
+        ] = []
         self.stream_started = asyncio.Event()
         self.release_stream = asyncio.Event()
 
@@ -453,9 +453,7 @@ class _PartitionCaptureStore(ConversationStore):
     ) -> ConversationRecordV1 | None:
         return self.records.get(conv_id)
 
-    async def put(
-        self, partition: ConversationPartition, record: Any
-    ) -> None:
+    async def put(self, partition: ConversationPartition, record: Any) -> None:
         self.put_partitions.append(partition)
         self.records[record.id] = record
 
@@ -510,23 +508,31 @@ def _stored_message(role: str, content: str) -> StoredMessage:
 
 
 @pytest.mark.parametrize(
-    "turn",
+    ("turn", "expected"),
     [
-        {2: "two"},
-        {"outer": [{"inner": {3: "three"}}]},
+        ({2: "two"}, {"2": "two"}),
+        (
+            {"outer": [{"inner": {3: "three"}}]},
+            {"outer": [{"inner": {"3": "three"}}]},
+        ),
+        (
+            {"values": {True: "yes", None: "null", 2.5: "float"}},
+            {"values": {"true": "yes", "null": "null", "2.5": "float"}},
+        ),
+        ({"values": {2: "two", "2": "string"}}, {"values": {"2": "string"}}),
+        ({"values": {"2": "string", 2: "two"}}, {"values": {"2": "two"}}),
     ],
 )
-def test_v2_recorder_rejects_non_string_mapping_keys_recursively(
-    turn: dict[Any, Any],
+def test_v2_recorder_normalizes_serializer_supported_keys(
+    turn: dict[Any, Any], expected: dict[str, Any]
 ):
-    with pytest.raises(ValueError, match="Non-string mapping key"):
-        canonical_turns([turn])
+    normalized, fingerprints = canonical_turns([turn])
+    assert normalized == [expected]
+    assert fingerprints == canonical_turns([expected])[1]
 
 
 def test_v2_recorder_string_key_reordering_keeps_a_stable_prefix():
-    _, baseline = canonical_turns(
-        [{"one": "one", "two": {"nested": "value"}}]
-    )
+    _, baseline = canonical_turns([{"one": "one", "two": {"nested": "value"}}])
     _, current = canonical_turns(
         [
             {"two": {"nested": "value"}, "one": "one"},
@@ -570,13 +576,57 @@ async def test_v2_recorder_rejects_nonfinite_turn_values_before_file_store(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "turn",
+    ("turn", "expected"),
     [
-        {2: "two"},
-        {"outer": [{"inner": {3: "three"}}]},
+        ({2: "two"}, {"2": "two"}),
+        (
+            {"outer": [{"inner": {3: "three"}}]},
+            {"outer": [{"inner": {"3": "three"}}]},
+        ),
+        (
+            {"values": {True: "yes", None: "null", 2.5: "float"}},
+            {"values": {"true": "yes", "null": "null", "2.5": "float"}},
+        ),
+        ({"values": {2: "two", "2": "string"}}, {"values": {"2": "string"}}),
     ],
 )
-async def test_v2_recorder_rejects_non_string_keys_before_file_store(
+async def test_v2_recorder_normalizes_dict_keys_through_file_store(
+    tmp_path: Path, turn: dict[Any, Any], expected: dict[str, Any]
+):
+    from shinychat._history_store import FileConversationStore
+
+    adapter = _FakeAdapter()
+    adapter.turns = [turn]
+    store = FileConversationStore(tmp_path)
+    controller, _ = _make_controller(store=store, adapter=adapter)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
+
+    record = recorder.record
+    assert record is not None
+    state = record.nodes[record.root_id].state["shinychat:turns"]
+    assert state.data == [expected]
+    reloaded = await FileConversationStore(tmp_path).get(part(), record.id)
+    assert reloaded == record
+    assert isinstance(reloaded, ConversationRecordV2)
+    assert reloaded.nodes[record.root_id].state["shinychat:turns"].data == [
+        expected
+    ]
+    assert adapter.turns == [turn]
+    adapter.set_turns_json(cast(list[Any], state.data))
+    assert adapter.get_turns_json() == [expected]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "turn", [{"value": object()}, {(1, 2): "unsupported key"}]
+)
+async def test_v2_recorder_rejects_unsupported_dict_payload_before_capture_commit(
     tmp_path: Path, turn: dict[Any, Any]
 ):
     from shinychat._history_store import FileConversationStore
@@ -584,20 +634,19 @@ async def test_v2_recorder_rejects_non_string_keys_before_file_store(
     adapter = _FakeAdapter()
     adapter.turns = [turn]
     store = FileConversationStore(tmp_path)
-    controller, _ = _make_controller(
-        store=store,
-        adapter=adapter,
-    )
+    controller, _ = _make_controller(store=store, adapter=adapter)
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
 
-    with pytest.raises(_ModelCaptureError, match="Non-string mapping key"):
+    with pytest.raises(_ModelCaptureError):
         await transcript.record_accepted_input_and_notify(
             _stored_message("user", "one")
         )
 
     assert await store.list(part()) == []
+    assert recorder._turn_baseline == []
+    assert recorder.record is None
 
 
 @pytest.mark.anyio
@@ -3722,7 +3771,7 @@ async def test_v2_resubmit_rejects_missing_partition_before_mutation():
     ("data", "match"),
     [
         (["not a turn"], "Turn-state entries must contain a list of JSON objects"),
-        ([{1: "not a JSON object"}], "Non-string mapping key"),
+        ([{(1, 2): "unsupported key"}], "invalid JSON data"),
     ],
 )
 async def test_v2_resubmit_rejects_malformed_target_turn_data_before_mutation(

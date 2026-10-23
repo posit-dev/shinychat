@@ -15,10 +15,7 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any, Awaitable, Callable, Literal, cast
 
-from ._history_client import (
-    TurnsAdapter,
-    _validate_mapping_keys,
-)
+from ._history_client import TurnsAdapter
 from ._history_types import (
     SYSTEM_PROMPT_STATE_KEY,
     TURNS_STATE_KEY,
@@ -112,8 +109,6 @@ def latest_system_prompt(
 def canonical_turns(
     turns: Sequence[Mapping[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    for turn in turns:
-        _validate_mapping_keys(turn)
     serialized = [
         json.loads(json.dumps(turn, allow_nan=False, separators=(",", ":")))
         for turn in turns
