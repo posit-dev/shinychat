@@ -744,9 +744,10 @@ async def test_system_prompt_on_restore_override_survives_edit():
         message_index=2,
     )
 
-    # Equal recorded prompts (source == target == P): the live override is
-    # not a reason to reset the prompt during this edit.
-    assert restored_client.prompt_calls() == []
+    # Equal recorded prompts (source == target == P): the rewind hook resets
+    # nothing. The retained-parent on_restore dispatch (nr6b) re-applies the
+    # author's current prompt, so the only prompt write is the override.
+    assert restored_client.prompt_calls() == ["OVERRIDE"]
     assert restored_client.system_prompt == "OVERRIDE"
     # The node-close capture still recorded the override faithfully on the
     # abandoned leaf...

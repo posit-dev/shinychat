@@ -510,8 +510,8 @@ def preflight_state(
     to unavailable model context instead of failing preflight.
     ``shinychat:values`` is likewise a known builtin key: it is recognized
     and validated even though it owns no restore/rewind hook (application
-    values are delivered to ``on_restore``/``on_navigate`` callbacks, not
-    applied to the model client).
+    values are delivered to ``on_restore`` callbacks, not applied to the
+    model client).
     """
     if record.active_leaf is None:
         raise ValueError("Exchange-tree record has no active leaf.")

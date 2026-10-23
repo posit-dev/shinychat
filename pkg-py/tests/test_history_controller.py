@@ -1316,12 +1316,13 @@ async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
     await controller.on_response()
     source = await store.get(part(), source_id)
     assert isinstance(source, ConversationRecordV2)
-    # Per-exchange sparse recording: the root recorded the live values at
-    # root close; the leaf exchange inherits them unchanged.
-    assert source.nodes[source.root_id].state[VALUES_STATE_KEY].data == {
+    # Checkpoint-only capture (nr6b): accepted input records the live values
+    # on the new exchange, the synthetic root never captures app values, and
+    # response settlement re-captures on that same exchange.
+    assert VALUES_STATE_KEY not in source.nodes[source.root_id].state
+    assert source.nodes[exchange_id].state[VALUES_STATE_KEY].data == {
         "value": "response"
     }
-    assert VALUES_STATE_KEY not in source.nodes[exchange_id].state
     assert resolve_path_values(source, exchange_id) == {"value": "response"}
 
     current_value = "save"
@@ -1345,19 +1346,24 @@ async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
 
     current_value = "switch"
     await controller.switch_to(target.id)
+    # Switching never captures the outgoing conversation: its saved values
+    # stay as the last checkpoint left them.
     assert source.nodes[exchange_id].state[VALUES_STATE_KEY].data == {
-        "value": "switch"
+        "value": "save"
     }
     assert restored_values == [{"restored": "target"}]
 
     current_value = "new"
     await controller.new_chat()
+    # New chat never captures the outgoing target either, and it restores
+    # nothing: the target keeps its saved values.
     assert target.nodes[target.root_id].state[VALUES_STATE_KEY].data == {
-        "value": "new"
+        "restored": "target"
     }
-    # The callbacks run at every capture point (root close, response
-    # settlement, and each explicit/boundary save); record writes dedupe.
-    assert saved_values == ["response", "response", "save", "switch", "new"]
+    assert restored_values == [{"restored": "target"}]
+    # Only accepted input, response settlement, and the explicit save
+    # captured; switch and New chat did not.
+    assert saved_values == ["response", "response", "save"]
 
 
 def _v2_record_contents(record: ConversationRecordV2) -> list[str]:
@@ -1405,15 +1411,11 @@ async def test_v2_new_chat_closes_old_record_and_starts_fresh():
         "first question",
         "first answer",
     ]
-    # The root always records its values ({} without `on_save`
-    # callbacks); descendants inherit and record nothing.
-    assert stored_closed.nodes[stored_closed.root_id].state[
-        VALUES_STATE_KEY
-    ].data == {}
+    # Without `on_save` callbacks nothing captures values, so no node holds
+    # a values entry (the synthetic root never captures app values).
     assert all(
         VALUES_STATE_KEY not in node.state
-        for nid, node in stored_closed.nodes.items()
-        if nid != stored_closed.root_id
+        for node in stored_closed.nodes.values()
     )
     # The in-memory store aliases the record it was handed, so snapshot
     # the closed record before the fresh conversation's activity.
@@ -3007,7 +3009,7 @@ async def test_generic_destructive_admission_does_not_block_real_chat_input(
 
 
 @pytest.mark.anyio
-async def test_v2_switch_saves_source_before_target_preflight_failure() -> None:
+async def test_v2_switch_persists_source_without_capturing_values_before_preflight_failure() -> None:
     class SnapshotStore(InMemoryConversationStore):
         async def get(
             self, partition: ConversationPartition, conv_id: str
@@ -3068,9 +3070,9 @@ async def test_v2_switch_saves_source_before_target_preflight_failure() -> None:
     assert isinstance(stored_source, ConversationRecordV2)
     leaf = stored_source.active_leaf
     assert leaf is not None
-    assert resolve_path_values(stored_source, leaf) == {
-        "current": "latest value"
-    }
+    # The switch persisted the source record but captured no values: its
+    # saved values are whatever the last checkpoint left (none here).
+    assert resolve_path_values(stored_source, leaf) == {}
     assert [
         node.input.content
         for node in stored_source.nodes.values()
@@ -4181,7 +4183,6 @@ async def test_v2_restore_hook_failure_names_entry_and_clears_to_fresh_draft():
         "turns",
         "hook",
         "active-id",
-        "app-callback",
         "metadata",
     ],
 )
@@ -4246,12 +4247,6 @@ async def test_v2_restore_failure_becomes_fresh_draft(
                 raise expected
 
         controller.on_active_id_change = fail_active_id
-    elif failure == "app-callback":
-
-        def fail_app_callback(_values: dict[str, Any]) -> None:
-            raise expected
-
-        controller._restore_callbacks.append(fail_app_callback)
     elif failure == "metadata":
         controller.send_history_update = AsyncMock(side_effect=expected)  # type: ignore[method-assign]
 

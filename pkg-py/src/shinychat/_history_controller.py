@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import copy
 import inspect
 import warnings
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
@@ -11,7 +10,6 @@ from typing import (
     Awaitable,
     Callable,
     Iterator,
-    cast,
 )
 
 from . import _history_plan
@@ -24,6 +22,7 @@ from ._chat_types import (
     HistoryEditProjectionAction,
     HistoryNavigateAction,
     HistoryUpdateAction,
+    ReadOnlyReason,
     StoredMessage,
     StoredSegment,
     UpdateExchangeMetadataAction,
@@ -53,8 +52,6 @@ from ._history_types import (
     ConversationRecordV1,
     ConversationRecordV2,
     ExchangeNode,
-    HistoryNavigateContext,
-    HistoryNavigateReason,
     TurnDict,
     check_schema_version,
     new_conversation_id,
@@ -207,6 +204,20 @@ def _restore_step(step: str) -> Iterator[None]:
         raise
 
 
+# Resubmit refusals for a view-only record, worded by the reason that made it
+# view-only so the message never claims a cause that did not happen.
+_READ_ONLY_RESUBMIT_MESSAGES: dict[ReadOnlyReason, str] = {
+    "model_unavailable": (
+        "Cannot resubmit an exchange in a read-only conversation: its saved "
+        "model context is unavailable."
+    ),
+    "app_restore_failed": (
+        "Cannot resubmit an exchange in a read-only conversation: its saved "
+        "app state could not be fully restored."
+    ),
+}
+
+
 class HistoryController:
     """Session-scoped orchestrator for conversation history."""
 
@@ -221,9 +232,6 @@ class HistoryController:
         client: Any,
         save_callbacks: "list[Callable[[dict[str, Any]], None]] | None" = None,
         restore_callbacks: "list[Callable[[dict[str, Any]], None]] | None" = None,
-        navigate_callbacks: (
-            "list[Callable[[HistoryNavigateContext], None]] | None"
-        ) = None,
         max_store_bytes: int | None = None,
     ):
         self.chat = chat
@@ -238,9 +246,6 @@ class HistoryController:
         self._restore_callbacks: list[Callable[[dict[str, Any]], None]] = (
             restore_callbacks if restore_callbacks is not None else []
         )
-        self._navigate_callbacks: list[
-            Callable[[HistoryNavigateContext], None]
-        ] = navigate_callbacks if navigate_callbacks is not None else []
 
         # Conversation ids whose lossy v1-import warnings already surfaced
         # this session; the read-gate warns once per session per conversation.
@@ -519,9 +524,33 @@ class HistoryController:
         """Persist the active conversation if it has ever been saved."""
         return await self._exchange_recorder.save_current()
 
-    def _restore_app_state(self, values: dict[str, Any]) -> None:
-        for cb in self._restore_callbacks:
-            cb(values)
+    def _restore_app_state(self, values: dict[str, Any]) -> bool:
+        """Dispatch ``on_restore`` for a position recreation or change.
+
+        The single dispatch point for load, switch, browse, and the
+        retained-parent rewind. Callbacks run in registration order and
+        stop at the first ordinary failure, so a later callback can never
+        mask it. An ordinary ``Exception`` keeps the restored conversation
+        displayed but view-only (``app_restore_failed``), warns the
+        developer with the raw cause, and returns ``False``. Cancellation
+        and other fatal exceptions propagate to the caller's full cleanup.
+        """
+        try:
+            with _restore_step("restoring the app state"):
+                for cb in self._restore_callbacks:
+                    cb(values)
+        except Exception as error:
+            detail = _restore_failure_detail(error)
+            warnings.warn(
+                "Chat history on_restore callback failed "
+                f"({detail or 'no detail'}); the conversation is shown "
+                "read-only and its app state was not fully restored: "
+                f"{error!r}",
+                stacklevel=3,
+            )
+            self._exchange_recorder.mark_read_only("app_restore_failed")
+            return False
+        return True
 
     async def _notify_restore_failure(
         self, *, recovery_incomplete: bool, detail: str | None = None
@@ -647,15 +676,16 @@ class HistoryController:
             with _restore_step("persisting the restored record"):
                 if persist_active_pointer:
                     await recorder.persist_record_locked()
-            with _restore_step("restoring the app state"):
-                # Position-specific: the restored conversation's callbacks
-                # receive the values recorded at its selected leaf, not a
-                # conversation-wide object.
-                active_leaf = target.active_leaf
-                assert active_leaf is not None
-                self._restore_app_state(
-                    _history_plan.resolve_path_values(target, active_leaf)
-                )
+            # Position-specific: the restored conversation's callbacks
+            # receive the values recorded at its selected leaf, not a
+            # conversation-wide object. An ordinary failure marks the
+            # record view-only inside the helper; the metadata below still
+            # runs so the client learns the read-only state.
+            active_leaf = target.active_leaf
+            assert active_leaf is not None
+            self._restore_app_state(
+                _history_plan.resolve_path_values(target, active_leaf)
+            )
             if unavailable_reason is not None:
                 # Developer-facing classification only; the client learns
                 # about the read-only view through ``active_read_only``.
@@ -758,7 +788,7 @@ class HistoryController:
         recorder = self._exchange_recorder
         async with self._destructive_mutation(block_input=True):
             async with self._exchange_mutation():
-                await recorder.save_current_locked()
+                await recorder.persist_current_locked()
                 target = await self._get_record(self.partition, conv_id)
                 if target is None:
                     raise RuntimeError(
@@ -790,7 +820,7 @@ class HistoryController:
         """
         async with self._destructive_mutation():
             async with self._exchange_mutation():
-                await self._exchange_recorder.save_current_locked()
+                await self._exchange_recorder.persist_current_locked()
                 self.adapter.set_turns_json([])
                 await self.chat.clear_messages(greeting=greeting)
                 self._exchange_recorder.reset()
@@ -878,11 +908,13 @@ class HistoryController:
             raise RuntimeError("No exchange-tree conversation is active")
         if recorder.read_only:
             # Authoritative guard for edit/retry/regenerate: a read-only
-            # record's saved model context is unavailable, so no resubmit
-            # path may mutate it or consume a model stream.
+            # record must not be mutated or consume a model stream. The
+            # message names the reason, never a cause it did not have.
             raise RuntimeError(
-                "Cannot resubmit an exchange in a read-only conversation: "
-                "its saved model context is unavailable."
+                _READ_ONLY_RESUBMIT_MESSAGES.get(
+                    recorder.read_only_reason or "model_unavailable",
+                    "Cannot resubmit an exchange in a read-only conversation.",
+                )
             )
 
         target, parent_id = self._validate_resubmit_target(
@@ -933,15 +965,27 @@ class HistoryController:
                 with _restore_step("sending the resubmission"):
                     await self.chat._send_action(action)
 
+            async def send_read_only_parent() -> None:
+                # The retained parent is shown view-only: the display and
+                # metadata update go out, but never the edit projection,
+                # because that projection starts the replacement's
+                # provider work.
+                with _restore_step("replaying the conversation display"):
+                    await self._replay_exchange_display(record, node_ids)
+                with _restore_step("sending the read-only update"):
+                    await self._send_sibling_metadata()
+                    await self._send_exchange_metadata()
+                    await self.send_history_update()
+
             await self._rewind_locked(
                 record,
                 rewind_state,
                 parent_id,
                 save_step="saving the resubmission",
                 send=send_resubmission,
+                send_read_only=send_read_only_parent,
                 transcript_prefix=transcript_prefix,
                 transaction=transaction,
-                reason=cast(HistoryNavigateReason, kind),
                 target_values=target_values,
             )
 
@@ -974,32 +1018,29 @@ class HistoryController:
         *,
         save_step: str,
         send: Callable[[], Awaitable[None]],
+        send_read_only: Callable[[], Awaitable[None]] | None = None,
         transcript_prefix: tuple["TranscriptEntry", ...] | None = None,
         transaction: object | None = None,
-        reason: HistoryNavigateReason,
         target_values: dict[str, Any],
     ) -> None:
         """The shared rewind skeleton: capture the close, run the plan,
-        move and persist the leaf, send, clear a failed restore, then
-        dispatch the navigation callbacks for a completed move.
+        move and persist the leaf, restore the target's app state, then
+        send.
 
-        ``target_values`` carries the target position's values, resolved
-        from the preflight record copy before the destructive
-        replay/rewind; the position being left is resolved here, after
-        its node-close capture."""
+        ``on_restore`` runs for the target position before ``send``. An
+        ordinary app failure keeps the rewound position displayed but
+        view-only, and sends ``send_read_only`` instead of ``send`` (for
+        resubmits: the metadata and display without the edit projection,
+        which is the replacement's provider kickoff). Without
+        ``send_read_only`` the display update is the same either way.
+        Any other failure takes the full cleanup.
+        """
         recorder = self._exchange_recorder
         async with self._exchange_mutation():
             current_leaf = record.active_leaf
             if current_leaf is None:
                 raise ValueError("Exchange-tree record has no active leaf.")
             await recorder.capture_state_locked(current_leaf, "node_close")
-            # The source position's values resolve only after the
-            # node-close capture of the exchange being left (a read-only
-            # record's capture is suppressed, so its recorded values
-            # answer instead).
-            previous_values = _history_plan.resolve_path_values(
-                record, current_leaf
-            )
             try:
                 with _restore_step(save_step):
                     await _history_plan.run_plan(rewind_state)
@@ -1014,78 +1055,13 @@ class HistoryController:
                         self.chat._transcript.replace(
                             transcript_prefix, transaction=transaction
                         )
-                await send()
+                if self._restore_app_state(target_values):
+                    await send()
+                else:
+                    await (send_read_only or send)()
             except BaseException as error:
                 await self._clear_failed_restore(error)
                 raise
-            # The move completed: display, server transcript, model
-            # rewind, and the authoritative update all landed. The
-            # dispatch stays outside the cleanup block above, so a
-            # failing hook never clears the selected conversation; and
-            # it precedes the caller's return, so any resubmitted work
-            # the client starts afterwards observes the synced app
-            # state.
-            await self._dispatch_navigate(
-                reason=reason,
-                values=target_values,
-                previous_values=previous_values,
-                exchange_id=leaf,
-                previous_exchange_id=current_leaf,
-            )
-
-    async def _dispatch_navigate(
-        self,
-        *,
-        reason: HistoryNavigateReason,
-        values: dict[str, Any],
-        previous_values: dict[str, Any],
-        exchange_id: str,
-        previous_exchange_id: str,
-    ) -> None:
-        """Fire the app ``on_navigate`` callbacks for a completed move.
-
-        Callbacks run in registration order, each with its own detached
-        context snapshots so cross-callback mutation cannot reach saved
-        data. An ordinary failure warns the developer, shows at most one
-        sanitized user notification per move (no raw exception text), and
-        does not stop the remaining callbacks; cancellation and other
-        fatal exceptions propagate.
-        """
-        callbacks = self._navigate_callbacks
-        if not callbacks:
-            return
-        notified = False
-        for callback in callbacks:
-            context = HistoryNavigateContext(
-                reason=reason,
-                values=copy.deepcopy(values),
-                previous_values=copy.deepcopy(previous_values),
-                exchange_id=exchange_id,
-                previous_exchange_id=previous_exchange_id,
-            )
-            try:
-                callback(context)
-            except Exception as error:
-                warnings.warn(
-                    f"Chat history on_navigate callback failed: {error!r}",
-                    stacklevel=2,
-                )
-                if not notified:
-                    notified = True
-                    try:
-                        from shiny import ui as shiny_ui
-                        from shiny.session import session_context
-
-                        with session_context(self.chat._session):
-                            shiny_ui.notification_show(
-                                "A conversation navigation hook failed; "
-                                "some app state may be out of sync.",
-                                type="error",
-                            )
-                    except Exception:
-                        # Without a live session there is nowhere to
-                        # notify; the developer warning already fired.
-                        pass
 
     async def rename(self, conv_id: str, title: str) -> None:
         if self.partition is None:
@@ -1266,7 +1242,6 @@ class HistoryController:
                 leaf,
                 save_step="saving the navigation change",
                 send=send_navigation,
-                reason="navigate",
                 target_values=target_values,
             )
 
@@ -1323,8 +1298,13 @@ class HistoryController:
         }
         if self._exchange_recorder.read_only:
             # Emitted only for a read-only active record; absent clears
-            # the client's flag, so older messages remain writable.
+            # the client's flag, so older messages remain writable. The
+            # reason only explains the state (absent keeps old peers on
+            # the model wording).
             action["active_read_only"] = True
+            reason = self._exchange_recorder.read_only_reason
+            if reason is not None:
+                action["active_read_only_reason"] = reason
         await self.chat._send_action(action)
 
 

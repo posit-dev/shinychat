@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import dataclasses
 import secrets
 import time
 import unicodedata
@@ -51,44 +50,9 @@ TitleSource = Literal["llm", "user"]
 TURNS_STATE_KEY = "shinychat:turns"
 SYSTEM_PROMPT_STATE_KEY = "shinychat:system_prompt"
 # The blessed state-entry name for per-exchange application values (the
-# per-exchange form of what `on_save` callbacks write and `on_restore` /
-# `on_navigate` callbacks read).
+# per-exchange form of what `on_save` callbacks write and `on_restore`
+# callbacks read).
 VALUES_STATE_KEY = "shinychat:values"
-
-# The position moves that fire `Chat.history.on_navigate` callbacks.
-HistoryNavigateReason = Literal["edit", "retry", "regenerate", "navigate"]
-
-
-@dataclasses.dataclass(frozen=True)
-class HistoryNavigateContext:
-    """The position-move description passed to ``on_navigate`` callbacks.
-
-    Frozen means the fields cannot be reassigned; ``values`` and
-    ``previous_values`` are detached snapshots (mutating them changes
-    nothing stored), not recursively immutable mappings.
-
-    Attributes
-    ----------
-    reason : str
-        ``"edit"``, ``"retry"``, ``"regenerate"``, or ``"navigate"``.
-    values : dict[str, Any]
-        Application values at the target position: the parent exchange for
-        edit/retry/regenerate, or the selected leaf for sibling navigation.
-    previous_values : dict[str, Any]
-        Application values at the position being left, captured before the
-        move. Read-only navigation uses that position's recorded values.
-    exchange_id : str
-        The target exchange ID (the rewound parent for resubmission).
-    previous_exchange_id : str
-        The active exchange ID being left.
-    """
-
-    reason: HistoryNavigateReason
-    values: dict[str, Any]
-    previous_values: dict[str, Any]
-    exchange_id: str
-    previous_exchange_id: str
-
 
 MAX_HISTORY_ERROR_MESSAGE = 256
 HISTORY_ERROR_GENERIC = "The response could not be completed."
