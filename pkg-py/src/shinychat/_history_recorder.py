@@ -831,14 +831,18 @@ class _ExchangeRecorder:
         status: Literal["ok", "cancelled", "error"],
         error: str | None,
     ) -> None:
-        if self._host.partition is None or self._read_only:
-            return
-
-        async with self.lock:
-            exchange_id = self._stream_exchanges.get(stream_id)
-            if exchange_id is None or self.record is None:
+        try:
+            if self._host.partition is None or self._read_only:
                 return
-            await self.capture_state_locked(exchange_id, "stream_finish")
-            self.record.finish_exchange(exchange_id, status, error)
-            await self.persist_record_locked()
+
+            async with self.lock:
+                exchange_id = self._stream_exchanges.get(stream_id)
+                if exchange_id is None or self.record is None:
+                    return
+                await self.capture_state_locked(exchange_id, "stream_finish")
+                self.record.finish_exchange(exchange_id, status, error)
+                await self.persist_record_locked()
+        finally:
+            # The provider stream has ended even if capture or persistence
+            # fails. Durability retries operate on the record, not this map.
             self._stream_exchanges.pop(stream_id, None)

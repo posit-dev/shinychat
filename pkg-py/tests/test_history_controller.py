@@ -8275,8 +8275,10 @@ async def test_stream_recorder_failure_does_not_rollback_sent_transcript(
     with pytest.raises(RuntimeError, match="durability failure"):
         await recorder.stream_finished("stream", "error", "provider failed")
     assert transcript.read()[-1].message.content == "sent partial"
+    assert recorder._stream_exchanges == {}
     store.fail = False
-    await recorder.stream_finished("stream", "error", "provider failed")
+    # Retry durability through the completed record, not an ended stream.
+    assert await recorder.flush_pending()
 
     stored = await store.get(part(), recorder.record.id)  # type: ignore[union-attr]
     assert isinstance(stored, ConversationRecordV2)

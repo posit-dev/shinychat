@@ -104,19 +104,14 @@ async def test_terminal_capture_failure_does_not_publish_display_without_model(
     assert saved.model_dump_json() == frozen
     assert saved.nodes[exchange_id].status == "pending"
     assert saved.nodes[exchange_id].messages == []
+    assert writer._exchange_recorder._stream_exchanges == {}
     monkeypatch.setattr(writer.adapter, "get_turns_json", original)
+    # Terminal delivery is not a retry queue. A duplicate notification after
+    # the capture failure cannot publish a response from a stale association.
     await writer._exchange_recorder.stream_finished("stream", status, None)
     terminal = await backend.reader.get(part(), record.id)
     assert isinstance(terminal, ConversationRecordV2)
-    assert terminal.nodes[exchange_id].status == status
-    assert [
-        m.as_stored_message().content
-        for m in terminal.nodes[exchange_id].messages
-    ] == ["live response"]
-    viewer, _ = _make_controller(store=backend.reader)
-    await viewer.switch_to(record.id)
-    assert viewer.adapter.get_turns_json() == original()
-    assert not viewer._exchange_recorder.read_only
+    assert terminal.model_dump_json() == frozen
 
 
 @pytest.mark.anyio
@@ -761,3 +756,24 @@ async def test_initial_bookmark_into_unresolved_source_scrubs_pending_siblings(
     assert saved.nodes[pending_id].status == "ok"
     assert saved.nodes[pending_id].state[TURNS_STATE_KEY].data == terminal_model
     assert source.model_dump_json() == frozen
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failure", [KeyboardInterrupt, BaseException])
+async def test_ended_stream_drops_association_on_fatal_capture(
+    backend: _Backend,
+    failure: type[BaseException],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    writer, _ = _make_controller(store=backend.store)
+    await _open_stream(writer)
+    recorder = writer._exchange_recorder
+    assert recorder._stream_exchanges
+
+    def fatal() -> Any:
+        raise failure("fatal model capture")
+
+    monkeypatch.setattr(writer.adapter, "get_turns_json", fatal)
+    with pytest.raises(failure, match="fatal model capture"):
+        await recorder.stream_finished("stream", "ok", None)
+    assert recorder._stream_exchanges == {}
