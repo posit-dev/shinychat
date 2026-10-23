@@ -1,5 +1,6 @@
 import type {
   ContentType,
+  ReadOnlyReason,
   ChatAction,
   ConversationMeta,
   MessagePayload,
@@ -153,7 +154,7 @@ export interface ChatHistoryState {
    * rendering and same-tick guards use HistoryStore's synchronous snapshot.
    */
   readOnly: boolean
-  readOnlyReason?: "model_unavailable" | "app_restore_failed"
+  readOnlyReason?: ReadOnlyReason
 }
 
 export interface ChatDrawerState {

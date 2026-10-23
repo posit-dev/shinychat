@@ -1,4 +1,8 @@
-import type { ConversationMeta, ChatTransport } from "../transport/types"
+import type {
+  ConversationMeta,
+  ChatTransport,
+  ReadOnlyReason,
+} from "../transport/types"
 import { uuid } from "../utils/uuid"
 
 type TransitionProtocol = "completion-v1" | "completion-v2"
@@ -19,7 +23,7 @@ export interface HistorySnapshot {
    * `historyTransitionPending`; stream start/end never clears it.
    */
   readOnly: boolean
-  readOnlyReason?: "model_unavailable" | "app_restore_failed"
+  readOnlyReason?: ReadOnlyReason
   busy: boolean
   connected: boolean
   transitionProtocol: TransitionProtocol | null
@@ -131,7 +135,7 @@ export class HistoryStore {
     enabled: boolean
     conversations: ConversationMeta[]
     activeId: string | null
-    readOnlyReason?: "model_unavailable" | "app_restore_failed"
+    readOnlyReason?: ReadOnlyReason
     readOnly?: boolean
     transitionProtocol?: string
   }): void {
