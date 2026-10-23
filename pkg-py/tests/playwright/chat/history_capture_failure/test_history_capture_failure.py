@@ -1,10 +1,12 @@
+import pytest
 from playwright.sync_api import Page, expect
 from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
 
 
+@pytest.mark.parametrize("recovery", ["new_chat", "corrected_state"])
 def test_capture_failure_notification_and_new_chat_recovery(
-    page: Page, local_app: ShinyAppProc
+    page: Page, local_app: ShinyAppProc, recovery: str
 ) -> None:
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
@@ -26,14 +28,20 @@ def test_capture_failure_notification_and_new_chat_recovery(
     notification = page.locator(".shiny-notification-error")
     expect(notification).to_be_visible(timeout=30_000)
     expect(notification).to_contain_text("Message not sent", timeout=30_000)
-    expect(chat.loc.locator(".shiny-chat-user-message").last).to_contain_text("not sent")
+    expect(
+        chat.loc.locator(".shiny-chat-user-message").filter(has_text="not sent")
+    ).to_have_count(0)
     expect(notification).to_contain_text("saved checkpoint is unchanged")
     expect(notification).to_contain_text("New chat")
     expect(page.locator("#dispatch_count")).to_have_text(
         "Provider dispatches: 1"
     )
-    page.get_by_role("button", name="Conversation history").click()
-    page.get_by_role("button", name="New conversation", exact=True).click()
+    if recovery == "new_chat":
+        page.get_by_role("button", name="Conversation history").click()
+        page.get_by_role("button", name="New conversation", exact=True).click()
+    else:
+        page.get_by_role("button", name="Correct model state").click()
+        expect(page.locator("#poison_status")).to_have_text("Healthy")
     expect(chat.loc_input).to_be_visible(timeout=30_000)
     chat.set_user_input("recovered")
     expect(chat.loc_input_button).to_be_enabled(timeout=30_000)

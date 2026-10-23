@@ -276,6 +276,9 @@ class HistoryController:
         already does) carry. Allocated at first user submission for
         ``chat_app()`` apps, or at first save for standalone history use.
 
+        An allocated ID is a draft reservation, not evidence of a saved record.
+        It is published to URL/bookmark consumers only after successful persistence.
+
         Like any reactive read, this requires a reactive context;
         non-reactive callers must wrap it in ``shiny.reactive.isolate()``.
         """

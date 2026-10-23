@@ -533,6 +533,8 @@ class Chat:
             @reactive.effect(priority=9999)
             @reactive.event(self._user_input)
             async def _on_user_input():
+                data = self._session.input[self.user_input_id]()
+                client_message_id = data.get("client_message_id")
                 try:
                     text, attachments = self._user_input()
                     msg = ChatMessage(
@@ -542,7 +544,7 @@ class Chat:
                     )
                     await self._record_accepted_user_input_with_capture(msg)
                 except Exception as e:
-                    await self._handle_input_exception(e)
+                    await self._handle_input_exception(e, client_message_id)
 
             @reactive.effect
             async def _sync_slash_commands():
@@ -560,6 +562,7 @@ class Chat:
             @reactive.event(self._slash_command_input)
             async def _on_slash_command():
                 data = self._slash_command_input()
+                client_message_id = data.get("client_message_id")
                 command = data.get("command", "")
                 user_text = data.get("userText", "")
                 echo = bool(data.get("echo", True))
@@ -579,7 +582,9 @@ class Chat:
                                 msg, dispatch_user_submit=False
                             )
                         except _ModelCaptureError as e:
-                            await self._handle_input_exception(e)
+                            await self._handle_input_exception(
+                                e, client_message_id
+                            )
                             return
                     cmds = self._slash_commands()
                     reg = cmds.get(command) if cmds else None
@@ -946,10 +951,23 @@ class Chat:
 
         return remove
 
-    async def _handle_input_exception(self, e: Exception) -> None:
+    async def _handle_input_exception(
+        self, e: Exception, client_message_id: str | None = None
+    ) -> None:
         from ._history_recorder import _ModelCaptureError
 
         if isinstance(e, _ModelCaptureError):
+            controller = self.history._controller
+            if isinstance(client_message_id, str) and controller is not None:
+                # Capture has exited the recorder lock. Serialize removal and the
+                # positional refresh with any subsequent accepted exchange.
+                async with controller._exchange_recorder.lock:
+                    await self._send_action(
+                        {"type": "remove_message", "id": client_message_id}
+                    )
+                    await controller._send_exchange_metadata()
+                    await controller._send_sibling_metadata()
+            # Idempotent, including the slash-command finally cleanup.
             await self._remove_loading_message()
             await self.history._notify_history_error(
                 "Message not sent. The saved checkpoint is unchanged. "

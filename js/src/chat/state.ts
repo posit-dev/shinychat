@@ -205,6 +205,7 @@ export type UIAction =
   | {
       type: "INPUT_SENT"
       content: string
+      id?: string
       role: "user"
       /** When false, append the user message only — no loading placeholder, no input disable. Defaults to true. */
       awaitResponse?: boolean
@@ -694,7 +695,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "INPUT_SENT": {
       const userMsg: ChatMessageData = {
-        id: uuid(),
+        id: action.id ?? uuid(),
         role: "user",
         content: action.content,
         streaming: false,
@@ -1203,6 +1204,13 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         ...state,
         inputPlaceholder: action.placeholder ?? state.inputPlaceholder,
       }
+
+    case "remove_message": {
+      return {
+        ...state,
+        messages: state.messages.filter((m) => m.id !== action.id),
+      }
+    }
 
     case "remove_loading": {
       const messages = removeLoadingMessage(state.messages)

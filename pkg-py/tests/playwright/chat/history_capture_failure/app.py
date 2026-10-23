@@ -37,6 +37,7 @@ class EchoClient:
 
 app_ui = ui.page_fillable(
     ui.input_action_button("poison", "Retain unsupported model turn"),
+    ui.input_action_button("correct", "Correct model state"),
     ui.output_text("dispatch_count"),
     ui.output_text("poison_status"),
     chat_ui("chat"),
@@ -60,6 +61,14 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     def poison() -> None:
         client.turns.append({"role": "assistant", "content": object()})
         poisoned.set(True)
+
+    @reactive.effect
+    @reactive.event(input.correct)
+    def correct() -> None:
+        client.turns = [
+            t for t in client.turns if isinstance(t.get("content"), str)
+        ]
+        poisoned.set(False)
 
     @render.text
     def dispatch_count() -> str:

@@ -3362,11 +3362,22 @@ async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
     async def submit(text: str, seq: int) -> None:
         if entry_point == "normal":
             cast(Any, session.input[chat.user_input_id])._set(
-                {"text": text, "attachments": [], "seq": seq}
+                {
+                    "text": text,
+                    "attachments": [],
+                    "seq": seq,
+                    "client_message_id": f"client-{seq}",
+                }
             )
         else:
             cast(Any, session.input[chat._slash_command_id])._set(
-                {"command": "send", "userText": text, "echo": True, "seq": seq}
+                {
+                    "command": "send",
+                    "userText": text,
+                    "echo": True,
+                    "seq": seq,
+                    "client_message_id": f"client-{seq}",
+                }
             )
         await reactive.flush()
 
@@ -3405,6 +3416,15 @@ async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
             for seq in (2, 3):
                 with pytest.warns(UserWarning, match=cause):
                     await submit("rejected", seq)
+                actions = [m["action"] for m in session.messages]
+                removal = next(
+                    i
+                    for i, a in enumerate(actions)
+                    if a == {"type": "remove_message", "id": f"client-{seq}"}
+                )
+                assert (
+                    actions[removal + 1]["type"] == "update_exchange_metadata"
+                )
                 assert calls == ["initial"]
                 assert _transcript_snapshot(chat) == transcript_before
                 assert chat._transcript.open_exchange_id == prior_open_id
@@ -3488,7 +3508,9 @@ async def test_slash_response_capture_failure_keeps_live_error_handling(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("entry_point", ["normal", "slash"])
-@pytest.mark.parametrize("failure", ["first_put", "later_put", "created_update"])
+@pytest.mark.parametrize(
+    "failure", ["first_put", "later_put", "created_update"]
+)
 async def test_postcommit_input_failure_keeps_shared_owner_without_dispatch(
     tmp_path: Any, request: Any, entry_point: str, failure: str
 ) -> None:
@@ -3543,13 +3565,19 @@ async def test_postcommit_input_failure_keeps_shared_owner_without_dispatch(
             with patch("shiny.ui.notification_show", notification):
                 if entry_point == "normal":
                     cast(Any, session.input[chat.user_input_id])._set(
-                        {"text": "committed", "attachments": [], "seq": 1}
+                        {
+                            "text": "committed",
+                            "attachments": [],
+                            "seq": 1,
+                            "client_message_id": "committed-client",
+                        }
                     )
                 else:
                     cast(Any, session.input[chat._slash_command_id])._set(
                         {
                             "command": "send",
                             "userText": "committed",
+                            "client_message_id": "committed-client",
                             "echo": True,
                         }
                     )
@@ -3560,6 +3588,9 @@ async def test_postcommit_input_failure_keeps_shared_owner_without_dispatch(
             controller.send_history_update = original_update  # type: ignore[method-assign]
         live_error.assert_awaited_once_with(error)
         notification.assert_not_called()
+        assert not any(
+            m["action"]["type"] == "remove_message" for m in session.messages
+        )
         assert dispatches == []
         published = chat.user_input()
         assert published is None or published.text == "prior"
@@ -3609,6 +3640,8 @@ async def test_first_model_capture_failure_commits_neither_input_owner(
     request.addfinalizer(chat.destroy)
     controller = chat.history._controller
     assert controller is not None
+    publication = AsyncMock()
+    controller.on_active_id_change = publication
     recorder = controller._exchange_recorder
     client._turns = [{"role": "assistant", "content": object()}]
     with session_context(cast(Any, session)), reactive.isolate():
@@ -3634,6 +3667,16 @@ async def test_first_model_capture_failure_commits_neither_input_owner(
         assert chat.messages() == ()
         assert chat.user_input() is None
         assert chat._normal_user_submission() is None
+
+        assert (
+            controller._active_id_now() is not None
+        )  # Reservation, not publication.
+        publication.assert_not_awaited()
+        assert not any(
+            m["action"]["type"] == "remove_message" for m in session.messages
+        )
+        await controller.new_chat()
+        assert controller._active_id_now() is None
 
 
 @pytest.mark.anyio
