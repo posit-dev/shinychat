@@ -6867,9 +6867,10 @@ async def test_v2_error_catalogue_is_bounded_at_write_and_projection(
     record.nodes[first].status = "ok"
     record.nodes[target].status = "error"
     record.finish_exchange(target, "error", message)
-    chat._session = SimpleNamespace(
+    cast(Any, chat)._session = SimpleNamespace(
         app=SimpleNamespace(sanitize_errors=sanitize_errors)
     )
+    cast(Any, chat).on_error = "sanitize" if sanitize_errors else "actual"
 
     await controller._send_exchange_metadata()
 
@@ -6973,9 +6974,10 @@ async def test_v2_error_projection_does_not_mutate_failed_node_with_partial_disp
         )
     )
     before = record.nodes[target].model_dump_json()
-    chat._session = SimpleNamespace(
+    cast(Any, chat)._session = SimpleNamespace(
         app=SimpleNamespace(sanitize_errors=sanitize_errors)
     )
+    cast(Any, chat).on_error = "sanitize" if sanitize_errors else "actual"
 
     await controller._send_exchange_metadata()
 
