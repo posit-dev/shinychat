@@ -1267,7 +1267,7 @@ async def test_values_settlement_failure_warns_and_invalidates_terminal_checkpoi
     with pytest.warns(
         UserWarning, match="Automatic app-state values capture failed"
     ):
-        assert not await recorder.response_settled()
+        assert await recorder.response_settled()
 
     record = recorder.record
     assert record is not None
@@ -1466,7 +1466,7 @@ async def test_values_automatic_settlement_warns_and_invalidates_candidate() -> 
     with pytest.warns(
         UserWarning, match="Automatic app-state values capture failed"
     ):
-        assert await recorder.response_settled() is False
+        assert await recorder.response_settled() is True
     record = recorder.record
     assert record is not None
     assert record.response_count == 1

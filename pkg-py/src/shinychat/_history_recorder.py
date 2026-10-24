@@ -628,6 +628,7 @@ class _ExchangeRecorder:
         return True
 
     async def response_settled(self) -> bool:
+        """Persist settlement and report whether a write occurred, not reliability."""
         async with self.lock:
             if (
                 self.record is None
@@ -660,7 +661,7 @@ class _ExchangeRecorder:
             node.checkpoint = "valid" if reliable else "invalid"
             self.record.response_count += 1
             await self.persist_record_locked()
-            return reliable
+            return True
 
     async def rename_active_locked(self, conv_id: str, title: str) -> bool:
         if (

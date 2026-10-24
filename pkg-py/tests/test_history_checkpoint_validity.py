@@ -97,13 +97,13 @@ async def test_terminal_candidate_requires_reliable_app_settlement(
         assert VALUES_STATE_KEY not in record.nodes[node_id].state
     else:
         with pytest.warns(UserWarning, match="app-state values capture failed"):
-            assert not await recorder.response_settled()
+            assert await recorder.response_settled()
         assert record.nodes[node_id].checkpoint_state == "invalid"
 
         async def unexpected_success(record: ConversationRecordV2) -> None:
             pytest.fail("success callback")
 
-        writer._after_persist = unexpected_success
+        writer.on_response_saved = unexpected_success
         await writer.on_response()
     assert record.nodes[record.root_id].model_dump_json() == previous_root
     assert (
@@ -237,7 +237,7 @@ async def test_required_custom_capture_hook_runs_at_settlement(
     await _end_stream(transcript)
     assert calls == []
     with pytest.warns(UserWarning, match="required hook failed"):
-        assert not await recorder.response_settled()
+        assert await recorder.response_settled()
     assert calls == ["node_close"]
     assert recorder.record is not None
     assert recorder.record.nodes[node_id].checkpoint_state == "invalid"
@@ -355,7 +355,7 @@ async def test_replaced_values_hook_is_a_required_validated_app_capture(
         assert recorder.record.nodes[node_id].is_checkpoint
     else:
         with pytest.warns(UserWarning, match="app-state values capture failed"):
-            assert not await recorder.response_settled()
+            assert await recorder.response_settled()
         assert recorder.record.nodes[node_id].checkpoint_state == "invalid"
         assert recorder.record.nodes[node_id].state == before
     assert calls == [node_id]

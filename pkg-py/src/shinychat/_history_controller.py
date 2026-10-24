@@ -386,13 +386,19 @@ class HistoryController:
             return
         record = recorder.record
         assert record is not None
-        await self._after_persist(record)
-        self._schedule_exchange_retitle(record)
+        leaf = record.active_leaf
+        assert leaf is not None
+        reliable = record.nodes[leaf].is_checkpoint
+        await self._after_persist(record, success_hook=reliable)
+        if reliable:
+            self._schedule_exchange_retitle(record)
 
-    async def _after_persist(self, record: ConversationRecordV2) -> None:
+    async def _after_persist(
+        self, record: ConversationRecordV2, *, success_hook: bool = True
+    ) -> None:
         """Shared post-save tail: eviction, save hook, and UI updates."""
         await self._evict_if_needed()
-        if self.on_response_saved is not None:
+        if success_hook and self.on_response_saved is not None:
             await self.on_response_saved(record)
         await self.send_history_update()
         await self._send_sibling_metadata()
@@ -759,7 +765,6 @@ class HistoryController:
         try:
             with _restore_step("validating the saved conversation"):
                 if node_id is not None:
-                    selected = target.model_copy(deep=True)
                     selected.require_checkpoint(node_id)
                     selected.set_active_leaf(node_id)
                     persist_active_pointer = target.active_leaf != node_id
@@ -1237,14 +1242,19 @@ class HistoryController:
         data: dict[int, ExchangeMetadata] = {}
         for node_id, message_index in recorder.record.iter_visible_inputs():
             node = recorder.record.nodes[node_id]
-            if not node.is_checkpoint or (
-                node.parent_id is not None
-                and not recorder.record.nodes[node.parent_id].is_checkpoint
-            ):
-                continue
+            parent = (
+                recorder.record.nodes.get(node.parent_id)
+                if node.parent_id is not None
+                else None
+            )
             metadata: ExchangeMetadata = {
                 "status": node.status,
-                "retryable": node.status in _RETRYABLE_STATUSES,
+                "retryable": (
+                    node.status in _RETRYABLE_STATUSES
+                    and not recorder.read_only
+                    and parent is not None
+                    and parent.is_checkpoint
+                ),
             }
             if node.status == "error":
                 metadata["error_message"] = project_history_error_message(

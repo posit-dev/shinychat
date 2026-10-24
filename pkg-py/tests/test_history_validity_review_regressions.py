@@ -574,3 +574,154 @@ async def test_wrapped_and_overridden_captures_are_detached_and_validated(
                 node_id, "node_close", app_only=True
             )
     assert record.model_dump_json() == before
+
+
+@pytest.mark.anyio
+async def test_invalid_settlement_runs_housekeeping_without_success_publication(
+    backend: _Backend,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    from test_history_stream_persistence import (
+        _assistant_message,
+        _chunk,
+        _text,
+    )
+
+    failing = False
+
+    def save(values: dict[str, Any]) -> None:
+        if failing:
+            raise RuntimeError("APP capture failed")
+
+    writer, _ = _make_controller(store=backend.store, save_callbacks=[save])
+    transcript, first = await _open_stream(writer)
+    await _end_stream(transcript)
+    await writer.on_response()
+    record = writer._exchange_recorder.record
+    assert record is not None
+    sibling = record.nodes[first].model_copy(deep=True)
+    record.nodes["sibling"] = sibling
+    record.nodes[record.root_id].children.append("sibling")
+    transcript, node_id = await _open_stream(writer)
+    older = new_conversation_record_v2(
+        title="older", id="older", client_info={}
+    )
+    await backend.store.put(part(), older)
+    writer.adapter.set_turns_json(
+        [
+            {"role": "user", "content": "input"},
+            {"role": "assistant", "content": "large answer" * 1000},
+        ]
+    )
+    await _chunk(transcript, _assistant_message(_text("recoverable answer")))
+    await _end_stream(transcript)
+    frame = deepcopy(record.nodes[node_id].state)
+    metas = await backend.store.list(part())
+    writer.max_store_bytes = next(
+        m.size_bytes for m in metas if m.id == record.id
+    )
+    success = AsyncMock()
+    retitle = AsyncMock()
+    writer.on_response_saved = success
+    monkeypatch.setattr(writer, "_schedule_exchange_retitle", retitle)
+    siblings = AsyncMock(wraps=writer._send_sibling_metadata)
+    monkeypatch.setattr(writer, "_send_sibling_metadata", siblings)
+    chat = cast(_FakeChat, writer.chat)
+    chat.actions.clear()
+    failing = True
+    with pytest.warns(UserWarning, match="APP capture failed"):
+        await writer.on_response()
+    assert await backend.reader.get(part(), older.id) is None
+    assert record.response_count == 2
+    assert record.nodes[node_id].checkpoint_state == "invalid"
+    assert record.nodes[node_id].state == frame
+    durable = await _saved(backend, record.id)
+    assert durable.response_count == 2
+    assert durable.nodes[node_id].state == frame
+    assert durable.nodes[node_id].checkpoint_state == "invalid"
+    assert (
+        durable.nodes[node_id].messages[-1].as_stored_message().content
+        == "recoverable answer"
+    )
+    assert any(a["type"] == "history_update" for a in chat.actions)
+    siblings.assert_awaited_once()
+    sibling_updates = [
+        a for a in chat.actions if a["type"] == "update_siblings"
+    ]
+    assert sibling_updates == [
+        {"type": "update_siblings", "data": {0: {"index": 0, "total": 2}}}
+    ]
+    success.assert_not_awaited()
+    retitle.assert_not_called()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("mode", ["writable", "invalid_parent", "read_only"])
+async def test_restored_invalid_ancestor_metadata_and_retained_parent_retry(
+    mode: str,
+) -> None:
+    from shinychat._history_types import HISTORY_ERROR_GENERIC, ErrorEntry
+
+    writer, chat, adapter, store, parent, target = (
+        _make_v2_resubmit_controller()
+    )
+    record = writer._exchange_recorder.record
+    assert record is not None
+    record.nodes[target].checkpoint = "invalid"
+    record.nodes[target].status = "error"
+    record.nodes[target].error = ErrorEntry(
+        message="secret provider diagnostic"
+    )
+    descendant = "valid-descendant"
+    record.open_exchange(descendant, _stored_message("user", "third"))
+    record.nodes[descendant].state[TURNS_STATE_KEY] = StateEntry(
+        kind="turns",
+        version=1,
+        mode="snapshot",
+        data=[{"role": "user", "content": "safe descendant"}],
+    )
+    record.finish_exchange(descendant, "ok", None)
+    record.nodes[descendant].checkpoint = "valid"
+    if mode == "invalid_parent":
+        record.nodes[parent].checkpoint = "invalid"
+    from shinychat._history_store import InMemoryConversationStore
+
+    store = InMemoryConversationStore()
+    writer.store = store
+    await store.put(part(), record)
+    writer._exchange_recorder.record = None
+    writer._active_id.set(None)
+    await writer.switch_to(record.id)
+    restored = writer._exchange_recorder.record
+    assert restored is not None
+    assert not writer._exchange_recorder.read_only
+    if mode == "read_only":
+        writer._exchange_recorder.install_restored_record(
+            restored, read_only=True
+        )
+    chat.actions.clear()
+    await writer._send_exchange_metadata()
+    metadata = chat.actions[-1]["data"]
+    assert metadata[1] == {
+        "status": "error",
+        "error_message": HISTORY_ERROR_GENERIC,
+        "retryable": mode == "writable",
+    }
+    with pytest.raises(ValueError, match="not a valid checkpoint"):
+        restored.require_checkpoint(target)
+    if mode == "writable":
+        await writer.resubmit(
+            target, kind="retry", request_id="retry", message_index=1
+        )
+        assert restored.active_leaf == parent
+        assert adapter.turns == [
+            {"role": "system", "content": "bootstrap"},
+            {"role": "user", "content": "first"},
+        ]
+    else:
+        with pytest.raises((ValueError, RuntimeError)):
+            await writer.resubmit(
+                target, kind="retry", request_id="retry", message_index=1
+            )

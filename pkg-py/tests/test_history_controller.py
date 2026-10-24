@@ -3432,7 +3432,7 @@ async def test_v2_restore_with_unavailable_model_context_becomes_read_only(
     assert events == ["history_update"]
     expected_metadata = {
         "status": "error",
-        "retryable": True,
+        "retryable": False,
         "error_message": HISTORY_ERROR_GENERIC,
     }
     assert {
