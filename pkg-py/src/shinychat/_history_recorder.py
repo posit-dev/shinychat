@@ -217,7 +217,7 @@ class _ExchangeRecorder:
         than inheriting.
 
         Error policy: an *automatic* capture (``strict=False`` -- root
-        close, node close, response settlement, retitle)
+        close, node close, response settlement)
         never lets a failing callback or an invalid payload block the
         move that triggered it. The error is warned to the developer
         with its details, and the node keeps its previously recorded
@@ -698,7 +698,6 @@ class _ExchangeRecorder:
             return False
         target.title = title
         target.title_source = "llm"
-        self._capture_app_state()
         await self.persist_record_locked()
         return True
 
