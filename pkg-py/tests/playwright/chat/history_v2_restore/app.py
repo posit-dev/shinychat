@@ -64,7 +64,7 @@ class EchoChatClient(chatlas.Chat):
         if self.provider_context is not None:
             self.provider_context.set(" | ".join(context))
         if (
-            user_input in ("retry me", "held retry", "immediate retry")
+            user_input in ("retry me", "held retry", "immediate retry", "disabled retry")
             and user_input not in _failed_inputs
         ):
             _failed_inputs.add(user_input)
@@ -94,7 +94,7 @@ class EchoChatClient(chatlas.Chat):
                 raise RuntimeError("intentional partial fixture failure")
 
             return partial_failure_response()
-        if user_input == "cancel me" and user_input not in _failed_inputs:
+        if user_input in ("cancel me", "disabled stop") and user_input not in _failed_inputs:
             _failed_inputs.add(user_input)
             self._turns.extend(
                 [

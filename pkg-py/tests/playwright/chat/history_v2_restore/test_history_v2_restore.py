@@ -520,6 +520,49 @@ def test_v2_immediate_retry_after_cancellation(
     expect(page.locator(".shiny-chat-message-cancelled")).to_have_count(0)
 
 
+def test_v2_retry_stays_disabled_and_unhighlighted_during_another_response(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+    chat.set_user_input("disabled retry")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
+    chat.send_user_input(method="enter")
+    retry = page.locator(".shiny-chat-user-message").first.get_by_role(
+        "button", name="Retry message"
+    )
+    expect(retry).to_be_enabled(timeout=10_000)
+
+    chat.set_user_input("disabled stop")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message(
+        "partial response awaiting cancellation", timeout=30_000
+    )
+    expect(retry).to_be_disabled()
+    appearance = retry.evaluate(
+        "el => [getComputedStyle(el).color, getComputedStyle(el).backgroundColor]"
+    )
+    retry.hover(force=True)
+    hovered_appearance = retry.evaluate(
+        """async el => {
+            getComputedStyle(el).color;
+            await Promise.all(el.getAnimations().map(animation => animation.finished));
+            return [getComputedStyle(el).color, getComputedStyle(el).backgroundColor];
+        }"""
+    )
+    assert hovered_appearance == appearance
+    retry.click(force=True)
+    page.get_by_role("button", name="Stop generating").press("Enter")
+    expect(page.locator(".shiny-chat-message-cancelled")).to_be_visible(
+        timeout=30_000
+    )
+    expect(retry).to_be_enabled(timeout=10_000)
+    controller.OutputText(page, "provider_calls").expect_value("2")
+    controller.OutputText(page, "accepted_submissions").expect_value("2")
+
+
 def test_v2_navigation_replays_the_selected_sibling_and_continues_from_it(
     page: Page, local_app: ShinyAppProc
 ) -> None:

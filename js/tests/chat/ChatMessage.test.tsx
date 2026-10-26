@@ -977,10 +977,7 @@ describe("ChatMessage retry", () => {
     expect(screen.getByRole("button", { name: "Retry message" })).toBeTruthy()
   })
 
-  it("disables the retry control while an exchange is in flight", () => {
-    // ChatContainer folds streaming/history-busy state into the shared
-    // `disabled` prop; the retry button must honor it so an in-flight
-    // exchange can't be re-submitted.
+  it("ignores Retry clicks when disabled", () => {
     const onRetry = vi.fn()
     render(
       <ChatMessage

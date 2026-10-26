@@ -8918,6 +8918,10 @@ async def test_v2_response_persistence_does_not_depend_on_bookmark_settlement() 
     with pytest.raises(RuntimeError, match="bookmark settlement failed"):
         await controller.on_response()
 
+    assert {
+        "type": "update_exchange_metadata",
+        "data": {0: {"status": "ok", "retryable": False}},
+    } in cast(_FakeChat, controller.chat).actions
     persisted = await store.get(part(), record.id)
     assert isinstance(persisted, ConversationRecordV2)
     assert persisted.response_count == 1

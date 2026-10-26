@@ -1475,7 +1475,7 @@ shiny-chat-container:not([fill]) {
   cursor: pointer;
   transition: color 0.15s, background-color 0.15s;
 
-  &:hover,
+  &:not(:disabled):hover,
   &:focus-visible {
     color: var(--bs-primary, #007bc2);
     background-color: var(--bs-tertiary-bg, rgba(0, 0, 0, 0.05));
