@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 import warnings
 from copy import deepcopy
@@ -3002,6 +3003,9 @@ async def test_session_end_flush_error_is_logged_and_later_cleanup_runs(
     later: list[str] = []
     session.on_ended(lambda: later.append("later cleanup"))
 
+    # Unrelated records can carry boolean exc_info (e.g. asyncio task cleanup).
+    logging.getLogger("asyncio").error("unrelated task cleanup", exc_info=False)
+
     # Developer reporting must not stop Shiny's callback chain, including
     # when application warning filters turn warnings into exceptions.
     with warnings.catch_warnings():
@@ -3011,7 +3015,10 @@ async def test_session_end_flush_error_is_logged_and_later_cleanup_runs(
     flush.assert_awaited_once()
     assert later == ["later cleanup"]
     assert any(
-        record.exc_info is not None and record.exc_info[1] is error
+        record.name == "shinychat._chat"
+        and "Failed to flush captured history" in record.getMessage()
+        and isinstance(record.exc_info, tuple)
+        and record.exc_info[1] is error
         for record in caplog.records
     )
     assert "failed_end_flush" in caplog.text
