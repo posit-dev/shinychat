@@ -208,9 +208,8 @@ class ChatClient:
         Parameters
         ----------
         greeting
-            Passed to :meth:`~shinychat.Chat.clear_messages`. When ``True``,
-            also clears the greeting and resolves the configured greeting for
-            the new conversation.
+            When ``True``, also clears the greeting and resolves the
+            configured greeting for the new conversation.
 
         Raises
         ------

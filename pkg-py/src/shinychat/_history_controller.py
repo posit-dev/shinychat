@@ -611,7 +611,7 @@ class HistoryController:
             except BaseException as error:
                 cleanup_failures.append(error)
 
-        await best_effort(self.chat.clear_messages)
+        await best_effort(self.chat._clear_messages_screen_only)
         await best_effort(lambda: self.adapter.set_turns_json([]))
         await best_effort(lambda: self.chat.set_greeting(None))
         active_id_callback = self.on_active_id_change
@@ -778,7 +778,7 @@ class HistoryController:
     ) -> None:
         recorder = self._exchange_recorder
 
-        await self.chat.clear_messages()
+        await self.chat._clear_messages_screen_only()
         await self.chat.set_greeting(None)
         with recorder.suspend_capture():
             for node_id in node_ids:
@@ -893,9 +893,9 @@ class HistoryController:
         capture fails, the already-saved conversation is retained and the
         explicit reset proceeds with a developer warning. Storage, reset,
         cancellation, and fatal errors still propagate. ``greeting`` is
-        forwarded to :meth:`Chat.clear_messages`; when ``True``, the
-        greeting is cleared and the configured greeting is resolved again
-        after the new-chat transition settles.
+        forwarded to the chat's internal screen-only message clear; when
+        ``True``, the greeting is cleared and the configured greeting is
+        resolved again after the new-chat transition settles.
         """
         async with self._destructive_mutation():
             async with self._exchange_mutation():
@@ -910,7 +910,7 @@ class HistoryController:
                         stacklevel=2,
                     )
                 self.adapter.set_turns_json([])
-                await self.chat.clear_messages(greeting=greeting)
+                await self.chat._clear_messages_screen_only(greeting=greeting)
                 self._exchange_recorder.reset()
                 await self.clear_active()
                 if self.on_active_id_change is not None:
@@ -1222,7 +1222,7 @@ class HistoryController:
                     self._exchange_recorder.reset()
                     await self.clear_active()
                     self.adapter.set_turns_json([])
-                    await self.chat.clear_messages()
+                    await self.chat._clear_messages_screen_only()
                     if self.on_active_id_change is not None:
                         await self.on_active_id_change(None)
                 await self.send_history_update()

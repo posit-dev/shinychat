@@ -250,7 +250,9 @@ class _FakeChat:
     async def _send_action(self, action: Any) -> None:
         self.actions.append(action)
 
-    async def clear_messages(self, *, greeting: bool = False) -> None:
+    async def _clear_messages_screen_only(
+        self, *, greeting: bool = False
+    ) -> None:
         self.clear_messages_calls += 1
         self.clear_messages_greetings.append(greeting)
         self.messages.clear()
@@ -2404,14 +2406,14 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore(
 
     clear_started = asyncio.Event()
     release_clear = asyncio.Event()
-    original_clear_messages = chat.clear_messages
+    original_clear_messages = chat._clear_messages_screen_only
 
     async def blocked_clear_messages() -> None:
         clear_started.set()
         await release_clear.wait()
         await original_clear_messages()
 
-    chat.clear_messages = blocked_clear_messages  # type: ignore[method-assign]
+    chat._clear_messages_screen_only = blocked_clear_messages  # type: ignore[method-assign]
 
     async def assert_rejected(content: str) -> None:
         original_as_stored_message = chat._as_stored_message
@@ -4401,7 +4403,7 @@ async def test_v2_restore_failure_becomes_fresh_draft(
     expected = RuntimeError(f"injected {failure} failure")
 
     if failure == "clear":
-        fake_chat.clear_messages = AsyncMock(side_effect=expected)  # type: ignore[method-assign]
+        fake_chat._clear_messages_screen_only = AsyncMock(side_effect=expected)  # type: ignore[method-assign]
     elif failure == "greeting":
         fake_chat.set_greeting = AsyncMock(side_effect=expected)  # type: ignore[method-assign]
     elif failure.startswith("replay-"):
@@ -4465,7 +4467,7 @@ async def test_v2_restore_cancellation_preserves_outcome_after_cleanup_failure()
     _install_live_v2_record(controller)
     target = _restore_target()
     fake_chat = cast(_FakeChat, controller.chat)
-    original_clear = fake_chat.clear_messages
+    original_clear = fake_chat._clear_messages_screen_only
     clear_calls = 0
 
     async def fail_cleanup_clear() -> None:
@@ -4475,7 +4477,7 @@ async def test_v2_restore_cancellation_preserves_outcome_after_cleanup_failure()
             raise RuntimeError("cleanup clear failed")
         await original_clear()
 
-    fake_chat.clear_messages = fail_cleanup_clear  # type: ignore[method-assign]
+    fake_chat._clear_messages_screen_only = fail_cleanup_clear  # type: ignore[method-assign]
     fake_chat._restore_bookmark_message = AsyncMock(  # type: ignore[method-assign]
         side_effect=asyncio.CancelledError()
     )
@@ -4580,7 +4582,7 @@ async def test_v2_restore_cleanup_failures_are_secondary_and_reported(
     )
 
     if cleanup == "messages":
-        original_clear = fake_chat.clear_messages
+        original_clear = fake_chat._clear_messages_screen_only
         clear_calls = 0
 
         async def fail_cleanup_clear() -> None:
@@ -4591,7 +4593,7 @@ async def test_v2_restore_cleanup_failures_are_secondary_and_reported(
                 return
             raise cleanup_error
 
-        fake_chat.clear_messages = fail_cleanup_clear  # type: ignore[method-assign]
+        fake_chat._clear_messages_screen_only = fail_cleanup_clear  # type: ignore[method-assign]
     elif cleanup == "turns":
 
         def fail_cleanup_turns(_turns: list[Any]) -> None:
@@ -4649,7 +4651,7 @@ async def test_v2_restore_cleanup_continues_after_earlier_failure():
     _install_live_v2_record(controller)
     target = _restore_target()
     fake_chat = cast(_FakeChat, controller.chat)
-    original_clear = fake_chat.clear_messages
+    original_clear = fake_chat._clear_messages_screen_only
     original_greeting = fake_chat.set_greeting
     original_set_turns = adapter.set_turns_json
     events: list[str] = []
@@ -4687,7 +4689,7 @@ async def test_v2_restore_cleanup_continues_after_earlier_failure():
         assert recovery_incomplete
         events.append("notification")
 
-    fake_chat.clear_messages = clear  # type: ignore[method-assign]
+    fake_chat._clear_messages_screen_only = clear  # type: ignore[method-assign]
     fake_chat.set_greeting = greeting  # type: ignore[method-assign]
     fake_chat._restore_bookmark_message = AsyncMock(  # type: ignore[method-assign]
         side_effect=RuntimeError("original restore failure")
@@ -4991,7 +4993,7 @@ async def test_v2_restore_success_order_and_no_failure_notification():
     target = _restore_target()
     events: list[str] = []
     fake_chat = cast(_FakeChat, controller.chat)
-    original_clear = fake_chat.clear_messages
+    original_clear = fake_chat._clear_messages_screen_only
     original_greeting = fake_chat.set_greeting
     original_replay = fake_chat._restore_bookmark_message
     original_set_turns = adapter.set_turns_json
@@ -5037,7 +5039,7 @@ async def test_v2_restore_success_order_and_no_failure_notification():
     async def metadata() -> None:
         events.append("metadata")
 
-    fake_chat.clear_messages = clear  # type: ignore[method-assign]
+    fake_chat._clear_messages_screen_only = clear  # type: ignore[method-assign]
     fake_chat.set_greeting = greeting  # type: ignore[method-assign]
     fake_chat._restore_bookmark_message = replay  # type: ignore[method-assign]
     adapter.set_turns_json = set_turns  # type: ignore[method-assign]
@@ -9170,7 +9172,9 @@ class _NavFakeChat(_FakeChat):
     async def _send_action(self, action: Any) -> None:
         self.actions.append(dict(action))
 
-    async def clear_messages(self, *, greeting: bool = False) -> None:
+    async def _clear_messages_screen_only(
+        self, *, greeting: bool = False
+    ) -> None:
         self.cleared += 1
 
     async def _restore_bookmark_message(

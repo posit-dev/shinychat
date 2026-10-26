@@ -2691,11 +2691,13 @@ class Chat:
         """
         Clear all rendered chat messages.
 
-        This is a UI-level primitive. It does not reset the underlying
-        client's turns or the conversation-history controller. When a chat
-        was created with a client and conversation history is enabled, use
-        ``await chat.client.new_chat()`` for a coordinated new-conversation
-        reset.
+        This is a UI-level primitive for chats without conversation history.
+        It does not reset the underlying client's turns or the saved
+        conversation-history record, so it is rejected while conversation
+        history is enabled: clearing only the screen would desynchronize the
+        rendered chat from the recorded exchanges used by edit, retry, and
+        navigation. Use ``await chat.client.new_chat()`` for a coordinated
+        new-conversation reset instead.
 
         Parameters
         ----------
@@ -2706,6 +2708,32 @@ class Chat:
             messages), enabling a regenerate pattern: clear the greeting, then
             react to the request to generate a new one via
             :meth:`~shinychat.Chat.set_greeting`.
+
+        Raises
+        ------
+        ValueError
+            If conversation history is enabled (the chat was created with a
+            client and history). Use ``await chat.client.new_chat()`` to
+            start a new conversation instead.
+        """
+        if self.history._controller is not None:
+            raise ValueError(
+                "Can't clear messages while conversation history is enabled; "
+                "use `await chat.client.new_chat()` to start a new "
+                "conversation."
+            )
+        await self._clear_messages_screen_only(greeting=greeting)
+
+    async def _clear_messages_screen_only(self, *, greeting: bool = False):
+        """
+        Clear the rendered chat messages without touching history state.
+
+        This internal primitive backs coordinated history operations
+        (restore/replay, new chat, conversation delete, and failed-restore
+        cleanup) that reset the record and client turns themselves. It is
+        unguarded; public callers go through
+        :meth:`~shinychat.Chat.clear_messages`, which rejects while
+        conversation history is enabled.
         """
         action: ClearAction = {"type": "clear"}
         if greeting:
@@ -2744,8 +2772,9 @@ class Chat:
 
         If the greeting has already been dismissed, calling this method updates the
         greeting content but does not make it visible again. To show a new greeting
-        after dismissal, first clear the chat with
-        ``await chat.clear_messages(greeting=True)``.
+        after dismissal, start a new conversation with
+        ``await chat.client.new_chat(greeting=True)`` when history is enabled.
+        For chats without history, use ``await chat.clear_messages(greeting=True)``.
 
         Parameters
         ----------
@@ -2768,8 +2797,10 @@ class Chat:
         When no greeting is set and the chat is visible with no messages, an input
         named ``{id}_greeting_requested`` fires (where ``{id}`` is the chat's ID).
         Use ``@reactive.event(input.{id}_greeting_requested)`` to generate a greeting
-        on demand. This input fires on first load and again after
-        :meth:`~shinychat.Chat.clear_messages` is called with ``greeting=True``.
+        on demand. This input fires on first load and again after clearing the
+        greeting and messages with ``greeting=True``: use
+        :meth:`~shinychat.ChatClient.new_chat` with history enabled, or
+        :meth:`~shinychat.Chat.clear_messages` without history.
         When the user dismisses the greeting, ``{id}_greeting_dismissed`` fires with
         a ``Date.now()`` timestamp. If the greeting is later cleared after being dismissed,
         the input resets to ``None``.
@@ -2832,7 +2863,7 @@ class Chat:
             await chat.set_greeting(chat_greeting(response))
         ```
 
-        Regenerate pattern (clear and re-request):
+        Regenerate pattern for the clientless chat above (clear and re-request):
 
         ```python
         @reactive.effect
@@ -2844,6 +2875,11 @@ class Chat:
         # greeting_requested fires again after clear_messages(greeting=True),
         # so the LLM-generated greeting handler above will run again.
         ```
+
+        For a history-enabled chat, use
+        ``await chat.client.new_chat(greeting=True)`` instead. This saves the
+        current conversation and starts a new one, resolving any configured
+        greeting again.
 
         Clear the greeting (e.g., before setting a new one):
 
@@ -3540,8 +3576,10 @@ def chat_ui(
         When no greeting is set and the chat is visible with no messages, an input
         named ``{id}_greeting_requested`` fires. Use this input with
         ``@reactive.event(input.{id}_greeting_requested)`` to generate a greeting
-        on demand from the server. It fires again after
-        :meth:`~shinychat.Chat.clear_messages` is called with ``greeting=True``.
+        on demand from the server. If no greeting is set, it fires again after
+        clearing messages with ``greeting=True``: use
+        :meth:`~shinychat.ChatClient.new_chat` with history enabled, or
+        :meth:`~shinychat.Chat.clear_messages` without history.
     placeholder
         Placeholder text for the chat input.
     width
