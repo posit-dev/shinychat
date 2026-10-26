@@ -134,6 +134,8 @@ The field schema changed:
 
 A store that reads v1 internals such as `current_leaf`, `turns`, or `ui` must read the v2 fields instead. A store that only serializes whole records must be checked with a round trip.
 
+Model state lives in each node's `state` entries, not in dedicated fields. A `shinychat:turns` entry is either a `snapshot` (the complete turn list at that capture) or a `delta` (only the turns added beyond the parent's effective saved context on the same branch). Current captures store a delta whenever the parent's saved context is an exact prefix of the client's serialized turns, and a full snapshot when there is no usable baseline or the prefix comparison fails (compaction, truncation, or any changed earlier turn). Stores that inspect these entries must not assume every entry is a snapshot: fold entries along a path, or rely on shinychat's restore, rather than reading a single node's turns. Existing full-snapshot records remain readable unchanged; this reuses the existing entry `mode` field and introduces no new schema version. System prompts (`shinychat:system_prompt`) and app values (`shinychat:values`) are unaffected and keep their sparse whole-value snapshot rules.
+
 This sample is a complete in-memory store. It stores each record as JSON, reads it back as the version it was written in, and lists conversations newest first.
 
 ```python

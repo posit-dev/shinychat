@@ -282,11 +282,24 @@ older v2 records; it cannot retrospectively identify their unrecorded capture
 failures. New records classify positions explicitly. Schema 2 is still unreleased,
 so this additive field does not introduce a new schema version.
 
-Coherent checkpoints store full client turn lists and system prompts. Repeating
-long prefixes across exchanges can make total stored model state grow
-quadratically with conversation length. Existing delta-based records remain
-readable. The file store's `max_store_mb` budget still applies (100 MB by default);
-this change does not increase the quota or change its defaults.
+Coherent checkpoints save model turns as exact-prefix deltas: the capture compares the
+client's current serialized turn list with the checkpoint's parent on its branch and stores
+only the added turns when the parent's saved context is an exact prefix. When there is no
+usable baseline — the conversation's starting checkpoint — or the context was rewritten
+(compaction, truncation, or any changed earlier turn), the checkpoint stores one full
+snapshot instead. An unchanged context is not copied again. This keeps stored model state
+growing linearly, rather than quadratically, as an append-only conversation gets longer.
+Restore is exact and unchanged for reloads, conversation switching, browsing, edits,
+retries, and regenerations, and existing full-snapshot records remain readable; no schema
+version is introduced. System prompts and app values keep their separate sparse capture
+rules, so a prompt-only change does not force a full turn snapshot.
+
+Full snapshots remain necessary for starting contexts, rewrites, and preserving existing
+branches when a shared parent is recaptured. A conversation's complete record also keeps a copy of each exchange's
+displayed messages for replay, which this policy does not deduplicate — so complete
+record files shrink less than the turn payloads do. The file store's `max_store_mb` budget
+still applies (100 MB by default); this change does not increase the quota or change its
+defaults.
 
 Leaving a coherent completed position or disconnecting captures the latest model
 state without invoking app-state `on_save` callbacks. Explicit `history.save()`
