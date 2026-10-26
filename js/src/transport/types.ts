@@ -230,6 +230,7 @@ export type ChatAction =
       attachment_mode?: "append" | "set"
     }
   | { type: "remove_loading" }
+  | { type: "remove_message"; id: string }
   | { type: "update_cancel"; enable_cancel: boolean }
   | { type: "update_upload"; enable_upload: boolean }
   | {
@@ -329,6 +330,7 @@ export type ShinyClientMessage = {
 
 /** The user's submission: text plus any attachments, sent as one input value. */
 export type UserInputValue = {
+  client_message_id?: string
   text: string
   attachments: AttachmentPayload[]
 }
@@ -338,9 +340,8 @@ export interface ChatTransport {
   /**
    * Send the user's submission as the type-tagged `shinychat.userInput` value
    * for the given input id (read server-side as `input$<id>`). The shape
-   * signals the upload mode: a bare `string` when the attachment affordance is
-   * disabled (back-compatible with the historical string-valued input), or a
-   * `{text, attachments}` composite when it is enabled.
+   * includes the optimistic row ID for capture-rejection correlation. Legacy
+   * callers may still send a bare string without correlation.
    */
   sendInput(id: string, value: string | UserInputValue): void
   sendCancel(id: string): void
@@ -349,6 +350,7 @@ export interface ChatTransport {
     command: string,
     userText: string,
     echo: boolean,
+    client_message_id?: string,
   ): void
   onMessage(id: string, callback: (action: ChatAction) => void): () => void
   sendHistorySelect(id: string, convId: string): void

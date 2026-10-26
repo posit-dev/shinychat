@@ -19,7 +19,7 @@ from ._attachments import (
     Attachment,
     validate_attachments,
 )
-from ._typing_extensions import TypedDict
+from ._typing_extensions import NotRequired, TypedDict
 
 if TYPE_CHECKING:
     from shiny.module import ResolvedId
@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 
 class UserInputValue(TypedDict):
+    client_message_id: NotRequired[str]
     text: str
     attachments: list[Attachment]
 
@@ -43,6 +44,9 @@ def _(value: Any, _name: "ResolvedId", _session: "Session") -> UserInputValue:
         Attachment.model_validate(a) for a in (value.get("attachments") or [])
     ]
     validate_attachments(attachments)
-    return UserInputValue(
+    result = UserInputValue(
         text=str(value.get("text", "")), attachments=attachments
     )
+    if isinstance(value.get("client_message_id"), str):
+        result["client_message_id"] = value["client_message_id"]
+    return result

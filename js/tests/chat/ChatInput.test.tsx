@@ -176,9 +176,16 @@ describe("ChatInput", () => {
       expect.objectContaining({ type: "INPUT_SENT", content: "hello" }),
     )
     expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+      client_message_id: expect.any(String),
       text: "hello",
       attachments: [],
     })
+    expect(transport.sendInput).toHaveBeenCalledWith(
+      "test-input",
+      expect.objectContaining({
+        client_message_id: dispatch.mock.calls[0]?.[0].id,
+      }),
+    )
     expect(onSend).toHaveBeenCalled()
     expect(editorEl.textContent).toBe("")
   })
@@ -352,6 +359,7 @@ describe("ChatInput", () => {
       expect.objectContaining({ type: "INPUT_SENT", content: "click to send" }),
     )
     expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+      client_message_id: expect.any(String),
       text: "click to send",
       attachments: [],
     })
@@ -385,6 +393,7 @@ describe("ChatInput", () => {
       })
 
       expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+        client_message_id: expect.any(String),
         text: "submitted text",
         attachments: [],
       })
@@ -426,6 +435,7 @@ describe("ChatInput", () => {
         "help",
         "topic details",
         true,
+        expect.any(String),
       )
       expect(transport.sendInput).not.toHaveBeenCalled()
       expect(editorEl.textContent).toBe("existing")
@@ -518,7 +528,11 @@ describe("ChatInput", () => {
       act(() => {
         ref.current?.setInputValue("x", { submit: true })
       })
-      expect(transport.sendInput).toHaveBeenCalledWith("test-input", "x")
+      expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+        text: "x",
+        attachments: [],
+        client_message_id: expect.any(String),
+      })
     })
   })
 
@@ -851,6 +865,7 @@ describe("ChatInput", () => {
         "do",
         "",
         false,
+        undefined,
       )
     })
 
@@ -874,6 +889,9 @@ describe("ChatInput", () => {
         "do",
         "now",
         true,
+        dispatch.mock.calls.find(
+          ([action]) => action.type === "INPUT_SENT",
+        )?.[0].id,
       )
     })
 
@@ -935,6 +953,7 @@ describe("ChatInput", () => {
         "do",
         "x",
         false,
+        undefined,
       )
     })
   })
@@ -1015,6 +1034,7 @@ describe("ChatInput", () => {
       // The size field is carried here and stripped by ShinyTransport when
       // building the wire payload.
       expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+        client_message_id: expect.any(String),
         text: "describe",
         attachments: [
           {
@@ -1222,21 +1242,23 @@ describe("ChatInput", () => {
       })
       fireEvent.click(screen.getByRole("button", { name: "Send message" }))
       expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+        client_message_id: expect.any(String),
         text: "just text",
         attachments: [],
       })
     })
 
-    it("sends a bare string (not a composite) when upload is disabled", () => {
+    it("sends the correlated composite even when upload is disabled", () => {
       const { transport, ref } = renderChatInput({ enableUpload: false })
       act(() => {
         ref.current?.setInputValue("just text")
       })
       fireEvent.click(screen.getByRole("button", { name: "Send message" }))
-      expect(transport.sendInput).toHaveBeenCalledWith(
-        "test-input",
-        "just text",
-      )
+      expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+        text: "just text",
+        attachments: [],
+        client_message_id: expect.any(String),
+      })
     })
 
     it("large text paste becomes a 'Pasted Text' card and prevents default", async () => {
@@ -1337,6 +1359,7 @@ describe("ChatInput", () => {
       })
       fireEvent.click(screen.getByRole("button", { name: "Send message" }))
       expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+        client_message_id: expect.any(String),
         text: "",
         attachments: [
           {

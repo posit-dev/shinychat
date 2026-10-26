@@ -110,11 +110,17 @@ export class ShinyTransport implements ChatTransport, ShinyLifecycle {
     command: string,
     userText: string,
     echo: boolean,
+    client_message_id?: string,
   ): void {
     if (!window.Shiny?.setInputValue) return
     window.Shiny.setInputValue(
       id,
-      { command, userText, echo },
+      {
+        command,
+        userText,
+        echo,
+        ...(client_message_id ? { client_message_id } : {}),
+      },
       { priority: "event" },
     )
   }

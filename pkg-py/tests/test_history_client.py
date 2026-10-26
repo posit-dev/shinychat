@@ -55,7 +55,10 @@ def test_chatlas_adapter_includes_system_prompt_when_requested():
 
     adapter = as_turns_adapter(client)
     assert [turn.get("role") for turn in adapter.get_turns_json()] == ["user"]
-    assert [turn.get("role") for turn in adapter.get_turns_json(include_system_prompt=True)] == [
+    assert [
+        turn.get("role")
+        for turn in adapter.get_turns_json(include_system_prompt=True)
+    ] == [
         "system",
         "user",
     ]
@@ -277,3 +280,106 @@ def test_turn_round_trip_preserves_tool_result_value_with_display():
     assert block.get("value") == "the tool output"
     assert block.get("title") == "Looked up data"
     assert block.get("expanded") is True
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ({2023: {False: 100}}, {"2023": {"false": 100}}),
+        ({1: "integer", "1": "string"}, {"1": "string"}),
+    ],
+)
+def test_chatlas_tool_values_use_supported_json_key_conversion(value, expected):
+    import chatlas
+
+    client = chatlas.ChatOpenAI(api_key="fake")
+    result = chatlas.ContentToolResult(value=value)
+    client.set_turns([chatlas.Turn(role="user", contents=[result])])
+    adapter = as_turns_adapter(client)
+
+    dumped = adapter.get_turns_json()
+
+    assert cast(dict[str, Any], dumped[0])["contents"][0]["value"] == expected
+    adapter.set_turns_json(dumped)
+    restored = client.get_turns()[0].contents[0]
+    assert isinstance(restored, chatlas.ContentToolResult)
+    assert restored.value == expected
+    assert result.value == value
+
+
+class ModelTurnClient:
+    def __init__(self, turn: Any):
+        self.turns = [turn]
+
+    def get_turns(self) -> list[Any]:
+        return self.turns
+
+    def set_turns(self, turns: list[Any]) -> None:
+        self.turns = turns
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ({2023: {False: 100}}, {"2023": {"false": 100}}),
+        ({1: "integer", "1": "string"}, {"1": "string"}),
+    ],
+)
+def test_generic_model_turns_use_supported_json_key_conversion(value, expected):
+    from pydantic import BaseModel
+
+    class ModelTurn(BaseModel):
+        role: str = "user"
+        value: Any
+
+    client = ModelTurnClient(ModelTurn(value=value))
+    adapter = as_turns_adapter(client)
+
+    dumped = adapter.get_turns_json()
+
+    assert dumped == [{"role": "user", "value": expected}]
+    adapter.set_turns_json(dumped)
+    assert client.turns == [{"role": "user", "value": expected}]
+
+
+def test_generic_model_turn_uses_json_mode_without_python_preflight():
+    class JsonOnlyTurn:
+        def model_dump(self, *, mode: str) -> dict[str, Any]:
+            if mode != "json":
+                raise AssertionError(
+                    "Only the JSON representation is supported"
+                )
+            return {"role": "user", "value": {"2023": 100}}
+
+    dumped = as_turns_adapter(ModelTurnClient(JsonOnlyTurn())).get_turns_json()
+
+    assert dumped == [{"role": "user", "value": {"2023": 100}}]
+
+
+@pytest.mark.parametrize("chatlas_client", [False, True])
+@pytest.mark.parametrize("value", [object(), {object(): 100}])
+def test_model_turn_serializer_rejects_unsupported_objects(chatlas_client, value):
+    import chatlas
+    from pydantic import BaseModel
+    from pydantic_core import PydanticSerializationError
+
+    class ModelTurn(BaseModel):
+        value: Any
+
+    if chatlas_client:
+        client = chatlas.ChatOpenAI(api_key="fake")
+        client.set_turns(
+            [
+                chatlas.Turn(
+                    role="user",
+                    contents=[chatlas.ContentToolResult(value=value)],
+                )
+            ]
+        )
+    else:
+        client = ModelTurnClient(ModelTurn(value=value))
+
+    with pytest.raises(
+        PydanticSerializationError, match="Unable to serialize unknown type"
+    ):
+        as_turns_adapter(client).get_turns_json()

@@ -310,6 +310,11 @@ class UpdateInputAction(TypedDict):
     attachment_mode: NotRequired[Literal["append", "set"]]
 
 
+class RemoveMessageAction(TypedDict):
+    type: Literal["remove_message"]
+    id: str
+
+
 class RemoveLoadingAction(TypedDict):
     type: Literal["remove_loading"]
 
@@ -449,6 +454,7 @@ ChatAction = Union[
     ClearAction,
     UpdateInputAction,
     RemoveLoadingAction,
+    RemoveMessageAction,
     UpdateCancelAction,
     UpdateUploadAction,
     GreetingAction,

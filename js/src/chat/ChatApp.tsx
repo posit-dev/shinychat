@@ -16,6 +16,7 @@ import {
   AsideFaviconContext,
 } from "./context"
 import { setCurrentConversationId } from "./currentConversation"
+import { uuid } from "../utils/uuid"
 import { navigateTo } from "../utils/navigate"
 import {
   chatReducer,
@@ -316,21 +317,22 @@ export function ChatApp({
       }
       if (action.type === "history_edit_projection") {
         if (!historyStore.acceptEditProjection(action.requestId)) return
+        const client_message_id = uuid()
         dispatch({ type: "TRUNCATE_MESSAGES", index: action.index })
         dispatch({
           type: "INPUT_SENT",
+          id: client_message_id,
           content: action.content,
           role: "user",
           ...(action.attachments.length > 0
             ? { attachments: action.attachments }
             : {}),
         })
-        transport.sendInput(
-          inputId,
-          state.enableUpload || action.attachments.length > 0
-            ? { text: action.content, attachments: action.attachments }
-            : action.content,
-        )
+        transport.sendInput(inputId, {
+          text: action.content,
+          attachments: action.attachments,
+          client_message_id,
+        })
         return
       }
       if (action.type === "chunk_start") {

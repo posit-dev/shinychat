@@ -273,6 +273,31 @@ describe("ShinyTransport", () => {
   })
 
   describe("sendSlashCommand", () => {
+    it("carries the optimistic row ID for normal and slash inputs", () => {
+      const transport = new ShinyTransport()
+      transport.sendInput("chat1", {
+        text: "hi",
+        attachments: [],
+        client_message_id: "normal-A",
+      })
+      expect(window.Shiny!.setInputValue).toHaveBeenLastCalledWith(
+        "chat1:shinychat.userInput",
+        expect.objectContaining({ client_message_id: "normal-A" }),
+        { priority: "event" },
+      )
+      transport.sendSlashCommand("chat1", "help", "args", true, "slash-A")
+      expect(window.Shiny!.setInputValue).toHaveBeenLastCalledWith(
+        "chat1",
+        {
+          command: "help",
+          userText: "args",
+          echo: true,
+          client_message_id: "slash-A",
+        },
+        { priority: "event" },
+      )
+    })
+
     it("calls setInputValue with id and { command, userText, echo } payload", () => {
       const transport = new ShinyTransport()
       transport.sendSlashCommand("chat1", "help", "some args", true)

@@ -12,8 +12,9 @@ sanitized_error_message <- function(err) {
 }
 
 notify_error <- function(prefix, err) {
+  # History notifications do not inherit the live chat sanitization setting.
   shiny::showNotification(
-    paste0(prefix, ": ", sanitized_error_message(err)),
+    prefix,
     type = "error",
     duration = NULL
   )

@@ -12,7 +12,9 @@ AsyncCommitSend = Callable[[], Awaitable[bool]]
 AsyncActionSend = Callable[[], Awaitable[None]]
 ChangeCallback = Callable[[], None]
 StreamTerminalCallback = Callable[[], None]
-AcceptedInputCallback = Callable[[str, StoredMessage], Awaitable[None]]
+AcceptedInputCallback = Callable[
+    [str, StoredMessage, Callable[[], None]], Awaitable[None]
+]
 MessageCommittedCallback = Callable[
     [str | None, "TranscriptEntry"], Awaitable[None]
 ]
@@ -139,30 +141,49 @@ class ChatTranscript:
             if release:
                 self._release_transaction(transaction)
 
+    def _commit_accepted_input(self, prepared: TranscriptEntry) -> str:
+        assert prepared.exchange_id is not None
+        self._entries = (*self._entries, prepared)
+        self._open_exchange_id = prepared.exchange_id
+        self._notify_change()
+        return prepared.exchange_id
+
     def record_accepted_input(self, message: StoredMessage) -> str:
-        """Commit an accepted optimistic user message and open its exchange."""
-        exchange_id = _utils.private_random_id()
-        self._entries = (
-            *self._entries,
+        """Commit an accepted user message and open its exchange."""
+        return self._commit_accepted_input(
             TranscriptEntry(
                 message=message.model_copy(deep=True),
-                exchange_id=exchange_id,
-            ),
+                exchange_id=_utils.private_random_id(),
+            )
         )
-        self._open_exchange_id = exchange_id
-        self._notify_change()
-        return exchange_id
 
     async def record_accepted_input_and_notify(
         self, message: StoredMessage
     ) -> str:
-        """Commit accepted input, then await its post-commit observer."""
-        exchange_id = self.record_accepted_input(message)
-        if self._on_accepted_input is not None:
+        """Let the observer commit after capture, before persistence/UI awaits.
+
+        A registered observer owns the single synchronous commit call. With
+        no observer, commit directly. The prepared entry is detached before
+        awaiting either capture or persistence.
+        """
+        prepared = TranscriptEntry(
+            message=message.model_copy(deep=True),
+            exchange_id=_utils.private_random_id(),
+        )
+        assert prepared.exchange_id is not None
+
+        def commit() -> None:
+            self._commit_accepted_input(prepared)
+
+        if self._on_accepted_input is None:
+            commit()
+        else:
             await self._on_accepted_input(
-                exchange_id, message.model_copy(deep=True)
+                prepared.exchange_id,
+                prepared.message.model_copy(deep=True),
+                commit,
             )
-        return exchange_id
+        return prepared.exchange_id
 
     def set_capture_callbacks(
         self,

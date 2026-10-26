@@ -364,7 +364,8 @@ Key points:
 - `StreamController()` is created once and reused — it automatically resets between streams.
 - Pass the controller to `stream_async(controller=ctrl)` so chatlas can honour the cancellation signal.
 - The cancel input fires as `input.<id>_cancel` (e.g. `input.chat_cancel`). Observe it with `@reactive.event` to call `ctrl.cancel()`. This is needed in both Express and Core apps.
-- Partial responses are automatically preserved in chat history by chatlas when a stream is cancelled.
+- When a stream is cancelled or fails, the partial response is saved to the conversation history at that point. Do not rely on in-progress text surviving a hard process kill.
+- Starting a second stream, or appending a complete message, while a stream is active raises `RuntimeError`. Use the stream's status to sequence follow-up work. See the [migration guide](history-migration.qmd).
 
 ## File attachments
 

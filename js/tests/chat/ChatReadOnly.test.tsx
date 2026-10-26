@@ -301,10 +301,11 @@ describe("read-only focus transfer", () => {
     // And the restored input is actually usable.
     fireEvent.change(restored, { target: { value: "fresh start" } })
     fireEvent.keyDown(restored, { key: "Enter" })
-    expect(transport.sendInput).toHaveBeenCalledWith(
-      `${elementId}-input`,
-      "fresh start",
-    )
+    expect(transport.sendInput).toHaveBeenCalledWith(`${elementId}-input`, {
+      text: "fresh start",
+      attachments: [],
+      client_message_id: expect.any(String),
+    })
   })
 })
 
@@ -321,10 +322,11 @@ describe("read-only send guards", () => {
       })
     })
 
-    expect(transport.sendInput).toHaveBeenCalledWith(
-      `${elementId}-input`,
-      "hello",
-    )
+    expect(transport.sendInput).toHaveBeenCalledWith(`${elementId}-input`, {
+      text: "hello",
+      attachments: [],
+      client_message_id: expect.any(String),
+    })
     expect(screen.getByText("hello")).toBeInTheDocument()
   })
 

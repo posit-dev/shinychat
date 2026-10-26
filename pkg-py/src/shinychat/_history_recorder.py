@@ -62,6 +62,10 @@ if TYPE_CHECKING:
     from ._chat import Chat
 
 
+class _ModelCaptureError(RuntimeError):
+    """Built-in model-state capture failed without committing state."""
+
+
 class RecorderHost(Protocol):
     """The host surface ``_ExchangeRecorder`` reads from its controller.
 
@@ -178,22 +182,40 @@ class _ExchangeRecorder:
     def _capture_system_prompt(
         self, context: CaptureContext
     ) -> StateEntry | None:
+        return self._prepare_system_prompt_capture(context)[0]
+
+    def _prepare_system_prompt_capture(
+        self, context: CaptureContext
+    ) -> tuple[StateEntry | None, dict[str, StateEntry]]:
         assert self.record is not None
-        prompt = self._host.adapter.get_system_prompt()
-        if prompt is None:
-            prompt = ""
-        # Prompt-specific semantics: a null entry (or a missing one)
-        # inherits; an empty string explicitly clears.
-        return sparse_snapshot_entry(
-            self.record,
-            context.node_id,
-            SYSTEM_PROMPT_STATE_KEY,
-            prompt,
-            is_effective=lambda entry: (
-                entry is not None and entry.data is not None
-            ),
-            kind="system_prompt",
-        )
+        prompt = self._host.adapter.get_system_prompt() or ""
+        node = self.record.nodes[context.node_id]
+        parent_id = node.parent_id
+        ancestor = None
+        while parent_id is not None:
+            parent = self.record.nodes[parent_id]
+            ancestor = parent.state.get(SYSTEM_PROMPT_STATE_KEY)
+            if ancestor is not None and ancestor.data is not None:
+                break
+            ancestor = None
+            parent_id = parent.parent_id
+        previous = node.state.get(SYSTEM_PROMPT_STATE_KEY)
+        if previous is None or previous.data is None:
+            previous = ancestor
+        children: dict[str, StateEntry] = {}
+        if previous is not None and previous.data != prompt:
+            # Pin the old inherited prompt only if the full capture succeeds.
+            for child_id in node.children:
+                inherited = self.record.nodes[child_id].state.get(
+                    SYSTEM_PROMPT_STATE_KEY
+                )
+                if inherited is None or inherited.data is None:
+                    children[child_id] = previous.model_copy(deep=True)
+        if ancestor is not None and ancestor.data == prompt:
+            return None, children
+        return StateEntry(
+            kind="system_prompt", version=1, mode="snapshot", data=prompt
+        ), children
 
     def _capture_values(self, context: CaptureContext) -> StateEntry | None:
         return self._capture_values_at(context.node_id)
@@ -290,6 +312,11 @@ class _ExchangeRecorder:
             self._host.adapter.set_system_prompt(cast(str, target.data))
 
     def _capture_turns(self, context: CaptureContext) -> StateEntry:
+        return self._prepare_turn_capture(context)[0]
+
+    def _prepare_turn_capture(
+        self, context: CaptureContext
+    ) -> tuple[StateEntry, list[str]]:
         adapter = self._host.adapter
         turns, fingerprints = canonical_turns(adapter.get_turns_json())
         baseline = self._turn_baseline
@@ -306,7 +333,6 @@ class _ExchangeRecorder:
             mode = "delta"
             data = turns[len(baseline) :]
 
-        self._turn_baseline = fingerprints
         assert self.record is not None
         previous = self.record.nodes[context.node_id].state.get(TURNS_STATE_KEY)
         if mode == "delta" and previous is not None:
@@ -319,7 +345,7 @@ class _ExchangeRecorder:
             version=1,
             mode=mode,
             data=cast(JsonValue, data),
-        )
+        ), fingerprints
 
     async def capture_state_locked(
         self, node_id: str, reason: CaptureReason
@@ -331,18 +357,41 @@ class _ExchangeRecorder:
             return
         node = self.record.nodes[node_id]
         context = CaptureContext(node_id=node_id, reason=reason)
+        entries: dict[str, StateEntry | None] = {}
+        baseline = self._turn_baseline
+        children: dict[str, StateEntry] = {}
         for name, hook in self._capture_hooks.items():
             if name == VALUES_STATE_KEY and reason != "stream_finish":
                 # on_save values are checkpoint-only (nr6b): boundary and
                 # close captures record model state but never app values.
                 continue
-            entry = hook(context)
-            if inspect.isawaitable(entry):
-                entry = await entry
+            if (name, hook) in (
+                (TURNS_STATE_KEY, self._capture_turns),
+                (SYSTEM_PROMPT_STATE_KEY, self._capture_system_prompt),
+            ):
+                try:
+                    if name == TURNS_STATE_KEY:
+                        entry, baseline = self._prepare_turn_capture(context)
+                    else:
+                        entry, children = self._prepare_system_prompt_capture(
+                            context
+                        )
+                except Exception as e:
+                    raise _ModelCaptureError(str(e)) from e
+            else:
+                entry = hook(context)
+                if inspect.isawaitable(entry):
+                    entry = await entry
+            entries[name] = entry
+        # Commit only after every hook succeeds, including deletions.
+        for name, entry in entries.items():
             if entry is None:
                 node.state.pop(name, None)
             else:
                 node.state[name] = entry
+        for child_id, entry in children.items():
+            self.record.nodes[child_id].state[SYSTEM_PROMPT_STATE_KEY] = entry
+        self._turn_baseline = baseline
 
     async def _restore_turns(self, context: StatePathContext) -> None:
         if context.prepared_turns is None:
@@ -631,9 +680,14 @@ class _ExchangeRecorder:
             self.record.finish_exchange(root_id, "ok", None)
 
     async def accepted_input(
-        self, exchange_id: str, message: StoredMessage
+        self,
+        exchange_id: str,
+        message: StoredMessage,
+        commit: Callable[[], None],
     ) -> None:
+        """Commit both input owners after model capture, before persistence."""
         if self._host.partition is None or self._read_only:
+            commit()
             return
 
         async with self.lock:
@@ -645,19 +699,25 @@ class _ExchangeRecorder:
             is_first_input = not any(
                 node.input is not None for node in self.record.nodes.values()
             )
-            if is_first_input:
-                await self.capture_state_locked(
-                    self.record.root_id, "root_close"
-                )
-                self._close_root_if_inactive()
-            else:
-                active_leaf = self.record.active_leaf
-                assert active_leaf is not None
-                await self.capture_state_locked(active_leaf, "node_close")
+            try:
+                if is_first_input:
+                    await self.capture_state_locked(
+                        self.record.root_id, "root_close"
+                    )
+                    self._close_root_if_inactive()
+                else:
+                    active_leaf = self.record.active_leaf
+                    assert active_leaf is not None
+                    await self.capture_state_locked(active_leaf, "node_close")
+            except BaseException:
+                if created:
+                    self.record = None
+                raise
             self.record.open_exchange(exchange_id, message)
             # Values associate with the newly opened exchange, not the
             # previous answer's snapshot.
             self._capture_app_state()
+            commit()
             await self.persist_record_locked()
             if created:
                 await self._host.send_history_update()
