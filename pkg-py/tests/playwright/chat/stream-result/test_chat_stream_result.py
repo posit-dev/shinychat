@@ -17,6 +17,8 @@ def test_validate_chat_stream_result(
     expect(chat.loc).to_be_visible(timeout=10 * 1000)
 
     chat.expect_user_input("Press Enter to start the stream", timeout=10 * 1000)
+    # Prefilled text can arrive before history has admitted submission.
+    expect(chat.loc_input_button).to_be_enabled(timeout=10 * 1000)
     chat.send_user_input()
 
     messages = [
