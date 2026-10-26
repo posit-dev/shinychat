@@ -1,258 +1,228 @@
 # Exchange-tree history
 
-This document explains the Python/JavaScript exchange-tree history foundation and the principles behind it. It is an architectural reference for developers and future agents, not an API tutorial or a record of review sessions. The source remains authoritative for mechanism details.
+This is the design reference for exchange-tree conversation history: the domain model, lifecycle, and rules that should remain consistent across Python and R. It explains the shape of the solution rather than every implementation mechanism. Use the [implementation map](#implementation-map) for source-level detail and the [port contract](#port-contract) when extending the foundation to R.
 
-**Scope:** the current exchange-tree implementation uses record schema version 2. The R implementation has not yet been ported to this foundation; shared fixtures and frontend infrastructure do not establish R behavioral parity. For message rendering and HTML trust boundaries, see [Content Rendering](content-rendering.md). For upgrade procedures, see the [history migration guide](../pkg-py/docs/history-migration.qmd).
+**Implementation status:** Python and the shared JavaScript frontend implement this foundation; R has not yet been ported. The shared design below describes the implemented Python behavior and the target for the R port, not existing R parity. Record schema version is 2. Capture/restore callback roles are called `on_save`/`on_restore` here; language-specific API signatures belong in package documentation.
 
-## Mental model: a saved position is more than chat bubbles
+For rendering and HTML trust boundaries, see [Content Rendering](content-rendering.md). For Python upgrade procedures, see the [history migration guide](../pkg-py/docs/history-migration.qmd).
 
-A conversation has three related representations:
+## Mental model
 
-| Representation | What it contains | Authority |
+History preserves three independent facts about a conversation:
+
+| Fact | Authority | Examples |
 |---|---|---|
-| Displayed conversation | Accepted user inputs and server-produced message content, including structured blocks and attachments | The server-owned transcript and captured messages |
-| Model context | Provider/client turns, tool results, system prompt, and context that may not appear as bubbles | The attached model client, accessed through its adapter |
-| Application state | Values such as the selected dataset, filter, tab, or model selector | The app author's `on_save` and `on_restore` callbacks |
+| Display content | Server-owned transcript and captured messages | Accepted input, UI-only appends, structured blocks, attachments |
+| Model context | Attached model client, through an adapter | Turns, tool results, system prompt, compacted context |
+| Application state | App capture/restore callbacks | Selected dataset, filter, tab, model selector |
 
-There is no general one-to-one mapping between displayed messages and model turns. A tool loop can produce several turns; programmatic messages can exist without an accepted input; app code can compact model context without changing the displayed answer. History must not reconstruct provider context by guessing from roles or bubble order.
+These facts are correlated when recorded, not reconciled afterward. A tool loop can produce several turns; UI-only content can have no turn; context compaction need not change the displayed answer. Display/model disagreement is allowed by design. History must not reconstruct either representation by guessing from roles or message counts.
 
-An **exchange** is the ownership unit for an optional accepted input and its captured content. A **position** is a node on a conversation path. A **checkpoint** is a position whose required state capture succeeded and can be selected as a coherent destination. These terms are deliberately not interchangeable: content can exist without a reliable checkpoint.
-
-Editing or retrying creates an alternative path rather than deleting the previous exchange. For example:
+An **exchange** owns an optional accepted input and its captured content. A **position** is a node on a conversation path. A **checkpoint** is a position eligible as a coherent saved-state destination. Having content, having a checkpoint, and having successfully persisted it are different things.
 
 ```mermaid
 flowchart TD
-    root["Starting position"] --> west["West question and answer"]
+    root["Starting position: All"] --> west["West question and answer"]
     root --> east["Edited East question and answer"]
     west --> followup["Follow-up from West"]
 ```
 
-The selected position determines the displayed path and the state entries to apply. Each parent remembers a selected child, so returning to a branch can recover its remembered coherent destination rather than arbitrarily choosing a sibling.
+Suppose a tool changes the region filter while answering West. The starting position records All and the pre-question model context; the completed West position records West and its answer's context. Editing the first question to East restores the starting position before replacement work. West and its follow-up remain stored. Browsing back restores the remembered West destination's values, not the live East filter. The selected position determines restoration; navigating must not capture stale outgoing UI state over another branch.
 
-For a concrete example, suppose the app starts with a region filter set to All and its model client contains seeded context. The first question asks for West; a tool selects West while answering. The starting checkpoint records All and the pre-question model context. The completed West position records the answer's model context and West app values.
+## Record shape and ownership
 
-Editing that first question to East starts from the saved starting position. `on_restore` lets the app return its filter to All before the replacement provider work; the East tool call then changes it to East. West remains a separate branch. Browsing back to West restores West values without capturing the stale East filter over them. The important unit is the selected position, not whichever filter happens to be live when the user clicks a history control.
+A partition `(chat_id, scope)` holds multiple conversations. Each conversation has metadata, a node map, and `active_leaf`; there is no global exchange tree.
 
-## Architecture and ownership
+Each node has parent/child links, remembered `selected_child`, optional input, captured messages, versioned state entries, response outcome, and checkpoint classification. The root is the unique parentless node, not a hard-coded identifier.
 
-```mermaid
-flowchart LR
-    browser["Browser UI and optimistic input"] --> chat["Chat admission and input handling"]
-    chat --> transcript["Server-owned ChatTranscript"]
-    transcript --> recorder["Exchange recorder"]
-    model["Model client and adapter"] --> recorder
-    save["Application on_save callbacks"] --> recorder
-    recorder --> store[("Conversation store")]
-    store --> controller["HistoryController"]
-    controller --> transcript
-    controller --> model
-    controller --> restore["Application on_restore callbacks"]
-    controller --> browser
-```
+- **`active_leaf` selects a root-to-position path.** Other branches remain stored but are not displayed.
+- **`selected_child` remembers a choice at each parent.** Switching branches preserves the other branch's remembered descendants.
+- **Checkpoint selection stays inside a chosen subtree.** It follows eligible remembered children, falls back to the newest eligible child when needed, and returns a valid destination or none. Sibling arrows offer subtrees with coherent destinations, not every raw node or an arbitrary nearest ancestor.
+- **Inputless positions are real.** Pre-input programmatic content and independent responses can occupy them. They can be ancestors/destinations, but direct edit/retry/regenerate targets require accepted input.
 
-- **`ChatTranscript` owns committed display content.** It assigns exchange identity and associates messages/streams with that identity. Browser echoes and optimistic rows are not the persisted source of truth.
-- **`_ExchangeRecorder` owns the working tree and capture boundaries.** Its lock serializes record mutations and store writes. It observes accepted inputs, message commits, and stream lifecycle events.
-- **`HistoryController` owns position changes.** It selects/preflights paths, restores or rewinds state, replays display content, invokes app restoration, and publishes history metadata.
-- **`TurnsAdapter` mediates model state.** Provider-specific state is not made portable merely because its outer record uses JSON.
-- **The browser owns presentation and pending interaction state.** `HistoryStore` tracks readiness, busy/read-only state, and correlated transitions. It does not decide that a server checkpoint is valid.
+Ownership is divided by responsibility, independent of language-specific class boundaries:
 
-The public app-state hooks are intentionally small. The internal capture/restore/rewind hook registry organizes versioned state namespaces; it is not an invitation to infer state from display messages or introduce a second ownership ledger.
+| Owner | Responsibility |
+|---|---|
+| Transcript | Committed server display content and accepted-input identity |
+| Recorder | Working tree, capture boundaries, stream association, ordered snapshot writes |
+| Controller | Preflight, selection, restore/rewind, conversation management, metadata publication |
+| Model adapter | Capture/apply actual compatible client context |
+| Store | Persist detached records within a partition |
+| Browser | Presentation, optimistic input, readiness and correlated transitions—not checkpoint validity |
 
-## Tree and state representation
+Admitted transcript content is captured even when no model turn explains it. Captured messages retain source specifications—roles, segments/content types, icons, attachments—and replay through the normal rendering pipeline. Restore does not rerun provider display methods to reinterpret old answers. This is source-content fidelity, not identical pixels after CSS/rendering changes. Greetings are ambient presentation outside the transcript; the separate MarkdownStream output component is also outside history capture.
 
-`ConversationRecordV2` contains conversation metadata, a node map, and `active_leaf`. `root_id` is derived from the unique parentless node; callers must not assume a particular root identifier. An `ExchangeNode` contains parent/child links, remembered `selected_child`, optional `input`, captured `messages`, state entries, provider outcome, and checkpoint classification.
+Streams retain their opening exchange association for chunks and terminal events, never whichever node later becomes active. Independent responses must not reopen a completed exchange. Browser message indices resolve against the selected display path; they are not model-turn indices.
 
-Inputless nodes are real: explicit programmatic content or independent responses can occupy positions without a user input. An independent assistant response opens an inputless position rather than reopening and overwriting an already-completed exchange.
+## Capture lifecycle
 
-### Three independent questions
+### Ordinary exchange
 
-1. **What happened to the response?** `status` is `pending`, `ok`, `error`, or `cancelled`.
-2. **Can this position serve as a checkpoint?** `checkpoint` is `candidate`, `valid`, or `invalid`.
-3. **Did a detached snapshot reach the store?** This depends on successful persistence, not just either field above.
+1. **Prepare input.** The browser can show an optimistic row; the server prepares detached input with exchange identity. Preparation is not acceptance.
+2. **Capture and commit admission.** First input captures the eligible root's actual model/app pair before provider work. Later input captures model-only changes at a coherent predecessor and app values on the new exchange. Required model capture/validation precedes the shared transcript/tree commit. The new exchange is a child of the previous active position.
+3. **Capture live content.** Application/provider work produces server messages and stream updates. They update transcript and working tree; chunks do not persist partial-response snapshots.
+4. **Complete the response.** Terminal capture records actual client context and outcome. Required app capture follows reactive settlement, when response results and their reactive consequences are available. These two stages form one conceptual response-completion event.
+5. **Persist and publish.** Detached snapshots record state and checkpoint classification; metadata informs the browser. Capture, persistence, and publication can fail at different boundaries.
 
-A handled provider error or ordinary cancellation can still yield a valid checkpoint. Conversely, an answer can finish successfully but fail required model/app capture. A valid in-memory checkpoint is not proof that a store write succeeded.
+If model capture fails before admission commits, neither owner accepted the input: normal rejection removes its correlated optimistic row. Persistence failure after commit must not be treated as unaccepted input. For later input, an unresolved predecessor is validated, not promoted; superseded candidate positions on its path are invalidated.
 
-Older schema-2 records may omit the checkpoint field. Compatibility derives terminal positions as valid and pending positions as candidates, with an empty starting-root exception. That is a legacy assumption, not retrospective detection of old capture failures. New writes classify checkpoints explicitly.
+First input captures the starting condition once, not an earlier startup configuration. The model/app pair is staged together; failed automatic app capture retains prior state or its absence, not only a new model half. Explicit programmatic content can create a record before input; an actively streamed or otherwise ineligible root is not recaptured as a settled starting checkpoint.
 
-### Versioned state namespaces
+### Outcome, reliability, and durability
 
-`StateEntry` has `kind`, `version`, `mode`, and JSON `data`.
+| Question | Representation |
+|---|---|
+| What happened to the response? | `pending`, `ok`, `error`, or `cancelled` |
+| Is the position a coherent destination? | `candidate`, `valid`, or `invalid` checkpoint |
+| Did it reach storage? | Successful detached snapshot write |
 
-| Namespace | Current capture strategy | Restore meaning |
+Handled provider errors and ordinary cancellation can yield valid checkpoints. Successful answers can fail required capture. History captures the client's actual context, including representable failed/partial outcomes; it does not silently remove turns to invent a cleaner continuation. A complete non-streamed assistant append also captures context, not display alone.
+
+Older schema-2 records without explicit checkpoint classification derive terminal positions as valid and pending ones as candidates, with an empty-root exception. This is a legacy assumption, not retrospective detection of capture failures. New writes classify explicitly.
+
+| Boundary | Capture/restore contract |
+|---|---|
+| First accepted input, eligible root | Capture paired model/app state on root; first exchange inherits values |
+| Later accepted input | Capture coherent predecessor's model-only changes or validate unresolved context; capture values on new exchange |
+| Stream chunks | Working content only; no checkpoint capture or partial-response write |
+| Response completion | Terminal model capture, then required settled app capture; valid only when required capture succeeds |
+| Explicit save | Strict capture at a coherent position; does not settle an in-flight response |
+| Leave/rewind/disconnect | Model-only changes at coherent positions; no new app values |
+| Load/browse/replay | Apply saved state, never capture app values merely for selection |
+| Rename/retitle/pointer update | Metadata-only, not state capture |
+
+Automatic app-capture failure warns and retains prior state without certifying a new coherent response checkpoint. Explicit save raises capture errors. Disconnect flush precedes cleanup, publishes no client update, and cannot turn unfinished work into a completed checkpoint.
+
+## State resolution
+
+A state entry has `kind`, `version`, `mode`, and JSON `data`. Builtin entry version 1 is separate from record schema version 2.
+
+| Namespace | Capture and resolution |
+|---|---|
+| `shinychat:turns` | Full snapshots for new coherent captures; compatible legacy deltas remain readable |
+| `shinychat:system_prompt` | Sparse whole-value snapshots, resolved separately from turns |
+| `shinychat:values` | Sparse whole-object snapshots, resolved for app restoration |
+
+Sparse means inheritance, not object patching. Missing entries inherit the nearest effective ancestor. An empty values object clears an older object; no values entry resolves to `{}`. A null prompt inherits, an empty string records a clear, and no effective prompt leaves the live prompt unchanged. Adapters implement the clear using their client's semantics.
+
+Before a shared parent's recapture changes inherited prompt/values, dependent children are pinned to the previous value. Otherwise one recapture would rewrite older branches. Canonical JSON comparison distinguishes booleans from numbers and ignores object-key order. Legacy delta children are similarly protected before changing a shared turn prefix.
+
+Full model snapshots avoid rewritten-prefix reconciliation after compaction. Repeated prefixes can grow total storage quadratically; that cost is accepted rather than hidden behind inferred display/turn correspondence.
+
+Capture stages state on a detached working copy and commits state dictionaries only after required hooks succeed. JSON round-trip representation applies to memory/custom/file storage alike; unsupported objects and non-finite numbers reject capture. Native-value/key conversions belong to each serializer's documented contract, not a promise to restore original language objects.
+
+**Preflight precedes destructive application.** Ordered capture, restore, and rewind registries have distinct roles. A plan gathers root-to-target entries for each namespace, validates them, and prepares compatible model context. Unknown namespaces are not silently ignored. Known turn kind/version or prompt-capability incompatibility can instead make context unavailable: full restore may show display read-only, while writable rewind rejects continuation.
+
+Recorded prompt applies before turns. App values are validated/folded separately and passed detached to `on_restore`, not through model hooks. Rewind also considers the previous recorded path: an unchanged recorded prompt must not clobber a live app override. Full restore reapplies recorded prompt before the app can override it again. Replay suppresses capture so loading cannot manufacture exchanges or provider work.
+
+## Selection and replacement
+
+| Action | Destination/effect |
+|---|---|
+| Follow-up | New child of active position; other branches remain stored |
+| Edit | Checkpointed parent of active-path input, then replacement input opens a sibling |
+| Retry | Same parent; reuse input from pending/error/cancelled outcome |
+| Regenerate | Same parent; reuse input from `ok` outcome |
+| Sibling arrows | Remembered checkpoint destination within an eligible sibling subtree; no replacement submission |
+| Load/switch | Saved conversation tree/path, not a rewind within the current tree |
+| New chat | Explicit leave/reset with no saved restoration target |
+
+Resubmission requires input on the active path and a checkpointed parent. The input is causal data; the parent is the rewind destination. Eligibility does not imply that every live failure currently has a Retry UI affordance.
+
+A normal replacement follows this order:
+
+1. Resolve the correlated browser request to its exchange; validate eligibility and state on the existing path, including the abandoned target. Preflight the retained parent before mutation.
+2. Capture outgoing model-only changes, apply parent rewind, and restore its app values. The model is now rewound, but transcript/display still show the outgoing branch during the app callback.
+3. After successful app restoration, commit parent selection and truncate the server transcript to the same retained prefix. Preserve rich committed entries and the original stored branch.
+4. Send the matching edit projection. The browser marks itself busy, truncates presentation, and submits projected input through ordinary admission, opening the replacement exchange. Failed app restoration withholds this provider-work kickoff.
+
+Request matching and transition completion coordinate interaction, not checkpoint validity. Ordinary busy/admission gates still protect response work.
+
+Full load/switch instead replays target display, applies recorded state, installs the record, then restores app values and publishes metadata. Sibling browsing restores values before replaying target display. All use the same restoration role; raw Shiny inputs require app updates. Mechanical selection never calls app capture just to leave a position. New chat has no saved target, so it does not call `on_restore`.
+
+## Sessions and storage
+
+Initialization resolves adapter, store, scope, and restore pointer before admitting transcript-producing work. Early appends are rejected/suppressed, not queued; browser submission also waits for readiness. Greetings resolve after the fresh/restore decision for a fresh chat. Delays are not a readiness API.
+
+Scope is explicit configuration, otherwise authenticated identity or anonymous browser identity. Shared scope intentionally shares history visibility, not multi-writer coordination. Browser/URL restore points to a conversation's saved selection; server bookmarks can point to a specific `(conversation_id, node_id)` and take precedence when present. Malformed explicit pointers are reported rather than silently replaced. Conversation state and Shiny bookmark artifacts are separate; bookmark cleanup does not redefine tree ownership.
+
+Stores receive detached whole-record snapshots. The v2 file policy is a single `record.json` published by temporary-file replacement; legacy v1 JSONL side files are not the new layout. The Python read gate imports v1 in memory; a successful later v2 save replaces the record before removing old side files. Write guards refuse v1-over-v2 downgrade. Upgrade backups and language-specific migrations belong in package guides.
+
+**Terminal-only describes response durability, not all writes.** Accepted inputs and some inputless stream starts can persist unresolved markers, but writable snapshots exclude pending response fragments. An unfinished exchange can be lost in a hard crash; there is no partial-response resumption promise. Terminal error/cancellation can preserve partial content when required state is coherent.
+
+The budget is per partition (Python default: 100 MB): evict oldest eligible conversations, protect the active record, and warn if it alone exceeds the budget. Whole-record file replacement and recorder ordering do not provide cross-session leases, compare-and-swap, or power-loss/fsync guarantees. Supported use serializes attached-client mutation and rejects competing foreground display streams rather than queuing them.
+
+## Failures and capabilities
+
+Viewing, continuing, and writing the source record are separate capabilities:
+
+| Condition | Result |
+|---|---|
+| Compatible coherent checkpoint | Restore recorded path/state; writable under normal admission, but persistence can still fail |
+| Malformed/unregistered state or state-hook execution failure | Reject during preflight where possible; restore cleanup attempts fresh-view recovery, with safe diagnostics |
+| Known model context unavailable | Compatible display remains read-only; browsing skips builtin model rewind and capture; not automatically source-isolated |
+| Ordinary app-restore failure | Stop callbacks and become read-only; load/browse can retain target, failed resubmit preparation retains original branch without replacement kickoff |
+| Unresolved/invalid active source restored into another view | Project to coherent paths with needed structural ancestors; suppress untrusted pending fragments/invalid-only branches; isolate from source writes/deletion |
+
+Read-only browsing alone does not grant continuation even if another sibling has compatible context; full restore/reset reclassifies the view. Failed resubmit preparation may leave the live model at the parent while displaying the original branch; read-only prevents pretending these agree. Cancellation/fatal errors take full cleanup rather than ordinary callback-failure handling.
+
+Source isolation prevents pointer, metadata, rename, save, shutdown, and delete paths from overwriting the producer's record. It belongs to the viewer, not a global fence. The original response task may survive reload and later save its checkpoint; the new view does not reconnect to it.
+
+History/replayed-error explanations are safe regardless of general app error-sanitization settings; details go to developer diagnostics. Live input/response errors retain the app's live error policy.
+
+If rewind succeeds but replacement input capture fails, rejection is not a request to select the old successful branch. Preserve representable intent and make recovery explicit. **Known gap:** the old branch remains stored, but the rewound parent has no direct UI route to its hidden child; rejected edits are not browsable failed attempts.
+
+New chat is a narrow explicit exit, not a rollback engine. Outgoing model-capture failure warns and preserves saved history while allowing normal reset; storage/reset failures and fatal errors still propagate. Authors own valid fresh app state; reset cannot repair a permanently broken getter.
+
+## Decision rules
+
+**Invariants** are contracts to preserve. **Policies** are accepted mechanisms requiring deliberate redesign to change. **Requirements with gaps** are intended behavior, not shipped guarantees.
+
+| Rule | Status | Consequence for future decisions |
 |---|---|---|
-| `shinychat:turns` | Full model snapshots for new coherent captures | Materialize compatible client context; legacy delta entries remain readable |
-| `shinychat:system_prompt` | Sparse snapshots when the adapter supports a prompt | Apply the latest effective recorded prompt separately from turns |
-| `shinychat:values` | Sparse JSON objects | Resolve values at the selected position and pass a detached object to `on_restore` |
+| Independent display/model facts, correlated at recording | Invariant | Never repair role/count mismatch by regrouping turns or create a second acceptance ledger |
+| Shared input commit; stream-opening attribution | Invariant | Stage admission first; late chunks cannot follow the newest node; store failure cannot undo accepted input |
+| Preserve branches; replacement starts at parent | Invariant | Do not seed retry from superseded context or delete old descendants |
+| Selection restores recorded app values | Invariant | Do not save the live East filter over West while browsing; restoration is not optional branch-following |
+| Detached JSON and staged state commit | Invariant | Backends cannot change semantics through aliasing or native objects; honor documented serializer conversions |
+| Replay without capture; no fabricated continuation | Invariant | Do not create exchanges on load or reconstruct unavailable context from bubbles |
+| Full model snapshots, sparse prompt/values | Policy | Accept storage cost; optimize only while preserving exact context and child pinning |
+| Terminal durability, coherent destinations | Policy | Correctness constrains latency optimization; pending markers or successful outcome alone do not authorize continuation |
+| Serial client/display work; no multi-writer CAS | Scope policy | Local locks/file replacement are not a provider journal or global recovery protocol |
+| Preserve outcomes; recovery is user-directed | Requirement with gaps | Separate faithful viewing from safe continuation; do not silently choose an earlier successful branch |
 
-Sparse does not mean fragile inheritance. Before changing a shared parent's prompt/values, children that inherit its old value are pinned to that previous value. Otherwise, recapturing one parent could silently rewrite what an older branch restores. Comparisons use canonical JSON, distinguishing booleans from numbers and ignoring object-key order. An explicit empty values object clears an older object; absence of any values entry resolves to `{}`.
+Remove unnecessary premises before adding guards, timers, retry ledgers, or compatibility machinery. Checkpoint coherence does not fence arbitrary client mutations between terminal capture and settled app capture.
 
-New model snapshots avoid turn-delta baselines and reconciliation of rewritten prefixes. Legacy delta children are protected before their shared prefix changes. Repeating full prefixes can grow total storage quadratically with conversation length; that trade-off is accepted rather than hidden behind inference machinery. The configurable history storage budget defaults to 100 MB.
+Live Retry metadata/icon behavior, the public screen-clear/history-record guard, and direct original-branch/failed-attempt access remain unfinished. Provider-specific state also precludes assuming cross-client or cross-language record loading from the shared outer schema.
 
-## Capture and persistence lifecycle
+## Port contract
 
-### First input defines the starting condition
+The R port should preserve the contracts above, not duplicate Python's class structure or async machinery. Its native adapter, reactive scheduling, callback API, and store implementation can differ while preserving:
 
-On the ordinary user-driven path, first accepted input establishes the starting checkpoint: the actual model context and app values from that moment, before provider work. It does not freeze an earlier startup configuration.
+- Independent display/model/app facts, rich display replay, and explicit exchange/stream attribution.
+- First-input starting capture and paired state; terminal model capture followed by app capture after reactive consequences are available.
+- Remembered coherent destinations, parent rewind, branch preservation, callback timing, and no provider kickoff after failed preparation.
+- Preflight/compatibility classifications, read-only versus source-isolated capabilities, detached JSON state, and terminal durability.
+- Shared fixture outcomes and structurally parallel errors: the same conditions and information, not byte-identical text.
 
-The recorder stages the model/app pair on the root, invokes `on_save` once, and lets the new first exchange inherit those values. A successful recapture replaces an existing starting pair together; a failed automatic app capture must not replace only its model half. Failure retains previously recorded state or its absence—it cannot manufacture a successful starting snapshot.
+Use matrices in `tests/shared/` as executable behavioral declarations; `make r-sync-fixtures` maintains their copies in `pkg-r/tests/testthat/fixtures/`. Add language-specific integration tests for the real model adapter, reactive settlement, store, and browser. Passing fixtures is necessary evidence, not proof of every lifecycle guarantee. Refresh served assets at the R port boundary under the repository's asset workflow and verify behavior in R; shared frontend source alone is not parity.
 
-The root is a structural node, not a guarantee that no record can exist before user input. Explicit programmatic content can create an inputless record, and compatibility/explicit-save paths can contain root state. That does not change the first-input starting-boundary rule; an actively streamed or otherwise ineligible root is not recaptured as a settled starting checkpoint.
+Once R lands, extend the implementation map with its equivalent entry points and document only meaningful differences or limitations. Keep one shared lifecycle and decision ledger; do not add a parallel R walkthrough. Put package usage, migration procedures, and detailed scheduler/store mechanics in their own reference surfaces.
 
-### Input ownership commits together
+## Implementation map
 
-`ChatTranscript.record_accepted_input_and_notify()` prepares a detached input and gives the recorder a synchronous commit callback. The recorder performs model capture/validation, opens the exchange, then commits transcript ownership before awaiting persistence/publication.
+This map is intentionally compact. Python paths are relative to `pkg-py/`; the R equivalents should be added after implementation, not guessed in advance.
 
-This distinguishes two failures:
+| Concern | Current entry points and behavioral anchors |
+|---|---|
+| Public hooks, bootstrap, scope/pointers | `src/shinychat/_history.py`: `ChatHistory`, `HistoryOptions`; `tests/test_chat_history.py` |
+| Transcript/admission/replay | `src/shinychat/_chat_transcript.py`: `ChatTranscript`; `src/shinychat/_chat.py`: shared admission, destructive mutation, session cleanup; `tests/test_history_resubmit_transcript.py` |
+| Capture and selection | `src/shinychat/_history_recorder.py`: `_ExchangeRecorder`; `src/shinychat/_history_controller.py`: `HistoryController`; `tests/test_history_controller.py`, `tests/test_history_app_restore_lifecycle.py` |
+| Records, state plans, model adapter | `src/shinychat/_history_types.py`, `src/shinychat/_history_plan.py`, `src/shinychat/_history_client.py`; `tests/test_history_types.py`, `tests/test_history_values.py`, `tests/test_history_system_prompt.py` |
+| Checkpoints, compaction, interrupted views | `tests/test_history_checkpoint_models.py`, `tests/test_history_checkpoint_validity.py`, `tests/test_history_turn_rewrite_matrix.py`, `tests/test_history_interrupted.py`, `tests/test_history_stream_persistence.py` |
+| Stores and conversion | `src/shinychat/_history_store.py`, `src/shinychat/_history_v1.py`; `tests/test_history_store.py`, `tests/test_history_import_matrix.py` |
+| Explicit exits / metadata-only capture | `tests/test_history_new_chat_recovery.py`, `tests/test_history_retitle_checkpoints.py` |
+| Shared browser transitions | `js/src/chat/historyStore.ts`, `js/src/chat/ChatApp.tsx`; `js/tests/chat/historyStore.test.ts`, `js/tests/chat/historyNavigate.test.tsx`; history end-to-end tests in `pkg-py/tests/playwright/chat/` |
 
-- **Model capture fails before commit:** the input has not been accepted by either owner; normal rejection removes the matching optimistic UI row. A freshly created record is discarded.
-- **Persistence fails after commit:** the accepted input already belongs to the transcript/tree. Treating it as an unaccepted message would lie about what happened.
-
-For later input, a coherent predecessor captures model-only changes; an unresolved predecessor is validated without being promoted to a checkpoint. App values capture on the new exchange. New input invalidates superseded candidate positions along its path rather than pretending they settled successfully.
-
-### Live output is not partial durability
-
-```mermaid
-sequenceDiagram
-    participant UI as Browser
-    participant T as Transcript
-    participant R as Recorder
-    participant C as Model client
-    participant S as Store
-    UI->>T: Submit input
-    T->>R: Prepare input with shared commit
-    R->>C: Capture or validate context
-    R->>T: Commit input ownership
-    R->>S: Persist detached pending marker
-    C-->>T: Streamed content
-    T->>R: Update working messages
-    T-->>UI: Render live content
-    Note over R,S: Chunks do not write durable response fragments
-    T->>R: Terminal outcome
-    R->>C: Capture final model context
-    R->>S: Persist terminal candidate or valid checkpoint
-    T->>R: Post-flush response settlement
-    R->>R: Capture required app state and classify reliability
-    R->>S: Persist detached settled snapshot and classification
-```
-
-Accepted inputs and some inputless stream starts can persist unresolved markers. Pending response fragments are removed from writable persisted snapshots; a pending root stream has its own write suppression. Therefore, “terminal-only” describes response durability, not a claim that no record write occurs before response completion.
-
-At stream end, model state is captured alongside the terminal outcome. If app capture is required, the position remains a candidate until reactive settlement. App callbacks run after the stream task can expose its result, not inside a still-running stream task that denies ordinary reactive reads. Settlement makes the position valid or invalid. A complete non-streamed assistant append also captures model context rather than persisting display alone.
-
-| Boundary | Model state | `on_save` values | Persistence/eligibility |
-|---|---|---|---|
-| First accepted input, eligible root | Staged with app state on root | Once, on root | New input becomes a pending position |
-| Later accepted input | Capture coherent predecessor or validate unresolved context | On new exchange | No promotion of unresolved predecessor |
-| Stream chunks | No checkpoint capture | No | Working memory only |
-| Terminal stream / complete assistant append | Capture actual client context | Not inside stream task | Valid immediately without required app capture, otherwise candidate |
-| Post-flush response settlement | Uses terminal model capture | Required app capture | Valid on success, invalid on capture failure |
-| Explicit history save | Capture a coherent selected position | Strict capture; errors propagate | Does not settle an in-flight response |
-| Coherent leave/rewind/disconnect | Model-only changes | No | Preserve latest context without rewriting app snapshots |
-| Browse/load/replay | Apply saved state as appropriate | No | Selection/replay is not app capture |
-| Rename/pointer update | No checkpoint capture | No | Persist metadata without recording unrelated live values |
-
-Background retitling remains metadata-only. Disconnect flush runs before synchronous chat cleanup, publishes no client update, and does not turn an unfinished response into a completed checkpoint.
-
-## Restoring and selecting positions
-
-### Plan before mutation
-
-State preflight validates the selected path, resolves compatible model context, and prepares hook execution before destructive state changes. A normal restore replays captured display content, applies recorded state, installs the record, then calls `on_restore` with the selected values. Replay suppresses capture callbacks: loading a conversation must not manufacture new responses or captures.
-
-Display restore uses the recorded input and `CapturedMessage.as_stored_message()`, not guessed text reconstructed from provider turns. Content still goes through the normal server message/wire pipeline; no client-supplied message list becomes authoritative history.
-
-Rewind differs from a full restore. It applies the retained parent before replacement provider work. System-prompt rewind compares recorded source/target entries, not the live prompt, so an app's restore override survives moving across an unchanged recorded prompt.
-
-`ConversationRecordV2.checkpoint_leaf()` and `ConversationRecordV2.checkpoint_siblings()` select coherent destinations inside remembered branches. They are not arbitrary “nearest node” navigation that could silently promote an unfinished position.
-
-### Read-only and source isolation are different
-
-- **Unavailable model context:** compatible display can remain visible while input/edit/retry/regenerate are blocked. Display-only browsing does not apply model rewind hooks. Missing or incompatible provider context is not repaired by fabricating turns from the bubbles.
-- **Ordinary app-restore failure:** callback dispatch stops at the first failure and viewing remains read-only. A resubmit preparation failure retains the original selected branch because its parent was not committed; browsing can retain the selected target. This is distinct from replacement rejection after a successful rewind.
-- **Unresolved/invalid active source:** the restored viewer projects to paths ending at coherent checkpoints and becomes source-isolated. Pending fragments and invalid-only branches are not replayed as trusted conversational history. Structural ancestors needed for saved state can remain. The viewer must not overwrite or delete the source through pointer, metadata, rename, save, or shutdown paths.
-
-Isolation belongs to that viewer, not to a global conversation fence. The original response task may continue after browser reload and later save its terminal checkpoint. Reload is not necessarily task cancellation or process death, and the detached new view does not automatically reconnect to that producer.
-
-## User intent, failures, and explicit exits
-
-A failed replacement does not mean the user wanted to return to the old successful branch. If an edit/retry rewinds successfully and replacement capture then fails, automatically replaying/selecting the original branch would erase the visible meaning of the attempted action. The design direction is to preserve the resulting state as faithfully as possible and make navigation back a separate user choice.
-
-**Current gap:** the old branch remains stored, but there is no direct UI route to its hidden child from the rewound parent, and the rejected edit is removed rather than retained as a browsable failed attempt. Faithful failed-position navigation is a requirement, not an implemented guarantee. A failed position may deserve to be displayed even when it cannot be safely continued; these capabilities must stay separate.
-
-New chat is an explicit user-directed exit. If its outgoing model-only capture fails, it warns the developer, preserves the existing saved conversation, and performs the normal client/display reset. It does not select an earlier branch or overwrite stored history with partial invalid state. Storage errors, reset failures, cancellation, and fatal errors still propagate. Reset cannot fix custom code that repeatedly produces invalid state or a permanently broken getter.
-
-## Design principles and why the simpler choices matter
-
-### 1. Model the domain before adding recovery machinery
-
-Positions, exchanges, provider outcomes, checkpoint reliability, and successful persistence answer different questions. Keep them separate instead of inventing a status that conflates “shown,” “captured,” “saved,” and “resumable.” This separation supports viewing failures without promising safe continuation.
-
-### 2. Use explicit ownership, not inferred correspondence
-
-One server-owned transcript and explicit exchange identity connect input, content, and state. Shared input commit keeps the transcript and tree from disagreeing about acceptance. Avoid role-based turn grouping, positional matching, a second accepted-input ledger, or a queue used to paper over competing owners.
-
-### 3. Prefer reconstructible snapshots to clever reconciliation
-
-Capture the actual model client, with the system prompt handled separately. Full model snapshots replace delta-baseline repair and uncertain reconstruction after compaction. Sparse prompt/app entries are safe because their inheritance and child pinning are explicit. Accept and document storage cost rather than recovering apparent efficiency through inference.
-
-### 4. Choose a durability contract that can be honored
-
-Persist coherent terminal checkpoints rather than display-only partial progress. This removes the need to preserve a mid-stream coalescing writer and then build resumption/recovery around its mismatched state. An unfinished exchange may be lost in a hard crash; that is more honest than restoring a partial answer as usable model context.
-
-### 5. Stage changes instead of stacking compensating patches
-
-Capture on a staging tree and commit state dictionaries only after required hooks succeed. Detach payloads and store/restore records at the ownership boundary, including for custom stores that retain their arguments. Do not solve aliasing solely for one bundled backend or impose a hidden no-alias requirement on custom stores.
-
-### 6. Let selected position determine app restoration
-
-A single `on_restore(values)` follows load, switch, browsing, and retained-parent rewind. A separate public navigation hook would make authors choose whether their UI should follow the conversation. Capture at meaningful checkpoints, not merely when leaving a position: browsing with stale East app state must not overwrite a saved West branch. First input captures the actual starting condition once.
-
-### 7. Preserve outcomes; make recovery an explicit choice
-
-Do not automatically select the previous successful branch after a failed replacement. Record/display what can be represented faithfully, distinguish viewing from continuation, and provide explicit navigation/exit actions. New chat is a narrow discard boundary chosen by the user, not a general rollback engine. Unserializable state cannot be promised as fully restorable.
-
-### 8. Make JSON representation a uniform storage contract
-
-Memory storage is not permission to keep Python-only objects that file/custom storage cannot reproduce. Serializer-supported native values/keys normalize into detached JSON; authors own the restored representation. Keys that normalize to the same string keep the later entry. Unsupported objects and non-finite floats reject capture rather than silently becoming plausible state. Do not add a separate raw-key validator or collision policy that contradicts serialization.
-
-### 9. Fail safely without pretending the state is coherent
-
-Unavailable context or unhandled app restoration does not authorize degraded continuation. History notifications and replayed errors use safe explanations regardless of the app's general error-sanitization setting; details go to developer diagnostics. Live input/response errors retain their own `Chat.on_error` policy. Automatic app-capture failure warns and retains prior state; explicit save reports failure to its caller.
-
-### 10. Bound concurrency and scope instead of adding speculative infrastructure
-
-The recorder lock orders one working record's mutations and writes. It is not a cross-session lease, atomic compare-and-swap store, or shared-client provider journal. Supported operation uses serial mutation of one attached turn client; the display stream contract rejects competing foreground streams rather than queuing them. New checkpoints and isolation do not imply general multi-writer recovery.
-
-When a proposed fix depends on an unnecessary premise, remove the premise/mechanism rather than add another guard, timer, epoch, retry ledger, or compatibility shim. Concern-based PR slices are for review; they need not become independently shippable runtimes through extra aliases. Verify the composed foundation and land it under the coordinated policy.
-
-## Guarantees, costs, and remaining boundaries
-
-- Coherent checkpoints preserve server-owned content and compatible captured context; they do not guarantee a write succeeded or fence arbitrary SDK mutations between terminal capture and app settlement.
-- Pending markers can exist durably, but no partial-response durability/resumption promise follows from them.
-- Full model prefixes trade simpler restoration for repeated storage. Store quota/eviction and migration backup procedures remain relevant.
-- Model state is provider-specific; a shared outer schema does not establish cross-client or cross-language resumability.
-- Live Retry metadata/icon behavior and the public screen-clear/history-record guard remain unfinished. Existing Retry after restore is not proof of immediate Retry after failure.
-- Explicit original-branch and failed-attempt access are unfinished, as described above. Read-only display is not equivalent to retaining every failed intent.
-- R parity is a later port and verification task. Source-level frontend sharing is not behavioral proof.
-
-## Stable code reference map
-
-Paths are relative to the repository root; use symbols rather than line numbers.
-
-| Area | Path | Symbols / entry points |
-|---|---|---|
-| Public configuration and callback lifecycle | `pkg-py/src/shinychat/_history.py` | `HistoryOptions`, `ChatHistory.on_save`, `ChatHistory.on_restore`, `ChatHistory.enable` |
-| Client-directed fresh conversation | `pkg-py/src/shinychat/_chat_client.py` | `ChatClient.new_chat` |
-| Admission, rejected input, replay and cleanup | `pkg-py/src/shinychat/_chat.py` | `Chat._record_accepted_user_input_with_capture`, `Chat._handle_input_exception`, `Chat._destructive_history_mutation`, `Chat._end_session` |
-| Server display ownership | `pkg-py/src/shinychat/_chat_transcript.py` | `ChatTranscript`, `record_accepted_input_and_notify`, stream lifecycle methods |
-| Schema and selection | `pkg-py/src/shinychat/_history_types.py` | `ConversationRecordV2`, `ExchangeNode.checkpoint_state`, `CapturedMessage`, `StateEntry`, `ConversationRecordV2.checkpoint_leaf`, `ConversationRecordV2.checkpoint_siblings` |
-| Capture and store boundary | `pkg-py/src/shinychat/_history_recorder.py` | `_ExchangeRecorder.accepted_input`, `capture_state_locked`, `stream_finished`, `response_settled`, `persist_record_locked`, `flush_pending` |
-| Position transitions | `pkg-py/src/shinychat/_history_controller.py` | `HistoryController._prepare_exchange_restore`, `_restore_exchange_record_locked`, `_rewind_locked`, `new_chat`, `on_response` |
-| State folding and plans | `pkg-py/src/shinychat/_history_plan.py` | `canonical_values`, `canonical_turns`, `sparse_snapshot_entry`, `resolve_path_values`, `materialize_restore_turns`, `preflight_state`, `run_plan` |
-| Model adapter | `pkg-py/src/shinychat/_history_client.py` | `TurnsAdapter` |
-| Persistence and namespace | `pkg-py/src/shinychat/_history_store.py` | `ConversationPartition`, `ConversationStore`, `InMemoryConversationStore`, `FileConversationStore` |
-| Legacy conversion | `pkg-py/src/shinychat/_history_v1.py` | `import_v1_record` |
-| Browser readiness and transitions | `js/src/chat/historyStore.ts` | `HistoryStore`, `isHistorySubmissionBlocked`, `acceptEditProjection`, `completeHistoryTransition` |
-| Browser action routing / display | `js/src/chat/ChatApp.tsx`, `js/src/chat/state.ts`, `js/src/chat/ChatMessage.tsx` | history action handling, optimistic input/reducer state, edit/retry rendering |
-
-Behavioral anchors live in `pkg-py/tests/test_history_controller.py`, `test_history_values.py`, `test_history_checkpoint_models.py`, `test_history_checkpoint_validity.py`, `test_history_interrupted.py`, `test_history_app_restore_lifecycle.py`, `test_history_new_chat_recovery.py`, and the history browser tests under `pkg-py/tests/playwright/chat/`. They distinguish captured state, persisted state, eligible navigation, restored display, and live client state instead of treating a happy-path transcript as proof of all five.
+The shared matrices cover tree behavior, message transcripts, values, checkpoint validity, rewritten turns, stores, and legacy import. Tests must distinguish captured state, persisted state, navigation eligibility, restored display, and live client context—a happy-path transcript is not proof of all five. Earlier design notes' delta-by-default capture, chunk-persistence writer, and separate public navigation hook have been superseded; they must not override this reference.
