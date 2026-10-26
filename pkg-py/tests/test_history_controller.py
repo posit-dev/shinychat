@@ -7320,7 +7320,7 @@ async def test_v2_recorder_captures_json_only_model_turns():
 
 
 @pytest.mark.anyio
-async def test_v2_recorder_rejects_model_key_collision_before_file_store(
+async def test_v2_recorder_accepts_model_key_collision_into_file_store(
     tmp_path: Path,
 ):
     from shinychat._history_store import FileConversationStore
@@ -7338,25 +7338,42 @@ async def test_v2_recorder_rejects_model_key_collision_before_file_store(
         def set_turns(self, turns: list[ModelTurn]) -> None:
             self.turns = list(turns)
 
+    client = ModelClient()
     store = FileConversationStore(tmp_path)
     controller, _ = _make_controller(
         store=store,
-        adapter=TurnsAdapter(ModelClient()),  # type: ignore[arg-type]
+        adapter=TurnsAdapter(client),  # type: ignore[arg-type]
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
 
-    with pytest.raises(_ModelCaptureError, match="Non-string mapping key"):
-        await transcript.record_accepted_input_and_notify(
-            _stored_message("user", "one")
-        )
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
 
-    assert await store.list(part()) == []
+    # The serializer's own key conversion owns the stored shape: the
+    # colliding 2 / "2" keys collapse to a single "2" key keeping the
+    # serializer's last-wins result.
+    record = recorder.record
+    assert record is not None
+    state = record.nodes[record.root_id].state["shinychat:turns"]
+    assert state.kind == "turns"
+    assert state.data == [{"values": {"2": "string"}}]
+
+    reloaded = await FileConversationStore(tmp_path).get(part(), record.id)
+    assert reloaded == record
+    assert isinstance(reloaded, ConversationRecordV2)
+    assert reloaded.nodes[record.root_id].state["shinychat:turns"].data == [
+        {"values": {"2": "string"}}
+    ]
+
+    # Capture only reads the client; the source turn keeps both keys.
+    assert client.turns[0].values == {2: "two", "2": "string"}
 
 
 @pytest.mark.anyio
-async def test_v2_recorder_rejects_nested_deque_key_before_file_store(
+async def test_v2_recorder_accepts_nested_deque_key_into_file_store(
     tmp_path: Path,
 ):
     from shinychat._history_store import FileConversationStore
@@ -7374,42 +7391,56 @@ async def test_v2_recorder_rejects_nested_deque_key_before_file_store(
         def set_turns(self, turns: list[ModelTurn]) -> None:
             self.turns = list(turns)
 
+    client = ModelClient()
     store = FileConversationStore(tmp_path)
     controller, _ = _make_controller(
         store=store,
-        adapter=TurnsAdapter(ModelClient()),  # type: ignore[arg-type]
+        adapter=TurnsAdapter(client),  # type: ignore[arg-type]
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
 
-    with pytest.raises(_ModelCaptureError, match="Non-string mapping key"):
-        await transcript.record_accepted_input_and_notify(
-            _stored_message("user", "one")
-        )
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
 
-    assert await store.list(part()) == []
+    # The serializer converts the deque to a list and normalizes the
+    # nested 2 / "2" key collision to a single "2" key.
+    record = recorder.record
+    assert record is not None
+    state = record.nodes[record.root_id].state["shinychat:turns"]
+    assert state.kind == "turns"
+    assert state.data == [{"values": [{"2": "string"}]}]
+
+    reloaded = await FileConversationStore(tmp_path).get(part(), record.id)
+    assert reloaded == record
+    assert isinstance(reloaded, ConversationRecordV2)
+    assert reloaded.nodes[record.root_id].state["shinychat:turns"].data == [
+        {"values": [{"2": "string"}]}
+    ]
+
+    # Capture only reads the client; the source turn keeps its deque and
+    # both colliding keys.
+    assert isinstance(client.turns[0].values, deque)
+    assert client.turns[0].values == deque([{2: "two", "2": "string"}])
 
 
 @pytest.mark.anyio
-async def test_v2_recorder_rejects_chatlas_key_collision_before_file_store(
+async def test_v2_recorder_accepts_chatlas_tool_extra_key_collision_into_file_store(
     tmp_path: Path,
 ):
     chatlas = pytest.importorskip("chatlas")
     from chatlas import ContentToolResult
     from shinychat._history_store import FileConversationStore
 
+    extra = {"nested": {2: "two", "2": "string"}}
     client = chatlas.ChatOpenAI(api_key="fake")
     client.set_turns(
         [
             chatlas.Turn(
                 role="user",
-                contents=[
-                    ContentToolResult(
-                        value="done",
-                        extra={"nested": {2: "two", "2": "string"}},
-                    )
-                ],
+                contents=[ContentToolResult(value="done", extra=extra)],
             )
         ]
     )
@@ -7422,12 +7453,34 @@ async def test_v2_recorder_rejects_chatlas_key_collision_before_file_store(
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
 
-    with pytest.raises(_ModelCaptureError, match="Non-string mapping key"):
-        await transcript.record_accepted_input_and_notify(
-            _stored_message("user", "one")
-        )
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
 
-    assert await store.list(part()) == []
+    # The chatlas tool result's nested extra keys are normalized by the
+    # serializer: the 2 / "2" collision collapses to a single "2" key.
+    record = recorder.record
+    assert record is not None
+    state = record.nodes[record.root_id].state["shinychat:turns"]
+    assert state.kind == "chatlas"
+    turn = cast(list[dict[str, Any]], state.data)[0]
+    tool_result = cast(dict[str, Any], turn["contents"][0])
+    assert tool_result["value"] == "done"
+    assert tool_result["extra"] == {"nested": {"2": "string"}}
+
+    reloaded = await FileConversationStore(tmp_path).get(part(), record.id)
+    assert reloaded == record
+    assert isinstance(reloaded, ConversationRecordV2)
+    reloaded_state = reloaded.nodes[record.root_id].state["shinychat:turns"]
+    reloaded_turn = cast(list[dict[str, Any]], reloaded_state.data)[0]
+    reloaded_result = cast(dict[str, Any], reloaded_turn["contents"][0])
+    assert reloaded_result["extra"] == {"nested": {"2": "string"}}
+
+    # Capture only reads the client; the source turn keeps its original
+    # non-string extra keys.
+    source_result = client.get_turns()[0].contents[0]
+    assert isinstance(source_result, ContentToolResult)
+    assert source_result.extra == extra
 
 
 @pytest.mark.anyio
