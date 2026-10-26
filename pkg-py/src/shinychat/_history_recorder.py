@@ -1,8 +1,9 @@
 """The v2 exchange-tree capture owner for one history session.
 
 ``_ExchangeRecorder`` owns the v2 record, its single ``asyncio.Lock``, the
-capture/restore/rewind hook registries, full turn snapshots, record
-and root lifecycle, and persistence/bookmark state. Restore/rewind
+capture/restore/rewind hook registries, exact-prefix turn deltas with
+snapshot fallback, record and root lifecycle, and persistence/bookmark
+state. Restore/rewind
 *planning* lives in ``_history_plan`` as pure functions; this class only
 executes what those functions plan, and keeps ``_restore_turns`` because
 it writes adapter turns.
@@ -297,57 +298,167 @@ class _ExchangeRecorder:
         ):
             self._host.adapter.set_system_prompt(cast(str, target.data))
 
+    def _turns_path_context(
+        self, record: ConversationRecordV2, node_id: str
+    ) -> StatePathContext:
+        """The root-to-``node_id`` turn entries as a restore context."""
+        path_ids = [node_id]
+        parent_id = record.nodes[node_id].parent_id
+        while parent_id is not None:
+            path_ids.append(parent_id)
+            parent_id = record.nodes[parent_id].parent_id
+        path = tuple(reversed(path_ids))
+        return StatePathContext(
+            conversation_id=record.id,
+            active_leaf=node_id,
+            node_ids=path,
+            entries=tuple(
+                (path_id, record.nodes[path_id].state[TURNS_STATE_KEY])
+                for path_id in path
+                if TURNS_STATE_KEY in record.nodes[path_id].state
+            ),
+        )
+
     def _capture_turns(
         self,
         context: CaptureContext,
         *,
         record: ConversationRecordV2 | None = None,
     ) -> StateEntry:
+        """Capture live turns as an exact-prefix delta or a full snapshot.
+
+        The prefix baseline is the parent node's effective recorded
+        context on this branch, compared per turn as canonical JSON. An
+        unchanged context records an empty delta; a rewrite or a
+        missing/incompatible baseline records a full snapshot. When the
+        capture changes the node's effective context, children without
+        their own snapshot are first pinned to their pre-capture
+        materialized context so existing descendants resolve unchanged.
+        """
         adapter = self._host.adapter
-        turns, _ = canonical_turns(adapter.get_turns_json())
+        turns, turn_canonicals = canonical_turns(adapter.get_turns_json())
         record = self.record if record is None else record
         assert record is not None
-        # Pin legacy delta children before replacing their shared prefix.
-        for child_id in record.nodes[context.node_id].children:
-            child = record.nodes[child_id]
-            entry = child.state.get(TURNS_STATE_KEY)
-            if entry is None or entry.mode != "delta":
-                continue
-            path_ids = [child_id]
-            parent_id = child.parent_id
-            while parent_id is not None:
-                path_ids.append(parent_id)
-                parent_id = record.nodes[parent_id].parent_id
-            path = tuple(reversed(path_ids))
-            saved_context = StatePathContext(
-                conversation_id=record.id,
-                active_leaf=child_id,
-                node_ids=path,
-                entries=tuple(
-                    (node_id, record.nodes[node_id].state[TURNS_STATE_KEY])
-                    for node_id in path
-                    if TURNS_STATE_KEY in record.nodes[node_id].state
-                ),
+        kind = turn_entry_kind(adapter)
+        node = record.nodes[context.node_id]
+
+        # The node's effective context before this capture, when its
+        # branch holds any recorded turn entries. An incompatible
+        # recorded context cannot be compared; treat it as changed so
+        # dependent children are still pinned (or the pin raises).
+        old_context = self._turns_path_context(record, context.node_id)
+        changed = False
+        if old_context.entries:
+            old_turns, old_unavailable = materialize_restore_turns(
+                old_context, adapter=adapter
             )
+            if old_unavailable is None:
+                _, old_canonicals = canonical_turns(old_turns)
+                changed = old_canonicals != turn_canonicals
+            else:
+                changed = True
+
+        # The baseline is the parent's effective context on this branch.
+        baseline: list[dict[str, Any]] | None = None
+        if node.parent_id is not None:
+            parent_context = self._turns_path_context(record, node.parent_id)
+            if parent_context.entries:
+                baseline_turns, baseline_unavailable = (
+                    materialize_restore_turns(parent_context, adapter=adapter)
+                )
+                if baseline_unavailable is None:
+                    baseline = baseline_turns
+
+        mode: Literal["delta", "snapshot"] = "snapshot"
+        data = cast(JsonValue, turns)
+        if baseline is not None:
+            _, baseline_canonicals = canonical_turns(baseline)
+            prefix = len(baseline_canonicals)
+            if turn_canonicals[:prefix] == baseline_canonicals:
+                mode = "delta"
+                data = cast(JsonValue, turns[prefix:])
+        entry = StateEntry(kind=kind, version=1, mode=mode, data=data)
+
+        if changed or not old_context.entries:
+            self._pin_turn_dependents(
+                record,
+                context.node_id,
+                turns,
+                inherited_changed=changed,
+                kind=kind,
+                adapter=adapter,
+            )
+        return entry
+
+    def _pin_turn_dependents(
+        self,
+        record: ConversationRecordV2,
+        node_id: str,
+        turns: list[dict[str, Any]],
+        *,
+        inherited_changed: bool,
+        kind: Literal["chatlas", "turns"],
+        adapter: TurnsAdapter,
+    ) -> None:
+        """Pin descendants whose saved context a recapture would rewrite.
+
+        Each dependent child folds from ``node_id``'s new entry, so its
+        post-capture context is ``turns`` plus its own delta suffix. A
+        child holding a delta entry is pinned to its pre-capture
+        materialized context whenever that differs -- including when the
+        branch above it held no recorded entries at all, where its saved
+        delta previously folded from the chain start. An entryless
+        completed child is pinned only when the node's recorded effective
+        context changed (``inherited_changed``): a first capture
+        establishes, rather than rewrites, what it inherits. A pending
+        entryless child never gains invented model state. The walk
+        traverses every unpinned entryless node to reach captured descendants. Pinned
+        snapshots anchor everything below, so the walk stops at the first
+        entry-holding node on each path. A child whose saved context
+        cannot be materialized fails the capture rather than silently
+        losing preservation.
+        """
+        for child_id in record.nodes[node_id].children:
+            child = record.nodes[child_id]
+            child_entry = child.state.get(TURNS_STATE_KEY)
+            if child_entry is not None and child_entry.mode == "snapshot":
+                continue
+            if child_entry is None:
+                if child.status == "pending" or not inherited_changed:
+                    self._pin_turn_dependents(
+                        record,
+                        child_id,
+                        turns,
+                        inherited_changed=inherited_changed,
+                        kind=kind,
+                        adapter=adapter,
+                    )
+                    continue
+            child_context = self._turns_path_context(record, child_id)
             saved_turns, unavailable = materialize_restore_turns(
-                saved_context, adapter=adapter
+                child_context, adapter=adapter
             )
             if unavailable is not None:
                 raise ValueError(
-                    "Cannot replace a legacy prefix without its model context."
+                    "Cannot replace a shared prefix without its model context."
                 )
+            if child_entry is not None:
+                # Pin only when the child's own saved context would
+                # actually change: unchanged recaptures convert nothing.
+                new_turns = [
+                    *turns,
+                    *cast(list[dict[str, Any]], child_entry.data),
+                ]
+                _, new_canonicals = canonical_turns(new_turns)
+                _, saved_canonicals = canonical_turns(saved_turns)
+                if new_canonicals == saved_canonicals:
+                    continue
             child.state[TURNS_STATE_KEY] = StateEntry(
-                kind=turn_entry_kind(adapter),
+                kind=kind,
                 version=1,
                 mode="snapshot",
                 data=cast(JsonValue, saved_turns),
             )
-        return StateEntry(
-            kind=turn_entry_kind(adapter),
-            version=1,
-            mode="snapshot",
-            data=cast(JsonValue, turns),
-        )
 
     def _validate_model_state(self) -> None:
         try:

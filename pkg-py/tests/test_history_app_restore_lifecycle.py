@@ -401,10 +401,10 @@ async def test_failed_retained_parent_restore_suppresses_edit_projection(
     assert tuple(stored.path_node_ids()) == tuple(record.path_node_ids())
     assert stored is not record
     assert stored.nodes[target].state == record.nodes[target].state
-    assert stored.nodes[target].state["shinychat:turns"].mode == "snapshot"
+    # The retained parent's recorded prefix is exact, so the outgoing
+    # close stores only the branch's own suffix as a delta.
+    assert stored.nodes[target].state["shinychat:turns"].mode == "delta"
     assert stored.nodes[target].state["shinychat:turns"].data == [
-        {"role": "system", "content": "bootstrap"},
-        {"role": "user", "content": "first"},
         {"role": "user", "content": "second"},
         {"role": "assistant", "content": "fresh model close"},
     ]
@@ -790,7 +790,12 @@ async def test_in_session_restore_callback_sees_outgoing_transcript_after_model_
 
     def observe(_values: dict[str, Any]) -> None:
         observations.append(
-            (chat.messages(), list(adapter.turns), record.active_leaf, dict(_values))
+            (
+                chat.messages(),
+                list(adapter.turns),
+                record.active_leaf,
+                dict(_values),
+            )
         )
 
     controller._restore_callbacks.append(observe)

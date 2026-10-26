@@ -2026,10 +2026,17 @@ async def test_v2_restore_materializes_turn_path_once_and_resets_baseline():
     assert recorder.record is record
 
     adapter.turns.append({"role": "assistant", "content": "next delta"})
-    await recorder.accepted_input("n_0004", _stored_message("user", "next"), lambda: None)
+    await recorder.accepted_input(
+        "n_0004", _stored_message("user", "next"), lambda: None
+    )
     captured = record.nodes[leaf].state["shinychat:turns"]
-    assert captured.mode == "snapshot"
-    assert captured.data == adapter.turns
+    # The parent snapshot's replacement turn remains an exact prefix, so
+    # the close stores only the turns appended since.
+    assert captured.mode == "delta"
+    assert captured.data == [
+        {"role": "user", "content": "after snapshot"},
+        {"role": "assistant", "content": "next delta"},
+    ]
 
 
 @pytest.mark.anyio
@@ -3187,7 +3194,9 @@ async def test_generic_destructive_admission_does_not_block_real_chat_input(
 
 
 @pytest.mark.anyio
-async def test_v2_switch_persists_source_without_capturing_values_before_preflight_failure() -> None:
+async def test_v2_switch_persists_source_without_capturing_values_before_preflight_failure() -> (
+    None
+):
     class SnapshotStore(InMemoryConversationStore):
         async def get(
             self, partition: ConversationPartition, conv_id: str
@@ -3725,7 +3734,9 @@ async def test_v2_read_only_record_suppresses_message_and_stream_captures() -> (
     entry = TranscriptEntry(
         message=_stored_message("assistant", "unsolicited"), icon=None
     )
-    await recorder.accepted_input("n_forged", _stored_message("user", "forged"), lambda: None)
+    await recorder.accepted_input(
+        "n_forged", _stored_message("user", "forged"), lambda: None
+    )
     await recorder.message_committed("n_0001", entry)
     await recorder.stream_started("s1", "n_0001", entry)
     await recorder.stream_updated("s1", entry)
@@ -3966,7 +3977,10 @@ async def test_v2_resubmit_rejects_missing_partition_before_mutation():
 @pytest.mark.parametrize(
     ("data", "match"),
     [
-        (["not a turn"], "Turn-state entries must contain a list of JSON objects"),
+        (
+            ["not a turn"],
+            "Turn-state entries must contain a list of JSON objects",
+        ),
         ([{(1, 2): "unsupported key"}], "invalid JSON data"),
     ],
 )
@@ -6444,17 +6458,14 @@ async def test_v2_resubmit_rewinds_parent_prefix_and_new_input_creates_sibling()
     }
     assert len(store.put_calls) == 1
     assert record.nodes[target].input == target_input
-    # Leaving the target branch captures its full turn snapshot (the live
-    # model context at that point), replacing the seeded delta.
+    # Leaving the target branch captures the live model context at that
+    # point. The parent checkpoint's prefix is exact, so the seeded delta
+    # is replaced by an equivalent one holding only the branch's own turn.
     assert record.nodes[target].state["shinychat:turns"] == StateEntry(
         kind="turns",
         version=1,
-        mode="snapshot",
-        data=[
-            {"role": "system", "content": "bootstrap"},
-            {"role": "user", "content": "first"},
-            {"role": "user", "content": "second"},
-        ],
+        mode="delta",
+        data=[{"role": "user", "content": "second"}],
     )
 
     exchange_id = await chat._transcript.record_accepted_input_and_notify(
@@ -7451,14 +7462,13 @@ async def test_v2_retry_restores_partial_exchange_before_creating_sibling(
         message.as_stored_message().content
         for message in record.nodes[target].messages
     ] == ["partial response"]
-    # Leaving the retried branch captures its full turn snapshot, replacing
-    # the seeded delta.
+    # Leaving the retried branch recaptures the live context; the parent
+    # prefix is exact, so the delta holds only the branch's own turns.
     assert record.nodes[target].state["shinychat:turns"] == StateEntry(
         kind="turns",
         version=1,
-        mode="snapshot",
+        mode="delta",
         data=[
-            {"role": "system", "content": "parent prefix"},
             {"role": "user", "content": "retry this"},
             {"role": "assistant", "content": "partial response"},
         ],
@@ -7830,8 +7840,10 @@ async def test_v2_recorder_captures_new_snapshot_on_earlier_turn_rewrite():
         send=_sent,
     )
     state = recorder.record.nodes[exchange_id].state["shinychat:turns"]  # type: ignore[union-attr]
-    assert state.mode == "snapshot"
-    assert state.data == adapter.turns
+    # The starting checkpoint is an exact prefix, so only this
+    # exchange's own turn is stored.
+    assert state.mode == "delta"
+    assert state.data == [{"role": "user", "content": "one"}]
 
     adapter.turns[0]["content"] = "rewritten"
     adapter.turns.append({"role": "assistant", "content": "later"})
@@ -7888,8 +7900,10 @@ async def test_v2_recorder_captures_terminal_turns_verbatim(status: str):
     )
 
     state = recorder.record.nodes[exchange_id].state["shinychat:turns"]  # type: ignore[union-attr]
-    assert state.mode == "snapshot"
-    assert state.data == adapter.turns
+    # The starting checkpoint is an exact prefix, so the terminal
+    # capture stores only this exchange's own turn.
+    assert state.mode == "delta"
+    assert state.data == [{"role": "assistant", "content": "partial"}]
 
 
 @pytest.mark.anyio
@@ -7958,8 +7972,8 @@ async def test_v2_recorder_keeps_terminal_turn_delta_at_node_close():
     )
 
     state = recorder.record.nodes[first_exchange].state["shinychat:turns"]  # type: ignore[union-attr]
-    assert state.mode == "snapshot"
-    assert state.data == adapter.turns
+    assert state.mode == "delta"
+    assert state.data == [{"role": "assistant", "content": "answer"}]
 
 
 @pytest.mark.anyio
@@ -8017,8 +8031,10 @@ async def test_v2_recorder_replaces_stream_projection_on_its_opening_exchange():
     assert [
         message.as_stored_message().content for message in first.messages
     ] == ["partial"]
-    assert first.state["shinychat:turns"].mode == "snapshot"
-    assert first.state["shinychat:turns"].data == adapter.turns
+    assert first.state["shinychat:turns"].mode == "delta"
+    assert first.state["shinychat:turns"].data == [
+        {"role": "assistant", "content": "late first response"}
+    ]
     assert record.nodes[second_exchange].status == "pending"
     assert "shinychat:turns" not in record.nodes[second_exchange].state
     assert record.active_leaf == second_exchange
@@ -8518,8 +8534,10 @@ async def test_terminal_state_capture_failure_propagates_without_rollback():
         )
 
     node = recorder.record.nodes[exchange_id]  # type: ignore[union-attr]
-    assert node.state["shinychat:turns"].mode == "snapshot"
-    assert node.state["shinychat:turns"].data == adapter.turns
+    assert node.state["shinychat:turns"].mode == "delta"
+    assert node.state["shinychat:turns"].data == [
+        {"role": "assistant", "content": "partial"}
+    ]
     assert node.status == "error"
     assert transcript.active_stream_id is None
 
@@ -10439,7 +10457,9 @@ async def test_failed_capture_commits_neither_hook_entries_nor_prompt_child_pins
     controller, _ = _make_controller()
     recorder = controller._exchange_recorder
     assert recorder is not None
-    recorder.record = new_conversation_record_v2(id="staged", title="Staged", client_info={})
+    recorder.record = new_conversation_record_v2(
+        id="staged", title="Staged", client_info={}
+    )
     record = recorder.record
     root = record.nodes[record.root_id]
     record.open_exchange("child", _stored_message("user", "hello"))
@@ -10457,7 +10477,9 @@ async def test_failed_capture_commits_neither_hook_entries_nor_prompt_child_pins
     recorder._register_capture_hook("test:remove", lambda _context: None)
     recorder._register_capture_hook(
         "test:add",
-        lambda _context: StateEntry(kind="test", version=1, mode="snapshot", data="new"),
+        lambda _context: StateEntry(
+            kind="test", version=1, mode="snapshot", data="new"
+        ),
     )
     # Turn capture succeeds first; a later hook must not commit its snapshot.
     before = record.model_dump(mode="json")

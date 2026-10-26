@@ -145,7 +145,9 @@ async def test_completed_leaf_with_pending_root_saves_latest_model_on_disconnect
             _stored_message("assistant", "completed"), icon=None
         ),
     )
-    record.nodes[leaf].checkpoint = None  # Legacy record predates classification.
+    record.nodes[
+        leaf
+    ].checkpoint = None  # Legacy record predates classification.
     record.nodes[leaf].state["shinychat:turns"] = StateEntry(
         kind="turns",
         version=1,
@@ -261,7 +263,9 @@ def _legacy_structural_record(conv_id: str) -> ConversationRecordV2:
         )
     record.set_active_leaf("n_0001")
     for node in record.nodes.values():
-        node.checkpoint = None  # This fixture represents pre-classification JSON.
+        node.checkpoint = (
+            None  # This fixture represents pre-classification JSON.
+        )
     return record
 
 
@@ -311,7 +315,7 @@ async def test_legacy_structural_root_restores_one_terminal_sibling(
 
 
 @pytest.mark.anyio
-async def test_model_only_disconnect_snapshot_serves_both_siblings(
+async def test_model_only_disconnect_capture_serves_both_siblings(
     backend: _Backend,
 ) -> None:
     conv_id = "c_legacy_disconnect"
@@ -331,8 +335,13 @@ async def test_model_only_disconnect_snapshot_serves_both_siblings(
 
     saved = await _saved(backend, conv_id)
     updated = saved.nodes["n_0001"].state[TURNS_STATE_KEY]
-    assert updated.mode == "snapshot"
-    assert updated.data == latest
+    # The root's PREFIX is an exact prefix of the live turns, so the
+    # model-only close stores only the appended suffix.
+    assert updated.mode == "delta"
+    assert updated.data == [
+        *_branch_turns("branch A", "answer A"),
+        {"role": "assistant", "content": "model-only update"},
+    ]
     assert saved.nodes["n_0001"].state[SYSTEM_PROMPT_STATE_KEY].data == (
         SAVED_PROMPT
     )
@@ -406,7 +415,10 @@ async def test_live_partial_response_then_new_input_preserves_untrusted_legacy_s
 
     saved = await _saved(backend, conv_id)
     assert saved.nodes[old_id].checkpoint_state == "invalid"
-    assert saved.nodes[old_id].state[TURNS_STATE_KEY] == legacy_old.state[TURNS_STATE_KEY]
+    assert (
+        saved.nodes[old_id].state[TURNS_STATE_KEY]
+        == legacy_old.state[TURNS_STATE_KEY]
+    )
     assert TURNS_STATE_KEY not in saved.nodes[new_id].state
     assert saved.active_leaf == new_id
     new_input = saved.nodes[new_id].input
@@ -416,7 +428,9 @@ async def test_live_partial_response_then_new_input_preserves_untrusted_legacy_s
     assert saved.nodes[new_id].state[VALUES_STATE_KEY].data == {"v": "new"}
     assert "partial old" not in saved.model_dump_json()
     # Recoverable state is retained, but neither unfinished position is selectable.
-    viewer, _ = _make_controller(store=backend.reader, adapter=_prompt_adapter())
+    viewer, _ = _make_controller(
+        store=backend.reader, adapter=_prompt_adapter()
+    )
     await viewer.switch_to(conv_id)
     assert viewer._exchange_recorder.read_only
     assert viewer._exchange_recorder.record is not None
@@ -430,7 +444,10 @@ async def test_live_partial_response_then_new_input_preserves_untrusted_legacy_s
     assert renamed.nodes[old_id].checkpoint_state == "invalid"
     assert renamed.nodes[old_id].state == saved.nodes[old_id].state
     assert "partial old" not in renamed.model_dump_json()
-    assert renamed.nodes[old_id].state[SYSTEM_PROMPT_STATE_KEY].data == "legacy prompt"
+    assert (
+        renamed.nodes[old_id].state[SYSTEM_PROMPT_STATE_KEY].data
+        == "legacy prompt"
+    )
 
     # The older response may finish after another input was accepted. Its
     # actual checkpoint is saved without settling the newer pending leaf.
@@ -678,7 +695,11 @@ async def test_complete_append_failure_keeps_live_display_and_safe_saved_checkpo
         assert saved.nodes[exchange_id].status == "ok"
         assert saved.nodes[exchange_id].checkpoint_state == "invalid"
     else:
-        assert record.nodes[exchange_id].state[TURNS_STATE_KEY].data == expected
+        entry = record.nodes[exchange_id].state[TURNS_STATE_KEY]
+        # The exchange extends the starting checkpoint's exact prefix, so
+        # only the appended turn is stored as a delta.
+        assert entry.mode == "delta"
+        assert entry.data == [{"role": "assistant", "content": "live"}]
 
 
 @pytest.mark.anyio
@@ -709,9 +730,7 @@ async def test_non_assistant_output_does_not_open_independent_response_child(
 async def test_initial_bookmark_into_unresolved_source_drops_uncheckpointed_siblings(
     backend: _Backend,
 ) -> None:
-    writer, _ = _make_controller(
-        store=backend.store, adapter=_prompt_adapter()
-    )
+    writer, _ = _make_controller(store=backend.store, adapter=_prompt_adapter())
     writer.adapter.set_system_prompt(SAVED_PROMPT)
     transcript, coherent_id = await _open_stream(writer)
     coherent_model = [
@@ -767,7 +786,9 @@ async def test_initial_bookmark_into_unresolved_source_drops_uncheckpointed_sibl
     assert source.model_dump_json() == frozen
     assert (await _saved(backend, record.id)).model_dump_json() == frozen
 
-    terminal_model: list[TurnDict] = [{"role": "assistant", "content": "writer finished"}]
+    terminal_model: list[TurnDict] = [
+        {"role": "assistant", "content": "writer finished"}
+    ]
     writer.adapter.set_turns_json(terminal_model)
     await _chunk(transcript, _assistant_message(_text("writer finished")))
     await _end_stream(transcript)
