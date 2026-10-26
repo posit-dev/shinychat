@@ -356,6 +356,76 @@ def test_echoed_slash_command_skips_builtin_provider_handler():
             chat.destroy()
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize("cancel_requested", [False, True])
+async def test_builtin_client_preserves_cooperative_cancellation_outcome(
+    cancel_requested: bool,
+) -> None:
+    class CooperativeClient:
+        def __init__(self) -> None:
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def stream_async(self, *args: Any, **kwargs: Any) -> Any:
+            controller = kwargs["controller"]
+
+            async def response():
+                yield "partial response"
+                self.started.set()
+                await self.release.wait()
+                if not controller.cancelled:
+                    yield " completed"
+                # Like chatlas, cooperative cancellation returns normally.
+
+            return response()
+
+    session = cast(Session, _MockSession())
+    client = CooperativeClient()
+    finished = asyncio.Event()
+    outcomes: list[str] = []
+    with session_context(session):
+        chat = Chat("cooperative_cancel", client=cast(Any, client), history=False)
+        try:
+            async def on_finished(
+                _stream_id: str, status: str, _error: str | None
+            ) -> None:
+                outcomes.append(status)
+                finished.set()
+
+            chat._transcript._on_stream_finished = on_finished
+            cast(Any, session.input[chat.user_input_id])._set(
+                {"text": "first", "attachments": [], "seq": 1}
+            )
+            await reactive.flush()
+            await asyncio.wait_for(client.started.wait(), timeout=1)
+            if cancel_requested:
+                cast(Any, session.input[ResolvedId("cooperative_cancel_cancel")])._set(1)
+                await reactive.flush()
+            client.release.set()
+            await asyncio.wait_for(finished.wait(), timeout=1)
+            await reactive.flush()
+
+            assert outcomes == ["cancelled" if cancel_requested else "ok"]
+            response = chat._transcript.read()[-1]
+            assert response.status == ("cancelled" if cancel_requested else None)
+            assert response.message.content == (
+                "partial response" if cancel_requested else "partial response completed"
+            )
+
+            # A following submission must not inherit the cancellation flag.
+            finished.clear()
+            cast(Any, session.input[chat.user_input_id])._set(
+                {"text": "second", "attachments": [], "seq": 2}
+            )
+            await reactive.flush()
+            await asyncio.wait_for(finished.wait(), timeout=1)
+            assert outcomes[-1] == "ok"
+            assert chat._transcript.read()[-1].message.content == "partial response completed"
+        finally:
+            client.release.set()
+            chat.destroy()
+
+
 def test_echoed_slash_command_capture_error_removes_loading_message():
     session = cast(Session, _MockSession())
     actions: list[dict[str, Any]] = []

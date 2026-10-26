@@ -935,6 +935,69 @@ describe("ChatMessage retry", () => {
     )
     expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
   })
+
+  it("renders Retry as a labelled arrow-clockwise icon button", () => {
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          exchange: { status: "error", retryable: true },
+        })}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    const retry = screen.getByRole("button", { name: "Retry message" })
+    const svg = retry.querySelector("svg")
+    expect(svg).not.toBeNull()
+    expect(svg).toHaveAttribute("aria-hidden", "true")
+    expect(svg).toHaveAttribute("viewBox", "0 0 16 16")
+    expect(svg).toHaveAttribute("width", "14")
+    expect(svg).toHaveAttribute("height", "14")
+    // Bootstrap's clockwise arrowhead, not an unrelated arrow glyph.
+    expect(svg?.querySelectorAll("path")[1]).toHaveAttribute(
+      "d",
+      "M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466",
+    )
+    expect(retry.textContent).toBe("")
+    expect(retry).toHaveAttribute("title", "Retry message")
+  })
+
+  it("shows the retry control after a cancelled exchange", () => {
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          exchange: { status: "cancelled", retryable: true },
+        })}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole("button", { name: "Retry message" })).toBeTruthy()
+  })
+
+  it("disables the retry control while an exchange is in flight", () => {
+    // ChatContainer folds streaming/history-busy state into the shared
+    // `disabled` prop; the retry button must honor it so an in-flight
+    // exchange can't be re-submitted.
+    const onRetry = vi.fn()
+    render(
+      <ChatMessage
+        index={0}
+        disabled
+        message={userMessage({
+          exchange: { status: "error", retryable: true },
+        })}
+        onRetry={onRetry}
+      />,
+    )
+
+    const retry = screen.getByRole("button", { name: "Retry message" })
+    expect(retry).toBeDisabled()
+    fireEvent.click(retry)
+    expect(onRetry).not.toHaveBeenCalled()
+  })
 })
 
 describe("ChatMessage forged tool-result regression (XSS)", () => {

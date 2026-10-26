@@ -63,7 +63,7 @@ Streams retain their opening exchange association for chunks and terminal events
 2. **Capture and commit admission.** First input captures the eligible root's actual model/app pair before provider work. Later input captures model-only changes at a coherent predecessor and app values on the new exchange. Required model capture/validation precedes the shared transcript/tree commit. The new exchange is a child of the previous active position.
 3. **Capture live content.** Application/provider work produces server messages and stream updates. They update transcript and working tree; chunks do not persist partial-response snapshots.
 4. **Complete the response.** Terminal capture records actual client context and outcome. Required app capture follows reactive settlement, when response results and their reactive consequences are available. These two stages form one conceptual response-completion event.
-5. **Persist and publish.** Detached snapshots record state and checkpoint classification; metadata informs the browser. Capture, persistence, and publication can fail at different boundaries.
+5. **Persist and publish.** Detached snapshots record state and checkpoint classification; settled outcome metadata informs the live browser without reload. Eligible failed/cancelled responses expose Retry, and successful replacement clears stale retry/error metadata. Capture, persistence, and publication can fail at different boundaries.
 
 If model capture fails before admission commits, neither owner accepted the input: normal rejection removes its correlated optimistic row. Persistence failure after commit must not be treated as unaccepted input. For later input, an unresolved predecessor is validated, not promoted; superseded candidate positions on its path are invalidated.
 
@@ -77,7 +77,7 @@ First input captures the starting condition once, not an earlier startup configu
 | Is the position a coherent destination? | `candidate`, `valid`, or `invalid` checkpoint |
 | Did it reach storage? | Successful detached snapshot write |
 
-Handled provider errors and ordinary cancellation can yield valid checkpoints. Successful answers can fail required capture. History captures the client's actual context, including representable failed/partial outcomes; it does not silently remove turns to invent a cleaner continuation. A complete non-streamed assistant append also captures context, not display alone.
+Handled provider errors and ordinary cancellation can yield valid checkpoints. Successful answers can fail required capture. History captures the client's actual context, including representable failed/partial outcomes; it does not silently remove turns to invent a cleaner continuation. A complete non-streamed assistant append also captures context, not display alone. Python's built-in client treats a cooperative Stop as cancellation even when the provider iterator returns normally, and clears the cancellation flag for the next submission.
 
 Older schema-2 records without explicit checkpoint classification derive terminal positions as valid and pending ones as candidates, with an empty-root exception. This is a legacy assumption, not retrospective detection of capture failures. New writes classify explicitly.
 
@@ -128,7 +128,7 @@ Recorded prompt applies before turns. App values are validated/folded separately
 | Load/switch | Saved conversation tree/path, not a rewind within the current tree |
 | New chat | Explicit leave/reset with no saved restoration target |
 
-Resubmission requires input on the active path and a checkpointed parent. The input is causal data; the parent is the rewind destination. Eligibility does not imply that every live failure currently has a Retry UI affordance.
+Resubmission requires input on the active path and a checkpointed parent. The input is causal data; the parent is the rewind destination. Live Retry also respects read-only and in-flight guards.
 
 A normal replacement follows this order:
 
@@ -194,7 +194,7 @@ New chat is a narrow explicit exit, not a rollback engine. Outgoing model-captur
 
 Remove unnecessary premises before adding guards, timers, retry ledgers, or compatibility machinery. Checkpoint coherence does not fence arbitrary client mutations between terminal capture and settled app capture.
 
-Live Retry metadata/icon behavior, the public screen-clear/history-record guard, and direct original-branch/failed-attempt access remain unfinished. Provider-specific state also precludes assuming cross-client or cross-language record loading from the shared outer schema.
+The public screen-clear/history-record guard and direct original-branch/failed-attempt access remain unfinished. Provider-specific state also precludes assuming cross-client or cross-language record loading from the shared outer schema.
 
 ## Port contract
 

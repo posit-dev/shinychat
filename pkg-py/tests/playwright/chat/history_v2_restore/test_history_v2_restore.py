@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 import pytest
-from playwright.sync_api import Page, WebSocketRoute, expect
+from playwright.sync_api import Locator, Page, WebSocketRoute, expect
 from shiny.playwright import controller
 from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
@@ -31,6 +31,49 @@ def _action_type(message: str | bytes) -> str | None:
         return None
     action_type = action.get("type")
     return action_type if isinstance(action_type, str) else None
+
+
+def _expect_immediate_retry_control(page: Page) -> Locator:
+    """Check live visibility, naming, icon and keyboard focus without hover."""
+    retry = page.get_by_role("button", name="Retry message")
+    expect(retry).to_be_visible()
+    expect(retry).to_be_enabled()
+    # Always visible: not gated behind a hover/touch reveal.
+    assert retry.evaluate("el => getComputedStyle(el).opacity") == "1"
+    expect(retry).to_have_attribute("title", "Retry message")
+
+    # Keyboard reach: Tab in from the preceding footer control, Shift+Tab
+    # back out, then Tab in again.
+    edit = page.locator(".shiny-chat-user-message").first.get_by_role(
+        "button", name="Edit message"
+    )
+    edit.focus()
+    page.keyboard.press("Tab")
+    expect(retry).to_be_focused()
+    assert retry.evaluate("el => el.matches(':focus-visible')")
+    outline = retry.evaluate(
+        "el => [getComputedStyle(el).outlineStyle,"
+        " parseFloat(getComputedStyle(el).outlineWidth)]"
+    )
+    assert outline[0] != "none", f"focus outline style invisible: {outline}"
+    assert float(outline[1]) > 0, f"focus outline width 0: {outline}"
+    page.keyboard.press("Shift+Tab")
+    expect(edit).to_be_focused()
+    page.keyboard.press("Tab")
+    expect(retry).to_be_focused()
+
+    # Icon-only control: exactly one decorative svg, hidden from assistive
+    # tech (its name comes from the button, not the graphic).
+    expect(retry.locator("svg")).to_have_count(1)
+    assert (
+        retry.locator("svg").evaluate("el => el.getAttribute('aria-hidden')")
+        == "true"
+    )
+    return retry
+
+
+def _recorder_state(page: Page) -> dict:
+    return json.loads(page.locator("#recorder").inner_text())
 
 
 def test_v2_restore_replays_turns_and_continues_provider_context(
@@ -303,6 +346,178 @@ def test_v2_restored_failure_retries_through_the_real_provider(
     controller.OutputText(page, "provider_calls").expect_value("1")
     controller.OutputText(page, "accepted_submissions").expect_value("1")
     expect(page.locator(".shiny-chat-user-message")).to_have_count(1)
+
+
+def test_v2_immediate_retry_after_settled_initial_provider_error(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    """Retry replaces a failed exchange without reloading the page."""
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    # Any reload/navigation wipes this marker; the retry below runs entirely
+    # in place.
+    page.evaluate("window.__noReloadMarker = true")
+
+    chat.set_user_input("immediate retry")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
+    chat.send_user_input(method="enter")
+    expect(page.locator(".shiny-chat-user-message")).to_have_count(
+        1, timeout=30_000
+    )
+    expect(page.locator(".shiny-notification")).to_contain_text(
+        "intentional retry fixture failure", timeout=30_000
+    )
+    controller.InputActionButton(page, "inspect_turns").click()
+    controller.OutputText(page, "recorder").expect_value(
+        re.compile(r'"checkpoint": "valid".*"status": "error"'), timeout=10_000
+    )
+    failed_nodes = _recorder_state(page)["node_count"]
+
+    retry = _expect_immediate_retry_control(page)
+    retry.press("Enter")
+
+    chat.expect_latest_message("echo: immediate retry", timeout=30_000)
+    controller.OutputText(page, "provider_calls").expect_value(
+        "2", timeout=10_000
+    )
+    controller.OutputText(page, "accepted_submissions").expect_value(
+        "2", timeout=10_000
+    )
+    assert page.evaluate("window.__noReloadMarker") is True
+
+    # The replacement exchange settles successfully and grows the tree.
+    controller.InputActionButton(page, "inspect_turns").click()
+    controller.OutputText(page, "recorder").expect_value(
+        re.compile(r'"checkpoint": "valid".*"status": "ok"'),
+        timeout=10_000,
+    )
+    assert _recorder_state(page)["node_count"] > failed_nodes
+
+    # One user message remains and no stale failure markers survive.
+    expect(page.locator(".shiny-chat-user-message")).to_have_count(1)
+    expect(page.get_by_role("button", name="Retry message")).to_have_count(0)
+    expect(page.locator(".shiny-chat-retry-error")).to_have_count(0)
+    expect(page.locator(".shiny-chat-message-cancelled")).to_have_count(0)
+
+
+def test_v2_immediate_retry_after_partial_provider_error(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    """A provider error after partial content surfaces Retry immediately."""
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    page.evaluate("window.__noReloadMarker = true")
+
+    chat.set_user_input("partial fail")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
+    chat.send_user_input(method="enter")
+    # Partial content actually rendered before the terminal failure settles.
+    expect(page.locator(".shiny-chat-messages-content")).to_contain_text(
+        "partial response before failure", timeout=30_000
+    )
+    expect(page.locator(".shiny-notification")).to_contain_text(
+        "intentional partial fixture failure", timeout=30_000
+    )
+    controller.InputActionButton(page, "inspect_turns").click()
+    controller.OutputText(page, "recorder").expect_value(
+        re.compile(r'"checkpoint": "valid".*"status": "error"'), timeout=10_000
+    )
+    failed_nodes = _recorder_state(page)["node_count"]
+
+    retry = _expect_immediate_retry_control(page)
+    retry.press("Enter")
+
+    chat.expect_latest_message("echo: partial fail", timeout=30_000)
+    controller.OutputText(page, "provider_calls").expect_value(
+        "2", timeout=10_000
+    )
+    controller.OutputText(page, "accepted_submissions").expect_value(
+        "2", timeout=10_000
+    )
+    assert page.evaluate("window.__noReloadMarker") is True
+
+    controller.InputActionButton(page, "inspect_turns").click()
+    controller.OutputText(page, "recorder").expect_value(
+        re.compile(r'"checkpoint": "valid".*"status": "ok"'),
+        timeout=10_000,
+    )
+    assert _recorder_state(page)["node_count"] > failed_nodes
+
+    # The replacement replaced the failed partial content in place.
+    expect(page.locator(".shiny-chat-messages-content")).not_to_contain_text(
+        "partial response before failure", timeout=10_000
+    )
+    expect(page.locator(".shiny-chat-user-message")).to_have_count(1)
+    expect(page.get_by_role("button", name="Retry message")).to_have_count(0)
+    expect(page.locator(".shiny-chat-retry-error")).to_have_count(0)
+    expect(page.locator(".shiny-chat-message-cancelled")).to_have_count(0)
+
+
+def test_v2_immediate_retry_after_cancellation(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    """A normally-returning cooperative Stop settles as cancelled, then retries."""
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    page.evaluate("window.__noReloadMarker = true")
+
+    chat.set_user_input("cancel me")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
+    chat.send_user_input(method="enter")
+    # Wait for actual content before requesting cooperative cancellation.
+    expect(page.locator(".shiny-chat-messages-content")).to_contain_text(
+        "partial response awaiting cancellation", timeout=30_000
+    )
+    # No Retry control while the exchange is still in flight.
+    expect(page.get_by_role("button", name="Retry message")).to_have_count(0)
+
+    # Deterministic cancellation via the built-in stop control.
+    stop = page.get_by_role("button", name="Stop generating")
+    expect(stop).to_be_visible(timeout=10_000)
+    stop.click()
+    expect(page.locator(".shiny-chat-message-cancelled")).to_contain_text(
+        "Response cancelled", timeout=30_000
+    )
+    controller.InputActionButton(page, "inspect_turns").click()
+    controller.OutputText(page, "recorder").expect_value(
+        re.compile(r'"status": "cancelled"'), timeout=10_000
+    )
+    failed = _recorder_state(page)
+    assert failed["status"] == "cancelled"
+    cancelled_nodes = failed["node_count"]
+
+    retry = _expect_immediate_retry_control(page)
+    retry.press("Enter")
+
+    chat.expect_latest_message("echo: cancel me", timeout=30_000)
+    controller.OutputText(page, "provider_calls").expect_value(
+        "2", timeout=10_000
+    )
+    controller.OutputText(page, "accepted_submissions").expect_value(
+        "2", timeout=10_000
+    )
+    assert page.evaluate("window.__noReloadMarker") is True
+
+    controller.InputActionButton(page, "inspect_turns").click()
+    controller.OutputText(page, "recorder").expect_value(
+        re.compile(r'"status": "ok"'), timeout=10_000
+    )
+    assert _recorder_state(page)["node_count"] > cancelled_nodes
+
+    # The replacement cleared the cancelled partial content and markers.
+    expect(page.locator(".shiny-chat-messages-content")).not_to_contain_text(
+        "partial response awaiting cancellation", timeout=10_000
+    )
+    expect(page.locator(".shiny-chat-user-message")).to_have_count(1)
+    expect(page.get_by_role("button", name="Retry message")).to_have_count(0)
+    expect(page.locator(".shiny-chat-retry-error")).to_have_count(0)
+    expect(page.locator(".shiny-chat-message-cancelled")).to_have_count(0)
 
 
 def test_v2_navigation_replays_the_selected_sibling_and_continues_from_it(
