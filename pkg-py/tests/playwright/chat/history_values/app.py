@@ -1,4 +1,4 @@
-"""A tool-like filter change follows conversation branches and reloads."""
+"""A region filter follows conversation checkpoints and position restores."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from shiny import App, Inputs, Outputs, Session, reactive, render, ui
 from shinychat import Chat, chat_ui
 from shinychat.types import (
     FileConversationStore,
-    HistoryNavigateContext,
     HistoryOptions,
 )
 
@@ -64,7 +63,7 @@ app_ui = ui.page_fillable(
     ui.input_text("region_filter", "Region filter", value="all"),
     ui.output_text("current_filter"),
     ui.output_text("provider_before_filter"),
-    ui.output_text("navigation_log"),
+    ui.output_text("restore_log"),
     ui.output_text("restore_count"),
     chat_ui("chat"),
 )
@@ -73,8 +72,7 @@ app_ui = ui.page_fillable(
 def server(input: Inputs, output: Outputs, session: Session) -> None:
     selected_filter = reactive.Value("all")
     before_filter = reactive.Value("")
-    events: reactive.Value[list[dict[str, Any]]] = reactive.Value([])
-    restores = reactive.Value(0)
+    restores: reactive.Value[list[dict[str, Any]]] = reactive.Value([])
 
     def sync_filter(region: str) -> None:
         # Server state changes immediately; the input update travels to the
@@ -103,23 +101,7 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     @chat.history.on_restore
     def restore_filter(values: dict[str, Any]) -> None:
         sync_filter(str(values.get("filter", "all")))
-        restores.set(restores.get() + 1)
-
-    @chat.history.on_navigate
-    def navigate_filter(context: HistoryNavigateContext) -> None:
-        sync_filter(str(context.values.get("filter", "all")))
-        events.set(
-            events.get()
-            + [
-                {
-                    "reason": context.reason,
-                    "values": context.values,
-                    "previous_values": context.previous_values,
-                    "exchange_id": context.exchange_id,
-                    "previous_exchange_id": context.previous_exchange_id,
-                }
-            ]
-        )
+        restores.set(restores.get() + [dict(values)])
 
     @render.text
     def current_filter() -> str:
@@ -130,12 +112,12 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         return before_filter.get()
 
     @render.text
-    def navigation_log() -> str:
-        return json.dumps(events.get())
+    def restore_log() -> str:
+        return json.dumps(restores.get())
 
     @render.text
     def restore_count() -> str:
-        return str(restores.get())
+        return str(len(restores.get()))
 
 
 app = App(app_ui, server)

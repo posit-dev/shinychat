@@ -19,10 +19,7 @@ from typing import Any, Awaitable, Callable, Literal, cast
 from pydantic import JsonValue
 from pydantic_core import to_jsonable_python
 
-from ._history_client import (
-    TurnsAdapter,
-    _validate_mapping_keys,
-)
+from ._history_client import TurnsAdapter
 from ._history_types import (
     SYSTEM_PROMPT_STATE_KEY,
     TURNS_STATE_KEY,
@@ -137,23 +134,28 @@ def latest_values(
     return latest
 
 
-def canonical_values(values: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate an application-values object; return a detached JSON copy.
+def canonical_values(values: Mapping[Any, Any]) -> dict[str, Any]:
+    """Return a detached JSON copy of an application-values object.
 
-    Non-string keys are rejected first (JSON object keys must already
-    be strings), *before* any coercion can quietly rename them. Rich
-    app values are then coerced exactly the way the old
-    ``model_dump_json`` path coerced them (``date``/``datetime``,
-    ``Decimal``, ``UUID``, tuples, sets, and bytes become their JSON
-    forms via ``pydantic_core.to_jsonable_python``; common Shiny
-    values like ``input.date()`` and ``input.date_range()`` keep
-    saving). Unknown objects are still refused loudly, and
-    non-finite floats are rejected after normalization
-    (``allow_nan=False``) rather than silently coerced to ``null``;
-    the JSON round trip detaches the result from the callback's
+    Values are normalized by ``pydantic_core.to_jsonable_python``, then
+    serialized and re-parsed with ``allow_nan=False``. Rich app values
+    keep their existing encoding: ``date``/``datetime``, ``Decimal``,
+    ``UUID``, tuples, sets, and bytes become their JSON forms, so common
+    Shiny values like ``input.date()`` and ``input.date_range()`` keep
+    saving.
+
+    Mapping keys are normalized by the serializer, with no separate key
+    check and no Python-key preservation. For example, ``1`` becomes
+    ``"1"``, ``True`` becomes ``"true"``, ``None`` becomes ``"None"``,
+    and nested keys follow the same rule. Keys that collide after
+    normalization are the author's responsibility; the later key in
+    dictionary order wins and no collision is reported.
+
+    Unknown objects are still refused loudly, and non-finite floats are
+    rejected after normalization rather than silently coerced to
+    ``null``. The JSON round trip detaches the result from the callback's
     dictionary.
     """
-    _validate_mapping_keys(values, what="app state values")
     normalized = to_jsonable_python(values)
     return cast(
         dict[str, Any],
@@ -266,8 +268,6 @@ def resolve_path_values(
 def canonical_turns(
     turns: Sequence[Mapping[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    for turn in turns:
-        _validate_mapping_keys(turn)
     serialized = [
         json.loads(json.dumps(turn, allow_nan=False, separators=(",", ":")))
         for turn in turns
@@ -510,8 +510,8 @@ def preflight_state(
     to unavailable model context instead of failing preflight.
     ``shinychat:values`` is likewise a known builtin key: it is recognized
     and validated even though it owns no restore/rewind hook (application
-    values are delivered to ``on_restore``/``on_navigate`` callbacks, not
-    applied to the model client).
+    values are delivered to ``on_restore`` callbacks, not applied to the
+    model client).
     """
     if record.active_leaf is None:
         raise ValueError("Exchange-tree record has no active leaf.")

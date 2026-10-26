@@ -88,11 +88,12 @@ describe("ChatApp integration: full message flow", () => {
       fireEvent.keyDown(editorEl, { code: "Enter", key: "Enter" })
     })
 
-    // Upload is not enabled here, so the wire shape is a bare string.
-    expect(transport.sendInput).toHaveBeenCalledWith(
-      "test-input",
-      "Hello from user",
-    )
+    // Correlation is sent even without the upload affordance.
+    expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+      text: "Hello from user",
+      attachments: [],
+      client_message_id: expect.any(String),
+    })
   })
 
   it("streaming chunks render assistant message", async () => {
@@ -630,6 +631,7 @@ describe("ChatApp integration: editable messages gated by history state", () => 
 
     expect(transport.sendInput).toHaveBeenCalledTimes(1)
     expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+      client_message_id: expect.any(String),
       text: "replacement",
       attachments: replacementAttachments,
     })
@@ -803,6 +805,7 @@ describe("ChatApp integration: editable messages gated by history state", () => 
 
     expect(transport.sendInput).toHaveBeenCalledTimes(1)
     expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+      client_message_id: expect.any(String),
       text: "replacement",
       attachments: replacementAttachments,
     })
@@ -1002,10 +1005,11 @@ describe("ChatApp integration: editable messages gated by history state", () => 
           ".shiny-chat-composer .shiny-chat-btn-send",
         ) as HTMLElement,
       )
-      expect(transport.sendInput).toHaveBeenCalledWith(
-        "test-input",
-        "ordinary input",
-      )
+      expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+        text: "ordinary input",
+        attachments: [],
+        client_message_id: expect.any(String),
+      })
 
       const targetUser = screen
         .getByText("legacy target")

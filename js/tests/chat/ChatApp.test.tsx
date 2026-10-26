@@ -289,11 +289,12 @@ describe("Issue #4: single transport subscription", () => {
     })
 
     // transport.sendInput should have been called via the container ref.
-    // Upload is not enabled here, so the wire shape is a bare string.
-    expect(transport.sendInput).toHaveBeenCalledWith(
-      "test-input",
-      "submitted text",
-    )
+    // Correlation is sent even without the upload affordance.
+    expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+      text: "submitted text",
+      attachments: [],
+      client_message_id: expect.any(String),
+    })
 
     // After submit, the old value should be restored
     expect(editor.textContent).toBe("existing text")

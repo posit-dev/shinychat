@@ -72,7 +72,21 @@ class ConversationStore(ABC):
         partition: ConversationPartition,
         record: ConversationRecordV1 | ConversationRecordV2,
     ) -> None:
-        """Upsert. Rename = mutate record.title and put()."""
+        """Upsert. Rename = mutate record.title and put().
+
+        The controller and recorder write ``ConversationRecordV2`` records.
+        A store may also receive a ``ConversationRecordV1`` record; do not
+        assume one version. Check the runtime type with
+        ``isinstance(record, ConversationRecordV2)``. ``ConversationRecord``
+        is the validation and construction class, not the type of every
+        record a store receives.
+
+        Stores that interpret record internals must read the v2 fields
+        (``active_leaf`` and exchange ``nodes``) rather than the v1 fields
+        (``current_leaf``, node ``turns``/``ui``). A store that only
+        serializes whole records should be checked with a v2 round trip
+        (``put`` then ``get``) rather than assumed to work unchanged.
+        """
 
     @abstractmethod
     async def delete(

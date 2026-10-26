@@ -195,12 +195,15 @@ class ChatClient:
 
     async def new_chat(self, *, greeting: bool = False) -> None:
         """
-        Save the current conversation and start a new one.
+        Start a new conversation, preserving the current saved history.
 
         This method is available only when conversation history is enabled.
-        It saves the current record, clears the client turns and rendered
-        messages, resets the active conversation ID, and updates the history
-        drawer.
+        It captures the latest model context, clears the client turns and
+        rendered messages, resets the active conversation ID, and updates
+        the history drawer. If model capture fails, it warns the developer,
+        keeps the already-saved conversation, and proceeds with the reset.
+        Storage and reset errors, cancellation, and fatal errors still
+        propagate.
 
         Parameters
         ----------

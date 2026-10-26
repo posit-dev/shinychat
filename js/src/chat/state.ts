@@ -1,5 +1,6 @@
 import type {
   ContentType,
+  ReadOnlyReason,
   ChatAction,
   ConversationMeta,
   MessagePayload,
@@ -145,14 +146,15 @@ export interface ChatHistoryState {
   conversations: ConversationMeta[]
   activeId: string | null
   /**
-   * True when the active conversation's saved model context could not be
-   * loaded: the transcript is viewable but not continuable. Distinct from
+   * True when the active conversation could not be fully restored:
+   * the transcript is viewable but not continuable. Distinct from
    * `inputDisabled` (transient streaming/transition state) — streaming and
    * clear actions never touch it; only `history_update` sets it. This is
    * a deliberate server-metadata mirror, like enabled/activeId/conversations;
    * rendering and same-tick guards use HistoryStore's synchronous snapshot.
    */
   readOnly: boolean
+  readOnlyReason?: ReadOnlyReason
 }
 
 export interface ChatDrawerState {
@@ -205,6 +207,7 @@ export type UIAction =
   | {
       type: "INPUT_SENT"
       content: string
+      id?: string
       role: "user"
       /** When false, append the user message only — no loading placeholder, no input disable. Defaults to true. */
       awaitResponse?: boolean
@@ -694,7 +697,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "INPUT_SENT": {
       const userMsg: ChatMessageData = {
-        id: uuid(),
+        id: action.id ?? uuid(),
         role: "user",
         content: action.content,
         streaming: false,
@@ -1204,6 +1207,13 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         inputPlaceholder: action.placeholder ?? state.inputPlaceholder,
       }
 
+    case "remove_message": {
+      return {
+        ...state,
+        messages: state.messages.filter((m) => m.id !== action.id),
+      }
+    }
+
     case "remove_loading": {
       const messages = removeLoadingMessage(state.messages)
       if (state.streamingMessage) {
@@ -1396,6 +1406,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           // Absent means writable, so messages from older servers (which
           // never send the flag) leave the conversation continuable.
           readOnly: action.active_read_only ?? false,
+          readOnlyReason: action.active_read_only
+            ? action.active_read_only_reason
+            : undefined,
         },
       }
     }

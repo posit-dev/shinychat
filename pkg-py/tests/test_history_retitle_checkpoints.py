@@ -64,6 +64,10 @@ async def test_delayed_title_preserves_settled_checkpoints(
     controller.title_fn = title
     controller.title_enabled = True
     controller.adapter.set_turns_json([])
+    # Root values require an explicit save; accepting input captures only
+    # the new exchange's app state. Establish the inherited starting frame.
+    recorder.record = await recorder._new_record(title="Starting frame")
+    assert await recorder.save_current()
     transcript = _v2_transcript(controller)
     sdk: list[Any] = []
     exchange_ids: list[str] = []

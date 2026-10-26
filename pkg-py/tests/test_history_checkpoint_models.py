@@ -5,6 +5,7 @@ from typing import Any, cast
 import pytest
 from pydantic import JsonValue
 from shinychat._history_client import TurnsAdapter
+from shinychat._history_recorder import _ModelCaptureError
 from shinychat._history_types import (
     SYSTEM_PROMPT_STATE_KEY,
     TURNS_STATE_KEY,
@@ -97,7 +98,7 @@ async def test_terminal_capture_failure_does_not_publish_display_without_model(
         raise ValueError("model capture unavailable")
 
     monkeypatch.setattr(writer.adapter, "get_turns_json", unavailable)
-    with pytest.raises(ValueError, match="model capture unavailable"):
+    with pytest.raises(_ModelCaptureError, match="model capture unavailable"):
         await writer._exchange_recorder.stream_finished("stream", status, None)
 
     saved = await backend.reader.get(part(), record.id)
@@ -453,14 +454,13 @@ async def test_live_partial_response_then_new_input_preserves_untrusted_legacy_s
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    ("unsupported", "error"),
-    [(float("nan"), ValueError), (object(), TypeError)],
+    "unsupported",
+    [float("nan"), object()],
     ids=["nonfinite", "non-json"],
 )
 async def test_unsupported_retained_client_turn_blocks_new_input_admission(
     backend: _Backend,
     unsupported: Any,
-    error: type[Exception],
 ) -> None:
     writer, _ = _make_controller(store=backend.store, adapter=_prompt_adapter())
     transcript, old_id = await _open_stream(writer)
@@ -476,7 +476,7 @@ async def test_unsupported_retained_client_turn_blocks_new_input_admission(
     )
     before = (await _saved(backend, conv_id)).model_dump_json()
 
-    with pytest.raises(error):
+    with pytest.raises(_ModelCaptureError):
         await transcript.record_accepted_input_and_notify(
             _stored_message("user", "second")
         )
@@ -626,10 +626,14 @@ async def test_independent_response_preserves_previous_checkpoint_and_isolates_r
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("failure", ["capture", "store"])
+@pytest.mark.parametrize(
+    ("failure", "error"),
+    [("capture", _ModelCaptureError), ("store", ValueError)],
+)
 async def test_complete_append_failure_keeps_live_display_and_safe_saved_checkpoint(
     backend: _Backend,
     failure: str,
+    error: type[Exception],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from test_history_stream_persistence import _open_input
@@ -652,7 +656,7 @@ async def test_complete_append_failure_keeps_live_display_and_safe_saved_checkpo
         monkeypatch.setattr(writer.adapter, "get_turns_json", unavailable)
     else:
         backend.control.failures.append(ValueError("store failed"))
-    with pytest.raises(ValueError, match=f"{failure} failed"):
+    with pytest.raises(error, match=f"{failure} failed"):
         await _complete_append(writer, transcript, exchange_id, "live")
     assert [
         m.as_stored_message().content

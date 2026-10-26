@@ -30,7 +30,7 @@ from typing import (
 from pydantic import JsonValue
 
 from ._chat_transcript import TranscriptEntry
-from ._chat_types import StoredMessage
+from ._chat_types import ReadOnlyReason, StoredMessage
 from ._history_client import TurnsAdapter
 from ._history_plan import (
     CaptureContext,
@@ -61,6 +61,10 @@ from ._history_types import (
 
 if TYPE_CHECKING:
     from ._chat import Chat
+
+
+class _ModelCaptureError(RuntimeError):
+    """Built-in model-state capture failed without committing state."""
 
 
 class RecorderHost(Protocol):
@@ -108,6 +112,7 @@ class _ExchangeRecorder:
         # close/switch/New cannot replace the saved context with cleared
         # live turns. An interrupted viewer also cannot write its source.
         self._read_only: bool = False
+        self._read_only_reason: ReadOnlyReason | None = None
         if (
             isinstance(host.adapter, TurnsAdapter)
             and host.adapter.has_system_prompt()
@@ -126,7 +131,7 @@ class _ExchangeRecorder:
         self._register_rewind_hook(TURNS_STATE_KEY, self._restore_turns)
         # Application values capture through the same state lifecycle, even
         # without a model client; they own no restore/rewind hook because
-        # they are delivered to on_restore/on_navigate callbacks rather
+        # they are delivered to on_restore callbacks rather
         # than applied to the client.
         self._register_capture_hook(VALUES_STATE_KEY, self._capture_values)
 
@@ -141,6 +146,11 @@ class _ExchangeRecorder:
         turns.
         """
         return self._read_only
+
+    @property
+    def read_only_reason(self) -> ReadOnlyReason | None:
+        """Why the loaded record is view-only; ``None`` while writable."""
+        return self._read_only_reason
 
     @property
     def restore_hooks(self) -> Mapping[str, RestoreHook]:
@@ -208,26 +218,24 @@ class _ExchangeRecorder:
 
         The callbacks receive a fresh dictionary and run inside
         ``reactive.isolate()`` so callbacks can read reactive state without
-        taking dependencies. Response-associated values are captured only at
-        post-flush settlement, after the stream task can expose its result.
-        The result is validated as JSON (non-string keys and non-finite floats are
-        refused, never coerced) and detached from the callback's object.
+        taking dependencies. The first accepted input captures starting
+        values on the root; later inputs capture on the new exchange.
+        Values also capture at post-flush response settlement and explicit save.
+        Serializer-supported keys become JSON strings; collisions keep the
+        later dictionary entry. Non-finite floats are rejected. The JSON
+        round trip detaches the result from the callback's object.
         Values treat every validated object -- including ``{}`` -- as
         effective, so an empty object records an explicit value rather
         than inheriting.
 
-        Error policy: an *automatic* capture (``strict=False`` -- root
-        close, node close, response settlement)
-        never lets a failing callback or an invalid payload block the
-        move that triggered it. The error is warned to the developer
-        with its details, and the node keeps its previously recorded
-        entry (deep-copied) -- or stays missing, so inheritance answers
-        -- never losing recorded values to a failed capture. An
-        *explicit* capture (``strict=True``, the ``chat.history.save()``
-        path) re-raises, so the caller learns the save did not record.
-        Only ``Exception`` is caught; cancellation and fatal errors
-        propagate in both modes, and failures here never swallow the
-        store/model-state errors of the surrounding flow.
+        Recorder boundaries call this helper with ``strict=True`` so a
+        failure can discard the staged model/app pair. Automatic boundary
+        captures warn and retain the previously recorded state; an explicit
+        ``chat.history.save()`` propagates the error. A direct non-strict
+        call instead warns and returns a detached copy of this node's prior
+        entry, or ``None`` when it has none. Cancellation and fatal errors
+        propagate in both modes; store/model-state errors are not handled
+        here.
         """
         record = self.record if record is None else record
         assert record is not None
@@ -342,8 +350,12 @@ class _ExchangeRecorder:
         )
 
     def _validate_model_state(self) -> None:
-        canonical_turns(self._host.adapter.get_turns_json())
-        self._host.adapter.get_system_prompt()
+        try:
+            canonical_turns(self._host.adapter.get_turns_json())
+            if SYSTEM_PROMPT_STATE_KEY in self._capture_hooks:
+                self._host.adapter.get_system_prompt()
+        except Exception as error:
+            raise _ModelCaptureError(str(error)) from error
 
     def _builtin_capture(self, hook: CaptureHook) -> str | None:
         if not inspect.ismethod(hook) or hook.__self__ is not self:
@@ -415,6 +427,8 @@ class _ExchangeRecorder:
                 else:
                     entry = hook(context)
             except Exception as error:
+                if builtin in (TURNS_STATE_KEY, SYSTEM_PROMPT_STATE_KEY):
+                    raise _ModelCaptureError(str(error)) from error
                 if name != VALUES_STATE_KEY or strict:
                     raise
                 warnings.warn(
@@ -458,12 +472,21 @@ class _ExchangeRecorder:
         *,
         read_only: bool = False,
         source_isolated: bool = False,
+        read_only_reason: ReadOnlyReason = "model_unavailable",
     ) -> None:
         self.record = record
         self._source_isolated = source_isolated
         self._stream_exchanges.clear()
         self._active_id_published_for = None
         self._read_only = read_only
+        self._read_only_reason = read_only_reason if read_only else None
+
+    def mark_read_only(self, reason: ReadOnlyReason) -> None:
+        """Make the installed record view-only after an app restore failure."""
+        assert self.record is not None
+        if not self._read_only:
+            self._read_only = True
+            self._read_only_reason = reason
 
     async def _new_record(self, *, title: str) -> ConversationRecordV2:
         return new_conversation_record_v2(
@@ -496,6 +519,7 @@ class _ExchangeRecorder:
         self._active_id_published_for = None
         self._read_only = False
         self._source_isolated = False
+        self._read_only_reason = None
 
     @contextmanager
     def suspend_capture(self):
@@ -567,6 +591,7 @@ class _ExchangeRecorder:
                 self._active_id_published_for = record
 
     def _capture_app_state(self, *, strict: bool = False) -> bool:
+        """Capture the active exchange's values without partially changing state."""
         assert self.record is not None
         if self._read_only:
             return False
@@ -766,9 +791,14 @@ class _ExchangeRecorder:
             self.record.finish_exchange(root_id, "ok", None)
 
     async def accepted_input(
-        self, exchange_id: str, message: StoredMessage
+        self,
+        exchange_id: str,
+        message: StoredMessage,
+        commit: Callable[[], None],
     ) -> None:
+        """Commit both input owners after model capture, before persistence."""
         if self._host.partition is None or self._read_only:
+            commit()
             return
 
         async with self.lock:
@@ -782,31 +812,39 @@ class _ExchangeRecorder:
             )
             active_leaf = self.record.active_leaf
             assert active_leaf is not None
-            if (
+            capture_start = (
                 is_first_input
                 and self.record.nodes[self.record.root_id].is_checkpoint
                 and self.record.root_id not in self._stream_exchanges.values()
-            ):
-                # Failed recapture keeps the previously valid starting base,
-                # not a new model frame under stale app values.
-                await self.capture_state_locked(
-                    self.record.root_id, "root_close", strict=False
-                )
-                self._close_root_if_inactive()
-            elif not self.record.nodes[active_leaf].is_checkpoint:
-                # Admission still validates the actual client, but an
-                # unresolved predecessor must not become a model checkpoint.
-                self._validate_model_state()
-            else:
-                await self.capture_state_locked(
-                    active_leaf, "node_close", model_only=True
-                )
+            )
+            try:
+                if capture_start:
+                    # First input defines the starting position. Capture model
+                    # and app state together, with one on_save invocation.
+                    await self.capture_state_locked(
+                        self.record.root_id, "root_close", strict=False
+                    )
+                    self._close_root_if_inactive()
+                elif not self.record.nodes[active_leaf].is_checkpoint:
+                    # Validate admission without promoting an unresolved
+                    # predecessor into a model checkpoint.
+                    self._validate_model_state()
+                else:
+                    await self.capture_state_locked(
+                        active_leaf, "node_close", model_only=True
+                    )
+            except BaseException:
+                if created:
+                    self.record = None
+                raise
             for node_id in self.record.path_node_ids():
                 node = self.record.nodes[node_id]
                 if node.checkpoint_state == "candidate":
                     node.checkpoint = "invalid"
             self.record.open_exchange(exchange_id, message)
-            self._capture_app_state()
+            if not capture_start:
+                self._capture_app_state()
+            commit()
             await self.persist_record_locked()
             if created:
                 await self._host.send_history_update()

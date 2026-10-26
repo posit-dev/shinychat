@@ -21,6 +21,7 @@ from contextlib import (
 )
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -35,6 +36,7 @@ from shinychat._attachments import Attachment
 from shinychat._chat_transcript import ChatTranscript, TranscriptEntry
 from shinychat._chat_types import (
     ChatMessage,
+    ReadOnlyReason,
     StoredMessage,
     StoredSegment,
     StructuredBlock,
@@ -51,6 +53,7 @@ from shinychat._history_plan import (
     canonical_turns,
     resolve_path_values,
 )
+from shinychat._history_recorder import _ModelCaptureError
 from shinychat._history_store import (
     ConversationPartition,
     ConversationStore,
@@ -65,6 +68,7 @@ from shinychat._history_types import (
     HISTORY_ERROR_STREAM_TERMINAL,
     MAX_SCHEMA_VERSION,
     STORED_UI_VERSION,
+    TURNS_STATE_KEY,
     VALUES_STATE_KEY,
     CapturedMessage,
     ConversationNode,
@@ -514,17 +518,27 @@ def _stored_message(role: str, content: str) -> StoredMessage:
 
 
 @pytest.mark.parametrize(
-    "turn",
+    ("turn", "expected"),
     [
-        {2: "two"},
-        {"outer": [{"inner": {3: "three"}}]},
+        ({2: "two"}, {"2": "two"}),
+        (
+            {"outer": [{"inner": {3: "three"}}]},
+            {"outer": [{"inner": {"3": "three"}}]},
+        ),
+        (
+            {"values": {True: "yes", None: "null", 2.5: "float"}},
+            {"values": {"true": "yes", "null": "null", "2.5": "float"}},
+        ),
+        ({"values": {2: "two", "2": "string"}}, {"values": {"2": "string"}}),
+        ({"values": {"2": "string", 2: "two"}}, {"values": {"2": "two"}}),
     ],
 )
-def test_v2_recorder_rejects_non_string_mapping_keys_recursively(
-    turn: dict[Any, Any],
+def test_v2_recorder_normalizes_serializer_supported_keys(
+    turn: dict[Any, Any], expected: dict[str, Any]
 ):
-    with pytest.raises(ValueError, match="Non-string mapping key"):
-        canonical_turns([turn])
+    normalized, fingerprints = canonical_turns([turn])
+    assert normalized == [expected]
+    assert fingerprints == canonical_turns([expected])[1]
 
 
 def test_v2_recorder_string_key_reordering_keeps_a_stable_prefix():
@@ -562,7 +576,7 @@ async def test_v2_recorder_rejects_nonfinite_turn_values_before_file_store(
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
 
-    with pytest.raises(ValueError, match="Out of range float values"):
+    with pytest.raises(_ModelCaptureError, match="Out of range float values"):
         await transcript.record_accepted_input_and_notify(
             _stored_message("user", "one")
         )
@@ -572,13 +586,57 @@ async def test_v2_recorder_rejects_nonfinite_turn_values_before_file_store(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "turn",
+    ("turn", "expected"),
     [
-        {2: "two"},
-        {"outer": [{"inner": {3: "three"}}]},
+        ({2: "two"}, {"2": "two"}),
+        (
+            {"outer": [{"inner": {3: "three"}}]},
+            {"outer": [{"inner": {"3": "three"}}]},
+        ),
+        (
+            {"values": {True: "yes", None: "null", 2.5: "float"}},
+            {"values": {"true": "yes", "null": "null", "2.5": "float"}},
+        ),
+        ({"values": {2: "two", "2": "string"}}, {"values": {"2": "string"}}),
     ],
 )
-async def test_v2_recorder_rejects_non_string_keys_before_file_store(
+async def test_v2_recorder_normalizes_dict_keys_through_file_store(
+    tmp_path: Path, turn: dict[Any, Any], expected: dict[str, Any]
+):
+    from shinychat._history_store import FileConversationStore
+
+    adapter = _FakeAdapter()
+    adapter.turns = [turn]
+    store = FileConversationStore(tmp_path)
+    controller, _ = _make_controller(store=store, adapter=adapter)
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
+
+    record = recorder.record
+    assert record is not None
+    state = record.nodes[record.root_id].state["shinychat:turns"]
+    assert state.data == [expected]
+    reloaded = await FileConversationStore(tmp_path).get(part(), record.id)
+    assert reloaded == record
+    assert isinstance(reloaded, ConversationRecordV2)
+    assert reloaded.nodes[record.root_id].state["shinychat:turns"].data == [
+        expected
+    ]
+    assert adapter.turns == [turn]
+    adapter.set_turns_json(cast(list[Any], state.data))
+    assert adapter.get_turns_json() == [expected]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "turn", [{"value": object()}, {(1, 2): "unsupported key"}]
+)
+async def test_v2_recorder_rejects_unsupported_dict_payload_before_capture_commit(
     tmp_path: Path, turn: dict[Any, Any]
 ):
     from shinychat._history_store import FileConversationStore
@@ -586,20 +644,18 @@ async def test_v2_recorder_rejects_non_string_keys_before_file_store(
     adapter = _FakeAdapter()
     adapter.turns = [turn]
     store = FileConversationStore(tmp_path)
-    controller, _ = _make_controller(
-        store=store,
-        adapter=adapter,
-    )
+    controller, _ = _make_controller(store=store, adapter=adapter)
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
 
-    with pytest.raises(ValueError, match="Non-string mapping key"):
+    with pytest.raises(_ModelCaptureError):
         await transcript.record_accepted_input_and_notify(
             _stored_message("user", "one")
         )
 
     assert await store.list(part()) == []
+    assert recorder.record is None
 
 
 @pytest.mark.anyio
@@ -1349,8 +1405,10 @@ async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
     await controller.on_response()
     source = await store.get(part(), source_id)
     assert isinstance(source, ConversationRecordV2)
-    # Per-exchange sparse recording: the root recorded the live values at
-    # root close; the leaf exchange inherits them unchanged.
+    # The first accepted input captures the paired model/app starting state
+    # on the root once (strict=False automatic policy); the new exchange
+    # inherits those values, and response settlement re-captures the same
+    # values on that exchange without recording a redundant entry.
     assert source.nodes[source.root_id].state[VALUES_STATE_KEY].data == {
         "value": "response"
     }
@@ -1382,8 +1440,9 @@ async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
     await controller.switch_to(target.id)
     source = await store.get(part(), source_id)
     assert isinstance(source, ConversationRecordV2)
-    # Leaving is a model-only capture: the app-values callback does not run,
-    # so the exchange keeps its last explicitly saved value.
+    # Switching never captures the outgoing conversation: leaving is a
+    # model-only boundary, so its saved values stay as the last explicit
+    # checkpoint left them.
     assert source.nodes[exchange_id].state[VALUES_STATE_KEY].data == {
         "value": "save"
     }
@@ -1393,21 +1452,18 @@ async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
     await controller.new_chat()
     stored_target = await store.get(part(), target.id)
     assert isinstance(stored_target, ConversationRecordV2)
-    # Leaving a conversation (New chat) is model-only: it does not run the
-    # app-values callback, so the target's stored values are unchanged.
+    # New chat never captures the outgoing target either: leaving is
+    # model-only, the target's stored values are unchanged, and nothing
+    # restores.
     assert stored_target.nodes[stored_target.root_id].state[
         VALUES_STATE_KEY
     ].data == {"restored": "target"}
-    # The callbacks run only at explicit/boundary saves and terminal or
-    # settlement captures; leaving a conversation does not add an entry.
-    # Root close, accepted input, and post-flush response settlement capture
-    # values. The stream terminal is model-only.
-    assert saved_values == [
-        "response",
-        "response",
-        "response",
-        "save",
-    ]
+    assert restored_values == [{"restored": "target"}]
+    # The callbacks run only at approved checkpoints -- the first input's
+    # paired root capture, post-flush response settlement, and the explicit
+    # save; the stream terminal and the conversation leaves (switch, New
+    # chat) are model-only, and the root captures exactly once.
+    assert saved_values == ["response", "response", "save"]
 
 
 def _v2_record_contents(record: ConversationRecordV2) -> list[str]:
@@ -1455,16 +1511,17 @@ async def test_v2_new_chat_closes_old_record_and_starts_fresh():
         "first question",
         "first answer",
     ]
-    # The root always records its values ({} without `on_save`
-    # callbacks); descendants inherit and record nothing.
+    # The first accepted input captures the paired starting state on the
+    # root even without `on_save` callbacks -- an empty values object is an
+    # effective starting state -- while the exchanges stay values-free.
     assert (
         stored_closed.nodes[stored_closed.root_id].state[VALUES_STATE_KEY].data
         == {}
     )
     assert all(
         VALUES_STATE_KEY not in node.state
-        for nid, node in stored_closed.nodes.items()
-        if nid != stored_closed.root_id
+        for node_id, node in stored_closed.nodes.items()
+        if node_id != stored_closed.root_id
     )
     # The in-memory store aliases the record it was handed, so snapshot
     # the closed record before the fresh conversation's activity.
@@ -1967,7 +2024,7 @@ async def test_v2_restore_materializes_turn_path_once_and_resets_baseline():
     assert recorder.record is record
 
     adapter.turns.append({"role": "assistant", "content": "next delta"})
-    await recorder.accepted_input("n_0004", _stored_message("user", "next"))
+    await recorder.accepted_input("n_0004", _stored_message("user", "next"), lambda: None)
     captured = record.nodes[leaf].state["shinychat:turns"]
     assert captured.mode == "snapshot"
     assert captured.data == adapter.turns
@@ -2306,10 +2363,10 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore(
     original_accepted_input = recorder.accepted_input
 
     async def record_accepted_input(
-        exchange_id: str, message: StoredMessage
+        exchange_id: str, message: StoredMessage, commit: Callable[[], None]
     ) -> None:
         recorder_inputs.append(message.content)
-        await original_accepted_input(exchange_id, message)
+        await original_accepted_input(exchange_id, message, commit)
 
     chat._transcript.set_capture_callbacks(
         on_accepted_input=record_accepted_input,
@@ -2365,13 +2422,6 @@ async def test_v2_switch_rejects_real_chat_input_during_save_and_restore(
 
         chat._as_stored_message = unexpected_conversion  # type: ignore[method-assign]
         try:
-            with pytest.raises(
-                RuntimeError,
-                match="Cannot accept user input while switching conversations",
-            ):
-                chat._record_accepted_user_input(
-                    ChatMessage(content=f"{content} sync", role="user")
-                )
             with pytest.raises(
                 RuntimeError,
                 match="Cannot accept user input while switching conversations",
@@ -2623,7 +2673,7 @@ async def test_v2_same_flush_failed_capture_and_history_selection_restores_targe
         target_before = target.model_dump(mode="json")
 
         async def fail_capture(
-            exchange_id: str, message: StoredMessage
+            exchange_id: str, message: StoredMessage, commit: Callable[[], None]
         ) -> None:
             del exchange_id
             del message
@@ -3135,7 +3185,7 @@ async def test_generic_destructive_admission_does_not_block_real_chat_input(
 
 
 @pytest.mark.anyio
-async def test_v2_switch_saves_source_before_target_preflight_failure() -> None:
+async def test_v2_switch_persists_source_without_capturing_values_before_preflight_failure() -> None:
     class SnapshotStore(InMemoryConversationStore):
         async def get(
             self, partition: ConversationPartition, conv_id: str
@@ -3201,6 +3251,9 @@ async def test_v2_switch_saves_source_before_target_preflight_failure() -> None:
     assert isinstance(stored_source, ConversationRecordV2)
     leaf = stored_source.active_leaf
     assert leaf is not None
+    # The switch persisted the source record without capturing anything
+    # itself: the explicit save above is the only values checkpoint, so the
+    # leaf keeps exactly the values that save recorded.
     assert resolve_path_values(stored_source, leaf) == {
         "current": "latest value"
     }
@@ -3670,7 +3723,7 @@ async def test_v2_read_only_record_suppresses_message_and_stream_captures() -> (
     entry = TranscriptEntry(
         message=_stored_message("assistant", "unsolicited"), icon=None
     )
-    await recorder.accepted_input("n_forged", _stored_message("user", "forged"))
+    await recorder.accepted_input("n_forged", _stored_message("user", "forged"), lambda: None)
     await recorder.message_committed("n_0001", entry)
     await recorder.stream_started("s1", "n_0001", entry)
     await recorder.stream_updated("s1", entry)
@@ -3911,11 +3964,8 @@ async def test_v2_resubmit_rejects_missing_partition_before_mutation():
 @pytest.mark.parametrize(
     ("data", "match"),
     [
-        (
-            ["not a turn"],
-            "Turn-state entries must contain a list of JSON objects",
-        ),
-        ([{1: "not a JSON object"}], "Non-string mapping key"),
+        (["not a turn"], "Turn-state entries must contain a list of JSON objects"),
+        ([{(1, 2): "unsupported key"}], "invalid JSON data"),
     ],
 )
 async def test_v2_resubmit_rejects_malformed_target_turn_data_before_mutation(
@@ -4330,7 +4380,6 @@ async def test_v2_restore_hook_failure_names_entry_and_clears_to_fresh_draft():
         "turns",
         "hook",
         "active-id",
-        "app-callback",
         "metadata",
     ],
 )
@@ -4395,12 +4444,6 @@ async def test_v2_restore_failure_becomes_fresh_draft(
                 raise expected
 
         controller.on_active_id_change = fail_active_id
-    elif failure == "app-callback":
-
-        def fail_app_callback(_values: dict[str, Any]) -> None:
-            raise expected
-
-        controller._restore_callbacks.append(fail_app_callback)
     elif failure == "metadata":
         controller.send_history_update = AsyncMock(side_effect=expected)  # type: ignore[method-assign]
 
@@ -4975,10 +5018,14 @@ async def test_v2_restore_success_order_and_no_failure_notification():
         *,
         read_only: bool = False,
         source_isolated: bool = False,
+        read_only_reason: ReadOnlyReason = "model_unavailable",
     ) -> None:
         events.append("install")
         original_install(
-            record, read_only=read_only, source_isolated=source_isolated
+            record,
+            read_only=read_only,
+            source_isolated=source_isolated,
+            read_only_reason=read_only_reason,
         )
 
     async def active_id(_id: str | None) -> None:
@@ -7109,8 +7156,9 @@ async def test_v2_projects_retry_metadata_for_restored_interrupted_exchanges(
         ("legacy \n unsafe", HISTORY_ERROR_GENERIC),
     ],
 )
+@pytest.mark.parametrize("sanitize_errors", [False, True])
 async def test_v2_error_catalogue_is_bounded_at_write_and_projection(
-    message: str, expected: str
+    message: str, expected: str, sanitize_errors: bool
 ) -> None:
     controller, chat, _adapter, _store, first, target = (
         _make_v2_resubmit_controller()
@@ -7124,7 +7172,13 @@ async def test_v2_error_catalogue_is_bounded_at_write_and_projection(
     record.nodes[target].status = "error"
     record.nodes[target].checkpoint = "valid"
     record.finish_exchange(target, "error", message)
+    # finish_exchange must not strip the valid checkpoint from a completed
+    # (failed) exchange: the position stays selectable metadata.
     record.nodes[target].checkpoint = "valid"
+    cast(Any, chat)._session = SimpleNamespace(
+        app=SimpleNamespace(sanitize_errors=sanitize_errors)
+    )
+    cast(Any, chat).on_error = "sanitize" if sanitize_errors else "actual"
 
     await controller._send_exchange_metadata()
 
@@ -7210,9 +7264,10 @@ async def test_v2_error_detail_is_absent_for_inputless_error_node() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_error_projection_does_not_mutate_failed_node_with_partial_display() -> (
-    None
-):
+@pytest.mark.parametrize("sanitize_errors", [False, True])
+async def test_v2_error_projection_does_not_mutate_failed_node_with_partial_display(
+    sanitize_errors: bool,
+) -> None:
     controller, chat, _adapter, _store, first, target = (
         _make_v2_resubmit_controller()
     )
@@ -7232,6 +7287,10 @@ async def test_v2_error_projection_does_not_mutate_failed_node_with_partial_disp
         )
     )
     before = record.nodes[target].model_dump_json()
+    cast(Any, chat)._session = SimpleNamespace(
+        app=SimpleNamespace(sanitize_errors=sanitize_errors)
+    )
+    cast(Any, chat).on_error = "sanitize" if sanitize_errors else "actual"
 
     await controller._send_exchange_metadata()
 
@@ -7577,7 +7636,7 @@ async def test_v2_recorder_captures_json_only_model_turns():
 
 
 @pytest.mark.anyio
-async def test_v2_recorder_rejects_model_key_collision_before_file_store(
+async def test_v2_recorder_accepts_model_key_collision_into_file_store(
     tmp_path: Path,
 ):
     from shinychat._history_store import FileConversationStore
@@ -7595,25 +7654,42 @@ async def test_v2_recorder_rejects_model_key_collision_before_file_store(
         def set_turns(self, turns: list[ModelTurn]) -> None:
             self.turns = list(turns)
 
+    client = ModelClient()
     store = FileConversationStore(tmp_path)
     controller, _ = _make_controller(
         store=store,
-        adapter=TurnsAdapter(ModelClient()),  # type: ignore[arg-type]
+        adapter=TurnsAdapter(client),  # type: ignore[arg-type]
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
 
-    with pytest.raises(ValueError, match="Non-string mapping key"):
-        await transcript.record_accepted_input_and_notify(
-            _stored_message("user", "one")
-        )
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
 
-    assert await store.list(part()) == []
+    # The serializer's own key conversion owns the stored shape: the
+    # colliding 2 / "2" keys collapse to a single "2" key keeping the
+    # serializer's last-wins result.
+    record = recorder.record
+    assert record is not None
+    state = record.nodes[record.root_id].state["shinychat:turns"]
+    assert state.kind == "turns"
+    assert state.data == [{"values": {"2": "string"}}]
+
+    reloaded = await FileConversationStore(tmp_path).get(part(), record.id)
+    assert reloaded == record
+    assert isinstance(reloaded, ConversationRecordV2)
+    assert reloaded.nodes[record.root_id].state["shinychat:turns"].data == [
+        {"values": {"2": "string"}}
+    ]
+
+    # Capture only reads the client; the source turn keeps both keys.
+    assert client.turns[0].values == {2: "two", "2": "string"}
 
 
 @pytest.mark.anyio
-async def test_v2_recorder_rejects_nested_deque_key_before_file_store(
+async def test_v2_recorder_accepts_nested_deque_key_into_file_store(
     tmp_path: Path,
 ):
     from shinychat._history_store import FileConversationStore
@@ -7631,42 +7707,56 @@ async def test_v2_recorder_rejects_nested_deque_key_before_file_store(
         def set_turns(self, turns: list[ModelTurn]) -> None:
             self.turns = list(turns)
 
+    client = ModelClient()
     store = FileConversationStore(tmp_path)
     controller, _ = _make_controller(
         store=store,
-        adapter=TurnsAdapter(ModelClient()),  # type: ignore[arg-type]
+        adapter=TurnsAdapter(client),  # type: ignore[arg-type]
     )
     recorder = controller._exchange_recorder
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
 
-    with pytest.raises(ValueError, match="Non-string mapping key"):
-        await transcript.record_accepted_input_and_notify(
-            _stored_message("user", "one")
-        )
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
 
-    assert await store.list(part()) == []
+    # The serializer converts the deque to a list and normalizes the
+    # nested 2 / "2" key collision to a single "2" key.
+    record = recorder.record
+    assert record is not None
+    state = record.nodes[record.root_id].state["shinychat:turns"]
+    assert state.kind == "turns"
+    assert state.data == [{"values": [{"2": "string"}]}]
+
+    reloaded = await FileConversationStore(tmp_path).get(part(), record.id)
+    assert reloaded == record
+    assert isinstance(reloaded, ConversationRecordV2)
+    assert reloaded.nodes[record.root_id].state["shinychat:turns"].data == [
+        {"values": [{"2": "string"}]}
+    ]
+
+    # Capture only reads the client; the source turn keeps its deque and
+    # both colliding keys.
+    assert isinstance(client.turns[0].values, deque)
+    assert client.turns[0].values == deque([{2: "two", "2": "string"}])
 
 
 @pytest.mark.anyio
-async def test_v2_recorder_rejects_chatlas_key_collision_before_file_store(
+async def test_v2_recorder_accepts_chatlas_tool_extra_key_collision_into_file_store(
     tmp_path: Path,
 ):
     chatlas = pytest.importorskip("chatlas")
     from chatlas import ContentToolResult
     from shinychat._history_store import FileConversationStore
 
+    extra = {"nested": {2: "two", "2": "string"}}
     client = chatlas.ChatOpenAI(api_key="fake")
     client.set_turns(
         [
             chatlas.Turn(
                 role="user",
-                contents=[
-                    ContentToolResult(
-                        value="done",
-                        extra={"nested": {2: "two", "2": "string"}},
-                    )
-                ],
+                contents=[ContentToolResult(value="done", extra=extra)],
             )
         ]
     )
@@ -7679,12 +7769,34 @@ async def test_v2_recorder_rejects_chatlas_key_collision_before_file_store(
     assert recorder is not None
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
 
-    with pytest.raises(ValueError, match="Non-string mapping key"):
-        await transcript.record_accepted_input_and_notify(
-            _stored_message("user", "one")
-        )
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "one")
+    )
 
-    assert await store.list(part()) == []
+    # The chatlas tool result's nested extra keys are normalized by the
+    # serializer: the 2 / "2" collision collapses to a single "2" key.
+    record = recorder.record
+    assert record is not None
+    state = record.nodes[record.root_id].state["shinychat:turns"]
+    assert state.kind == "chatlas"
+    turn = cast(list[dict[str, Any]], state.data)[0]
+    tool_result = cast(dict[str, Any], turn["contents"][0])
+    assert tool_result["value"] == "done"
+    assert tool_result["extra"] == {"nested": {"2": "string"}}
+
+    reloaded = await FileConversationStore(tmp_path).get(part(), record.id)
+    assert reloaded == record
+    assert isinstance(reloaded, ConversationRecordV2)
+    reloaded_state = reloaded.nodes[record.root_id].state["shinychat:turns"]
+    reloaded_turn = cast(list[dict[str, Any]], reloaded_state.data)[0]
+    reloaded_result = cast(dict[str, Any], reloaded_turn["contents"][0])
+    assert reloaded_result["extra"] == {"nested": {"2": "string"}}
+
+    # Capture only reads the client; the source turn keeps its original
+    # non-string extra keys.
+    source_result = client.get_turns()[0].contents[0]
+    assert isinstance(source_result, ContentToolResult)
+    assert source_result.extra == extra
 
 
 @pytest.mark.anyio
@@ -7790,7 +7902,13 @@ async def test_v2_recorder_captures_active_node_before_next_input():
     )
     adapter.turns.append({"role": "user", "content": "one"})
     validated: list[bool] = []
-    adapter.get_system_prompt = lambda: validated.append(True)  # type: ignore[attr-defined,method-assign]
+    original_turns_json = adapter.get_turns_json
+
+    def turns_json(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        validated.append(True)
+        return original_turns_json(*args, **kwargs)
+
+    adapter.get_turns_json = turns_json  # type: ignore[method-assign]
 
     await transcript.record_accepted_input_and_notify(
         _stored_message("user", "two")
@@ -8319,7 +8437,7 @@ async def test_stream_recorder_failure_does_not_rollback_sent_transcript(
 
 
 @pytest.mark.anyio
-async def test_accepted_input_persistence_failure_is_open_and_preserves_input():
+async def test_input_persistence_failure_keeps_record_and_transcript_owners_in_agreement():
     class FailingStore(InMemoryConversationStore):
         async def put(
             self, partition: ConversationPartition, record: Any
@@ -8337,11 +8455,17 @@ async def test_accepted_input_persistence_failure_is_open_and_preserves_input():
             _stored_message("user", "accepted but not durable")
         )
 
-    exchange_id = transcript.open_exchange_id
-    assert exchange_id is not None
+    assert transcript.open_exchange_id is not None
     assert transcript.read()[-1].message.content == "accepted but not durable"
     assert isinstance(recorder.record, ConversationRecordV2)
-    assert exchange_id in recorder.record.nodes
+    exchange_id = recorder.record.active_leaf
+    assert exchange_id is not None
+    assert exchange_id == transcript.open_exchange_id
+    assert transcript.read()[-1].exchange_id == exchange_id
+    assert recorder.record.nodes[exchange_id].input is not None
+    assert "accepted but not durable" in str(
+        recorder.record.nodes[exchange_id].input
+    )
     assert await store.list(part()) == []
 
 
@@ -8849,10 +8973,11 @@ async def test_explicit_save_captures_state_without_counting_response():
     assert resolve_path_values(recorder.record, leaf) == {
         "artifact": {"version": 2}
     }
-    # The callback runs at every capture point: root close, the stream
-    # terminal's settlement captures, and this explicit save. The save
-    # itself persisted exactly once.
-    assert len(saved_values) == 4
+    # The callback runs at every capture point: the first input's paired
+    # root capture, response settlement's re-capture, and this explicit
+    # save; the stream terminal is model-only. The save itself persisted
+    # exactly once.
+    assert len(saved_values) == 3
     assert put_count == 1
     assert controller._title_task is None
 
@@ -10201,3 +10326,172 @@ async def test_switch_to_same_active_id_is_noop():
 
     assert recorder.record.model_dump(mode="json") == before
     assert controller._active_id_now() == active_id
+
+
+@pytest.mark.anyio
+async def test_failed_capture_commits_neither_hook_entries_nor_prompt_child_pins():
+    controller, _ = _make_controller()
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    recorder.record = new_conversation_record_v2(id="staged", title="Staged", client_info={})
+    record = recorder.record
+    root = record.nodes[record.root_id]
+    record.open_exchange("child", _stored_message("user", "hello"))
+    # A prompt edit would pin the previous inherited prompt on the child.
+    root.state["shinychat:system_prompt"] = StateEntry(
+        kind="system_prompt", version=1, mode="snapshot", data="old"
+    )
+    controller.adapter.get_system_prompt = lambda: "new"  # type: ignore[attr-defined]
+    recorder._register_capture_hook(
+        "shinychat:system_prompt", recorder._capture_system_prompt
+    )
+    root.state["test:remove"] = StateEntry(
+        kind="test", version=1, mode="snapshot", data="old"
+    )
+    recorder._register_capture_hook("test:remove", lambda _context: None)
+    recorder._register_capture_hook(
+        "test:add",
+        lambda _context: StateEntry(kind="test", version=1, mode="snapshot", data="new"),
+    )
+    # Turn capture succeeds first; a later hook must not commit its snapshot.
+    before = record.model_dump(mode="json")
+
+    def fail(_context: Any) -> StateEntry:
+        raise RuntimeError("later hook failed")
+
+    recorder._register_capture_hook("test:last", fail)
+    with pytest.raises(RuntimeError, match="later hook failed"):
+        await recorder.capture_state_locked(record.root_id, "root_close")
+    assert record.model_dump(mode="json") == before
+    assert "shinychat:system_prompt" not in record.nodes["child"].state
+
+    recorder._capture_hooks.pop("test:last")
+    await recorder.capture_state_locked(record.root_id, "root_close")
+    assert root.state["shinychat:system_prompt"].data == "new"
+    assert record.nodes["child"].state["shinychat:system_prompt"].data == "old"
+    assert root.state[TURNS_STATE_KEY].mode == "snapshot"
+    assert root.state[TURNS_STATE_KEY].data == [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "hi there"},
+    ]
+    assert "test:remove" not in root.state
+    assert root.state["test:add"].data == "new"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("first_fails", [False, True])
+async def test_concurrent_input_proposals_commit_in_recorder_open_order(
+    first_fails: bool,
+):
+    first_capturing = asyncio.Event()
+    release_first = asyncio.Event()
+    second_capturing = asyncio.Event()
+    release_second = asyncio.Event()
+    controller, _ = _make_controller()
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    capture_count = 0
+
+    async def capture(_context: Any) -> None:
+        nonlocal capture_count
+        capture_count += 1
+        if capture_count == 1:
+            first_capturing.set()
+            await release_first.wait()
+            if first_fails:
+                raise RuntimeError("first proposal failed")
+        else:
+            second_capturing.set()
+            await release_second.wait()
+
+    recorder._register_capture_hook("test:proposal-gate", capture)
+    transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
+    first = asyncio.create_task(
+        transcript.record_accepted_input_and_notify(
+            _stored_message("user", "A")
+        )
+    )
+    second = None
+    try:
+        await asyncio.wait_for(first_capturing.wait(), timeout=2)
+        second = asyncio.create_task(
+            transcript.record_accepted_input_and_notify(
+                _stored_message("user", "B")
+            )
+        )
+        # Give the second proposal a scheduler turn: the first holds the
+        # recorder lock mid-capture, so the second must block without
+        # committing anything.
+        await asyncio.sleep(0)
+        assert not second.done()
+        assert not second_capturing.is_set()
+        assert transcript.read() == ()
+        release_first.set()
+        if first_fails:
+            # The failed first proposal rolls back record creation, so the
+            # second redoes the paired root capture and gates on the same
+            # hook before it can open its exchange.
+            await asyncio.wait_for(second_capturing.wait(), timeout=2)
+            with pytest.raises(RuntimeError, match="first proposal failed"):
+                await first
+            assert transcript.read() == ()
+            assert transcript.open_exchange_id is None
+        else:
+            # The committed first proposal releases the lock; the second
+            # validates its pending predecessor and captures app state on
+            # its new exchange without re-running the model capture hooks.
+            await first
+        release_second.set()
+        second_id = await second
+        assert recorder.record is not None
+        opened = [
+            node_id
+            for node_id, node in recorder.record.nodes.items()
+            if node.input is not None
+        ]
+        committed = [item.exchange_id for item in transcript.read()]
+        assert committed == opened
+        assert len(set(committed)) == (1 if first_fails else 2)
+        assert transcript.open_exchange_id == second_id
+        assert [item.message.content for item in transcript.read()] == (
+            ["B"] if first_fails else ["A", "B"]
+        )
+        # The gate hook runs once per paired root capture: the first
+        # proposal's capture, plus a second run only when that capture
+        # failed and the next proposal redid it on the fresh root. A
+        # committed first proposal leaves the second input with a pending
+        # predecessor, so it validates instead of re-running the hooks.
+        assert capture_count == (2 if first_fails else 1)
+    finally:
+        release_first.set()
+        release_second.set()
+        await asyncio.gather(
+            first,
+            *([second] if second is not None else []),
+            return_exceptions=True,
+        )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("mode", ["no_callback", "no_partition", "read_only"])
+async def test_input_commit_has_one_owner_without_writable_history(mode: str):
+    controller, _ = _make_controller()
+    recorder = controller._exchange_recorder
+    notifications: list[tuple[TranscriptEntry, ...]] = []
+    if mode == "no_partition":
+        controller.partition = None
+    elif mode == "read_only":
+        recorder._read_only = True
+    transcript = ChatTranscript(
+        on_accepted_input=None
+        if mode == "no_callback"
+        else recorder.accepted_input,
+        on_change=lambda: notifications.append(transcript.read()),
+    )
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "direct")
+    )
+    assert transcript.open_exchange_id == exchange_id
+    assert [item.message.content for item in transcript.read()] == ["direct"]
+    assert len(notifications) == 1
+    assert recorder.record is None

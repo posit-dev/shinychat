@@ -30,6 +30,8 @@ website:
         href: index.qmd
       - text: Page chat
         href: page-chat.qmd
+      - text: Migrate from 0.7.2
+        href: history-migration.qmd
       - text: API Reference
         href: api/index.qmd
     tools:
@@ -125,11 +127,12 @@ quartodoc:
         include_functions: true
       contents:
         - types.HistoryOptions
-        - types.HistoryNavigateContext
         - types.ConversationPartition
         - types.ConversationStore
         - types.FileConversationStore
         - types.ConversationRecord
+        - types.ConversationRecordV1
+        - types.ConversationRecordV2
         - types.ConversationMeta
     - title: Testing
       options:

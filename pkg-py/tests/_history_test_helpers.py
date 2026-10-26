@@ -1,6 +1,9 @@
-from typing import Any
+from __future__ import annotations
 
-from shinychat._history_controller import HistoryController
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from shinychat._history_controller import HistoryController
 from shinychat._history_types import (
     ConversationNode,
     ConversationRecordV1,

@@ -80,22 +80,26 @@ and composition boundaries.
 
 If a chat changes a filter, editing a message should not leave the filter showing
 a different region from the conversation. Capture that application state with
-`on_save`, restore it when a conversation loads with `on_restore`, and follow
-edits, retries, regenerations, and sibling navigation with `on_navigate`.
+`on_save` and restore it with `on_restore`. `on_restore` runs whenever a
+conversation's selected position is recreated or changed, so there is no
+separate hook for branch navigation. `on_save` captures only at conversation
+checkpoints, so browsing a branch never overwrites its saved state.
 
 This complete app lets a model select regions through a tool. Set
 `OPENAI_API_KEY` in the app's environment before running it. The reactive value
 holds the server's filter immediately; `ui.update_text()` updates the visible
-input asynchronously.
+input asynchronously. Read the text input only when the user clicks Apply, so a
+later browser echo cannot overwrite state restored by the callback.
 
 ```{.python file="app.py"}
 from chatlas import ChatOpenAI
 from shiny import App, reactive, render, ui
 from shinychat import Chat, chat_ui
-from shinychat.types import HistoryNavigateContext, HistoryOptions
+from shinychat.types import HistoryOptions
 
 app_ui = ui.page_fillable(
     ui.input_text("region", "Region filter", value="all"),
+    ui.input_action_button("apply_region", "Apply region"),
     ui.output_text("selected_region"),
     chat_ui("chat"),
 )
@@ -115,9 +119,9 @@ def server(input, output, session):
         ui.update_text("region", value=region)
 
     @reactive.effect
-    @reactive.event(input.region)
-    def accept_region_input():
-        selected.set(input.region())
+    @reactive.event(input.apply_region, ignore_init=True)
+    def apply_region_input():
+        sync_region(input.region())
 
     @chat.history.on_save
     def save_region(values):
@@ -126,10 +130,6 @@ def server(input, output, session):
     @chat.history.on_restore
     def restore_region(values):
         sync_region(values.get("region", "all"))
-
-    @chat.history.on_navigate
-    def navigate_region(context: HistoryNavigateContext):
-        sync_region(context.values.get("region", "all"))
 
     def select_region(region: str) -> str:
         """Select the region used to filter the app's data."""
@@ -146,28 +146,84 @@ def server(input, output, session):
 app = App(app_ui, server)
 ```
 
-Ask the model to select `west`, then edit that message to ask for `east`. The
-edit hook receives the parent's values (`all`) before the replacement response
-starts; its tool call then selects `east`. Use the sibling arrows to return to
-`west`: the navigation context's `values` contains `west`, and its
-`previous_values` contains `east`. Reloading the page calls `on_restore` with
-the selected branch's values instead. In-session position moves do not call
-`on_restore`.
+Ask the model to select `west`. Accepting the input records the app state at
+that moment (`region: all`) on the starting checkpoint; the tool call then
+sets the filter, and when the response completes, `on_save` records `west` on
+that exchange. Then edit that message to ask for `east`. Before the
+replacement response starts, `on_restore` receives the starting checkpoint's
+values (`region: all`), so the filter matches the position the
+replacement continues from. The replacement's tool call selects `east`, and
+when it completes, `on_save` records `east` on the new exchange. The `west`
+exchange keeps `west`.
 
-The hooks are synchronous and run in registration order. Values use Pydantic's
-JSON encoding (for example, dates become strings and tuples become arrays),
-with string keys and no non-finite floating-point values. Unchanged values
-inherit from the parent exchange; an empty dict explicitly clears the saved object. Automatic
-capture failures warn the developer and retain prior values; an explicit
+Editing or retrying the first message restores the values recorded on the
+starting checkpoint: the first accepted input captured app state there, so
+callbacks normally receive those values. A failed starting capture preserves
+any previously saved root values; without recorded values, callbacks receive
+`{}`. An explicit save at the root can replace its values. Your callback decides whether
+to supply defaults or raise an error; history does not automatically reset
+application state. An unhandled ordinary error retains the original branch
+read-only. For writable in-session browsing and resubmits, the model is already
+rewound when the callback runs, but `chat.messages()` and the display still
+show the outgoing branch. The resubmit parent pointer commits only after the
+callback succeeds. Load and conversation switch replay the target display
+before invoking callbacks.
+
+Use the sibling arrows to return to `west`. `on_restore` receives `west`. A
+follow-up from `west` records its own values on its new exchange and leaves the
+`east` branch unchanged. Reloading the page restores the selected position the
+same way.
+
+`on_save` runs at these checkpoints:
+
+- When the first message is accepted, for the conversation's starting
+  checkpoint, together with the paired model state. No automatic capture
+  happens at startup before any input.
+- When a later message is accepted, for the new exchange.
+- When a response completes, after it settles. This includes cancellation and
+  errors.
+- For the replacement exchange created by edit, retry, or regenerate.
+- When your app calls `await chat.history.save()`, for the selected position.
+
+`on_restore` runs when a conversation's selected position is recreated or
+changed:
+
+- On page load or bookmark restore, and when switching to another conversation.
+- When browsing to another position or sibling branch.
+- Before the replacement response starts for edit, retry, or regenerate. It
+  receives the parent's values.
+
+`on_restore` does not run when a message is accepted or a response completes.
+
+Starting a new chat, renaming a conversation, and persisting the selected
+position pointer, when that persistence doesn't recreate or change the position,
+run neither hook.
+
+`on_save` does not capture the outgoing app state when you browse to another
+position, switch conversations, or start a new chat.
+
+Callbacks run in registration order. Values use Pydantic's JSON encoding (for
+example, dates become strings and tuples become arrays). Serializer-supported
+keys become strings: `1` becomes `"1"` and `None` becomes `"None"`. Restored
+values use that JSON representation, not the original Python key types. If
+keys normalize to the same string, the later dictionary entry wins; authors
+must account for that conversion. Non-finite floating-point values are
+rejected. Unchanged values inherit from the parent exchange; an empty dict
+explicitly clears the saved object. Automatic capture
+failures warn the developer and retain prior values; an explicit
 `await chat.history.save()` raises the error.
 
-Without `on_navigate`, browsing leaves live app state alone, and later captures
-save that live state at the newly selected position. Register the navigation
-hook when app state should follow the branch; omit it when that state is
-independent of the conversation. If a navigation callback raises an exception,
-the conversation stays at the new position, the developer gets a warning with
-the error, and the user sees a generic notification. A read-only conversation
-still fires `on_navigate` when browsing siblings, using its recorded values.
+If an `on_restore` callback raises an ordinary exception, the conversation stays
+visible but becomes read-only. The composer explains that its saved application
+state couldn't be restored. Callbacks registered after the failing one don't run
+for that restore, and the warning includes the error. The conversation's saved
+values aren't overwritten while it is read-only. The failure also stops an edit,
+retry, or regenerate before its replacement response starts. Nothing retries
+automatically. Selecting the already active conversation again doesn't retry its
+callbacks. Switching to another conversation and back runs a full restore, and
+that restore's result reclassifies the conversation under the existing read-only
+rules. Use New chat to leave the conversation. If your callback can recover, handle the
+case inside the callback and establish valid state before returning.
 
 ### Response checkpoints and interrupted conversations
 
@@ -380,7 +436,8 @@ Key points:
 - `StreamController()` is created once and reused — it automatically resets between streams.
 - Pass the controller to `stream_async(controller=ctrl)` so chatlas can honour the cancellation signal.
 - The cancel input fires as `input.<id>_cancel` (e.g. `input.chat_cancel`). Observe it with `@reactive.event` to call `ctrl.cancel()`. This is needed in both Express and Core apps.
-- chatlas retains the partial response in live client history on cancellation. Persistent Shiny history saves it only at a coherent terminal/error/cancel checkpoint with matching captured model state, and only if capture and storage succeed. A hard kill can lose the unfinished exchange. After reload, the original task may still finish and save, but the restored viewer does not automatically adopt its display or client context.
+- chatlas retains the partial response in live client history on cancellation. Persistent history offers a response as a valid checkpoint only after it ends and model capture, any registered app-state capture, and storage succeed. A hard kill can lose the unfinished exchange. After reload, the original task may still finish and save, but the restored viewer does not automatically adopt its display or client context.
+- Starting a second stream, or appending a complete message, while a stream is active raises `RuntimeError`. Use the stream's status to sequence follow-up work. See the [migration guide](history-migration.qmd).
 
 ## File attachments
 

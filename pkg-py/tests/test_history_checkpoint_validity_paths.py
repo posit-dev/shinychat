@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 from shinychat._chat_transcript import TranscriptEntry
+from shinychat._history_recorder import _ModelCaptureError
 from shinychat._history_types import (
     SYSTEM_PROMPT_STATE_KEY,
     TURNS_STATE_KEY,
@@ -59,7 +60,7 @@ async def test_failed_root_is_not_a_writable_empty_draft_and_live_recovery_works
         raise ValueError("root SDK failure")
 
     monkeypatch.setattr(writer.adapter, "get_turns_json", fail)
-    with pytest.raises(ValueError, match="root SDK failure"):
+    with pytest.raises(_ModelCaptureError, match="root SDK failure"):
         await _end_stream(transcript)
     assert record.nodes[record.root_id].checkpoint_state == "invalid"
     assert recorder._stream_exchanges == {}
@@ -210,7 +211,7 @@ async def test_sdk_failure_after_prompt_pins_commits_nothing(
         raise ValueError("turns failure after prompt staging")
 
     monkeypatch.setattr(writer.adapter, "get_turns_json", fail)
-    with pytest.raises(ValueError, match="after prompt staging"):
+    with pytest.raises(_ModelCaptureError, match="after prompt staging"):
         await recorder.save_current()
     assert record.model_dump_json() == before
     assert SYSTEM_PROMPT_STATE_KEY not in record.nodes[child].state

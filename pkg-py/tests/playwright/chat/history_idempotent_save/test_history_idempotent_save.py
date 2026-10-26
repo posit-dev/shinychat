@@ -145,35 +145,33 @@ def test_restore_does_not_trigger_extra_save(
 
     assert list(store_dir.rglob("record.json")) == []
 
-    # Root close, stream finish, and response settlement each capture values.
+    # Starting-root capture and post-flush settlement each capture values.
     chat.set_user_input("first question")
     expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: first question", timeout=30_000)
-    first = await_record(page, store_dir, capture_count=3)
-    assert_completed(first, "first question", "echo: first question", 3)
+    first = await_record(page, store_dir, capture_count=2)
+    assert_completed(first, "first question", "echo: first question", 2)
     expect(message_count(page)).to_have_count(2, timeout=10_000)
 
     # --- Start a second conversation so there's something to switch away to. ---
-    # `new_chat()` unconditionally calls `save_current()` (a real,
-    # switch-triggered save of conversation A before leaving it) — that's
-    # outside the idempotency guard under test, so the persisted capture count advances here.
+    # New chat captures model-only changes while leaving app values unchanged.
     open_drawer(page)
     page.locator(".shiny-chat-history-new").click()
     page.locator(".shiny-chat-history-drawer").wait_for(state="hidden")
-    first = await_record(page, store_dir, capture_count=4, conv_id=first["id"])
-    assert_completed(first, "first question", "echo: first question", 4)
+    first = await_record(page, store_dir, capture_count=2, conv_id=first["id"])
+    assert_completed(first, "first question", "echo: first question", 2)
 
     chat.set_user_input("second question")
     expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: second question", timeout=30_000)
-    second = await_record(page, store_dir, capture_count=7)
-    assert_completed(second, "second question", "echo: second question", 7)
+    second = await_record(page, store_dir, capture_count=4)
+    assert_completed(second, "second question", "echo: second question", 4)
 
     # --- Switch back to conversation A: this is the restore path under test. ---
-    # `switch_to()` also unconditionally calls `save_current()` (saving B
-    # before leaving it), then replays A.
+    # Switching saves model-only changes in B before replaying A. Neither
+    # the outgoing save nor target restore captures app values.
     open_drawer(page)
     conv_a = page.locator(".shiny-chat-history-item").filter(
         has_text="first question"
@@ -185,9 +183,9 @@ def test_restore_does_not_trigger_extra_save(
     # delivered after the restore effect finishes, not on a partial replay.
     controller.OutputText(page, "restore_count").expect_value("1")
     second = await_record(
-        page, store_dir, capture_count=8, conv_id=second["id"]
+        page, store_dir, capture_count=4, conv_id=second["id"]
     )
-    assert_completed(second, "second question", "echo: second question", 8)
+    assert_completed(second, "second question", "echo: second question", 4)
     assert read_record(store_dir, first["id"]) == first
 
     # Restored conversation must be intact: exactly the 2 original messages,
@@ -232,8 +230,8 @@ def test_paused_stream_settles_history_after_terminal_response(
         "paused question\npartial: paused question", timeout=10_000
     )
 
-    # Root values were captured before accepting the input; a partial stream
-    # does not capture response values until it reaches a terminal boundary.
+    # Root values were captured at first-input acceptance; a partial stream
+    # does not capture response values until post-flush settlement.
     partial = await_record(page, store_dir, partial=True)
     root = next(
         node
@@ -255,12 +253,12 @@ def test_paused_stream_settles_history_after_terminal_response(
     owner_messages.expect_value(
         "paused question\npartial: paused question complete", timeout=10_000
     )
-    completed = await_record(page, store_dir, capture_count=3)
+    completed = await_record(page, store_dir, capture_count=2)
     assert_completed(
         completed,
         "paused question",
         "partial: paused question complete",
-        3,
+        2,
         "changed",
     )
 
@@ -268,13 +266,13 @@ def test_paused_stream_settles_history_after_terminal_response(
     page.locator(".shiny-chat-history-new").click()
     page.locator(".shiny-chat-history-drawer").wait_for(state="hidden")
     completed = await_record(
-        page, store_dir, capture_count=4, conv_id=completed["id"]
+        page, store_dir, capture_count=2, conv_id=completed["id"]
     )
     assert_completed(
         completed,
         "paused question",
         "partial: paused question complete",
-        4,
+        2,
         "changed",
     )
 

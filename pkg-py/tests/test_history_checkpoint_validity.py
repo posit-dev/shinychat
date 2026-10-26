@@ -10,6 +10,7 @@ import pytest
 from shiny import reactive
 from shiny.session import session_context
 from shinychat import Chat
+from shinychat._history_recorder import _ModelCaptureError
 from shinychat._history_types import (
     SYSTEM_PROMPT_STATE_KEY,
     TURNS_STATE_KEY,
@@ -135,7 +136,7 @@ async def test_model_failure_cannot_be_promoted_by_app_success(
         "get_turns_json",
         lambda: (_ for _ in ()).throw(ValueError("SDK failed")),
     )
-    with pytest.raises(ValueError, match="SDK failed"):
+    with pytest.raises(_ModelCaptureError, match="SDK failed"):
         await recorder.stream_finished("stream", "ok", None)
     assert record.nodes[node_id].status == "ok"
     assert record.nodes[node_id].checkpoint_state == "invalid"

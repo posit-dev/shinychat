@@ -1,0 +1,637 @@
+[
+  {
+    "name": "complete_wire_specs_preserve_display_metadata",
+    "operations": [
+      {
+        "operation": "complete-message",
+        "wire_spec": {
+          "message": {
+            "role": "user",
+            "segments": [
+              {"content": "Hi", "content_type": "markdown"}
+            ],
+            "attachments": [
+              {
+                "mime": "text/plain",
+                "data_url": "data:text/plain;base64,SGk=",
+                "name": "hi.txt",
+                "size": 2
+              }
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "complete-message",
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {
+                "content": "Hello",
+                "content_type": "text",
+                "html_deps": [
+                  {"name": "chart", "metadata": {"version": "1.0"}}
+                ]
+              }
+            ]
+          },
+          "icon": "<i>assistant</i>"
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "defensive-read",
+        "entry": 0,
+        "replacement": "mutated"
+      }
+    ],
+    "expected": [
+      {
+        "message": {
+          "role": "user",
+          "segments": [
+            {"content": "Hi", "content_type": "markdown"}
+          ],
+          "attachments": [
+            {
+              "mime": "text/plain",
+              "data_url": "data:text/plain;base64,SGk=",
+              "name": "hi.txt",
+              "size": 2
+            }
+          ]
+        }
+      },
+      {
+        "message": {
+          "role": "assistant",
+          "segments": [
+            {
+              "content": "Hello",
+              "content_type": "text",
+              "html_deps": [
+                {"name": "chart", "metadata": {"version": "1.0"}}
+              ]
+            }
+          ]
+        },
+        "icon": "<i>assistant</i>"
+      }
+    ],
+    "expected_transport": ["complete-message", "complete-message"]
+  },
+  {
+    "name": "failed_complete_send_does_not_commit",
+    "operations": [
+      {
+        "operation": "complete-message",
+        "wire_spec": {
+          "message": {
+            "role": "user",
+            "segments": [
+              {"content": "kept", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "complete-message",
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "discarded", "content_type": "markdown"}
+            ]
+          },
+          "icon": ""
+        },
+        "send": {"result": "error", "message": "send failed"}
+      }
+    ],
+    "error": "send failed",
+    "expected": [
+      {
+        "message": {
+          "role": "user",
+          "segments": [
+            {"content": "kept", "content_type": "markdown"}
+          ]
+        }
+      }
+    ],
+    "expected_transport": ["complete-message", "complete-message"]
+  },
+  {
+    "name": "stream_replace_preserves_mixed_segments_and_opening_exchange",
+    "operations": [
+      {
+        "operation": "accepted-input",
+        "exchange": "older",
+        "wire_spec": {
+          "message": {
+            "role": "user",
+            "segments": [
+              {"content": "older request", "content_type": "markdown"}
+            ]
+          }
+        }
+      },
+      {
+        "operation": "stream-start",
+        "stream_id": "older-stream",
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "stream-chunk",
+        "stream_id": "older-stream",
+        "source_segments": [
+          {"content": "reasoning", "content_type": "thinking"}
+        ],
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "reasoning", "content_type": "thinking"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "accepted-input",
+        "exchange": "newer",
+        "wire_spec": {
+          "message": {
+            "role": "user",
+            "segments": [
+              {"content": "newer request", "content_type": "markdown"}
+            ]
+          }
+        }
+      },
+      {
+        "operation": "stream-chunk",
+        "stream_id": "older-stream",
+        "source_segments": [
+          {"content": "reasoning", "content_type": "thinking"},
+          {"content": "draft", "content_type": "markdown"}
+        ],
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "draft", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "stream-chunk",
+        "stream_id": "older-stream",
+        "transition": "replace",
+        "source_segments": [
+          {"content": "reasoning", "content_type": "thinking"},
+          {"content": "answer", "content_type": "markdown"}
+        ],
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "reasoninganswer", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "stream-end",
+        "stream_id": "older-stream",
+        "source_segments": [
+          {"content": "reasoning", "content_type": "thinking"},
+          {"content": "answer", "content_type": "markdown"}
+        ],
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      }
+    ],
+    "expected_exchanges": {"0": "older", "1": "older", "2": "newer"},
+    "expected": [
+      {
+        "message": {
+          "role": "user",
+          "segments": [
+            {"content": "older request", "content_type": "markdown"}
+          ]
+        }
+      },
+      {
+        "message": {
+          "role": "assistant",
+          "segments": [
+            {"content": "reasoninganswer", "content_type": "markdown"}
+          ]
+        }
+      },
+      {
+        "message": {
+          "role": "user",
+          "segments": [
+            {"content": "newer request", "content_type": "markdown"}
+          ]
+        }
+      }
+    ],
+    "expected_transport": [
+      "stream-start",
+      "stream-chunk",
+      "stream-chunk",
+      "stream-chunk",
+      "stream-end"
+    ]
+  },
+  {
+    "name": "failed_stream_start_does_not_commit",
+    "operations": [
+      {
+        "operation": "stream-start",
+        "stream_id": "stream",
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "error", "message": "start send failed"}
+      }
+    ],
+    "error": "start send failed",
+    "expected": [],
+    "expected_transport": ["stream-start"]
+  },
+  {
+    "name": "failed_stream_chunk_retains_sent_partial_with_error",
+    "operations": [
+      {
+        "operation": "stream-start",
+        "stream_id": "stream",
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "stream-chunk",
+        "stream_id": "stream",
+        "source_segments": [
+          {"content": "kept", "content_type": "markdown"}
+        ],
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "kept", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "stream-chunk",
+        "stream_id": "stream",
+        "source_segments": [
+          {"content": "keptlost", "content_type": "markdown"}
+        ],
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "lost", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "error", "message": "chunk send failed"},
+        "error": "chunk send failed"
+      },
+      {
+        "operation": "stream-abort",
+        "stream_id": "stream",
+        "status": "error",
+        "error_message": "chunk send failed"
+      }
+    ],
+    "expected": [
+      {
+        "message": {
+          "role": "assistant",
+          "segments": [
+            {"content": "kept", "content_type": "markdown"}
+          ]
+        },
+        "status": "error",
+        "error": {"message": "chunk send failed"}
+      }
+    ],
+    "expected_transport": [
+      "stream-start",
+      "stream-chunk",
+      "stream-chunk"
+    ]
+  },
+  {
+    "name": "failed_stream_replace_retains_prior_partial_with_error",
+    "operations": [
+      {
+        "operation": "stream-start",
+        "stream_id": "stream",
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "stream-chunk",
+        "stream_id": "stream",
+        "source_segments": [
+          {"content": "kept", "content_type": "markdown"}
+        ],
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "kept", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "stream-chunk",
+        "stream_id": "stream",
+        "transition": "replace",
+        "source_segments": [
+          {"content": "replacement", "content_type": "markdown"}
+        ],
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "replacement", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "error", "message": "replace send failed"},
+        "error": "replace send failed"
+      },
+      {
+        "operation": "stream-abort",
+        "stream_id": "stream",
+        "status": "error",
+        "error_message": "replace send failed"
+      }
+    ],
+    "expected": [
+      {
+        "message": {
+          "role": "assistant",
+          "segments": [
+            {"content": "kept", "content_type": "markdown"}
+          ]
+        },
+        "status": "error",
+        "error": {"message": "replace send failed"}
+      }
+    ],
+    "expected_transport": [
+      "stream-start",
+      "stream-chunk",
+      "stream-chunk"
+    ]
+  },
+  {
+    "name": "failed_stream_end_retains_terminal_chunk_with_error",
+    "operations": [
+      {
+        "operation": "stream-start",
+        "stream_id": "stream",
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "stream-chunk",
+        "stream_id": "stream",
+        "source_segments": [
+          {"content": "partial", "content_type": "markdown"}
+        ],
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "partial", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "stream-chunk",
+        "stream_id": "stream",
+        "source_segments": [
+          {"content": "partial final", "content_type": "markdown"}
+        ],
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": " final", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "stream-end",
+        "stream_id": "stream",
+        "source_segments": [
+          {"content": "partial final", "content_type": "markdown"}
+        ],
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "error", "message": "end send failed"},
+        "error": "end send failed"
+      },
+      {
+        "operation": "stream-abort",
+        "stream_id": "stream",
+        "status": "error",
+        "error_message": "end send failed"
+      }
+    ],
+    "expected": [
+      {
+        "message": {
+          "role": "assistant",
+          "segments": [
+            {"content": "partial final", "content_type": "markdown"}
+          ]
+        },
+        "status": "error",
+        "error": {"message": "end send failed"}
+      }
+    ],
+    "expected_transport": [
+      "stream-start",
+      "stream-chunk",
+      "stream-chunk",
+      "stream-end"
+    ]
+  },
+  {
+    "name": "cancelled_stream_retains_sent_partial",
+    "operations": [
+      {
+        "operation": "stream-start",
+        "stream_id": "stream",
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "stream-chunk",
+        "stream_id": "stream",
+        "source_segments": [
+          {"content": "kept", "content_type": "markdown"}
+        ],
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "kept", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "stream-abort",
+        "stream_id": "stream",
+        "status": "cancelled"
+      }
+    ],
+    "expected": [
+      {
+        "message": {
+          "role": "assistant",
+          "segments": [
+            {"content": "kept", "content_type": "markdown"}
+          ]
+        },
+        "status": "cancelled"
+      }
+    ],
+    "expected_transport": ["stream-start", "stream-chunk"]
+  },
+  {
+    "name": "clear_discards_committed_messages_after_stream_end",
+    "operations": [
+      {
+        "operation": "complete-message",
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "complete", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "stream-start",
+        "stream_id": "stream",
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "stream-end",
+        "stream_id": "stream",
+        "source_segments": [],
+        "wire_spec": {
+          "message": {
+            "role": "assistant",
+            "segments": [
+              {"content": "", "content_type": "markdown"}
+            ]
+          }
+        },
+        "send": {"result": "sent"}
+      },
+      {
+        "operation": "clear"
+      }
+    ],
+    "expected": [],
+    "expected_transport": [
+      "complete-message",
+      "stream-start",
+      "stream-end",
+      "clear"
+    ]
+  }
+]

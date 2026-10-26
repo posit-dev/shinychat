@@ -1,4 +1,8 @@
-import type { ConversationMeta, ChatTransport } from "../transport/types"
+import type {
+  ConversationMeta,
+  ChatTransport,
+  ReadOnlyReason,
+} from "../transport/types"
 import { uuid } from "../utils/uuid"
 
 type TransitionProtocol = "completion-v1" | "completion-v2"
@@ -14,12 +18,12 @@ export interface HistorySnapshot {
   conversations: readonly ConversationMeta[]
   activeId: string | null
   /**
-   * True when the active conversation's saved model context could not be
-   * loaded: viewable but not continuable. Kept separate from `busy` and
+   * True when the active conversation could not be fully restored:
+   * viewable but not continuable. Kept separate from `busy` and
    * `historyTransitionPending`; stream start/end never clears it.
    */
   readOnly: boolean
-  readOnlyReason?: "model_unavailable" | "app_restore_failed" | "interrupted"
+  readOnlyReason?: ReadOnlyReason
   busy: boolean
   connected: boolean
   transitionProtocol: TransitionProtocol | null
@@ -132,7 +136,7 @@ export class HistoryStore {
     conversations: ConversationMeta[]
     activeId: string | null
     readOnly?: boolean
-    readOnlyReason?: HistorySnapshot["readOnlyReason"]
+    readOnlyReason?: ReadOnlyReason
     transitionProtocol?: string
   }): void {
     const nextConversations = conversationsEqual(

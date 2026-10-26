@@ -4,6 +4,7 @@ import asyncio
 import sys
 import warnings
 from copy import deepcopy
+from types import SimpleNamespace
 from typing import Any, Awaitable, Callable, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -868,9 +869,6 @@ async def test_v2_initial_readiness_rejects_direct_input_without_mutation() -> (
     controller.partition = ConversationPartition(chat_id=chat_id, scope="test")
 
     with session_context(cast(Any, session)), reactive.isolate():
-        chat._record_accepted_user_input(
-            ChatMessage(content="forged input", role="user")
-        )
         await chat._record_accepted_user_input_with_capture(
             ChatMessage(content="direct input", role="user")
         )
@@ -1403,13 +1401,17 @@ async def test_v2_bookmark_new_chat_keeps_hard_reload() -> None:
 
 
 @pytest.mark.anyio
-async def test_v2_failed_switch_notifies_once_with_sanitized_message() -> None:
+@pytest.mark.parametrize("sanitize_errors", [False, True])
+async def test_v2_failed_switch_notifies_once_with_sanitized_message(
+    sanitize_errors: bool,
+) -> None:
     """A failed in-session switch shows exactly one toast — the cleanup's
     sanitized message — through the real ``_on_select`` boundary. The
     outer handler keeps the raw exception in its developer warning instead
     of a second toast carrying hook internals."""
     chat_id = "switch_single_notification"
     session = _LiveSession()
+    session.app = SimpleNamespace(sanitize_errors=sanitize_errors)
     store = InMemoryConversationStore()
     history_ids = HistoryInputIds.for_chat(ResolvedId(chat_id))
     session.input[history_ids.browser_token] = reactive.Value("token")
@@ -1585,7 +1587,9 @@ async def test_v2_select_missing_conversation_still_notifies_rejection() -> (
         ),
     ],
 )
+@pytest.mark.parametrize("sanitize_errors", [False, True])
 async def test_history_action_errors_keep_exception_details_out_of_notifications(
+    sanitize_errors: bool,
     operation: str,
     method: str,
     input_name: str,
@@ -1594,6 +1598,7 @@ async def test_history_action_errors_keep_exception_details_out_of_notifications
     request: pytest.FixtureRequest,
 ) -> None:
     session = _LiveSession()
+    session.app = SimpleNamespace(sanitize_errors=sanitize_errors)
     handlers: dict[str, Callable[[], Awaitable[None]]] = {}
     with (
         patch.object(reactive, "effect", _capture_history_effects(handlers)),
@@ -1609,6 +1614,7 @@ async def test_history_action_errors_keep_exception_details_out_of_notifications
     request.addfinalizer(chat.destroy)
     controller = chat.history._controller
     assert controller is not None
+    assert chat.on_error == ("sanitize" if sanitize_errors else "actual")
     with session_context(cast(Any, session)), reactive.isolate():
         await handlers["_init_history"]()
     ids = HistoryInputIds.for_chat(chat.id)
@@ -1633,7 +1639,7 @@ async def test_history_action_errors_keep_exception_details_out_of_notifications
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("entry_point", ["sync", "capture", "event", "slash"])
+@pytest.mark.parametrize("entry_point", ["capture", "event", "slash"])
 async def test_read_only_history_rejects_submission_before_acceptance(
     entry_point: str,
     request: pytest.FixtureRequest,
@@ -1672,11 +1678,7 @@ async def test_read_only_history_rejects_submission_before_acceptance(
         calls.append(user_text)
 
     with session_context(cast(Any, session)), reactive.isolate():
-        if entry_point == "sync":
-            chat._record_accepted_user_input(
-                ChatMessage(content="forged", role="user")
-            )
-        elif entry_point == "capture":
+        if entry_point == "capture":
             await chat._record_accepted_user_input_with_capture(
                 ChatMessage(content="forged", role="user")
             )
@@ -3495,3 +3497,678 @@ async def test_v2_clear_retains_input_admitted_after_clear_dispatch(
             )
     finally:
         chat.destroy()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("entry_point", ["normal", "slash"])
+@pytest.mark.parametrize("sanitize_errors", [False, True])
+@pytest.mark.parametrize("recovery", ["new_chat", "corrected_state"])
+@pytest.mark.parametrize("on_error", ["sanitize", "actual", "unhandled"])
+@pytest.mark.parametrize("capture_source", ["turns", "system_prompt"])
+async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
+    tmp_path: Any,
+    request: Any,
+    entry_point: str,
+    sanitize_errors: bool,
+    recovery: str,
+    on_error: Any,
+    capture_source: str,
+) -> None:
+    chat, session, client, store = await _make_initialized_live_v2_chat(
+        tmp_path, "capture_recovery"
+    )
+    request.addfinalizer(chat.destroy)
+    session.app = SimpleNamespace(sanitize_errors=sanitize_errors)
+    chat.on_error = on_error
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    if capture_source == "system_prompt":
+
+        def retained_prompt() -> str:
+            if any(
+                turn.get("content") == "unreadable prompt"
+                for turn in client._turns
+            ):
+                raise RuntimeError("retained system prompt could not be read")
+            return "healthy prompt"
+
+        controller.adapter.get_system_prompt = retained_prompt  # type: ignore[method-assign]
+        recorder._register_capture_hook(
+            "shinychat:system_prompt", recorder._capture_system_prompt
+        )
+    # Replace the built-in provider consumer with this app's dispatch callback.
+    # Keep the accepted-input effects and recorder wiring real.
+    next(
+        effect
+        for effect in chat._effects
+        if effect._fn.__name__ == "handle_user_input"
+    ).destroy()
+    calls: list[str] = []
+
+    @chat.on_user_submit
+    async def submitted(text: str) -> None:
+        calls.append(text)
+
+    @chat.slash_command("send", "Send")
+    async def slash(text: str) -> None:
+        calls.append(text)
+
+    async def submit(text: str, seq: int) -> None:
+        if entry_point == "normal":
+            cast(Any, session.input[chat.user_input_id])._set(
+                {
+                    "text": text,
+                    "attachments": [],
+                    "seq": seq,
+                    "client_message_id": f"client-{seq}",
+                }
+            )
+        else:
+            cast(Any, session.input[chat._slash_command_id])._set(
+                {
+                    "command": "send",
+                    "userText": text,
+                    "echo": True,
+                    "seq": seq,
+                    "client_message_id": f"client-{seq}",
+                }
+            )
+        await reactive.flush()
+
+    with session_context(cast(Any, session)), reactive.isolate():
+        await submit("initial", 1)
+        assert calls == ["initial"]
+        assert recorder.record is not None
+        transcript_before = _transcript_snapshot(chat)
+        prior_open_id = chat._transcript.open_exchange_id
+        assert prior_open_id is not None
+        seen_messages: list[Any] = []
+
+        @reactive.effect
+        def observe_messages() -> None:
+            seen_messages.append(chat.messages())
+
+        request.addfinalizer(observe_messages.destroy)
+        await reactive.flush()
+        assert len(seen_messages) == 1
+        before = recorder.record.model_dump(mode="json")
+        partition = ConversationPartition(chat_id=chat.id, scope="test")
+        saved = await store.get(partition, recorder.record.id)
+        assert saved is not None
+        checkpoint = saved.model_dump(mode="json")
+        if capture_source == "turns":
+            client._turns = [{"role": "assistant", "content": object()}]
+            cause = "not JSON serializable"
+        else:
+            client._turns = [
+                {"role": "assistant", "content": "unreadable prompt"}
+            ]
+            cause = "retained system prompt could not be read"
+        stale_turns = deepcopy(client._turns)
+        notification = MagicMock()
+        with patch("shiny.ui.notification_show", notification):
+            for seq in (2, 3):
+                with pytest.warns(UserWarning, match=cause):
+                    await submit("rejected", seq)
+                actions = [m["action"] for m in session.messages]
+                removal = next(
+                    i
+                    for i, a in enumerate(actions)
+                    if a == {"type": "remove_message", "id": f"client-{seq}"}
+                )
+                assert (
+                    actions[removal + 1]["type"] == "update_exchange_metadata"
+                )
+                assert calls == ["initial"]
+                assert _transcript_snapshot(chat) == transcript_before
+                assert chat._transcript.open_exchange_id == prior_open_id
+                assert len(seen_messages) == 1
+                assert "rejected" not in str(chat.messages())
+                assert recorder.record.model_dump(mode="json") == before
+                saved = await store.get(partition, recorder.record.id)
+                assert saved is not None
+                assert saved.model_dump(mode="json") == checkpoint
+                assert "rejected" not in str(chat.user_input())
+        assert notification.call_count == 2
+        report = notification.call_args.args[0]
+        assert "Message not sent" in report
+        assert "saved checkpoint is unchanged" in report
+        assert "New chat" in report
+        assert cause not in report
+        if recovery == "new_chat":
+            await controller.new_chat()
+            assert client._turns == []
+        else:
+            client._turns = [{"role": "assistant", "content": "corrected"}]
+        # Recovery moves the live model state past the stale captured turn
+        # that triggered the failure, without replaying the rejected input.
+        assert client._turns != stale_turns
+        assert calls == ["initial"]  # Recovery never resubmits automatically.
+        await submit("recovered", 4)
+        assert calls == ["initial", "recovered"]
+        assert recorder.record is not None
+        assert "rejected" not in str(recorder.record.model_dump(mode="json"))
+        recovered_id = chat._transcript.open_exchange_id
+        assert recovered_id is not None and recovered_id != prior_open_id
+        await chat.append_message("fresh response")
+        saved = await store.get(partition, recorder.record.id)
+        assert isinstance(saved, ConversationRecordV2)
+        assert saved.nodes[recovered_id].input is not None
+        assert "recovered" in str(saved.nodes[recovered_id].input)
+        assert (
+            saved.nodes[recovered_id]
+            .messages[-1]
+            .model_dump(mode="json")["segments"][0]["content"]
+            == "fresh response"
+        )
+        assert chat._transcript.read()[-1].exchange_id == recovered_id
+
+
+@pytest.mark.anyio
+async def test_slash_response_capture_failure_keeps_live_error_handling(
+    tmp_path: Any, request: Any
+) -> None:
+    chat, session, client, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "slash_response_capture"
+    )
+    request.addfinalizer(chat.destroy)
+    errors = AsyncMock()
+    chat._raise_exception = errors  # type: ignore[method-assign]
+
+    @chat.slash_command("reply", "Reply")
+    async def reply() -> None:
+        client._turns = [{"role": "assistant", "content": object()}]
+
+        async def response():
+            yield "already dispatched reply"
+
+        await chat.append_message_stream(response())
+
+    with session_context(cast(Any, session)), reactive.isolate():
+        notification = MagicMock()
+        with patch("shiny.ui.notification_show", notification):
+            cast(Any, session.input[chat._slash_command_id])._set(
+                {"command": "reply", "userText": "", "echo": True}
+            )
+            await reactive.flush()
+        notification.assert_not_called()
+        errors.assert_awaited()
+        assert "not JSON serializable" in str(errors.call_args.args[0])
+        assert chat.user_input() is not None
+        assert any(
+            entry.message.content == "already dispatched reply"
+            for entry in chat._transcript.read()
+        )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("entry_point", ["normal", "slash"])
+@pytest.mark.parametrize(
+    "failure", ["first_put", "later_put", "created_update"]
+)
+async def test_postcommit_input_failure_keeps_shared_owner_without_dispatch(
+    tmp_path: Any, request: Any, entry_point: str, failure: str
+) -> None:
+    chat, session, _, store = await _make_initialized_live_v2_chat(
+        tmp_path, "shared_commit_failure"
+    )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    next(
+        effect
+        for effect in chat._effects
+        if effect._fn.__name__ == "handle_user_input"
+    ).destroy()
+    dispatches: list[str] = []
+    observations: list[Any] = []
+
+    @chat.on_user_submit
+    async def submitted(text: str) -> None:
+        dispatches.append(text)
+
+    @chat.slash_command("send", "Send")
+    async def slash(text: str) -> None:
+        dispatches.append(text)
+
+    @reactive.effect
+    def observe_messages() -> None:
+        observations.append(chat.messages())
+
+    request.addfinalizer(observe_messages.destroy)
+    error = RuntimeError(f"injected {failure} failure")
+    live_error = AsyncMock()
+    chat._raise_exception = live_error  # type: ignore[method-assign]
+    original_put = store.put
+    original_update = controller.send_history_update
+    with session_context(cast(Any, session)), reactive.isolate():
+        await reactive.flush()
+        if failure == "later_put":
+            await chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="prior", role="user"),
+                dispatch_user_submit=False,
+            )
+            await reactive.flush()
+        if failure == "created_update":
+            controller.send_history_update = AsyncMock(side_effect=error)  # type: ignore[method-assign]
+        else:
+            store.put = AsyncMock(side_effect=error)  # type: ignore[method-assign]
+        before_observations = len(observations)
+        notification = MagicMock()
+        try:
+            with patch("shiny.ui.notification_show", notification):
+                if entry_point == "normal":
+                    cast(Any, session.input[chat.user_input_id])._set(
+                        {
+                            "text": "committed",
+                            "attachments": [],
+                            "seq": 1,
+                            "client_message_id": "committed-client",
+                        }
+                    )
+                else:
+                    cast(Any, session.input[chat._slash_command_id])._set(
+                        {
+                            "command": "send",
+                            "userText": "committed",
+                            "client_message_id": "committed-client",
+                            "echo": True,
+                        }
+                    )
+                # Uses Chat's real synchronous revision listener under recorder.lock.
+                await asyncio.wait_for(reactive.flush(), timeout=2)
+        finally:
+            store.put = original_put  # type: ignore[method-assign]
+            controller.send_history_update = original_update  # type: ignore[method-assign]
+        live_error.assert_awaited_once_with(error)
+        notification.assert_not_called()
+        assert not any(
+            m["action"]["type"] == "remove_message" for m in session.messages
+        )
+        assert dispatches == []
+        published = chat.user_input()
+        assert published is None or published.text == "prior"
+        assert chat._normal_user_submission() is None
+        assert len(observations) == before_observations + 1
+        assert recorder.record is not None
+        exchange_id = chat._transcript.open_exchange_id
+        assert exchange_id is not None
+        assert exchange_id == recorder.record.active_leaf
+        accepted = chat._transcript.read()[-1]
+        assert accepted.exchange_id == exchange_id
+        assert recorder.record.nodes[exchange_id].input == accepted.message
+        assert (
+            len(
+                [
+                    item
+                    for item in chat._transcript.read()
+                    if item.exchange_id == exchange_id
+                ]
+            )
+            == 1
+        )
+        await chat.append_message("independent app output")
+        assert chat._transcript.read()[-1].exchange_id == exchange_id
+        saved = await store.get(
+            ConversationPartition(chat_id=chat.id, scope="test"),
+            recorder.record.id,
+        )
+        assert isinstance(saved, ConversationRecordV2)
+        assert saved.nodes[exchange_id].input == accepted.message
+        assert (
+            saved.nodes[exchange_id]
+            .messages[-1]
+            .model_dump(mode="json")["segments"][0]["content"]
+            == "independent app output"
+        )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("entry_point", ["normal", "slash"])
+async def test_first_model_capture_failure_commits_neither_input_owner(
+    tmp_path: Any, request: Any, entry_point: str
+) -> None:
+    chat, session, client, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "first_capture_failure"
+    )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    publication = AsyncMock()
+    controller.on_active_id_change = publication
+    recorder = controller._exchange_recorder
+    client._turns = [{"role": "assistant", "content": object()}]
+    with session_context(cast(Any, session)), reactive.isolate():
+        notification = MagicMock()
+        with (
+            patch("shiny.ui.notification_show", notification),
+            pytest.warns(UserWarning, match="not JSON serializable"),
+        ):
+            if entry_point == "normal":
+                cast(Any, session.input[chat.user_input_id])._set(
+                    {"text": "rejected", "attachments": [], "seq": 1}
+                )
+            else:
+                cast(Any, session.input[chat._slash_command_id])._set(
+                    {"command": "send", "userText": "rejected", "echo": True}
+                )
+            await reactive.flush()
+        assert "Message not sent" in notification.call_args.args[0]
+        assert recorder.record is None
+        assert chat._transcript.read() == ()
+        assert chat._transcript.open_exchange_id is None
+        assert chat.messages() == ()
+        assert chat.user_input() is None
+        assert chat._normal_user_submission() is None
+
+        assert (
+            controller._active_id_now() is not None
+        )  # Reservation, not publication.
+        publication.assert_not_awaited()
+        assert not any(
+            m["action"]["type"] == "remove_message" for m in session.messages
+        )
+        await controller.new_chat()
+        assert controller._active_id_now() is None
+
+
+@pytest.mark.anyio
+async def test_app_output_during_failed_input_put_targets_shared_committed_exchange(
+    tmp_path: Any, request: Any
+) -> None:
+    chat, session, _, store = await _make_initialized_live_v2_chat(
+        tmp_path, "blocked_input_put"
+    )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    putting = asyncio.Event()
+    release = asyncio.Event()
+    output_committed = asyncio.Event()
+    original_put = store.put
+    put_count = 0
+
+    async def fail_first_put(partition: Any, record: Any) -> None:
+        nonlocal put_count
+        put_count += 1
+        if put_count == 1:
+            putting.set()
+            await release.wait()
+            raise RuntimeError("input put failed")
+        await original_put(partition, record)
+
+    async def observe_output(exchange_id: str | None, entry: Any) -> None:
+        output_committed.set()
+        await recorder.message_committed(exchange_id, entry)
+
+    store.put = fail_first_put  # type: ignore[method-assign]
+    chat._transcript._on_message_committed = observe_output
+    with session_context(cast(Any, session)), reactive.isolate():
+        accepting = asyncio.create_task(
+            chat._record_accepted_user_input_with_capture(
+                ChatMessage(content="input", role="user")
+            )
+        )
+        appending = None
+        try:
+            await asyncio.wait_for(putting.wait(), timeout=2)
+            assert recorder.lock.locked()
+            assert recorder.record is not None
+            exchange_id = chat._transcript.open_exchange_id
+            assert (
+                exchange_id is not None
+                and exchange_id == recorder.record.active_leaf
+            )
+            assert chat._transcript_revision() == 1
+            appending = asyncio.create_task(
+                chat.append_message("concurrent app output")
+            )
+            await asyncio.wait_for(output_committed.wait(), timeout=2)
+            assert chat._transcript.read()[-1].exchange_id == exchange_id
+            assert (
+                chat._transcript.open_exchange_id == recorder.record.active_leaf
+            )
+            release.set()
+            with pytest.raises(RuntimeError, match="input put failed"):
+                await accepting
+            await asyncio.wait_for(appending, timeout=2)
+            assert chat.user_input() is None
+            assert chat._normal_user_submission() is None
+            saved = await store.get(
+                ConversationPartition(chat_id=chat.id, scope="test"),
+                recorder.record.id,
+            )
+            assert isinstance(saved, ConversationRecordV2)
+            assert (
+                saved.nodes[exchange_id].input
+                == chat._transcript.read()[0].message
+            )
+            assert (
+                saved.nodes[exchange_id]
+                .messages[-1]
+                .model_dump(mode="json")["segments"][0]["content"]
+                == "concurrent app output"
+            )
+        finally:
+            release.set()
+            await asyncio.gather(
+                accepting,
+                *([appending] if appending is not None else []),
+                return_exceptions=True,
+            )
+            store.put = original_put  # type: ignore[method-assign]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("entry_point", ["normal", "slash"])
+@pytest.mark.parametrize("failure", ["metadata", "legacy"])
+async def test_capture_rejection_cleanup_survives_metadata_failure_or_legacy_input(
+    tmp_path: Any, request: Any, capsys: Any, entry_point: str, failure: str
+) -> None:
+    chat, session, client, store = await _make_initialized_live_v2_chat(
+        tmp_path, "capture_cleanup"
+    )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    next(
+        effect
+        for effect in chat._effects
+        if effect._fn.__name__ == "handle_user_input"
+    ).destroy()
+    dispatched: list[str] = []
+
+    @chat.on_user_submit
+    async def submitted(text: str) -> None:
+        dispatched.append(text)
+
+    @chat.slash_command("send", "Send")
+    async def slash(text: str) -> None:
+        dispatched.append(text)
+
+    with session_context(cast(Any, session)), reactive.isolate():
+        await chat.append_message("existing checkpoint")
+        await reactive.flush()
+        assert recorder.record is not None
+        before = recorder.record.model_dump(mode="json")
+        transcript_before = _transcript_snapshot(chat)
+        partition = ConversationPartition(chat_id=chat.id, scope="test")
+        saved = await store.get(partition, recorder.record.id)
+        assert saved is not None
+        checkpoint = saved.model_dump(mode="json")
+        session.messages.clear()
+        client._turns = [{"role": "assistant", "content": object()}]
+        payload: dict[str, Any] = (
+            {"text": "rejected", "attachments": [], "seq": 1}
+            if entry_point == "normal"
+            else {
+                "command": "send",
+                "userText": "rejected",
+                "echo": True,
+                "seq": 1,
+            }
+        )
+        if failure == "metadata":
+            payload["client_message_id"] = "rejected-client"
+        notification = MagicMock()
+        with (
+            patch.object(
+                controller,
+                "_send_exchange_metadata",
+                side_effect=RuntimeError("metadata delivery failed"),
+            ) as metadata,
+            patch.object(controller, "_send_sibling_metadata") as siblings,
+            patch("shiny.ui.notification_show", notification),
+            pytest.warns(UserWarning, match="not JSON serializable"),
+        ):
+            input_id = (
+                chat.user_input_id
+                if entry_point == "normal"
+                else chat._slash_command_id
+            )
+            cast(Any, session.input[input_id])._set(payload)
+            if failure == "metadata":
+                # Normal effects propagate transport failure; slash retains its
+                # existing live-error wrapper. Neither claims successful delivery.
+                await reactive.flush()
+                assert "metadata delivery failed" in capsys.readouterr().err
+                metadata.assert_awaited_once()
+            else:
+                await reactive.flush()
+                metadata.assert_not_called()
+            siblings.assert_not_called()
+        actions = [message["action"] for message in session.messages]
+        assert {"type": "remove_loading"} in actions
+        removals = [
+            action for action in actions if action["type"] == "remove_message"
+        ]
+        assert removals == (
+            [{"type": "remove_message", "id": "rejected-client"}]
+            if failure == "metadata"
+            else []
+        )
+        reports = [call.args[0] for call in notification.call_args_list]
+        unsent = [report for report in reports if "Message not sent" in report]
+        assert len(unsent) == 1
+        report = unsent[0]
+        assert "not JSON serializable" not in report
+        assert dispatched == []
+        assert _transcript_snapshot(chat) == transcript_before
+        assert recorder.record.model_dump(mode="json") == before
+        saved = await store.get(partition, recorder.record.id)
+        assert saved is not None
+        assert saved.model_dump(mode="json") == checkpoint
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("client_message_id", [None, "rejected-client"])
+@pytest.mark.parametrize("cleanup", ["loading", "notification"])
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_capture_cleanup_propagates_failure_while_capture_error_is_handled(
+    tmp_path: Any,
+    request: Any,
+    client_message_id: str | None,
+    cleanup: str,
+    cancelled: bool,
+) -> None:
+    from shinychat._history_recorder import _ModelCaptureError
+
+    chat, session, _, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "handled_capture_cleanup"
+    )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    cleanup_error = (
+        asyncio.CancelledError("cancelled cleanup")
+        if cancelled
+        else RuntimeError("failed cleanup")
+    )
+    capture_error = _ModelCaptureError("capture failed")
+    capture_error.__cause__ = ValueError("private capture cause")
+    with (
+        session_context(cast(Any, session)),
+        patch.object(chat, "_send_action") as delivery,
+        patch.object(controller, "_send_exchange_metadata") as metadata,
+        patch.object(controller, "_send_sibling_metadata") as siblings,
+        patch.object(
+            chat,
+            "_remove_loading_message",
+            side_effect=cleanup_error if cleanup == "loading" else None,
+        ) as loading,
+        patch(
+            "shiny.ui.notification_show",
+            side_effect=cleanup_error if cleanup == "notification" else None,
+        ) as notification,
+        pytest.warns(UserWarning, match="private capture cause"),
+        pytest.raises(BaseException) as raised,
+    ):
+        # Both reactive entry points call this while handling capture failure.
+        try:
+            raise capture_error
+        except _ModelCaptureError as e:
+            await chat._handle_input_exception(e, client_message_id)
+    assert raised.value is cleanup_error
+    loading.assert_awaited_once()
+    notification.assert_called_once()
+    assert "private capture cause" not in notification.call_args.args[0]
+    if client_message_id is None:
+        delivery.assert_not_called()
+        metadata.assert_not_called()
+        siblings.assert_not_called()
+    else:
+        delivery.assert_awaited_once_with(
+            {"type": "remove_message", "id": client_message_id}
+        )
+        metadata.assert_awaited_once()
+        siblings.assert_awaited_once()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_capture_cleanup_preserves_primary_delivery_failure_when_transport_closed(
+    tmp_path: Any, request: Any, cancelled: bool
+) -> None:
+    from shinychat._history_recorder import _ModelCaptureError
+
+    chat, session, _, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "closed_capture_transport"
+    )
+    request.addfinalizer(chat.destroy)
+    primary = (
+        asyncio.CancelledError("cancelled removal")
+        if cancelled
+        else RuntimeError("closed removal")
+    )
+    cause = ValueError("private capture cause")
+    capture_error = _ModelCaptureError("capture failed")
+    capture_error.__cause__ = cause
+    controller = chat.history._controller
+    assert controller is not None
+    with (
+        session_context(cast(Any, session)),
+        patch.object(chat, "_send_action", side_effect=primary),
+        patch.object(
+            chat,
+            "_remove_loading_message",
+            side_effect=RuntimeError("closed loading"),
+        ) as loading,
+        patch(
+            "shiny.ui.notification_show",
+            side_effect=RuntimeError("closed notification"),
+        ) as notification,
+        pytest.warns(UserWarning, match="private capture cause"),
+        pytest.raises(BaseException) as raised,
+    ):
+        try:
+            raise capture_error
+        except _ModelCaptureError as e:
+            await chat._handle_input_exception(e, "rejected-client")
+    assert raised.value is primary
+    loading.assert_awaited_once()
+    notification.assert_called_once()
+    assert "private capture cause" not in notification.call_args.args[0]

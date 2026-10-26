@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any, cast
 
 import pytest
+from _history_test_helpers import replay_exchange_record
 from pydantic import JsonValue
 from shinychat._history_plan import canonical_values
 from shinychat._history_types import (
@@ -102,7 +103,7 @@ async def test_nonisolated_restore_retains_recoverable_branch_across_writes(
             "invalid"
         ].model_dump_json() == invalid
         await recorder.accepted_input(
-            "next", _stored_message("user", "next input")
+            "next", _stored_message("user", "next input"), lambda: None
         )
     saved = await _saved(backend, source.id)
     assert saved.nodes["invalid"].model_dump_json() == invalid
@@ -290,6 +291,77 @@ async def test_state_staging_preserves_all_sparse_pins_and_avoids_payload_copies
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("previously_saved", [False, True])
+async def test_first_input_captures_the_current_starting_pair_once(
+    backend: _Backend,
+    previously_saved: bool,
+) -> None:
+    live = {"dataset": "West"}
+    captures: list[dict[str, Any]] = []
+
+    def capture(values: dict[str, Any]) -> None:
+        values.update(live)
+        captures.append(dict(values))
+
+    adapter = _prompt_adapter()
+    writer, _ = _make_controller(
+        store=backend.store, adapter=adapter, save_callbacks=[capture]
+    )
+    recorder = writer._exchange_recorder
+    assert recorder.record is None
+    assert not await writer.save()
+    assert captures == []
+    assert await backend.reader.list(part()) == []
+
+    adapter.set_turns_json([{"role": "assistant", "content": "West context"}])
+    adapter.set_system_prompt("West prompt")
+    if previously_saved:
+        recorder.record = new_conversation_record_v2(
+            title="explicit starting point", client_info={}
+        )
+        assert await recorder.save_current()
+        assert captures == [{"dataset": "West"}]
+        captures.clear()
+
+    live["dataset"] = "East"
+    starting_turns = [{"role": "assistant", "content": "East context"}]
+    adapter.set_turns_json(starting_turns)
+    adapter.set_system_prompt("East prompt")
+    transcript, first = await _open_stream(writer)
+    record = recorder.record
+    assert record is not None
+    root = record.root_id
+    assert captures == [{"dataset": "East"}]
+    assert record.nodes[root].state[TURNS_STATE_KEY].data == starting_turns
+    assert record.nodes[root].state[SYSTEM_PROMPT_STATE_KEY].data == "East prompt"
+    assert record.nodes[root].state[VALUES_STATE_KEY].data == {"dataset": "East"}
+    assert VALUES_STATE_KEY not in record.nodes[first].state
+    saved_root = (await _saved(backend, record.id)).nodes[root]
+    assert saved_root.state == record.nodes[root].state
+
+    # Completing the first response records its changed values on the child,
+    # leaving the first-input pair available for an edit/retry rewind.
+    live["dataset"] = "response"
+    adapter.set_turns_json([*starting_turns, {"role": "assistant", "content": "answer"}])
+    await _end_stream(transcript)
+    await writer.on_response()
+    assert captures == [{"dataset": "East"}, {"dataset": "response"}]
+    assert record.nodes[root].state == saved_root.state
+    assert record.nodes[first].state[VALUES_STATE_KEY].data == {"dataset": "response"}
+
+    restored: list[dict[str, Any]] = []
+    viewer, _ = _make_controller(store=backend.reader, adapter=_prompt_adapter())
+    viewer._restore_callbacks.append(lambda values: restored.append(dict(values)))
+    starting_record = await _saved(backend, record.id)
+    starting_record.set_active_leaf(root)
+    await replay_exchange_record(viewer, starting_record)
+    assert restored == [{"dataset": "East"}]
+    assert viewer.adapter.get_turns_json() == starting_turns
+    assert viewer.adapter.get_system_prompt() == "East prompt"
+    assert not viewer._exchange_recorder.read_only
+
+
+@pytest.mark.anyio
 async def test_failed_root_recapture_keeps_the_previously_valid_starting_base(
     backend: _Backend,
 ) -> None:
@@ -319,7 +391,7 @@ async def test_failed_root_recapture_keeps_the_previously_valid_starting_base(
     )
     with pytest.warns(UserWarning, match="root recapture failed"):
         await recorder.accepted_input(
-            "first", _stored_message("user", "first input")
+            "first", _stored_message("user", "first input"), lambda: None
         )
     assert (
         recorder.record.nodes[root].model_dump_json(
