@@ -124,6 +124,8 @@ r-sync-fixtures: ## [r] Sync shared history test fixtures into pkg-r
 	@echo ""
 	@echo "🔄 Syncing shared history test fixtures into pkg-r"
 	mkdir -p $(PATH_PKG_R)/tests/testthat/fixtures
+	cp tests/shared/history-checkpoint-validity-matrix.json \
+		$(PATH_PKG_R)/tests/testthat/fixtures/history-checkpoint-validity-matrix.json
 	cp tests/shared/history-behavior-matrix.json \
 		$(PATH_PKG_R)/tests/testthat/fixtures/history-behavior-matrix.json
 	cp tests/shared/history-store-fixture-matrix.json \

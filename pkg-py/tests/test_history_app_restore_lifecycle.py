@@ -130,12 +130,16 @@ async def test_west_east_branch_values_follow_selected_position() -> None:
     record = recorder.record
     assert record is not None
     root_id = record.root_id
-    # Checkpoint-only: the root close never captures app values.
-    assert VALUES_STATE_KEY not in record.nodes[root_id].state
+    # The first input captures the app's starting position, before tools run.
+    assert _values(controller, root_id) == {"filter": "all"}
     assert _values(controller, ex_west) == {"filter": "west"}
 
     await controller.handle_edit(0, "east", request_id="edit-1")
+    assert events[-1] == ("restore", {"filter": "all"})
+    assert live["filter"] == "all"
     ex_east = await drive_exchange("east", "east")
+    assert events[-1] == ("provider", "all")
+    assert _values(controller, root_id) == {"filter": "all"}
     assert _values(controller, ex_west) == {"filter": "west"}
     assert _values(controller, ex_east) == {"filter": "east"}
 
@@ -151,9 +155,11 @@ async def test_west_east_branch_values_follow_selected_position() -> None:
     # Every position recreation dispatched on_restore with its own values,
     # and the edit's restore ran before the replacement provider work.
     restores = [e for e in events if e[0] == "restore"]
-    assert ("restore", {}) in restores
-    assert ("restore", {"filter": "west"}) in restores
-    edit_index = events.index(("restore", {}))
+    assert restores == [
+        ("restore", {"filter": "all"}),
+        ("restore", {"filter": "west"}),
+    ]
+    edit_index = events.index(("restore", {"filter": "all"}))
     assert events[edit_index + 1] == ("provider", "all")
 
 
@@ -395,7 +401,10 @@ async def test_failed_retained_parent_restore_suppresses_edit_projection(
     assert tuple(stored.path_node_ids()) == tuple(record.path_node_ids())
     assert stored is not record
     assert stored.nodes[target].state == record.nodes[target].state
+    assert stored.nodes[target].state["shinychat:turns"].mode == "snapshot"
     assert stored.nodes[target].state["shinychat:turns"].data == [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
         {"role": "user", "content": "second"},
         {"role": "assistant", "content": "fresh model close"},
     ]

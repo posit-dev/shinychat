@@ -146,19 +146,21 @@ def server(input, output, session):
 app = App(app_ui, server)
 ```
 
-Ask the model to select `west`. The tool call sets the filter, and when the
-response completes, `on_save` records `west` on that exchange. Then edit that
-message to ask for `east`. Before the replacement response starts, `on_restore`
-receives the root's empty values (`{}`); the callback's default supplies
-`all`, so the filter matches the position the
+Ask the model to select `west`. Accepting the input records the app state at
+that moment (`region: all`) on the starting checkpoint; the tool call then
+sets the filter, and when the response completes, `on_save` records `west` on
+that exchange. Then edit that message to ask for `east`. Before the
+replacement response starts, `on_restore` receives the starting checkpoint's
+values (`region: all`), so the filter matches the position the
 replacement continues from. The replacement's tool call selects `east`, and
 when it completes, `on_save` records `east` on the new exchange. The `west`
 exchange keeps `west`.
 
-Editing or retrying the first message normally invokes `on_restore({})`:
-accepting input does not capture values on the synthetic root. An explicit
-root save or an earlier inputless response can give the root saved values;
-those are restored instead. Your callback decides whether
+Editing or retrying the first message restores the values recorded on the
+starting checkpoint: the first accepted input captured app state there, so
+callbacks normally receive those values. A failed starting capture preserves
+any previously saved root values; without recorded values, callbacks receive
+`{}`. An explicit save at the root can replace its values. Your callback decides whether
 to supply defaults or raise an error; history does not automatically reset
 application state. An unhandled ordinary error retains the original branch
 read-only. For writable in-session browsing and resubmits, the model is already
@@ -174,7 +176,10 @@ same way.
 
 `on_save` runs at these checkpoints:
 
-- When a message is accepted, for the new exchange.
+- When the first message is accepted, for the conversation's starting
+  checkpoint, together with the paired model state. No automatic capture
+  happens at startup before any input.
+- When a later message is accepted, for the new exchange.
 - When a response completes, after it settles. This includes cancellation and
   errors.
 - For the replacement exchange created by edit, retry, or regenerate.
@@ -219,6 +224,73 @@ callbacks. Switching to another conversation and back runs a full restore, and
 that restore's result reclassifies the conversation under the existing read-only
 rules. Use New chat to leave the conversation. If your callback can recover, handle the
 case inside the callback and establish valid state before returning.
+
+### Response checkpoints and interrupted conversations
+
+History captures SDK turns and the system prompt when a streamed response ends,
+whether it completes, errors, or is cancelled. If the app registers `on_save`
+callbacks, that position remains a candidate until the existing post-reactive-flush
+response settlement captures and validates the app values. These callbacks do not
+run at stream end inside the still-running task, so they can read
+`chat.latest_message_stream.result()` at settlement. An unchanged value is a
+successful capture; no callbacks means no additional app-values requirement.
+
+A model capture failure makes the new position invalid and propagates the error.
+An automatic app capture failure warns the developer, retains prior recoverable
+values, and makes the new position invalid; it does not report a successful
+response save. Later app-only success cannot repair a failed model capture.
+Earlier valid checkpoints remain available. Provider outcome and checkpoint
+validity are separate: a cancelled or errored response can still be a valid
+checkpoint when all required state was captured reliably. A store-write error
+with reliable state is a durability failure, not a state-capture failure.
+
+History does not save streamed display fragments between terminal boundaries.
+A hard process crash can therefore lose the unfinished question and answer.
+For a source-isolated restored viewer, history projects paths to coherent
+checkpoints and keeps the ancestor input/state needed to resolve sparse values,
+prompts, and legacy turn deltas. It retains ended ancestor answers on paths to
+valid descendants, whose full SDK prefixes include that observed history; this
+does not make those ancestors valid checkpoint destinations. Pending response
+fragments and branches with no valid destination are excluded from the isolated
+view and its sibling controls. Writable and ordinary model-unavailable restores
+retain the full tree and recoverable state, while checkpoint eligibility filters
+navigation. Restore never invents model turns from displayed text.
+
+If the saved active position is a candidate or invalid, the restored session is
+an isolated read-only viewer. It cannot save or rename that source conversation.
+An empty fresh root is a writable starting position, but a failed root response
+does not become a writable empty draft when its display is filtered out.
+Choose **New chat** to continue chatting. Reloading does not necessarily cancel
+the original response task: it may still finish and save its terminal checkpoint,
+but the restored viewer does not reconnect to it or live-update. Completed
+conversations still use last-writer-wins storage; this does not provide general
+multi-tab ownership or conflict protection.
+
+SDK state is captured at response end; app values are captured at settlement.
+App code that mutates the SDK client between these boundaries can therefore pair
+terminal-time model state with settlement-time app values. History neither detects
+nor fences such mutations, and SDK calls made outside `Chat` are not tracked.
+If newer input or an independent response supersedes an ended candidate before
+settlement, that older position is invalidated rather than paired with the newer
+response's app values. Only the latest eligible active position can settle.
+
+Custom stores may see the nullable `ExchangeNode.checkpoint` field in schema 2:
+`candidate`, `valid`, or `invalid`. `checkpoint_state` centralizes the fallback for
+records without the field (or with `null`): terminal nodes are assumed valid,
+pending nodes are candidates, except for an empty starting root. This preserves
+older v2 records; it cannot retrospectively identify their unrecorded capture
+failures. New records classify positions explicitly. Schema 2 is still unreleased,
+so this additive field does not introduce a new schema version.
+
+Coherent checkpoints store full client turn lists and system prompts. Repeating
+long prefixes across exchanges can make total stored model state grow
+quadratically with conversation length. Existing delta-based records remain
+readable. The file store's `max_store_mb` budget still applies (100 MB by default);
+this change does not increase the quota or change its defaults.
+
+Leaving a coherent completed position or disconnecting captures the latest model
+state without invoking app-state `on_save` callbacks. Explicit `history.save()`
+continues to capture app state at coherent positions.
 
 ## Slash commands
 
@@ -364,7 +436,7 @@ Key points:
 - `StreamController()` is created once and reused — it automatically resets between streams.
 - Pass the controller to `stream_async(controller=ctrl)` so chatlas can honour the cancellation signal.
 - The cancel input fires as `input.<id>_cancel` (e.g. `input.chat_cancel`). Observe it with `@reactive.event` to call `ctrl.cancel()`. This is needed in both Express and Core apps.
-- When a stream is cancelled or fails, the partial response is saved to the conversation history at that point. Do not rely on in-progress text surviving a hard process kill.
+- chatlas retains the partial response in live client history on cancellation. Persistent history offers a response as a valid checkpoint only after it ends and model capture, any registered app-state capture, and storage succeed. A hard kill can lose the unfinished exchange. After reload, the original task may still finish and save, but the restored viewer does not automatically adopt its display or client context.
 - Starting a second stream, or appending a complete message, while a stream is active raises `RuntimeError`. Use the stream's status to sequence follow-up work. See the [migration guide](history-migration.qmd).
 
 ## File attachments

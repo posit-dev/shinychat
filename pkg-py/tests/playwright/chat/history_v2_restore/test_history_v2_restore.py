@@ -285,7 +285,13 @@ def test_v2_restored_failure_retries_through_the_real_provider(
     expect(page.locator(".shiny-chat-user-message")).to_have_count(
         1, timeout=30_000
     )
-    expect(page.locator(".shiny-chat-message")).to_have_count(0, timeout=10_000)
+    expect(page.locator(".shiny-notification")).to_contain_text(
+        "intentional retry fixture failure", timeout=30_000
+    )
+    controller.InputActionButton(page, "inspect_turns").click()
+    controller.OutputText(page, "recorder").expect_value(
+        re.compile(r'"checkpoint": "valid".*"status": "error"'), timeout=10_000
+    )
 
     page.reload()
     expect(chat.loc).to_be_visible(timeout=30_000)
@@ -373,7 +379,13 @@ def test_v2_restore_holds_retry_edit_and_navigation_until_history_release(
     chat.send_user_input(method="enter")
     failed = page.locator(".shiny-chat-user-message").first
     expect(failed).to_contain_text("held retry", timeout=30_000)
-    expect(page.locator(".shiny-chat-message")).to_have_count(0, timeout=10_000)
+    expect(page.locator(".shiny-notification")).to_contain_text(
+        "intentional retry fixture failure", timeout=30_000
+    )
+    controller.InputActionButton(page, "inspect_turns").click()
+    controller.OutputText(page, "recorder").expect_value(
+        re.compile(r'"checkpoint": "valid".*"status": "error"'), timeout=10_000
+    )
 
     failed.hover()
     failed.locator(".shiny-chat-edit-btn").click()
@@ -570,18 +582,18 @@ def test_v2_bookmark_switch_updates_url_in_place_and_reload_restores_target(
 
     # In-place switch B -> A: the URL moves to A's state id, no reload.
     page.locator(".shiny-chat-history-trigger").click()
-    page.locator(
-        ".shiny-chat-history-item", has_text="conversation A"
-    ).locator(".shiny-chat-history-item-select").click()
+    page.locator(".shiny-chat-history-item", has_text="conversation A").locator(
+        ".shiny-chat-history-item-select"
+    ).click()
     page.wait_for_url(lambda url: url == url_a, timeout=10_000)
     chat.expect_latest_message("echo: conversation A", timeout=30_000)
     assert page.evaluate("window.__noReloadMarker") is True
 
     # And back A -> B, still in place.
     page.locator(".shiny-chat-history-trigger").click()
-    page.locator(
-        ".shiny-chat-history-item", has_text="conversation B"
-    ).locator(".shiny-chat-history-item-select").click()
+    page.locator(".shiny-chat-history-item", has_text="conversation B").locator(
+        ".shiny-chat-history-item-select"
+    ).click()
     page.wait_for_url(lambda url: url == url_b, timeout=10_000)
     chat.expect_latest_message("echo: conversation B", timeout=30_000)
     assert page.evaluate("window.__noReloadMarker") is True

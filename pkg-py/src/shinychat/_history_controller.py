@@ -33,7 +33,7 @@ from ._history_plan import (
     RestorePlan,
     StatePlan,
 )
-from ._history_recorder import _ExchangeRecorder
+from ._history_recorder import _ExchangeRecorder, _ModelCaptureError
 from ._history_store import (
     ConversationPartition,
     ConversationStore,
@@ -198,9 +198,7 @@ def _restore_step(step: str) -> Iterator[None]:
     except Exception as error:
         if getattr(error, _RESTORE_STEP_ATTR, None) is None:
             setattr(error, _RESTORE_STEP_ATTR, step)
-            _add_exception_note(
-                error, f"{_RESTORE_STEP_NOTE_PREFIX}{step}"
-            )
+            _add_exception_note(error, f"{_RESTORE_STEP_NOTE_PREFIX}{step}")
         raise
 
 
@@ -214,6 +212,9 @@ _READ_ONLY_RESUBMIT_MESSAGES: dict[ReadOnlyReason, str] = {
     "app_restore_failed": (
         "Cannot resubmit an exchange in a read-only conversation: its saved "
         "app state could not be fully restored."
+    ),
+    "interrupted": (
+        "Cannot resubmit an exchange in an interrupted read-only conversation."
     ),
 }
 
@@ -365,7 +366,7 @@ class HistoryController:
                 raise ValueError(
                     "Conversation record schema does not match the active history path."
                 )
-        return record
+        return record.model_copy(deep=True) if record is not None else None
 
     @asynccontextmanager
     async def _destructive_mutation(self, *, block_input: bool = False):
@@ -396,13 +397,19 @@ class HistoryController:
             return
         record = recorder.record
         assert record is not None
-        await self._after_persist(record)
-        self._schedule_exchange_retitle(record)
+        leaf = record.active_leaf
+        assert leaf is not None
+        reliable = record.nodes[leaf].is_checkpoint
+        await self._after_persist(record, success_hook=reliable)
+        if reliable:
+            self._schedule_exchange_retitle(record)
 
-    async def _after_persist(self, record: ConversationRecordV2) -> None:
+    async def _after_persist(
+        self, record: ConversationRecordV2, *, success_hook: bool = True
+    ) -> None:
         """Shared post-save tail: eviction, save hook, and UI updates."""
         await self._evict_if_needed()
-        if self.on_response_saved is not None:
+        if success_hook and self.on_response_saved is not None:
             await self.on_response_saved(record)
         await self.send_history_update()
         await self._send_sibling_metadata()
@@ -432,9 +439,7 @@ class HistoryController:
         ):
             return
         turns_flat = self.adapter.get_turns_json()
-        self._title_task = asyncio.create_task(
-            self.retitle(turns_flat, record)
-        )
+        self._title_task = asyncio.create_task(self.retitle(turns_flat, record))
         self._title_task.add_done_callback(title_task_done)
 
     async def retitle(
@@ -467,7 +472,11 @@ class HistoryController:
         await self.send_history_update()
 
     def cancel_pending(self) -> None:
-        """Cancel in-flight background work (e.g. titling) at teardown."""
+        """Cancel in-flight background work (e.g. titling) at teardown.
+
+        This does not cancel the response task: it may still publish its
+        coherent terminal checkpoint after the original session disconnects.
+        """
         if self._title_task is not None and not self._title_task.done():
             self._title_task.cancel()
 
@@ -592,6 +601,7 @@ class HistoryController:
         self._active_id.set(None)
 
         cleanup_failures: list[BaseException] = []
+
         async def best_effort(operation: Callable[[], Any]) -> None:
             try:
                 result = operation()
@@ -615,10 +625,7 @@ class HistoryController:
             cleanup_failures.append(error)
         else:
             history = getattr(self.chat, "history", None)
-            if (
-                history is not None
-                and not history._initial_history_initialized
-            ):
+            if history is not None and not history._initial_history_initialized:
                 history._initial_history_initialized = True
         try:
             await self._notify_restore_failure(
@@ -632,12 +639,67 @@ class HistoryController:
                 # failure; otherwise an outer boundary must still notify.
                 _mark_restore_failure_notified(failure)
 
+    @staticmethod
+    def _unresolved_record(record: ConversationRecordV2) -> bool:
+        leaf = record.active_leaf
+        return (
+            leaf is not None
+            and leaf in record.nodes
+            and not record.nodes[leaf].is_checkpoint
+        )
+
+    @staticmethod
+    def _coherent_leaf(record: ConversationRecordV2, leaf: str) -> str:
+        while not record.nodes[leaf].is_checkpoint:
+            parent = record.nodes[leaf].parent_id
+            if parent is None:
+                return leaf
+            leaf = parent
+        return leaf
+
     def _prepare_exchange_restore(
         self,
         target: ConversationRecordV2,
-    ) -> tuple[tuple[str, ...], RestorePlan]:
+        *,
+        source_isolated: bool = False,
+    ) -> tuple[tuple[str, ...], RestorePlan, bool]:
         recorder = self._exchange_recorder
 
+        if not target.path_node_ids() or target.active_leaf is None:
+            raise ValueError("Exchange-tree record has no active path.")
+        source_isolated = source_isolated or self._unresolved_record(target)
+        assert target.active_leaf is not None
+        target.active_leaf = self._coherent_leaf(target, target.active_leaf)
+        if source_isolated:
+            # Keep complete paths to coherent checkpoints. Ancestor input/state
+            # remains structural data for sparse values and legacy delta frames.
+            keep = {target.root_id}
+            for key, node in target.nodes.items():
+                if node.is_checkpoint:
+                    cursor: str | None = key
+                    while cursor is not None and cursor not in keep:
+                        keep.add(cursor)
+                        cursor = target.nodes[cursor].parent_id
+            target.nodes = {
+                key: node for key, node in target.nodes.items() if key in keep
+            }
+            for node in target.nodes.values():
+                node.children = [key for key in node.children if key in keep]
+                if (
+                    node.selected_child is not None
+                    and node.selected_child not in node.children
+                ):
+                    node.selected_child = target.newest_child(node.children)
+                if node.status == "pending":
+                    node.messages.clear()
+            if target.active_leaf not in keep:
+                target.active_leaf = target.root_id
+            if (
+                keep == {target.root_id}
+                and not target.nodes[target.root_id].is_checkpoint
+            ):
+                target.nodes[target.root_id].input = None
+                target.nodes[target.root_id].messages.clear()
         node_ids = tuple(target.path_node_ids())
         if not node_ids or target.active_leaf is None:
             raise ValueError("Exchange-tree record has no active path.")
@@ -647,7 +709,7 @@ class HistoryController:
             recorder.restore_hooks,
             adapter=self.adapter,
         )
-        return node_ids, planned_state
+        return node_ids, planned_state, source_isolated
 
     async def _restore_exchange_record_locked(
         self,
@@ -656,6 +718,7 @@ class HistoryController:
         node_ids: tuple[str, ...],
         planned_state: RestorePlan,
         persist_active_pointer: bool = False,
+        source_isolated: bool = False,
     ) -> None:
         recorder = self._exchange_recorder
         unavailable_reason = _history_plan.turns_unavailable_reason(
@@ -667,12 +730,14 @@ class HistoryController:
                 await self._replay_exchange_display(target, node_ids)
             with _restore_step("applying the recorded state entries"):
                 await _history_plan.run_plan(planned_state)
-            if _history_plan.turns_unavailable(planned_state):
-                recorder.invalidate_turn_baseline()
-
             with _restore_step("installing the restored record"):
                 recorder.install_restored_record(
-                    target, read_only=unavailable_reason is not None
+                    target,
+                    read_only=unavailable_reason is not None or source_isolated,
+                    source_isolated=source_isolated,
+                    read_only_reason=(
+                        "interrupted" if source_isolated else "model_unavailable"
+                    ),
                 )
                 await self._set_active_id(target.id)
                 recorder.mark_active_id_published(target)
@@ -734,16 +799,19 @@ class HistoryController:
         node_id: str | None = None,
     ) -> None:
         """Restore an initial target, recovering only preflight failures."""
-        selected = target
+        selected = target.model_copy(deep=True)
         persist_active_pointer = False
         try:
             with _restore_step("validating the saved conversation"):
                 if node_id is not None:
-                    selected = target.model_copy(deep=True)
+                    selected.require_checkpoint(node_id)
                     selected.set_active_leaf(node_id)
                     persist_active_pointer = target.active_leaf != node_id
-                node_ids, planned_state = self._prepare_exchange_restore(
-                    selected
+                node_ids, planned_state, source_isolated = (
+                    self._prepare_exchange_restore(
+                        selected,
+                        source_isolated=self._unresolved_record(target),
+                    )
                 )
         except BaseException as error:
             await self._clear_failed_restore(error)
@@ -768,6 +836,7 @@ class HistoryController:
                 node_ids=node_ids,
                 planned_state=planned_state,
                 persist_active_pointer=persist_active_pointer,
+                source_isolated=source_isolated,
             )
 
     async def switch_to(self, conv_id: str) -> None:
@@ -791,17 +860,20 @@ class HistoryController:
         recorder = self._exchange_recorder
         async with self._destructive_mutation(block_input=True):
             async with self._exchange_mutation():
-                await recorder.persist_current_locked()
+                await recorder.save_current_locked()
                 target = await self._get_record(self.partition, conv_id)
                 if target is None:
                     raise RuntimeError(
                         f"Conversation {conv_id!r} no longer exists."
                     )
-                node_ids, planned_state = self._prepare_exchange_restore(target)
+                node_ids, planned_state, source_isolated = (
+                    self._prepare_exchange_restore(target)
+                )
                 await self._restore_exchange_record_locked(
                     target,
                     node_ids=node_ids,
                     planned_state=planned_state,
+                    source_isolated=source_isolated,
                 )
         if self.on_switch_restored is not None:
             try:
@@ -815,15 +887,27 @@ class HistoryController:
         """
         Start a new conversation.
 
-        The current conversation is saved before the client turns, rendered
-        messages, active ID, and history drawer state are reset. ``greeting``
-        is forwarded to :meth:`Chat.clear_messages`; when ``True``, the
+        Latest model state is saved before the client turns, rendered
+        messages, active ID, and history drawer state are reset. If model
+        capture fails, the already-saved conversation is retained and the
+        explicit reset proceeds with a developer warning. Storage, reset,
+        cancellation, and fatal errors still propagate. ``greeting`` is
+        forwarded to :meth:`Chat.clear_messages`; when ``True``, the
         greeting is cleared and the configured greeting is resolved again
         after the new-chat transition settles.
         """
         async with self._destructive_mutation():
             async with self._exchange_mutation():
-                await self._exchange_recorder.persist_current_locked()
+                try:
+                    await self._exchange_recorder.save_current_locked()
+                except _ModelCaptureError as error:
+                    cause = error.__cause__ or error
+                    warnings.warn(
+                        "Could not capture the latest model state before New chat; "
+                        "keeping the saved conversation and starting fresh "
+                        f"({type(cause).__name__}: {cause}).",
+                        stacklevel=2,
+                    )
                 self.adapter.set_turns_json([])
                 await self.chat.clear_messages(greeting=greeting)
                 self._exchange_recorder.reset()
@@ -860,11 +944,11 @@ class HistoryController:
                 )
         elif kind == "regenerate":
             if target.status != "ok":
-                raise ValueError(
-                    "Only completed exchanges can be regenerated."
-                )
+                raise ValueError("Only completed exchanges can be regenerated.")
         elif kind != "edit":
             raise ValueError(f"Unknown exchange resubmit kind {kind!r}.")
+        # The accepted input is causal data, not the rewind destination.
+        record.require_checkpoint(target.parent_id)
         return target, target.parent_id
 
     @staticmethod
@@ -883,7 +967,10 @@ class HistoryController:
         if not isinstance(content, str):
             raise TypeError("Edited message content must be a string.")
         parsed = (
-            [Attachment.model_validate(attachment) for attachment in attachments]
+            [
+                Attachment.model_validate(attachment)
+                for attachment in attachments
+            ]
             if attachments is not None
             else []
         )
@@ -1041,11 +1128,14 @@ class HistoryController:
         Any other failure takes the full cleanup.
         """
         recorder = self._exchange_recorder
+        record.require_checkpoint(leaf)
         async with self._exchange_mutation():
             current_leaf = record.active_leaf
             if current_leaf is None:
                 raise ValueError("Exchange-tree record has no active leaf.")
-            await recorder.capture_state_locked(current_leaf, "node_close")
+            await recorder.capture_state_locked(
+                current_leaf, "node_close", model_only=True
+            )
             try:
                 with _restore_step(save_step):
                     await _history_plan.run_plan(rewind_state)
@@ -1094,6 +1184,10 @@ class HistoryController:
             else:
                 record = await self._get_record(self.partition, conv_id)
                 if record is not None:
+                    if self._unresolved_record(record):
+                        raise RuntimeError(
+                            "Cannot rename an interrupted read-only conversation."
+                        )
                     record.title = title
                     record.title_source = "user"
                     await self.store.put(self.partition, record)
@@ -1106,11 +1200,24 @@ class HistoryController:
             raise RuntimeError("HistoryController not initialized")
         async with self._destructive_mutation():
             async with self._exchange_mutation():
+                recorder = self._exchange_recorder
+                source = await self._get_record(self.partition, conv_id)
+                if (
+                    recorder.source_isolated
+                    and recorder.record is not None
+                    and recorder.record.id == conv_id
+                ) or (source is not None and self._unresolved_record(source)):
+                    raise RuntimeError(
+                        "Cannot delete an interrupted read-only conversation."
+                    )
+                exchange_record = self._exchange_recorder.record
                 if self.on_evict is not None:
                     await self.on_evict(conv_id)
                 await self.store.delete(self.partition, conv_id)
-                exchange_record = self._exchange_recorder.record
-                if exchange_record is not None and exchange_record.id == conv_id:
+                if (
+                    exchange_record is not None
+                    and exchange_record.id == conv_id
+                ):
                     self._exchange_recorder.reset()
                     await self.clear_active()
                     self.adapter.set_turns_json([])
@@ -1146,9 +1253,19 @@ class HistoryController:
         data: dict[int, ExchangeMetadata] = {}
         for node_id, message_index in recorder.record.iter_visible_inputs():
             node = recorder.record.nodes[node_id]
+            parent = (
+                recorder.record.nodes.get(node.parent_id)
+                if node.parent_id is not None
+                else None
+            )
             metadata: ExchangeMetadata = {
                 "status": node.status,
-                "retryable": node.status in _RETRYABLE_STATUSES,
+                "retryable": (
+                    node.status in _RETRYABLE_STATUSES
+                    and not recorder.read_only
+                    and parent is not None
+                    and parent.is_checkpoint
+                ),
             }
             if node.status == "error":
                 metadata["error_message"] = project_history_error_message(
@@ -1200,7 +1317,9 @@ class HistoryController:
             return
 
         node_id = record.exchange_id_for_user_message_index(message_index)
-        siblings = record.siblings_of(node_id)
+        siblings = record.checkpoint_siblings(node_id)
+        if node_id not in siblings:
+            raise ValueError("The requested position has no valid checkpoint.")
         current_pos = siblings.index(node_id)
         step = -1 if direction == "prev" else 1
         target_pos = current_pos + step
@@ -1209,7 +1328,10 @@ class HistoryController:
         target = siblings[target_pos]
 
         read_only = recorder.read_only
-        leaf = record.subtree_leaf(target)
+        leaf = record.checkpoint_leaf(target)
+        if leaf is None:
+            raise ValueError("The requested position has no valid checkpoint.")
+        record.require_checkpoint(leaf)
         projection = record.model_copy(deep=True)
         projection.set_active_leaf(leaf)
         node_ids = tuple(projection.path_node_ids())

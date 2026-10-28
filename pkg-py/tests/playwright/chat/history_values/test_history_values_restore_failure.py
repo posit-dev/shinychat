@@ -97,7 +97,7 @@ def test_failed_first_message_edit_retains_branch_and_exits_pending_edit(
     chat.send_user_input(method="enter")
     chat.expect_latest_message("Selected west", timeout=30_000)
     expect(page.locator("#provider_calls")).to_have_text("1")
-    page.get_by_label("Fail empty root restore").check()
+    page.get_by_label("Fail starting checkpoint restore").check()
 
     user = chat.loc.locator(".shiny-chat-user-message").first
     user.hover()

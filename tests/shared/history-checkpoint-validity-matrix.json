@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "cases": [
+    {"name": "legacy-terminal-ok", "node": {"parent_id": "root", "status": "ok"}, "expected": "valid"},
+    {"name": "legacy-terminal-error", "node": {"parent_id": "root", "status": "error"}, "expected": "valid"},
+    {"name": "legacy-terminal-cancelled", "node": {"parent_id": "root", "status": "cancelled"}, "expected": "valid"},
+    {"name": "legacy-pending-child", "node": {"parent_id": "root", "status": "pending"}, "expected": "candidate"},
+    {"name": "legacy-empty-starting-root", "node": {"status": "pending"}, "expected": "valid"},
+    {"name": "nullable-legacy-terminal", "node": {"parent_id": "root", "status": "ok", "checkpoint": null}, "expected": "valid"},
+    {"name": "app-not-settled", "node": {"parent_id": "root", "status": "ok", "checkpoint": "candidate"}, "expected": "candidate"},
+    {"name": "failed-root-is-not-a-draft", "node": {"status": "pending", "checkpoint": "invalid"}, "expected": "invalid"},
+    {"name": "failed-ok-response", "node": {"parent_id": "root", "status": "ok", "checkpoint": "invalid"}, "expected": "invalid"},
+    {"name": "reliable-error-response", "node": {"parent_id": "root", "status": "error", "checkpoint": "valid"}, "expected": "valid"}
+  ]
+}

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import tempfile
+import os
 from typing import Any, AsyncGenerator
 from unittest.mock import MagicMock
 
@@ -41,12 +41,16 @@ class EchoChatClient(chatlas.Chat):
         return _gen()
 
 
-store_dir = tempfile.mkdtemp(prefix="shinychat-history-idempotent-")
+store_dir = os.environ["SHINYCHAT_TEST_STORE_DIR"]
 
 app_ui = ui.page_fluid(
     chat_ui("chat"),
     ui.input_action_button("release", "Release"),
-    ui.output_text_verbatim("save_count"),
+    ui.input_select(
+        "selected_state",
+        "Selected state",
+        {"original": "Original", "changed": "Changed"},
+    ),
     ui.output_text_verbatim("owner_messages"),
     ui.output_text("restore_count"),
 )
@@ -85,7 +89,7 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
             title=None,
         ),
     )
-    saves = reactive.value(0)
+    saves = 0
     restores = reactive.value(0)
 
     @chat.history.on_restore
@@ -98,11 +102,11 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
 
     @chat.history.on_save
     def _(values: dict[str, object]) -> None:
-        saves.set(saves() + 1)
-
-    @render.text
-    def save_count():
-        return str(saves())
+        nonlocal saves
+        saves += 1
+        values.update(
+            capture_count=saves, selected_state=input.selected_state()
+        )
 
     @render.text
     def owner_messages():

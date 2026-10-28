@@ -17,7 +17,7 @@
       {}
     ],
     "entries": [
-      {"filter": "A"},
+      null,
       {"filter": "B"},
       null,
       {"filter": "A"},
@@ -45,6 +45,6 @@
     "name": "object_key_order_is_not_a_change",
     "at_first_input": {"filter": "west", "limit": 10},
     "exchanges": [{"limit": 10, "filter": "west"}],
-    "entries": [{"filter": "west", "limit": 10}]
+    "entries": [null]
   }
 ]

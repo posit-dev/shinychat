@@ -36,7 +36,9 @@ def test_incompatible_context_can_be_viewed_and_navigated_but_not_continued(
     ).to_have_count(0)
     expect(page.locator(".shiny-notification")).to_have_count(0)
     expect(chat.loc.locator(".shiny-chat-retry-error")).to_have_count(0)
-    expect(chat.loc.locator(".shiny-chat-message-footer-error")).to_have_count(0)
+    expect(chat.loc.locator(".shiny-chat-message-footer-error")).to_have_count(
+        0
+    )
 
     original = chat.loc.locator(".shiny-chat-user-message").first
     original.hover()
@@ -66,3 +68,25 @@ def test_incompatible_context_can_be_viewed_and_navigated_but_not_continued(
     expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: fresh question", timeout=30_000)
+
+
+def test_interrupted_checkpoint_has_new_chat_escape(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+    page.get_by_role("button", name="Conversation history").click()
+    page.get_by_role("button", name="Saved interrupted response").click()
+    status = page.locator(".shiny-chat-readonly-message")
+    expect(status).to_contain_text("This conversation was interrupted")
+    expect(chat.loc_input).not_to_be_visible()
+    expect(page.get_by_text("unfinished question", exact=True)).to_have_count(0)
+    page.get_by_role("button", name="New chat", exact=True).click()
+    expect(status).to_have_count(0)
+    expect(chat.loc_input).to_be_visible(timeout=30_000)
+    chat.set_user_input("after interrupted restore")
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message(
+        "echo: after interrupted restore", timeout=30_000
+    )

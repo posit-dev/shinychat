@@ -14,7 +14,11 @@ from shinychat._history_store import (
     ConversationPartition,
     FileConversationStore,
 )
-from shinychat._history_types import new_conversation_record_v2
+from shinychat._history_types import (
+    TURNS_STATE_KEY,
+    StateEntry,
+    new_conversation_record_v2,
+)
 from shinychat.types import HistoryOptions
 
 TARGET_ID = "startup-target"
@@ -45,6 +49,21 @@ def _target_record() -> Any:
                 )
             ],
         ),
+    )
+    # The fixture represents a saved position, not an interrupted request.
+    record.finish_exchange(TARGET_EXCHANGE_ID, "ok", None)
+    node = record.nodes[TARGET_EXCHANGE_ID]
+    node.checkpoint = "valid"
+    node.state[TURNS_STATE_KEY] = StateEntry(
+        kind="chatlas",
+        version=1,
+        mode="snapshot",
+        data=[
+            {
+                "role": "user",
+                "contents": [{"content_type": "text", "text": "restored input"}],
+            }
+        ],
     )
     return record
 

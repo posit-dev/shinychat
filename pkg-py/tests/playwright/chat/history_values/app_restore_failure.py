@@ -71,7 +71,7 @@ app_ui = ui.page_fillable(
     ui.output_text("restore_attempts"),
     ui.output_text("second_restore_calls"),
     ui.output_text("provider_calls"),
-    ui.input_checkbox("fail_empty_restore", "Fail empty root restore"),
+    ui.input_checkbox("fail_root_restore", "Fail starting checkpoint restore"),
     chat_ui("chat"),
 )
 
@@ -113,8 +113,8 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     @chat.history.on_restore
     def restore_filter(values: dict[str, Any]) -> None:
         attempts.set(attempts.get() + 1)
-        if not values and input.fail_empty_restore():
-            raise KeyError("filter")
+        if values.get("filter") == "all" and input.fail_root_restore():
+            raise RuntimeError("Starting region is not available")
         if values.get("filter") == "broken":
             # An ordinary app failure: the saved region no longer exists.
             raise RuntimeError("Region 'broken' is not available in this build")

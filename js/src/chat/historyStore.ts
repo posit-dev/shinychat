@@ -135,8 +135,8 @@ export class HistoryStore {
     enabled: boolean
     conversations: ConversationMeta[]
     activeId: string | null
-    readOnlyReason?: ReadOnlyReason
     readOnly?: boolean
+    readOnlyReason?: ReadOnlyReason
     transitionProtocol?: string
   }): void {
     const nextConversations = conversationsEqual(

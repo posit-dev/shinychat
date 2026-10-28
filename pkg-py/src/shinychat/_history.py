@@ -101,8 +101,9 @@ class HistoryOptions:
         input state alongside the chat.
 
         The ``values`` dict captured by ``@chat.history.on_save`` callbacks
-        is recorded per exchange and restored by ``@chat.history.on_restore``
-        in every restore mode, including ``"bookmark"``: the callbacks
+        is recorded per exchange (the conversation's starting values are
+        recorded on its initial checkpoint) and restored by
+        ``@chat.history.on_restore`` in every restore mode, including ``"bookmark"``: the callbacks
         receive the values recorded at the selected position, after the
         target conversation becomes active. ``on_restore`` also runs when
         browsing to a sibling or another position and before an edit,
@@ -239,9 +240,7 @@ class _RestoreModeHooks:
 
     # Called with the new conversation id (or None) after any switch that
     # changes the active conversation.
-    on_active_id_change: (
-        Callable[[str | None], Awaitable[None]] | None
-    ) = None
+    on_active_id_change: Callable[[str | None], Awaitable[None]] | None = None
     # Fired after every save with the v2 record the exchange recorder
     # owns; bookmark mode uses it to mint a fresh server bookmark.
     on_response_saved: (
@@ -311,10 +310,11 @@ def _bookmark_restore_hooks(
             if new_state_id is None:
                 return
             try:
-                current, cleanup_state_id = (
-                    await recorder.settle_bookmark_state_id(
-                        conversation_id, node_id, new_state_id
-                    )
+                (
+                    current,
+                    cleanup_state_id,
+                ) = await recorder.settle_bookmark_state_id(
+                    conversation_id, node_id, new_state_id
                 )
             except BaseException:
                 await delete_bookmark_state(new_state_id)
@@ -339,9 +339,7 @@ def _bookmark_restore_hooks(
         if controller.partition is None:
             rec = None
         else:
-            rec = await controller._get_record(
-                controller.partition, conv_id
-            )
+            rec = await controller._get_record(controller.partition, conv_id)
         state_id = rec.bookmark_state_id if rec is not None else None
         if state_id is not None:
             await delete_bookmark_state(state_id)
@@ -399,16 +397,18 @@ class ChatHistory:
 
     def _history_action_admitted(self) -> bool:
         controller = self._controller
-        return (
-            controller is None
-            or self._initial_history_initialized
-        )
+        return controller is None or self._initial_history_initialized
 
     def _history_submission_admitted(self) -> bool:
         controller = self._controller
         return self._history_action_admitted() and (
             controller is None or not controller._exchange_recorder.read_only
         )
+
+    async def _flush_pending(self) -> None:
+        """Save model-only changes at a coherent position before cleanup."""
+        if self._controller is not None:
+            await self._controller._exchange_recorder.flush_pending()
 
     def _teardown(self) -> None:
         """
@@ -417,9 +417,10 @@ class ChatHistory:
 
         Destroys the history input effects — which otherwise keep answering the
         shared input ids and retain the old controller for the rest of the
-        session — unregisters the session-end callback, and runs the cleanup
-        that session end would have run. No-op if history never started; safe
-        to call more than once.
+        session — unregisters the session-end callback, and releases pending
+        work. Actual session end captures coherent model-only changes before
+        this cleanup; unfinished streams have no intermediate checkpoint.
+        No-op if history never started; safe to call more than once.
         """
         for effect in self._effects:
             effect.destroy()
@@ -478,7 +479,9 @@ class ChatHistory:
             def _(values):
                 values["selected_tab"] = current_tab()
 
-        Values are captured only at checkpoints: when a user input is
+        Values are captured only at checkpoints: when the first user input
+        is accepted (recorded on the conversation's starting checkpoint,
+        together with the paired model state), when a later input is
         accepted (recorded on the new exchange), when a response completes
         (after reactive settlement, including cancelled and failed
         completions), when an edit, retry, or regenerate produces its
@@ -489,9 +492,11 @@ class ChatHistory:
         moves elsewhere.
 
         Successful captures record values per exchange, recording only
-        changes from the inherited values along the branch. The synthetic
-        root is not captured merely because an input is accepted. An empty
-        dict explicitly clears a previously saved object.
+        changes from the inherited values along the branch. The starting
+        checkpoint is captured when the first input is accepted, before the
+        provider response begins; history performs no automatic capture at
+        startup before any input. An empty dict explicitly clears a
+        previously saved object.
         Values use Pydantic's JSON encoding: dates and UUIDs become strings,
         and tuples and sets become arrays. Serializer-supported keys become
         strings (for example, ``1`` becomes ``"1"`` and ``None`` becomes
@@ -538,11 +543,12 @@ class ChatHistory:
             def _(values):
                 ui.update_navs("tabs", selected=values.get("selected_tab"))
 
-        Editing or retrying the first message normally calls
-        ``on_restore({})``: accepting input does not capture app values on
-        the synthetic root. If values were explicitly saved on the root,
-        or captured with an earlier inputless response, those values are
-        restored instead. The author callback
+        Editing or retrying the first message restores the values recorded
+        on the starting checkpoint: the first accepted input captured app
+        state there, so callbacks normally receive those values. A failed
+        starting capture preserves any previously saved root values; without
+        recorded values, callbacks receive ``{}``. An explicit save at the
+        root can replace its values. The author callback
         decides whether to supply defaults or fail; history does not
         automatically reset application state. An unhandled ordinary failure
         retains the original branch read-only, as described below.

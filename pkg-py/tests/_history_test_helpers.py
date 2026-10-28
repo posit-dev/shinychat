@@ -48,11 +48,14 @@ async def replay_exchange_record(
     target = recorder.record if record is None else record
     if target is None:
         return
-    node_ids, planned_state = controller._prepare_exchange_restore(target)
+    node_ids, planned_state, source_isolated = (
+        controller._prepare_exchange_restore(target)
+    )
     async with controller._destructive_mutation():
         async with controller._exchange_mutation():
             await controller._restore_exchange_record_locked(
                 target,
                 node_ids=node_ids,
                 planned_state=planned_state,
+                source_isolated=source_isolated,
             )

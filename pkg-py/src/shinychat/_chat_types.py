@@ -28,8 +28,10 @@ from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
 Role = Literal["assistant", "user", "system"]
 # Why a restored conversation is view-only: its saved model context is
-# unavailable, or an ordinary app ``on_restore`` callback failed.
-ReadOnlyReason = Literal["model_unavailable", "app_restore_failed"]
+# unavailable, an app restore failed, or its checkpoint is unfinished/invalid.
+ReadOnlyReason = Literal[
+    "model_unavailable", "app_restore_failed", "interrupted"
+]
 
 SerializedDep = dict[str, object]
 

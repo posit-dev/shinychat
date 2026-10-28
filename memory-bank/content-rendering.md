@@ -62,11 +62,13 @@ Per-segment trust still exists within the string channel: `ChatMessage` selects 
 
 One tool-specific invariant: `status: "running"` is never a wire value. The wire only knows `"success" | "error"`; the client derives "running" from an unpaired `tool_request` (a request with no matching `request_id` result yet).
 
-## Restore: Re-Derive, Never Re-Parse
+## Restore: Server-Owned Content, Never Re-Parse Markup
 
-Persisted UI markup is never scanned for trust. Both servers re-derive structured blocks from stored **turns**: a `Turn` normalizes its contents into an ordered interleaving of string runs and blocks, and `StoredMessage.wire_segments()` re-interleaves them at the recorded positions so wire order matches source order. Python follows R's turns-based restore model; the R entry point is `chat_restore()`.
+Persisted UI markup is never scanned for trust. Python's exchange-tree history replays the recorded input and server-captured `CapturedMessage` content through `StoredMessage.wire_segments()`, preserving its ordered string segments and structured-block envelopes. It restores the model client's state separately; displayed content is not reconstructed by guessing from provider turns. See [Exchange-tree history](exchange-tree-history.md) for ownership, state capture, and checkpoint eligibility.
 
-HTML dependencies are server-owned, not client-reported. The client renders deps on arrival and retains them per message (`ChatMessageData.htmlDeps`) so a re-render (e.g. a grouping change) doesn't lose them, but persistence for restore is derived server-side from stored turns, not from anything the client sends back: Python and R both serialize dependencies onto the derived `StoredMessage`/UI-message segments (via `session._process_ui`) when history saves a turn group, so they can be re-registered on restore in a fresh browser session.
+R's current turns-based restore re-derives structured blocks from stored turns and restores them through `chat_restore()`. This is not proof that R has the Python exchange-tree implementation or the same history lifecycle.
+
+HTML dependencies are server-owned, not client-reported. The client renders dependencies on arrival and retains them per message (`ChatMessageData.htmlDeps`) so a re-render does not lose them. Python's captured `StoredSegment` data retains the server-serialized dependencies for replay in a fresh browser session; the current R turns-based path derives its stored UI-message dependencies server-side. Neither path treats client-reported dependency lists as the persistence authority.
 
 ## Why RawHTML / innerHTML
 

@@ -59,6 +59,7 @@ def _target_record(id: str, *, with_exchange: bool = True):
             ),
         )
         target.finish_exchange("n_0001", "ok", None)
+        target.nodes["n_0001"].checkpoint = "valid"
     return target
 
 

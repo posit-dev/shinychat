@@ -42,7 +42,7 @@ def test_branch_values_follow_checkpoints_and_position_restores(
     expect(page.locator("#region_filter")).to_have_value("east")
     # The replacement saw the parent's restored values, not west or east.
     expect(page.locator("#provider_before_filter")).to_have_text("all")
-    assert _restore_log(page) == [{}]
+    assert _restore_log(page) == [{"filter": "all"}]
 
     navigation = page.locator(".shiny-chat-sibling-nav")
     expect(navigation.locator("span")).to_have_text("2 / 2")
@@ -54,7 +54,7 @@ def test_branch_values_follow_checkpoints_and_position_restores(
     expect(page.locator("#region_filter")).to_have_value("west")
     expect(page.locator("#current_filter")).to_have_text("west")
     expect(navigation.locator("span")).to_have_text("1 / 2")
-    assert _restore_log(page) == [{}, {"filter": "west"}]
+    assert _restore_log(page) == [{"filter": "all"}, {"filter": "west"}]
 
     # A follow-up from west captures north on its new exchange only. Completion
     # does not restore.

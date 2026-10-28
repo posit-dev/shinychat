@@ -19,6 +19,8 @@ The JavaScript components are built and then copied to both Python and R package
 
 For a deep dive on how message content flows from server to client rendering (the HAST pipeline, innerHTML islands, Shiny binding protection, etc.), see [`memory-bank/content-rendering.md`](memory-bank/content-rendering.md).
 
+For exchange-tree history ownership, checkpoint capture, restore/navigation, and the design principles behind them, see [`memory-bank/exchange-tree-history.md`](memory-bank/exchange-tree-history.md).
+
 ## CSS Naming
 
 CSS identifiers for the chat use the `shiny-chat` prefix:

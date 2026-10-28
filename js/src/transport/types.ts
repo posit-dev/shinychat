@@ -5,7 +5,10 @@ export type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
 export type ContentType = "markdown" | "html" | "text" | "thinking"
 
-export type ReadOnlyReason = "model_unavailable" | "app_restore_failed"
+export type ReadOnlyReason =
+  | "model_unavailable"
+  | "app_restore_failed"
+  | "interrupted"
 
 export interface ConversationMeta {
   id: string
