@@ -390,6 +390,7 @@ class HistoryUpdateAction(TypedDict):
     enabled: bool
     conversations: list[dict[str, Any]]  # ConversationMeta dumps
     active_id: str | None
+    transition_protocol: NotRequired[Literal["completion-v1", "completion-v2"]]
 
 
 class HistoryNavigateAction(TypedDict):
@@ -399,9 +400,40 @@ class HistoryNavigateAction(TypedDict):
     reload: NotRequired[bool]
 
 
+class HistoryTransitionCompleteAction(TypedDict):
+    type: Literal["history_transition_complete"]
+    requestId: str
+
+
+class HistoryEditProjectionAction(TypedDict):
+    type: Literal["history_edit_projection"]
+    requestId: str
+    index: int
+    content: str
+    attachments: list[dict[str, Any]]
+
+
+class HistoryAcceptedInputProjectionAction(TypedDict):
+    type: Literal["history_accepted_input_projection"]
+    index: int
+    content: str
+    attachments: list[dict[str, Any]]
+
+
 class UpdateSiblingsAction(TypedDict):
     type: Literal["update_siblings"]
     data: dict[int, dict[str, int]]
+
+
+class ExchangeMetadata(TypedDict):
+    status: Literal["pending", "ok", "error", "cancelled"]
+    retryable: bool
+    error_message: NotRequired[str]
+
+
+class UpdateExchangeMetadataAction(TypedDict):
+    type: Literal["update_exchange_metadata"]
+    data: dict[int, ExchangeMetadata]
 
 
 ChatAction = Union[
@@ -427,7 +459,11 @@ ChatAction = Union[
     DrawerUpdateAction,
     HistoryUpdateAction,
     HistoryNavigateAction,
+    HistoryTransitionCompleteAction,
+    HistoryEditProjectionAction,
+    HistoryAcceptedInputProjectionAction,
     UpdateSiblingsAction,
+    UpdateExchangeMetadataAction,
 ]
 
 
@@ -449,6 +485,8 @@ class ChatMessageDict(TypedDict):
     role: Role
     html_deps: NotRequired[list[SerializedDep]]
     attachments: NotRequired[list[Attachment]]
+    status: NotRequired[Literal["cancelled", "error"]]
+    error: NotRequired[dict[str, str]]
 
 
 class ChatMessage:
