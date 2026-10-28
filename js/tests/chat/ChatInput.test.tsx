@@ -36,6 +36,7 @@ import {
 } from "../../src/chat/attachments"
 import { ChatDispatchContext } from "../../src/chat/context"
 import type { ChatTransport } from "../../src/transport/types"
+import { HistoryStore } from "../../src/chat/historyStore"
 import { createRef, type RefObject } from "react"
 
 // ---------------------------------------------------------------------------
@@ -59,6 +60,7 @@ function createMockTransport(): ChatTransport {
     sendHistoryDelete: vi.fn(),
     sendMessageEdit: vi.fn(),
     sendMessageNavigate: vi.fn(),
+    sendMessageResubmit: vi.fn(),
     onMessage: vi.fn(() => () => {}),
   }
 }
@@ -69,6 +71,8 @@ function renderChatInput(
     uploadAccept: string[]
     maxUploadSize: number
     disabled: boolean
+    historyStore: HistoryStore
+    submissionBlocked: boolean
     placeholder: string
     onSend: () => void
     userMessages: string[]
@@ -92,6 +96,8 @@ function renderChatInput(
   const internalRef = ref ?? createRef<ChatInputHandle>()
   const inputId = props.inputId ?? "test-input"
   const enableUpload = props.enableUpload ?? true
+  const historyStore = props.historyStore ?? new HistoryStore(inputId)
+
   const result = render(
     <ChatDispatchContext.Provider value={dispatch}>
       <ChatInput
@@ -109,6 +115,8 @@ function renderChatInput(
         }
         maxUploadSize={props.maxUploadSize ?? 30_000_000}
         disabled={props.disabled ?? false}
+        historyStore={historyStore}
+        submissionBlocked={props.submissionBlocked}
         placeholder={props.placeholder ?? "Type here..."}
         onSend={props.onSend}
         userMessages={props.userMessages ?? []}
@@ -188,6 +196,106 @@ describe("ChatInput", () => {
     })
 
     expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  it("preserves the draft and blocks enter-equivalent, attachment-only, slash, and imperative submissions", () => {
+    const { editorEl, dispatch, transport, ref } = renderChatInput({
+      submissionBlocked: true,
+      slashCommands: [{ name: "greet", description: "Greet", echo: true }],
+    })
+
+    act(() => {
+      ref.current?.setInputValue("draft")
+      ref.current?.setInputValue("/greet", { submit: true })
+      ref.current?.setInputValue(undefined, {
+        submit: true,
+        attachments: [
+          {
+            mime: "text/plain",
+            data_url: "data:text/plain;base64,ZA==",
+            name: "draft.txt",
+            size: 1,
+          },
+        ],
+      })
+      ref.current?.setInputValue("server request", { submit: true })
+    })
+
+    expect(editorEl.textContent).toBe("draft")
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled()
+    expect(dispatch).not.toHaveBeenCalled()
+    expect(transport.sendInput).not.toHaveBeenCalled()
+    expect(transport.sendSlashCommand).not.toHaveBeenCalled()
+  })
+
+  it("preserves draft and attachments when live submission admission rejects", async () => {
+    const onSend = vi.fn()
+    const historyStore = new HistoryStore("live-admission")
+    const { editorEl, ref, dispatch, transport } = renderChatInput({
+      historyStore,
+      onSend,
+    })
+
+    act(() => {
+      ref.current?.setInputValue("draft")
+    })
+    await act(async () => {
+      fireEvent.paste(editorEl, {
+        clipboardData: {
+          items: [
+            {
+              kind: "file",
+              type: "image/png",
+              getAsFile: () =>
+                new File(["x"], "draft.png", { type: "image/png" }),
+            },
+          ],
+        },
+      })
+    })
+
+    historyStore.seedCompletionV2TransitionProtocol()
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }))
+
+    expect(dispatch).not.toHaveBeenCalled()
+    expect(transport.sendInput).not.toHaveBeenCalled()
+    expect(editorEl.textContent).toBe("draft")
+    expect(
+      screen.getByRole("img", { name: "Attached image: draft.png" }),
+    ).toBeTruthy()
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it("blocks a stale slash submission closure after live history admission changes", () => {
+    const historyStore = new HistoryStore("stale-slash")
+    const ref = createRef<ChatInputHandle>()
+    const { editorEl, dispatch, transport } = renderChatInput(
+      {
+        historyStore,
+        slashCommandId: "test-slash-command",
+        slashCommands: [
+          {
+            name: "help",
+            description: "Show help",
+            echo: true,
+          },
+        ],
+      },
+      ref,
+    )
+
+    act(() => {
+      ref.current?.setInputValue("draft")
+    })
+    historyStore.seedCompletionV2TransitionProtocol()
+
+    act(() => {
+      ref.current?.setInputValue("/help topic details", { submit: true })
+    })
+
+    expect(dispatch).not.toHaveBeenCalled()
+    expect(transport.sendSlashCommand).not.toHaveBeenCalled()
+    expect(editorEl.textContent).toBe("draft")
   })
 
   it("does not send empty input", () => {
@@ -362,6 +470,7 @@ describe("ChatInput", () => {
             ref={ref}
             transport={transport}
             inputId="test-input"
+            historyStore={new HistoryStore("test-input")}
             uploadAccept={[
               "image/png",
               "image/jpeg",
@@ -388,6 +497,7 @@ describe("ChatInput", () => {
             ref={ref}
             transport={transport}
             inputId="test-input"
+            historyStore={new HistoryStore("test-input")}
             uploadAccept={[
               "image/png",
               "image/jpeg",

@@ -28,7 +28,7 @@ import {
   ChatHistoryDrawer,
   HistoryIcon,
 } from "./ChatHistoryDrawer"
-import type { HistoryStore } from "./historyStore"
+import { isHistorySubmissionBlocked, type HistoryStore } from "./historyStore"
 import { useFillPaddingTransfer } from "./useFillPaddingTransfer"
 import { useOverlapNudge } from "./useOverlapNudge"
 import type { ChatDrawerState, ChatMessageData, GreetingData } from "./state"
@@ -123,6 +123,7 @@ export interface ChatContainerProps {
   messages: ChatMessageData[]
   streamingMessage: ChatMessageData | null
   inputDisabled: boolean
+  submissionBlocked?: boolean
   inputPlaceholder: string
   iconAssistant?: string
   iconSend?: string
@@ -152,6 +153,7 @@ export interface ChatContainerProps {
     attachments: AttachmentPayload[],
   ) => void
   onNavigate?: (index: number, direction: "prev" | "next") => void
+  onRetry?: (index: number) => void
   siblingNavigationPending?: boolean
   showHistory: boolean
 }
@@ -179,6 +181,7 @@ export const ChatContainer = forwardRef<
     messages,
     streamingMessage,
     inputDisabled,
+    submissionBlocked = false,
     inputPlaceholder,
     iconAssistant,
     iconSend,
@@ -203,6 +206,7 @@ export const ChatContainer = forwardRef<
     drawerSource,
     onEdit,
     onNavigate,
+    onRetry,
     siblingNavigationPending,
     showHistory,
   },
@@ -708,7 +712,7 @@ export const ChatContainer = forwardRef<
 
   useImperativeHandle(ref, () => ({
     setInputValue(...args) {
-      chatInputRef.current?.setInputValue(...args)
+      return chatInputRef.current?.setInputValue(...args) ?? false
     },
     focus() {
       chatInputRef.current?.focus()
@@ -1062,8 +1066,16 @@ export const ChatContainer = forwardRef<
                     // buttons would render but silently no-op on click.
                     onEdit={history.enabled ? onEdit : undefined}
                     onNavigate={history.enabled ? onNavigate : undefined}
+                    onRetry={history.enabled ? onRetry : undefined}
                     siblingNavigationPending={siblingNavigationPending}
-                    disabled={isStreaming}
+                    disabled={
+                      history.busy ||
+                      history.historyTransitionPending !== null ||
+                      isHistorySubmissionBlocked(history) ||
+                      (history.transitionProtocol === "completion-v2" &&
+                        inputDisabled) ||
+                      isStreaming
+                    }
                     inputId={inputId}
                     submitKey={submitKey}
                     uploadAccept={uploadAccept}
@@ -1095,6 +1107,8 @@ export const ChatContainer = forwardRef<
                 uploadAccept={uploadAccept}
                 maxUploadSize={maxUploadSize}
                 disabled={inputDisabled}
+                historyStore={historyStore}
+                submissionBlocked={submissionBlocked}
                 hasTopShadow={!isAtBottom}
                 placeholder={inputPlaceholder}
                 onSend={onSend}
@@ -1152,7 +1166,7 @@ export const ChatContainer = forwardRef<
           <ChatHistoryContent
             conversations={history.conversations}
             activeId={history.activeId}
-            busy={history.busy}
+            busy={history.busy || history.historyTransitionPending !== null}
             connected={history.connected}
             onSelect={historyStore.actions.select}
             onNew={historyStore.actions.create}

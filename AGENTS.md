@@ -43,7 +43,9 @@ arguments, including test filters.
 
 ### Asset Distribution
 
-**CRITICAL**: The Python and R packages serve JS/CSS from their own copy of the built assets, NOT from `js/dist/` directly. After ANY change to TypeScript or SCSS files in `js/`, you MUST rebuild and copy to packages with `make update-dist`.
+**CRITICAL**: The Python and R packages serve JS/CSS from their own copy of the built assets, NOT from `js/dist/` directly. Normally, after ANY change to TypeScript or SCSS files in `js/`, you MUST rebuild and copy to both packages with `make update-dist`.
+
+**Scoped exception: Python-only history review-stack reconstruction.** The driver-approved pre-R stack keeps R's served assets pinned to its upstream base. For this stack only, run `make js-build` and then `make py-update-dist`, in that order; update `js/dist/` and Python's assets but do not refresh R's assets. Verify the R copy remains identical to the pinned base. Shared fixture synchronization is separate (`make r-sync-fixtures`). At the start of the R port, refresh its assets from the verified foundation with `make r-update-dist` and verify R behavior. Outside this scoped reconstruction, use the normal dual-package target.
 
 If you skip this step, the packages will serve stale JS and your changes will not take effect at runtime. This applies to renaming, adding features, fixing bugs — any JS/SCSS change at all.
 

@@ -184,6 +184,8 @@ async def test_stream_turn_interleaves_actions_in_order() -> None:
     with session_context(ExpressStubSession()):
         chat = Chat(id="chat")
         chat._send_action = capture_action  # type: ignore[method-assign]
+        await chat._append_message_chunk("", chunk="start", stream_id="s1")
+        sent.clear()
         await chat._append_message_chunk(turn, stream_id="s1")
 
     types = [a["type"] for a in sent]

@@ -29,6 +29,7 @@ def test_scroll_to_bottom_on_send(page: Page, local_app: ShinyAppProc) -> None:
 
     # Send a user message
     chat.set_user_input("Hello from the test")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
 
     # Wait for the user message to appear in the DOM

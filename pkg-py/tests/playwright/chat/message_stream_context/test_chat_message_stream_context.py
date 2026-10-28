@@ -27,6 +27,7 @@ def test_validate_chat_message_stream_context(
     chat.expect_latest_message("Finished", timeout=TIMEOUT)
 
     chat.set_user_input("Hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
     chat.expect_latest_message("You said: Hello", timeout=TIMEOUT)
 
@@ -67,6 +68,7 @@ def test_validate_chat_message_stream_context(
     )
 
     chat.set_user_input("Goodbye")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
     chat.expect_latest_message("You said: Goodbye", timeout=TIMEOUT)
 
