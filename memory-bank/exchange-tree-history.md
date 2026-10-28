@@ -4,7 +4,7 @@ This is the design reference for exchange-tree conversation history: the domain 
 
 **Implementation status:** Python and the shared JavaScript frontend implement this foundation; R has not yet been ported. The shared design below describes the implemented Python behavior and the target for the R port, not existing R parity. Record schema version is 2. Capture/restore callback roles are called `on_save`/`on_restore` here; language-specific API signatures belong in package documentation.
 
-For rendering and HTML trust boundaries, see [Content Rendering](content-rendering.md). For Python upgrade procedures, see the [history migration guide](../pkg-py/docs/history-migration.qmd).
+For rendering and HTML trust boundaries, see [Content Rendering](content-rendering.md). For Python upgrade procedures, see the [migration guide](../pkg-py/docs/migrating-to-0.8.0.qmd).
 
 ## Mental model
 
