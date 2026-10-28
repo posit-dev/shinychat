@@ -1,13 +1,15 @@
 ---
-title: "Migrate from 0.7.2"
+title: "Migrating to v0.8.0"
 ---
 
-This guide covers the conversation history and streaming changes made since shinychat 0.7.2. See the [changelog](https://github.com/posit-dev/shinychat/blob/main/pkg-py/CHANGELOG.md) for release notes.
+This guide covers upgrading to shinychat 0.8.0 from 0.7.2, including conversation history and streaming changes. See the [changelog](https://github.com/posit-dev/shinychat/blob/main/pkg-py/CHANGELOG.md) for release notes.
 
 ## Back up conversation history before upgrading
 
-::: {.callout-warning title="Back up the complete history directory first"}
-Upgrading converts each conversation from the v1 format to v2 the next time that conversation is saved. The conversion has no built-in reverse step, and the old v1 files are removed after a successful save.
+Shinychat v0.8.0 rewrites conversation history so that model context and saved application values follow the selected exchange and branch when editing, retrying, or browsing a conversation. It writes a new v2 history format, but can still load conversations saved by earlier versions. Each existing conversation is converted to v2 when next saved; no bulk conversion is needed.
+
+::: {.callout-warning title="Back up history before upgrading, if possible"}
+Shinychat v0.7.2 cannot read the v2 format written by v0.8.0. We recommend backing up the complete conversation history directory before upgrading, if you can access it. Conversion has no built-in reverse step, and the old v1 files are removed after a successful save.
 
 - Copy the entire conversation history directory before you upgrade. There is no built-in reverse conversion; restore a pre-upgrade copy to return to v1. Restoring it discards every change made after the copy was taken.
 - Downgrading the package does not convert v2 conversations back. Shinychat 0.7.2 cannot read v2 conversations: it rejects them on a direct read and omits them from the conversation list.
@@ -19,6 +21,16 @@ Shinychat stores conversations in this location by default:
 1. `CONNECT_CONTENT_DATA_DIR/shinychat-conversations`, when that environment variable is set.
 2. On Posit Connect, the bookmark directory that Shiny provides.
 3. Otherwise, `.shinychat/conversations/` in the app's working directory.
+
+### Backups on Posit Connect
+
+You may need your Connect administrator's help to back up these files. Connect stores server-side Shiny bookmarks under its server data directory, by default `/var/lib/rstudio-connect/bookmarks`, with a subdirectory for each app; see [Files & Directories](https://docs.posit.co/connect/admin/directories/). If your app uses this storage, ask your administrator to include its bookmark data in a backup before upgrading. If it uses `CONNECT_CONTENT_DATA_DIR` or a custom store instead, confirm that location is covered too.
+
+Connect's [Creating Backups](https://docs.posit.co/connect/admin/server-management/backups/) guide describes an administrator-managed backup of the server data directory and database. It requires stopping Connect for a consistent backup and preserving file ownership and permissions. Coordinate this with your administrator rather than trying to copy server-managed files yourself.
+
+The dashboard's [bundle downloads](https://docs.posit.co/connect/admin/content-management/#bundle-management) contain deployed source and data, not a backup of the history created while the app runs.
+
+### Choosing a history directory
 
 To choose the location yourself, pass a `FileConversationStore` with the directory you want to use:
 
@@ -35,66 +47,6 @@ chat = Chat(
     history=HistoryOptions(store=FileConversationStore("conversation-history")),
 )
 ```
-
-## Stream sequencing: wait for a response before you follow up
-
-In 0.7.2, a complete append made while a response was streaming was queued and landed after the response. Now such a call raises `RuntimeError` at the call site, and so does a second `append_message_stream()` while a stream is active. Sequence the follow-up explicitly.
-
-- `await chat.append_message_stream(...)` starts the stream and returns immediately. It does not wait for the response to finish.
-- `chat.latest_message_stream` returns the stream's task. It is not awaitable, so do not `await` it.
-- Read the task's `status()` inside a reactive effect. Its values are `initial`, `running`, `success`, `error`, and `cancelled`.
-- Run follow-up work only when the status is `success`. Shinychat reports a failed response through `Chat(on_error=...)`, as it did before.
-
-```python
-from shiny import App, reactive, ui
-from shinychat import Chat, chat_ui
-
-app_ui = ui.page_fillable(chat_ui("chat"))
-
-
-async def answer_chunks(prompt: str):
-    # A deterministic stand-in for a streamed model response.
-    for word in f"You asked: {prompt}".split():
-        yield word + " "
-
-
-def server(input, output, session):
-    chat = Chat("chat")
-
-    @chat.on_user_submit
-    async def _(user_input: str):
-        # Starts the stream and returns right away. Awaiting this call does
-        # not wait for the response to finish.
-        await chat.append_message_stream(answer_chunks(user_input))
-
-    @reactive.effect
-    async def _after_answer():
-        status = chat.latest_message_stream.status()
-        if status in ("initial", "running"):
-            # Nothing has finished yet. This effect runs again when the
-            # status changes.
-            return
-        if status == "success":
-            # The answer completed, so the follow-up lands after it.
-            await chat.append_message("Anything else I can help with?")
-            return
-        # "error" and "cancelled": no follow-up is sent. Handle the failure
-        # in your own code if the conversation needs it.
-        return
-
-
-app = App(app_ui, server)
-```
-
-| Status | Meaning | Follow-up |
-|---|---|---|
-| `initial` | No stream has started | None |
-| `running` | The response is still streaming | None (the effect runs again) |
-| `success` | The response completed | Send the follow-up |
-| `error` | The response failed | None |
-| `cancelled` | The response was stopped | None |
-
-Read the final text of a response in a reactive render function with `chat.latest_message_stream.result()`. In a reactive context, `result()` returns the text on `success`, raises the stored error on `error`, and stops rendering silently in the other states.
 
 ## Startup writes and greetings
 
@@ -133,6 +85,8 @@ The field schema changed:
 | Node | `parent`, `children`, `turns`, `ui`, `selected_child` | `parent_id`, `children`, `created_at`, `input`, `messages`, `state`, `status`, `error`, `selected_child` |
 
 A store that reads v1 internals such as `current_leaf`, `turns`, or `ui` must read the v2 fields instead. A store that only serializes whole records must be checked with a round trip.
+
+Model state lives in each node's `state` entries, not in dedicated fields. A `shinychat:turns` entry is either a `snapshot` (the complete turn list at that capture) or a `delta` (only the turns added beyond the parent's effective saved context on the same branch). Current captures store a delta whenever the parent's saved context is an exact prefix of the client's serialized turns, and a full snapshot when there is no usable baseline or the prefix comparison fails (compaction, truncation, or any changed earlier turn). Stores that inspect these entries must not assume every entry is a snapshot: fold entries along a path, or rely on shinychat's restore, rather than reading a single node's turns. Existing full-snapshot records remain readable unchanged; this reuses the existing entry `mode` field and introduces no new schema version. System prompts (`shinychat:system_prompt`) and app values (`shinychat:values`) are unaffected and keep their sparse whole-value snapshot rules.
 
 This sample is a complete in-memory store. It stores each record as JSON, reads it back as the version it was written in, and lists conversations newest first.
 
@@ -211,6 +165,66 @@ Saved model and application state use their JSON representation, not the origina
 Capture still rejects unsupported JSON values and non-finite JSON numbers. This does not change how a model client's serializer converts its own values before capture. If model-state capture fails before accepting a submission, shinychat reports that the message was not sent: it is not dispatched to the app, and the saved checkpoint is unchanged. Correct the invalid client state and submit again, or choose **New chat** to leave that conversation and start fresh. There is no automatic resubmission or silent removal of model turns. App authors remain responsible for valid fresh-chat application state.
 
 Current browser assets identify the optimistic message so a rejected row can be removed without disturbing other messages. Older assets or custom transports that omit this identifier still receive the not-sent notice, but the unconfirmed row may remain and later exchange controls may be misaligned. Choose **New chat** before continuing in that case; shinychat does not guess which row to remove.
+
+## Stream sequencing: wait for a response before you follow up
+
+In 0.7.2, a complete append made while a response was streaming was queued and landed after the response. Now such a call raises `RuntimeError` at the call site, and so does a second `append_message_stream()` while a stream is active. Sequence the follow-up explicitly.
+
+- `await chat.append_message_stream(...)` starts the stream and returns immediately. It does not wait for the response to finish.
+- `chat.latest_message_stream` returns the stream's task. It is not awaitable, so do not `await` it.
+- Read the task's `status()` inside a reactive effect. Its values are `initial`, `running`, `success`, `error`, and `cancelled`.
+- Run follow-up work only when the status is `success`. Shinychat reports a failed response through `Chat(on_error=...)`, as it did before.
+
+```python
+from shiny import App, reactive, ui
+from shinychat import Chat, chat_ui
+
+app_ui = ui.page_fillable(chat_ui("chat"))
+
+
+async def answer_chunks(prompt: str):
+    # A deterministic stand-in for a streamed model response.
+    for word in f"You asked: {prompt}".split():
+        yield word + " "
+
+
+def server(input, output, session):
+    chat = Chat("chat")
+
+    @chat.on_user_submit
+    async def _(user_input: str):
+        # Starts the stream and returns right away. Awaiting this call does
+        # not wait for the response to finish.
+        await chat.append_message_stream(answer_chunks(user_input))
+
+    @reactive.effect
+    async def _after_answer():
+        status = chat.latest_message_stream.status()
+        if status in ("initial", "running"):
+            # Nothing has finished yet. This effect runs again when the
+            # status changes.
+            return
+        if status == "success":
+            # The answer completed, so the follow-up lands after it.
+            await chat.append_message("Anything else I can help with?")
+            return
+        # "error" and "cancelled": no follow-up is sent. Handle the failure
+        # in your own code if the conversation needs it.
+        return
+
+
+app = App(app_ui, server)
+```
+
+| Status | Meaning | Follow-up |
+|---|---|---|
+| `initial` | No stream has started | None |
+| `running` | The response is still streaming | None (the effect runs again) |
+| `success` | The response completed | Send the follow-up |
+| `error` | The response failed | None |
+| `cancelled` | The response was stopped | None |
+
+Read the final text of a response in a reactive render function with `chat.latest_message_stream.result()`. In a reactive context, `result()` returns the text on `success`, raises the stored error on `error`, and stops rendering silently in the other states.
 
 ## Restore and history messages
 

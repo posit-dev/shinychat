@@ -277,36 +277,19 @@ async def test_system_prompt_records_path_changes_with_full_snapshots():
     # Boundaries with an unchanged prompt still carry the full prompt.
     assert _prompt_data(record, third) == "A"
     assert _prompt_data(record, fourth) == "A"
-    # Turns are full snapshots of the path at each boundary, so a prompt
-    # change never changes how the turns are captured.
+    # Turns are exact-prefix deltas of the path at each boundary; a
+    # prompt change never changes how the turns are captured, and a
+    # prompt-only difference records no extra turn copy.
     root_turns = record.nodes[record.root_id].state[TURNS_STATE_KEY]
     assert root_turns.mode == "snapshot"
-    for node_id, path_turns in [
+    for node_id, own_turns in [
         (first, [_user_turn("one"), _assistant_turn("answer one")]),
-        (
-            second,
-            [
-                _user_turn("one"),
-                _assistant_turn("answer one"),
-                _user_turn("two"),
-                _assistant_turn("answer two"),
-            ],
-        ),
-        (
-            third,
-            [
-                _user_turn("one"),
-                _assistant_turn("answer one"),
-                _user_turn("two"),
-                _assistant_turn("answer two"),
-                _user_turn("three"),
-                _assistant_turn("answer three"),
-            ],
-        ),
+        (second, [_user_turn("two"), _assistant_turn("answer two")]),
+        (third, [_user_turn("three"), _assistant_turn("answer three")]),
     ]:
         entry = record.nodes[node_id].state[TURNS_STATE_KEY]
-        assert entry.mode == "snapshot"
-        assert entry.data == path_turns
+        assert entry.mode == "delta"
+        assert entry.data == own_turns
 
 
 @pytest.mark.anyio

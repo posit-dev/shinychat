@@ -97,10 +97,11 @@ async def test_delayed_title_preserves_settled_checkpoints(
         assert record is not None
         for index, exchange_id in enumerate(exchange_ids, start=1):
             assert record.nodes[exchange_id].checkpoint == "valid"
-            assert (
-                record.nodes[exchange_id].state[TURNS_STATE_KEY].data
-                == sdk[: 2 * index]
-            )
+            # Each exchange extends its predecessor's exact prefix, so it
+            # stores only its own two turns as a delta.
+            entry = record.nodes[exchange_id].state[TURNS_STATE_KEY]
+            assert entry.mode == "delta"
+            assert entry.data == sdk[2 * (index - 1) : 2 * index]
         assert record.nodes[record.root_id].state[VALUES_STATE_KEY].data == {
             "value": "settled"
         }
