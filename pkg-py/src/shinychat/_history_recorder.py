@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import warnings
 from contextlib import contextmanager
 from typing import (
     TYPE_CHECKING,
@@ -29,7 +30,7 @@ from typing import (
 from pydantic import JsonValue
 
 from ._chat_transcript import TranscriptEntry
-from ._chat_types import StoredMessage
+from ._chat_types import ReadOnlyReason, StoredMessage
 from ._history_client import TurnsAdapter
 from ._history_plan import (
     CaptureContext,
@@ -39,7 +40,9 @@ from ._history_plan import (
     RewindHook,
     StatePathContext,
     canonical_turns,
+    canonical_values,
     latest_system_prompt,
+    sparse_snapshot_entry,
     turn_entry_kind,
 )
 from ._history_store import ConversationPartition, ConversationStore
@@ -47,6 +50,7 @@ from ._history_title import fallback_title_from_text
 from ._history_types import (
     SYSTEM_PROMPT_STATE_KEY,
     TURNS_STATE_KEY,
+    VALUES_STATE_KEY,
     CapturedMessage,
     ConversationRecordV2,
     StateEntry,
@@ -110,6 +114,7 @@ class _ExchangeRecorder:
         # close/switch/New cannot replace the saved context with cleared
         # live turns; view-pointer, rename, and delete writes stay live.
         self._read_only: bool = False
+        self._read_only_reason: ReadOnlyReason | None = None
         if (
             isinstance(host.adapter, TurnsAdapter)
             and host.adapter.has_system_prompt()
@@ -126,6 +131,11 @@ class _ExchangeRecorder:
         self._register_capture_hook(TURNS_STATE_KEY, self._capture_turns)
         self._register_restore_hook(TURNS_STATE_KEY, self._restore_turns)
         self._register_rewind_hook(TURNS_STATE_KEY, self._restore_turns)
+        # Application values capture through the same state lifecycle, even
+        # without a model client; they own no restore/rewind hook because
+        # they are delivered to on_restore callbacks rather
+        # than applied to the client.
+        self._register_capture_hook(VALUES_STATE_KEY, self._capture_values)
 
     @property
     def read_only(self) -> bool:
@@ -138,6 +148,11 @@ class _ExchangeRecorder:
         turns.
         """
         return self._read_only
+
+    @property
+    def read_only_reason(self) -> ReadOnlyReason | None:
+        """Why the loaded record is view-only; ``None`` while writable."""
+        return self._read_only_reason
 
     @property
     def restore_hooks(self) -> Mapping[str, RestoreHook]:
@@ -201,6 +216,81 @@ class _ExchangeRecorder:
         return StateEntry(
             kind="system_prompt", version=1, mode="snapshot", data=prompt
         ), children
+
+    def _capture_values(self, context: CaptureContext) -> StateEntry | None:
+        return self._capture_values_at(context.node_id)
+
+    def _capture_values_at(
+        self, node_id: str, *, strict: bool = False
+    ) -> StateEntry | None:
+        """Run the ``on_save`` callbacks and sparsely record their values.
+
+        The callbacks receive a fresh dictionary and run inside
+        ``reactive.isolate()``. This capture runs at exactly four
+        checkpoints: accepted input (on the new exchange), stream finish,
+        response settlement, and explicit save. Stream finish fires inside
+        the stream task, where reactive reads are denied, and callbacks
+        legitimately read reactive state (``input``, reactive values)
+        without taking reactive dependencies. Serializer-supported keys
+        become JSON strings; colliding keys keep the later dictionary entry.
+        Non-finite floating-point values are refused. The JSON round trip
+        detaches the result from the callback's object.
+        Values treat every validated object -- including ``{}`` -- as
+        effective, so an empty object records an explicit value rather
+        than inheriting.
+
+        Error policy: an *automatic* capture (``strict=False`` --
+        accepted input, stream finish, response settlement) never lets a
+        failing callback or an invalid payload block the move that
+        triggered it. The error is warned to the developer
+        with its details, and the node keeps its previously recorded
+        entry (deep-copied) -- or stays missing, so inheritance answers
+        -- never losing recorded values to a failed capture. An
+        *explicit* capture (``strict=True``, the ``chat.history.save()``
+        path) re-raises, so the caller learns the save did not record.
+        Only ``Exception`` is caught; cancellation and fatal errors
+        propagate in both modes, and failures here never swallow the
+        store/model-state errors of the surrounding flow.
+        """
+        assert self.record is not None
+        from shiny import reactive
+
+        try:
+            values: dict[str, Any] = {}
+            with reactive.isolate():
+                for callback in self._host._save_callbacks:
+                    callback(values)
+            data = canonical_values(values)
+        except Exception as error:
+            if strict:
+                raise
+            # Developer diagnostics only: automatic capture failure warns
+            # but completes, with no new user-notification policy.
+            warnings.warn(
+                "Automatic app-state values capture failed at exchange "
+                f"{node_id!r}; keeping the previously recorded values "
+                f"({type(error).__name__}: {error}).",
+                stacklevel=2,
+            )
+            previous = self.record.nodes[node_id].state.get(VALUES_STATE_KEY)
+            if previous is not None:
+                return previous.model_copy(deep=True)
+            return None
+
+        return sparse_snapshot_entry(
+            self.record,
+            node_id,
+            VALUES_STATE_KEY,
+            data,
+            is_effective=lambda entry: entry is not None,
+            kind="values",
+            # A path without any entry resolves to {}: the default answers
+            # the previous-value fallback, the unchanged dedupe, and the
+            # child anchoring alike.
+            default_entry=StateEntry(
+                kind="values", version=1, mode="snapshot", data={}
+            ),
+        )
 
     def _restore_system_prompt(self, context: StatePathContext) -> None:
         entry = latest_system_prompt(context.entries)
@@ -271,6 +361,10 @@ class _ExchangeRecorder:
         baseline = self._turn_baseline
         children: dict[str, StateEntry] = {}
         for name, hook in self._capture_hooks.items():
+            if name == VALUES_STATE_KEY and reason != "stream_finish":
+                # on_save values are checkpoint-only (nr6b): boundary and
+                # close captures record model state but never app values.
+                continue
             if (name, hook) in (
                 (TURNS_STATE_KEY, self._capture_turns),
                 (SYSTEM_PROMPT_STATE_KEY, self._capture_system_prompt),
@@ -279,7 +373,9 @@ class _ExchangeRecorder:
                     if name == TURNS_STATE_KEY:
                         entry, baseline = self._prepare_turn_capture(context)
                     else:
-                        entry, children = self._prepare_system_prompt_capture(context)
+                        entry, children = self._prepare_system_prompt_capture(
+                            context
+                        )
                 except Exception as e:
                     raise _ModelCaptureError(str(e)) from e
             else:
@@ -310,12 +406,30 @@ class _ExchangeRecorder:
         self._set_turn_baseline(turns)
 
     def install_restored_record(
-        self, record: ConversationRecordV2, *, read_only: bool = False
+        self,
+        record: ConversationRecordV2,
+        *,
+        read_only: bool = False,
+        read_only_reason: ReadOnlyReason = "model_unavailable",
     ) -> None:
         self.record = record
         self._stream_exchanges.clear()
         self._active_id_published_for = None
         self._read_only = read_only
+        self._read_only_reason = read_only_reason if read_only else None
+
+    def mark_read_only(self, reason: ReadOnlyReason) -> None:
+        """Make the loaded record view-only after an ordinary app failure.
+
+        The record is already installed and displayed; this only flips the
+        existing read-only flag so suppression and guards apply. An
+        already read-only record keeps its original reason: the reason
+        explains the state, it does not reclassify it.
+        """
+        assert self.record is not None
+        if not self._read_only:
+            self._read_only = True
+            self._read_only_reason = reason
 
     async def _new_record(self, *, title: str) -> ConversationRecordV2:
         return new_conversation_record_v2(
@@ -351,6 +465,7 @@ class _ExchangeRecorder:
         self._turn_baseline = []
         self._active_id_published_for = None
         self._read_only = False
+        self._read_only_reason = None
 
     @contextmanager
     def suspend_capture(self):
@@ -391,25 +506,69 @@ class _ExchangeRecorder:
             if published:
                 self._active_id_published_for = record
 
-    def _capture_app_state(self) -> None:
+    def _capture_app_state(self, *, strict: bool = False) -> None:
+        """Capture application values at the active leaf, sparsely.
+
+        Accepted input, response settlement, and explicit save call this
+        directly. Stream finish reaches the values hook through
+        ``capture_state_locked``. Only these checkpoints capture values;
+        the model-state entries the full capture-hook cycle owns are never
+        written here. Root close, node close, and retitle never capture
+        values automatically, and the synthetic root is never captured by
+        an automatic checkpoint. An explicit save on a selected root can
+        still record it. Record-on-change follows ``sparse_snapshot_entry``:
+        a descendant records only changes against its ancestor path.
+        ``strict`` carries the caller's error policy to
+        ``_capture_values_at``: the public explicit save re-raises
+        callback/payload failures, while automatic checkpoints warn and
+        retain. Read-only suppression wins at this central capture point:
+        live app values never replace the saved read-only record's.
+        """
         assert self.record is not None
-        values: dict[str, Any] = {}
-        for callback in self._host._save_callbacks:
-            callback(values)
-        self.record.values = values
+        if self._read_only:
+            # A read-only record's saved state is immutable, exactly as
+            # in capture_state_locked; the title writes that share this
+            # path stay live, but the values capture does not.
+            return
+        node_id = self.record.active_leaf
+        assert node_id is not None
+        node = self.record.nodes[node_id]
+        entry = self._capture_values_at(node_id, strict=strict)
+        if entry is None:
+            node.state.pop(VALUES_STATE_KEY, None)
+        else:
+            node.state[VALUES_STATE_KEY] = entry
 
     async def save_current(self) -> bool:
+        # The public save is the explicit one: callback and payload
+        # failures raise to the caller instead of warning.
         async with self.lock:
-            return await self.save_current_locked()
+            return await self.save_current_locked(strict=True)
 
-    async def save_current_locked(self) -> bool:
+    async def save_current_locked(self, *, strict: bool = False) -> bool:
         if (
             self.record is None
             or self._host.partition is None
             or self._read_only
         ):
             return False
-        self._capture_app_state()
+        self._capture_app_state(strict=strict)
+        await self.persist_record_locked()
+        return True
+
+    async def persist_current_locked(self) -> bool:
+        """Persist the active record's pointer/metadata without app values.
+
+        Used by switch and New chat: the outgoing conversation's values
+        are checkpointed only at real boundaries, so leaving never
+        recaptures them.
+        """
+        if (
+            self.record is None
+            or self._host.partition is None
+            or self._read_only
+        ):
+            return False
         await self.persist_record_locked()
         return True
 
@@ -456,7 +615,6 @@ class _ExchangeRecorder:
             return False
         target.title = title
         target.title_source = "llm"
-        self._capture_app_state()
         await self.persist_record_locked()
         return True
 
@@ -556,6 +714,9 @@ class _ExchangeRecorder:
                     self.record = None
                 raise
             self.record.open_exchange(exchange_id, message)
+            # Values associate with the newly opened exchange, not the
+            # previous answer's snapshot.
+            self._capture_app_state()
             commit()
             await self.persist_record_locked()
             if created:

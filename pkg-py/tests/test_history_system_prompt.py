@@ -19,6 +19,7 @@ from shinychat._history_store import (
 from shinychat._history_types import (
     SYSTEM_PROMPT_STATE_KEY,
     TURNS_STATE_KEY,
+    VALUES_STATE_KEY,
     ConversationRecordV2,
     StateEntry,
     new_conversation_record_v2,
@@ -743,9 +744,10 @@ async def test_system_prompt_on_restore_override_survives_edit():
         message_index=2,
     )
 
-    # Equal recorded prompts (source == target == P): the live override is
-    # not a reason to reset the prompt during this edit.
-    assert restored_client.prompt_calls() == []
+    # Equal recorded prompts (source == target == P): the rewind hook resets
+    # nothing. The retained-parent on_restore dispatch (nr6b) re-applies the
+    # author's current prompt, so the only prompt write is the override.
+    assert restored_client.prompt_calls() == ["OVERRIDE"]
     assert restored_client.system_prompt == "OVERRIDE"
     # The node-close capture still recorded the override faithfully on the
     # abandoned leaf...
@@ -956,9 +958,12 @@ async def test_system_prompt_generic_client_without_prompt_unchanged():
     )
     record = recorder.record
     assert record is not None
-    # State stays exactly the turns entry; no prompt key appears.
+    # No prompt key appears; state carries only the turns entry and the
+    # builtin per-exchange values entry.
     for node in record.nodes.values():
-        assert set(node.state) == {TURNS_STATE_KEY}
+        assert TURNS_STATE_KEY in node.state
+        assert SYSTEM_PROMPT_STATE_KEY not in node.state
+        assert set(node.state) <= {TURNS_STATE_KEY, VALUES_STATE_KEY}
 
     restored, restored_client = _make_prompt_controller(client=_PlainClient())
     await replay_exchange_record(restored, record)

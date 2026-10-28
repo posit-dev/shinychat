@@ -47,7 +47,11 @@ from shinychat._history import (
 )
 from shinychat._history_client import TurnsAdapter
 from shinychat._history_controller import HistoryController
-from shinychat._history_plan import StatePathContext, canonical_turns
+from shinychat._history_plan import (
+    StatePathContext,
+    canonical_turns,
+    resolve_path_values,
+)
 from shinychat._history_recorder import _ModelCaptureError
 from shinychat._history_store import (
     ConversationPartition,
@@ -63,6 +67,7 @@ from shinychat._history_types import (
     HISTORY_ERROR_STREAM_TERMINAL,
     MAX_SCHEMA_VERSION,
     STORED_UI_VERSION,
+    VALUES_STATE_KEY,
     CapturedMessage,
     ConversationNode,
     ConversationRecordV1,
@@ -1353,7 +1358,7 @@ async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
 
     controller._restore_callbacks.append(restore_callback)
     transcript = ChatTranscript(on_accepted_input=recorder.accepted_input)
-    await transcript.record_accepted_input_and_notify(
+    exchange_id = await transcript.record_accepted_input_and_notify(
         _stored_message("user", "source")
     )
     assert recorder.record is not None
@@ -1362,29 +1367,54 @@ async def test_v2_values_capture_response_save_switch_new_and_restore() -> None:
     await controller.on_response()
     source = await store.get(part(), source_id)
     assert isinstance(source, ConversationRecordV2)
-    assert source.values == {"value": "response"}
+    # Checkpoint-only capture (nr6b): accepted input records the live values
+    # on the new exchange, the synthetic root never captures app values, and
+    # response settlement re-captures on that same exchange.
+    assert VALUES_STATE_KEY not in source.nodes[source.root_id].state
+    assert source.nodes[exchange_id].state[VALUES_STATE_KEY].data == {
+        "value": "response"
+    }
+    assert resolve_path_values(source, exchange_id) == {"value": "response"}
 
     current_value = "save"
     assert await controller.save()
-    assert source.values == {"value": "save"}
+    assert source.nodes[exchange_id].state[VALUES_STATE_KEY].data == {
+        "value": "save"
+    }
 
     target = new_conversation_record_v2(
         title="target",
         id="c_target",
         client_info={},
     )
-    target.values = {"restored": "target"}
+    target.nodes[target.root_id].state[VALUES_STATE_KEY] = StateEntry(
+        kind="values",
+        version=1,
+        mode="snapshot",
+        data={"restored": "target"},
+    )
     await store.put(part(), target)
 
     current_value = "switch"
     await controller.switch_to(target.id)
-    assert source.values == {"value": "switch"}
+    # Switching never captures the outgoing conversation: its saved values
+    # stay as the last checkpoint left them.
+    assert source.nodes[exchange_id].state[VALUES_STATE_KEY].data == {
+        "value": "save"
+    }
     assert restored_values == [{"restored": "target"}]
 
     current_value = "new"
     await controller.new_chat()
-    assert target.values == {"value": "new"}
-    assert saved_values == ["response", "save", "switch", "new"]
+    # New chat never captures the outgoing target either, and it restores
+    # nothing: the target keeps its saved values.
+    assert target.nodes[target.root_id].state[VALUES_STATE_KEY].data == {
+        "restored": "target"
+    }
+    assert restored_values == [{"restored": "target"}]
+    # Only accepted input, response settlement, and the explicit save
+    # captured; switch and New chat did not.
+    assert saved_values == ["response", "response", "save"]
 
 
 def _v2_record_contents(record: ConversationRecordV2) -> list[str]:
@@ -1432,6 +1462,15 @@ async def test_v2_new_chat_closes_old_record_and_starts_fresh():
         "first question",
         "first answer",
     ]
+    # Without `on_save` callbacks nothing captures values, so no node holds
+    # a values entry (the synthetic root never captures app values).
+    assert all(
+        VALUES_STATE_KEY not in node.state
+        for node in stored_closed.nodes.values()
+    )
+    # The in-memory store aliases the record it was handed, so snapshot
+    # the closed record before the fresh conversation's activity.
+    closed_snapshot = stored_closed.model_dump(mode="json")
     assert recorder.record is None
     assert controller._active_id_now() is None
     assert any(
@@ -1458,7 +1497,9 @@ async def test_v2_new_chat_closes_old_record_and_starts_fresh():
     assert _v2_record_contents(fresh) == ["second question", "second answer"]
     closed_after = await store.get(part(), closed_id)
     assert isinstance(closed_after, ConversationRecordV2)
-    assert closed_after.values == stored_closed.values
+    # The fresh conversation's activity left the closed record -- root
+    # values entry included -- byte-identical.
+    assert closed_after.model_dump(mode="json") == closed_snapshot
     assert _v2_record_contents(closed_after) == [
         "first question",
         "first answer",
@@ -3012,7 +3053,7 @@ async def test_generic_destructive_admission_does_not_block_real_chat_input(
 
 
 @pytest.mark.anyio
-async def test_v2_switch_saves_source_before_target_preflight_failure() -> None:
+async def test_v2_switch_persists_source_without_capturing_values_before_preflight_failure() -> None:
     class SnapshotStore(InMemoryConversationStore):
         async def get(
             self, partition: ConversationPartition, conv_id: str
@@ -3071,7 +3112,11 @@ async def test_v2_switch_saves_source_before_target_preflight_failure() -> None:
 
     stored_source = await store.get(part(), source.id)
     assert isinstance(stored_source, ConversationRecordV2)
-    assert stored_source.values == {"current": "latest value"}
+    leaf = stored_source.active_leaf
+    assert leaf is not None
+    # The switch persisted the source record but captured no values: its
+    # saved values are whatever the last checkpoint left (none here).
+    assert resolve_path_values(stored_source, leaf) == {}
     assert [
         node.input.content
         for node in stored_source.nodes.values()
@@ -4182,7 +4227,6 @@ async def test_v2_restore_hook_failure_names_entry_and_clears_to_fresh_draft():
         "turns",
         "hook",
         "active-id",
-        "app-callback",
         "metadata",
     ],
 )
@@ -4247,12 +4291,6 @@ async def test_v2_restore_failure_becomes_fresh_draft(
                 raise expected
 
         controller.on_active_id_change = fail_active_id
-    elif failure == "app-callback":
-
-        def fail_app_callback(_values: dict[str, Any]) -> None:
-            raise expected
-
-        controller._restore_callbacks.append(fail_app_callback)
     elif failure == "metadata":
         controller.send_history_update = AsyncMock(side_effect=expected)  # type: ignore[method-assign]
 
@@ -6178,8 +6216,10 @@ async def test_v2_resubmit_rewinds_parent_prefix_and_new_input_creates_sibling()
     controller, chat, adapter, store, first, target = _make_v2_resubmit_controller()
     recorder = controller._exchange_recorder
     assert recorder is not None
-    target_input = recorder.record.nodes[target].input.model_copy(deep=True)  # type: ignore[union-attr]
-    target_state = recorder.record.nodes[target].state["shinychat:turns"].model_copy(  # type: ignore[union-attr]
+    record = recorder.record
+    assert record is not None
+    target_input = record.nodes[target].input.model_copy(deep=True)  # type: ignore[union-attr]
+    target_state = record.nodes[target].state["shinychat:turns"].model_copy(
         deep=True
     )
 
@@ -8587,8 +8627,14 @@ async def test_explicit_save_captures_state_without_counting_response():
 
     assert await controller.save() is True
     assert recorder.record.response_count == response_count
-    assert recorder.record.values == {"artifact": {"version": 2}}
-    assert len(saved_values) == 1
+    leaf = recorder.record.active_leaf
+    assert leaf is not None
+    assert resolve_path_values(recorder.record, leaf) == {
+        "artifact": {"version": 2}
+    }
+    # The callback ran at the root close (accepted input) and again at
+    # this explicit save; the save itself persisted exactly once.
+    assert len(saved_values) == 2
     assert put_count == 1
     assert controller._title_task is None
 

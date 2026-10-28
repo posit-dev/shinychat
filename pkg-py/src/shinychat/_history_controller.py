@@ -22,6 +22,7 @@ from ._chat_types import (
     HistoryEditProjectionAction,
     HistoryNavigateAction,
     HistoryUpdateAction,
+    ReadOnlyReason,
     StoredMessage,
     StoredSegment,
     UpdateExchangeMetadataAction,
@@ -65,6 +66,7 @@ if TYPE_CHECKING:
 
 # Exchange statuses from which a retry (or a fresh resubmit) is allowed.
 _RETRYABLE_STATUSES = ("pending", "error", "cancelled")
+
 
 # Builtin model-state hooks that read-only navigation never invokes: the
 # live client's model state is not rewound while a record is view-only.
@@ -200,6 +202,20 @@ def _restore_step(step: str) -> Iterator[None]:
                 error, f"{_RESTORE_STEP_NOTE_PREFIX}{step}"
             )
         raise
+
+
+# Resubmit refusals for a view-only record, worded by the reason that made it
+# view-only so the message never claims a cause that did not happen.
+_READ_ONLY_RESUBMIT_MESSAGES: dict[ReadOnlyReason, str] = {
+    "model_unavailable": (
+        "Cannot resubmit an exchange in a read-only conversation: its saved "
+        "model context is unavailable."
+    ),
+    "app_restore_failed": (
+        "Cannot resubmit an exchange in a read-only conversation: its saved "
+        "app state could not be fully restored."
+    ),
+}
 
 
 class HistoryController:
@@ -511,9 +527,33 @@ class HistoryController:
         """Persist the active conversation if it has ever been saved."""
         return await self._exchange_recorder.save_current()
 
-    def _restore_app_state(self, values: dict[str, Any]) -> None:
-        for cb in self._restore_callbacks:
-            cb(values)
+    def _restore_app_state(self, values: dict[str, Any]) -> bool:
+        """Dispatch ``on_restore`` for a position recreation or change.
+
+        The single dispatch point for load, switch, browse, and the
+        retained-parent rewind. Callbacks run in registration order and
+        stop at the first ordinary failure, so a later callback can never
+        mask it. An ordinary ``Exception`` keeps the restored conversation
+        displayed but view-only (``app_restore_failed``), warns the
+        developer with the raw cause, and returns ``False``. Cancellation
+        and other fatal exceptions propagate to the caller's full cleanup.
+        """
+        try:
+            with _restore_step("restoring the app state"):
+                for cb in self._restore_callbacks:
+                    cb(values)
+        except Exception as error:
+            detail = _restore_failure_detail(error)
+            warnings.warn(
+                "Chat history on_restore callback failed "
+                f"({detail or 'no detail'}); the conversation is shown "
+                "read-only and its app state was not fully restored: "
+                f"{error!r}",
+                stacklevel=3,
+            )
+            self._exchange_recorder.mark_read_only("app_restore_failed")
+            return False
+        return True
 
     async def _notify_restore_failure(
         self, *, recovery_incomplete: bool, detail: str | None = None
@@ -639,8 +679,16 @@ class HistoryController:
             with _restore_step("persisting the restored record"):
                 if persist_active_pointer:
                     await recorder.persist_record_locked()
-            with _restore_step("restoring the app state"):
-                self._restore_app_state(target.values or {})
+            # Position-specific: the restored conversation's callbacks
+            # receive the values recorded at its selected leaf, not a
+            # conversation-wide object. An ordinary failure marks the
+            # record view-only inside the helper; the metadata below still
+            # runs so the client learns the read-only state.
+            active_leaf = target.active_leaf
+            assert active_leaf is not None
+            self._restore_app_state(
+                _history_plan.resolve_path_values(target, active_leaf)
+            )
             if unavailable_reason is not None:
                 # Developer-facing classification only; the client learns
                 # about the read-only view through ``active_read_only``.
@@ -743,7 +791,7 @@ class HistoryController:
         recorder = self._exchange_recorder
         async with self._destructive_mutation(block_input=True):
             async with self._exchange_mutation():
-                await recorder.save_current_locked()
+                await recorder.persist_current_locked()
                 target = await self._get_record(self.partition, conv_id)
                 if target is None:
                     raise RuntimeError(
@@ -775,7 +823,7 @@ class HistoryController:
         """
         async with self._destructive_mutation():
             async with self._exchange_mutation():
-                await self._exchange_recorder.save_current_locked()
+                await self._exchange_recorder.persist_current_locked()
                 self.adapter.set_turns_json([])
                 await self.chat.clear_messages(greeting=greeting)
                 self._exchange_recorder.reset()
@@ -863,11 +911,13 @@ class HistoryController:
             raise RuntimeError("No exchange-tree conversation is active")
         if recorder.read_only:
             # Authoritative guard for edit/retry/regenerate: a read-only
-            # record's saved model context is unavailable, so no resubmit
-            # path may mutate it or consume a model stream.
+            # record must not be mutated or consume a model stream. The
+            # message names the reason, never a cause it did not have.
             raise RuntimeError(
-                "Cannot resubmit an exchange in a read-only conversation: "
-                "its saved model context is unavailable."
+                _READ_ONLY_RESUBMIT_MESSAGES.get(
+                    recorder.read_only_reason or "model_unavailable",
+                    "Cannot resubmit an exchange in a read-only conversation.",
+                )
             )
 
         target, parent_id = self._validate_resubmit_target(
@@ -895,6 +945,11 @@ class HistoryController:
             phase="rewind",
         )
 
+        # The target position's values come from the preflight copy,
+        # before the destructive replay/rewind and before the replacement
+        # exchange captures its own fresh values.
+        target_values = _history_plan.resolve_path_values(prefix, parent_id)
+
         async with self._destructive_mutation(block_input=True) as transaction:
             transcript_prefix = self._transcript_prefix_entries(
                 record, node_ids
@@ -913,14 +968,30 @@ class HistoryController:
                 with _restore_step("sending the resubmission"):
                     await self.chat._send_action(action)
 
+            async def send_read_only_branch() -> None:
+                # The original branch is shown view-only: the display and
+                # metadata update go out, but never the edit projection,
+                # because that projection starts the replacement's
+                # provider work.
+                with _restore_step("replaying the conversation display"):
+                    await self._replay_exchange_display(
+                        record, tuple(record.path_node_ids())
+                    )
+                with _restore_step("sending the read-only update"):
+                    await self._send_sibling_metadata()
+                    await self._send_exchange_metadata()
+                    await self.send_history_update()
+
             await self._rewind_locked(
                 record,
                 rewind_state,
                 parent_id,
                 save_step="saving the resubmission",
                 send=send_resubmission,
+                send_read_only=send_read_only_branch,
                 transcript_prefix=transcript_prefix,
                 transaction=transaction,
+                target_values=target_values,
             )
 
     def _transcript_prefix_entries(
@@ -952,11 +1023,23 @@ class HistoryController:
         *,
         save_step: str,
         send: Callable[[], Awaitable[None]],
+        send_read_only: Callable[[], Awaitable[None]] | None = None,
         transcript_prefix: tuple["TranscriptEntry", ...] | None = None,
         transaction: object | None = None,
+        target_values: dict[str, Any],
     ) -> None:
         """The shared rewind skeleton: capture the close, run the plan,
-        move and persist the leaf, send, clear a failed restore."""
+        restore the target's app state, commit the resubmit pointer, then send.
+
+        ``on_restore`` runs for the target position before ``send``. An
+        ordinary app failure keeps the original resubmit branch displayed
+        view-only, and sends ``send_read_only`` instead of ``send`` (for
+        resubmits: the metadata and display without the edit projection,
+        which is the replacement's provider kickoff). Without
+        ``send_read_only``, browsing commits and displays the target even
+        when app restoration fails.
+        Any other failure takes the full cleanup.
+        """
         recorder = self._exchange_recorder
         async with self._exchange_mutation():
             current_leaf = record.active_leaf
@@ -966,8 +1049,20 @@ class HistoryController:
             try:
                 with _restore_step(save_step):
                     await _history_plan.run_plan(rewind_state)
-                    await recorder.persist_active_leaf_locked(record, leaf)
-                    if transcript_prefix is not None:
+                    if send_read_only is None:
+                        await recorder.persist_active_leaf_locked(record, leaf)
+                restored = self._restore_app_state(target_values)
+                with _restore_step(save_step):
+                    if send_read_only is not None:
+                        if restored:
+                            await recorder.persist_active_leaf_locked(
+                                record, leaf
+                            )
+                        else:
+                            # Close capture is in-memory only. Preserve it under
+                            # the original leaf without committing the parent.
+                            await recorder.persist_record_locked()
+                    if restored and transcript_prefix is not None:
                         # Sync the append-only server transcript to the
                         # same parent prefix the record/adapter rewound
                         # to, so the replacement input appends after the
@@ -977,7 +1072,10 @@ class HistoryController:
                         self.chat._transcript.replace(
                             transcript_prefix, transaction=transaction
                         )
-                await send()
+                if restored:
+                    await send()
+                else:
+                    await (send_read_only or send)()
             except BaseException as error:
                 await self._clear_failed_restore(error)
                 raise
@@ -1139,6 +1237,10 @@ class HistoryController:
                 if planned[0] not in _MODEL_STATE_KEYS
             )
 
+        # The target position's values come from the preflight copy,
+        # before the destructive replay/rewind.
+        target_values = _history_plan.resolve_path_values(projection, leaf)
+
         async with self._destructive_mutation(block_input=True):
 
             async def send_navigation() -> None:
@@ -1157,6 +1259,7 @@ class HistoryController:
                 leaf,
                 save_step="saving the navigation change",
                 send=send_navigation,
+                target_values=target_values,
             )
 
     async def handle_edit(
@@ -1212,8 +1315,13 @@ class HistoryController:
         }
         if self._exchange_recorder.read_only:
             # Emitted only for a read-only active record; absent clears
-            # the client's flag, so older messages remain writable.
+            # the client's flag, so older messages remain writable. The
+            # reason only explains the state (absent keeps old peers on
+            # the model wording).
             action["active_read_only"] = True
+            reason = self._exchange_recorder.read_only_reason
+            if reason is not None:
+                action["active_read_only_reason"] = reason
         await self.chat._send_action(action)
 
 

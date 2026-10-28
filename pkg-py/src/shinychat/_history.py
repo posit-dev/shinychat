@@ -101,11 +101,15 @@ class HistoryOptions:
         input state alongside the chat.
 
         The ``values`` dict captured by ``@chat.history.on_save`` callbacks
-        is restored by ``@chat.history.on_restore`` in every restore mode,
-        including ``"bookmark"``. Callbacks run after the target conversation
-        becomes active. Raw Shiny input values (sliders, text boxes, etc.) are
-        not synced automatically; use ``on_restore`` to update them on both
-        page-load restores and in-session switches.
+        is recorded per exchange and restored by ``@chat.history.on_restore``
+        in every restore mode, including ``"bookmark"``: the callbacks
+        receive the values recorded at the selected position, after the
+        target conversation becomes active. ``on_restore`` also runs when
+        browsing to a sibling or another position and before an edit,
+        retry, or regenerate starts replacement work from the retained parent, so each position
+        shows its own saved values. Raw Shiny input values (sliders, text
+        boxes, etc.) are not synced automatically; use ``on_restore`` to
+        update them.
     store
         Where conversations are persisted. ``"auto"`` (the default) picks
         ``FileConversationStore`` in most environments and defers to the
@@ -465,15 +469,41 @@ class ChatHistory:
         self, fn: "Callable[[dict[str, Any]], None]"
     ) -> "Callable[[dict[str, Any]], None]":
         """
-        Decorator. Register a callback fired whenever the active conversation is saved.
+        Decorator. Register a callback that records app state at conversation checkpoints.
 
-        The callback receives a mutable ``values`` dict; write any per-conversation
-        app state you want to persist into it. Fires on each LLM response (to
-        capture fresh state) and when the user switches to a different conversation::
+        The callback receives a mutable ``values`` dict; write any app
+        state for the exchange you want to persist into it::
 
             @chat.history.on_save
             def _(values):
                 values["selected_tab"] = current_tab()
+
+        Values are captured only at checkpoints: when a user input is
+        accepted (recorded on the new exchange), when a response completes
+        (after reactive settlement, including cancelled and failed
+        completions), when an edit, retry, or regenerate produces its
+        replacement response, and on an explicit ``await chat.history.save()``.
+        Browsing, switching or loading conversations, starting a new chat,
+        and renaming never capture values, so a branch's saved values are
+        not overwritten by whatever state the app holds while the user
+        moves elsewhere.
+
+        Successful captures record values per exchange, recording only
+        changes from the inherited values along the branch. The synthetic
+        root is not captured merely because an input is accepted. An empty
+        dict explicitly clears a previously saved object.
+        Values use Pydantic's JSON encoding: dates and UUIDs become strings,
+        and tuples and sets become arrays. Serializer-supported keys become
+        strings (for example, ``1`` becomes ``"1"`` and ``None`` becomes
+        ``"None"``); restore returns that JSON representation. When keys
+        normalize to the same string, the later dictionary entry wins.
+        Authors own those conversions; no separate collision check is added.
+        ``NaN`` and infinite floating-point values are rejected.
+
+        If an automatic capture callback or serialization fails, history
+        warns the developer and retains the previously recorded values so
+        the response can finish. An explicit call to
+        ``await chat.history.save()`` still raises the error.
 
         Multiple callbacks can be registered and run in registration order.
         Safe to call before ``enabled = True``.
@@ -485,21 +515,55 @@ class ChatHistory:
         self, fn: "Callable[[dict[str, Any]], None]"
     ) -> "Callable[[dict[str, Any]], None]":
         """
-        Decorator. Register a callback fired when a conversation is loaded.
+        Decorator. Register a callback fired whenever the selected conversation position changes.
 
         Fires on page-load restores in every ``restore_mode``, including
-        ``"bookmark"``, and on in-session conversation switches. The target
-        conversation is active before callbacks run. Use it to sync auxiliary
-        UI state — active tabs, model selectors, etc. — to match the restored
-        conversation. Raw Shiny input values are not synced automatically;
+        ``"bookmark"``; on in-session conversation switches; when browsing to
+        a sibling or another position; and before an edit, retry, or
+        regenerate starts replacement work from the retained parent. Callbacks
+        receive the target values; for writable in-session changes, model
+        state has already been rewound, but ``chat.messages()`` and the
+        display still show the outgoing branch. A resubmit commits its parent
+        pointer only after callbacks succeed. Load and switch instead replay
+        the target display before callbacks run. Use it to sync auxiliary
+        UI state (active tabs, model selectors, etc.) to match the selected
+        position. Raw Shiny input values are not synced automatically;
         call the appropriate ``ui.update_*()`` functions here.
 
-        The callback receives the ``values`` dict that was captured by the
-        corresponding ``on_save`` callback::
+        The callback receives the ``values`` dict that was captured by
+        ``on_save`` at the selected position (a detached copy; mutating it
+        changes nothing stored)::
 
             @chat.history.on_restore
             def _(values):
                 ui.update_navs("tabs", selected=values.get("selected_tab"))
+
+        Editing or retrying the first message normally calls
+        ``on_restore({})``: accepting input does not capture app values on
+        the synthetic root. If values were explicitly saved on the root,
+        or captured with an earlier inputless response, those values are
+        restored instead. The author callback
+        decides whether to supply defaults or fail; history does not
+        automatically reset application state. An unhandled ordinary failure
+        retains the original branch read-only, as described below.
+
+        Starting a new chat does not fire ``on_restore``: the new chat has
+        no saved target, and authors set up its state themselves.
+
+        Callbacks run in registration order and stop at the first ordinary
+        exception, so later callbacks never mask it. The conversation stays
+        visible but becomes read-only (the composer explains that its app
+        state could not be fully restored), and the error is warned to the
+        developer. Failed edit, retry, and regenerate preparation retains
+        the original full branch rather than selecting its parent; failed
+        browsing retains the selected target. After failed resubmit
+        preparation, the live model client may still hold the parent prefix,
+        not the displayed branch; read-only blocks continuation and saved
+        state capture until a full restore or new chat. Callbacks that can recover from a known case should
+        handle it themselves. Cancellation and other fatal errors take the
+        usual full restore cleanup. Read-only conversations keep their
+        saved values; a later successful switch or restore of the
+        conversation, or starting a new chat, clears the read-only state.
 
         Restores faithfully reapply the conversation's saved system prompt
         (the one captured while the conversation was live) before callbacks
@@ -510,8 +574,8 @@ class ChatHistory:
         entries inherit earlier recorded values;
         when none exists, history leaves the live prompt unchanged.
 
-        To keep the app's *current* prompt instead — e.g. when the
-        prompt is generated per session — override it here::
+        To keep the app's *current* prompt instead, e.g. when the
+        prompt is generated per session, override it here::
 
             @chat.history.on_restore
             def use_current_prompt(values):

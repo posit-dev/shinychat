@@ -5,6 +5,8 @@ export type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
 export type ContentType = "markdown" | "html" | "text" | "thinking"
 
+export type ReadOnlyReason = "model_unavailable" | "app_restore_failed"
+
 export interface ConversationMeta {
   id: string
   title: string
@@ -267,6 +269,7 @@ export type ChatAction =
        * writable (older servers never send it).
        */
       active_read_only?: boolean
+      active_read_only_reason?: ReadOnlyReason
       transition_protocol?: string
     }
   | {

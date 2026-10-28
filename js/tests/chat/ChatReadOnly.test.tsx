@@ -74,6 +74,25 @@ afterEach(() => {
 })
 
 describe("read-only composer bar", () => {
+  it("explains application restore failure persistently without claiming model failure", () => {
+    const transport = createMockTransport()
+    const elementId = renderChat(transport)
+    fireHistoryUpdate(transport, elementId, { active_read_only: true })
+    fireHistoryUpdate(transport, elementId, {
+      active_read_only: true,
+      active_read_only_reason: "app_restore_failed",
+    })
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Its saved application state couldn't be restored.",
+    )
+    expect(screen.getByRole("status")).not.toHaveTextContent("model context")
+    expect(screen.queryByRole("textbox", { name: "Chat message" })).toBeNull()
+    expect(screen.getByRole("button", { name: "New chat" })).toBeVisible()
+    fireHistoryUpdate(transport, elementId)
+    expect(screen.queryByRole("status")).toBeNull()
+    expect(screen.getByRole("textbox", { name: "Chat message" })).toBeVisible()
+  })
+
   it("replaces the chat input with a status bar and restores it when writable again", () => {
     const transport = createMockTransport()
     const elementId = renderChat(transport)

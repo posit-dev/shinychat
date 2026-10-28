@@ -49,6 +49,10 @@ TitleSource = Literal["llm", "user"]
 # The blessed state-entry name for the turn-state capture/restore hooks.
 TURNS_STATE_KEY = "shinychat:turns"
 SYSTEM_PROMPT_STATE_KEY = "shinychat:system_prompt"
+# The blessed state-entry name for per-exchange application values (the
+# per-exchange form of what `on_save` callbacks write and `on_restore`
+# callbacks read).
+VALUES_STATE_KEY = "shinychat:values"
 
 MAX_HISTORY_ERROR_MESSAGE = 256
 HISTORY_ERROR_GENERIC = "The response could not be completed."
@@ -356,7 +360,10 @@ class CapturedMessage(BaseModel):
             segments=[copy.deepcopy(segment) for segment in message.segments],
             icon=icon,
             attachments=(
-                [attachment.model_copy(deep=True) for attachment in message.attachments]
+                [
+                    attachment.model_copy(deep=True)
+                    for attachment in message.attachments
+                ]
                 if message.attachments
                 else None
             ),
@@ -367,7 +374,10 @@ class CapturedMessage(BaseModel):
             role=self.role,
             segments=[copy.deepcopy(segment) for segment in self.segments],
             attachments=(
-                [attachment.model_copy(deep=True) for attachment in self.attachments]
+                [
+                    attachment.model_copy(deep=True)
+                    for attachment in self.attachments
+                ]
                 if self.attachments is not None
                 else []
             ),
@@ -454,7 +464,6 @@ class ConversationRecordV2(BaseModel):
     nodes: dict[str, ExchangeNode] = Field(default_factory=dict)
     next_node_seq: int = 1
     active_leaf: str | None = None
-    values: dict[str, Any] = Field(default_factory=dict)
     bookmark_state_id: str | None = None
 
     @property
@@ -615,7 +624,9 @@ class ConversationRecordV2(BaseModel):
         self.updated_at = utcnow()
         return exchange_id
 
-    def append_message(self, exchange_id: str, message: CapturedMessage) -> None:
+    def append_message(
+        self, exchange_id: str, message: CapturedMessage
+    ) -> None:
         node = self.nodes.get(exchange_id)
         if node is None:
             raise ValueError(f"Unknown exchange id {exchange_id!r}")

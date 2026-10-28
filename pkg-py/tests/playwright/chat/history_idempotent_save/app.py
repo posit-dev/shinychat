@@ -12,11 +12,9 @@ from shiny import App, Inputs, Outputs, Session, reactive, render, ui
 from shinychat import Chat, chat_ui
 from shinychat.types import FileConversationStore, HistoryOptions
 
-# Regression app for content-idempotent history save: the exchange restore
-# replays the stored conversation's display without settling another server
-# response. save_count (driven by chat.history.on_save, which only fires on an
-# actual store.put) must not increase, and the stored conversation must stay
-# intact.
+# Regression app: display replay must not capture application values or settle
+# a new server response. on_save counts root/stream/boundary captures;
+# on_restore provides a deterministic signal that the restored state is ready.
 
 
 class EchoChatClient(chatlas.Chat):
@@ -50,6 +48,7 @@ app_ui = ui.page_fluid(
     ui.input_action_button("release", "Release"),
     ui.output_text_verbatim("save_count"),
     ui.output_text_verbatim("owner_messages"),
+    ui.output_text("restore_count"),
 )
 
 
@@ -87,6 +86,15 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         ),
     )
     saves = reactive.value(0)
+    restores = reactive.value(0)
+
+    @chat.history.on_restore
+    def restored(values: dict[str, object]) -> None:
+        restores.set(restores() + 1)
+
+    @render.text
+    def restore_count():
+        return str(restores())
 
     @chat.history.on_save
     def _(values: dict[str, object]) -> None:

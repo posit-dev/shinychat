@@ -1777,6 +1777,26 @@ describe("chatReducer", () => {
       expect(next.drawer).toBe(artifact)
     })
 
+    it("clears a stale explanation when an older server sends a writable update", () => {
+      const failed = chatReducer(initialState, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c1",
+        active_read_only: true,
+        active_read_only_reason: "app_restore_failed",
+      })
+      expect(failed.history.readOnlyReason).toBe("app_restore_failed")
+      const writable = chatReducer(failed, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c2",
+      })
+      expect(writable.history.readOnly).toBe(false)
+      expect(writable.history.readOnlyReason).toBeUndefined()
+    })
+
     it("sets readOnly from active_read_only", () => {
       const next = chatReducer(initialState, {
         type: "history_update",

@@ -48,9 +48,11 @@ from ._history_client import (
     turn_dict_effective_role,
     turn_fallback_markdown,
 )
+from ._history_plan import canonical_values
 from ._history_types import (
     STORED_UI_VERSION,
     TURNS_STATE_KEY,
+    VALUES_STATE_KEY,
     CapturedMessage,
     ConversationNode,
     ConversationRecordV1,
@@ -354,8 +356,26 @@ def import_v1_record_with_warnings(
         nodes=exchanges,
         next_node_seq=record.next_node_seq,
         active_leaf=active_leaf,
-        values=copy.deepcopy(record.values),
         bookmark_state_id=record.bookmark_state_id,
+    )
+    # Released v1 kept one application-values object for the whole
+    # conversation; v2 records values per exchange. The imported object
+    # lands on the active leaf -- the position v1 considered current --
+    # even when that leaf is the root of a root-only import, and even
+    # when it is empty: an empty object is an explicit value, and the
+    # leaf is where the v1 conversation's values were live.
+    leaf = imported.active_leaf
+    assert leaf is not None
+    # Rich values from a typed/custom store (dates, ``Decimal``, ``UUID``…)
+    # normalize through the same pure helper the live capture uses, so
+    # ``JsonValue`` entry validation accepts them; the normalization is
+    # also the detach, so the imported entry never aliases the caller's
+    # record.
+    imported.nodes[leaf].state[VALUES_STATE_KEY] = StateEntry(
+        kind="values",
+        version=1,
+        mode="snapshot",
+        data=cast(JsonValue, canonical_values(record.values)),
     )
     return imported, warns
 
