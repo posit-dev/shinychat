@@ -3296,7 +3296,7 @@ async def test_v2_clear_settles_terminal_response_before_clear_mutation(
             await release_clear.wait()
 
     session.send_custom_message = hold_after_clear_dispatch  # type: ignore[method-assign]
-    clear_task = asyncio.create_task(chat.clear_messages())
+    clear_task = asyncio.create_task(chat._clear_messages_screen_only())
     try:
         try:
             await asyncio.wait_for(clear_dispatched.wait(), timeout=1)
@@ -3383,7 +3383,7 @@ async def test_v2_clear_rejects_active_stream_without_mutating_state(
         RuntimeError,
         match="Cannot clear or restore messages while a message stream",
     ):
-        await chat.clear_messages()
+        await chat._clear_messages_screen_only()
 
     persisted_after = await FileConversationStore(tmp_path).get(
         partition, recorder.record.id
@@ -3442,7 +3442,7 @@ async def test_v2_clear_retains_input_admitted_after_clear_dispatch(
             await release_clear.wait()
 
     session.send_custom_message = hold_after_clear_dispatch  # type: ignore[method-assign]
-    clear_task = asyncio.create_task(chat.clear_messages())
+    clear_task = asyncio.create_task(chat._clear_messages_screen_only())
     try:
         try:
             await asyncio.wait_for(clear_dispatched.wait(), timeout=1)
@@ -3495,6 +3495,343 @@ async def test_v2_clear_retains_input_admitted_after_clear_dispatch(
             await _finish_held_clear_task(
                 clear_task, release_clear, cancel=True
             )
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_public_clear_messages_rejects_without_mutation(
+    tmp_path: Any,
+) -> None:
+    chat, session, client, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "public_clear_guard"
+    )
+    try:
+        controller = chat.history._controller
+        assert controller is not None
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+        partition = ConversationPartition(
+            chat_id="public_clear_guard", scope="test"
+        )
+        client.set_turns([{"role": "user", "content": "client turn"}])
+        await chat.set_greeting("Stay")
+        await chat._record_accepted_user_input_with_capture(
+            ChatMessage(content="first question", role="user"),
+            dispatch_user_submit=False,
+        )
+        await chat.append_message("first answer")
+        await reactive.flush()
+        await reactive.flush()
+        assert recorder.record is not None
+        persisted = await FileConversationStore(tmp_path).get(
+            partition, recorder.record.id
+        )
+        assert persisted is not None
+        before = {
+            "transcript": _transcript_snapshot(chat),
+            "recorder": recorder.record.model_dump(mode="json"),
+            "client_turns": deepcopy(client.get_turns()),
+            "active_id": controller._active_id_now(),
+            "persisted": persisted.model_dump(mode="json"),
+            "wire": deepcopy(session.messages),
+        }
+
+        for kwargs in ({}, {"greeting": True}):
+            with pytest.raises(
+                ValueError,
+                match="Can't clear messages while conversation history is enabled",
+            ):
+                await chat.clear_messages(**kwargs)
+
+        # Rejected before any send or mutation: the screen, the saved
+        # record, the client turns (model context), the active pointer, and
+        # the greeting are all untouched, and no clear action went out.
+        persisted_after = await FileConversationStore(tmp_path).get(
+            partition, recorder.record.id
+        )
+        assert persisted_after is not None
+        after = {
+            "transcript": _transcript_snapshot(chat),
+            "recorder": recorder.record.model_dump(mode="json"),
+            "client_turns": deepcopy(client.get_turns()),
+            "active_id": controller._active_id_now(),
+            "persisted": persisted_after.model_dump(mode="json"),
+            "wire": deepcopy(session.messages),
+        }
+        assert after == before
+        assert chat._greeting_content == "Stay"
+        assert not any(
+            message["action"]["type"] == "clear" for message in session.messages
+        )
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_public_clear_rejection_preserves_exchange_indices(
+    tmp_path: Any,
+) -> None:
+    # The reviewer scenario: Q1/A1, a rejected Clear, then Q2/A2. Because
+    # the clear never happened, the recorded display indices keep mapping
+    # to the exchanges the user actually sees, and Q2 stays a child of Q1
+    # rather than becoming editable against the root.
+    chat, session, _, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "public_clear_indices"
+    )
+    try:
+        controller = chat.history._controller
+        assert controller is not None
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+
+        await chat._record_accepted_user_input_with_capture(
+            ChatMessage(content="Q1", role="user"),
+            dispatch_user_submit=False,
+        )
+        await chat.append_message("A1")
+        await reactive.flush()
+        await reactive.flush()
+
+        with pytest.raises(
+            ValueError,
+            match="Can't clear messages while conversation history is enabled",
+        ):
+            await chat.clear_messages()
+
+        await chat._record_accepted_user_input_with_capture(
+            ChatMessage(content="Q2", role="user"),
+            dispatch_user_submit=False,
+        )
+        await chat.append_message("A2")
+        await reactive.flush()
+        await reactive.flush()
+
+        assert [entry.message.content for entry in chat._transcript.read()] == [
+            "Q1",
+            "A1",
+            "Q2",
+            "A2",
+        ]
+        record = recorder.record
+        assert record is not None
+        q1_id = record.exchange_id_for_user_message_index(0)
+        q2_id = record.exchange_id_for_user_message_index(2)
+        q1_node = record.nodes[q1_id]
+        q2_node = record.nodes[q2_id]
+        assert q1_node.input is not None
+        assert q1_node.input.content == "Q1"
+        assert q2_node.input is not None
+        assert q2_node.input.content == "Q2"
+        assert q2_node.parent_id == q1_id
+        assert record.active_leaf == q2_id
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_clear_messages_clientless_still_clears() -> None:
+    session = _LiveSession()
+    with session_context(cast(Any, session)):
+        chat = Chat("clientless_clear")
+        await reactive.flush()
+        await reactive.flush()
+    try:
+        assert chat.history._controller is None
+        await chat.set_greeting("Hi")
+        await chat.append_message("hello")
+        assert [entry.message.content for entry in chat._transcript.read()] == [
+            "hello"
+        ]
+
+        await chat.clear_messages(greeting=True)
+
+        assert chat._transcript.read() == ()
+        assert chat._greeting_content is None
+        assert [
+            message["action"]
+            for message in session.messages
+            if message["action"]["type"] == "clear"
+        ] == [{"type": "clear", "greeting": True}]
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_clear_messages_history_disabled_still_clears() -> None:
+    session = _LiveSession()
+    client = _MockClient()
+    with session_context(cast(Any, session)):
+        chat = Chat(
+            "no_history_clear",
+            client=cast(Any, client),
+            history=False,
+        )
+        await reactive.flush()
+        await reactive.flush()
+    try:
+        assert chat.history._controller is None
+        client.set_turns([{"role": "user", "content": "client turn"}])
+        await chat.append_message("hello")
+        assert [entry.message.content for entry in chat._transcript.read()] == [
+            "hello"
+        ]
+
+        await chat.clear_messages()
+
+        assert chat._transcript.read() == ()
+        assert [
+            message["action"]
+            for message in session.messages
+            if message["action"]["type"] == "clear"
+        ] == [{"type": "clear"}]
+        # The screen-only clear does not touch the client's turns.
+        assert client.get_turns() == [
+            {"role": "user", "content": "client turn"}
+        ]
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_switch_replay_clears_and_repopulates_screen(
+    tmp_path: Any,
+) -> None:
+    chat, session, _, store = await _make_initialized_live_v2_chat(
+        tmp_path, "switch_replay_clear"
+    )
+    try:
+        controller = chat.history._controller
+        assert controller is not None
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+        chat_client = chat.client
+        assert chat_client is not None
+
+        await chat._record_accepted_user_input_with_capture(
+            ChatMessage(content="Q1", role="user"),
+            dispatch_user_submit=False,
+        )
+        await chat.append_message("A1")
+        await reactive.flush()
+        await reactive.flush()
+        assert recorder.record is not None
+        first_id = recorder.record.id
+
+        with reactive.isolate():
+            await chat_client.new_chat()
+        assert chat._transcript.read() == ()
+        assert recorder.record is None
+
+        session.messages.clear()
+        await controller.switch_to(first_id)
+
+        # The replay clears the screen via the internal primitive, then
+        # repopulates it from the saved record.
+        clear_actions = [
+            message["action"]
+            for message in session.messages
+            if message["action"]["type"] == "clear"
+        ]
+        assert clear_actions == [{"type": "clear"}]
+        assert [entry.message.content for entry in chat._transcript.read()] == [
+            "Q1",
+            "A1",
+        ]
+        assert recorder.record is not None
+        assert recorder.record.id == first_id
+        assert controller._active_id_now() == first_id
+        stored = await store.get(
+            ConversationPartition(chat_id=chat.id, scope="test"), first_id
+        )
+        assert stored is not None
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_delete_active_conversation_clears_screen(
+    tmp_path: Any,
+) -> None:
+    chat, session, client, store = await _make_initialized_live_v2_chat(
+        tmp_path, "delete_active_clear"
+    )
+    try:
+        controller = chat.history._controller
+        assert controller is not None
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+        partition = ConversationPartition(
+            chat_id="delete_active_clear", scope="test"
+        )
+        client.set_turns([{"role": "user", "content": "client turn"}])
+        await chat._record_accepted_user_input_with_capture(
+            ChatMessage(content="Q1", role="user"),
+            dispatch_user_submit=False,
+        )
+        await chat.append_message("A1")
+        await reactive.flush()
+        await reactive.flush()
+        assert recorder.record is not None
+        record_id = recorder.record.id
+
+        session.messages.clear()
+        await controller.delete(record_id)
+
+        assert chat._transcript.read() == ()
+        assert [
+            message["action"]
+            for message in session.messages
+            if message["action"]["type"] == "clear"
+        ] == [{"type": "clear"}]
+        assert recorder.record is None
+        assert controller._active_id_now() is None
+        assert client.get_turns() == []
+        assert await store.get(partition, record_id) is None
+    finally:
+        chat.destroy()
+
+
+@pytest.mark.anyio
+async def test_v2_failed_restore_cleanup_clears_screen(
+    tmp_path: Any,
+) -> None:
+    chat, session, client, _ = await _make_initialized_live_v2_chat(
+        tmp_path, "failed_restore_clear"
+    )
+    try:
+        controller = chat.history._controller
+        assert controller is not None
+        recorder = controller._exchange_recorder
+        assert recorder is not None
+        client.set_turns([{"role": "user", "content": "client turn"}])
+        await chat._record_accepted_user_input_with_capture(
+            ChatMessage(content="Q1", role="user"),
+            dispatch_user_submit=False,
+        )
+        await chat.append_message("A1")
+        await reactive.flush()
+        await reactive.flush()
+        assert recorder.record is not None
+
+        session.messages.clear()
+        with (
+            patch("shiny.ui.notification_show"),
+            pytest.warns(UserWarning, match="Chat history restore failed"),
+        ):
+            await controller._clear_failed_restore(
+                RuntimeError("injected restore failure")
+            )
+
+        assert chat._transcript.read() == ()
+        assert [
+            message["action"]
+            for message in session.messages
+            if message["action"]["type"] == "clear"
+        ] == [{"type": "clear"}]
+        assert recorder.record is None
+        assert controller._active_id_now() is None
+        assert client.get_turns() == []
     finally:
         chat.destroy()
 

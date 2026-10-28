@@ -139,7 +139,9 @@ class StubChat:
     async def _destructive_history_mutation(self, *, block_input: bool = False):
         yield
 
-    async def clear_messages(self, *, greeting: bool = False) -> None:
+    async def _clear_messages_screen_only(
+        self, *, greeting: bool = False
+    ) -> None:
         self.messages.clear()
 
     async def set_greeting(self, greeting: Any, **kwargs: Any) -> None:

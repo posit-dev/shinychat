@@ -333,8 +333,10 @@ Some commands perform an action without involving the LLM — clearing the conve
 ```python
 @chat.slash_command("clear", "Clear the conversation", echo=False)
 async def _():
-    await chat.clear_messages()
+    await chat.client.new_chat()
 ```
+
+With conversation history enabled (the default for client-backed chats), `new_chat()` is the coordinated reset: it saves the current conversation and starts a fresh one. For a chat without history, use `await chat.clear_messages()` instead; it clears only the rendered messages and is rejected while history is enabled.
 
 ### Client-side handlers
 

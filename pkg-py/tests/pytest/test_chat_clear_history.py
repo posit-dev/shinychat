@@ -51,6 +51,20 @@ class _Chat:
         return self.messages
 
     async def clear_messages(self, *, greeting: bool = False) -> None:
+        # Mirror the production guard: the public clear rejects while a
+        # history controller is attached; internal coordinated operations
+        # use the private screen-only primitive.
+        if self.history._controller is not None:
+            raise ValueError(
+                "Can't clear messages while conversation history is enabled; "
+                "use `await chat.client.new_chat()` to start a new "
+                "conversation."
+            )
+        await self._clear_messages_screen_only(greeting=greeting)
+
+    async def _clear_messages_screen_only(
+        self, *, greeting: bool = False
+    ) -> None:
         self.clear_calls.append(greeting)
         self.messages.clear()
 
