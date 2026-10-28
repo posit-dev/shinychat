@@ -74,7 +74,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-dbde6ece91fc58bf30abbd8587d2285d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-b37b5c2eb5daab18681c37d126873032.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-d091437fda1c84e54b2d1ed09ea2c3dd.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -111,8 +111,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 
 <meta property="og:title" content="shinychat">
+<meta property="og:description" content="Chat UI Component for Shiny">
 <meta property="og:site_name" content="shinychat">
 <meta name="twitter:title" content="shinychat">
+<meta name="twitter:description" content="Chat UI Component for Shiny">
 <meta name="twitter:card" content="summary">
 </head>
 
@@ -140,6 +142,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li class="nav-item">
     <a class="nav-link" href="../page-chat.html"> 
 <span class="menu-text">Page chat</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../migrating-to-0.8.0.html"> 
+<span class="menu-text">Migrating to v0.8.0</span></a>
   </li>  
   <li class="nav-item">
     <a class="nav-link active" href="../api/index.html" aria-current="page"> 
@@ -382,6 +388,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecordV1.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecordV1</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecordV2.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecordV2</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../api/types.ConversationMeta.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">types.ConversationMeta</span></a>
   </div>
@@ -415,13 +433,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#shinychat.types.ConversationRecord" id="toc-shinychat.types.ConversationRecord" class="nav-link active" data-scroll-target="#shinychat.types.ConversationRecord">types.ConversationRecord</a>
-  <ul class="collapse">
-  <li><a href="#methods" id="toc-methods" class="nav-link" data-scroll-target="#methods">Methods</a>
-  <ul class="collapse">
-  <li><a href="#shinychat.types.ConversationRecord.meta" id="toc-shinychat.types.ConversationRecord.meta" class="nav-link" data-scroll-target="#shinychat.types.ConversationRecord.meta">meta</a></li>
-  </ul></li>
-  </ul></li>
+  <li><a href="#shinychat.types.ConversationRecord" id="toc-shinychat.types.ConversationRecord" class="nav-link active" data-scroll-target="#shinychat.types.ConversationRecord">types.ConversationRecord</a></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/shinychat/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li><li><a href="https://github.com/posit-dev/shinychat/edit/main/pkg-py/docs/api/types.ConversationRecord.qmd" class="toc-action"><i class="bi empty"></i>Edit this page</a></li></ul></div></nav>
     </div>
@@ -434,31 +446,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="shinychat.types.ConversationRecord" class="level1">
 <h1>types.ConversationRecord</h1>
 <div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>types.ConversationRecord()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<section id="methods" class="level2">
-<h2 class="anchored" data-anchor-id="methods">Methods</h2>
-<table class="caption-top table">
-<thead>
-<tr class="header">
-<th>Name</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><a href="#shinychat.types.ConversationRecord.meta">meta</a></td>
-<td>Lightweight summary for <code>ConversationStore.list()</code>.</td>
-</tr>
-</tbody>
-</table>
-<section id="shinychat.types.ConversationRecord.meta" class="level3">
-<h3 class="anchored" data-anchor-id="shinychat.types.ConversationRecord.meta">meta</h3>
-<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>types.ConversationRecord.meta(size_bytes)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Lightweight summary for <code>ConversationStore.list()</code>.</p>
-<p>See <code>ConversationMeta.size_bytes</code> for why the caller must supply it.</p>
+<p>The CURRENT conversation record version (v2).</p>
+<p>This name always tracks the current schema; the released forms are named by their versions (<code>ConversationRecordV1</code>, <code>ConversationRecordV2</code>). It is the validation/construction entry point, not the runtime record type: the controller and recorder build plain <code>ConversationRecordV2</code> objects, which is the type stores receive in <code>put()</code> and should isinstance-check against. Validating v1-shaped input – a v1 dict or model instance – runs the v1→v2 import, so custom stores written against the v1 API that call <code>ConversationRecord.model_validate*</code> keep working and receive a v2 record. Stores may also hand back a <code>ConversationRecordV1</code> instance directly; the controller upgrades it on read. Lossy-import warnings are discarded here (reads must not re-warn); use <code>import_v1_record_with_warnings</code> to collect them.</p>
 
 
-</section>
-</section>
 </section>
 
 </main> <!-- /main -->

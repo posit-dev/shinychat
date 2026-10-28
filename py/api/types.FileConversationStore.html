@@ -74,7 +74,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-dbde6ece91fc58bf30abbd8587d2285d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-b37b5c2eb5daab18681c37d126873032.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-d091437fda1c84e54b2d1ed09ea2c3dd.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -142,6 +142,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li class="nav-item">
     <a class="nav-link" href="../page-chat.html"> 
 <span class="menu-text">Page chat</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../migrating-to-0.8.0.html"> 
+<span class="menu-text">Migrating to v0.8.0</span></a>
   </li>  
   <li class="nav-item">
     <a class="nav-link active" href="../api/index.html" aria-current="page"> 
@@ -384,6 +388,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecordV1.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecordV1</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecordV2.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecordV2</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../api/types.ConversationMeta.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">types.ConversationMeta</span></a>
   </div>
@@ -430,10 +446,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="shinychat.types.FileConversationStore" class="level1">
 <h1>types.FileConversationStore</h1>
 <div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>types.FileConversationStore(<span class="bu">dir</span><span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Default store: each conversation is a directory at <code>&lt;dir&gt;/&lt;chat_id&gt;/&lt;scope&gt;/&lt;id&gt;/</code> containing <code>record.json</code>, <code>turns.jsonl</code>, and <code>ui.jsonl</code>.</p>
-<p><code>record.json</code> holds tree structure and metadata (small, rewritten atomically on every save). <code>turns.jsonl</code> and <code>ui.jsonl</code> are append-only — new turns and UI entries are appended, never rewritten.</p>
+<p>Default store: each conversation is a directory at <code>&lt;dir&gt;/&lt;chat_id&gt;/&lt;scope&gt;/&lt;id&gt;/</code>. A v2 record is a single <code>record.json</code> holding the full record inline, rewritten atomically on every save. A v1 record instead splits into <code>record.json</code> (tree structure and metadata, rewritten atomically) plus append-only <code>turns.jsonl</code> and <code>ui.jsonl</code> side files (new turns and UI entries are appended, never rewritten); saving a v2 record over a v1 one removes the now-dead side files.</p>
 <p>Temporary records and journal rollback protect against ordinary I/O failures, but this store does not fsync files or directories. It also does not coordinate concurrent access across processes; callers must serialize reads and writes for each conversation.</p>
-<p>On <code>get()</code>, the three files are read and merged into a full <code>ConversationRecord</code> with inline turns and UI on each node. Callers never see the split.</p>
+<p>On <code>get()</code>, a v2 record is read straight from <code>record.json</code>; a v1 record’s three files are merged into a full <code>ConversationRecordV1</code> with inline turns and UI on each node. In both cases callers see the record as stored, upgrading v1 records per schema on read themselves.</p>
 
 
 </section>

@@ -74,7 +74,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-dbde6ece91fc58bf30abbd8587d2285d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-b37b5c2eb5daab18681c37d126873032.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-d091437fda1c84e54b2d1ed09ea2c3dd.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -142,6 +142,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li class="nav-item">
     <a class="nav-link" href="../page-chat.html"> 
 <span class="menu-text">Page chat</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../migrating-to-0.8.0.html"> 
+<span class="menu-text">Migrating to v0.8.0</span></a>
   </li>  
   <li class="nav-item">
     <a class="nav-link active" href="../api/index.html" aria-current="page"> 
@@ -384,6 +388,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecordV1.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecordV1</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecordV2.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecordV2</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../api/types.ConversationMeta.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">types.ConversationMeta</span></a>
   </div>
@@ -483,7 +499,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>greeting</td>
 <td><a href="`typing.Optional`">Optional</a>[<a href="`typing.Union`">Union</a>[<a href="`str`">str</a>, <a href="`htmltools.HTML`">HTML</a>, <a href="`htmltools.Tag`">Tag</a>, <a href="`htmltools.TagList`">TagList</a>, <a href="`shinychat._chat_types.ChatGreeting`">ChatGreeting</a>]]</td>
-<td>An optional greeting to display at the top of the chat before any conversation messages. Can be a markdown string or a :func:<code>~shinychat.chat_greeting</code> object. For a dynamic or streaming greeting, use :meth:<code>~shinychat.Chat.set_greeting</code> from the server instead. When no greeting is set and the chat is visible with no messages, an input named <code>{id}_greeting_requested</code> fires. Use this input with <code>@reactive.event(input.{id}_greeting_requested)</code> to generate a greeting on demand from the server. It fires again after :meth:<code>~shinychat.Chat.clear_messages</code> is called with <code>greeting=True</code>.</td>
+<td>An optional greeting to display at the top of the chat before any conversation messages. Can be a markdown string or a :func:<code>~shinychat.chat_greeting</code> object. For a dynamic or streaming greeting, use :meth:<code>~shinychat.Chat.set_greeting</code> from the server instead. When no greeting is set and the chat is visible with no messages, an input named <code>{id}_greeting_requested</code> fires. Use this input with <code>@reactive.event(input.{id}_greeting_requested)</code> to generate a greeting on demand from the server. If no greeting is set, it fires again after clearing messages with <code>greeting=True</code>: use :meth:<code>~shinychat.ChatClient.new_chat</code> with history enabled, or :meth:<code>~shinychat.Chat.clear_messages</code> without history.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">

@@ -74,7 +74,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-dbde6ece91fc58bf30abbd8587d2285d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-b37b5c2eb5daab18681c37d126873032.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-d091437fda1c84e54b2d1ed09ea2c3dd.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -142,6 +142,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li class="nav-item">
     <a class="nav-link" href="../page-chat.html"> 
 <span class="menu-text">Page chat</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../migrating-to-0.8.0.html"> 
+<span class="menu-text">Migrating to v0.8.0</span></a>
   </li>  
   <li class="nav-item">
     <a class="nav-link active" href="../api/index.html" aria-current="page"> 
@@ -384,6 +388,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecordV1.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecordV1</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecordV2.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecordV2</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../api/types.ConversationMeta.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">types.ConversationMeta</span></a>
   </div>
@@ -474,7 +490,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="even">
 <td><a href="#shinychat.types.ChatClient.new_chat">new_chat</a></td>
-<td>Save the current conversation and start a new one.</td>
+<td>Start a new conversation, preserving the current saved history.</td>
 </tr>
 <tr class="odd">
 <td><a href="#shinychat.types.ChatClient.set">set</a></td>
@@ -543,8 +559,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="shinychat.types.ChatClient.new_chat" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.types.ChatClient.new_chat">new_chat</h3>
 <div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>types.ChatClient.new_chat(greeting<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Save the current conversation and start a new one.</p>
-<p>This method is available only when conversation history is enabled. It saves the current record, clears the client turns and rendered messages, resets the active conversation ID, and updates the history drawer.</p>
+<p>Start a new conversation, preserving the current saved history.</p>
+<p>This method is available only when conversation history is enabled. It captures the latest model context, clears the client turns and rendered messages, resets the active conversation ID, and updates the history drawer. If model capture fails, it warns the developer, keeps the already-saved conversation, and proceeds with the reset. Storage and reset errors, cancellation, and fatal errors still propagate.</p>
 <section id="parameters-1" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-1">Parameters</h4>
 <table class="caption-top table">
@@ -560,7 +576,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>greeting</td>
 <td><a href="`bool`">bool</a></td>
-<td>Passed to :meth:<code>~shinychat.Chat.clear_messages</code>. When <code>True</code>, also clears the greeting and resolves the configured greeting for the new conversation.</td>
+<td>When <code>True</code>, also clears the greeting and resolves the configured greeting for the new conversation.</td>
 <td><code>False</code></td>
 </tr>
 </tbody>
@@ -583,6 +599,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>If conversation history is not enabled.</td>
 </tr>
 <tr class="even">
+<td></td>
+<td><a href="`RuntimeError`">RuntimeError</a></td>
+<td>If conversation history is still initializing (the initial restore decision is pending). The new chat is rejected before anything is cleared; retry after the history restore decision completes.</td>
+</tr>
+<tr class="odd">
 <td></td>
 <td><a href="`shiny`">shiny</a>.<a href="`shiny.types`">types</a>.<a href="`shiny.types.NotifyException`">NotifyException</a></td>
 <td>If an assistant response is currently streaming. To avoid this error, guard the call by checking <code>chat.latest_message_stream.status() != "running"</code> before calling :meth:<code>new_chat</code>.</td>

@@ -39,7 +39,7 @@ ul.task-list li input[type="checkbox"] {
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-dbde6ece91fc58bf30abbd8587d2285d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-b37b5c2eb5daab18681c37d126873032.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-d091437fda1c84e54b2d1ed09ea2c3dd.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -105,6 +105,10 @@ ul.task-list li input[type="checkbox"] {
   <li class="nav-item">
     <a class="nav-link" href="../page-chat.html"> 
 <span class="menu-text">Page chat</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../migrating-to-0.8.0.html"> 
+<span class="menu-text">Migrating to v0.8.0</span></a>
   </li>  
   <li class="nav-item">
     <a class="nav-link active" href="../api/index.html" aria-current="page"> 
@@ -347,6 +351,18 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecordV1.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecordV1</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecordV2.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecordV2</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../api/types.ConversationMeta.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">types.ConversationMeta</span></a>
   </div>
@@ -522,7 +538,15 @@ ul.task-list li input[type="checkbox"] {
 </tr>
 <tr class="odd">
 <td><a href="../api/types.ConversationRecord.html#shinychat.types.ConversationRecord">types.ConversationRecord</a></td>
-<td></td>
+<td>The CURRENT conversation record version (v2).</td>
+</tr>
+<tr class="even">
+<td><a href="../api/types.ConversationRecordV1.html#shinychat.types.ConversationRecordV1">types.ConversationRecordV1</a></td>
+<td>The legacy v1 linear record (py 0.6.x-0.7.2, R 0.5.0).</td>
+</tr>
+<tr class="odd">
+<td><a href="../api/types.ConversationRecordV2.html#shinychat.types.ConversationRecordV2">types.ConversationRecordV2</a></td>
+<td>The v2 exchange-tree record, isolated from the released v1 model.</td>
 </tr>
 <tr class="even">
 <td><a href="../api/types.ConversationMeta.html#shinychat.types.ConversationMeta">types.ConversationMeta</a></td>

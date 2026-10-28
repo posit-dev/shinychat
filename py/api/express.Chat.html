@@ -74,7 +74,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-dbde6ece91fc58bf30abbd8587d2285d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-b37b5c2eb5daab18681c37d126873032.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-d091437fda1c84e54b2d1ed09ea2c3dd.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -140,6 +140,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li class="nav-item">
     <a class="nav-link" href="../page-chat.html"> 
 <span class="menu-text">Page chat</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../migrating-to-0.8.0.html"> 
+<span class="menu-text">Migrating to v0.8.0</span></a>
   </li>  
   <li class="nav-item">
     <a class="nav-link active" href="../api/index.html" aria-current="page"> 
@@ -382,6 +386,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecordV1.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecordV1</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecordV2.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecordV2</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../api/types.ConversationMeta.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">types.ConversationMeta</span></a>
   </div>
@@ -560,7 +576,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="shinychat.express.Chat.append_message" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.append_message">append_message</h3>
 <div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>express.Chat.append_message(message, <span class="op">*</span>, icon<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<pre><code>    Append a message to the chat.</code></pre>
+<pre><code>    Append a message to the chat.
+
+    App output in a restored read-only conversation is displayed but not
+    saved to history. It disappears when the saved path is replayed or
+    reloaded; appending does not recover the unavailable model context.</code></pre>
 <section id="parameters" class="level4 doc-section doc-section---------parameters">
 <h4 class="doc-section doc-section---------parameters anchored" data-anchor-id="parameters">Parameters</h4>
 <pre><code>    message
@@ -698,7 +718,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="shinychat.express.Chat.append_message_stream" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.append_message_stream">append_message_stream</h3>
 <div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>express.Chat.append_message_stream(message, <span class="op">*</span>, icon<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<pre><code>    Append a message as a stream of message chunks.</code></pre>
+<pre><code>    Append a message as a stream of message chunks.
+
+    Awaiting this method starts a background
+    :class:`~shiny.reactive.ExtendedTask`; it does not wait for the response
+    to finish. The returned task and :attr:`latest_message_stream` are not
+    awaitable. In a reactive effect, read the task's ``status()`` and run
+    follow-up appends only on ``"success"``; ``"initial"`` and
+    ``"running"`` have no completed response, and ``"error"`` or
+    ``"cancelled"`` require an explicit failure/cancellation decision.
+
+    As with :meth:`append_message`, app output in a restored read-only
+    conversation is displayed but not saved and does not recover its model
+    context.</code></pre>
 <section id="parameters-1" class="level4 doc-section doc-section---------parameters">
 <h4 class="doc-section doc-section---------parameters anchored" data-anchor-id="parameters-1">Parameters</h4>
 <pre><code>    message
@@ -833,19 +865,34 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     specified in model's completion method.
     ```</code></pre>
 </section>
+<section id="raises" class="level4 doc-section doc-section---------raises">
+<h4 class="doc-section doc-section---------raises anchored" data-anchor-id="raises">Raises</h4>
+<pre><code>    :
+        `RuntimeError` if conversation history is still initializing: the
+        stream is rejected before the message iterable is consumed and it
+        will not be replayed. `RuntimeError` if another message stream is
+        active (this package rejects a second stream at the call site
+        rather than queueing it). Errors from starting the stream (a
+        message-transform failure, or a send/persist failure on the start
+        chunk) propagate from this call rather than surfacing through the
+        returned task.</code></pre>
+</section>
 <section id="returns" class="level4 doc-section doc-section---------returns">
 <h4 class="doc-section doc-section---------returns anchored" data-anchor-id="returns">Returns</h4>
 <pre><code>    :
         An extended task that represents the streaming task. The `.result()` method
         of the task can be called in a reactive context to get the final state of the
-        stream.</code></pre>
+        stream. The result is an empty string when the stream produced no
+        content, including when the reserved stream was closed before the
+        task's first step (the transcript's terminal status carries the
+        reason; the task itself completes successfully).</code></pre>
 </section>
 </section>
 <section id="shinychat.express.Chat.clear_messages" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.clear_messages">clear_messages</h3>
-<div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>express.Chat.clear_messages(greeting<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>express.Chat.clear_messages(greeting<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Clear all rendered chat messages.</p>
-<p>This is a UI-level primitive. It does not reset the underlying client’s turns or the conversation-history controller. When a chat was created with a client and conversation history is enabled, use <code>await chat.client.new_chat()</code> for a coordinated new-conversation reset.</p>
+<p>This is a UI-level primitive for chats without conversation history. It does not reset the underlying client’s turns or the saved conversation-history record, so it is rejected while conversation history is enabled: clearing only the screen would desynchronize the rendered chat from the recorded exchanges used by edit, retry, and navigation. Use <code>await chat.client.new_chat()</code> for a coordinated new-conversation reset instead.</p>
 <section id="parameters-2" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-2">Parameters</h4>
 <table class="caption-top table">
@@ -867,21 +914,40 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tbody>
 </table>
 </section>
+<section id="raises-1" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-1">Raises</h4>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td><a href="`ValueError`">ValueError</a></td>
+<td>If conversation history is enabled (the chat was created with a client and history). Use <code>await chat.client.new_chat()</code> to start a new conversation instead.</td>
+</tr>
+</tbody>
+</table>
+</section>
 </section>
 <section id="shinychat.express.Chat.destroy" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.destroy">destroy</h3>
-<div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>express.Chat.destroy()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>express.Chat.destroy()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Destroy the chat instance.</p>
 </section>
 <section id="shinychat.express.Chat.enable_bookmarking" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.enable_bookmarking">enable_bookmarking</h3>
-<div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>express.Chat.enable_bookmarking(</span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    client,</span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">/</span>,</span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>    bookmark_store<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>    bookmark_on<span class="op">=</span><span class="st">'response'</span>,</span>
-<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>express.Chat.enable_bookmarking(</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    client,</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">/</span>,</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>    bookmark_store<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>    bookmark_on<span class="op">=</span><span class="st">'response'</span>,</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Enable bookmarking for the chat instance.</p>
 <p>This method registers <code>on_bookmark</code> and <code>on_restore</code> hooks on <code>session.bookmark</code> (:class:<code>shiny.bookmark.Bookmark</code>) to save/restore chat state on both the <code>Chat</code> and <code>client=</code> instances. In order for this method to actually work correctly, a <code>bookmark_store=</code> must be specified in <code>shiny.express.app_opts()</code>.</p>
 <section id="parameters-3" class="level4 doc-section doc-section-parameters">
@@ -917,8 +983,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tbody>
 </table>
 </section>
-<section id="raises" class="level4 doc-section doc-section-raises">
-<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises">Raises</h4>
+<section id="raises-2" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-2">Raises</h4>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -958,7 +1024,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="shinychat.express.Chat.get_greeting" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.get_greeting">get_greeting</h3>
-<div class="sourceCode" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>express.Chat.get_greeting()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>express.Chat.get_greeting()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Get the current greeting content.</p>
 <section id="returns-2" class="level4 doc-section doc-section-returns">
 <h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-2">Returns</h4>
@@ -982,7 +1048,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="shinychat.express.Chat.message_stream_context" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.message_stream_context">message_stream_context</h3>
-<div class="sourceCode" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>express.Chat.message_stream_context()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>express.Chat.message_stream_context()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <pre><code>    Message stream context manager.
 
     A context manager for appending streaming messages into the chat. This context
@@ -996,7 +1062,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
           to (see the example below).
     3. Be used from within a `.append_message_stream()`
         * Useful for inserting additional content from another context into the
-          stream (e.g., see the note about tool calls below).</code></pre>
+          stream (e.g., see the note about tool calls below).
+
+    As with :meth:`append_message`, app output in a restored read-only
+    conversation is displayed but not saved and does not recover its model
+    context.</code></pre>
 <section id="yields" class="level4 doc-section doc-section---------yields">
 <h4 class="doc-section doc-section---------yields anchored" data-anchor-id="yields">Yields</h4>
 <pre><code>    :
@@ -1030,7 +1100,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     happening through `.append_message_stream()`. This allows the tool to display
     things like progress updates (or other "ephemeral" content) and optionally
     `.replace("")` the stream back to it's initial state when ready to display the
-    "final" content.</code></pre>
+    "final" content.
+
+    Starting a root stream while conversation history is still initializing
+    raises `RuntimeError` before any content is produced; nested streams are
+    unaffected.</code></pre>
 </section>
 <section id="note-3" class="level4 doc-section doc-section---------note">
 <h4 class="doc-section doc-section---------note anchored" data-anchor-id="note-3">Note</h4>
@@ -1044,7 +1118,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="shinychat.express.Chat.messages" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.messages">messages</h3>
-<div class="sourceCode" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>express.Chat.messages(<span class="bu">format</span><span class="op">=</span>DEPRECATED, token_limits<span class="op">=</span>DEPRECATED)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>express.Chat.messages(<span class="bu">format</span><span class="op">=</span>DEPRECATED, token_limits<span class="op">=</span>DEPRECATED)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Reactively read chat messages</p>
 <p>Obtain chat messages within a reactive context.</p>
 <section id="parameters-4" class="level4 doc-section doc-section-parameters">
@@ -1080,6 +1154,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="note-5" class="level4 doc-section doc-section-note">
 <h4 class="doc-section doc-section-note anchored" data-anchor-id="note-5">Note</h4>
+<p>This reflects accepted user input and messages successfully sent by the server. It updates synchronously after accepted input and successful appends; streamed messages are visible as their sent chunks accumulate.</p>
 </section>
 <section id="returns-3" class="level4 doc-section doc-section-returns">
 <h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-3">Returns</h4>
@@ -1103,7 +1178,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="shinychat.express.Chat.on_user_submit" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.on_user_submit">on_user_submit</h3>
-<div class="sourceCode" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>express.Chat.on_user_submit(fn<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>express.Chat.on_user_submit(fn<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Define a function to invoke when user input is submitted.</p>
 <p>Apply this method as a decorator to a function (<code>fn</code>) that should be invoked when the user submits a message. This function can take up to two optional arguments: the user input message (a <code>str</code>) and any attached files (a <code>list[Attachment]</code>, where each item exposes <code>mime</code> (MIME type), <code>data_url</code> (a <code>data:&lt;mime&gt;;base64,...</code> URL), and <code>name</code> (the original filename) attributes).</p>
 <p>In many cases, the implementation of <code>fn</code> should also do the following:</p>
@@ -1144,7 +1219,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="shinychat.express.Chat.remove_slash_command" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.remove_slash_command">remove_slash_command</h3>
-<div class="sourceCode" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>express.Chat.remove_slash_command(name)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>express.Chat.remove_slash_command(name)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Remove a previously registered slash command by name.</p>
 <section id="parameters-6" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-6">Parameters</h4>
@@ -1170,10 +1245,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="shinychat.express.Chat.set_greeting" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.set_greeting">set_greeting</h3>
-<div class="sourceCode" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>express.Chat.set_greeting(greeting)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>express.Chat.set_greeting(greeting)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Set or clear the chat greeting.</p>
 <p>A greeting is displayed at the top of the chat before any conversation messages. It can be static content, streaming content from an async iterator, or <code>None</code> to remove an existing greeting.</p>
-<p>If the greeting has already been dismissed, calling this method updates the greeting content but does not make it visible again. To show a new greeting after dismissal, first clear the chat with <code>await chat.clear_messages(greeting=True)</code>.</p>
+<p>If the greeting has already been dismissed, calling this method updates the greeting content but does not make it visible again. To show a new greeting after dismissal, start a new conversation with <code>await chat.client.new_chat(greeting=True)</code> when history is enabled. For chats without history, use <code>await chat.clear_messages(greeting=True)</code>.</p>
 <section id="parameters-7" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-7">Parameters</h4>
 <table class="caption-top table">
@@ -1203,78 +1278,79 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="notes" class="level4 doc-section doc-section-notes">
 <h4 class="doc-section doc-section-notes anchored" data-anchor-id="notes">Notes</h4>
-<p>When no greeting is set and the chat is visible with no messages, an input named <code>{id}_greeting_requested</code> fires (where <code>{id}</code> is the chat’s ID). Use <code>@reactive.event(input.{id}_greeting_requested)</code> to generate a greeting on demand. This input fires on first load and again after :meth:<code>~shinychat.Chat.clear_messages</code> is called with <code>greeting=True</code>. When the user dismisses the greeting, <code>{id}_greeting_dismissed</code> fires with a <code>Date.now()</code> timestamp. If the greeting is later cleared after being dismissed, the input resets to <code>None</code>.</p>
+<p>When no greeting is set and the chat is visible with no messages, an input named <code>{id}_greeting_requested</code> fires (where <code>{id}</code> is the chat’s ID). Use <code>@reactive.event(input.{id}_greeting_requested)</code> to generate a greeting on demand. This input fires on first load and again after clearing the greeting and messages with <code>greeting=True</code>: use :meth:<code>~shinychat.ChatClient.new_chat</code> with history enabled, or :meth:<code>~shinychat.Chat.clear_messages</code> without history. When the user dismisses the greeting, <code>{id}_greeting_dismissed</code> fires with a <code>Date.now()</code> timestamp. If the greeting is later cleared after being dismissed, the input resets to <code>None</code>.</p>
 </section>
 <section id="examples" class="level4 doc-section doc-section-examples">
 <h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h4>
 <p>Static greeting (stand-alone, dismissed on first message by default):</p>
-<div class="sourceCode" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
-<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
-<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.set_greeting(</span>
-<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>        <span class="st">"## Welcome!</span><span class="ch">\n\n</span><span class="st">How can I help you today?"</span></span>
-<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>    )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.set_greeting(</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>        <span class="st">"## Welcome!</span><span class="ch">\n\n</span><span class="st">How can I help you today?"</span></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>    )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Static greeting with custom options:</p>
-<div class="sourceCode" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat <span class="im">import</span> chat_greeting</span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
-<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
-<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>    greeting <span class="op">=</span> chat_greeting(</span>
-<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>        <span class="st">"## Welcome!"</span>,</span>
-<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>        persistent<span class="op">=</span><span class="va">True</span>,</span>
-<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.set_greeting(greeting)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat <span class="im">import</span> chat_greeting</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>    greeting <span class="op">=</span> chat_greeting(</span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>        <span class="st">"## Welcome!"</span>,</span>
+<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>        persistent<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.set_greeting(greeting)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Streaming greeting from an async iterator:</p>
-<div class="sourceCode" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
-<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
-<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> token_stream():</span>
-<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> token <span class="kw">in</span> [<span class="st">"Hello"</span>, <span class="st">" there"</span>, <span class="st">"!"</span>]:</span>
-<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>            <span class="cf">yield</span> token</span>
-<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.set_greeting(chat_greeting(token_stream()))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>LLM-generated greeting using <code>greeting_requested</code>:</p>
-<div class="sourceCode" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> chatlas</span>
-<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat <span class="im">import</span> Chat, chat_greeting</span>
-<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>chat_model <span class="op">=</span> chatlas.ChatOpenAI(model<span class="op">=</span><span class="st">"gpt-4o"</span>)</span>
-<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> Chat(<span class="bu">id</span><span class="op">=</span><span class="st">"chat"</span>)</span>
+<div class="sourceCode" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> token_stream():</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> token <span class="kw">in</span> [<span class="st">"Hello"</span>, <span class="st">" there"</span>, <span class="st">"!"</span>]:</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>            <span class="cf">yield</span> token</span>
 <span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
-<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.event</span>(<span class="bu">input</span>.chat_greeting_requested)</span>
-<span id="cb30-10"><a href="#cb30-10" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
-<span id="cb30-11"><a href="#cb30-11" aria-hidden="true" tabindex="-1"></a>    response <span class="op">=</span> <span class="cf">await</span> chat_model.stream_async(</span>
-<span id="cb30-12"><a href="#cb30-12" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Write a short, friendly welcome message."</span></span>
-<span id="cb30-13"><a href="#cb30-13" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb30-14"><a href="#cb30-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.set_greeting(chat_greeting(response))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Regenerate pattern (clear and re-request):</p>
-<div class="sourceCode" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.event</span>(<span class="bu">input</span>.regenerate)</span>
-<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
-<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.clear_messages(greeting<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.set_greeting(chat_greeting(token_stream()))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>LLM-generated greeting using <code>greeting_requested</code>:</p>
+<div class="sourceCode" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> chatlas</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shinychat <span class="im">import</span> Chat, chat_greeting</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>chat_model <span class="op">=</span> chatlas.ChatOpenAI(model<span class="op">=</span><span class="st">"gpt-4o"</span>)</span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> Chat(<span class="bu">id</span><span class="op">=</span><span class="st">"chat"</span>)</span>
 <span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a><span class="co"># greeting_requested fires again after clear_messages(greeting=True),</span></span>
-<span id="cb31-8"><a href="#cb31-8" aria-hidden="true" tabindex="-1"></a><span class="co"># so the LLM-generated greeting handler above will run again.</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-8"><a href="#cb31-8" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
+<span id="cb31-9"><a href="#cb31-9" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.event</span>(<span class="bu">input</span>.chat_greeting_requested)</span>
+<span id="cb31-10"><a href="#cb31-10" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
+<span id="cb31-11"><a href="#cb31-11" aria-hidden="true" tabindex="-1"></a>    response <span class="op">=</span> <span class="cf">await</span> chat_model.stream_async(</span>
+<span id="cb31-12"><a href="#cb31-12" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Write a short, friendly welcome message."</span></span>
+<span id="cb31-13"><a href="#cb31-13" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb31-14"><a href="#cb31-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.set_greeting(chat_greeting(response))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Regenerate pattern for the clientless chat above (clear and re-request):</p>
+<div class="sourceCode" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.effect</span></span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a><span class="at">@reactive.event</span>(<span class="bu">input</span>.regenerate)</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _():</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> chat.clear_messages(greeting<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a><span class="co"># greeting_requested fires again after clear_messages(greeting=True),</span></span>
+<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a><span class="co"># so the LLM-generated greeting handler above will run again.</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>For a history-enabled chat, use <code>await chat.client.new_chat(greeting=True)</code> instead. This saves the current conversation and starts a new one, resolving any configured greeting again.</p>
 <p>Clear the greeting (e.g., before setting a new one):</p>
-<div class="sourceCode" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> chat.set_greeting(<span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> chat.set_greeting(<span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
 </section>
 <section id="shinychat.express.Chat.set_user_message" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.set_user_message">set_user_message</h3>
-<div class="sourceCode" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>express.Chat.set_user_message(value)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>express.Chat.set_user_message(value)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Deprecated. Use <code>update_user_input(value=value)</code> instead.</p>
 </section>
 <section id="shinychat.express.Chat.slash_command" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.slash_command">slash_command</h3>
-<div class="sourceCode" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>express.Chat.slash_command(</span>
-<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>    name,</span>
-<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>    description,</span>
-<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>    fn<span class="op">=</span>MISSING,</span>
-<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
-<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a>    echo<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a>    force<span class="op">=</span><span class="va">False</span>,</span>
-<span id="cb34-8"><a href="#cb34-8" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>express.Chat.slash_command(</span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>    name,</span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>    description,</span>
+<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a>    fn<span class="op">=</span>MISSING,</span>
+<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>    echo<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a>    force<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Register a slash command and its handler.</p>
 <p>Can be used as a decorator (handler supplied by decoration) or called directly with <code>fn=</code>. Pass <code>fn=None</code> to register a <em>client-side</em> command — one with no server handler, handled in JavaScript via the <code>shiny:chat-slash-command</code> DOM event (see the docs).</p>
 <section id="parameters-8" class="level4 doc-section doc-section-parameters">
@@ -1344,31 +1420,31 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="shinychat.express.Chat.transform_assistant_response" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.transform_assistant_response">transform_assistant_response</h3>
-<div class="sourceCode" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>express.Chat.transform_assistant_response(fn<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>express.Chat.transform_assistant_response(fn<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Deprecated. Assistant response transformation features will be removed in a future version.</p>
 </section>
 <section id="shinychat.express.Chat.ui" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.ui">ui</h3>
-<div class="sourceCode" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>express.Chat.ui(</span>
-<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>    greeting<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>    placeholder<span class="op">=</span><span class="st">'Enter a message...'</span>,</span>
-<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>    drawer<span class="op">=</span><span class="va">True</span>,</span>
-<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a>    footer<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>    toolbar_input<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>    show_history<span class="op">=</span><span class="va">True</span>,</span>
-<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a>    show_thinking_after_s<span class="op">=</span><span class="dv">0</span>,</span>
-<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a>    width<span class="op">=</span><span class="st">'min(clamp(680px, 50vw, 760px), 100%)'</span>,</span>
-<span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a>    height<span class="op">=</span><span class="st">'auto'</span>,</span>
-<span id="cb36-11"><a href="#cb36-11" aria-hidden="true" tabindex="-1"></a>    fill<span class="op">=</span><span class="va">True</span>,</span>
-<span id="cb36-12"><a href="#cb36-12" aria-hidden="true" tabindex="-1"></a>    icon_assistant<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb36-13"><a href="#cb36-13" aria-hidden="true" tabindex="-1"></a>    icon_send<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb36-14"><a href="#cb36-14" aria-hidden="true" tabindex="-1"></a>    enable_cancel<span class="op">=</span>MISSING,</span>
-<span id="cb36-15"><a href="#cb36-15" aria-hidden="true" tabindex="-1"></a>    submit_key<span class="op">=</span><span class="st">'enter'</span>,</span>
-<span id="cb36-16"><a href="#cb36-16" aria-hidden="true" tabindex="-1"></a>    allow_attachments<span class="op">=</span>MISSING,</span>
-<span id="cb36-17"><a href="#cb36-17" aria-hidden="true" tabindex="-1"></a>    tool_grouping<span class="op">=</span><span class="st">'tool'</span>,</span>
-<span id="cb36-18"><a href="#cb36-18" aria-hidden="true" tabindex="-1"></a>    messages<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb36-19"><a href="#cb36-19" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
-<span id="cb36-20"><a href="#cb36-20" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>express.Chat.ui(</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>    greeting<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>    placeholder<span class="op">=</span><span class="st">'Enter a message...'</span>,</span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>    drawer<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>    footer<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>    toolbar_input<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>    show_history<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a>    show_thinking_after_s<span class="op">=</span><span class="dv">0</span>,</span>
+<span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a>    width<span class="op">=</span><span class="st">'min(clamp(680px, 50vw, 760px), 100%)'</span>,</span>
+<span id="cb37-10"><a href="#cb37-10" aria-hidden="true" tabindex="-1"></a>    height<span class="op">=</span><span class="st">'auto'</span>,</span>
+<span id="cb37-11"><a href="#cb37-11" aria-hidden="true" tabindex="-1"></a>    fill<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb37-12"><a href="#cb37-12" aria-hidden="true" tabindex="-1"></a>    icon_assistant<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb37-13"><a href="#cb37-13" aria-hidden="true" tabindex="-1"></a>    icon_send<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb37-14"><a href="#cb37-14" aria-hidden="true" tabindex="-1"></a>    enable_cancel<span class="op">=</span>MISSING,</span>
+<span id="cb37-15"><a href="#cb37-15" aria-hidden="true" tabindex="-1"></a>    submit_key<span class="op">=</span><span class="st">'enter'</span>,</span>
+<span id="cb37-16"><a href="#cb37-16" aria-hidden="true" tabindex="-1"></a>    allow_attachments<span class="op">=</span>MISSING,</span>
+<span id="cb37-17"><a href="#cb37-17" aria-hidden="true" tabindex="-1"></a>    tool_grouping<span class="op">=</span><span class="st">'tool'</span>,</span>
+<span id="cb37-18"><a href="#cb37-18" aria-hidden="true" tabindex="-1"></a>    messages<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb37-19"><a href="#cb37-19" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
+<span id="cb37-20"><a href="#cb37-20" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Create a UI element for this <code>Chat</code>.</p>
 <section id="parameters-9" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-9">Parameters</h4>
@@ -1496,14 +1572,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="shinychat.express.Chat.update_user_input" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.update_user_input">update_user_input</h3>
-<div class="sourceCode" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>express.Chat.update_user_input(</span>
-<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>    value<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>    placeholder<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>    submit<span class="op">=</span><span class="va">False</span>,</span>
-<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>    focus<span class="op">=</span><span class="va">False</span>,</span>
-<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>    attachments<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>    attachment_mode<span class="op">=</span><span class="st">'append'</span>,</span>
-<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>express.Chat.update_user_input(</span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>    value<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>    placeholder<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a>    submit<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>    focus<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a>    attachments<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a>    attachment_mode<span class="op">=</span><span class="st">'append'</span>,</span>
+<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Update the user input.</p>
 <section id="parameters-10" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-10">Parameters</h4>
@@ -1559,7 +1635,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="shinychat.express.Chat.user_input" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.express.Chat.user_input">user_input</h3>
-<div class="sourceCode" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>express.Chat.user_input()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>express.Chat.user_input()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Reactively read the user’s latest submission.</p>
 <section id="returns-5" class="level4 doc-section doc-section-returns">
 <h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-5">Returns</h4>

@@ -74,7 +74,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-dbde6ece91fc58bf30abbd8587d2285d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-b37b5c2eb5daab18681c37d126873032.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-d091437fda1c84e54b2d1ed09ea2c3dd.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -142,6 +142,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li class="nav-item">
     <a class="nav-link" href="../page-chat.html"> 
 <span class="menu-text">Page chat</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../migrating-to-0.8.0.html"> 
+<span class="menu-text">Migrating to v0.8.0</span></a>
   </li>  
   <li class="nav-item">
     <a class="nav-link active" href="../api/index.html" aria-current="page"> 
@@ -384,6 +388,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecordV1.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecordV1</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecordV2.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecordV2</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../api/types.ConversationMeta.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">types.ConversationMeta</span></a>
   </div>
@@ -445,9 +461,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h2>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 1%">
-<col style="width: 4%">
-<col style="width: 93%">
+<col style="width: 0%">
+<col style="width: 3%">
+<col style="width: 94%">
 <col style="width: 0%">
 </colgroup>
 <thead>
@@ -462,7 +478,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>restore_mode</td>
 <td>"Literal['browser', 'url', 'none', 'bookmark']"</td>
-<td>How a previous conversation is reloaded when the page opens. <code>"browser"</code> (the default) stores the active conversation ID in localStorage so it survives page reloads without changing the URL. <code>"url"</code> keeps the active conversation ID as a plain <code>?shinychat_conversation_id=&lt;id&gt;</code> query parameter so users can bookmark or share a link to a specific conversation; no Shiny server bookmarking is required. <code>"none"</code> disables automatic restore entirely. <code>"bookmark"</code> participates in Shiny server bookmarking: after every LLM response a fresh server bookmark is minted and the address bar updates to <code>?_state_id_=...</code>. Requires <code>bookmark_store="server"</code> in the Shiny app. On in-session conversation switches, navigates to the target conversation’s bookmark URL if one exists. Use this mode when the app uses Shiny bookmarks to capture full input state alongside the chat. The <code>values</code> dict captured by <code>@chat.history.on_save</code> callbacks is restored by <code>@chat.history.on_restore</code> in every restore mode, including <code>"bookmark"</code>. Callbacks run after the target conversation becomes active. Raw Shiny input values (sliders, text boxes, etc.) are not synced automatically; use <code>on_restore</code> to update them on both page-load restores and in-session switches.</td>
+<td>How a previous conversation is reloaded when the page opens. <code>"browser"</code> (the default) stores the active conversation ID in localStorage so it survives page reloads without changing the URL. <code>"url"</code> keeps the active conversation ID as a plain <code>?shinychat_conversation_id=&lt;id&gt;</code> query parameter so users can bookmark or share a link to a specific conversation; no Shiny server bookmarking is required. <code>"none"</code> disables automatic restore entirely. <code>"bookmark"</code> participates in Shiny server bookmarking: after every LLM response a fresh server bookmark is minted and the address bar updates to <code>?_state_id_=...</code>. Requires <code>bookmark_store="server"</code> in the Shiny app. On in-session conversation switches, the switch happens in place (no page reload) and the address bar soft-updates to the target conversation’s <code>?_state_id_=...</code> URL if one exists. Use this mode when the app uses Shiny bookmarks to capture full input state alongside the chat. The <code>values</code> dict captured by <code>@chat.history.on_save</code> callbacks is recorded per exchange (the conversation’s starting values are recorded on its initial checkpoint) and restored by <code>@chat.history.on_restore</code> in every restore mode, including <code>"bookmark"</code>: the callbacks receive the values recorded at the selected position, after the target conversation becomes active. <code>on_restore</code> also runs when browsing to a sibling or another position and before an edit, retry, or regenerate starts replacement work from the retained parent, so each position shows its own saved values. Raw Shiny input values (sliders, text boxes, etc.) are not synced automatically; use <code>on_restore</code> to update them.</td>
 <td><code>'browser'</code></td>
 </tr>
 <tr class="even">

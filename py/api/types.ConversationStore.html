@@ -74,7 +74,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-dbde6ece91fc58bf30abbd8587d2285d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-b37b5c2eb5daab18681c37d126873032.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-d091437fda1c84e54b2d1ed09ea2c3dd.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -142,6 +142,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li class="nav-item">
     <a class="nav-link" href="../page-chat.html"> 
 <span class="menu-text">Page chat</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../migrating-to-0.8.0.html"> 
+<span class="menu-text">Migrating to v0.8.0</span></a>
   </li>  
   <li class="nav-item">
     <a class="nav-link active" href="../api/index.html" aria-current="page"> 
@@ -384,6 +388,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecordV1.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecordV1</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../api/types.ConversationRecordV2.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">types.ConversationRecordV2</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../api/types.ConversationMeta.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">types.ConversationMeta</span></a>
   </div>
@@ -483,6 +499,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="shinychat.types.ConversationStore.get">get</h3>
 <div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>types.ConversationStore.get(partition, conv_id)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Full record, or None if missing.</p>
+<p>The record may be either schema version: stores may still hand back a <code>ConversationRecordV1</code> (e.g.&nbsp;legacy data read from disk); the controller upgrades v1 records in memory on read.</p>
 </section>
 <section id="shinychat.types.ConversationStore.list" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.types.ConversationStore.list">list</h3>
@@ -493,6 +510,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="shinychat.types.ConversationStore.put">put</h3>
 <div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>types.ConversationStore.put(partition, record)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Upsert. Rename = mutate record.title and put().</p>
+<p>The controller and recorder write <code>ConversationRecordV2</code> records. A store may also receive a <code>ConversationRecordV1</code> record; do not assume one version. Check the runtime type with <code>isinstance(record, ConversationRecordV2)</code>. <code>ConversationRecord</code> is the validation and construction class, not the type of every record a store receives.</p>
+<p>Stores that interpret record internals must read the v2 fields (<code>active_leaf</code> and exchange <code>nodes</code>) rather than the v1 fields (<code>current_leaf</code>, node <code>turns</code>/<code>ui</code>). A store that only serializes whole records should be checked with a v2 round trip (<code>put</code> then <code>get</code>) rather than assumed to work unchanged.</p>
 </section>
 <section id="shinychat.types.ConversationStore.total_size" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.types.ConversationStore.total_size">total_size</h3>
