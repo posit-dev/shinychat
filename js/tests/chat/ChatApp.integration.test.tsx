@@ -88,11 +88,12 @@ describe("ChatApp integration: full message flow", () => {
       fireEvent.keyDown(editorEl, { code: "Enter", key: "Enter" })
     })
 
-    // Upload is not enabled here, so the wire shape is a bare string.
-    expect(transport.sendInput).toHaveBeenCalledWith(
-      "test-input",
-      "Hello from user",
-    )
+    // Correlation is sent even without the upload affordance.
+    expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+      text: "Hello from user",
+      attachments: [],
+      client_message_id: expect.any(String),
+    })
   })
 
   it("streaming chunks render assistant message", async () => {
@@ -630,6 +631,7 @@ describe("ChatApp integration: editable messages gated by history state", () => 
 
     expect(transport.sendInput).toHaveBeenCalledTimes(1)
     expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+      client_message_id: expect.any(String),
       text: "replacement",
       attachments: replacementAttachments,
     })
@@ -803,42 +805,10 @@ describe("ChatApp integration: editable messages gated by history state", () => 
 
     expect(transport.sendInput).toHaveBeenCalledTimes(1)
     expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+      client_message_id: expect.any(String),
       text: "replacement",
       attachments: replacementAttachments,
     })
-  })
-
-  it("renders a server-accepted resubmit input without sending it again", async () => {
-    mockMatchMedia(false)
-    const transport = createMockTransport()
-    renderChatApp(transport)
-
-    await act(async () => {
-      transport.fire("test-chat", {
-        type: "history_update",
-        enabled: true,
-        conversations: [],
-        active_id: null,
-        transition_protocol: "completion-v2",
-      })
-      transport.fire("test-chat", {
-        type: "message",
-        message: {
-          role: "user",
-          segments: [{ content: "replace me", content_type: "markdown" }],
-        },
-      })
-      transport.fire("test-chat", {
-        type: "history_accepted_input_projection",
-        index: 0,
-        content: "server accepted",
-        attachments: [],
-      })
-    })
-
-    expect(transport.sendInput).not.toHaveBeenCalled()
-    expect(screen.getByText("server accepted")).toBeTruthy()
-    expect(screen.queryByText("replace me")).toBeNull()
   })
 
   it("sends an eligible restored retry through the v2 transition transport", async () => {
@@ -1035,10 +1005,11 @@ describe("ChatApp integration: editable messages gated by history state", () => 
           ".shiny-chat-composer .shiny-chat-btn-send",
         ) as HTMLElement,
       )
-      expect(transport.sendInput).toHaveBeenCalledWith(
-        "test-input",
-        "ordinary input",
-      )
+      expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+        text: "ordinary input",
+        attachments: [],
+        client_message_id: expect.any(String),
+      })
 
       const targetUser = screen
         .getByText("legacy target")

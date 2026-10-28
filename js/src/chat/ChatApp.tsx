@@ -16,6 +16,7 @@ import {
   AsideFaviconContext,
 } from "./context"
 import { setCurrentConversationId } from "./currentConversation"
+import { uuid } from "../utils/uuid"
 import { navigateTo } from "../utils/navigate"
 import {
   chatReducer,
@@ -283,6 +284,7 @@ export function ChatApp({
           enabled: action.enabled,
           conversations: action.conversations,
           activeId: action.active_id,
+          readOnly: action.active_read_only ?? false,
           transitionProtocol: action.transition_protocol,
         })
         dispatch({
@@ -314,32 +316,21 @@ export function ChatApp({
       }
       if (action.type === "history_edit_projection") {
         if (!historyStore.acceptEditProjection(action.requestId)) return
+        const client_message_id = uuid()
         dispatch({ type: "TRUNCATE_MESSAGES", index: action.index })
         dispatch({
           type: "INPUT_SENT",
+          id: client_message_id,
           content: action.content,
           role: "user",
           ...(action.attachments.length > 0
             ? { attachments: action.attachments }
             : {}),
         })
-        transport.sendInput(
-          inputId,
-          state.enableUpload || action.attachments.length > 0
-            ? { text: action.content, attachments: action.attachments }
-            : action.content,
-        )
-        return
-      }
-      if (action.type === "history_accepted_input_projection") {
-        dispatch({ type: "TRUNCATE_MESSAGES", index: action.index })
-        dispatch({
-          type: "INPUT_SENT",
-          content: action.content,
-          role: "user",
-          ...(action.attachments.length > 0
-            ? { attachments: action.attachments }
-            : {}),
+        transport.sendInput(inputId, {
+          text: action.content,
+          attachments: action.attachments,
+          client_message_id,
         })
         return
       }
@@ -531,6 +522,7 @@ export function ChatApp({
   const handleEdit = useCallback(
     (index: number, content: string, attachments: AttachmentPayload[]) => {
       if (
+        historyStore.getSnapshot().readOnly ||
         isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
         historyStore.isMutationBlocked()
       )
@@ -576,6 +568,7 @@ export function ChatApp({
   const handleRetry = useCallback(
     (index: number) => {
       if (
+        historyStore.getSnapshot().readOnly ||
         isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
         historyStore.isMutationBlocked()
       )

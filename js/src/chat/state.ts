@@ -144,6 +144,15 @@ export interface ChatHistoryState {
   enabled: boolean
   conversations: ConversationMeta[]
   activeId: string | null
+  /**
+   * True when the active conversation's saved model context could not be
+   * loaded: the transcript is viewable but not continuable. Distinct from
+   * `inputDisabled` (transient streaming/transition state) — streaming and
+   * clear actions never touch it; only `history_update` sets it. This is
+   * a deliberate server-metadata mirror, like enabled/activeId/conversations;
+   * rendering and same-tick guards use HistoryStore's synchronous snapshot.
+   */
+  readOnly: boolean
 }
 
 export interface ChatDrawerState {
@@ -196,6 +205,7 @@ export type UIAction =
   | {
       type: "INPUT_SENT"
       content: string
+      id?: string
       role: "user"
       /** When false, append the user message only — no loading placeholder, no input disable. Defaults to true. */
       awaitResponse?: boolean
@@ -221,7 +231,12 @@ export const initialState: ChatState = {
   enableUploadExplicit: false,
   toolGrouping: "tool",
   slashCommands: [],
-  history: { enabled: false, conversations: [], activeId: null },
+  history: {
+    enabled: false,
+    conversations: [],
+    activeId: null,
+    readOnly: false,
+  },
   drawer: {
     enabled: false,
     visible: false,
@@ -680,7 +695,7 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
 
     case "INPUT_SENT": {
       const userMsg: ChatMessageData = {
-        id: uuid(),
+        id: action.id ?? uuid(),
         role: "user",
         content: action.content,
         streaming: false,
@@ -1190,6 +1205,13 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         inputPlaceholder: action.placeholder ?? state.inputPlaceholder,
       }
 
+    case "remove_message": {
+      return {
+        ...state,
+        messages: state.messages.filter((m) => m.id !== action.id),
+      }
+    }
+
     case "remove_loading": {
       const messages = removeLoadingMessage(state.messages)
       if (state.streamingMessage) {
@@ -1379,6 +1401,9 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
           enabled: action.enabled,
           conversations: action.conversations,
           activeId: action.active_id,
+          // Absent means writable, so messages from older servers (which
+          // never send the flag) leave the conversation continuable.
+          readOnly: action.active_read_only ?? false,
         },
       }
     }
@@ -1396,10 +1421,6 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
     case "history_edit_projection":
       // Matching is owned by ChatApp and HistoryStore, which synchronously
       // truncate and dispatch the normal INPUT_SENT action.
-      return state
-
-    case "history_accepted_input_projection":
-      // ChatApp renders the server-accepted input without dispatching it back.
       return state
 
     case "update_siblings": {

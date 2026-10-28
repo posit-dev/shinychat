@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 from datetime import timedelta
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Any, cast
 import pytest
 import shinychat._history_store as history_store_module
 from htmltools import HTMLDependency, tags
+from shinychat._chat_types import StoredMessage, StoredSegment
 from shinychat._history_client import as_turns_adapter
 from shinychat._history_store import (
     ConversationPartition,
@@ -21,10 +23,14 @@ from shinychat._history_store import (
 )
 from shinychat._history_types import (
     MAX_SCHEMA_VERSION,
-    ConversationRecord,
+    CapturedMessage,
+    ConversationRecordV1,
+    ConversationRecordV2,
     UnsupportedSchemaVersionError,
     new_conversation_record,
+    new_conversation_record_v2,
 )
+from shinychat._history_v1 import import_v1_record
 
 
 @pytest.fixture
@@ -46,9 +52,14 @@ STORE_MATRIX = {
     case["name"]: case
     for case in json.loads(STORE_MATRIX_PATH.read_text(encoding="utf-8"))
 }
+WORKED_EXAMPLE_PATH = (
+    Path(__file__).resolve().parent
+    / "fixtures"
+    / "history-v2-worked-example.json"
+)
 
 
-def _conv_dir(tmp_path: Path, rec: ConversationRecord) -> Path:
+def _conv_dir(tmp_path: Path, rec: ConversationRecordV1) -> Path:
     return tmp_path / sanitize_scope("chat") / sanitize_scope("alice") / rec.id
 
 
@@ -58,6 +69,10 @@ def _file_snapshot(path: Path) -> dict[str, bytes]:
         for file in path.iterdir()
         if file.is_file()
     }
+
+
+class _ConversationRecordV2Subclass(ConversationRecordV2):
+    pass
 
 
 @pytest.mark.anyio
@@ -76,6 +91,7 @@ async def test_put_get_round_trip(store: FileConversationStore):
     await store.put(part(scope="alice"), rec)
     got = await store.get(part(scope="alice"), rec.id)
     assert got is not None
+    assert isinstance(got, ConversationRecordV1)
     assert got.id == rec.id
     assert got.title == rec.title
     assert got.next_node_seq == rec.next_node_seq
@@ -85,6 +101,335 @@ async def test_put_get_round_trip(store: FileConversationStore):
         assert got.nodes[nid].children == rec.nodes[nid].children
         assert got.nodes[nid].parent == rec.nodes[nid].parent
         assert got.nodes[nid].ui == rec.nodes[nid].ui
+
+
+@pytest.mark.anyio
+async def test_v2_put_get_round_trip_uses_one_atomic_document(
+    store: FileConversationStore, tmp_path: Path
+):
+    input_message = StoredMessage(
+        role="user",
+        segments=[StoredSegment(content="hello", content_type="markdown")],
+    )
+    response = StoredMessage(
+        role="assistant",
+        segments=[StoredSegment(content="hi", content_type="markdown")],
+    )
+    rec = new_conversation_record_v2(
+        title="hello",
+        client_info={"kind": "test"},
+    )
+    rec.open_exchange("exchange-1", input_message)
+    rec.append_message(
+        "exchange-1",
+        CapturedMessage.from_stored_message(response, icon=None),
+    )
+
+    await store.put(part(scope="alice"), rec)
+    got = await FileConversationStore(dir=tmp_path).get(
+        part(scope="alice"), rec.id
+    )
+
+    assert got == rec
+    conv_dir = (
+        tmp_path / sanitize_scope("chat") / sanitize_scope("alice") / rec.id
+    )
+    assert {path.name for path in conv_dir.iterdir()} == {"record.json"}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("backend", ["memory", "file"])
+async def test_v2_worked_example_round_trips_through_each_store(
+    backend: str, tmp_path: Path
+):
+    raw = json.loads(WORKED_EXAMPLE_PATH.read_text(encoding="utf-8"))
+    record = ConversationRecordV2.model_validate(raw)
+    partition = part(scope="worked-example")
+    store = (
+        InMemoryConversationStore()
+        if backend == "memory"
+        else FileConversationStore(dir=tmp_path)
+    )
+
+    await store.put(partition, record)
+    reader = (
+        store
+        if backend == "memory"
+        else FileConversationStore(dir=tmp_path)
+    )
+    loaded = await reader.get(partition, record.id)
+
+    assert isinstance(loaded, ConversationRecordV2)
+    assert loaded == record
+    assert loaded.path_node_ids() == ["x_00", "x_01", "x_03", "x_04"]
+    path_inputs = [
+        loaded.nodes[node_id].input
+        for node_id in loaded.path_node_ids()
+        if loaded.nodes[node_id].input is not None
+    ]
+    assert all(message is not None for message in path_inputs)
+    assert [message.content for message in path_inputs if message is not None] == [
+        "Summarize the attached CSV",
+        "Now plot revenue by month",
+    ]
+    assert [
+        message.as_stored_message().content
+        for node_id in loaded.path_node_ids()
+        for message in loaded.nodes[node_id].messages
+        if message.role == "user"
+    ] == []
+    assert loaded.nodes["x_02"].status == "error"
+    assert loaded.nodes["x_02"].error is not None
+    assert loaded.nodes["x_02"].error.message == "Provider timeout"
+    assert loaded.nodes["x_04"].input is None
+
+
+@pytest.mark.anyio
+async def test_v2_put_failure_keeps_previous_document(
+    store: FileConversationStore,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    input_message = StoredMessage(
+        role="user",
+        segments=[StoredSegment(content="hello", content_type="markdown")],
+    )
+    rec = new_conversation_record_v2(
+        title="hello",
+        client_info={"kind": "test"},
+    )
+    rec.open_exchange("exchange-1", input_message)
+    await store.put(part(scope="alice"), rec)
+
+    conv_dir = (
+        tmp_path / sanitize_scope("chat") / sanitize_scope("alice") / rec.id
+    )
+    before = (conv_dir / "record.json").read_bytes()
+    rec.nodes["exchange-1"].status = "ok"
+    original_replace = os.replace
+
+    monkeypatch.setattr(
+        os,
+        "replace",
+        lambda *args: (_ for _ in ()).throw(
+            OSError("injected replace failure")
+        ),
+    )
+    with pytest.raises(OSError, match="injected replace failure"):
+        await store.put(part(scope="alice"), rec)
+
+    assert (conv_dir / "record.json").read_bytes() == before
+    assert not (conv_dir / ".record.json.tmp").exists()
+    monkeypatch.setattr(os, "replace", original_replace)
+    await store.put(part(scope="alice"), rec)
+
+    reloaded = await FileConversationStore(tmp_path).get(
+        part(scope="alice"), rec.id
+    )
+    assert reloaded is not None
+    assert isinstance(reloaded, ConversationRecordV2)
+    assert reloaded.nodes["exchange-1"].status == "ok"
+
+
+@pytest.mark.anyio
+async def test_v2_overwrites_a_v1_record(tmp_path: Path):
+    """Lazy conversion write half (plan section 7.5, mechanism D4).
+
+    A v2 record overwrites the v1 record it upgraded from on read: the
+    record becomes v2 on disk, and the v1 append-only side files -- dead
+    under a v2 record -- are removed so the directory holds exactly the v2
+    record.
+    """
+    store = FileConversationStore(dir=tmp_path)
+    v1 = new_conversation_record(title="v1")
+    v1.append_linear([{"role": "user", "content": "hi"}])
+    await store.put(part(scope="alice"), v1)
+    conv_dir = _conv_dir(tmp_path, v1)
+    assert (conv_dir / "turns.jsonl").is_file()
+
+    upgraded = import_v1_record(
+        cast(ConversationRecordV1, await store.get(part(scope="alice"), v1.id))
+    )
+    await store.put(part(scope="alice"), upgraded)
+
+    reloaded = await FileConversationStore(tmp_path).get(
+        part(scope="alice"), v1.id
+    )
+    assert isinstance(reloaded, ConversationRecordV2)
+    assert reloaded.id == v1.id
+    raw = json.loads((conv_dir / "record.json").read_text(encoding="utf-8"))
+    assert raw["schema_version"] == 2
+    assert not (conv_dir / "turns.jsonl").exists()
+    assert not (conv_dir / "ui.jsonl").exists()
+
+
+@pytest.mark.anyio
+async def test_v1_cannot_overwrite_a_v2_record(store: FileConversationStore):
+    """Only the v1-to-v2 direction is allowed; downgrades stay refused."""
+    v2 = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    await store.put(part(scope="alice"), v2)
+    v1 = new_conversation_record(title="v1")
+    v1.id = v2.id
+
+    with pytest.raises(ValueError, match="different schema version"):
+        await store.put(part(scope="alice"), v1)
+
+
+@pytest.mark.anyio
+async def test_file_store_rejects_a_v1_model_labeled_as_v2(
+    store: FileConversationStore,
+):
+    record = new_conversation_record(title="v1")
+    cast(Any, record).schema_version = 2
+
+    with pytest.raises(ValueError, match="model does not match"):
+        await store.put(part(scope="alice"), record)
+
+
+@pytest.mark.anyio
+async def test_memory_store_allows_v2_to_overwrite_a_v1_record():
+    store = InMemoryConversationStore()
+    v1 = new_conversation_record(title="v1")
+    await store.put(part(scope="alice"), v1)
+    v2 = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    v2.id = v1.id
+
+    await store.put(part(scope="alice"), v2)
+
+    assert await store.get(part(scope="alice"), v1.id) is v2
+
+
+@pytest.mark.anyio
+async def test_memory_store_refuses_v1_overwriting_a_v2_record():
+    store = InMemoryConversationStore()
+    v2 = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    await store.put(part(scope="alice"), v2)
+    v1 = new_conversation_record(title="v1")
+    v1.id = v2.id
+
+    with pytest.raises(ValueError, match="different schema version"):
+        await store.put(part(scope="alice"), v1)
+
+    assert await store.get(part(scope="alice"), v2.id) is v2
+
+
+@pytest.mark.anyio
+async def test_memory_store_allows_same_schema_record_subclass_overwrite():
+    store = InMemoryConversationStore()
+    record = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    await store.put(part(scope="alice"), record)
+    replacement = _ConversationRecordV2Subclass.model_validate(record.model_dump())
+
+    await store.put(part(scope="alice"), replacement)
+
+    assert await store.get(part(scope="alice"), record.id) is replacement
+
+
+@pytest.mark.anyio
+async def test_memory_store_rejects_a_mutated_resident_v1_record():
+    store = InMemoryConversationStore()
+    v1 = new_conversation_record(title="v1")
+    await store.put(part(scope="alice"), v1)
+    cast(Any, v1).schema_version = 2
+    v2 = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    v2.id = v1.id
+
+    with pytest.raises(ValueError, match="model does not match"):
+        await store.put(part(scope="alice"), v2)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("backend", ["file", "memory"])
+async def test_stores_reject_records_built_with_a_mismatched_schema_version(
+    backend: str, tmp_path: Path
+):
+    """A v1-flagged model never reaches the v2 write path, and vice versa.
+
+    The ``Literal`` schema_version fields stop mismatches at validation
+    time, but ``model_construct()`` and ``model_copy(update=...)`` skip
+    validation -- ``_check_record_for_store`` exists for exactly these
+    tampered shapes (issue 8ec9 finding a): a record whose model and
+    schema version disagree is rejected before any write in both stores.
+    """
+    store = (
+        FileConversationStore(dir=tmp_path)
+        if backend == "file"
+        else InMemoryConversationStore()
+    )
+    v2 = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    v1 = new_conversation_record(title="v1")
+
+    chimera_attempts = [
+        # A v2 model flagged v1 -- a v1-flagged record in v2's
+        # single-document layout.
+        ConversationRecordV2.model_construct(
+            **{**v2.__dict__, "schema_version": 1}
+        ),
+        v2.model_copy(update={"schema_version": 1}),
+        # A v1 model flagged v2 -- a v2-flagged record in v1's split
+        # layout.
+        ConversationRecordV1.model_construct(
+            **{**v1.__dict__, "schema_version": 2}
+        ),
+        v1.model_copy(update={"schema_version": 2}),
+    ]
+
+    for chimera in chimera_attempts:
+        with pytest.raises(ValueError, match="model does not match"):
+            await store.put(part(scope="alice"), chimera)
+
+    # No chimera was persisted by either backend: the partition stays
+    # empty (a raise-after-mutate regression would fail this).
+    assert await store.list(part(scope="alice")) == []
+
+
+@pytest.mark.anyio
+async def test_failed_v2_overwrite_of_v1_leaves_the_v1_record_intact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Lazy-conversion cleanup is consumed only after the write succeeds.
+
+    Mechanism D4: a failed record.json replacement during a v2-over-v1
+    overwrite must leave the v1 record whole -- record.json, both
+    append-only side files, and the v1 write state a retry needs -- while
+    a successful overwrite removes the dead side files and drops the v1
+    write state. The removals happen strictly after the atomic replace,
+    never before it.
+    """
+    store = FileConversationStore(dir=tmp_path)
+    v1 = new_conversation_record(title="v1")
+    v1.append_linear([{"role": "user", "content": "hi"}])
+    await store.put(part(scope="alice"), v1)
+    conv_dir = _conv_dir(tmp_path, v1)
+    before = _file_snapshot(conv_dir)
+    ws_key = (part(scope="alice"), v1.id)
+    assert ws_key in store._write_state
+
+    upgraded = import_v1_record(
+        cast(ConversationRecordV1, await store.get(part(scope="alice"), v1.id))
+    )
+    monkeypatch.setattr(
+        os,
+        "replace",
+        lambda *args: (_ for _ in ()).throw(
+            OSError("injected replace failure")
+        ),
+    )
+    with pytest.raises(OSError, match="injected replace failure"):
+        await store.put(part(scope="alice"), upgraded)
+    monkeypatch.undo()
+
+    assert _file_snapshot(conv_dir) == before
+    assert not (conv_dir / ".record.json.tmp").exists()
+    assert ws_key in store._write_state
+
+    await store.put(part(scope="alice"), upgraded)
+
+    raw = json.loads((conv_dir / "record.json").read_text(encoding="utf-8"))
+    assert raw["schema_version"] == 2
+    assert not (conv_dir / "turns.jsonl").exists()
+    assert not (conv_dir / "ui.jsonl").exists()
+    assert ws_key not in store._write_state
 
 
 @pytest.mark.anyio
@@ -117,6 +462,7 @@ async def test_file_store_round_trips_dict_tool_result_display(
     restored = await store.get(part(), rec.id)
 
     assert restored is not None
+    assert isinstance(restored, ConversationRecordV1)
     adapter.set_turns_json(restored.path_turns())
     restored_turn = cast(dict[str, Any], adapter.get_turns_json()[0])
     display = restored_turn["contents"][0]["extra"]["display"]
@@ -284,6 +630,7 @@ async def test_missing_ui_jsonl_returns_nodes_with_none_ui(
 
     got = await store.get(part(scope="alice"), rec.id)
     assert got is not None
+    assert isinstance(got, ConversationRecordV1)
     for node in got.nodes.values():
         assert node.ui is None
 
@@ -331,6 +678,7 @@ async def test_ui_growth_across_saves_is_repersisted(
 
     got = await store.get(part(), rec.id)
     assert got is not None
+    assert isinstance(got, ConversationRecordV1)
     assert got.nodes[nid].ui == [msg1, msg2]
 
     # Fresh store instance forces a re-read from disk, proving the growth
@@ -338,6 +686,7 @@ async def test_ui_growth_across_saves_is_repersisted(
     store2 = FileConversationStore(dir=tmp_path)
     got2 = await store2.get(part(), rec.id)
     assert got2 is not None
+    assert isinstance(got2, ConversationRecordV1)
     assert got2.nodes[nid].ui == [msg1, msg2]
 
 
@@ -354,6 +703,23 @@ async def test_store_fixture_matrix_doubles_round_trip(
     got = await store.get(part(), rec.id)
     assert got is not None
     assert got.values["pi"] == value
+
+
+@pytest.mark.anyio
+async def test_store_fixture_matrix_unreplayable_turn_value_persists(
+    store: FileConversationStore,
+    tmp_path: Path,
+):
+    value = STORE_MATRIX["unreplayable_turn_value"]["value"]
+    rec = new_conversation_record(title="opaque turn")
+    rec.append_linear([{"role": "assistant", "value": value}])
+
+    await store.put(part(), rec)
+
+    got = await FileConversationStore(dir=tmp_path).get(part(), rec.id)
+    assert got is not None
+    assert isinstance(got, ConversationRecordV1)
+    assert got.path_turns() == [{"role": "assistant", "value": value}]
 
 
 @pytest.mark.anyio
@@ -377,6 +743,7 @@ async def test_store_fixture_matrix_malformed_jsonl_line_warns(
         got = await store.get(part(), rec.id)
 
     assert got is not None
+    assert isinstance(got, ConversationRecordV1)
     assert got.path_turns() == [{"role": "user", "content": "preserved"}]
     assert f"{turns_file}:2" in caplog.text
 
@@ -413,6 +780,7 @@ async def test_store_fixture_matrix_grown_content_same_count_is_repersisted(
 
     got = await FileConversationStore(dir=tmp_path).get(part(), rec.id)
     assert got is not None
+    assert isinstance(got, ConversationRecordV1)
     assert got.nodes[nid].ui == rec.nodes[nid].ui
 
 
@@ -485,7 +853,7 @@ async def test_get_missing_returns_none(store: FileConversationStore):
 
 
 @pytest.mark.anyio
-async def test_list_is_meta_only_newest_first(store: FileConversationStore):
+async def test_list_returns_metadata_newest_first(store: FileConversationStore):
     a = new_conversation_record(title="older")
     b = new_conversation_record(title="newer")
     await store.put(part(scope="alice"), a)
@@ -507,6 +875,48 @@ async def test_list_order_stable_after_update(store: FileConversationStore):
     a.updated_at = a.updated_at + timedelta(seconds=10)
     await store.put(part(scope="alice"), a)
     metas = await store.list(part(scope="alice"))
+    assert [m.title for m in metas] == ["newer", "older"]
+
+
+@pytest.mark.anyio
+async def test_v2_list_order_stable_after_warm_cache_update(
+    store: FileConversationStore,
+):
+    """v2 writes keep list()'s created_at-newest-first contract (#372).
+
+    ``_put_v2`` once re-sorted the warm meta cache by ``updated_at``, so a
+    freshly-saved old conversation jumped the queue while a cold ``list()``
+    still read ``created_at`` order — two different orderings for one
+    store. ``list()``'s documented contract (newest-first by
+    ``created_at``) wins on every cache/write path.
+    """
+    a = new_conversation_record_v2(title="older", client_info={})
+    b = new_conversation_record_v2(title="newer", client_info={})
+    b.created_at = b.created_at + timedelta(seconds=1)
+    await store.put(part(scope="alice"), a)
+    await store.put(part(scope="alice"), b)
+    await store.list(part(scope="alice"))  # warm the meta cache
+    # Re-save the older conversation with a much newer updated_at.
+    a.updated_at = a.updated_at + timedelta(seconds=10)
+    await store.put(part(scope="alice"), a)
+    metas = await store.list(part(scope="alice"))
+    assert [m.title for m in metas] == ["newer", "older"]
+
+
+@pytest.mark.anyio
+async def test_memory_v2_list_order_stable_after_warm_cache_update(
+    mem_store: InMemoryConversationStore,
+):
+    """InMemoryConversationStore keeps the same contract on v2 writes."""
+    a = new_conversation_record_v2(title="older", client_info={})
+    b = new_conversation_record_v2(title="newer", client_info={})
+    b.created_at = b.created_at + timedelta(seconds=1)
+    await mem_store.put(part(scope="alice"), a)
+    await mem_store.put(part(scope="alice"), b)
+    await mem_store.list(part(scope="alice"))  # warm the meta cache
+    a.updated_at = a.updated_at + timedelta(seconds=10)
+    await mem_store.put(part(scope="alice"), a)
+    metas = await mem_store.list(part(scope="alice"))
     assert [m.title for m in metas] == ["newer", "older"]
 
 
@@ -556,7 +966,9 @@ async def test_file_store_write_state_keys_partition_without_delimiter_collision
     got_b = await store.get(partition_b, conv_id)
 
     assert got_a is not None
+    assert isinstance(got_a, ConversationRecordV1)
     assert got_b is not None
+    assert isinstance(got_b, ConversationRecordV1)
     assert got_a.path_turns() == [{"role": "user", "content": "from a"}]
     assert got_b.path_turns() == [{"role": "user", "content": "from b"}]
 
@@ -588,19 +1000,6 @@ def test_sanitize_scope_is_filesystem_safe_and_stable():
     assert "/" not in s1 and ".." not in s1
     assert s1 == sanitize_scope("alice@example.com/../etc")
     assert sanitize_scope("alice") != sanitize_scope("bob")
-
-
-@pytest.mark.anyio
-async def test_put_is_atomic_no_partial_files(
-    store: FileConversationStore, tmp_path: Path
-):
-    rec = new_conversation_record(title="t")
-    await store.put(part(scope="alice"), rec)
-    scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
-    conv_dir = scope_dir / rec.id
-    assert conv_dir.is_dir()
-    files = {f.name for f in conv_dir.iterdir()}
-    assert files == {"record.json", "turns.jsonl", "ui.jsonl"}
 
 
 def test_safe_conv_path_rejects_traversal(tmp_path: Path):
@@ -636,18 +1035,6 @@ async def test_delete_with_traversal_id_raises(store: FileConversationStore):
 
 
 @pytest.mark.anyio
-async def test_list_populates_cache(store: FileConversationStore):
-    rec = new_conversation_record(title="cached")
-    await store.put(part(scope="alice"), rec)
-    assert (
-        part(scope="alice") not in store._meta_cache
-    )  # put to cold scope: no cache
-    await store.list(part(scope="alice"))
-    assert part(scope="alice") in store._meta_cache
-    assert store._meta_cache[part(scope="alice")][0].id == rec.id
-
-
-@pytest.mark.anyio
 async def test_list_returns_from_cache_without_disk_read(
     store: FileConversationStore, tmp_path: Path
 ):
@@ -673,7 +1060,6 @@ async def test_get_missing_after_cached_list_invalidates_cache(
     rec = new_conversation_record(title="t")
     await store.put(part(scope="alice"), rec)
     await store.list(part(scope="alice"))  # warms cache
-    assert part(scope="alice") in store._meta_cache
 
     # Simulate another worker deleting the conversation directly on disk
     scope_dir = tmp_path / sanitize_scope("chat") / sanitize_scope("alice")
@@ -683,7 +1069,6 @@ async def test_get_missing_after_cached_list_invalidates_cache(
 
     got = await store.get(part(scope="alice"), rec.id)
     assert got is None
-    assert part(scope="alice") not in store._meta_cache
 
     metas = await store.list(part(scope="alice"))
     assert metas == []
@@ -698,17 +1083,8 @@ async def test_put_updates_warm_cache(store: FileConversationStore):
     b = new_conversation_record(title="second")
     await store.put(part(scope="alice"), b)
 
-    cached = store._meta_cache[part(scope="alice")]
-    assert {m.id for m in cached} == {a.id, b.id}
-
-
-@pytest.mark.anyio
-async def test_put_does_not_create_cache_for_cold_scope(
-    store: FileConversationStore,
-):
-    rec = new_conversation_record(title="cold")
-    await store.put(part(scope="alice"), rec)
-    assert part(scope="alice") not in store._meta_cache
+    metas = await store.list(part(scope="alice"))
+    assert {meta.id for meta in metas} == {a.id, b.id}
 
 
 @pytest.mark.anyio
@@ -718,7 +1094,7 @@ async def test_delete_updates_warm_cache(store: FileConversationStore):
     await store.list(part(scope="alice"))  # warm
     await store.delete(part(scope="alice"), rec.id)
 
-    assert store._meta_cache[part(scope="alice")] == []
+    assert await store.list(part(scope="alice")) == []
 
 
 @pytest.mark.anyio
@@ -727,7 +1103,9 @@ async def test_list_returns_independent_copy(store: FileConversationStore):
     await store.put(part(scope="alice"), rec)
     result = await store.list(part(scope="alice"))
     result.clear()
-    assert len(store._meta_cache[part(scope="alice")]) == 1
+    assert [meta.id for meta in await store.list(part(scope="alice"))] == [
+        rec.id
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -809,7 +1187,7 @@ async def test_put_rejects_unsupported_schema_version_into_empty_store(
     tmp_path: Path,
 ):
     rec = new_conversation_record(title="t")
-    rec.schema_version = MAX_SCHEMA_VERSION + 1
+    cast(Any, rec).schema_version = MAX_SCHEMA_VERSION + 1
 
     with pytest.raises(UnsupportedSchemaVersionError):
         await store.put(part(scope="alice"), rec)
@@ -850,7 +1228,7 @@ async def test_memory_put_rejects_unsupported_schema_version(
     mem_store: InMemoryConversationStore,
 ):
     rec = new_conversation_record(title="t")
-    rec.schema_version = MAX_SCHEMA_VERSION + 1
+    cast(Any, rec).schema_version = MAX_SCHEMA_VERSION + 1
 
     with pytest.raises(UnsupportedSchemaVersionError):
         await mem_store.put(part(scope="alice"), rec)
@@ -966,28 +1344,6 @@ async def test_memory_search(mem_store: InMemoryConversationStore):
 
 
 @pytest.mark.anyio
-async def test_memory_list_does_not_reserialize_on_repeat_calls(
-    mem_store: InMemoryConversationStore, monkeypatch: pytest.MonkeyPatch
-):
-    rec = new_conversation_record(title="t")
-    await mem_store.put(part(scope="alice"), rec)
-    await mem_store.list(part(scope="alice"))  # warm cache
-
-    call_count = 0
-    original = ConversationRecord.model_dump_json
-
-    def counting(self: ConversationRecord, *args: Any, **kwargs: Any) -> str:
-        nonlocal call_count
-        call_count += 1
-        return original(self, *args, **kwargs)
-
-    monkeypatch.setattr(ConversationRecord, "model_dump_json", counting)
-    await mem_store.list(part(scope="alice"))
-    await mem_store.list(part(scope="alice"))
-    assert call_count == 0
-
-
-@pytest.mark.anyio
 async def test_memory_put_updates_warm_cache(
     mem_store: InMemoryConversationStore,
 ):
@@ -998,17 +1354,8 @@ async def test_memory_put_updates_warm_cache(
     b = new_conversation_record(title="second")
     await mem_store.put(part(scope="alice"), b)
 
-    cached = mem_store._meta_cache[part(scope="alice")]
-    assert {m.id for m in cached} == {a.id, b.id}
-
-
-@pytest.mark.anyio
-async def test_memory_put_does_not_create_cache_for_cold_scope(
-    mem_store: InMemoryConversationStore,
-):
-    rec = new_conversation_record(title="cold")
-    await mem_store.put(part(scope="alice"), rec)
-    assert part(scope="alice") not in mem_store._meta_cache
+    metas = await mem_store.list(part(scope="alice"))
+    assert {meta.id for meta in metas} == {a.id, b.id}
 
 
 @pytest.mark.anyio
@@ -1020,7 +1367,7 @@ async def test_memory_delete_updates_warm_cache(
     await mem_store.list(part(scope="alice"))  # warm
     await mem_store.delete(part(scope="alice"), rec.id)
 
-    assert mem_store._meta_cache[part(scope="alice")] == []
+    assert await mem_store.list(part(scope="alice")) == []
 
 
 # ---------------------------------------------------------------------------

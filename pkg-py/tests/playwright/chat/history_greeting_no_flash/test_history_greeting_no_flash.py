@@ -23,6 +23,7 @@ def test_greeting_does_not_flash_on_restored_conversation(
     chat.expect_greeting("Welcome", timeout=30_000)
 
     chat.set_user_input("hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: hello", timeout=30_000)
 

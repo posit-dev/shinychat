@@ -18,6 +18,10 @@ class ClientWithTurns(Protocol):
     `get_turns()` must return JSON-serializable dicts (or objects with a
     `model_dump(mode="json")`); `set_turns()` must accept what `get_turns()`
     returned after a JSON round trip.
+
+    A client that also exposes a writable `system_prompt` must treat an
+    empty string as no system prompt. History normalizes a None prompt to
+    that clear marker; generic clients receive it unchanged on restore.
     """
 
     def get_turns(self) -> list[Any]: ...
@@ -57,6 +61,20 @@ class TurnsAdapter:
 
     def is_chatlas(self) -> bool:
         return is_chatlas_chat_client(self._turns_client())
+
+    def has_system_prompt(self) -> bool:
+        return hasattr(self._turns_client(), "system_prompt")
+
+    def get_system_prompt(self) -> str | None:
+        return self._turns_client().system_prompt  # type: ignore[attr-defined]
+
+    def set_system_prompt(self, prompt: str | None) -> None:
+        raw = self._turns_client()
+        if is_chatlas_chat_client(raw) and prompt == "":
+            # Chatlas's None API removes the system turn; an empty string
+            # creates a system turn instead. Generic clients keep the string.
+            prompt = None
+        raw.system_prompt = prompt  # type: ignore[attr-defined]
 
     def get_turns_grouped(self) -> list[list[TurnDict]]:
         turns = self.get_turns_json()

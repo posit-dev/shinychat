@@ -6,6 +6,7 @@ import {
   useImperativeHandle,
   memo,
 } from "react"
+import { uuid } from "../utils/uuid"
 import { useChatDispatch } from "./context"
 import type {
   ChatTransport,
@@ -120,8 +121,11 @@ export const ChatInput = memo(
 
     const submitValue = useCallback(
       (content: string): boolean => {
+        // Read the live snapshot: history_update can arrive before React
+        // unmounts the input, so a same-tick send must not render acceptance.
         if (
           submissionBlocked ||
+          historyStore.getSnapshot().readOnly ||
           isHistorySubmissionBlocked(historyStore.getSnapshot())
         )
           return false
@@ -129,6 +133,7 @@ export const ChatInput = memo(
         if (content.trim().length === 0 && payloads.length === 0) return false
         if (disabled) return false
 
+        const client_message_id = uuid()
         const slashMatch = parseSlashCommand(content, slashCommands)
         if (slashMatch) {
           // Slash commands don't carry files; staged attachments stay in the
@@ -158,6 +163,7 @@ export const ChatInput = memo(
           if (echo) {
             dispatch({
               type: "INPUT_SENT",
+              id: client_message_id,
               content,
               role: "user",
               awaitResponse: !prevented,
@@ -169,19 +175,22 @@ export const ChatInput = memo(
               slashMatch.command,
               slashMatch.userText,
               echo,
+              echo ? client_message_id : undefined,
             )
           }
         } else {
           dispatch({
             type: "INPUT_SENT",
+            id: client_message_id,
             content,
             role: "user",
             ...(payloads.length > 0 ? { attachments: payloads } : {}),
           })
-          transport.sendInput(
-            inputId,
-            enableUpload ? { text: content, attachments: payloads } : content,
-          )
+          transport.sendInput(inputId, {
+            text: content,
+            attachments: payloads,
+            client_message_id,
+          })
           resetAll()
         }
         onSend?.()
@@ -244,6 +253,7 @@ export const ChatInput = memo(
 
           if (
             submissionBlocked ||
+            historyStore.getSnapshot().readOnly ||
             isHistorySubmissionBlocked(historyStore.getSnapshot())
           ) {
             if (focus) tiptap.focus()
@@ -269,18 +279,19 @@ export const ChatInput = memo(
             // commands submitted programmatically still execute.
             submitted = submitValue(submitContent)
           } else if (!disabled && submitAttachments.length > 0) {
+            const client_message_id = uuid()
             dispatch({
               type: "INPUT_SENT",
+              id: client_message_id,
               content: submitContent,
               role: "user",
               attachments: submitAttachments,
             })
-            transport.sendInput(
-              inputId,
-              enableUpload
-                ? { text: submitContent, attachments: submitAttachments }
-                : submitContent,
-            )
+            transport.sendInput(inputId, {
+              text: submitContent,
+              attachments: submitAttachments,
+              client_message_id,
+            })
             submitted = true
             onSend?.()
           }

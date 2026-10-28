@@ -533,6 +533,8 @@ class Chat:
             @reactive.effect(priority=9999)
             @reactive.event(self._user_input)
             async def _on_user_input():
+                data = self._session.input[self.user_input_id]()
+                client_message_id = data.get("client_message_id")
                 try:
                     text, attachments = self._user_input()
                     msg = ChatMessage(
@@ -542,7 +544,7 @@ class Chat:
                     )
                     await self._record_accepted_user_input_with_capture(msg)
                 except Exception as e:
-                    await self._raise_exception(e)
+                    await self._handle_input_exception(e, client_message_id)
 
             @reactive.effect
             async def _sync_slash_commands():
@@ -560,11 +562,12 @@ class Chat:
             @reactive.event(self._slash_command_input)
             async def _on_slash_command():
                 data = self._slash_command_input()
+                client_message_id = data.get("client_message_id")
                 command = data.get("command", "")
                 user_text = data.get("userText", "")
                 echo = bool(data.get("echo", True))
                 try:
-                    if not self.history._history_action_admitted():
+                    if not self.history._history_submission_admitted():
                         # Client-triggered, not a programmatic append; direct
                         # user actions have their own rejection path (P5.4),
                         # so this stays silent like the user-input sites.
@@ -572,9 +575,17 @@ class Chat:
                     if echo:
                         full_text = f"/{command} {user_text}".rstrip()
                         msg = ChatMessage(content=full_text, role="user")
-                        await self._record_accepted_user_input_with_capture(
-                            msg, dispatch_user_submit=False
-                        )
+                        from ._history_recorder import _ModelCaptureError
+
+                        try:
+                            await self._record_accepted_user_input_with_capture(
+                                msg, dispatch_user_submit=False
+                            )
+                        except _ModelCaptureError as e:
+                            await self._handle_input_exception(
+                                e, client_message_id
+                            )
+                            return
                     cmds = self._slash_commands()
                     reg = cmds.get(command) if cmds else None
                     if reg is not None and reg.handler is not None:
@@ -940,6 +951,52 @@ class Chat:
 
         return remove
 
+    async def _handle_input_exception(
+        self, e: Exception, client_message_id: str | None = None
+    ) -> None:
+        from ._history_recorder import _ModelCaptureError
+
+        if isinstance(e, _ModelCaptureError):
+            controller = self.history._controller
+            delivery_error: BaseException | None = None
+            try:
+                if (
+                    isinstance(client_message_id, str)
+                    and controller is not None
+                ):
+                    # Capture has exited the recorder lock. Serialize removal and
+                    # positional refresh with any subsequent accepted exchange.
+                    async with controller._exchange_recorder.lock:
+                        await self._send_action(
+                            {"type": "remove_message", "id": client_message_id}
+                        )
+                        await controller._send_exchange_metadata()
+                        await controller._send_sibling_metadata()
+            except BaseException as err:
+                delivery_error = err
+                raise
+            finally:
+                try:
+                    try:
+                        # Idempotent, including slash-command finally cleanup.
+                        await self._remove_loading_message()
+                    finally:
+                        await self.history._notify_history_error(
+                            "Message not sent. The saved checkpoint is unchanged. "
+                            "Start a New chat to recover, or try again after the "
+                            "app's model state has been corrected.",
+                            e.__cause__
+                            if isinstance(e.__cause__, Exception)
+                            else e,
+                        )
+                except BaseException:
+                    # Cleanup must not replace a delivery failure or cancellation.
+                    if delivery_error is not None:
+                        raise delivery_error
+                    raise
+            return
+        await self._raise_exception(e)
+
     async def _raise_exception(
         self,
         e: BaseException,
@@ -1041,6 +1098,10 @@ class Chat:
     ):
         """
         Append a message to the chat.
+
+        App output in a restored read-only conversation is displayed but not
+        saved to history. It disappears when the saved path is replayed or
+        reloaded; appending does not recover the unavailable model context.
 
         Parameters
         ----------
@@ -1240,6 +1301,10 @@ class Chat:
         3. Be used from within a `.append_message_stream()`
             * Useful for inserting additional content from another context into the
               stream (e.g., see the note about tool calls below).
+
+        As with :meth:`append_message`, app output in a restored read-only
+        conversation is displayed but not saved and does not recover its model
+        context.
 
         Yields
         ------
@@ -1550,6 +1615,18 @@ class Chat:
         """
         Append a message as a stream of message chunks.
 
+        Awaiting this method starts a background
+        :class:`~shiny.reactive.ExtendedTask`; it does not wait for the response
+        to finish. The returned task and :attr:`latest_message_stream` are not
+        awaitable. In a reactive effect, read the task's ``status()`` and run
+        follow-up appends only on ``"success"``; ``"initial"`` and
+        ``"running"`` have no completed response, and ``"error"`` or
+        ``"cancelled"`` require an explicit failure/cancellation decision.
+
+        As with :meth:`append_message`, app output in a restored read-only
+        conversation is displayed but not saved and does not recover its model
+        context.
+
         Parameters
         ----------
         message
@@ -1798,6 +1875,13 @@ class Chat:
 
         Note
         ----
+        This property returns a task, not an awaitable. Calling
+        ``await chat.append_message_stream(...)`` starts that task without
+        awaiting its completion. Observe ``status()`` or ``result()`` in a
+        reactive context instead; a complete append or independent stream
+        while the current stream is active raises ``RuntimeError`` rather
+        than joining a queue.
+
         If no stream has yet been started when this method is called, then it returns an
         extended task with `.status()` of `"initial"` and that it status doesn't change
         state until a message is streamed.
@@ -2443,20 +2527,6 @@ class Chat:
 
         return _assemble_stored_message(message, self._serialize_html_deps)
 
-    def _record_accepted_user_input(
-        self,
-        message: ChatMessage,
-    ) -> None:
-        if self._destructive_history_blocks_input:
-            raise RuntimeError(
-                "Cannot accept user input while switching conversations."
-            )
-        if not self.history._history_action_admitted():
-            return
-        stored = self._as_stored_message(message)
-        self._transcript.record_accepted_input(stored)
-        self._publish_accepted_user_input(stored)
-
     async def _record_accepted_user_input_with_capture(
         self,
         message: ChatMessage,
@@ -2467,7 +2537,7 @@ class Chat:
             raise RuntimeError(
                 "Cannot accept user input while switching conversations."
             )
-        if not self.history._history_action_admitted():
+        if not self.history._history_submission_admitted():
             return
         stored = self._as_stored_message(message)
         await self._transcript.record_accepted_input_and_notify(stored)

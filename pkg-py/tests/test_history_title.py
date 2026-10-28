@@ -1,35 +1,25 @@
 import pytest
-from shinychat._history_client import TurnDict
-from shinychat._history_title import fallback_title, generate_title
+from shinychat._history_title import fallback_title_from_text, generate_title
 
 
-def test_fallback_title_truncates_first_user_message():
-    turns: list[TurnDict] = [{"role": "user", "content": "x" * 100}]
-    t = fallback_title(turns)
-    assert t == "x" * 47 + "..."
+def test_fallback_title_from_text_truncates_long_text():
+    assert fallback_title_from_text("x" * 100) == "x" * 47 + "..."
 
 
-def test_fallback_title_chatlas_shape():
-    turns: list[TurnDict] = [
-        {
-            "role": "user",
-            "contents": [{"content_type": "text", "text": "show me penguins"}],
-        }
-    ]
-    assert fallback_title(turns) == "show me penguins"
+def test_fallback_title_from_text_boundary():
+    # At exactly MAX_FALLBACK_LEN the text passes through untouched; one
+    # character more triggers the ellipsis.
+    assert fallback_title_from_text("y" * 50) == "y" * 50
+    assert fallback_title_from_text("y" * 51) == "y" * 47 + "..."
 
 
-def test_fallback_title_skips_non_user_and_empty_turns():
-    turns: list[TurnDict] = [
-        {"role": "assistant", "content": "hi there"},
-        {"role": "user", "content": ""},
-        {"role": "user", "content": "real question"},
-    ]
-    assert fallback_title(turns) == "real question"
+def test_fallback_title_from_text_squashes_whitespace():
+    assert fallback_title_from_text("  what    is\tthis?  ") == "what is this?"
 
 
-def test_fallback_title_empty():
-    assert fallback_title([]) == "New chat"
+def test_fallback_title_from_text_empty_is_new_chat():
+    assert fallback_title_from_text("") == "New chat"
+    assert fallback_title_from_text("   ") == "New chat"
 
 
 @pytest.mark.anyio
