@@ -95,6 +95,41 @@ describe("chatReducer", () => {
     expect(siblings.messages[0]?.siblings).toEqual({ index: 1, total: 2 })
   })
 
+  it("a successful retry fully replaces stale error exchange metadata", () => {
+    let state = chatReducer(initialState, {
+      type: "INPUT_SENT",
+      content: "hi",
+      role: "user",
+      awaitResponse: false,
+    })
+    state = chatReducer(state, {
+      type: "update_exchange_metadata",
+      data: {
+        0: {
+          status: "error",
+          retryable: true,
+          error_message: "The response stream could not be completed.",
+        },
+      },
+    })
+    expect(state.messages[0]?.exchange).toEqual({
+      status: "error",
+      retryable: true,
+      error_message: "The response stream could not be completed.",
+    })
+
+    // The server's authoritative ok metadata must fully replace the stale
+    // error: no lingering error_message, no lingering retryable.
+    const retried = chatReducer(state, {
+      type: "update_exchange_metadata",
+      data: { 0: { status: "ok", retryable: false } },
+    })
+    expect(retried.messages[0]?.exchange).toEqual({
+      status: "ok",
+      retryable: false,
+    })
+  })
+
   it("removing loading twice preserves active streaming", () => {
     const state = {
       ...chatReducer(initialState, {

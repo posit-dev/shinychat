@@ -8758,6 +8758,104 @@ async def _sent() -> bool:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("status", "content"),
+    [
+        ("error", ""),
+        ("error", "partial"),
+        ("cancelled", "partial"),
+        ("ok", "answer"),
+    ],
+)
+@pytest.mark.parametrize("parent_checkpoint", ["valid", "invalid"])
+async def test_v2_response_settlement_publishes_authoritative_retry_metadata(
+    status: str, content: str, parent_checkpoint: str
+) -> None:
+    controller, _ = _make_controller()
+    chat = cast(_FakeChat, controller.chat)
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_updated=recorder.stream_updated,
+        on_stream_finished=recorder.stream_finished,
+    )
+    exchange_id = await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "retry this")
+    )
+    await transcript.start_stream(
+        stream_id="response",
+        entry=TranscriptEntry(message=_stored_message("assistant", "")),
+        owner_task=None,
+        exchange_id=exchange_id,
+        send=_sent,
+    )
+    # Neither accepted input nor a partial response publishes live retryability.
+    await controller.on_response()
+    if content:
+        await transcript.transition_stream(
+            stream_id="response",
+            source_segments=[],
+            message=_stored_message("assistant", content),
+            operation="append",
+            send=_sent,
+        )
+        await controller.on_response()
+    assert not any(
+        action["type"] == "update_exchange_metadata" for action in chat.actions
+    )
+
+    await transcript.end_stream(
+        stream_id="response",
+        status=None if status == "ok" else cast(Any, status),
+        error="provider failure" if status == "error" else None,
+        send=_sent,
+    )
+    record = recorder.record
+    assert record is not None
+    parent_id = record.nodes[exchange_id].parent_id
+    assert parent_id is not None
+    record.nodes[parent_id].checkpoint = cast(Any, parent_checkpoint)
+
+    await controller.on_response()
+
+    metadata: dict[str, Any] = {
+        "status": status,
+        "retryable": status != "ok" and parent_checkpoint == "valid",
+    }
+    if status == "error":
+        metadata["error_message"] = HISTORY_ERROR_GENERIC
+    assert [
+        action
+        for action in chat.actions
+        if action["type"] == "update_exchange_metadata"
+    ] == [{"type": "update_exchange_metadata", "data": {0: metadata}}]
+
+
+@pytest.mark.anyio
+async def test_v2_read_only_settlement_does_not_publish_live_retry() -> None:
+    controller, _ = _make_controller()
+    recorder = controller._exchange_recorder
+    transcript = ChatTranscript(
+        on_accepted_input=recorder.accepted_input,
+        on_stream_started=recorder.stream_started,
+        on_stream_finished=recorder.stream_finished,
+    )
+    await transcript.record_accepted_input_and_notify(
+        _stored_message("user", "read only")
+    )
+    await _finish_pending_exchange(transcript, recorder)
+    recorder.mark_read_only("model_unavailable")
+
+    await controller.on_response()
+
+    assert not any(
+        action["type"] == "update_exchange_metadata"
+        for action in cast(_FakeChat, controller.chat).actions
+    )
+
+
+@pytest.mark.anyio
 async def test_v2_response_settlement_writes_through_recorder_once():
     store = _RecordingStore()
     controller, _ = _make_controller(store=store)
@@ -8820,6 +8918,10 @@ async def test_v2_response_persistence_does_not_depend_on_bookmark_settlement() 
     with pytest.raises(RuntimeError, match="bookmark settlement failed"):
         await controller.on_response()
 
+    assert {
+        "type": "update_exchange_metadata",
+        "data": {0: {"status": "ok", "retryable": False}},
+    } in cast(_FakeChat, controller.chat).actions
     persisted = await store.get(part(), record.id)
     assert isinstance(persisted, ConversationRecordV2)
     assert persisted.response_count == 1

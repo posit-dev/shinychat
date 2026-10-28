@@ -400,6 +400,7 @@ class HistoryController:
         leaf = record.active_leaf
         assert leaf is not None
         reliable = record.nodes[leaf].is_checkpoint
+        await self._send_exchange_metadata()
         await self._after_persist(record, success_hook=reliable)
         if reliable:
             self._schedule_exchange_retitle(record)

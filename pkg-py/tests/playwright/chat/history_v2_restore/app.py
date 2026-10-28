@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -63,7 +64,7 @@ class EchoChatClient(chatlas.Chat):
         if self.provider_context is not None:
             self.provider_context.set(" | ".join(context))
         if (
-            user_input in ("retry me", "held retry")
+            user_input in ("retry me", "held retry", "immediate retry", "disabled retry")
             and user_input not in _failed_inputs
         ):
             _failed_inputs.add(user_input)
@@ -77,6 +78,41 @@ class EchoChatClient(chatlas.Chat):
                     yield ""
 
             return failed_response()
+        if user_input == "partial fail" and user_input not in _failed_inputs:
+            _failed_inputs.add(user_input)
+            self._turns.extend(
+                [
+                    Turn(role="user", contents=user_input),
+                    AssistantTurn(contents="partial response before failure"),
+                ]
+            )
+
+            async def partial_failure_response() -> AsyncGenerator[str, None]:
+                # Stream actual content first, so the settled error point
+                # captures a partial response rather than pending input.
+                yield "partial response before failure"
+                raise RuntimeError("intentional partial fixture failure")
+
+            return partial_failure_response()
+        if user_input in ("cancel me", "disabled stop") and user_input not in _failed_inputs:
+            _failed_inputs.add(user_input)
+            self._turns.extend(
+                [
+                    Turn(role="user", contents=user_input),
+                    AssistantTurn(
+                        contents="partial response awaiting cancellation"
+                    ),
+                ]
+            )
+            controller = kwargs["controller"]
+
+            async def cancellable_response() -> AsyncGenerator[str, None]:
+                yield "partial response awaiting cancellation"
+                # Like chatlas, stop cooperatively and return normally.
+                while not controller.cancelled:
+                    await asyncio.sleep(0.05)
+
+            return cancellable_response()
         self._turns.extend(
             [
                 Turn(role="user", contents=user_input),

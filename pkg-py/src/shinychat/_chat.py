@@ -679,13 +679,22 @@ class Chat:
                 if hasattr(client, "conversation_id"):
                     client.conversation_id = conversation_id
 
+                controller.reset()
                 response = await chat_client.value.stream_async(
                     user_input,
                     *contents,
                     content="all",
                     controller=controller,
                 )
-                await self.append_message_stream(response)
+
+                async def response_chunks():
+                    async for chunk in response:
+                        yield chunk
+                    # chatlas returns normally when stopped cooperatively.
+                    if controller.cancelled:
+                        raise asyncio.CancelledError()
+
+                await self.append_message_stream(response_chunks())
 
             # A `client=` wires up cancellation, so enable the stop button
             # without requiring `enable_cancel=True` in `chat_ui()`. It only
