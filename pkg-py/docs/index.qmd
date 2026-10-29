@@ -162,11 +162,11 @@ callbacks normally receive those values. A failed starting capture preserves
 any previously saved root values; without recorded values, callbacks receive
 `{}`. An explicit save at the root can replace its values. Your callback decides whether
 to supply defaults or raise an error; history does not automatically reset
-application state. An unhandled ordinary error retains the original branch
-read-only. For writable in-session browsing and resubmits, the model is already
-rewound when the callback runs, but `chat.messages()` and the display still
-show the outgoing branch. The resubmit parent pointer commits only after the
-callback succeeds. Load and conversation switch replay the target display
+application state. During edit, retry, or regenerate preparation, the model is
+rewound before `on_restore` runs, and `chat.messages()` exposes the parent's
+accepted transcript prefix. The pending replacement is already recorded, but
+is not accepted input. In-session browsing still exposes the outgoing transcript
+during the callback; load and conversation switch replay the target display
 before invoking callbacks.
 
 Use the sibling arrows to return to `west`. `on_restore` receives `west`. A
@@ -213,17 +213,28 @@ explicitly clears the saved object. Automatic capture
 failures warn the developer and retain prior values; an explicit
 `await chat.history.save()` raises the error.
 
-If an `on_restore` callback raises an ordinary exception, the conversation stays
-visible but becomes read-only. The composer explains that its saved application
-state couldn't be restored. Callbacks registered after the failing one don't run
-for that restore, and the warning includes the error. The conversation's saved
-values aren't overwritten while it is read-only. The failure also stops an edit,
-retry, or regenerate before its replacement response starts. Nothing retries
-automatically. Selecting the already active conversation again doesn't retry its
-callbacks. Switching to another conversation and back runs a full restore, and
-that restore's result reclassifies the conversation under the existing read-only
-rules. Use New chat to leave the conversation. If your callback can recover, handle the
-case inside the callback and establish valid state before returning.
+If an `on_restore` callback raises an ordinary exception, callbacks registered
+after it don't run, and the warning includes the error. Loading or browsing
+keeps the selected display but blocks continuation when application state
+couldn't be restored.
+
+For an edit, retry, or regenerate, preparation failure keeps the replacement as
+a separate version with a **message not sent** outcome. Its input and attachments
+remain visible; the original branch and its descendants remain stored. No
+accepted-input callback or provider work runs for that version. A successful
+history write preserves it for reload and sibling navigation, but it is not a
+model-continuation checkpoint. Its captured application values are either a
+complete JSON snapshot or explicitly unavailable, never a partial snapshot or
+an inherited value presented as an observed one.
+
+After fixing the application, explicitly **Retry** or edit the failed version.
+This restores its valid parent without capturing the failed position's live
+model, then creates another version. A Retry that fails preparation also remains
+as a new version. Successful preparation clears only a resolved application-
+restore restriction; unrelated model-unavailable or interrupted-source
+restrictions still apply. Nothing retries automatically. Selecting the already
+active conversation again doesn't retry its callbacks. Use **New chat** to leave
+the conversation.
 
 ### Response checkpoints and interrupted conversations
 

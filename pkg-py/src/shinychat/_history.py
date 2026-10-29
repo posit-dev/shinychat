@@ -527,9 +527,12 @@ class ChatHistory:
         a sibling or another position; and before an edit, retry, or
         regenerate starts replacement work from the retained parent. Callbacks
         receive the target values; for writable in-session changes, model
-        state has already been rewound, but ``chat.messages()`` and the
-        display still show the outgoing branch. A resubmit commits its parent
-        pointer only after callbacks succeed. Load and switch instead replay
+        state has already been rewound. Browsing still shows the outgoing
+        branch in ``chat.messages()``; edit, retry, and regenerate instead
+        show the restored parent's accepted transcript prefix (and the
+        rewound parent model context), while the attempted replacement is
+        already recorded as the selected node without being presented as
+        accepted input. Load and switch instead replay
         the target display before callbacks run. Use it to sync auxiliary
         UI state (active tabs, model selectors, etc.) to match the selected
         position. Raw Shiny input values are not synced automatically;
@@ -551,7 +554,8 @@ class ChatHistory:
         root can replace its values. The author callback
         decides whether to supply defaults or fail; history does not
         automatically reset application state. An unhandled ordinary failure
-        retains the original branch read-only, as described below.
+        keeps the submitted message recorded and selected as a terminal
+        "message not sent" position, read-only, as described below.
 
         Starting a new chat does not fire ``on_restore``: the new chat has
         no saved target, and authors set up its state themselves.
@@ -560,12 +564,19 @@ class ChatHistory:
         exception, so later callbacks never mask it. The conversation stays
         visible but becomes read-only (the composer explains that its app
         state could not be fully restored), and the error is warned to the
-        developer. Failed edit, retry, and regenerate preparation retains
-        the original full branch rather than selecting its parent; failed
-        browsing retains the selected target. After failed resubmit
-        preparation, the live model client may still hold the parent prefix,
-        not the displayed branch; read-only blocks continuation and saved
-        state capture until a full restore or new chat. Callbacks that can recover from a known case should
+        developer. A failed edit, retry, or regenerate keeps the submitted
+        message recorded and selected as its own node: it shows a sanitized
+        "message not sent" outcome, holds an explicitly invalid checkpoint,
+        and never reverts the visible conversation to the original branch
+        (the original and its descendants are preserved as navigable
+        siblings). Failed browsing retains the selected target. After failed
+        resubmit preparation, the live model client may hold the parent
+        prefix or a partially restored state rather than the displayed
+        branch; read-only blocks continuation and saved state capture, but
+        an explicit Retry or Edit after the underlying problem is fixed
+        restores the valid parent and creates a new sibling — it never
+        rewrites the failed node or the original. Callbacks that can
+        recover from a known case should
         handle it themselves. Cancellation and other fatal errors take the
         usual full restore cleanup. Read-only conversations keep their
         saved values; a later successful switch or restore of the

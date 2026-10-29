@@ -95,6 +95,42 @@ describe("chatReducer", () => {
     expect(siblings.messages[0]?.siblings).toEqual({ index: 1, total: 2 })
   })
 
+  it("settles a not-sent edit without removing its staged row or attachment", () => {
+    const attachments = [
+      {
+        mime: "text/plain",
+        data_url: "data:text/plain;base64,eA==",
+        name: "notes.txt",
+        size: 1,
+      },
+    ]
+    const pending = chatReducer(initialState, {
+      type: "INPUT_SENT",
+      id: "server-node",
+      content: "replacement",
+      role: "user",
+      attachments,
+    })
+    const settled = chatReducer(pending, {
+      type: "update_exchange_metadata",
+      data: {
+        0: {
+          status: "error",
+          retryable: true,
+          preparation_failed: true,
+          error_message: "Message not sent.",
+        },
+      },
+    })
+    expect(settled.messages).toHaveLength(1)
+    expect(settled.messages[0]).toMatchObject({
+      id: "server-node",
+      content: "replacement",
+      attachments,
+    })
+    expect(settled.inputDisabled).toBe(false)
+  })
+
   it("a successful retry fully replaces stale error exchange metadata", () => {
     let state = chatReducer(initialState, {
       type: "INPUT_SENT",

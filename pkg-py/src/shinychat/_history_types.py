@@ -53,16 +53,31 @@ SYSTEM_PROMPT_STATE_KEY = "shinychat:system_prompt"
 # per-exchange form of what `on_save` callbacks write and `on_restore`
 # callbacks read).
 VALUES_STATE_KEY = "shinychat:values"
+# The blessed state-entry name for the durable preparation outcome of a
+# recorded submission. Present only on a node whose input was staged and
+# failed before acceptance: it distinguishes a known terminal incomplete
+# position from an unfinished producer, records that the input was never
+# accepted, and records whether a complete app-values snapshot was observed
+# at the failed position. The entry owns no capture/restore/rewind hook;
+# it is causal metadata, never a restore input.
+PREPARATION_STATE_KEY = "shinychat:preparation"
+PREPARATION_ENTRY_KIND = "input_preparation"
+PREPARATION_ENTRY_VERSION = 1
 
 MAX_HISTORY_ERROR_MESSAGE = 256
 HISTORY_ERROR_GENERIC = "The response could not be completed."
 HISTORY_ERROR_STREAM_START = "The response stream could not be started."
 HISTORY_ERROR_STREAM_TERMINAL = "The response stream could not be completed."
+# The sanitized user-facing outcome for a submission that failed before
+# acceptance. Technical detail stays in developer diagnostics; the record
+# never invents a provider error for a message the provider never saw.
+HISTORY_ERROR_NOT_SENT = "Message not sent."
 HISTORY_ERROR_MESSAGES = frozenset(
     {
         HISTORY_ERROR_GENERIC,
         HISTORY_ERROR_STREAM_START,
         HISTORY_ERROR_STREAM_TERMINAL,
+        HISTORY_ERROR_NOT_SENT,
     }
 )
 
@@ -120,6 +135,114 @@ class StoredUiMessage(TypedDict):
     version: int
     attachments: NotRequired[list[AttachmentDict]]
     attachment_content_stripped: NotRequired[bool]
+
+
+def is_valid_preparation_entry(entry: "StateEntry") -> bool:
+    """Whether the entry is a well-formed v1 preparation envelope."""
+    if entry.kind != PREPARATION_ENTRY_KIND:
+        return False
+    if (
+        not isinstance(entry.version, int)
+        or isinstance(entry.version, bool)
+        or entry.version != PREPARATION_ENTRY_VERSION
+    ):
+        return False
+    if entry.mode != "snapshot":
+        return False
+    data = entry.data
+    if not isinstance(data, dict):
+        return False
+    if set(data) != {"terminal", "accepted", "app_values"}:
+        return False
+    return (
+        data.get("terminal") is True
+        and data.get("accepted") is False
+        and data.get("app_values") in ("complete", "unavailable")
+    )
+
+
+def validate_preparation_entry(name: str, entry: "StateEntry") -> None:
+    """Fail closed on a malformed preparation envelope.
+
+    A node whose marker cannot be validated must never masquerade as a
+    known stopped producer: state planning rejects the record before any
+    mutation, keeping the conservative interrupted/unresolved reading.
+    """
+    if not is_valid_preparation_entry(entry):
+        raise ValueError(
+            f"State entry {name!r} is not a valid preparation envelope."
+        )
+
+
+def validate_node_preparation_consistency(
+    name: str, node: "ExchangeNode"
+) -> None:
+    """Fail closed when a preparation envelope disagrees with its node.
+
+    Any preparation marker — even an internally valid one — is only
+    coherent on the terminal failed position it describes (error status,
+    submitted input, explicitly invalid checkpoint). A marker on any
+    other node is contradictory: it must never promote the node to a
+    continuation checkpoint nor be silently ignored, so planning rejects
+    the record before mutation. Nodes without the marker keep their
+    documented legacy derivation unchanged.
+    """
+    if PREPARATION_STATE_KEY not in node.state:
+        return
+    if not node_is_terminal_incomplete(node):
+        raise ValueError(
+            f"Exchange {name!r} carries a preparation marker but is not a "
+            "terminal failed submission."
+        )
+    entry = node.state[PREPARATION_STATE_KEY]
+    assert isinstance(entry.data, dict)
+    if (
+        entry.data["app_values"] == "complete"
+        and VALUES_STATE_KEY not in node.state
+    ):
+        raise ValueError(
+            f"Exchange {name!r} claims a complete preparation snapshot "
+            "without its own application values."
+        )
+    # Older writers can pin inherited values onto an unavailable child while
+    # recapturing its parent. The preserved marker remains authoritative:
+    # those values are not an observed snapshot and must never be restored.
+
+
+def node_has_unavailable_app_values(node: "ExchangeNode") -> bool:
+    """Whether preparation explicitly recorded unavailable application values."""
+    entry = node.state.get(PREPARATION_STATE_KEY)
+    return (
+        entry is not None
+        and is_valid_preparation_entry(entry)
+        and isinstance(entry.data, dict)
+        and entry.data["app_values"] == "unavailable"
+    )
+
+
+def node_is_terminal_incomplete(node: "ExchangeNode") -> bool:
+    """Whether the node is a recorded, known terminal incomplete position.
+
+    True only when every element agrees: the node carries a submitted
+    input, finished with an error, holds an explicitly invalid checkpoint,
+    and its preparation envelope is a well-formed terminal/never-accepted
+    marker. Any disagreement (a pending status, a candidate or missing
+    checkpoint, a malformed or unrecognized envelope, no input) keeps the
+    conservative reading: an unfinished or interrupted producer, never a
+    browsable terminal position. Legacy nodes without the envelope keep
+    their documented interpretation, so absence of the marker is never
+    read as a terminal failure either.
+    """
+    if node.status != "error":
+        return False
+    if node.input is None:
+        return False
+    if node.checkpoint != "invalid":
+        return False
+    entry = node.state.get(PREPARATION_STATE_KEY)
+    if entry is None:
+        return False
+    return is_valid_preparation_entry(entry)
 
 
 def new_conversation_record(
@@ -587,7 +710,16 @@ class ConversationRecordV2(BaseModel):
                 leaves[key] = (
                     leaves[selected]
                     if selected is not None
-                    else (key if node.is_checkpoint else None)
+                    else (
+                        key
+                        # A known terminal incomplete leaf is an explicit
+                        # display destination (browsable, never a
+                        # continuation checkpoint); an unfinished producer
+                        # stays ineligible.
+                        if node.is_checkpoint
+                        or node_is_terminal_incomplete(node)
+                        else None
+                    )
                 )
                 visiting.remove(key)
         return leaves
@@ -678,10 +810,30 @@ class ConversationRecordV2(BaseModel):
                 result[node_id] = (siblings.index(node_id), len(siblings))
         return result
 
-    def open_exchange(self, exchange_id: str, message: StoredMessage) -> None:
+    def open_exchange(
+        self,
+        exchange_id: str,
+        message: StoredMessage,
+        *,
+        parent_id: str | None = None,
+    ) -> None:
+        """Open one ordinary input-bearing exchange and select it.
+
+        ``parent_id`` defaults to the active leaf (ordinary acceptance).
+        A staged edit/retry passes its target's valid parent explicitly:
+        the node is recorded and selected before any fallible
+        preparation, so the attempt survives preparation failure and is
+        never silently lost — while sharing this one construction and
+        linking lifecycle with ordinary exchanges. Either way the whole
+        ancestor path's selection pointers move to the new node, which
+        for the default case is exactly the prior active path.
+        """
         if exchange_id in self.nodes:
             raise ValueError(f"Duplicate exchange id {exchange_id!r}")
-        parent_id = self.active_leaf
+        if parent_id is None:
+            parent_id = self.active_leaf
+        elif parent_id not in self.nodes:
+            raise ValueError(f"Unknown exchange id {parent_id!r}")
         self.nodes[exchange_id] = ExchangeNode(
             parent_id=parent_id,
             created_at=utcnow(),
@@ -691,8 +843,7 @@ class ConversationRecordV2(BaseModel):
         )
         if parent_id is not None:
             self.nodes[parent_id].children.append(exchange_id)
-            self.nodes[parent_id].selected_child = exchange_id
-        self.active_leaf = exchange_id
+        self.set_active_leaf(exchange_id)
         self.next_node_seq += 1
         self.updated_at = utcnow()
 

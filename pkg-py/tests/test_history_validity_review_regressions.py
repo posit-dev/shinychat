@@ -476,7 +476,12 @@ async def test_live_replay_uses_invalid_input_as_cause_and_only_valid_parent_as_
         ],
     )
     await writer.resubmit(target, kind=kind, request_id=kind, message_index=1)
-    assert record.active_leaf == parent
+    # The staged resubmission is admitted exactly once, as a new sibling
+    # under the valid parent: the invalid target is causal data, never
+    # the rewind destination.
+    sibling = record.active_leaf
+    assert sibling is not None and sibling not in (parent, target)
+    assert record.nodes[sibling].parent_id == parent
     assert adapter.turns == [
         {"role": "system", "content": "bootstrap"},
         {"role": "user", "content": "first"},
@@ -493,6 +498,8 @@ async def test_live_replay_uses_invalid_input_as_cause_and_only_valid_parent_as_
             "index": 1,
             "content": "second",
             "attachments": [],
+            "submission_mode": "server",
+            "exchange_id": sibling,
         }
     ]
     assert record.nodes[target].checkpoint_state == "invalid"
@@ -787,7 +794,11 @@ async def test_restored_invalid_ancestor_metadata_and_retained_parent_retry(
         await writer.resubmit(
             target, kind="retry", request_id="retry", message_index=1
         )
-        assert restored.active_leaf == parent
+        # The staged retry is admitted exactly once, as a new sibling
+        # under the valid parent.
+        sibling = restored.active_leaf
+        assert sibling is not None and sibling not in (parent, target)
+        assert restored.nodes[sibling].parent_id == parent
         assert adapter.turns == [
             {"role": "system", "content": "bootstrap"},
             {"role": "user", "content": "first"},

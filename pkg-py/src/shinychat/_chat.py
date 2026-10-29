@@ -67,6 +67,7 @@ from ._chat_segments import (
 from ._chat_transcript import (
     _STREAM_UNOWNED,
     ChatTranscript,
+    StagedInputAdmission,
     TranscriptEntry,
 )
 from ._chat_types import (
@@ -976,7 +977,7 @@ class Chat:
                 ):
                     # Capture has exited the recorder lock. Serialize removal and
                     # positional refresh with any subsequent accepted exchange.
-                    async with controller._exchange_recorder.lock:
+                    async with controller._exchange_recorder._locked():
                         await self._send_action(
                             {"type": "remove_message", "id": client_message_id}
                         )
@@ -2539,18 +2540,49 @@ class Chat:
 
     async def _record_accepted_user_input_with_capture(
         self,
-        message: ChatMessage,
+        message: ChatMessage | StoredMessage,
         *,
         dispatch_user_submit: bool = True,
+        staged_admission: "StagedInputAdmission | None" = None,
+        transaction: object | None = None,
     ) -> None:
-        if self._destructive_history_blocks_input:
+        if staged_admission is not None:
+            # A server-staged submission is admitted by the history
+            # controller while it owns the destructive mutation, so browser
+            # input stays blocked without blocking the owner's one
+            # admission. The guard is never lowered: a staged admission
+            # always requires the active transaction owned by the current
+            # task.
+            owns_transaction = (
+                transaction is not None
+                and transaction is self._destructive_history_transaction
+                and self._destructive_history_task is asyncio.current_task()
+            )
+            if not owns_transaction:
+                raise RuntimeError(
+                    "A staged input admission requires the owned history "
+                    "transaction in the current task."
+                )
+        elif self._destructive_history_blocks_input:
             raise RuntimeError(
                 "Cannot accept user input while switching conversations."
             )
         if not self.history._history_submission_admitted():
+            if staged_admission is not None:
+                # A staged submission must never be silently dropped: its
+                # node was already recorded, so the controller attaches the
+                # failure outcome to it instead.
+                raise RuntimeError(
+                    "Cannot admit a staged input while submissions are not admitted."
+                )
             return
         stored = self._as_stored_message(message)
-        await self._transcript.record_accepted_input_and_notify(stored)
+        if staged_admission is not None:
+            await self._transcript.record_staged_input_and_notify(
+                staged_admission, stored
+            )
+        else:
+            await self._transcript.record_accepted_input_and_notify(stored)
         self._publish_accepted_user_input(
             stored, dispatch_user_submit=dispatch_user_submit
         )

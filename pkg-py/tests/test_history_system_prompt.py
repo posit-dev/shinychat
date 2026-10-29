@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -96,6 +96,9 @@ def _make_prompt_controller(
         client=None,
     )
     controller.partition = part()
+    cast(_FakeChat, controller.chat)._wire_transcript_capture(
+        controller._exchange_recorder
+    )
     return controller, resolved_client
 
 
@@ -606,12 +609,15 @@ async def test_system_prompt_edit_and_regenerate_succeed(kind: str):
     assert client.system_prompt == "be precise"
     # Turns rewound to the parent prefix: root snapshot + first exchange.
     assert client.turns == [_user_turn("one"), _assistant_turn("answer one")]
-    assert record.active_leaf == first
 
+    # The staged replacement was admitted exactly once through the
+    # server-direct seam, as a new sibling under the retained parent.
     submitted = "two edited" if kind == "edit" else "two"
-    sibling = await transcript.record_accepted_input_and_notify(
-        _stored_message("user", submitted)
-    )
+    sibling = record.active_leaf
+    assert sibling is not None and sibling not in (first, second)
+    sibling_input = record.nodes[sibling].input
+    assert sibling_input is not None
+    assert str(sibling_input.content) == submitted
     assert record.nodes[sibling].parent_id == first
     assert record.children_of(first) == [second, sibling]
 
@@ -760,7 +766,6 @@ async def test_system_prompt_on_restore_override_survives_edit():
     assert restored_client.prompt_calls() == ["P", "OVERRIDE"]
 
     restored_recorder = restored._exchange_recorder
-    restored_transcript = _make_transcript(restored_recorder)
     restored_record = restored_recorder.record
     assert restored_record is not None
     restored_client.calls.clear()
@@ -780,12 +785,10 @@ async def test_system_prompt_on_restore_override_survives_edit():
     # The node-close capture still recorded the override faithfully on the
     # abandoned leaf...
     assert _prompt_data(restored_record, second) == "OVERRIDE"
-    # ...and the next capture on the shared parent records it too.
+    # ...and the staged admission's close capture on the shared parent
+    # records it too.
     first = restored_record.nodes[second].parent_id
     assert first is not None
-    await restored_transcript.record_accepted_input_and_notify(
-        _stored_message("user", "two edited")
-    )
     assert _prompt_data(restored_record, first) == "OVERRIDE"
 
 
@@ -949,10 +952,10 @@ async def test_system_prompt_real_chatlas_restore_and_regenerate():
         "user",
         "assistant",
     ]
-    restored_transcript = _make_transcript(restored._exchange_recorder)
-    sibling = await restored_transcript.record_accepted_input_and_notify(
-        _stored_message("user", "two")
-    )
+    # The staged regenerate was admitted exactly once, as a new sibling
+    # under the retained parent.
+    sibling = restored_record.active_leaf
+    assert sibling is not None and sibling not in (first, second)
     assert restored_record.nodes[sibling].parent_id == first
 
 
@@ -1283,7 +1286,10 @@ async def test_system_prompt_rewind_resolves_null_entries(
     assert client.system_prompt == expected
     assert client.prompt_calls() == calls
     assert client.turns == [_user_turn("one"), _assistant_turn("answer one")]
-    assert record.active_leaf == first
+    # The staged edit was admitted as a new sibling under the parent.
+    sibling = record.active_leaf
+    assert sibling is not None and sibling != first
+    assert record.nodes[sibling].parent_id == first
 
 
 @pytest.mark.anyio
@@ -1310,7 +1316,10 @@ async def test_system_prompt_null_source_keeps_same_prompt_override_on_rewind():
     assert client.system_prompt == "override"
     assert client.prompt_calls() == []
     assert _prompt_data(record, second) == "override"
-    assert record.active_leaf == first
+    # The staged edit was admitted as a new sibling under the parent.
+    sibling = record.active_leaf
+    assert sibling is not None and sibling != first
+    assert record.nodes[sibling].parent_id == first
 
 
 @pytest.mark.anyio
@@ -1332,6 +1341,10 @@ async def test_system_prompt_null_entries_preserve_inherited_branch_on_recapture
     )
     record = recorder.record
     assert record is not None
+    # The staged edit was admitted as a new sibling under the parent.
+    sibling = record.active_leaf
+    assert sibling is not None and sibling != original
+    assert record.nodes[sibling].parent_id == first
     if null_position in ("parent", "both"):
         record.nodes[first].state[SYSTEM_PROMPT_STATE_KEY] = (
             _null_prompt_entry()
@@ -1342,9 +1355,24 @@ async def test_system_prompt_null_entries_preserve_inherited_branch_on_recapture
         )
     client.system_prompt = "B"
 
-    await _drive_exchange(
-        transcript, client, "replacement", "new answer", stream_id="s3"
+    # A second edit's admission recaptures the shared parent with the
+    # changed live prompt: children without an effective recorded prompt
+    # are pinned to the value they inherited before the recapture.
+    await controller.resubmit(
+        sibling, kind="edit", request_id="edit-2", message_index=2
     )
+    replacement = record.active_leaf
+    assert replacement is not None and replacement != sibling
+    await transcript.start_stream(
+        stream_id="s3",
+        entry=TranscriptEntry(
+            message=_stored_message("assistant", "new answer")
+        ),
+        owner_task=None,
+        exchange_id=replacement,
+        send=_sent,
+    )
+    await transcript.end_stream(stream_id="s3", status=None, error=None, send=_sent)
 
     assert _prompt_data(record, first) == "B"
     assert _prompt_data(record, original) == "A"

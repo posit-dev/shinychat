@@ -23,6 +23,8 @@ from shinychat._history_store import (
     InMemoryConversationStore,
 )
 from shinychat._history_types import (
+    HISTORY_ERROR_NOT_SENT,
+    PREPARATION_STATE_KEY,
     VALUES_STATE_KEY,
     ConversationRecordV2,
     StateEntry,
@@ -292,7 +294,8 @@ async def test_ordinary_browse_restore_failure_marks_writable_record_read_only()
 async def test_read_only_retention_reports_app_failure_not_model_context() -> (
     None
 ):
-    controller, _ = _make_controller()
+    controller, _store = _make_controller()
+    fake_chat = cast(_FakeChat, controller.chat)
     recorder = controller._exchange_recorder
     assert recorder is not None
 
@@ -303,17 +306,26 @@ async def test_read_only_retention_reports_app_failure_not_model_context() -> (
     with pytest.warns(UserWarning):
         await replay_exchange_record(controller, _restore_target())
     assert recorder.record is not None
-    assert recorder.record.active_leaf is not None
-    with pytest.raises(RuntimeError) as excinfo:
+    original = recorder.record.active_leaf
+    assert original is not None
+    with pytest.warns(UserWarning, match="on_restore callback failed"):
         await controller.resubmit(
-            recorder.record.active_leaf,
+            original,
             kind="edit",
             request_id="r",
             message_index=0,
         )
-    message = str(excinfo.value)
-    assert "app state could not be fully restored" in message
-    assert "model context" not in message
+    failed_id = recorder.record.active_leaf
+    assert failed_id is not None and failed_id != original
+    failed = recorder.record.nodes[failed_id]
+    assert failed.status == "error"
+    assert failed.checkpoint == "invalid"
+    assert failed.error is not None
+    assert failed.error.message == HISTORY_ERROR_NOT_SENT
+    assert recorder.read_only_reason == "app_restore_failed"
+    update = _read_only_actions(fake_chat)[-1]
+    assert update["active_read_only_reason"] == "app_restore_failed"
+    assert update["active_can_resubmit"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +365,7 @@ async def test_read_only_browsing_stays_read_only_without_retry() -> None:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("message_index", [0, 2])
-async def test_failed_retained_parent_restore_suppresses_edit_projection(
+async def test_failed_retained_parent_restore_keeps_edit_without_dispatch(
     request: pytest.FixtureRequest,
     message_index: int,
     tmp_path: Path,
@@ -378,6 +390,7 @@ async def test_failed_retained_parent_restore_suppresses_edit_projection(
         kind="values", version=1, mode="snapshot", data={"value": "first"}
     )
     values_seen: list[dict[str, Any]] = []
+    submission_sequence = chat._normal_user_submission_sequence
 
     def failing(values: dict[str, Any]) -> None:
         values_seen.append(dict(values))
@@ -390,25 +403,46 @@ async def test_failed_retained_parent_restore_suppresses_edit_projection(
     with pytest.warns(UserWarning, match="on_restore callback failed"):
         await controller.handle_edit(message_index, "edited", request_id="req")
 
-    assert record.active_leaf == target
+    failed_id = record.active_leaf
+    assert failed_id is not None and failed_id not in (first, target)
+    failed = record.nodes[failed_id]
+    parent_id = record.root_id if message_index == 0 else first
+    prefix = [] if message_index == 0 else ["first", "reply one"]
+    assert failed.parent_id == parent_id
+    assert failed.status == "error"
+    assert failed.checkpoint == "invalid"
+    assert failed.error is not None
+    assert failed.error.message == HISTORY_ERROR_NOT_SENT
+    assert failed.state[PREPARATION_STATE_KEY].data == {
+        "terminal": True,
+        "accepted": False,
+        "app_values": "complete",
+    }
+    # No on_save callbacks: the complete observed snapshot is {}, not
+    # the retained parent's values masquerading as a failed capture.
+    assert failed.state[VALUES_STATE_KEY].data == {}
     assert [
         cast(Any, entry.message).segments[0].content
         for entry in chat._transcript.read()
-    ] == ["first", "reply one", "second", "reply two"]
+    ] == [*prefix, "edited"]
+    assert chat._normal_user_submission_sequence == submission_sequence
+    assert chat._transcript.open_exchange_id is None
     stored = await store.get(controller.partition, record.id)
     assert isinstance(stored, ConversationRecordV2)
-    assert stored.active_leaf == target
+    assert stored.active_leaf == failed_id
     assert tuple(stored.path_node_ids()) == tuple(record.path_node_ids())
     assert stored is not record
     assert stored.nodes[target].state == record.nodes[target].state
-    # The retained parent's recorded prefix is exact, so the outgoing
-    # close stores only the branch's own suffix as a delta.
+    assert stored.nodes[first].input is not None
+    original_input = stored.nodes[target].input
+    assert original_input is not None
+    assert original_input.content == "second"
+    # Outgoing model-only close capture still preserves the branch's suffix.
     assert stored.nodes[target].state["shinychat:turns"].mode == "delta"
     assert stored.nodes[target].state["shinychat:turns"].data == [
         {"role": "user", "content": "second"},
         {"role": "assistant", "content": "fresh model close"},
     ]
-    # The model remains rewound, inert under the central read-only guards.
     assert adapter.turns == (
         [{"role": "system", "content": "bootstrap"}]
         if message_index == 0
@@ -419,32 +453,47 @@ async def test_failed_retained_parent_restore_suppresses_edit_projection(
     )
     assert values_seen == ([{}] if message_index == 0 else [{"value": "first"}])
 
-    # Reopening uses the persisted full branch, not the interior parent.
+    # Reopening preserves the selected failed version and its own app facts.
     reloaded, _reload_store = _make_controller()
     reload_chat = cast(_FakeChat, reloaded.chat)
     with pytest.warns(UserWarning, match="on_restore callback failed"):
         reloaded._restore_callbacks.append(failing)
         await replay_exchange_record(reloaded, stored)
     assert reloaded._exchange_recorder.record is not None
-    assert reloaded._exchange_recorder.record.active_leaf == target
+    assert reloaded._exchange_recorder.record.active_leaf == failed_id
+    assert reloaded._exchange_recorder.source_isolated is False
     assert [
         m["segments"][0]["content"] for m in reload_chat.restored_messages
-    ] == ["first", "reply one", "second", "reply two"]
+    ] == [*prefix, "edited"]
+    assert values_seen[-1] == {}
 
-    # The replacement provider kickoff never went out: no edit projection,
-    # while the metadata/display update did, marked view-only.
-    assert not any(a["type"] == "history_edit_projection" for a in sent)
+    # Projection is presentation, not provider kickoff: it uses the staged ID
+    # without a browser echo; accepted-input publication is still unchanged.
+    projections = [a for a in sent if a["type"] == "history_edit_projection"]
+    assert len(projections) == 1
+    assert projections[0]["exchange_id"] == failed_id
+    assert projections[0]["submission_mode"] == "server"
     assert sent[-1]["type"] == "history_update"
     assert sent[-1]["active_read_only"] is True
     assert sent[-1]["active_read_only_reason"] == "app_restore_failed"
     assert recorder.read_only is True
 
-    # A second edit against the read-only record is refused, with the
-    # app-state reason rather than a model-context claim.
-    with pytest.raises(RuntimeError, match="app state could not be fully"):
+    # An intentional Retry that fails again creates another version, leaving
+    # the first failed node and the original branch unchanged.
+    first_failure = failed.model_copy(deep=True)
+    with pytest.warns(UserWarning, match="on_restore callback failed"):
         await controller.resubmit(
-            target, kind="edit", request_id="req-2", message_index=2
+            failed_id,
+            kind="retry",
+            request_id="req-2",
+            message_index=message_index,
         )
+    retry_id = record.active_leaf
+    assert retry_id is not None and retry_id != failed_id
+    assert record.nodes[retry_id].parent_id == parent_id
+    assert record.nodes[retry_id].checkpoint == "invalid"
+    assert record.nodes[failed_id] == first_failure
+    assert chat._normal_user_submission_sequence == submission_sequence
 
 
 @pytest.mark.anyio
@@ -758,7 +807,7 @@ async def test_new_chat_neither_captures_outgoing_nor_restores() -> None:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("operation", ["browse", "edit"])
-async def test_in_session_restore_callback_sees_outgoing_transcript_after_model_rewind(
+async def test_in_session_restore_callback_transcript_matches_operation(
     request: pytest.FixtureRequest, operation: str
 ) -> None:
     if operation == "edit":
@@ -785,7 +834,6 @@ async def test_in_session_restore_callback_sees_outgoing_transcript_after_model_
     record = controller._exchange_recorder.record
     assert record is not None
     outgoing = chat.messages()
-    original_leaf = record.active_leaf
     observations: list[tuple[Any, Any, Any, dict[str, Any]]] = []
 
     def observe(_values: dict[str, Any]) -> None:
@@ -805,7 +853,10 @@ async def test_in_session_restore_callback_sees_outgoing_transcript_after_model_
             {"role": "system", "content": "bootstrap"},
             {"role": "user", "content": "first"},
         ]
-        expected_leaf = original_leaf
+        # An edit prepares unaccepted input against the retained parent.
+        # Its restore callback must see that parent's accepted prefix.
+        expected_messages = outgoing[:2]
+        expected_leaf = record.active_leaf
     else:
         await controller.handle_navigate(2, "prev", request_id="phase")
         expected_turns = [
@@ -813,5 +864,16 @@ async def test_in_session_restore_callback_sees_outgoing_transcript_after_model_
             {"role": "user", "content": "first"},
             {"role": "user", "content": "original"},
         ]
+        expected_messages = outgoing
         expected_leaf = first
-    assert observations == [(outgoing, expected_turns, expected_leaf, {})]
+    assert observations == [
+        (expected_messages, expected_turns, expected_leaf, {})
+    ]
+    if operation == "edit":
+        # The callback saw the one staged node that was later accepted.
+        assert expected_leaf is not None
+        assert expected_leaf not in (first, target)
+        node = record.nodes[expected_leaf]
+        assert node.parent_id == first
+        assert node.input is not None
+        assert node.input.content == "replacement"

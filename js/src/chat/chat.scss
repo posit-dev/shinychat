@@ -1501,6 +1501,16 @@ shiny-chat-container:not([fill]) {
   overflow-wrap: anywhere;
 }
 
+// Keep preparation outcomes outside the bubble, below its version controls.
+.shiny-chat-message-not-sent {
+  align-self: flex-end;
+  max-width: 100%;
+  margin: -0.5rem 0 0;
+  color: var(--bs-secondary-color, #6c757d);
+  font-size: 0.875em;
+  font-style: italic;
+}
+
 /* Edit box — a boxed mini-composer matching the chrome of the main input at
    the bottom of the chat, so editing a message reuses the same visual
    language as sending one, rather than a bespoke inline form. */

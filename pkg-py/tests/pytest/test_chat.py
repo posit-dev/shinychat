@@ -449,7 +449,7 @@ def test_echoed_slash_command_capture_error_removes_loading_message():
         async def _capture_exception(error: BaseException) -> None:
             errors.append(error)
 
-        chat._record_accepted_user_input_with_capture = _capture_error
+        chat._record_accepted_user_input_with_capture = _capture_error  # type: ignore[method-assign]
         chat._raise_exception = _capture_exception  # type: ignore[method-assign]
         chat._send_action = _capture_action  # type: ignore[method-assign]
 

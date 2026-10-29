@@ -369,16 +369,17 @@ async def test_values_branch_snapshots_stay_per_exchange_across_edits() -> None:
     # Unchanged from the root: the exchange inherits and records nothing.
     await controller.on_response()
     await controller.handle_edit(0, "alternative", request_id="edit-1")
-    sibling = await transcript.record_accepted_input_and_notify(
-        _stored_message("user", "alternative")
-    )
+    record = recorder.record
+    assert record is not None
+    # The staged edit is admitted exactly once, as its own exchange.
+    sibling = record.active_leaf
+    assert sibling is not None and sibling != abandoned
     await controller.on_response()
 
     live["v"] = "changed"
     await controller.handle_edit(0, "alternative two", request_id="edit-2")
-    replacement = await transcript.record_accepted_input_and_notify(
-        _stored_message("user", "alternative two")
-    )
+    replacement = record.active_leaf
+    assert replacement is not None and replacement not in (abandoned, sibling)
 
     record = recorder.record
     assert record is not None
@@ -518,17 +519,18 @@ async def test_values_explicit_parent_recapture_spares_own_entry_children() -> (
     _finish_pending(recorder.record)
     await controller.on_response()
     await controller.handle_edit(0, "alternative", request_id="edit-1")
-    sibling = await transcript.record_accepted_input_and_notify(
-        _stored_message("user", "alternative")
-    )
+    record = recorder.record
+    assert record is not None
+    # The staged edit is admitted exactly once, as its own exchange.
+    sibling = record.active_leaf
+    assert sibling is not None and sibling != abandoned
     _finish_pending(recorder.record)
     await controller.on_response()
 
     live["v"] = "changed"
     await controller.handle_edit(0, "alternative two", request_id="edit-2")
-    replacement = await transcript.record_accepted_input_and_notify(
-        _stored_message("user", "alternative two")
-    )
+    replacement = record.active_leaf
+    assert replacement is not None and replacement not in (abandoned, sibling)
     _finish_pending(recorder.record)
 
     record = recorder.record

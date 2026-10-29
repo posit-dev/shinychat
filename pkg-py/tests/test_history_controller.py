@@ -64,6 +64,7 @@ from shinychat._history_store import (
 from shinychat._history_types import (
     HISTORY_ERROR_GENERIC,
     HISTORY_ERROR_MESSAGES,
+    HISTORY_ERROR_NOT_SENT,
     HISTORY_ERROR_STREAM_START,
     HISTORY_ERROR_STREAM_TERMINAL,
     MAX_SCHEMA_VERSION,
@@ -80,6 +81,7 @@ from shinychat._history_types import (
     UnsupportedSchemaVersionError,
     new_conversation_record,
     new_conversation_record_v2,
+    node_is_terminal_incomplete,
     normalize_history_error_message,
     project_history_error_message,
 )
@@ -280,6 +282,40 @@ class _FakeChat:
 
     def _publish_accepted_user_input(self, message: StoredMessage) -> None:
         self.published_inputs.append(message)
+
+    def _wire_transcript_capture(self, recorder: Any) -> None:
+        """Wire this fake's transcript to the recorder, as production does."""
+        self._transcript.set_capture_callbacks(
+            on_accepted_input=recorder.accepted_input,
+            on_message_committed=recorder.message_committed,
+            on_stream_started=recorder.stream_started,
+            on_stream_updated=recorder.stream_updated,
+            on_stream_finished=recorder.stream_finished,
+        )
+
+    async def _record_accepted_user_input_with_capture(
+        self,
+        message: StoredMessage,
+        *,
+        dispatch_user_submit: bool = True,
+        staged_admission: Any | None = None,
+        transaction: object | None = None,
+    ) -> None:
+        """The fake's accepted-input seam, mirroring the production one.
+
+        Staged admissions commit under their pre-recorded exchange ID
+        (through the same transcript observer contract); ordinary inputs
+        mint a fresh one. Publication follows the accepted commit, as in
+        production.
+        """
+        del dispatch_user_submit, transaction
+        if staged_admission is not None:
+            await self._transcript.record_staged_input_and_notify(
+                staged_admission, message
+            )
+        else:
+            await self._transcript.record_accepted_input_and_notify(message)
+        self._publish_accepted_user_input(message)
 
 
 class _RealChatSession:
@@ -492,6 +528,9 @@ def _make_controller(
         save_callbacks=save_callbacks,
     )
     controller.partition = part()
+    cast(_FakeChat, controller.chat)._wire_transcript_capture(
+        controller._exchange_recorder
+    )
     return controller, resolved_store
 
 
@@ -3869,10 +3908,17 @@ async def test_v2_resubmit_accepts_active_path_ancestor_for_edit():
         message_index=0,
     )
 
-    assert record.active_leaf == "n_0000"
+    # The staged edit was admitted under the root, with the model rewound
+    # to it; both the staged put and the admission put are durable.
+    staged = record.active_leaf
+    assert staged is not None and staged not in ("n_0000", first)
+    assert record.nodes[staged].parent_id == "n_0000"
+    staged_input = record.nodes[staged].input
+    assert staged_input is not None
+    assert staged_input.content == "first replacement"
     assert adapter.turns == [{"role": "system", "content": "bootstrap"}]
-    assert len(store.put_calls) == 1
-    assert chat.actions[-1]["type"] == "history_edit_projection"
+    assert len(store.put_calls) == 2
+    assert chat.actions[0]["type"] == "history_edit_projection"
 
 
 @pytest.mark.anyio
@@ -3895,12 +3941,10 @@ async def test_v2_resubmit_projection_failure_names_the_step():
 
     chat._send_action = fail_projection_send  # type: ignore[method-assign]
 
-    with (
-        pytest.raises(RuntimeError, match="projection send failed"),
-        pytest.warns(
-            UserWarning,
-            match=r"Chat history restore failed \(failed while sending the resubmission\)",
-        ),
+    with pytest.warns(
+        UserWarning,
+        match=r"Chat history edit preparation failed "
+        r"\(failed while sending the resubmission\)",
     ):
         await controller.resubmit(
             first,
@@ -3910,10 +3954,15 @@ async def test_v2_resubmit_projection_failure_names_the_step():
             message_index=0,
         )
 
-    notifier.assert_awaited_once_with(
-        recovery_incomplete=False,
-        detail="failed while sending the resubmission",
-    )
+    # The failure attached to the staged node instead of raising: the
+    # projection delivery failure is not a restore cleanup.
+    notifier.assert_not_awaited()
+    recorder = controller._exchange_recorder
+    record = recorder.record
+    assert record is not None
+    staged = record.active_leaf
+    assert staged is not None and staged != first
+    assert node_is_terminal_incomplete(record.nodes[staged])
 
 
 @pytest.mark.anyio
@@ -6444,7 +6493,15 @@ async def test_v2_resubmit_rewinds_parent_prefix_and_new_input_creates_sibling()
 
     record = recorder.record
     assert record is not None
-    assert record.active_leaf == first
+    # The staged retry was admitted exactly once, as a new sibling under
+    # the retained parent.
+    exchange_id = record.active_leaf
+    assert exchange_id is not None and exchange_id not in (first, target)
+    assert record.nodes[exchange_id].parent_id == first
+    assert record.children_of(first) == [target, exchange_id]
+    sibling_input = record.nodes[exchange_id].input
+    assert sibling_input is not None
+    assert sibling_input.content == "second"
     assert adapter.turns == [
         {"role": "system", "content": "bootstrap"},
         {"role": "user", "content": "first"},
@@ -6455,8 +6512,10 @@ async def test_v2_resubmit_rewinds_parent_prefix_and_new_input_creates_sibling()
         "index": 1,
         "content": "second",
         "attachments": [],
+        "submission_mode": "server",
+        "exchange_id": exchange_id,
     }
-    assert len(store.put_calls) == 1
+    assert len(store.put_calls) == 2
     assert record.nodes[target].input == target_input
     # Leaving the target branch captures the live model context at that
     # point. The parent checkpoint's prefix is exact, so the seeded delta
@@ -6467,12 +6526,6 @@ async def test_v2_resubmit_rewinds_parent_prefix_and_new_input_creates_sibling()
         mode="delta",
         data=[{"role": "user", "content": "second"}],
     )
-
-    exchange_id = await chat._transcript.record_accepted_input_and_notify(
-        _stored_message("user", "second")
-    )
-    assert record.nodes[exchange_id].parent_id == first
-    assert record.children_of(first) == [target, exchange_id]
     assert record.nodes[target].input == target_input
 
 
@@ -6621,20 +6674,29 @@ async def test_v2_resubmit_syncs_real_server_transcript_to_parent_prefix(
     else:
         await controller.handle_resubmit(2, kind, request_id="req")
 
-    # The client projection still goes out unchanged.
+    # The client projection goes out with the server-direct fields: the
+    # staged exchange identity, and no browser echo expected.
+    replacement = "second edited" if kind == "edit" else "second"
     assert sent[-1] == {
         "type": "history_edit_projection",
         "requestId": "req",
         "index": 2,
-        "content": "second edited" if kind == "edit" else "second",
+        "content": replacement,
         "attachments": [],
+        "submission_mode": "server",
+        "exchange_id": record.active_leaf,
     }
 
-    # The server transcript holds exactly the parent prefix, with the
-    # retained entries' rich data intact.
+    # The server transcript holds the parent prefix plus the admitted
+    # replacement (committed by the staged admission), with the retained
+    # entries' rich data intact.
     messages = chat.messages()
-    assert [m["content"] for m in messages] == ["first", "reply one"]
-    assert [m["role"] for m in messages] == ["user", "assistant"]
+    assert [m["content"] for m in messages] == [
+        "first",
+        "reply one",
+        replacement,
+    ]
+    assert [m["role"] for m in messages] == ["user", "assistant", "user"]
     prefix_attachments = messages[0].get("attachments")
     assert prefix_attachments is not None
     assert prefix_attachments[0].name == "notes.txt"
@@ -6644,20 +6706,9 @@ async def test_v2_resubmit_syncs_real_server_transcript_to_parent_prefix(
     assert [m["segments"][0]["content"] for m in bookmark_dump] == [
         "first",
         "reply one",
-    ]
-    assert bookmark_dump[0]["attachments"][0]["name"] == "notes.txt"
-
-    # The replacement input then appends through the ordinary real-Chat
-    # capture path, producing prefix + replacement on the server too.
-    replacement = "second edited" if kind == "edit" else "second"
-    await chat._record_accepted_user_input_with_capture(
-        ChatMessage(content=replacement, role="user")
-    )
-    assert [m["content"] for m in chat.messages()] == [
-        "first",
-        "reply one",
         replacement,
     ]
+    assert bookmark_dump[0]["attachments"][0]["name"] == "notes.txt"
     sibling = record.active_leaf
     assert sibling is not None
     assert sibling != target
@@ -6719,26 +6770,30 @@ async def test_v2_resubmit_rejects_real_chat_input_until_replay_releases(
         await chat._record_accepted_user_input_with_capture(
             ChatMessage(content="competing input", role="user")
         )
-    # The rewind hooks run before the leaf move is persisted: while they
-    # are blocked the record still points at the leaf the user sees.
-    assert record.active_leaf == target
-    assert record.children_of(first) == [target]
+    # The validated submission is staged and selected BEFORE the rewind
+    # hooks run: while they are blocked the record already shows the
+    # submitted edit (it is never rolled back), and competing browser
+    # input stays rejected.
+    staged = record.active_leaf
+    assert staged is not None and staged not in (first, target)
+    assert record.children_of(first) == [target, staged]
 
     release_rewind.set()
     await resubmit
 
-    # Only after the rewind accepted does the leaf move to the parent.
-    assert record.active_leaf == first
+    # The staged submission was admitted exactly once during resubmit;
+    # ordinary input is admitted again afterwards.
+    assert record.active_leaf == staged
     assert not chat._destructive_history_blocks_input
     await chat._record_accepted_user_input_with_capture(
         ChatMessage(content="second", role="user")
     )
-    sibling = record.active_leaf
-    assert sibling is not None
-    sibling_input = record.nodes[sibling].input
-    assert sibling_input is not None
-    assert sibling_input.content == "second"
-    assert record.children_of(first) == [target, sibling]
+    followup = record.active_leaf
+    assert followup is not None and followup != staged
+    followup_input = record.nodes[followup].input
+    assert followup_input is not None
+    assert followup_input.content == "second"
+    assert record.children_of(first) == [target, staged]
 
 
 @pytest.mark.anyio
@@ -6839,16 +6894,19 @@ async def test_v2_edit_resubmit_forwards_validated_attachment_copy():
         1, "edited", [attachment], request_id="request"
     )
 
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    assert recorder.record is not None
+    staged = recorder.record.active_leaf
     assert chat.actions[-1] == {
         "type": "history_edit_projection",
         "requestId": "request",
         "index": 1,
         "content": "edited",
         "attachments": [attachment],
+        "submission_mode": "server",
+        "exchange_id": staged,
     }
-    recorder = controller._exchange_recorder
-    assert recorder is not None
-    assert recorder.record is not None
     target_input = recorder.record.nodes[target].input
     assert target_input is not None
     assert target_input.content == "second"
@@ -6872,7 +6930,11 @@ async def test_v2_edit_nonleaf_rewinds_to_root_and_preserves_old_branch() -> (
 
     await controller.handle_edit(0, "first replacement", request_id="request")
 
-    assert record.active_leaf == "n_0000"
+    # The staged edit was admitted under the root; the old branch is
+    # preserved untouched.
+    staged = record.active_leaf
+    assert staged is not None and staged not in ("n_0000", first, target)
+    assert record.nodes[staged].parent_id == "n_0000"
     assert adapter.turns == [{"role": "system", "content": "bootstrap"}]
     assert chat.actions[-1] == {
         "type": "history_edit_projection",
@@ -6880,21 +6942,28 @@ async def test_v2_edit_nonleaf_rewinds_to_root_and_preserves_old_branch() -> (
         "index": 0,
         "content": "first replacement",
         "attachments": [],
+        "submission_mode": "server",
+        "exchange_id": staged,
     }
-    assert len(store.put_calls) == 1
+    assert len(store.put_calls) == 2
     assert record.nodes[first].input == old_first
     assert record.nodes[target].input == old_target
 
 
 @pytest.mark.anyio
-async def test_v2_edit_projection_delivery_failure_clears_to_fresh_draft() -> (
+async def test_v2_edit_projection_delivery_failure_retains_failed_node() -> (
     None
 ):
-    controller, chat, adapter, _store, _first, _target = (
+    """A projection delivery failure finalizes the same staged node.
+
+    The submitted edit is never rolled back or cleared to a fresh draft:
+    it stays recorded and selected as a known terminal incomplete
+    position, and the record is retained.
+    """
+    controller, chat, adapter, _store, _first, target = (
         _make_v2_resubmit_controller()
     )
     recorder = controller._exchange_recorder
-    assert recorder is not None
 
     async def fail_projection(action: dict[str, Any]) -> None:
         if action["type"] == "history_edit_projection":
@@ -6902,17 +6971,37 @@ async def test_v2_edit_projection_delivery_failure_clears_to_fresh_draft() -> (
 
     chat._send_action = fail_projection  # type: ignore[method-assign]
 
-    with pytest.raises(RuntimeError, match="projection unavailable"):
+    with pytest.warns(UserWarning, match="edit preparation failed"):
         await controller.handle_edit(1, "edited", request_id="request")
 
-    assert recorder.record is None
-    assert controller._active_id_now() is None
-    assert adapter.turns == []
-    assert chat.clear_messages_calls == 1
+    record = recorder.record
+    assert record is not None
+    staged = record.active_leaf
+    assert staged is not None and staged != target
+    node = record.nodes[staged]
+    assert node.status == "error"
+    assert node.error is not None
+    assert node.error.message == HISTORY_ERROR_NOT_SENT
+    assert node.checkpoint == "invalid"
+    assert node_is_terminal_incomplete(node)
+    assert node.input is not None
+    assert node.input.content == "edited"
+    # The original branch is preserved; the record is never cleared.
+    assert record.nodes[target].input is not None
+    assert recorder.read_only
+    assert recorder.read_only_reason == "terminal_incomplete"
+    assert chat.clear_messages_calls == 0
 
 
 @pytest.mark.anyio
-async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
+async def test_v2_resubmit_store_failure_retains_failed_node() -> None:
+    """A failing first put retains the staged node and reports not-saved.
+
+    Storage failure never rolls the edit back: the failure outcome is
+    attached to the same working node in memory, the client settles
+    through metadata, and the person is told the message was not sent and
+    could not be saved.
+    """
     controller, chat, adapter, store, _first, target = (
         _make_v2_resubmit_controller()
     )
@@ -6920,92 +7009,50 @@ async def test_v2_resubmit_store_failure_clears_to_fresh_draft() -> None:
     assert recorder is not None
     record = recorder.record
     assert record is not None
-    chat.messages = [
-        _stored_message("user", "first"),
-        _stored_message("user", "second"),
-    ]
-    expected = RuntimeError("resubmit persistence failed")
     notifier = AsyncMock()
-    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
-    cleanup_entry: list[tuple[Any, ...]] = []
-    original_clear_failed_restore = controller._clear_failed_restore
-
-    async def capture_cleanup_entry(
-        failure: BaseException | None = None,
-    ) -> None:
-        cleanup_entry.append(
-            (
-                failure,
-                recorder.record,
-                controller._active_id_now(),
-                record.active_leaf,
-                list(chat.messages),
-                list(adapter.turns),
-            )
-        )
-        await original_clear_failed_restore(failure)
-
-    controller._clear_failed_restore = capture_cleanup_entry  # type: ignore[method-assign]
+    controller._notify_edit_not_saved = notifier  # type: ignore[method-assign]
+    expected = RuntimeError("resubmit persistence failed")
     put_attempts: list[ConversationRecordV2] = []
 
     async def fail_put(
         _partition: ConversationPartition, failed_record: ConversationRecordV2
     ) -> None:
-        put_attempts.append(failed_record)
+        put_attempts.append(failed_record.model_copy(deep=True))
         raise expected
 
     store.put = fail_put  # type: ignore[method-assign]
 
-    with pytest.raises(RuntimeError) as raised:
+    with pytest.warns(UserWarning, match="could not save the failed"):
         await controller.resubmit(
             target, kind="retry", request_id="request", message_index=1
         )
 
-    assert raised.value is expected
-    assert len(put_attempts) == 1
-    assert put_attempts[0].active_leaf == _first
-    # The rewind hooks ran before the failed persist, so the cleanup
-    # snapshot sees the rewound parent-prefix turns, not the live ones.
-    rewound_turns = [
-        {"role": "system", "content": "bootstrap"},
-        {"role": "user", "content": "first"},
-    ]
-    assert cleanup_entry == [
-        (
-            expected,
-            record,
-            record.id,
-            _first,
-            [
-                _stored_message("user", "first"),
-                _stored_message("user", "second"),
-            ],
-            rewound_turns,
-        )
-    ]
-    assert recorder.record is None
-    assert controller._active_id_now() is None
-    assert adapter.turns == []
-    assert chat.clear_messages_calls == 1
-    assert chat.messages == []
-    assert chat.set_greeting_calls == [None]
-    assert chat.actions == [
-        {
-            "type": "history_update",
-            "enabled": True,
-            "conversations": [],
-            "active_id": None,
-            "transition_protocol": "completion-v2",
-        }
-    ]
-    notifier.assert_awaited_once_with(
-        recovery_incomplete=False,
-        detail="failed while saving the resubmission",
-    )
+    # Both the initial staged put and the failure-attachment put failed;
+    # the in-memory record still carries the terminal outcome.
+    assert len(put_attempts) == 2
+    assert recorder.record is not None
+    staged = recorder.record.active_leaf
+    assert staged is not None and staged != target
+    node = recorder.record.nodes[staged]
+    assert node.status == "error"
+    assert node.checkpoint == "invalid"
+    assert node_is_terminal_incomplete(node)
+    assert put_attempts[0].nodes[staged].status == "pending"
+    assert node_is_terminal_incomplete(put_attempts[1].nodes[staged])
+    # No fresh-draft cleanup, no swallowed settlement.
+    assert chat.clear_messages_calls == 0
+    assert recorder.read_only_reason == "terminal_incomplete"
+    notifier.assert_awaited_once_with()
 
 
 @pytest.mark.anyio
-async def test_v2_resubmit_rewind_hook_failure_keeps_persisted_leaf() -> None:
+async def test_v2_resubmit_rewind_hook_failure_retains_failed_node() -> None:
+    """A rewind hook failure attaches to the staged node, never fresh-draft.
+
+    The seeded store stays untouched (the staged node's own puts record
+    the attempt and its terminal outcome), the visible edit is retained,
+    and the original branch is preserved.
+    """
     controller, chat, adapter, store, first, target = (
         _make_v2_resubmit_controller()
     )
@@ -7029,53 +7076,36 @@ async def test_v2_resubmit_rewind_hook_failure_keeps_persisted_leaf() -> None:
         data={},
     )
     recorder._register_rewind_hook("test:rewind", fail_rewind)
-    notifier = AsyncMock()
-    controller._notify_restore_failure = notifier  # type: ignore[method-assign]
 
-    with (
-        pytest.raises(_history_plan.StateHookError) as raised,
-        pytest.warns(
-            UserWarning,
-            match=r"Chat history restore failed "
-            r"\(the 'test:rewind' state entry failed to apply\): "
-            r"StateHookError\(\"Failed to apply state entry "
-            r"'test:rewind': resubmit rewind failed\"\)",
-        ),
-    ):
+    with pytest.warns(UserWarning, match="edit preparation failed"):
         await controller.resubmit(
             target, kind="retry", request_id="request", message_index=1
         )
 
-    # The hook's own error stays chained; the wrapper names the entry.
-    assert raised.value.entry_name == "test:rewind"
-    assert raised.value.__cause__ is error
-    # The rewind hooks run before the leaf move is persisted: only the
-    # seeded record reached the store, and it still points at the leaf
-    # the user sees.
-    assert len(store.put_calls) == 1
+    # The seeded put, the staged node's initial put, and the terminal
+    # outcome put: every write points at the staged position.
+    assert len(store.put_calls) == 3
     assert store.put_calls[0][1].active_leaf == target
-    assert record.active_leaf == target
-    # Fail-to-fresh-draft applies: memory is cleared even though the
-    # store was never moved.
-    assert recorder.record is None
-    assert controller._active_id_now() is None
-    assert adapter.turns == []
-    assert chat.messages == []
-    assert chat.clear_messages_calls == 1
-    assert chat.set_greeting_calls == [None]
-    assert chat.actions == [
-        {
-            "type": "history_update",
-            "enabled": True,
-            "conversations": [],
-            "active_id": None,
-            "transition_protocol": "completion-v2",
-        }
+    staged = record.active_leaf
+    assert staged is not None and staged != target
+    assert store.put_calls[1][1].active_leaf == staged
+    assert store.put_calls[2][1].active_leaf == staged
+    node = record.nodes[staged]
+    assert node.status == "error"
+    assert node.error is not None
+    assert node.error.message == HISTORY_ERROR_NOT_SENT
+    assert node.checkpoint == "invalid"
+    assert node_is_terminal_incomplete(node)
+    # No fresh-draft cleanup: the record, the live turns, and the display
+    # stay where the person left them.
+    assert recorder.record is not None
+    assert controller._active_id_now() == record.id
+    assert adapter.turns == [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
     ]
-    notifier.assert_awaited_once_with(
-        recovery_incomplete=False,
-        detail="the 'test:rewind' state entry failed to apply",
-    )
+    assert chat.clear_messages_calls == 0
+    assert recorder.read_only_reason == "terminal_incomplete"
 
 
 @pytest.mark.anyio
@@ -7224,7 +7254,12 @@ def test_v2_error_normalization_is_nfc_whitespace_safe_and_bounded() -> None:
             HISTORY_ERROR_GENERIC,
             HISTORY_ERROR_STREAM_START,
             HISTORY_ERROR_STREAM_TERMINAL,
+            HISTORY_ERROR_NOT_SENT,
         }
+    )
+    assert (
+        project_history_error_message(HISTORY_ERROR_NOT_SENT)
+        == HISTORY_ERROR_NOT_SENT
     )
 
 
@@ -7326,7 +7361,11 @@ async def test_v2_compatible_retry_rewinds_stored_parent_turns():
 
     await controller.handle_resubmit(1, "retry", request_id="retry")
 
-    assert record.active_leaf == first
+    # The staged retry was admitted exactly once, as a new sibling under
+    # the compatible stored parent.
+    sibling = record.active_leaf
+    assert sibling is not None and sibling not in (first, target)
+    assert record.nodes[sibling].parent_id == first
     assert record.nodes[target].status == "error"
     assert record.nodes[target].input == original
     assert adapter.turns == [
@@ -7339,6 +7378,8 @@ async def test_v2_compatible_retry_rewinds_stored_parent_turns():
         "index": 1,
         "content": "second",
         "attachments": [],
+        "submission_mode": "server",
+        "exchange_id": sibling,
     }
 
 
@@ -7444,15 +7485,21 @@ async def test_v2_retry_restores_partial_exchange_before_creating_sibling(
 
     await controller.handle_resubmit(0, "retry", request_id="retry")
 
+    # The staged retry was admitted exactly once, as a new sibling under
+    # the restored parent — the partial exchange is rewound, never
+    # rewritten.
+    sibling = record.active_leaf
+    assert sibling is not None and sibling != target
     assert chat.actions[-1] == {
         "type": "history_edit_projection",
         "requestId": "retry",
         "index": 0,
         "content": "retry this",
         "attachments": [],
+        "submission_mode": "server",
+        "exchange_id": sibling,
     }
     assert adapter.turns == parent_prefix
-    assert record.active_leaf == parent_id
     assert (
         record.nodes[target].model_dump(mode="json", exclude={"state"})
         == original_node
@@ -7474,11 +7521,6 @@ async def test_v2_retry_restores_partial_exchange_before_creating_sibling(
         ],
     )
 
-    await chat._transcript.record_accepted_input_and_notify(original_input)
-
-    sibling = record.active_leaf
-    assert sibling is not None
-    assert sibling != target
     assert record.nodes[sibling].parent_id == parent_id
     assert record.nodes[sibling].input == original_input
     assert adapter.turns == parent_prefix
@@ -7503,7 +7545,11 @@ async def test_v2_regenerate_uses_the_real_resubmit_primitive():
 
     await controller.handle_resubmit(1, "regenerate", request_id="regenerate")
 
-    assert record.active_leaf == first
+    # The staged regenerate was admitted exactly once, as a new sibling
+    # under the retained parent; the completed original stays intact.
+    sibling = record.active_leaf
+    assert sibling is not None and sibling not in (first, target)
+    assert record.nodes[sibling].parent_id == first
     assert record.nodes[target].status == "ok"
     assert record.nodes[target].input == original
     assert adapter.turns == [
@@ -7516,6 +7562,8 @@ async def test_v2_regenerate_uses_the_real_resubmit_primitive():
         "index": 1,
         "content": "second",
         "attachments": [],
+        "submission_mode": "server",
+        "exchange_id": sibling,
     }
 
 

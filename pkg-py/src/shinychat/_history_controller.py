@@ -12,11 +12,12 @@ from typing import (
     Iterator,
 )
 
-from . import _history_plan
+from . import _history_plan, _utils
 from ._attachments import (
     Attachment,
     validate_attachments,
 )
+from ._chat_transcript import StagedInputAdmission, TranscriptEntry
 from ._chat_types import (
     ExchangeMetadata,
     HistoryEditProjectionAction,
@@ -47,6 +48,7 @@ from ._history_title import (
 # NB: shiny is imported lazily inside methods throughout this module; a
 # top-level import would be circular (shiny.ui._chat imports shinychat).
 from ._history_types import (
+    HISTORY_ERROR_NOT_SENT,
     SYSTEM_PROMPT_STATE_KEY,
     TURNS_STATE_KEY,
     ConversationRecordV1,
@@ -55,13 +57,15 @@ from ._history_types import (
     TurnDict,
     check_schema_version,
     new_conversation_id,
+    node_has_unavailable_app_values,
+    node_is_terminal_incomplete,
     project_history_error_message,
+    validate_node_preparation_consistency,
 )
 from ._history_v1 import import_v1_record_with_warnings
 
 if TYPE_CHECKING:
     from ._chat import Chat
-    from ._chat_transcript import TranscriptEntry
 
 
 # Exchange statuses from which a retry (or a fresh resubmit) is allowed.
@@ -72,6 +76,15 @@ _RETRYABLE_STATUSES = ("pending", "error", "cancelled")
 # live client's model state is not rewound while a record is view-only.
 # App-registered rewind hooks keep their ordinary behavior.
 _MODEL_STATE_KEYS = frozenset({TURNS_STATE_KEY, SYSTEM_PROMPT_STATE_KEY})
+
+# View-only restrictions an explicit resubmit (edit/retry/regenerate) may
+# revalidate: restoring the target's valid parent resolves them, and only
+# they clear on that success. Model-unavailable, interrupted (source
+# isolation), and live-producer restrictions are never recovered here.
+_RESOLVABLE_RESUBMIT_REASONS: tuple[ReadOnlyReason, ...] = (
+    "app_restore_failed",
+    "terminal_incomplete",
+)
 
 
 def _attachment_projection(
@@ -215,6 +228,10 @@ _READ_ONLY_RESUBMIT_MESSAGES: dict[ReadOnlyReason, str] = {
     ),
     "interrupted": (
         "Cannot resubmit an exchange in an interrupted read-only conversation."
+    ),
+    "terminal_incomplete": (
+        "Cannot resubmit an exchange in a read-only conversation: the "
+        "selected position is a recorded submission that was not sent."
     ),
 }
 
@@ -381,7 +398,7 @@ class HistoryController:
 
     @asynccontextmanager
     async def _exchange_mutation(self):
-        async with self._exchange_recorder.lock:
+        async with self._exchange_recorder._locked():
             yield
 
     async def on_response(self) -> None:
@@ -565,6 +582,26 @@ class HistoryController:
             return False
         return True
 
+    async def _notify_edit_not_saved(self) -> None:
+        """Tell the person a retained failed edit did not reach storage.
+
+        Sanitized wording only (never raw exception detail); best-effort
+        so a notification failure can never prevent transcript/metadata
+        settlement.
+        """
+        from shiny import ui as shiny_ui
+        from shiny.session import session_context
+
+        try:
+            with session_context(self.chat._session):
+                shiny_ui.notification_show(
+                    "This message was not sent and could not be saved. "
+                    "It may not survive reload.",
+                    type="error",
+                )
+        except BaseException:
+            pass
+
     async def _notify_restore_failure(
         self, *, recovery_incomplete: bool, detail: str | None = None
     ) -> None:
@@ -647,6 +684,9 @@ class HistoryController:
             leaf is not None
             and leaf in record.nodes
             and not record.nodes[leaf].is_checkpoint
+            # A known terminal incomplete position is resolvable (browse,
+            # explicit Retry), never an unfinished producer to isolate.
+            and not node_is_terminal_incomplete(record.nodes[leaf])
         )
 
     @staticmethod
@@ -668,15 +708,26 @@ class HistoryController:
 
         if not target.path_node_ids() or target.active_leaf is None:
             raise ValueError("Exchange-tree record has no active path.")
+        # Preparation markers classify record-wide: any envelope that
+        # does not describe a coherent terminal failed position fails
+        # closed here, before the coherent-leaf walk could bypass it.
+        for node_id, node in target.nodes.items():
+            validate_node_preparation_consistency(node_id, node)
         source_isolated = source_isolated or self._unresolved_record(target)
         assert target.active_leaf is not None
-        target.active_leaf = self._coherent_leaf(target, target.active_leaf)
+        active_node = target.nodes.get(target.active_leaf)
+        if active_node is None or not node_is_terminal_incomplete(active_node):
+            # A known terminal incomplete leaf stays selected: it is the
+            # position the person saved, browsable but never silently
+            # promoted to a checkpoint ancestor.
+            target.active_leaf = self._coherent_leaf(target, target.active_leaf)
         if source_isolated:
-            # Keep complete paths to coherent checkpoints. Ancestor input/state
-            # remains structural data for sparse values and legacy delta frames.
+            # Keep safe display paths, including known terminal failures;
+            # isolation still forbids writing the producer's source record.
+            # Ancestors remain structural data for sparse state frames.
             keep = {target.root_id}
             for key, node in target.nodes.items():
-                if node.is_checkpoint:
+                if node.is_checkpoint or node_is_terminal_incomplete(node):
                     cursor: str | None = key
                     while cursor is not None and cursor not in keep:
                         keep.add(cursor)
@@ -725,6 +776,10 @@ class HistoryController:
         unavailable_reason = _history_plan.turns_unavailable_reason(
             planned_state
         )
+        active_leaf = target.active_leaf
+        assert active_leaf is not None
+        active_node = target.nodes[active_leaf]
+        terminal_leaf = node_is_terminal_incomplete(active_node)
 
         try:
             with _restore_step("replaying the conversation display"):
@@ -734,10 +789,18 @@ class HistoryController:
             with _restore_step("installing the restored record"):
                 recorder.install_restored_record(
                     target,
-                    read_only=unavailable_reason is not None or source_isolated,
+                    read_only=(
+                        unavailable_reason is not None
+                        or source_isolated
+                        or terminal_leaf
+                    ),
                     source_isolated=source_isolated,
                     read_only_reason=(
-                        "interrupted" if source_isolated else "model_unavailable"
+                        "interrupted"
+                        if source_isolated
+                        else "model_unavailable"
+                        if unavailable_reason is not None
+                        else "terminal_incomplete"
                     ),
                 )
                 await self._set_active_id(target.id)
@@ -750,11 +813,13 @@ class HistoryController:
             # conversation-wide object. An ordinary failure marks the
             # record view-only inside the helper; the metadata below still
             # runs so the client learns the read-only state.
-            active_leaf = target.active_leaf
-            assert active_leaf is not None
-            self._restore_app_state(
-                _history_plan.resolve_path_values(target, active_leaf)
-            )
+            # A terminal incomplete position without its own observed values
+            # never invokes on_restore with inherited parent values as if
+            # they were observed at the failure.
+            if not node_has_unavailable_app_values(active_node):
+                self._restore_app_state(
+                    _history_plan.resolve_path_values(target, active_leaf)
+                )
             if unavailable_reason is not None:
                 # Developer-facing classification only; the client learns
                 # about the read-only view through ``active_read_only``.
@@ -805,7 +870,12 @@ class HistoryController:
         try:
             with _restore_step("validating the saved conversation"):
                 if node_id is not None:
-                    selected.require_checkpoint(node_id)
+                    requested_node = selected.nodes.get(node_id)
+                    if (
+                        requested_node is None
+                        or not node_is_terminal_incomplete(requested_node)
+                    ):
+                        selected.require_checkpoint(node_id)
                     selected.set_active_leaf(node_id)
                     persist_active_pointer = target.active_leaf != node_id
                 node_ids, planned_state, source_isolated = (
@@ -991,16 +1061,27 @@ class HistoryController:
         request_id: str,
         message_index: int,
     ) -> None:
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("Exchange-tree resubmits require a request ID.")
         if self.partition is None:
             raise RuntimeError("HistoryController not initialized")
         recorder = self._exchange_recorder
         record = recorder.record
         if record is None:
             raise RuntimeError("No exchange-tree conversation is active")
-        if recorder.read_only:
+        resolvable = (
+            recorder.read_only
+            and recorder.read_only_reason in _RESOLVABLE_RESUBMIT_REASONS
+            and not recorder.source_isolated
+        )
+        if recorder.read_only and not resolvable:
             # Authoritative guard for edit/retry/regenerate: a read-only
             # record must not be mutated or consume a model stream. The
             # message names the reason, never a cause it did not have.
+            # The resolvable restrictions (a failed app restore, a known
+            # terminal incomplete position) are the exception: an explicit
+            # resubmit revalidates them by restoring the target's valid
+            # parent, without close-capturing a poisoned live model.
             raise RuntimeError(
                 _READ_ONLY_RESUBMIT_MESSAGES.get(
                     recorder.read_only_reason or "model_unavailable",
@@ -1038,49 +1119,218 @@ class HistoryController:
         # exchange captures its own fresh values.
         target_values = _history_plan.resolve_path_values(prefix, parent_id)
 
+        outgoing_leaf = record.active_leaf
+        staged_id = _utils.private_random_id(bytes=16)
+
         async with self._destructive_mutation(block_input=True) as transaction:
             transcript_prefix = self._transcript_prefix_entries(
                 record, node_ids
             )
-            action: HistoryEditProjectionAction = {
-                "type": "history_edit_projection",
-                "requestId": request_id,
-                "index": message_index,
-                "content": str(submitted_input.content),
-                "attachments": _attachment_projection(
-                    submitted_input.attachments
-                ),
-            }
-
-            async def send_resubmission() -> None:
+            # Record the validated submission as one ordinary exchange
+            # node under the target's valid parent — synchronous and
+            # infallible — BEFORE the pending projection and BEFORE any
+            # fallible work: the first durable put, the outgoing close
+            # capture, the rewind, and the restore. The attempt stays the
+            # selected position whatever preparation does; it is never
+            # rolled back to the original.
+            async with self._exchange_mutation():
+                recorder.stage_input_locked(
+                    staged_id, parent_id, submitted_input
+                )
+            admission = StagedInputAdmission(staged_id)
+            try:
+                projection: HistoryEditProjectionAction = {
+                    "type": "history_edit_projection",
+                    "requestId": request_id,
+                    "index": message_index,
+                    "content": str(submitted_input.content),
+                    "attachments": _attachment_projection(
+                        submitted_input.attachments
+                    ),
+                    "submission_mode": "server",
+                    "exchange_id": staged_id,
+                }
                 with _restore_step("sending the resubmission"):
-                    await self.chat._send_action(action)
-
-            async def send_read_only_branch() -> None:
-                # The original branch is shown view-only: the display and
-                # metadata update go out, but never the edit projection,
-                # because that projection starts the replacement's
-                # provider work.
-                with _restore_step("replaying the conversation display"):
-                    await self._replay_exchange_display(
-                        record, tuple(record.path_node_ids())
+                    await self.chat._send_action(projection)
+                async with self._exchange_mutation():
+                    # The first durable put of the staged node, after the
+                    # pending projection: a storage failure here attaches
+                    # to the same working node, with the browser already
+                    # showing the right row.
+                    await recorder.persist_record_locked()
+                restored = await self._prepare_staged_resubmit_locked(
+                    record,
+                    rewind_state,
+                    parent_id,
+                    transcript_prefix=transcript_prefix,
+                    transaction=transaction,
+                    target_values=target_values,
+                    outgoing_leaf=outgoing_leaf,
+                )
+            except Exception as error:
+                await self._fail_staged_input(
+                    staged_id,
+                    error,
+                    transcript_prefix=transcript_prefix,
+                    transaction=transaction,
+                )
+                return
+            except BaseException as error:
+                # Cancellation and other fatal failures keep the usual full
+                # restore cleanup; the stored staged node keeps its
+                # documented interrupted-producer reading on reload.
+                await self._clear_failed_restore(error)
+                raise
+            if not restored:
+                # _restore_app_state already warned the developer and
+                # marked the record app_restore_failed. The failure still
+                # attaches to the staged node; the visible edit never
+                # reverts to the original branch.
+                await self._fail_staged_input(
+                    staged_id,
+                    None,
+                    transcript_prefix=transcript_prefix,
+                    transaction=transaction,
+                )
+                return
+            # Preparation succeeded: a resolvable restriction that this
+            # restore just revalidated clears here, and only here. Other
+            # restrictions never reach this line.
+            if resolvable:
+                recorder.clear_read_only()
+            try:
+                await self.chat._record_accepted_user_input_with_capture(
+                    submitted_input,
+                    staged_admission=admission,
+                    transaction=transaction,
+                )
+            except BaseException as error:
+                if admission.committed:
+                    # The accepted-input commit already ran: a storage or
+                    # delivery failure after the shared commit keeps the
+                    # existing callback policy and is never relabeled
+                    # "not sent".
+                    raise
+                if isinstance(error, Exception):
+                    await self._fail_staged_input(
+                        staged_id,
+                        error,
+                        transcript_prefix=transcript_prefix,
+                        transaction=transaction,
                     )
-                with _restore_step("sending the read-only update"):
-                    await self._send_sibling_metadata()
-                    await self._send_exchange_metadata()
-                    await self.send_history_update()
+                    return
+                # Cancellation and other fatal failures keep the usual full
+                # restore cleanup; the stored staged node keeps its
+                # documented interrupted-producer reading on reload.
+                await self._clear_failed_restore(error)
+                raise
 
-            await self._rewind_locked(
-                record,
-                rewind_state,
-                parent_id,
-                save_step="saving the resubmission",
-                send=send_resubmission,
-                send_read_only=send_read_only_branch,
-                transcript_prefix=transcript_prefix,
-                transaction=transaction,
-                target_values=target_values,
+    async def _prepare_staged_resubmit_locked(
+        self,
+        record: ConversationRecordV2,
+        rewind_state: StatePlan,
+        parent_id: str,
+        *,
+        transcript_prefix: tuple["TranscriptEntry", ...],
+        transaction: object,
+        target_values: dict[str, Any],
+        outgoing_leaf: str | None,
+    ) -> bool:
+        """Fallible edit-time preparation for one staged submission.
+
+        Captures the outgoing position (unless its live model is poisoned
+        by a known terminal failure), rewinds the model to the valid
+        parent, and truncates the committed transcript to the parent's
+        accepted prefix BEFORE ``on_restore`` runs: during edit-time
+        restore, ``chat.messages()`` and the model both show the restored
+        parent prefix, while the staged node is already the selected
+        record position. Returns the ``on_restore`` outcome; preparation
+        failures raise for the caller to attach to the staged node.
+        """
+        recorder = self._exchange_recorder
+        record.require_checkpoint(parent_id)
+        async with self._exchange_mutation():
+            if outgoing_leaf is not None and not node_is_terminal_incomplete(
+                record.nodes[outgoing_leaf]
+            ):
+                with _restore_step("capturing the outgoing position"):
+                    await recorder.capture_state_locked(
+                        outgoing_leaf, "node_close", model_only=True
+                    )
+            with _restore_step("saving the resubmission"):
+                await _history_plan.run_plan(rewind_state)
+            # Sync the append-only server transcript to the same parent
+            # prefix the record/adapter rewound to, BEFORE the restore
+            # callback observes it. Capture callbacks do not fire on
+            # replace: the record was already rewound above.
+            self.chat._transcript.replace(
+                transcript_prefix, transaction=transaction
             )
+            return self._restore_app_state(target_values)
+
+    async def _fail_staged_input(
+        self,
+        staged_id: str,
+        error: Exception | None,
+        *,
+        transcript_prefix: tuple["TranscriptEntry", ...],
+        transaction: object,
+    ) -> None:
+        """Attach a pre-admission failure to its own staged node.
+
+        The staged node stays visible and selected as a known terminal
+        incomplete position: a sanitized "message not sent" outcome, an
+        explicitly invalid checkpoint, and the durable preparation
+        envelope. No accepted-input or provider callback runs for the
+        failed attempt. The server transcript gains the failed row as a
+        terminal display entry (never an accepted input, never an open
+        exchange), so the same-session view matches a fresh load. The
+        developer keeps the raw cause as a warning; the client settles
+        through the metadata/history messages, and the transition wrapper
+        sends the completion. The original branch is preserved.
+        """
+        recorder = self._exchange_recorder
+        if error is not None:
+            detail = _restore_failure_detail(error)
+            warnings.warn(
+                "Chat history edit preparation failed "
+                f"({detail or 'no detail'}); the submitted message was "
+                f"recorded but not sent: {error!r}",
+                stacklevel=2,
+            )
+        async with self._exchange_mutation():
+            persist_failed = False
+            try:
+                await recorder.fail_staged_input_locked(staged_id)
+            except Exception as put_error:
+                # The in-memory node still carries the failure outcome;
+                # retain the visible edit, settle the client, and report
+                # that it was not saved — never promise it survives reload.
+                persist_failed = True
+                warnings.warn(
+                    "Chat history could not save the failed submission; "
+                    "the message stays visible but may not survive a "
+                    f"reload: {put_error!r}",
+                    stacklevel=2,
+                )
+            if not recorder.read_only:
+                recorder.mark_read_only("terminal_incomplete")
+            record = recorder.record
+            assert record is not None
+            node = record.nodes[staged_id]
+            assert node.input is not None
+            tail = TranscriptEntry(
+                message=node.input.model_copy(deep=True),
+                exchange_id=staged_id,
+            )
+            self.chat._transcript.replace(
+                (*transcript_prefix, tail), transaction=transaction
+            )
+        await self._send_sibling_metadata()
+        await self._send_exchange_metadata()
+        await self.send_history_update()
+        if persist_failed:
+            await self._notify_edit_not_saved()
 
     def _transcript_prefix_entries(
         self,
@@ -1115,6 +1365,8 @@ class HistoryController:
         transcript_prefix: tuple["TranscriptEntry", ...] | None = None,
         transaction: object | None = None,
         target_values: dict[str, Any],
+        terminal_leaf: bool = False,
+        leaving_terminal_view: bool = False,
     ) -> None:
         """The shared rewind skeleton: capture the close, run the plan,
         restore the target's app state, commit the resubmit pointer, then send.
@@ -1127,28 +1379,56 @@ class HistoryController:
         ``send_read_only``, browsing commits and displays the target even
         when app restoration fails.
         Any other failure takes the full cleanup.
+
+        ``terminal_leaf`` marks a known terminal incomplete destination:
+        an explicit display position that is never a continuation
+        checkpoint. It is committed without the checkpoint requirement,
+        its own observed values (when they exist) drive ``on_restore``,
+        inherited parent values are never replayed as if observed at the
+        failure, and the record is view-only while it is selected.
         """
         recorder = self._exchange_recorder
-        record.require_checkpoint(leaf)
+        if not terminal_leaf:
+            record.require_checkpoint(leaf)
         async with self._exchange_mutation():
             current_leaf = record.active_leaf
             if current_leaf is None:
                 raise ValueError("Exchange-tree record has no active leaf.")
-            await recorder.capture_state_locked(
-                current_leaf, "node_close", model_only=True
-            )
+            if not node_is_terminal_incomplete(record.nodes[current_leaf]):
+                # A known terminal incomplete outgoing position has a
+                # poisoned live model: leave it recorded, never close it.
+                await recorder.capture_state_locked(
+                    current_leaf, "node_close", model_only=True
+                )
             try:
                 with _restore_step(save_step):
                     await _history_plan.run_plan(rewind_state)
                     if send_read_only is None:
-                        await recorder.persist_active_leaf_locked(record, leaf)
-                restored = self._restore_app_state(target_values)
-                with _restore_step(save_step):
-                    if send_read_only is not None:
-                        if restored:
+                        if terminal_leaf:
+                            record.set_active_leaf(leaf)
+                            await recorder.persist_record_locked()
+                        else:
                             await recorder.persist_active_leaf_locked(
                                 record, leaf
                             )
+                skip_restore = node_has_unavailable_app_values(
+                    record.nodes[leaf]
+                )
+                restored = (
+                    True
+                    if skip_restore
+                    else self._restore_app_state(target_values)
+                )
+                with _restore_step(save_step):
+                    if send_read_only is not None:
+                        if restored:
+                            if terminal_leaf:
+                                record.set_active_leaf(leaf)
+                                await recorder.persist_record_locked()
+                            else:
+                                await recorder.persist_active_leaf_locked(
+                                    record, leaf
+                                )
                         else:
                             # Close capture is in-memory only. Preserve it under
                             # the original leaf without committing the parent.
@@ -1163,6 +1443,14 @@ class HistoryController:
                         self.chat._transcript.replace(
                             transcript_prefix, transaction=transaction
                         )
+                if terminal_leaf:
+                    recorder.mark_read_only("terminal_incomplete")
+                elif (
+                    restored
+                    and leaving_terminal_view
+                    and recorder.read_only_reason == "terminal_incomplete"
+                ):
+                    recorder.clear_read_only()
                 if restored:
                     await send()
                 else:
@@ -1259,18 +1547,42 @@ class HistoryController:
                 if node.parent_id is not None
                 else None
             )
+            terminal = node_is_terminal_incomplete(node)
             metadata: ExchangeMetadata = {
                 "status": node.status,
                 "retryable": (
                     node.status in _RETRYABLE_STATUSES
-                    and not recorder.read_only
                     and parent is not None
                     and parent.is_checkpoint
+                    and (
+                        not recorder.read_only
+                        # A known terminal incomplete row offers Retry/Edit
+                        # while its restriction is one an explicit resubmit
+                        # can revalidate; ordinary continuation stays
+                        # blocked by the read-only state.
+                        or (
+                            terminal
+                            and not recorder.source_isolated
+                            and recorder.read_only_reason
+                            in _RESOLVABLE_RESUBMIT_REASONS
+                        )
+                    )
                 ),
             }
+            if terminal:
+                metadata["preparation_failed"] = True
             if node.status == "error":
-                metadata["error_message"] = project_history_error_message(
-                    node.error.message if node.error is not None else None
+                # A known terminal incomplete row derives its safe wording
+                # from the validated preparation marker: an older writer's
+                # whitelist may have rewritten the stored error to the
+                # generic provider message, which must not mislabel a
+                # never-sent submission.
+                metadata["error_message"] = (
+                    HISTORY_ERROR_NOT_SENT
+                    if terminal
+                    else project_history_error_message(
+                        node.error.message if node.error is not None else None
+                    )
                 )
             data[message_index] = metadata
         if data:
@@ -1332,7 +1644,20 @@ class HistoryController:
         leaf = record.checkpoint_leaf(target)
         if leaf is None:
             raise ValueError("The requested position has no valid checkpoint.")
-        record.require_checkpoint(leaf)
+        # A known terminal incomplete leaf is an explicit display
+        # destination: browsable view-only, never a continuation checkpoint.
+        terminal_leaf = node_is_terminal_incomplete(record.nodes[leaf])
+        if not terminal_leaf:
+            record.require_checkpoint(leaf)
+        leaving_terminal_view = (
+            read_only
+            and recorder.read_only_reason == "terminal_incomplete"
+            and not recorder.source_isolated
+            and not terminal_leaf
+        )
+        display_only = (
+            read_only and not leaving_terminal_view
+        ) or terminal_leaf
         projection = record.model_copy(deep=True)
         projection.set_active_leaf(leaf)
         node_ids = tuple(projection.path_node_ids())
@@ -1346,11 +1671,18 @@ class HistoryController:
             # read-only record's model context is already unavailable, so
             # any valid sibling path can be displayed; structural errors
             # still fail before mutation either way.
-            reject_unavailable=not read_only,
+            reject_unavailable=not (display_only or leaving_terminal_view),
             phase="rewind",
         )
-        if read_only:
-            # Read-only navigation replays the display and persists the
+        unavailable_model = (
+            leaving_terminal_view
+            and _history_plan.turns_unavailable_reason(rewind_state) is not None
+        )
+        if unavailable_model:
+            display_only = True
+            leaving_terminal_view = False
+        if display_only:
+            # Display-only navigation replays the display and persists the
             # selected leaf, but never captures live model state (the
             # recorder suppresses captures) and never invokes the builtin
             # model rewind hooks. App-registered rewind hooks still run.
@@ -1362,9 +1694,16 @@ class HistoryController:
 
         # The target position's values come from the preflight copy,
         # before the destructive replay/rewind.
-        target_values = _history_plan.resolve_path_values(projection, leaf)
+        target_values = (
+            {}
+            if node_has_unavailable_app_values(projection.nodes[leaf])
+            else _history_plan.resolve_path_values(projection, leaf)
+        )
 
         async with self._destructive_mutation(block_input=True):
+            if unavailable_model:
+                async with self._exchange_mutation():
+                    recorder.mark_read_only("model_unavailable")
 
             async def send_navigation() -> None:
                 # The display replay reads only node content by id, so it
@@ -1383,6 +1722,8 @@ class HistoryController:
                 save_step="saving the navigation change",
                 send=send_navigation,
                 target_values=target_values,
+                terminal_leaf=terminal_leaf,
+                leaving_terminal_view=leaving_terminal_view,
             )
 
     async def handle_edit(
@@ -1445,7 +1786,38 @@ class HistoryController:
             reason = self._exchange_recorder.read_only_reason
             if reason is not None:
                 action["active_read_only_reason"] = reason
+        if self._can_resubmit_active():
+            action["active_can_resubmit"] = True
         await self.chat._send_action(action)
+
+    def _can_resubmit_active(self) -> bool:
+        """Whether an explicit Retry/Edit may revalidate the selected position.
+
+        True only when the selected leaf is a known terminal incomplete
+        submission whose valid parent can still be restored: no source
+        isolation, no live producer, and no unrelated (model-unavailable,
+        interrupted) restriction. A resolvable app-restore or terminal
+        restriction does not block the explicit recovery.
+        """
+        recorder = self._exchange_recorder
+        if recorder.source_isolated:
+            return False
+        if recorder.read_only and (
+            recorder.read_only_reason not in _RESOLVABLE_RESUBMIT_REASONS
+        ):
+            return False
+        record = recorder.record
+        if record is None or record.active_leaf is None:
+            return False
+        leaf = record.nodes.get(record.active_leaf)
+        if leaf is None or not node_is_terminal_incomplete(leaf):
+            return False
+        parent = (
+            record.nodes.get(leaf.parent_id)
+            if leaf.parent_id is not None
+            else None
+        )
+        return parent is not None and parent.is_checkpoint
 
 
 def title_task_done(task: asyncio.Task[None]) -> None:
