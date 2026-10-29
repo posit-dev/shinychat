@@ -105,6 +105,7 @@ export interface ChatMessageData {
   exchange?: {
     status: "pending" | "ok" | "error" | "cancelled"
     retryable: boolean
+    preparation_failed?: boolean
     error_message?: string
   }
 }
@@ -1449,7 +1450,14 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         if (msg.exchange) return { ...msg, exchange: undefined }
         return msg
       })
-      return { ...state, messages: updated }
+      const preparationFailed = Object.values(action.data).some(
+        (exchange) => exchange.preparation_failed,
+      )
+      return {
+        ...state,
+        messages: preparationFailed ? removeLoadingMessage(updated) : updated,
+        inputDisabled: preparationFailed ? false : state.inputDisabled,
+      }
     }
 
     default: {

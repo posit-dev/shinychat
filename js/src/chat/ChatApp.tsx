@@ -286,6 +286,7 @@ export function ChatApp({
           activeId: action.active_id,
           readOnly: action.active_read_only ?? false,
           readOnlyReason: action.active_read_only_reason,
+          canResubmit: action.active_can_resubmit,
           transitionProtocol: action.transition_protocol,
         })
         dispatch({
@@ -316,8 +317,11 @@ export function ChatApp({
         return
       }
       if (action.type === "history_edit_projection") {
+        // Server-owned edits use the staged exchange identity and never echo
+        // the already received submission. Older producers retain their flow.
+        if (action.submission_mode === "server" && !action.exchange_id) return
         if (!historyStore.acceptEditProjection(action.requestId)) return
-        const client_message_id = uuid()
+        const client_message_id = action.exchange_id ?? uuid()
         dispatch({ type: "TRUNCATE_MESSAGES", index: action.index })
         dispatch({
           type: "INPUT_SENT",
@@ -328,11 +332,13 @@ export function ChatApp({
             ? { attachments: action.attachments }
             : {}),
         })
-        transport.sendInput(inputId, {
-          text: action.content,
-          attachments: action.attachments,
-          client_message_id,
-        })
+        if (action.submission_mode !== "server") {
+          transport.sendInput(inputId, {
+            text: action.content,
+            attachments: action.attachments,
+            client_message_id,
+          })
+        }
         return
       }
       if (action.type === "chunk_start") {
@@ -523,7 +529,9 @@ export function ChatApp({
   const handleEdit = useCallback(
     (index: number, content: string, attachments: AttachmentPayload[]) => {
       if (
-        historyStore.getSnapshot().readOnly ||
+        (historyStore.getSnapshot().readOnly &&
+          (!historyStore.getSnapshot().canResubmit ||
+            !state.messages[index]?.exchange?.preparation_failed)) ||
         isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
         historyStore.isMutationBlocked()
       )
@@ -541,7 +549,7 @@ export function ChatApp({
         )
       }
     },
-    [transport, elementId, historyStore],
+    [transport, elementId, historyStore, state.messages],
   )
 
   const handleNavigate = useCallback(
@@ -569,7 +577,9 @@ export function ChatApp({
   const handleRetry = useCallback(
     (index: number) => {
       if (
-        historyStore.getSnapshot().readOnly ||
+        (historyStore.getSnapshot().readOnly &&
+          (!historyStore.getSnapshot().canResubmit ||
+            !state.messages[index]?.exchange?.preparation_failed)) ||
         isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
         historyStore.isMutationBlocked()
       )
@@ -578,7 +588,7 @@ export function ChatApp({
       if (requestId === null) return
       transport.sendMessageResubmit(elementId, index, "retry", requestId)
     },
-    [transport, elementId, historyStore],
+    [transport, elementId, historyStore, state.messages],
   )
 
   const supersededRequests = useSupersededRequests(

@@ -33,8 +33,8 @@ def test_failed_on_restore_keeps_conversation_read_only_until_new_chat(
     bar = chat.loc.locator(".shiny-chat-readonly")
     status = bar.get_by_role("status")
     expect(status).to_contain_text(READ_ONLY_MESSAGE)
-    expect(chat.loc_input).to_have_count(0)
-    expect(chat.loc_input_button).to_have_count(0)
+    expect(chat.loc_input).to_be_hidden()
+    expect(chat.loc_input_button).to_be_hidden()
     expect(chat.loc.locator(".shiny-chat-edit-btn")).to_have_count(0)
     expect(chat.loc.get_by_role("button", name="Retry message")).to_have_count(
         0
@@ -86,7 +86,7 @@ def test_ordinary_saved_position_restores_without_read_only(
 
 
 @pytest.mark.parametrize("local_app", ["app_restore_failure.py"], indirect=True)
-def test_failed_first_message_edit_retains_branch_and_exits_pending_edit(
+def test_failed_first_message_edit_keeps_not_sent_version_and_exits_pending_edit(
     page: Page, local_app: ShinyAppProc
 ) -> None:
     page.goto(local_app.url)
@@ -108,12 +108,13 @@ def test_failed_first_message_edit_retains_branch_and_exits_pending_edit(
     user.locator(".shiny-chat-btn-send").click()
 
     bar = chat.loc.locator(".shiny-chat-readonly")
-    expect(bar.get_by_role("status")).to_contain_text(READ_ONLY_MESSAGE)
+    expect(bar.get_by_role("status")).to_contain_text("not sent")
     expect(editor).to_have_count(0)
-    expect(chat.loc_input).to_have_count(0)
-    expect(user).to_contain_text("west")
-    chat.expect_latest_message("Selected west")
-    expect(chat.loc_messages.locator(":scope > *")).to_have_count(2)
+    expect(chat.loc_input).to_be_hidden()
+    expect(user).to_contain_text("north")
+    expect(user.locator(".shiny-chat-retry-error")).to_have_text("Message not sent.")
+    expect(user.get_by_role("button", name="Retry message")).to_be_enabled()
+    expect(chat.loc_messages.locator(":scope > *")).to_have_count(1)
     expect(page.locator("#provider_calls")).to_have_text("1")
     expect(page.locator("#restore_attempts")).to_have_text("1")
     expect(page.locator("#second_restore_calls")).to_have_text("0")

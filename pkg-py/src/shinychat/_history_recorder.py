@@ -17,10 +17,11 @@ from __future__ import annotations
 import asyncio
 import inspect
 import warnings
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from typing import (
     TYPE_CHECKING,
     Any,
+    AsyncIterator,
     Callable,
     Literal,
     Mapping,
@@ -50,6 +51,10 @@ from ._history_plan import (
 from ._history_store import ConversationPartition, ConversationStore
 from ._history_title import fallback_title_from_text
 from ._history_types import (
+    HISTORY_ERROR_NOT_SENT,
+    PREPARATION_ENTRY_KIND,
+    PREPARATION_ENTRY_VERSION,
+    PREPARATION_STATE_KEY,
     SYSTEM_PROMPT_STATE_KEY,
     TURNS_STATE_KEY,
     VALUES_STATE_KEY,
@@ -102,6 +107,18 @@ class _ExchangeRecorder:
         self.record: ConversationRecordV2 | None = None
         self._stream_exchanges: dict[str, str] = {}
         self.lock = asyncio.Lock()
+        # Owner tracking makes ``_locked`` reentrant within the task that
+        # holds ``lock``: the controller admits a staged submission through
+        # the shared transcript seam while it already owns the record, and
+        # the underlying asyncio.Lock is not reentrant.
+        self._lock_task: "asyncio.Task[Any] | None" = None
+        self._lock_depth = 0
+        # The one staged submission slot for the active record: the
+        # controller stages, prepares, and then either admits or finishes
+        # it while owning the record lock, so at most one staged submission
+        # is ever in flight. Admission/failure consumes the slot, so one
+        # staged submission is admitted exactly once.
+        self._staged_input: tuple[str, StoredMessage] | None = None
         self._capture_hooks: dict[str, CaptureHook] = {}
         self._restore_hooks: dict[str, RestoreHook] = {}
         self._rewind_hooks: dict[str, RewindHook] = {}
@@ -135,6 +152,26 @@ class _ExchangeRecorder:
         # they are delivered to on_restore callbacks rather
         # than applied to the client.
         self._register_capture_hook(VALUES_STATE_KEY, self._capture_values)
+
+    @asynccontextmanager
+    async def _locked(self) -> "AsyncIterator[None]":
+        """The record's one lock, reentrant within its owning task."""
+        task = asyncio.current_task()
+        if task is not None and self._lock_task is task:
+            self._lock_depth += 1
+            try:
+                yield
+            finally:
+                self._lock_depth -= 1
+            return
+        async with self.lock:
+            self._lock_task = task
+            self._lock_depth = 1
+            try:
+                yield
+            finally:
+                self._lock_depth = 0
+                self._lock_task = None
 
     @property
     def read_only(self) -> bool:
@@ -214,6 +251,7 @@ class _ExchangeRecorder:
         *,
         strict: bool = False,
         record: ConversationRecordV2 | None = None,
+        explicit: bool = False,
     ) -> StateEntry | None:
         """Run the ``on_save`` callbacks and sparsely record their values.
 
@@ -264,6 +302,15 @@ class _ExchangeRecorder:
                 return previous.model_copy(deep=True)
             return None
 
+        if explicit:
+            # The failed-position capture: a complete snapshot always
+            # records its own entry, even when it equals the inherited
+            # parent values, so the durable complete/unavailable marker
+            # and the presence of observed values can never disagree.
+            # Ordinary success captures keep the sparse inheritance form.
+            return StateEntry(
+                kind="values", version=1, mode="snapshot", data=data
+            )
         return sparse_snapshot_entry(
             record,
             node_id,
@@ -599,6 +646,18 @@ class _ExchangeRecorder:
             self._read_only = True
             self._read_only_reason = reason
 
+    def clear_read_only(self) -> None:
+        """Clear a view-only restriction that a successful restore resolved.
+
+        Only the controller's explicit resubmit recovery calls this, and
+        only for restrictions a successful parent restoration actually
+        resolves (``app_restore_failed``, ``terminal_incomplete``); model
+        unavailable, source-isolated, and live-producer restrictions never
+        clear here.
+        """
+        self._read_only = False
+        self._read_only_reason = None
+
     async def _new_record(self, *, title: str) -> ConversationRecordV2:
         return new_conversation_record_v2(
             title=title,
@@ -624,9 +683,85 @@ class _ExchangeRecorder:
             )
         return self.record.open_inputless_exchange(), False
 
+    def stage_input_locked(
+        self,
+        exchange_id: str,
+        parent_id: str,
+        message: StoredMessage,
+    ) -> None:
+        """Record one valid edited/retried submission before preparation.
+
+        Synchronous and infallible: the staged node becomes an ordinary
+        exchange under the target's valid parent (and the selected
+        position) as soon as the request is validated, before the pending
+        projection and before any fallible work — the first durable put,
+        the outgoing close capture, the rewind, and the restore. The same
+        node is later either admitted exactly once through
+        :meth:`accepted_input` or finished as a known terminal incomplete
+        position by :meth:`fail_staged_input_locked`. Staging records
+        intent; it runs no capture hook and is therefore allowed under a
+        resolvable view-only restriction. The caller owns the first put
+        explicitly, so a storage failure there is handled like any other
+        preparation failure of the same staged node.
+        """
+        assert self.record is not None
+        if self._staged_input is not None:
+            raise RuntimeError(
+                "A staged submission is already awaiting preparation."
+            )
+        self.record.open_exchange(exchange_id, message, parent_id=parent_id)
+        self._staged_input = (exchange_id, message.model_copy(deep=True))
+
+    async def fail_staged_input_locked(
+        self,
+        exchange_id: str,
+    ) -> None:
+        """Attach the safe pre-admission failure outcome to a staged node.
+
+        The staged submission is finished as a sanitized "message not
+        sent" error with an explicitly invalid checkpoint and the durable
+        preparation envelope: terminal, never accepted, and whether a
+        complete app-values snapshot was observed at the failed position.
+        The ordinary automatic app-value capture role runs exactly once
+        here, even after a failed ``on_restore`` (a restore failure does
+        not make ``on_save`` impossible, and the failed node has no saved
+        values that capturing could overwrite). The snapshot is complete
+        only when every callback finished and the whole snapshot
+        serialized; otherwise the values are unavailable rather than a
+        partial fragment tree. The staged slot is consumed either way, so
+        the failed attempt can never be re-admitted; an intentional Retry
+        stages a new sibling.
+        """
+        record = self.record
+        assert record is not None
+        if self._staged_input is not None and self._staged_input[0] == (
+            exchange_id
+        ):
+            self._staged_input = None
+        app_values = (
+            "complete"
+            if self._capture_app_state(_force=True)
+            else "unavailable"
+        )
+        record.finish_exchange(exchange_id, "error", HISTORY_ERROR_NOT_SENT)
+        node = record.nodes[exchange_id]
+        node.checkpoint = "invalid"
+        node.state[PREPARATION_STATE_KEY] = StateEntry(
+            kind=PREPARATION_ENTRY_KIND,
+            version=PREPARATION_ENTRY_VERSION,
+            mode="snapshot",
+            data={
+                "terminal": True,
+                "accepted": False,
+                "app_values": app_values,
+            },
+        )
+        await self.persist_record_locked()
+
     def reset(self) -> None:
         self.record = None
         self._stream_exchanges.clear()
+        self._staged_input = None
         self._active_id_published_for = None
         self._read_only = False
         self._source_isolated = False
@@ -659,7 +794,7 @@ class _ExchangeRecorder:
 
     async def flush_pending(self) -> bool:
         """Capture model-only changes at a coherent completed position."""
-        async with self.lock:
+        async with self._locked():
             if self._stream_exchanges:
                 return False
             return await self.save_current_locked()
@@ -701,17 +836,30 @@ class _ExchangeRecorder:
             if published:
                 self._active_id_published_for = record
 
-    def _capture_app_state(self, *, strict: bool = False) -> bool:
-        """Capture the active exchange's values without partially changing state."""
+    def _capture_app_state(
+        self, *, strict: bool = False, _force: bool = False
+    ) -> bool:
+        """Capture the active exchange's values without partially changing state.
+
+        ``_force`` is reserved for the one failed-position capture: a
+        view-only restriction suppresses captures to protect *saved* state
+        from an untrustworthy live client, but a failed staged node owns
+        no saved values and its single capture attempt is the approved
+        failed-position behavior. The failed-position capture also records
+        explicitly (never sparsely), so a complete marker always carries
+        its observed values.
+        """
         assert self.record is not None
-        if self._read_only:
+        if self._read_only and not _force:
             return False
         live = self.record
         staged = self._stage_state(live)
         node_id = live.active_leaf
         assert node_id is not None
         try:
-            entry = self._capture_values_at(node_id, strict=True, record=staged)
+            entry = self._capture_values_at(
+                node_id, strict=True, record=staged, explicit=_force
+            )
             if entry is None:
                 staged.nodes[node_id].state.pop(VALUES_STATE_KEY, None)
             else:
@@ -733,7 +881,7 @@ class _ExchangeRecorder:
     async def save_current(self) -> bool:
         # The public save is the explicit one: callback and payload
         # failures raise to the caller instead of warning.
-        async with self.lock:
+        async with self._locked():
             return await self.save_current_locked(strict=True)
 
     async def save_current_locked(self, *, strict: bool = False) -> bool:
@@ -765,7 +913,7 @@ class _ExchangeRecorder:
 
     async def response_settled(self) -> bool:
         """Persist settlement and report whether a write occurred, not reliability."""
-        async with self.lock:
+        async with self._locked():
             if (
                 self.record is None
                 or self._host.partition is None
@@ -850,7 +998,7 @@ class _ExchangeRecorder:
         self, record: ConversationRecordV2 | None = None
     ) -> tuple[str, str] | None:
         """Return one atomic pointer snapshot for a live v2 record."""
-        async with self.lock:
+        async with self._locked():
             active = self.record
             if (
                 active is None
@@ -868,7 +1016,7 @@ class _ExchangeRecorder:
         The returned state id is safe to delete: it is either the replaced URL
         after a successful update or the newly minted stale URL.
         """
-        async with self.lock:
+        async with self._locked():
             record = self.record
             if (
                 self._source_isolated
@@ -908,11 +1056,38 @@ class _ExchangeRecorder:
         commit: Callable[[], None],
     ) -> None:
         """Commit both input owners after model capture, before persistence."""
-        if self._host.partition is None or self._read_only:
+        if self._host.partition is None:
+            commit()
+            return
+        if self._read_only:
+            if (
+                self._staged_input is not None
+                and self._staged_input[0] == exchange_id
+            ):
+                # A staged admission requires the writable state its
+                # controller verified before dispatching it; silently
+                # committing only the transcript would diverge the owners.
+                raise RuntimeError(
+                    "Cannot admit a staged input into a read-only conversation."
+                )
             commit()
             return
 
-        async with self.lock:
+        async with self._locked():
+            staged = self._staged_input
+            if staged is not None and staged[0] == exchange_id:
+                self._staged_input = None
+                await self._admit_staged_input_locked(
+                    exchange_id, staged[1], commit
+                )
+                return
+            if self.record is not None and exchange_id in self.record.nodes:
+                # A consumed staged ID (or any recorded node) must never be
+                # admitted again: reject before any capture, commit, or
+                # accepted-input signal.
+                raise RuntimeError(
+                    f"Exchange {exchange_id!r} was already admitted."
+                )
             created = False
             if self.record is None:
                 title = fallback_title_from_text(message.content)
@@ -960,6 +1135,45 @@ class _ExchangeRecorder:
             if created:
                 await self._host.send_history_update()
 
+    async def _admit_staged_input_locked(
+        self,
+        exchange_id: str,
+        message: StoredMessage,
+        commit: Callable[[], None],
+    ) -> None:
+        """Admit a staged submission through the ordinary acceptance steps.
+
+        The staged node already records the input under its valid parent
+        and is the active leaf, so there is no ``open_exchange``: the
+        parent closes (the required post-restore model capture, whose
+        failure attaches to the staged node), unresolved predecessors on
+        the parent prefix stay unpromoted, the automatic app-value capture
+        runs once, and only then does the transcript commit and the record
+        persist. The accepted-input signal fires after this returns,
+        exactly as for an ordinary submission.
+        """
+        record = self.record
+        assert record is not None
+        node = record.nodes.get(exchange_id)
+        if node is None or record.active_leaf != exchange_id:
+            raise RuntimeError(
+                f"Staged exchange {exchange_id!r} is not the active submission."
+            )
+        parent_id = node.parent_id
+        if parent_id is not None:
+            await self.capture_state_locked(
+                parent_id, "node_close", model_only=True
+            )
+        for path_id in record.path_node_ids():
+            if path_id == exchange_id:
+                continue
+            path_node = record.nodes[path_id]
+            if path_node.checkpoint_state == "candidate":
+                path_node.checkpoint = "invalid"
+        self._capture_app_state()
+        commit()
+        await self.persist_record_locked()
+
     async def message_committed(
         self, exchange_id: str | None, entry: TranscriptEntry
     ) -> None:
@@ -985,7 +1199,7 @@ class _ExchangeRecorder:
         if self._host.partition is None or self._read_only:
             return
 
-        async with self.lock:
+        async with self._locked():
             if (
                 entry.message.role == "assistant"
                 and self.record is not None
@@ -1048,7 +1262,7 @@ class _ExchangeRecorder:
         if self._host.partition is None or self._read_only:
             return
 
-        async with self.lock:
+        async with self._locked():
             exchange_id = self._stream_exchanges.get(stream_id)
             if exchange_id is None or self.record is None:
                 return
@@ -1067,7 +1281,7 @@ class _ExchangeRecorder:
             if self._host.partition is None or self._read_only:
                 return
 
-            async with self.lock:
+            async with self._locked():
                 exchange_id = self._stream_exchanges.get(stream_id)
                 if exchange_id is None or self.record is None:
                     return

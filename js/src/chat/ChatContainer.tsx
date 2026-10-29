@@ -1104,6 +1104,7 @@ export const ChatContainer = forwardRef<
                     // Read-only hides edit/retry without touching the shared
                     // `disabled` below, so sibling navigation stays usable.
                     readOnly={readOnly}
+                    canResubmit={history.canResubmit}
                     siblingNavigationPending={siblingNavigationPending}
                     disabled={
                       history.busy ||
@@ -1131,7 +1132,7 @@ export const ChatContainer = forwardRef<
           </div>
 
           <div className="shiny-chat-composer" ref={composerRef}>
-            {readOnly ? (
+            {readOnly && (
               <div
                 className="shiny-chat-readonly"
                 onFocus={handleComposerFocusIn}
@@ -1142,14 +1143,16 @@ export const ChatContainer = forwardRef<
                   role="status"
                   id={`${elementId}-readonly-message`}
                 >
-                  {history.readOnlyReason === "app_restore_failed"
-                    ? "This conversation can be viewed but not continued. Its saved application state couldn't be restored."
-                    : history.readOnlyReason === "interrupted"
-                      ? "This conversation was interrupted and can be viewed but not continued. Start a New chat to continue chatting."
-                      : history.readOnlyReason === "model_unavailable" ||
-                          history.readOnlyReason === undefined
-                        ? "This conversation can be viewed but not continued. Its saved model context couldn't be loaded."
-                        : "This conversation can be viewed but not continued."}
+                  {history.canResubmit
+                    ? "This message was not sent. Retry or edit it after the application is ready, or start a New chat."
+                    : history.readOnlyReason === "app_restore_failed"
+                      ? "This conversation can be viewed but not continued. Its saved application state couldn't be restored."
+                      : history.readOnlyReason === "interrupted"
+                        ? "This conversation was interrupted and can be viewed but not continued. Start a New chat to continue chatting."
+                        : history.readOnlyReason === "model_unavailable" ||
+                            history.readOnlyReason === undefined
+                          ? "This conversation can be viewed but not continued. Its saved model context couldn't be loaded."
+                          : "This conversation can be viewed but not continued."}
                 </p>
                 <button
                   type="button"
@@ -1171,42 +1174,42 @@ export const ChatContainer = forwardRef<
                   New chat
                 </button>
               </div>
-            ) : (
-              <div
-                className={
-                  inputDisabled
-                    ? "shiny-chat-input disabled"
-                    : "shiny-chat-input"
-                }
-                onClick={onContainerClick}
-                onFocus={handleComposerFocusIn}
-                onBlur={handleComposerFocusOut}
-              >
-                <ChatInput
-                  ref={chatInputRef}
-                  transport={transport}
-                  inputId={inputId}
-                  uploadAccept={uploadAccept}
-                  maxUploadSize={maxUploadSize}
-                  disabled={inputDisabled}
-                  historyStore={historyStore}
-                  submissionBlocked={submissionBlocked}
-                  hasTopShadow={!isAtBottom}
-                  placeholder={inputPlaceholder}
-                  onSend={onSend}
-                  userMessages={userMessages}
-                  enableCancel={enableCancel}
-                  enableUpload={enableUpload}
-                  cancelRequested={cancelRequested}
-                  isStreaming={isStreaming}
-                  onCancel={cancelStream}
-                  slashCommands={slashCommands}
-                  slashCommandId={slashCommandId}
-                  submitKey={submitKey}
-                  iconSend={iconSend}
-                />
-              </div>
             )}
+            {/* Keep the native composer and staged attachments mounted while
+                browsing unavailable positions; hiding it must not erase a draft. */}
+            <div
+              hidden={readOnly}
+              className={
+                inputDisabled ? "shiny-chat-input disabled" : "shiny-chat-input"
+              }
+              onClick={onContainerClick}
+              onFocus={handleComposerFocusIn}
+              onBlur={handleComposerFocusOut}
+            >
+              <ChatInput
+                ref={chatInputRef}
+                transport={transport}
+                inputId={inputId}
+                uploadAccept={uploadAccept}
+                maxUploadSize={maxUploadSize}
+                disabled={inputDisabled}
+                historyStore={historyStore}
+                submissionBlocked={submissionBlocked}
+                hasTopShadow={!isAtBottom}
+                placeholder={inputPlaceholder}
+                onSend={onSend}
+                userMessages={userMessages}
+                enableCancel={enableCancel}
+                enableUpload={enableUpload}
+                cancelRequested={cancelRequested}
+                isStreaming={isStreaming}
+                onCancel={cancelStream}
+                slashCommands={slashCommands}
+                slashCommandId={slashCommandId}
+                submitKey={submitKey}
+                iconSend={iconSend}
+              />
+            </div>
 
             {toolbarEl && (
               <RawDOM source={toolbarEl} className="shiny-chat-input-toolbar" />

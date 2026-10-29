@@ -37,7 +37,7 @@ Each node has parent/child links, remembered `selected_child`, optional input, c
 
 - **`active_leaf` selects a root-to-position path.** Other branches remain stored but are not displayed.
 - **`selected_child` remembers a choice at each parent.** Switching branches preserves the other branch's remembered descendants.
-- **Checkpoint selection stays inside a chosen subtree.** It follows eligible remembered children, falls back to the newest eligible child when needed, and returns a valid destination or none. Sibling arrows offer subtrees with coherent destinations, not every raw node or an arbitrary nearest ancestor.
+- **Checkpoint selection stays inside a chosen subtree.** It follows eligible remembered children, falls back to the newest eligible child when needed, and returns a valid destination or none. Browsing also admits a known terminal incomplete preparation outcome; this is a display destination, not a model checkpoint. An invalid flag alone never grants that capability.
 - **Inputless positions are real.** Pre-input programmatic content and independent responses can occupy them. They can be ancestors/destinations, but direct edit/retry/regenerate targets require accepted input.
 
 Ownership is divided by responsibility, independent of language-specific class boundaries:
@@ -103,8 +103,9 @@ A state entry has `kind`, `version`, `mode`, and JSON `data`. Builtin entry vers
 | `shinychat:turns` | Exact-prefix deltas against the branch parent's effective saved context; full snapshots when no baseline is usable or the prefix comparison fails. Existing snapshot entries and compatible legacy deltas remain readable |
 | `shinychat:system_prompt` | Sparse whole-value snapshots, resolved separately from turns |
 | `shinychat:values` | Sparse whole-object snapshots, resolved for app restoration |
+| `shinychat:preparation` | Version-1 `input_preparation` snapshot on a failed staged input only: terminal, not accepted, and app values complete or unavailable. Causal outcome metadata, not a model restore input |
 
-Sparse means inheritance, not object patching. Missing entries inherit the nearest effective ancestor. An empty values object clears an older object; no values entry resolves to `{}`. A null prompt inherits, an empty string records a clear, and no effective prompt leaves the live prompt unchanged. Adapters implement the clear using their client's semantics.
+Sparse means inheritance, not object patching. Missing entries normally inherit the nearest effective ancestor. An empty values object clears an older object; no values entry resolves to `{}`. Failed preparation snapshots are an exception: complete values are explicit, and unavailable values are neither inherited nor pinned when a parent changes. The unavailable marker remains authoritative even if a baseline writer has already pinned parent values onto that node. A null prompt inherits, an empty string records a clear, and no effective prompt leaves the live prompt unchanged. Adapters implement the clear using their client's semantics.
 
 Before a shared parent's recapture changes inherited prompt/values, dependent children are pinned to the previous value. Otherwise one recapture would rewrite older branches. Canonical JSON comparison distinguishes booleans from numbers and ignores object-key order. Captured turn children without their own snapshot — including legacy and newly written deltas and inheritance-only children — are similarly protected before changing a shared turn prefix. Unresolved entry-less children remain without captured model state. Pinning reaches captured descendants through unpinned entry-less intermediate nodes, including pending nodes; pending nodes themselves are never given captured state. Capture with an incompatible inherited saved child raises instead of pinning, deliberately leaving the existing descendants unchanged rather than altering them.
 
@@ -130,12 +131,17 @@ Recorded prompt applies before turns. App values are validated/folded separately
 
 Resubmission requires input on the active path and a checkpointed parent. The input is causal data; the parent is the rewind destination. Live Retry also respects read-only and in-flight guards.
 
-A normal replacement follows this order:
+A replacement follows this order:
 
-1. Resolve the correlated browser request to its exchange; validate eligibility and state on the existing path, including the abandoned target. Preflight the retained parent before mutation.
-2. Capture outgoing model-only changes, apply parent rewind, and restore its app values. The model is now rewound, but transcript/display still show the outgoing branch during the app callback.
-3. After successful app restoration, commit parent selection and truncate the server transcript to the same retained prefix. Preserve rich committed entries and the original stored branch.
-4. Send the matching edit projection. The browser marks itself busy, truncates presentation, and submits projected input through ordinary admission, opening the replacement exchange. Failed app restoration withholds this provider-work kickoff.
+1. Resolve the request to its active-path input; validate eligibility and preflight its valid parent before mutation.
+2. Record the replacement as one ordinary sibling node before fallible preparation, including outgoing model-only capture. Send the matching server-owned projection so the browser displays that node pending without echoing its input back. Legacy shared-frontend producers retain the browser-echo flow.
+3. Capture outgoing model-only changes where appropriate, rewind the model, and expose the parent's accepted transcript prefix before `on_restore`. The pending replacement is not accepted input. Preserve rich committed prefix entries and the original stored branch.
+4. Validate/capture the restored model after `on_restore`, then admit the same staged node exactly once through the guarded Chat input path. Normal accepted-input signals trigger application/provider work.
+5. If preparation fails before the shared transcript/tree commit, attach a sanitized not-sent outcome and explicitly invalidate that same node's checkpoint. Keep it selected and visible; do not dispatch accepted-input/provider events. An already committed input whose later persistence or delivery fails is not a not-sent input.
+
+A known terminal incomplete preparation node can be browsed, bookmarked, saved and reloaded, but not used for ordinary continuation. Its app values are a complete snapshot or explicitly unavailable; missing values elsewhere still mean inheritance. The versioned preparation envelope lives in the existing state-entry map rather than an unknown optional node field, so the baseline schema-2 Python reader preserves it when rewriting an original branch. That reader cannot continue from the failed position; its interrupted-view source isolation protects the original file. Successful nodes carry no preparation envelope.
+
+Retry/Edit restores the valid parent and always creates a new sibling, including when preparation fails again. Recovery from this position does not close-capture its poisoned live model. A successful parent restore may clear only an `app_restore_failed` restriction, never unrelated model-unavailable or producer-isolation restrictions.
 
 Request matching and transition completion coordinate interaction, not checkpoint validity. Ordinary busy/admission gates still protect response work.
 
@@ -162,16 +168,17 @@ Viewing, continuing, and writing the source record are separate capabilities:
 | Compatible coherent checkpoint | Restore recorded path/state; writable under normal admission, but persistence can still fail |
 | Malformed/unregistered state or state-hook execution failure | Reject during preflight where possible; restore cleanup attempts fresh-view recovery, with safe diagnostics |
 | Known model context unavailable | Compatible display remains read-only; browsing skips builtin model rewind and capture; not automatically source-isolated |
-| Ordinary app-restore failure | Stop callbacks and become read-only; load/browse can retain target, failed resubmit preparation retains original branch without replacement kickoff |
+| Ordinary app-restore failure | Stop callbacks and block continuation; load/browse retain the selected display, while failed resubmit preparation retains the new replacement as not sent |
+| Known terminal incomplete preparation | Browse and persist display/app facts; no model-continuation checkpoint; explicit Retry/Edit restores a valid parent and creates a new version |
 | Unresolved/invalid active source restored into another view | Project to coherent paths with needed structural ancestors; suppress untrusted pending fragments/invalid-only branches; isolate from source writes/deletion |
 
-Read-only browsing alone does not grant continuation even if another sibling has compatible context; full restore/reset reclassifies the view. Failed resubmit preparation may leave the live model at the parent while displaying the original branch; read-only prevents pretending these agree. Cancellation/fatal errors take full cleanup rather than ordinary callback-failure handling.
+Read-only browsing alone does not grant continuation even if another sibling has compatible context; full restore/reset reclassifies the view. Failed resubmit preparation may leave the live model poisoned or at the parent while displaying the unaccepted replacement; ordinary continuation remains blocked. Explicit recovery from a known terminal incomplete position revalidates/restores its parent. Cancellation/fatal errors take full cleanup rather than ordinary callback-failure handling.
 
 Source isolation prevents pointer, metadata, rename, save, shutdown, and delete paths from overwriting the producer's record. It belongs to the viewer, not a global fence. The original response task may survive reload and later save its checkpoint; the new view does not reconnect to it.
 
 History/replayed-error explanations are safe regardless of general app error-sanitization settings; details go to developer diagnostics. Live input/response errors retain the app's live error policy.
 
-If rewind succeeds but replacement input capture fails, rejection is not a request to select the old successful branch. Preserve representable intent and make recovery explicit. **Known gap:** the old branch remains stored, but the rewound parent has no direct UI route to its hidden child; rejected edits are not browsable failed attempts.
+If preparation fails, the edited input stays at its recorded position and sibling arrows provide explicit access to the preserved original branch. Successful storage is required for reload durability; a disconnected browser or failed write cannot be promised a saved position.
 
 New chat is a narrow explicit exit, not a rollback engine. Outgoing model-capture failure warns and preserves saved history while allowing normal reset; storage/reset failures and fatal errors still propagate. Authors own valid fresh app state; reset cannot repair a permanently broken getter.
 
@@ -194,7 +201,7 @@ New chat is a narrow explicit exit, not a rollback engine. Outgoing model-captur
 
 Remove unnecessary premises before adding guards, timers, retry ledgers, or compatibility machinery. Checkpoint coherence does not fence arbitrary client mutations between terminal capture and settled app capture.
 
-The public screen-clear/history-record guard and direct original-branch/failed-attempt access remain unfinished. Provider-specific state also precludes assuming cross-client or cross-language record loading from the shared outer schema.
+The public screen-clear/history-record guard remains unfinished. Provider-specific state also precludes assuming cross-client or cross-language record loading from the shared outer schema.
 
 ## Port contract
 

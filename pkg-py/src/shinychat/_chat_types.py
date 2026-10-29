@@ -28,9 +28,14 @@ from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
 Role = Literal["assistant", "user", "system"]
 # Why a restored conversation is view-only: its saved model context is
-# unavailable, an app restore failed, or its checkpoint is unfinished/invalid.
+# unavailable, an app restore failed, its checkpoint is unfinished/invalid,
+# or the selected position is a known terminal incomplete submission (a
+# recorded edit/retry that failed before acceptance).
 ReadOnlyReason = Literal[
-    "model_unavailable", "app_restore_failed", "interrupted"
+    "model_unavailable",
+    "app_restore_failed",
+    "interrupted",
+    "terminal_incomplete",
 ]
 
 SerializedDep = dict[str, object]
@@ -409,6 +414,11 @@ class HistoryUpdateAction(TypedDict):
     # Explanation only, emitted solely alongside ``active_read_only``. It
     # never gates ordering; absent reasons are treated as the model case.
     active_read_only_reason: NotRequired[ReadOnlyReason]
+    # True only when the selected position is a known terminal incomplete
+    # submission whose valid parent can still be restored by an explicit
+    # Retry/Edit: no source isolation, no live producer, and no unrelated
+    # model-unavailable restriction. Absent/false means not permitted.
+    active_can_resubmit: NotRequired[bool]
 
 
 class HistoryNavigateAction(TypedDict):
@@ -429,6 +439,12 @@ class HistoryEditProjectionAction(TypedDict):
     index: int
     content: str
     attachments: list[dict[str, Any]]
+    # "server" means the server already staged and will admit this exact
+    # submission: the client renders the pending row under ``exchange_id``
+    # and must NOT echo the input back through the transport. Absent means
+    # the legacy echo flow (the client submits the projected input itself).
+    submission_mode: NotRequired[Literal["server"]]
+    exchange_id: NotRequired[str]
 
 
 class UpdateSiblingsAction(TypedDict):
@@ -440,6 +456,10 @@ class ExchangeMetadata(TypedDict):
     status: Literal["pending", "ok", "error", "cancelled"]
     retryable: bool
     error_message: NotRequired[str]
+    # True when this exchange failed before acceptance ("message not sent")
+    # rather than in the provider: the row offers Retry/Edit while ordinary
+    # continuation stays blocked by the read-only state.
+    preparation_failed: NotRequired[bool]
 
 
 class UpdateExchangeMetadataAction(TypedDict):

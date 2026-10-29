@@ -21,11 +21,15 @@ from pydantic_core import to_jsonable_python
 
 from ._history_client import TurnsAdapter
 from ._history_types import (
+    PREPARATION_STATE_KEY,
     SYSTEM_PROMPT_STATE_KEY,
     TURNS_STATE_KEY,
     VALUES_STATE_KEY,
     ConversationRecordV2,
     StateEntry,
+    node_has_unavailable_app_values,
+    validate_node_preparation_consistency,
+    validate_preparation_entry,
 )
 
 CaptureReason = Literal["root_close", "stream_finish", "node_close"]
@@ -223,12 +227,13 @@ def sparse_snapshot_entry(
     if not is_effective(previous):
         previous = effective_ancestor
     canonical = _canonical_data(data)
-    if (
-        previous is not None
-        and _canonical_data(previous.data) != canonical
-    ):
+    if previous is not None and _canonical_data(previous.data) != canonical:
         for child_id in node.children:
             child = record.nodes[child_id]
+            if key == VALUES_STATE_KEY and node_has_unavailable_app_values(
+                child
+            ):
+                continue
             if not is_effective(child.state.get(key)):
                 child.state[key] = previous.model_copy(deep=True)
     if (
@@ -251,11 +256,17 @@ def resolve_path_values(
     (inclusive) wins; a path without any entry resolves to ``{}``. The
     winning entry is envelope-validated (``latest_values``), and the
     returned object is a deep copy: callers (and the callbacks they hand
-    it to) can never mutate the stored entry.
+    it to) can never mutate the stored entry. A preparation outcome marked
+    unavailable stops resolution, even if an older writer pinned values
+    onto it; it never inherits or exposes those values as observed facts.
     """
     cursor: str | None = node_id
     while cursor is not None:
         node = record.nodes[cursor]
+        if node_has_unavailable_app_values(node):
+            raise ValueError(
+                f"Application values are unavailable at exchange {cursor!r}."
+            )
         entry = node.state.get(VALUES_STATE_KEY)
         if entry is not None:
             winning = latest_values(((cursor, entry),))
@@ -358,7 +369,7 @@ def _system_prompt_capability_mismatch(
 
 # Builtin state keys recognized (and validated) without a registered hook.
 _KNOWN_BUILTIN_STATE_KEYS = frozenset(
-    {SYSTEM_PROMPT_STATE_KEY, VALUES_STATE_KEY}
+    {SYSTEM_PROMPT_STATE_KEY, VALUES_STATE_KEY, PREPARATION_STATE_KEY}
 )
 
 
@@ -405,9 +416,11 @@ def _validate_restore_state_entry(name: str, entry: StateEntry) -> None:
     try:
         json.dumps(entry.data, allow_nan=False)
     except (TypeError, ValueError) as e:
-        raise ValueError(
-            f"State entry {name!r} has invalid JSON data."
-        ) from e
+        raise ValueError(f"State entry {name!r} has invalid JSON data.") from e
+    if name == PREPARATION_STATE_KEY:
+        # Fail closed: a malformed preparation marker must never
+        # masquerade as a known stopped producer.
+        validate_preparation_entry(name, entry)
 
 
 def validate_active_path_state(record: ConversationRecordV2) -> None:
@@ -424,6 +437,7 @@ def validate_active_path_state(record: ConversationRecordV2) -> None:
     prompt_entries: list[tuple[str, StateEntry]] = []
     values_entries: list[tuple[str, StateEntry]] = []
     for node_id in node_ids:
+        validate_node_preparation_consistency(node_id, record.nodes[node_id])
         for name, entry in record.nodes[node_id].state.items():
             _validate_restore_state_entry(name, entry)
             if name == TURNS_STATE_KEY:
@@ -511,12 +525,15 @@ def preflight_state(
     ``shinychat:values`` is likewise a known builtin key: it is recognized
     and validated even though it owns no restore/rewind hook (application
     values are delivered to ``on_restore`` callbacks, not applied to the
-    model client).
+    model client). ``shinychat:preparation`` is recognized the same way: it
+    records a staged submission's terminal preparation outcome on the failed
+    node itself and is never a restore input.
     """
     if record.active_leaf is None:
         raise ValueError("Exchange-tree record has no active leaf.")
     values_node_ids: list[str] = []
     for node_id in node_ids:
+        validate_node_preparation_consistency(node_id, record.nodes[node_id])
         for name, entry in record.nodes[node_id].state.items():
             if name not in hooks and name not in _KNOWN_BUILTIN_STATE_KEYS:
                 raise ValueError(f"Unsupported {phase} state entry {name!r}.")
