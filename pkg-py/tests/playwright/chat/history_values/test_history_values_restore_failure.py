@@ -112,9 +112,21 @@ def test_failed_first_message_edit_keeps_not_sent_version_and_exits_pending_edit
     expect(editor).to_have_count(0)
     expect(chat.loc_input).to_be_hidden()
     expect(user).to_contain_text("north")
-    expect(user.locator(".shiny-chat-retry-error")).to_have_text("Message not sent.")
+    notice = chat.loc_messages.locator(".shiny-chat-message-not-sent")
+    expect(notice).to_have_text("This message was not sent.")
+    expect(notice).to_be_visible()
+    expect(user.locator(".shiny-chat-retry-error")).to_have_count(0)
+    assert notice.evaluate("el => getComputedStyle(el).fontStyle") == "italic"
+    user_box = user.bounding_box()
+    notice_box = notice.bounding_box()
+    assert user_box is not None and notice_box is not None
+    assert notice_box["y"] >= user_box["y"] + user_box["height"]
     expect(user.get_by_role("button", name="Retry message")).to_be_enabled()
-    expect(chat.loc_messages.locator(":scope > *")).to_have_count(1)
+    expect(
+        chat.loc_messages.locator(
+            ":scope > :is(.shiny-chat-user-message, .shiny-chat-message)"
+        )
+    ).to_have_count(1)
     expect(page.locator("#provider_calls")).to_have_text("1")
     expect(page.locator("#restore_attempts")).to_have_text("1")
     expect(page.locator("#second_restore_calls")).to_have_text("0")
