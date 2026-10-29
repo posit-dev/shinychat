@@ -577,8 +577,7 @@ def assert_no_rollback(samples: list[dict[str, Any]]) -> None:
         (
             i
             for i, s in enumerate(samples)
-            if not s["editing"]
-            and any(MSG_B_PRIME in t for t in s["texts"])
+            if not s["editing"] and any(MSG_B_PRIME in t for t in s["texts"])
         ),
         None,
     )
@@ -1199,11 +1198,6 @@ def test_history_node_first_retry_failure_creates_new_sibling(
     # captured-at-failure value).
     assert_save_count(page, saves_before + 1)
     assert_failed_node_affordances(page, chat)
-    # The automatic capture ran exactly once and serialized, so the
-    # failed node's snapshot is explicitly complete (with the distinctive
-    # captured-at-failure value).
-    assert_save_count(page, saves_before + 1)
-    assert_failed_node_affordances(page, chat)
     expect(page.locator("#model_poisoned")).to_have_text("true", timeout=10_000)
     sibling_nav = page.locator(".shiny-chat-sibling-nav")
     expect(sibling_nav.locator("span")).to_have_text("2 / 2", timeout=5_000)
@@ -1283,3 +1277,55 @@ def test_history_node_first_retry_failure_creates_new_sibling(
     assert entries[1]["values"].get("filter") == "all", (
         f"the retry must restore the parent's app values: {entries[1]['values']}"
     )
+
+
+def test_history_node_first_healthy_branch_writable_after_failed_visit(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    """A display-only failed visit must not lock a healthy branch permanently."""
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+    _begin_failing_edit(page, chat, "capture_poison", draft=DRAFT_TEXT)
+    assert_b_prime_displayed(page)
+    assert_failed_node_affordances(page, chat)
+    page.locator("#fault_mode").select_option("none")
+    expect(page.locator("#model_poisoned")).to_have_text("true")
+    chat.loc.get_by_role("button", name="Retry message").click()
+    chat.expect_latest_message(f"Echo: {MSG_B_PRIME}", timeout=30_000)
+    expect(chat.loc_input).to_be_visible()
+    expect(page.locator("#provider_calls")).to_have_text("4")
+    healthy = wait_for_record_where(
+        page,
+        lambda r: (
+            len(_node_ids_with_input(r, MSG_B_PRIME)) == 2
+            and r["nodes"][r["active_leaf"]]["status"] == "ok"
+        ),
+        description="the healthy retry checkpoint",
+    )
+    healthy_id = healthy["active_leaf"]
+    nav = page.locator(".shiny-chat-sibling-nav")
+    expect(nav.locator("span")).to_have_text("3 / 3")
+
+    nav.get_by_role("button", name="Previous version").click()
+    expect(nav.locator("span")).to_have_text("2 / 3")
+    assert_failed_node_affordances(page, chat)
+    nav.get_by_role("button", name="Next version").click()
+    expect(nav.locator("span")).to_have_text("3 / 3")
+    chat.expect_latest_message(f"Echo: {MSG_B_PRIME}")
+    expect(chat.loc.locator(".shiny-chat-readonly")).to_have_count(0)
+    expect(chat.loc_input).to_be_visible()
+    expect(chat.loc_input).to_have_text(DRAFT_TEXT)
+    expect(chat.loc_input_button).to_be_enabled()
+    expect(page.locator("#current_filter")).to_have_text("all")
+    expect(page.locator("#model_poisoned")).to_have_text("false")
+    expect(page.locator("#provider_calls")).to_have_text("4")
+    expect(page.locator("#submit_count")).to_have_text("4")
+    expect(page.locator("#user_input_count")).to_have_text("4")
+    selected = wait_for_record_where(
+        page,
+        lambda r: r["active_leaf"] == healthy_id,
+        description="the healthy branch selected after a failed visit",
+    )
+    assert_original_branch_retained(selected)
+    collect_samples(page)

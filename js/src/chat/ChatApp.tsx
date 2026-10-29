@@ -215,6 +215,10 @@ export function ChatApp({
   }, [elementId, historyStore, transport])
 
   const containerRef = useRef<ChatContainerHandle>(null)
+  const messagesRef = useRef(state.messages)
+  useLayoutEffect(() => {
+    messagesRef.current = state.messages
+  }, [state.messages])
   const smootherRef = useRef<StreamSmoother<ChunkMeta> | null>(null)
   // Set on CANCEL_REQUESTED: providers can keep sending chunks after a
   // cancel, and those must append raw rather than pace in — stopping should
@@ -531,7 +535,7 @@ export function ChatApp({
       if (
         (historyStore.getSnapshot().readOnly &&
           (!historyStore.getSnapshot().canResubmit ||
-            !state.messages[index]?.exchange?.preparation_failed)) ||
+            !messagesRef.current[index]?.exchange?.preparation_failed)) ||
         isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
         historyStore.isMutationBlocked()
       )
@@ -549,7 +553,7 @@ export function ChatApp({
         )
       }
     },
-    [transport, elementId, historyStore, state.messages],
+    [transport, elementId, historyStore],
   )
 
   const handleNavigate = useCallback(
@@ -579,7 +583,7 @@ export function ChatApp({
       if (
         (historyStore.getSnapshot().readOnly &&
           (!historyStore.getSnapshot().canResubmit ||
-            !state.messages[index]?.exchange?.preparation_failed)) ||
+            !messagesRef.current[index]?.exchange?.preparation_failed)) ||
         isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
         historyStore.isMutationBlocked()
       )
@@ -588,7 +592,7 @@ export function ChatApp({
       if (requestId === null) return
       transport.sendMessageResubmit(elementId, index, "retry", requestId)
     },
-    [transport, elementId, historyStore, state.messages],
+    [transport, elementId, historyStore],
   )
 
   const supersededRequests = useSupersededRequests(

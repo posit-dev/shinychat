@@ -1366,6 +1366,7 @@ class HistoryController:
         transaction: object | None = None,
         target_values: dict[str, Any],
         terminal_leaf: bool = False,
+        leaving_terminal_view: bool = False,
     ) -> None:
         """The shared rewind skeleton: capture the close, run the plan,
         restore the target's app state, commit the resubmit pointer, then send.
@@ -1444,6 +1445,12 @@ class HistoryController:
                         )
                 if terminal_leaf:
                     recorder.mark_read_only("terminal_incomplete")
+                elif (
+                    restored
+                    and leaving_terminal_view
+                    and recorder.read_only_reason == "terminal_incomplete"
+                ):
+                    recorder.clear_read_only()
                 if restored:
                     await send()
                 else:
@@ -1642,7 +1649,15 @@ class HistoryController:
         terminal_leaf = node_is_terminal_incomplete(record.nodes[leaf])
         if not terminal_leaf:
             record.require_checkpoint(leaf)
-        display_only = read_only or terminal_leaf
+        leaving_terminal_view = (
+            read_only
+            and recorder.read_only_reason == "terminal_incomplete"
+            and not recorder.source_isolated
+            and not terminal_leaf
+        )
+        display_only = (
+            read_only and not leaving_terminal_view
+        ) or terminal_leaf
         projection = record.model_copy(deep=True)
         projection.set_active_leaf(leaf)
         node_ids = tuple(projection.path_node_ids())
@@ -1698,6 +1713,7 @@ class HistoryController:
                 send=send_navigation,
                 target_values=target_values,
                 terminal_leaf=terminal_leaf,
+                leaving_terminal_view=leaving_terminal_view,
             )
 
     async def handle_edit(

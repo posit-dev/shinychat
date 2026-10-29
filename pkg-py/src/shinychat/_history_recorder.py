@@ -642,7 +642,10 @@ class _ExchangeRecorder:
     def mark_read_only(self, reason: ReadOnlyReason) -> None:
         """Make the installed record view-only after an app restore failure."""
         assert self.record is not None
-        if not self._read_only:
+        if not self._read_only or (
+            self._read_only_reason == "terminal_incomplete"
+            and reason == "app_restore_failed"
+        ):
             self._read_only = True
             self._read_only_reason = reason
 
