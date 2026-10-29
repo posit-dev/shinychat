@@ -5,6 +5,7 @@ from typing import Any, cast
 import pytest
 from _history_test_helpers import replay_exchange_record
 from shinychat._chat_types import ReadOnlyReason
+from shinychat._history_types import TURNS_STATE_KEY, StateEntry
 from test_history_controller import _FakeAdapter, _make_controller
 from test_history_node_first import _record_with_browsable_failure
 
@@ -85,3 +86,33 @@ async def test_healthy_navigation_keeps_unrelated_restrictions(
     assert recorder.source_isolated == isolated
     if isolated:
         assert len(store.put_calls) == writes_before
+
+
+@pytest.mark.anyio
+async def test_unavailable_healthy_context_remains_browsable_without_continuation() -> (
+    None
+):
+    controller, _store = _make_controller()
+    record, original, failed = _record_with_browsable_failure()
+    record.nodes[original].state[TURNS_STATE_KEY] = StateEntry(
+        kind="foreign_turns", version=1, mode="snapshot", data=[]
+    )
+    await replay_exchange_record(controller, record)
+    recorder = controller._exchange_recorder
+    assert recorder.record is not None
+    assert recorder.record.active_leaf == failed
+    assert recorder.read_only_reason == "terminal_incomplete"
+
+    await controller.handle_navigate(
+        0, "prev", request_id="unavailable-original"
+    )
+
+    assert recorder.record.active_leaf == original
+    assert recorder.read_only
+    assert recorder.read_only_reason == "model_unavailable"
+    # Returning to a compatible sibling cannot clear a discovered hard
+    # model restriction merely because that sibling is displayable.
+    await controller.handle_navigate(0, "next", request_id="return-failed")
+    assert recorder.record.active_leaf == failed
+    assert recorder.read_only_reason == "model_unavailable"
+    assert not controller._can_resubmit_active()

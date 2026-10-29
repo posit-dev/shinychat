@@ -1671,9 +1671,16 @@ class HistoryController:
             # read-only record's model context is already unavailable, so
             # any valid sibling path can be displayed; structural errors
             # still fail before mutation either way.
-            reject_unavailable=not display_only,
+            reject_unavailable=not (display_only or leaving_terminal_view),
             phase="rewind",
         )
+        unavailable_model = (
+            leaving_terminal_view
+            and _history_plan.turns_unavailable_reason(rewind_state) is not None
+        )
+        if unavailable_model:
+            display_only = True
+            leaving_terminal_view = False
         if display_only:
             # Display-only navigation replays the display and persists the
             # selected leaf, but never captures live model state (the
@@ -1694,6 +1701,9 @@ class HistoryController:
         )
 
         async with self._destructive_mutation(block_input=True):
+            if unavailable_model:
+                async with self._exchange_mutation():
+                    recorder.mark_read_only("model_unavailable")
 
             async def send_navigation() -> None:
                 # The display replay reads only node content by id, so it

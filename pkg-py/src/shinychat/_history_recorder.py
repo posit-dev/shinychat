@@ -644,7 +644,7 @@ class _ExchangeRecorder:
         assert self.record is not None
         if not self._read_only or (
             self._read_only_reason == "terminal_incomplete"
-            and reason == "app_restore_failed"
+            and reason != "terminal_incomplete"
         ):
             self._read_only = True
             self._read_only_reason = reason
@@ -652,11 +652,11 @@ class _ExchangeRecorder:
     def clear_read_only(self) -> None:
         """Clear a view-only restriction that a successful restore resolved.
 
-        Only the controller's explicit resubmit recovery calls this, and
-        only for restrictions a successful parent restoration actually
-        resolves (``app_restore_failed``, ``terminal_incomplete``); model
-        unavailable, source-isolated, and live-producer restrictions never
-        clear here.
+        The controller's explicit resubmit recovery clears a resolved app
+        restriction. Healthy-checkpoint navigation can also clear a position-
+        only ``terminal_incomplete`` restriction after model/app restoration.
+        Model-unavailable, source-isolated, and live-producer protections
+        are never cleared by either path.
         """
         self._read_only = False
         self._read_only_reason = None
