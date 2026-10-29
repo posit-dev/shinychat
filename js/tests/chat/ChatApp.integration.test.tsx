@@ -711,6 +711,9 @@ describe("ChatApp integration: editable messages gated by history state", () => 
         expect(
           screen.getByText("replacement").closest(".shiny-chat-user-message"),
         ).toBe(projectedRow)
+        const failureNotice = screen.getByText("This message was not sent.")
+        expect(projectedRow).not.toContainElement(failureNotice)
+        expect(projectedRow?.nextElementSibling).toBe(failureNotice)
         expect(
           screen.getByRole("button", { name: "Retry message" }),
         ).toBeEnabled()

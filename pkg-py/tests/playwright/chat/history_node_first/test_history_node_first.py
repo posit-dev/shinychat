@@ -547,8 +547,16 @@ def assert_failed_node_affordances(page: Page, chat: ChatController) -> None:
         has_text=MSG_B_PRIME
     )
     expect(failed_row.locator(".shiny-chat-edit-btn")).to_have_count(1)
-    expect(failed_row.locator(".shiny-chat-retry-error")).to_contain_text(
-        "not sent", timeout=10_000
+    notice = chat.loc.locator(".shiny-chat-message-not-sent")
+    expect(notice).to_have_text("This message was not sent.")
+    expect(notice).to_be_visible()
+    expect(failed_row.locator(".shiny-chat-retry-error")).to_have_count(0)
+    assert notice.evaluate("el => getComputedStyle(el).fontStyle") == "italic"
+    bubble_box = failed_row.bounding_box()
+    notice_box = notice.bounding_box()
+    assert bubble_box is not None and notice_box is not None
+    assert notice_box["y"] >= bubble_box["y"] + bubble_box["height"], (
+        "The preparation failure notice must be below the user bubble."
     )
     # Ordinary follow-ups stay prohibited; the composer stays mounted but
     # hidden so a draft is never erased.

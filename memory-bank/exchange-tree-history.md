@@ -178,7 +178,7 @@ Source isolation prevents pointer, metadata, rename, save, shutdown, and delete 
 
 History/replayed-error explanations are safe regardless of general app error-sanitization settings; details go to developer diagnostics. Live input/response errors retain the app's live error policy.
 
-If preparation fails, the edited input stays at its recorded position and sibling arrows provide explicit access to the preserved original branch. Successful storage is required for reload durability; a disconnected browser or failed write cannot be promised a saved position.
+If preparation fails, the edited input stays at its recorded position and sibling arrows provide explicit access to the preserved original branch. The browser shows an italic “This message was not sent.” below the user bubble and its version controls, not inside the bubble. The durable safe outcome remains “Message not sent.” Successful storage is required for reload durability; a disconnected browser or failed write cannot be promised a saved position.
 
 New chat is a narrow explicit exit, not a rollback engine. Outgoing model-capture failure warns and preserves saved history while allowing normal reset; storage/reset failures and fatal errors still propagate. Authors own valid fresh app state; reset cannot repair a permanently broken getter.
 
