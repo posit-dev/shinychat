@@ -339,6 +339,7 @@ def test_as_stored_message_processes_block_deps_with_session():
     applied)."""
     from typing import Any, cast
 
+    from _session_api_contract import FakeSessionReactiveApi
     from htmltools import HTMLDependency, TagList
     from shiny import Inputs, Session
     from shiny.module import ResolvedId
@@ -346,7 +347,7 @@ def test_as_stored_message_processes_block_deps_with_session():
     from shinychat import Chat
     from shinychat._chat_types import ChatMessage
 
-    class _ProcessUISession:
+    class _ProcessUISession(FakeSessionReactiveApi):
         ns: ResolvedId = ResolvedId("")
         app: object = None
         id: str = "process-ui-session"
@@ -406,6 +407,7 @@ def test_as_stored_message_no_session_keeps_raw_deps():
     the raw as_dict() fallback on the block survives."""
     from typing import Any, cast
 
+    from _session_api_contract import FakeSessionReactiveApi
     from htmltools import HTMLDependency
     from shiny import Inputs, Session
     from shiny.module import ResolvedId
@@ -413,7 +415,7 @@ def test_as_stored_message_no_session_keeps_raw_deps():
     from shinychat import Chat
     from shinychat._chat_types import ChatMessage
 
-    class _NoProcessSession:
+    class _NoProcessSession(FakeSessionReactiveApi):
         ns: ResolvedId = ResolvedId("")
         app: object = None
         id: str = "no-process-session"
@@ -467,6 +469,7 @@ def test_append_message_emits_processed_block_deps():
     import threading
     from typing import Any, cast
 
+    from _session_api_contract import FakeSessionReactiveApi
     from htmltools import HTMLDependency, TagList
     from shiny import Inputs, Session
     from shiny.module import ResolvedId
@@ -474,7 +477,7 @@ def test_append_message_emits_processed_block_deps():
     from shinychat import Chat
     from shinychat._chat_types import ChatMessage
 
-    class _CaptureSession:
+    class _CaptureSession(FakeSessionReactiveApi):
         ns: ResolvedId = ResolvedId("")
         app: object = None
         id: str = "capture-session"

@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import shinychat._history as history_module
 import shinychat._history_plan as history_plan_module
+from _session_api_contract import FakeSessionReactiveApi
 from shiny import reactive
 from shiny._utils import AsyncCallbacks, wrap_async
 from shiny.module import ResolvedId
@@ -36,7 +37,7 @@ from test_history_controller import _restore_target
 # ---------------------------------------------------------------------------
 
 
-class _MockSession:
+class _MockSession(FakeSessionReactiveApi):
     ns: ResolvedId = ResolvedId("")
     app: object = None
     id: str = "mock-session-history"

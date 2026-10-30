@@ -14,6 +14,7 @@ import threading
 from typing import Any, cast
 
 import pytest
+from _session_api_contract import FakeSessionReactiveApi
 from htmltools import HTMLDependency, Tag, TagList, div
 from shiny import Inputs, Session
 from shiny.module import ResolvedId
@@ -21,7 +22,7 @@ from shiny.session import session_context
 from shinychat import MarkdownStream, output_markdown_stream
 
 
-class _CaptureSession:
+class _CaptureSession(FakeSessionReactiveApi):
     """Minimal session capturing custom messages. `_process_ui` marks deps
     as session-processed (mirrors the pattern in test_html_islands.py)."""
 

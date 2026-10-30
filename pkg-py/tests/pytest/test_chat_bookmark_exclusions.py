@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from _session_api_contract import FakeSessionReactiveApi
+from shiny import Inputs
 from shiny.module import ResolvedId
 from shiny.session import session_context
 from shinychat import Chat
@@ -21,12 +23,13 @@ class _Bookmark:
         return lambda: None
 
 
-class _Session:
+class _Session(FakeSessionReactiveApi):
     ns = ResolvedId("")
     app = None
     id = "bookmark-exclusions"
 
     def __init__(self) -> None:
+        self.input = Inputs({}, ns=ResolvedId)
         self.bookmark = _Bookmark()
 
     def is_stub_session(self) -> bool:

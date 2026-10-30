@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import pytest
+from _session_api_contract import FakeSessionReactiveApi
 from shiny import Inputs, Session, reactive
 from shiny.module import ResolvedId
 from shiny.session import session_context
@@ -32,20 +33,6 @@ from shinychat._history_store import (
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture(autouse=True)
-def _fresh_reactive_lock():
-    # Shiny's global reactive lock binds to the first event loop that
-    # contends for it (Python < 3.14); every run_async() here is a fresh
-    # loop, so start — and leave — each test with an unbound lock, or
-    # ExtendedTask done-callbacks die with 'bound to a different event
-    # loop' and task statuses never settle.
-    from shiny.reactive._core import _reactive_environment as renv
-
-    renv._lock = None
-    yield
-    renv._lock = None
 
 
 def run_async(coro_fn: Any) -> None:
@@ -246,7 +233,7 @@ class _MockApp:
     sanitize_otel_errors = True
 
 
-class _MockSession:
+class _MockSession(FakeSessionReactiveApi):
     """Enough of a Session for Chat + history to run outside an app."""
 
     ns: ResolvedId = ResolvedId("")
@@ -275,13 +262,6 @@ class _MockSession:
 
     def _decrement_busy_count(self) -> None:
         pass
-
-    def _restore_gate(self, priority: int) -> None:
-        # No bookmark restore is in progress, so effects can run right away.
-        return None
-
-    def _otel_reactive_update_span(self) -> None:
-        return None
 
     def _process_ui(self, x: Any) -> dict[str, Any]:
         return {"html": str(x), "deps": []}
