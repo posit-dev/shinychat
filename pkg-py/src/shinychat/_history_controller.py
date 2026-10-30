@@ -71,9 +71,8 @@ if TYPE_CHECKING:
 _RETRYABLE_STATUSES = ("pending", "error", "cancelled")
 
 
-# Builtin model-state hooks that read-only navigation never invokes: the
-# live client's model state is not rewound while a record is view-only.
-# App-registered rewind hooks keep their ordinary behavior.
+# Display-only navigation skips builtin model-state hooks while retaining
+# app-registered rewind hooks. Recovery can run the complete rewind plan.
 _MODEL_STATE_KEYS = frozenset({TURNS_STATE_KEY, SYSTEM_PROMPT_STATE_KEY})
 
 # View-only restrictions an explicit resubmit (edit/retry/regenerate) may
@@ -1578,10 +1577,10 @@ class HistoryController:
             recorder.rewind_hooks,
             adapter=self.adapter,
             previous_node_ids=tuple(record.path_node_ids()),
-            # Writable navigation keeps the strict target preflight. A
-            # read-only record's model context is already unavailable, so
-            # any valid sibling path can be displayed; structural errors
-            # still fail before mutation either way.
+            # Writable navigation rejects unavailable targets. Display-only
+            # and recovery navigation classify them before mutation so an
+            # unavailable target can be displayed without a model rewind;
+            # recovery runs the complete plan only for a compatible target.
             reject_unavailable=not (display_only or recover_model),
             phase="rewind",
         )

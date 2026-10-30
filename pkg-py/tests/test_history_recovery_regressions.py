@@ -18,7 +18,10 @@ from test_history_controller import (
     _FakeChat,
     _make_controller,
     _make_v2_navigation_controller,
+    _make_v2_resubmit_real_chat,
+    _seed_resubmit_transcript,
     _stored_message,
+    _wire_resubmit_capture,
 )
 from test_history_node_first import _record_with_browsable_failure
 from test_history_node_first_review import _view
@@ -347,8 +350,131 @@ async def test_recovery_unavailable_target_model_cannot_clear_app_failure() -> (
     assert restores == [{}]
     assert adapter.turns == [{"role": "user", "content": "poisoned"}]
     assert recorder.read_only
-    assert recorder.read_only_reason == "model_unavailable"
+    assert recorder.read_only_reason == "app_restore_failed"
+    assert not recorder.continuation_allowed
     assert not controller._can_resubmit_active()
+
+
+@pytest.mark.anyio
+async def test_recovery_unavailable_detour_keeps_app_failure_recoverable() -> (
+    None
+):
+    controller, chat, adapter, _store, unavailable, compatible = (
+        _make_v2_navigation_controller()
+    )
+    recorder = controller._exchange_recorder
+    record = recorder.record
+    assert record is not None
+    record.nodes[unavailable].state[TURNS_STATE_KEY].kind = "unsupported"
+    record.nodes[unavailable].state[VALUES_STATE_KEY] = StateEntry(
+        kind="values", version=1, mode="snapshot", data={"tab": "unavailable"}
+    )
+    record.nodes[compatible].state[VALUES_STATE_KEY] = StateEntry(
+        kind="values", version=1, mode="snapshot", data={"tab": "compatible"}
+    )
+    compatible_state = record.nodes[compatible].model_dump()["state"]
+    sentinel_turns = [{"role": "user", "content": "poisoned outgoing"}]
+    adapter.turns = list(sentinel_turns)
+    recorder.mark_read_only("app_restore_failed")
+    observations: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+    controller._restore_callbacks.append(
+        lambda values: observations.append((dict(values), list(adapter.turns)))
+    )
+
+    await controller.handle_navigate(2, "prev", request_id="unavailable-detour")
+
+    assert record.active_leaf == unavailable
+    assert adapter.turns == sentinel_turns
+    assert observations == [({"tab": "unavailable"}, sentinel_turns)]
+    assert recorder.read_only_reason == "app_restore_failed"
+    assert not recorder.continuation_allowed
+    assert chat.actions[-1]["active_read_only_reason"] == "app_restore_failed"
+
+    await controller.handle_navigate(2, "next", request_id="compatible-return")
+
+    restored_turns = [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+        {"role": "user", "content": "replacement"},
+    ]
+    assert record.active_leaf == compatible
+    assert adapter.turns == restored_turns
+    assert observations[-1] == ({"tab": "compatible"}, restored_turns)
+    assert record.nodes[compatible].model_dump()["state"] == compatible_state
+    assert not recorder.read_only
+    assert recorder.continuation_allowed
+    assert chat.actions[-1].get("active_read_only", False) is False
+
+
+@pytest.mark.anyio
+async def test_recovery_retry_after_unavailable_detour_restores_parent(
+    request: pytest.FixtureRequest,
+) -> None:
+    controller, chat, adapter, _store, first, unavailable = (
+        _make_v2_resubmit_real_chat(request, chat_id="unavailable_detour_retry")
+    )
+    await _seed_resubmit_transcript(chat, first, unavailable)
+    _wire_resubmit_capture(controller, chat)
+    recorder = controller._exchange_recorder
+    record = recorder.record
+    assert record is not None
+    sentinel_turns = [{"role": "user", "content": "poisoned outgoing"}]
+    broken = True
+    observations: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+
+    def restore(values: dict[str, Any]) -> None:
+        observations.append((dict(values), list(adapter.turns)))
+        if broken:
+            adapter.turns = list(sentinel_turns)
+            raise ValueError("app restore failed")
+
+    controller._restore_callbacks.append(restore)
+    with pytest.warns(UserWarning, match="on_restore callback failed"):
+        await controller.handle_edit(2, "replacement", request_id="fail-edit")
+    failed = record.active_leaf
+    assert failed is not None and failed not in (first, unavailable)
+    assert record.nodes[failed].not_sent is True
+    assert recorder.read_only_reason == "app_restore_failed"
+    assert adapter.turns == sentinel_turns
+    with reactive.isolate():
+        assert chat.user_input() is None
+
+    broken = False
+    record.nodes[unavailable].state[TURNS_STATE_KEY].kind = "unsupported"
+    await controller.handle_navigate(2, "prev", request_id="unavailable-detour")
+    assert record.active_leaf == unavailable
+    assert adapter.turns == sentinel_turns
+    assert recorder.read_only_reason == "app_restore_failed"
+    assert not recorder.continuation_allowed
+
+    await controller.handle_navigate(2, "next", request_id="return-failed")
+    assert record.active_leaf == failed
+    assert adapter.turns == sentinel_turns
+    assert recorder.read_only_reason == "app_restore_failed"
+    assert controller._can_resubmit_active()
+    assert not recorder.continuation_allowed
+
+    await controller.resubmit(
+        failed, kind="retry", request_id="retry", message_index=2
+    )
+
+    submitted_id = record.active_leaf
+    assert submitted_id is not None and submitted_id not in (first, unavailable)
+    submitted_node = record.nodes[submitted_id]
+    assert submitted_node.parent_id == first
+    assert submitted_node.input is not None
+    assert submitted_node.input.content == "replacement"
+    restored_parent = [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+    ]
+    assert observations[-1] == ({}, restored_parent)
+    assert adapter.turns == restored_parent
+    assert not recorder.read_only
+    assert recorder.continuation_allowed
+    with reactive.isolate():
+        submitted = chat.user_input()
+        assert submitted is not None and submitted.text == "replacement"
 
 
 @pytest.mark.anyio
