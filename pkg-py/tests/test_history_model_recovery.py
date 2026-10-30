@@ -1,6 +1,7 @@
 """Compatible model recovery after a read-only history detour."""
 
 from typing import Any, cast
+from unittest.mock import patch
 
 import pytest
 from _history_test_helpers import replay_exchange_record
@@ -45,7 +46,7 @@ async def test_kvte_unavailable_initial_load_recovers_compatible_sibling() -> (
         kind="values", version=1, mode="snapshot", data={"tab": "original"}
     )
     original_outgoing = record.nodes[unavailable].model_dump()["state"]
-    controller, _store = _make_controller()
+    controller, store = _make_controller()
     adapter = cast(_FakeAdapter, controller.adapter)
     observations: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
     controller._restore_callbacks.append(
@@ -93,6 +94,34 @@ async def test_kvte_unavailable_initial_load_recovers_compatible_sibling() -> (
         "original reply",
     ]
     assert chat.actions[-1].get("active_read_only", False) is False
+
+    # Closing a trusted writable position preserves a legitimate model-only
+    # change before entering the incompatible display-only branch.
+    changed = [*expected, {"role": "user", "content": "local model change"}]
+    adapter.turns = changed
+    save_calls: list[bool] = []
+    controller._save_callbacks.append(lambda values: save_calls.append(True))
+    await controller.handle_navigate(2, "next", request_id="foreign-again")
+    assert recorder.record.active_leaf == unavailable
+    assert recorder.read_only_reason == "model_unavailable"
+    assert adapter.turns == changed
+    assert save_calls == []
+    assert (
+        recorder.record.nodes[unavailable].model_dump()["state"]
+        == original_outgoing
+    )
+    saved = store.put_calls[-1][1]
+    assert (
+        saved.nodes[original].state[TURNS_STATE_KEY]
+        == recorder.record.nodes[original].state[TURNS_STATE_KEY]
+    )
+    assert saved.nodes[unavailable].model_dump()["state"] == original_outgoing
+    await controller.handle_navigate(2, "prev", request_id="recover-again")
+    assert recorder.record.active_leaf == original
+    assert not recorder.read_only
+    assert adapter.turns == changed
+    assert observations[-1] == ({"tab": "original"}, changed)
+    assert save_calls == []
 
 
 @pytest.mark.anyio
@@ -193,7 +222,15 @@ async def test_kvte_notsent_after_unavailable_detour_restores_parent_before_admi
     await view.controller.handle_navigate(0, "next", request_id="failed")
     assert live.active_leaf == failed
     assert recorder.read_only_reason == "model_unavailable"
-    assert view.controller._can_resubmit_active()
+    # Advertisement must classify saved parent state, not read or capture
+    # the poisoned live client merely to determine whether Retry is possible.
+    with patch.object(
+        view.controller.adapter,
+        "get_turns_json",
+        side_effect=AssertionError("metadata captured live turns"),
+    ):
+        assert view.controller._can_resubmit_active()
+        await view.controller.send_history_update()
     update = _history_updates(view.session)[-1]
     assert update["active_read_only_reason"] == "model_unavailable"
     assert update["active_can_resubmit"] is True
@@ -222,7 +259,7 @@ async def test_kvte_notsent_after_unavailable_detour_restores_parent_before_admi
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "parent_issue", ["unavailable_model", "unavailable_values"]
+    "parent_issue", ["unavailable_model", "unavailable_values", "malformed"]
 )
 async def test_kvte_notsent_recovery_rejects_unusable_parent_before_staging(
     request: pytest.FixtureRequest, parent_issue: str
@@ -236,12 +273,27 @@ async def test_kvte_notsent_recovery_rejects_unusable_parent_before_staging(
     live = recorder.record
     if parent_issue == "unavailable_model":
         live.nodes[live.root_id].state[TURNS_STATE_KEY].kind = "unsupported"
-    else:
+    elif parent_issue == "unavailable_values":
         live.nodes[live.root_id].app_values = "unavailable"
+    else:
+        live.nodes[live.root_id].state["unknown:state"] = StateEntry(
+            kind="unknown", version=1, mode="snapshot", data={}
+        )
     recorder.mark_read_only("model_unavailable")
     before = live.model_dump()
     transcript = view.chat._transcript.read()
-    assert view.controller._can_resubmit_active()
+    assert not view.controller._can_resubmit_active()
+    await view.controller.send_history_update()
+    update = _history_updates(view.session)[-1]
+    assert not update.get("active_can_resubmit", False)
+    assert update["active_read_only_reason"] == "model_unavailable"
+    await view.controller._send_exchange_metadata()
+    metadata = [
+        message["action"]
+        for message in view.session.messages
+        if message["action"]["type"] == "update_exchange_metadata"
+    ][-1]
+    assert metadata["data"][0]["retryable"] is False
 
     with pytest.raises(ValueError, match="[Uu]navailable|[Uu]nsupported"):
         await view.controller.handle_resubmit(0, "retry", request_id="unusable")
@@ -251,6 +303,8 @@ async def test_kvte_notsent_recovery_rejects_unusable_parent_before_staging(
     assert view.chat._transcript.read() == transcript
     assert recorder.read_only_reason == "model_unavailable"
     assert not recorder.continuation_allowed
+    assert view.provider_inputs == []
+    assert view.chat._transcript.open_exchange_id is None
     with reactive.isolate():
         assert view.chat.user_input() is None
         assert view.chat._normal_user_submission() is None
@@ -368,6 +422,7 @@ async def test_kvte_active_stream_blocks_browse_and_retry_recovery(
     with session_context(cast(Any, view.session)), reactive.isolate():
         async with view.chat.message_stream_context() as stream:
             await stream.append("live producer")
+            assert not view.controller._can_resubmit_active()
             with pytest.raises(RuntimeError, match="stream is active"):
                 await view.controller.handle_navigate(
                     0, "prev", request_id="browse-active"

@@ -582,8 +582,12 @@ class ChatHistory:
         preserved. Edit and Retry of accepted/provider-failed input still
         create siblings. Callbacks that can recover from a known case
         should handle it themselves. Cancellation and other fatal errors
-        take the usual
-        full restore cleanup. A later browse to a compatible checkpoint
+        take the usual full restore cleanup. A cooperatively cancelled
+        in-place Retry that was not accepted first attempts to save the
+        same node as not sent, with unavailable app values rather than
+        invoking app getters. Failed storage or hard termination cannot
+        promise that position survives reload; already accepted input is
+        never relabeled. A later browse to a compatible checkpoint
         clears an earlier app/model restriction only after restoring its
         model context and available app values, then validating the live
         model. Display-only browsing, skipped app values and an invalid
@@ -591,8 +595,10 @@ class ChatHistory:
         remain browsable without a model rewind; sending stays disabled
         if no compatible target can safely restore both model and app
         state. Explicit Retry/Edit of a selected not-sent leaf can recover
-        through its valid compatible parent. Source-isolated, interrupted
-        and active-producer protections are never cleared by that recovery.
+        through its valid compatible parent; Retry/Edit is offered only
+        when that saved parent can be preflighted and its app values are
+        available. Source-isolated, interrupted and active-producer
+        protections are never cleared by that recovery.
         Starting a new chat resets the active view.
 
         Restores faithfully reapply the conversation's saved system prompt

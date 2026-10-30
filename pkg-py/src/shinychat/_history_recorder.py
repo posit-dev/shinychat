@@ -783,6 +783,8 @@ class _ExchangeRecorder:
     async def fail_staged_input_locked(
         self,
         exchange_id: str,
+        *,
+        capture_app: bool = True,
     ) -> None:
         """Attach the safe pre-admission failure outcome to a staged node.
 
@@ -790,10 +792,10 @@ class _ExchangeRecorder:
         sent" error with an explicitly invalid checkpoint and the durable
         node fields describing whether a complete app-values snapshot was
         observed at the failed position.
-        The ordinary automatic app-value capture role runs exactly once
-        here, even after a failed ``on_restore`` (a restore failure does
-        not make ``on_save`` impossible, and the failed node has no saved
-        values that capturing could overwrite). The snapshot is complete
+        Normally the automatic app-value capture runs exactly once here,
+        even after a failed ``on_restore`` (the failed node has no saved
+        values that capturing could overwrite). A cooperative cancellation
+        skips app getters and records unavailable values instead. The snapshot is complete
         only when every callback finished and the whole snapshot
         serialized; otherwise the values are unavailable rather than a
         partial fragment tree. The staged slot is consumed either way, so
@@ -808,7 +810,7 @@ class _ExchangeRecorder:
             self._staged_input = None
         app_values = (
             "complete"
-            if self._capture_app_state(_force=True)
+            if capture_app and self._capture_app_state(_force=True)
             else "unavailable"
         )
         record.finish_exchange(exchange_id, "error", HISTORY_ERROR_NOT_SENT)

@@ -3,7 +3,12 @@ from __future__ import annotations
 import asyncio
 import inspect
 import warnings
-from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
+from contextlib import (
+    AsyncExitStack,
+    asynccontextmanager,
+    contextmanager,
+    suppress,
+)
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -1180,10 +1185,12 @@ class HistoryController:
                 )
                 return
             except BaseException as error:
-                # Cancellation and other fatal failures keep the usual full
-                # restore cleanup; the stored staged node keeps its
-                # documented interrupted-producer reading on reload.
-                await self._clear_failed_restore(error)
+                await self._clear_failed_resubmit(
+                    error,
+                    staged_id,
+                    replace_existing=replace_existing,
+                    admission=admission,
+                )
                 raise
             if not restored:
                 # _restore_app_state already warned the developer and
@@ -1223,11 +1230,55 @@ class HistoryController:
                         transaction=transaction,
                     )
                     return
-                # Cancellation and other fatal failures keep the usual full
-                # restore cleanup; the stored staged node keeps its
-                # documented interrupted-producer reading on reload.
-                await self._clear_failed_restore(error)
+                await self._clear_failed_resubmit(
+                    error,
+                    staged_id,
+                    replace_existing=replace_existing,
+                    admission=admission,
+                )
                 raise
+
+    async def _clear_failed_resubmit(
+        self,
+        error: BaseException,
+        staged_id: str,
+        *,
+        replace_existing: bool,
+        admission: StagedInputAdmission,
+    ) -> None:
+        # Only this locally owned, uncommitted Retry proves that no producer
+        # accepted the reused node. Cancellation must not invoke app getters.
+        if not (
+            isinstance(error, asyncio.CancelledError)
+            and replace_existing
+            and not admission.committed
+        ):
+            await self._clear_failed_restore(error)
+            return
+        try:
+            async with self._exchange_mutation():
+                await self._exchange_recorder.fail_staged_input_locked(
+                    staged_id, capture_app=False
+                )
+        except BaseException as save_error:
+            # Even warning-as-error policies must not replace the original
+            # cancellation or prevent the remaining cleanup.
+            with suppress(BaseException):
+                warnings.warn(
+                    "Chat history could not save the cancelled retry; "
+                    "the failed position may not survive a reload: "
+                    f"{save_error!r}",
+                    stacklevel=2,
+                )
+        try:
+            await self._clear_failed_restore(error)
+        except BaseException as cleanup_error:
+            with suppress(BaseException):
+                warnings.warn(
+                    "Chat history cleanup after a failed resubmission was "
+                    f"incomplete: {cleanup_error!r}",
+                    stacklevel=2,
+                )
 
     async def _prepare_staged_resubmit_locked(
         self,
@@ -1366,6 +1417,7 @@ class HistoryController:
         target_values: dict[str, Any],
         terminal_leaf: bool = False,
         revalidate_model: bool = False,
+        unavailable_model: bool = False,
     ) -> None:
         """Apply a navigation plan, restore app state, and replay the target."""
         recorder = self._exchange_recorder
@@ -1381,6 +1433,11 @@ class HistoryController:
                 await recorder.capture_state_locked(
                     current_leaf, "node_close", model_only=True
                 )
+            # Mark the target only after a trusted outgoing position has had
+            # its model-only close capture. Read-only/poisoned views already
+            # suppress that capture.
+            if unavailable_model:
+                recorder.mark_read_only("model_unavailable")
             try:
                 with _restore_step(save_step):
                     await _history_plan.run_plan(rewind_state)
@@ -1622,25 +1679,22 @@ class HistoryController:
             recorder.rewind_hooks,
             adapter=self.adapter,
             previous_node_ids=tuple(record.path_node_ids()),
-            # Writable navigation rejects unavailable targets. Display-only
-            # and recovery navigation classify them before mutation so an
-            # unavailable target can be displayed without a model rewind;
-            # recovery runs the complete plan only for a compatible target.
-            reject_unavailable=not (display_only or recover_model),
+            # Every target can be classified before selection. Known
+            # incompatible targets remain browsable without model rewind.
+            reject_unavailable=False,
             phase="rewind",
         )
         unavailable_model = (
-            recover_model
-            and _history_plan.turns_unavailable_reason(rewind_state) is not None
+            _history_plan.turns_unavailable_reason(rewind_state) is not None
         )
         if unavailable_model:
             display_only = True
         revalidate_model = recover_model and not unavailable_model
         if display_only:
-            # Display-only navigation replays the display and persists the
-            # selected leaf, but never captures live model state (the
-            # recorder suppresses captures) and never invokes the builtin
-            # model rewind hooks. App-registered rewind hooks still run.
+            # Display-only navigation persists and replays the selected leaf
+            # without builtin model rewind. The recorder suppresses later
+            # capture at that position; a trusted outgoing position still
+            # gets its model-only close capture. App rewind hooks still run.
             rewind_state = tuple(
                 planned
                 for planned in rewind_state
@@ -1652,9 +1706,6 @@ class HistoryController:
         target_values = _history_plan.resolve_path_values(projection, leaf)
 
         async with self._destructive_mutation(block_input=True):
-            if unavailable_model:
-                async with self._exchange_mutation():
-                    recorder.mark_read_only("model_unavailable")
 
             async def send_navigation() -> None:
                 # The display replay reads only node content by id, so it
@@ -1675,6 +1726,7 @@ class HistoryController:
                 target_values=target_values,
                 terminal_leaf=terminal_leaf,
                 revalidate_model=revalidate_model,
+                unavailable_model=unavailable_model,
             )
 
     async def handle_edit(
@@ -1761,12 +1813,35 @@ class HistoryController:
         leaf = record.nodes.get(record.active_leaf)
         if leaf is None or not node_is_terminal_incomplete(leaf):
             return False
+        if self.chat._transcript.active_stream_id is not None:
+            return False
         parent = (
             record.nodes.get(leaf.parent_id)
             if leaf.parent_id is not None
             else None
         )
-        return parent is not None and parent.is_checkpoint
+        if leaf.parent_id is None or parent is None or not parent.is_checkpoint:
+            return False
+        if node_has_unavailable_app_values(parent):
+            return False
+        try:
+            _history_plan.validate_active_path_state(record)
+            prefix = record.model_copy(deep=True)
+            prefix.set_active_leaf(leaf.parent_id)
+            plan = _history_plan.preflight_state(
+                prefix,
+                tuple(prefix.path_node_ids()),
+                recorder.rewind_hooks,
+                adapter=self.adapter,
+                previous_node_ids=tuple(record.path_node_ids()),
+                reject_unavailable=False,
+                phase="rewind",
+            )
+            return _history_plan.turns_unavailable_reason(plan) is None
+        except Exception:
+            # Metadata must not advertise a parent that strict resubmit
+            # preflight would reject; do not capture or alter live state.
+            return False
 
 
 def title_task_done(task: asyncio.Task[None]) -> None:

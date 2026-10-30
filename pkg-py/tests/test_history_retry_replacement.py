@@ -574,3 +574,250 @@ async def test_reused_retry_stream_delivery_failure_is_accepted_error_then_branc
     new_input = live.nodes[new_id].input
     assert new_input is not None
     assert new_input.content == "replacement"
+
+
+@pytest.mark.anyio
+async def test_cancelled_retry_preserves_bookmarked_not_sent_position(
+    request: pytest.FixtureRequest, retry_store: ConversationStore
+) -> None:
+    record = _record(availability="complete", failed_parent="original")
+    original = record.nodes["original"].model_dump()
+    ordinary = record.nodes["ordinary"].model_dump()
+    view = await _producer(request, retry_store, record)
+    pointer = await view.stamp()
+    getter_calls: list[bool] = []
+    view.chat.history.on_save(lambda values: getter_calls.append(True))
+    blocked = asyncio.Event()
+    never = asyncio.Event()
+
+    async def block_rewind(_context: Any) -> None:
+        pending = await _stored(retry_store)
+        assert pending.nodes["failed"].status == "pending"
+        blocked.set()
+        await never.wait()
+
+    view.controller._exchange_recorder._register_rewind_hook(
+        "test:block", block_rewind
+    )
+    task = asyncio.create_task(
+        view.controller.handle_resubmit(2, "retry", request_id="cancel")
+    )
+    await asyncio.wait_for(blocked.wait(), timeout=5)
+    task.cancel("original cancellation")
+    with pytest.raises(asyncio.CancelledError, match="original cancellation"):
+        await task
+
+    stored = await _stored(retry_store)
+    assert stored.active_leaf == "failed"
+    node = stored.nodes["failed"]
+    assert node_is_terminal_incomplete(node)
+    assert node.app_values == "unavailable"
+    assert node.state[VALUES_STATE_KEY].data == {}
+    assert stored.nodes["original"].model_dump() == original
+    assert stored.nodes["ordinary"].model_dump() == ordinary
+    assert getter_calls == []
+    assert view.provider_inputs == []
+    assert view.controller._exchange_recorder.record is None
+    assert view.controller.adapter.get_turns_json() == []
+    assert view.chat._transcript.open_exchange_id is None
+    with reactive.isolate():
+        assert view.chat.user_input() is None
+    reloaded = _view(request, retry_store, pointer=pointer)
+    await reloaded.initialize()
+    recorder = reloaded.controller._exchange_recorder
+    assert (
+        recorder.record is not None and recorder.record.active_leaf == "failed"
+    )
+    assert not recorder.source_isolated
+    assert _contents(reloaded.chat) == [
+        "original",
+        "original reply",
+        "replacement",
+    ]
+    assert reloaded.controller._can_resubmit_active()
+    metadata = [
+        message["action"]
+        for message in reloaded.session.messages
+        if message["action"]["type"] == "update_exchange_metadata"
+    ][-1]["data"][2]
+    assert metadata["preparation_failed"] is True
+    assert metadata["retryable"] is True
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("save_failure", ["error", "cancelled_again"])
+async def test_cancelled_retry_save_failure_warns_and_preserves_cancellation(
+    request: pytest.FixtureRequest,
+    retry_store: ConversationStore,
+    save_failure: str,
+) -> None:
+    view = await _producer(
+        request,
+        retry_store,
+        _record(availability="complete", failed_parent="original"),
+    )
+    blocked = asyncio.Event()
+    never = asyncio.Event()
+    save = retry_store.put
+    getter_calls: list[bool] = []
+    view.chat.history.on_save(lambda values: getter_calls.append(True))
+
+    async def block_rewind(_context: Any) -> None:
+        assert (await _stored(retry_store)).nodes["failed"].status == "pending"
+        blocked.set()
+        await never.wait()
+
+    view.controller._exchange_recorder._register_rewind_hook(
+        "test:block", block_rewind
+    )
+
+    async def fail_terminal_put(partition: Any, record: Any) -> None:
+        if record.nodes["failed"].not_sent:
+            if save_failure == "cancelled_again":
+                raise asyncio.CancelledError("second cancellation")
+            raise OSError("terminal put failed")
+        await save(partition, record)
+
+    with patch.object(retry_store, "put", fail_terminal_put):
+        task = asyncio.create_task(
+            view.controller.handle_resubmit(2, "retry", request_id="cancel")
+        )
+        await asyncio.wait_for(blocked.wait(), timeout=5)
+        task.cancel("original cancellation")
+        with pytest.warns(
+            UserWarning, match="cancelled retry.*may not survive"
+        ):
+            with pytest.raises(
+                asyncio.CancelledError, match="original cancellation"
+            ):
+                await task
+    stored = await _stored(retry_store)
+    assert stored.nodes["failed"].status == "pending"
+    assert view.controller._unresolved_record(stored)
+    assert view.controller._exchange_recorder.record is None
+    assert view.provider_inputs == []
+    assert getter_calls == []
+    with reactive.isolate():
+        assert view.chat.user_input() is None
+
+
+@pytest.mark.anyio
+async def test_postaccepted_retry_cancellation_is_not_labeled_not_sent(
+    request: pytest.FixtureRequest, retry_store: ConversationStore
+) -> None:
+    view = await _producer(
+        request,
+        retry_store,
+        _record(availability="complete", failed_parent="original"),
+    )
+    admit = view.chat._record_accepted_user_input_with_capture
+
+    async def cancel_after_admission(*args: Any, **kwargs: Any) -> None:
+        await admit(*args, **kwargs)
+        assert kwargs["staged_admission"].committed
+        raise asyncio.CancelledError("after acceptance")
+
+    with patch.object(
+        view.chat,
+        "_record_accepted_user_input_with_capture",
+        cancel_after_admission,
+    ):
+        with pytest.raises(asyncio.CancelledError, match="after acceptance"):
+            await view.controller.handle_resubmit(
+                2, "retry", request_id="accepted"
+            )
+    stored = await _stored(retry_store)
+    assert stored.nodes["failed"].status == "pending"
+    assert stored.nodes["failed"].not_sent is None
+    assert view.controller._unresolved_record(stored)
+    with reactive.isolate():
+        assert view.chat.user_input() is not None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failure", ["edit_cancel", "retry_fatal"])
+async def test_other_fatal_resubmit_failures_keep_interrupted_reading(
+    request: pytest.FixtureRequest, retry_store: ConversationStore, failure: str
+) -> None:
+    view = await _producer(
+        request,
+        retry_store,
+        _record(availability="complete", failed_parent="original"),
+    )
+    blocked = asyncio.Event()
+    never = asyncio.Event()
+
+    async def fail_rewind(_context: Any) -> None:
+        blocked.set()
+        if failure == "retry_fatal":
+            raise SystemExit("fatal preparation")
+        await never.wait()
+
+    view.controller._exchange_recorder._register_rewind_hook(
+        "test:fail", fail_rewind
+    )
+    if failure == "edit_cancel":
+        task = asyncio.create_task(
+            view.controller.handle_edit(2, "new edit", request_id="edit")
+        )
+        await asyncio.wait_for(blocked.wait(), timeout=5)
+        task.cancel("edit cancellation")
+        with pytest.raises(asyncio.CancelledError, match="edit cancellation"):
+            await task
+    else:
+        with pytest.raises(SystemExit, match="fatal preparation"):
+            await view.controller.handle_resubmit(
+                2, "retry", request_id="fatal"
+            )
+    stored = await _stored(retry_store)
+    assert stored.active_leaf is not None
+    assert stored.nodes[stored.active_leaf].status == "pending"
+    assert stored.nodes[stored.active_leaf].not_sent is None
+    assert view.controller._unresolved_record(stored)
+    if failure == "edit_cancel":
+        assert node_is_terminal_incomplete(stored.nodes["failed"])
+    assert view.controller._exchange_recorder.record is None
+    assert view.provider_inputs == []
+
+
+@pytest.mark.anyio
+async def test_retry_cancelled_during_admission_before_commit_is_not_sent(
+    request: pytest.FixtureRequest, retry_store: ConversationStore
+) -> None:
+    view = await _producer(
+        request,
+        retry_store,
+        _record(availability="complete", failed_parent="original"),
+    )
+    blocked = asyncio.Event()
+    never = asyncio.Event()
+    getter_calls: list[bool] = []
+    view.chat.history.on_save(lambda values: getter_calls.append(True))
+
+    async def block_capture(_context: Any) -> StateEntry:
+        assert (await _stored(retry_store)).nodes["failed"].status == "pending"
+        blocked.set()
+        await never.wait()
+        raise AssertionError("cancelled capture resumed")
+
+    view.controller._exchange_recorder._register_capture_hook(
+        TURNS_STATE_KEY, block_capture
+    )
+    task = asyncio.create_task(
+        view.controller.handle_resubmit(
+            2, "retry", request_id="admission-cancel"
+        )
+    )
+    await asyncio.wait_for(blocked.wait(), timeout=5)
+    task.cancel("admission cancellation")
+    with pytest.raises(asyncio.CancelledError, match="admission cancellation"):
+        await task
+    stored = await _stored(retry_store)
+    node = stored.nodes["failed"]
+    assert node_is_terminal_incomplete(node)
+    assert node.app_values == "unavailable"
+    assert node.state[VALUES_STATE_KEY].data == {}
+    assert getter_calls == []
+    assert view.provider_inputs == []
+    with reactive.isolate():
+        assert view.chat.user_input() is None

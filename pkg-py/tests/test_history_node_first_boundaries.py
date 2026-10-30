@@ -1243,8 +1243,8 @@ async def test_failed_node_marker_does_not_bypass_protections(
     assert len(record.nodes) == node_count
     assert recorder._staged_input is None
 
-    # Model-unavailable offers explicit parent revalidation, but an
-    # incompatible parent rejects before staging or accepted input.
+    # An incompatible parent is not advertised and strict resubmission
+    # still rejects before staging or accepted input.
     parent_entry = record.nodes[first].state[TURNS_STATE_KEY]
     original_kind = parent_entry.kind
     parent_entry.kind = "unsupported"
@@ -1252,8 +1252,8 @@ async def test_failed_node_marker_does_not_bypass_protections(
         record, read_only=True, read_only_reason="model_unavailable"
     )
     await controller.send_history_update()
-    assert controller._can_resubmit_active()
-    assert last_history_update()["active_can_resubmit"] is True
+    assert not controller._can_resubmit_active()
+    assert "active_can_resubmit" not in last_history_update()
     before = record.model_dump()
     with pytest.raises(ValueError, match="[Uu]nsupported"):
         await controller.resubmit(

@@ -1058,6 +1058,32 @@ def test_history_node_first_unavailable_model_recovers_compatible_branch(
         == "north"
     )
 
+    # A recovered writable branch must still be able to browse the foreign
+    # sibling, and return to a genuinely restored model before sending.
+    saved_foreign = loaded["nodes"][edited_id]["state"]
+    save_count = page.locator("#save_count").inner_text()
+    nav.get_by_role("button", name="Next version").click()
+    expect(nav.locator("span")).to_have_text("2 / 2", timeout=30_000)
+    assert_b_prime_displayed(page)
+    expect(chat.loc.locator(".shiny-chat-readonly")).to_be_visible(
+        timeout=10_000
+    )
+    expect(chat.loc_input).to_be_hidden()
+    expect(page.locator("#save_count")).to_have_text(save_count)
+    assert read_record(page)["nodes"][edited_id]["state"] == saved_foreign
+    nav.get_by_role("button", name="Previous version").click()
+    expect(nav.locator("span")).to_have_text("1 / 2", timeout=30_000)
+    expect(chat.loc_input).to_be_visible(timeout=10_000)
+    expect(page.locator("#save_count")).to_have_text(save_count)
+    assert (
+        restore_enter_entries(read_trace(page))[-1]["client_turns"]
+        == B_BRANCH_PREFIX
+    )
+    assert (
+        restore_enter_entries(read_trace(page))[-1]["values"].get("filter")
+        == "north"
+    )
+
     send_and_expect(chat, DRAFT_TEXT)
     expect(page.locator("#provider_calls")).to_have_text("1", timeout=10_000)
     events = [
