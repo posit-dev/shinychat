@@ -177,8 +177,8 @@ class _ExchangeRecorder:
         """Whether the record has a conversation-wide restriction.
 
         This is separate from the selected position's continuation eligibility.
-        Only a verified app restore may resolve its corresponding restriction;
-        model-unavailable and source-isolated views stay restricted.
+        A verified model and app restore may resolve its corresponding
+        restriction; source-isolated views stay restricted.
         """
         return self._read_only
 
@@ -662,10 +662,10 @@ class _ExchangeRecorder:
             self._read_only_reason = reason
 
     def clear_read_only(self) -> None:
-        """Clear an app restriction after its state has been restored.
+        """Clear a record restriction after a verified model and app restore.
 
-        Model-unavailable, source-isolated, and live-producer protections
-        are never cleared by browsing or explicit resubmission.
+        Source-isolated, interrupted, and live-producer protections are never
+        cleared by browsing or explicit resubmission.
         """
         self._read_only = False
         self._read_only_reason = None

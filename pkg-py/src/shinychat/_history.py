@@ -584,16 +584,16 @@ class ChatHistory:
         should handle it themselves. Cancellation and other fatal errors
         take the usual
         full restore cleanup. A later browse to a compatible checkpoint
-        clears an earlier app-restore failure only after restoring its
+        clears an earlier app/model restriction only after restoring its
         model context and available app values, then validating the live
-        model. Display-only browsing or skipped app values do not clear
-        that restriction. Model-unavailable and source-isolated views
-        remain read-only. Browsing an incompatible model target still
-        displays it, without restoring the model. An existing app-failure
-        restriction remains recoverable, but a model-unavailable
-        restriction discovered there stays for the loaded view, even
-        after returning to a compatible position. Starting a new chat
-        resets the active view.
+        model. Display-only browsing, skipped app values and an invalid
+        live model do not clear that restriction. Incompatible targets
+        remain browsable without a model rewind; sending stays disabled
+        if no compatible target can safely restore both model and app
+        state. Explicit Retry/Edit of a selected not-sent leaf can recover
+        through its valid compatible parent. Source-isolated, interrupted
+        and active-producer protections are never cleared by that recovery.
+        Starting a new chat resets the active view.
 
         Restores faithfully reapply the conversation's saved system prompt
         (the one captured while the conversation was live) before callbacks

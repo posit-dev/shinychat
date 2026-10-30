@@ -220,6 +220,11 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         with open(TRACE_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
 
+    @session.on_ended
+    def trace_session_ended() -> None:
+        # Registered after Chat, so its history flush has already finished.
+        trace({"event": "session_ended"})
+
     def messages_snapshot() -> list[dict[str, Any]]:
         # The contract's approved callback observation: what chat.messages()
         # shows inside edit-time on_restore.

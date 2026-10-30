@@ -1186,12 +1186,9 @@ async def test_reused_fault_instance_keeps_per_admission_classification(
 async def test_failed_node_marker_does_not_bypass_protections(
     request: pytest.FixtureRequest,
 ) -> None:
-    """Source isolation, live producers, and model-unavailable
-    restrictions are not bypassed by a terminal incomplete marker: the
-    read-only resubmit guard refuses, the client is not offered
-    resubmission, and only the restrictions an explicit resubmit can
-    revalidate advertise it. A pending producer or a bare invalid
-    checkpoint is never classified as a stopped producer."""
+    """Source isolation and live producers cannot be bypassed. An
+    unavailable model may only recover through a compatible parent; a
+    pending producer or bare invalid checkpoint is never a stopped attempt."""
     (
         controller,
         chat,
@@ -1224,32 +1221,51 @@ async def test_failed_node_marker_does_not_bypass_protections(
         assert updates
         return updates[-1]
 
-    # Restricted loaded states whose protections must hold even though
-    # the selected leaf carries the terminal incomplete marker.
-    for reason, isolated in (
-        ("interrupted", True),
-        ("model_unavailable", False),
-    ):
-        record.set_active_leaf(failed_id)
-        recorder.install_restored_record(
-            record,
-            read_only=True,
-            source_isolated=isolated,
-            read_only_reason=reason,  # type: ignore[arg-type]
+    # Source isolation remains absolute even for a not-sent node.
+    record.set_active_leaf(failed_id)
+    recorder.install_restored_record(
+        record,
+        read_only=True,
+        source_isolated=True,
+        read_only_reason="interrupted",
+    )
+    await controller.send_history_update()
+    assert not controller._can_resubmit_active()
+    assert "active_can_resubmit" not in last_history_update()
+    node_count = len(record.nodes)
+    with pytest.raises(RuntimeError, match="read-only conversation"):
+        await controller.resubmit(
+            failed_id,
+            kind="retry",
+            request_id="retry-interrupted",
+            message_index=EDIT_INDEX,
         )
-        await controller.send_history_update()
-        assert controller._can_resubmit_active() is False
-        assert "active_can_resubmit" not in last_history_update()
-        node_count = len(record.nodes)
-        with pytest.raises(RuntimeError, match="read-only conversation"):
-            await controller.resubmit(
-                failed_id,
-                kind="retry",
-                request_id=f"retry-{reason}",
-                message_index=EDIT_INDEX,
-            )
-        assert len(record.nodes) == node_count
-        assert recorder._staged_input is None
+    assert len(record.nodes) == node_count
+    assert recorder._staged_input is None
+
+    # Model-unavailable offers explicit parent revalidation, but an
+    # incompatible parent rejects before staging or accepted input.
+    parent_entry = record.nodes[first].state[TURNS_STATE_KEY]
+    original_kind = parent_entry.kind
+    parent_entry.kind = "unsupported"
+    recorder.install_restored_record(
+        record, read_only=True, read_only_reason="model_unavailable"
+    )
+    await controller.send_history_update()
+    assert controller._can_resubmit_active()
+    assert last_history_update()["active_can_resubmit"] is True
+    before = record.model_dump()
+    with pytest.raises(ValueError, match="[Uu]nsupported"):
+        await controller.resubmit(
+            failed_id,
+            kind="retry",
+            request_id="retry-unavailable",
+            message_index=EDIT_INDEX,
+        )
+    assert record.model_dump() == before
+    assert recorder._staged_input is None
+    assert publications == []
+    parent_entry.kind = original_kind
 
     # The selected not-sent node offers explicit recovery without a
     # conversation-wide restriction.

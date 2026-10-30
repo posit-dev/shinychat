@@ -963,6 +963,123 @@ def test_history_node_first_failed_edit_survives_reload(
     assert_original_branch_retained(reloaded)
 
 
+def test_history_node_first_unavailable_model_recovers_compatible_branch(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    """A real incompatible stored branch stays viewable until a safe browse."""
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+    page.locator("#region_filter").fill("north")
+    expect(page.locator("#current_filter")).to_have_text(
+        "north", timeout=10_000
+    )
+    seed_conversation(page, chat)
+    edit_user_message(page, 1, MSG_B_PRIME)
+    chat.expect_latest_message(f"Echo: {MSG_B_PRIME}", timeout=30_000)
+    record = wait_for_record_where(
+        page,
+        lambda r: (
+            len(_ok_node_ids(r, MSG_B_PRIME)) == 1
+            and r["nodes"][_ok_node_ids(r, MSG_B_PRIME)[0]].get("checkpoint")
+            == "valid"
+        ),
+        description="the edited branch has a valid checkpoint",
+    )
+    edited_id = _ok_node_ids(record, MSG_B_PRIME)[0]
+    store_dir = Path(page.locator("#store_dir").inner_text().strip())
+    trace_path = store_dir / "restore_trace.jsonl"
+    previous_ends = sum(
+        event["event"] == "session_ended" for event in read_trace(page)
+    )
+
+    # Disconnect first and wait for the session-end history flush. Otherwise
+    # that flush could overwrite the deliberately incompatible stored kind.
+    page.goto("about:blank")
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        trace = [
+            json.loads(line)
+            for line in trace_path.read_text().splitlines()
+            if line.strip()
+        ]
+        if (
+            sum(event["event"] == "session_ended" for event in trace)
+            > previous_ends
+        ):
+            break
+        page.wait_for_timeout(100)
+    else:
+        pytest.fail("the original session did not finish its history flush")
+    paths = list(store_dir.rglob("record.json"))
+    assert len(paths) == 1
+    path = paths[0]
+    record = json.loads(path.read_text(encoding="utf-8"))
+    entry = record["nodes"][edited_id]["state"]["shinychat:turns"]
+    entry["kind"] = "foreign_turns"
+    temp = path.with_suffix(".kvte.tmp")
+    temp.write_text(json.dumps(record), encoding="utf-8")
+    os.replace(temp, path)
+
+    page.goto(local_app.url)
+    expect(chat.loc).to_be_visible(timeout=30_000)
+    assert_b_prime_displayed(page)
+    expect(chat.loc.locator(".shiny-chat-readonly")).to_be_visible(
+        timeout=30_000
+    )
+    expect(chat.loc_input).to_be_hidden()
+    expect(page.locator("#provider_calls")).to_have_text("0")
+    expect(page.locator("#user_input_count")).to_have_text("0")
+    loaded = read_record(page)
+    assert loaded["active_leaf"] == edited_id
+    assert (
+        loaded["nodes"][edited_id]["state"]["shinychat:turns"]["kind"]
+        == "foreign_turns"
+    )
+
+    nav = page.locator(".shiny-chat-sibling-nav")
+    expect(nav.locator("span")).to_have_text("2 / 2")
+    nav.get_by_role("button", name="Previous version").click()
+    expect(nav.locator("span")).to_have_text("1 / 2", timeout=30_000)
+    chat.expect_latest_message(f"Echo: {MSG_C}", timeout=30_000)
+    expect(page.locator("#current_filter")).to_have_text(
+        "north", timeout=10_000
+    )
+    expect(chat.loc.locator(".shiny-chat-readonly")).to_have_count(
+        0, timeout=10_000
+    )
+    expect(chat.loc_input).to_be_visible(timeout=10_000)
+    assert (
+        restore_enter_entries(read_trace(page))[-1]["client_turns"]
+        == B_BRANCH_PREFIX
+    )
+    assert (
+        restore_enter_entries(read_trace(page))[-1]["values"].get("filter")
+        == "north"
+    )
+
+    send_and_expect(chat, DRAFT_TEXT)
+    expect(page.locator("#provider_calls")).to_have_text("1", timeout=10_000)
+    events = [
+        event
+        for event in read_trace(page)
+        if event["event"] == "provider_enter" and event["text"] == DRAFT_TEXT
+    ]
+    assert len(events) == 1
+    assert events[0]["client_turns"] == B_BRANCH_PREFIX
+    assert events[0]["filter"] == "north"
+    saved = wait_for_record_where(
+        page,
+        lambda r: len(_ok_node_ids(r, DRAFT_TEXT)) == 1,
+        description="the follow-up is recorded after safe recovery",
+    )
+    assert (
+        saved["nodes"][edited_id]["state"]["shinychat:turns"]["kind"]
+        == "foreign_turns"
+    )
+    assert_original_branch_retained(saved)
+
+
 def test_history_node_first_fixed_browse_restores_before_followup(
     page: Page, local_app: ShinyAppProc
 ) -> None:

@@ -426,14 +426,19 @@ async def test_retry_from_failed_stays_refused_for_unrelated_restrictions(
         await controller.resubmit(
             failed, kind="retry", request_id="req-10", message_index=2
         )
-    # A model-unavailable restriction is not cleared by resubmits either.
+    # Model-unavailable can recover only through a compatible parent.
     recorder.install_restored_record(
         record, read_only=True, read_only_reason="model_unavailable"
     )
-    with pytest.raises(RuntimeError, match="model context is unavailable"):
+    record.nodes[first].state[TURNS_STATE_KEY].kind = "unsupported"
+    before = record.model_dump()
+    with pytest.raises(ValueError, match="[Uu]nsupported"):
         await controller.resubmit(
             failed, kind="retry", request_id="req-11", message_index=2
         )
+    assert record.model_dump() == before
+    assert recorder.read_only_reason == "model_unavailable"
+    assert not recorder.continuation_allowed
 
 
 # ---------------------------------------------------------------------------

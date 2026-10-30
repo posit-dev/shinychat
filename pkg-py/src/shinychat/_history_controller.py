@@ -75,12 +75,11 @@ _RETRYABLE_STATUSES = ("pending", "error", "cancelled")
 # app-registered rewind hooks. Recovery can run the complete rewind plan.
 _MODEL_STATE_KEYS = frozenset({TURNS_STATE_KEY, SYSTEM_PROMPT_STATE_KEY})
 
-# View-only restrictions an explicit resubmit (edit/retry/regenerate) may
-# revalidate: restoring the target's valid parent resolves them, and only
-# they clear on that success. Model-unavailable, interrupted (source
-# isolation), and live-producer restrictions are never recovered here.
+# Record restrictions recoverable after a compatible model and app restore.
+# Interrupted/source-isolated and live-producer protections remain absolute.
 _RESOLVABLE_RESUBMIT_REASONS: tuple[ReadOnlyReason, ...] = (
     "app_restore_failed",
+    "model_unavailable",
 )
 
 
@@ -1051,15 +1050,22 @@ class HistoryController:
             recorder.read_only
             and recorder.read_only_reason in _RESOLVABLE_RESUBMIT_REASONS
             and not recorder.source_isolated
+            and (
+                recorder.read_only_reason != "model_unavailable"
+                or (
+                    kind in ("retry", "edit")
+                    and record.active_leaf == exchange_id
+                    and recorder.selected_not_sent
+                )
+            )
         )
         if recorder.read_only and not resolvable:
             # Authoritative guard for edit/retry/regenerate: a read-only
             # record must not be mutated or consume a model stream. The
             # message names the reason, never a cause it did not have.
-            # An app-restore failure is the sole resolvable record
-            # restriction: an explicit resubmit revalidates it by restoring
-            # the target's valid parent. A selected not-sent position is
-            # derived separately and must not close-capture its live model.
+            # An explicit resubmit may revalidate an app failure, or a
+            # selected not-sent position's unavailable model, by restoring
+            # its valid parent without close-capturing poisoned live state.
             raise RuntimeError(
                 _READ_ONLY_RESUBMIT_MESSAGES.get(
                     recorder.read_only_reason or "model_unavailable",
@@ -1081,6 +1087,12 @@ class HistoryController:
 
         prefix = record.model_copy(deep=True)
         prefix.set_active_leaf(parent_id)
+        if (
+            resolvable or recorder.selected_not_sent
+        ) and node_has_unavailable_app_values(prefix.nodes[parent_id]):
+            raise ValueError(
+                "Application values are unavailable at the parent checkpoint."
+            )
         node_ids = tuple(prefix.path_node_ids())
         rewind_state = _history_plan.preflight_state(
             prefix,
@@ -1250,6 +1262,9 @@ class HistoryController:
                 await _history_plan.run_plan(rewind_state)
             restored = self._restore_app_state(target_values)
             if restored:
+                if recorder.read_only:
+                    with _restore_step("validating the restored model context"):
+                        recorder._validate_model_state()
                 # Retain rich accepted entries from the parent before the
                 # staged input is admitted. Replacement does not capture.
                 self.chat._transcript.replace(
@@ -1386,10 +1401,27 @@ class HistoryController:
                     # App and custom hooks can mutate the client after the
                     # target plan ran. Validate the actual context without
                     # capturing it over the selected checkpoint.
-                    with _restore_step("validating the restored model context"):
-                        recorder._validate_model_state()
-                    if recorder.read_only_reason == "app_restore_failed":
-                        recorder.clear_read_only()
+                    try:
+                        with _restore_step(
+                            "validating the restored model context"
+                        ):
+                            recorder._validate_model_state()
+                    except _ModelCaptureError as error:
+                        # Keep the selected display browsable, but never
+                        # authorize continuation from an invalid live model.
+                        recorder.mark_read_only("model_unavailable")
+                        warnings.warn(
+                            "Chat history could not validate the restored model; "
+                            "the conversation remains read-only: "
+                            f"{error!r}",
+                            stacklevel=2,
+                        )
+                    else:
+                        if (
+                            recorder.read_only_reason
+                            in _RESOLVABLE_RESUBMIT_REASONS
+                        ):
+                            recorder.clear_read_only()
                 await send()
             except BaseException as error:
                 await self._clear_failed_restore(error)
@@ -1575,7 +1607,7 @@ class HistoryController:
             and not recorder.source_isolated
             and (
                 (recorder.selected_not_sent and not recorder.read_only)
-                or recorder.read_only_reason == "app_restore_failed"
+                or recorder.read_only_reason in _RESOLVABLE_RESUBMIT_REASONS
             )
         )
         display_only = terminal_leaf or (
@@ -1712,9 +1744,9 @@ class HistoryController:
 
         True only when the selected leaf is a known terminal incomplete
         submission whose valid parent can still be restored: no source
-        isolation, no live producer, and no unrelated (model-unavailable,
-        interrupted) restriction. A resolvable app-restore restriction
-        does not block the explicit recovery.
+        isolation, no live producer, and no interrupted restriction. A
+        recoverable app/model restriction may be revalidated by restoring
+        the selected not-sent position's parent.
         """
         recorder = self._exchange_recorder
         if recorder.source_isolated:

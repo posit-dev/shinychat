@@ -74,6 +74,10 @@ async def test_healthy_navigation_keeps_unrelated_restrictions(
     await replay_exchange_record(controller, record)
     recorder = controller._exchange_recorder
     assert recorder.record is not None
+    if reason == "model_unavailable":
+        recorder.record.nodes[original].state[
+            TURNS_STATE_KEY
+        ].kind = "unsupported"
     recorder.install_restored_record(
         recorder.record,
         read_only=True,
@@ -123,9 +127,10 @@ async def test_unavailable_healthy_context_remains_browsable_without_continuatio
     assert recorder.record.active_leaf == original
     assert recorder.read_only
     assert recorder.read_only_reason == "model_unavailable"
-    # Returning to a compatible sibling cannot clear a discovered hard
-    # model restriction merely because that sibling is displayable.
+    # Returning to a not-sent position is display-only; a valid-parent
+    # Retry may revalidate it, but ordinary continuation remains blocked.
     await controller.handle_navigate(0, "next", request_id="return-failed")
     assert recorder.record.active_leaf == failed
     assert recorder.read_only_reason == "model_unavailable"
-    assert not controller._can_resubmit_active()
+    assert not recorder.continuation_allowed
+    assert controller._can_resubmit_active()

@@ -5,6 +5,7 @@ from typing import Any, cast
 import pytest
 from shiny import reactive
 from shinychat._chat_transcript import TranscriptEntry
+from shinychat._chat_types import ReadOnlyReason
 from shinychat._history import ChatHistory
 from shinychat._history_store import InMemoryConversationStore
 from shinychat._history_types import (
@@ -227,14 +228,17 @@ async def test_recovery_app_failed_browse_reapplies_model_before_clearing() -> (
 
 
 @pytest.mark.anyio
-async def test_recovery_app_callback_may_replace_live_model_context() -> None:
+@pytest.mark.parametrize("reason", ["app_restore_failed", "model_unavailable"])
+async def test_recovery_app_callback_may_replace_live_model_context(
+    reason: ReadOnlyReason,
+) -> None:
     controller, chat, adapter, _store, original, outgoing = (
         _make_v2_navigation_controller()
     )
     recorder = controller._exchange_recorder
     record = recorder.record
     assert record is not None
-    recorder.mark_read_only("app_restore_failed")
+    recorder.mark_read_only(reason)
     record.nodes[original].state[VALUES_STATE_KEY] = StateEntry(
         kind="values", version=1, mode="snapshot", data={"tab": "original"}
     )
@@ -275,12 +279,16 @@ async def test_recovery_app_callback_may_replace_live_model_context() -> None:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("reason", ["app_restore_failed", "model_unavailable"])
 @pytest.mark.parametrize(
     ("source_prompt", "expected_prompt", "prompt_calls"),
     [(None, "live override", []), ("different", "recorded", ["recorded"])],
 )
 async def test_recovery_app_failed_browse_keeps_prompt_override_and_custom_hook(
-    source_prompt: str | None, expected_prompt: str, prompt_calls: list[str]
+    source_prompt: str | None,
+    expected_prompt: str,
+    prompt_calls: list[str],
+    reason: ReadOnlyReason,
 ) -> None:
     source, _chat, _adapter, _store, original, outgoing = (
         _make_v2_navigation_controller()
@@ -304,7 +312,7 @@ async def test_recovery_app_failed_browse_keeps_prompt_override_and_custom_hook(
     controller, client = _make_prompt_controller(prompt="live override")
     recorder = controller._exchange_recorder
     recorder.install_restored_record(
-        record, read_only=True, read_only_reason="app_restore_failed"
+        record, read_only=True, read_only_reason=reason
     )
     controller._active_id.set(record.id)
     events: list[str] = []
@@ -522,22 +530,32 @@ async def test_recovery_successful_callback_cannot_clear_invalid_live_model(
         controller._active_id.set(record.id)
         adapter = cast(_FakeAdapter, controller.adapter)
         message_index = 0
+    recorder = controller._exchange_recorder
+    assert recorder.record is not None
+    record = recorder.record
     callback_calls: list[bool] = []
+    invalid = object()
 
     def poison_model(_values: dict[str, Any]) -> None:
         callback_calls.append(True)
-        adapter.turns = [{"role": "user", "content": object()}]
+        adapter.turns = [{"role": "user", "content": invalid}]
 
     controller._restore_callbacks.append(poison_model)
-    with pytest.warns(UserWarning, match="Chat history restore failed"):
-        with pytest.raises(RuntimeError):
-            await controller.handle_navigate(
-                message_index, "prev", request_id="invalid-model"
-            )
+    with pytest.warns(
+        UserWarning, match="could not validate the restored model"
+    ):
+        await controller.handle_navigate(
+            message_index, "prev", request_id="invalid-model"
+        )
 
     assert callback_calls == [True]
-    # The normal restore-failure cleanup prevents continuation from the
-    # invalid context; a successful callback did not certify the model.
-    assert recorder.record is None
-    assert controller._active_id_now() is None
-    assert adapter.turns == []
+    # The selected display remains available, but an invalid live context
+    # is never certified or used for ordinary continuation.
+    assert recorder.record is record
+    assert recorder.read_only
+    assert recorder.read_only_reason == (
+        "app_restore_failed" if source == "app_failure" else "model_unavailable"
+    )
+    assert not recorder.continuation_allowed
+    assert adapter.turns == [{"role": "user", "content": invalid}]
+    assert controller._active_id_now() == record.id
