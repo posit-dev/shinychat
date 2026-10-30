@@ -27,6 +27,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from _history_test_helpers import replay_exchange_record
+from _session_api_contract import FakeSessionReactiveApi
 from pydantic import BaseModel
 from shiny import Inputs, reactive
 from shiny.module import ResolvedId
@@ -282,7 +283,7 @@ class _FakeChat:
         self.published_inputs.append(message)
 
 
-class _RealChatSession:
+class _RealChatSession(FakeSessionReactiveApi):
     ns = ResolvedId("")
     app: object = None
     id = "history-switch-input-session"
@@ -5489,14 +5490,18 @@ async def test_v2_destructive_active_id_callback_observes_reset(
 
 @pytest.mark.anyio
 async def test_v2_recorder_captures_postpartition_root_ui_but_not_greeting():
+    from shiny import Inputs
     from shiny.module import ResolvedId
     from shiny.session import session_context
     from shinychat import Chat
 
-    class GreetingSession:
+    class GreetingSession(FakeSessionReactiveApi):
         ns = ResolvedId("")
         app: object = None
         id = "history-acceptance-session"
+
+        def __init__(self) -> None:
+            self.input = Inputs({}, ns=ResolvedId)
 
         async def send_custom_message(self, _type: str, _message: Any) -> None:
             pass
