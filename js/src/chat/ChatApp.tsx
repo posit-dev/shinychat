@@ -16,7 +16,6 @@ import {
   AsideFaviconContext,
 } from "./context"
 import { setCurrentConversationId } from "./currentConversation"
-import { uuid } from "../utils/uuid"
 import { navigateTo } from "../utils/navigate"
 import {
   chatReducer,
@@ -321,28 +320,35 @@ export function ChatApp({
         return
       }
       if (action.type === "history_edit_projection") {
-        // Server-owned edits use the staged exchange identity and never echo
-        // the already received submission. Older producers retain their flow.
-        if (action.submission_mode === "server" && !action.exchange_id) return
+        // A replacement has already been staged on the server. An old or
+        // malformed projection must never turn into a new browser submission.
+        if (
+          typeof action.requestId !== "string" ||
+          !action.requestId.trim() ||
+          typeof action.exchange_id !== "string" ||
+          !action.exchange_id.trim() ||
+          !Number.isInteger(action.index) ||
+          action.index < 0 ||
+          messagesRef.current[action.index]?.role !== "user" ||
+          typeof action.content !== "string" ||
+          !Array.isArray(action.attachments)
+        ) {
+          console.warn(
+            "[shinychat] Malformed history edit projection; dropping.",
+          )
+          return
+        }
         if (!historyStore.acceptEditProjection(action.requestId)) return
-        const client_message_id = action.exchange_id ?? uuid()
         dispatch({ type: "TRUNCATE_MESSAGES", index: action.index })
         dispatch({
           type: "INPUT_SENT",
-          id: client_message_id,
+          id: action.exchange_id,
           content: action.content,
           role: "user",
           ...(action.attachments.length > 0
             ? { attachments: action.attachments }
             : {}),
         })
-        if (action.submission_mode !== "server") {
-          transport.sendInput(inputId, {
-            text: action.content,
-            attachments: action.attachments,
-            client_message_id,
-          })
-        }
         return
       }
       if (action.type === "chunk_start") {

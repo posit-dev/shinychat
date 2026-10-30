@@ -455,12 +455,8 @@ class HistoryEditProjectionAction(TypedDict):
     index: int
     content: str
     attachments: list[dict[str, Any]]
-    # "server" means the server already staged and will admit this exact
-    # submission: the client renders the pending row under ``exchange_id``
-    # and must NOT echo the input back through the transport. Absent means
-    # the legacy echo flow (the client submits the projected input itself).
-    submission_mode: NotRequired[Literal["server"]]
-    exchange_id: NotRequired[str]
+    # The server has staged this submission under the projected row identity.
+    exchange_id: str
 
 
 class UpdateSiblingsAction(TypedDict):

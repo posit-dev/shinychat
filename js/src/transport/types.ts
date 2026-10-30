@@ -309,9 +309,8 @@ export type ChatAction =
       index: number
       content: string
       attachments: AttachmentPayload[]
-      /** Absent means the legacy browser-echo submission path. */
-      submission_mode?: "server"
-      exchange_id?: string
+      /** Identity of the replacement already staged by the server. */
+      exchange_id: string
     }
   | { type: "history_transition_complete"; requestId: string }
 

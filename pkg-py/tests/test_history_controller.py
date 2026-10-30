@@ -6512,7 +6512,6 @@ async def test_v2_resubmit_rewinds_parent_prefix_and_new_input_creates_sibling()
         "index": 1,
         "content": "second",
         "attachments": [],
-        "submission_mode": "server",
         "exchange_id": exchange_id,
     }
     assert len(store.put_calls) == 2
@@ -6683,7 +6682,6 @@ async def test_v2_resubmit_syncs_real_server_transcript_to_parent_prefix(
         "index": 2,
         "content": replacement,
         "attachments": [],
-        "submission_mode": "server",
         "exchange_id": record.active_leaf,
     }
 
@@ -6904,7 +6902,6 @@ async def test_v2_edit_resubmit_forwards_validated_attachment_copy():
         "index": 1,
         "content": "edited",
         "attachments": [attachment],
-        "submission_mode": "server",
         "exchange_id": staged,
     }
     target_input = recorder.record.nodes[target].input
@@ -6942,7 +6939,6 @@ async def test_v2_edit_nonleaf_rewinds_to_root_and_preserves_old_branch() -> (
         "index": 0,
         "content": "first replacement",
         "attachments": [],
-        "submission_mode": "server",
         "exchange_id": staged,
     }
     assert len(store.put_calls) == 2
@@ -7378,7 +7374,6 @@ async def test_v2_compatible_retry_rewinds_stored_parent_turns():
         "index": 1,
         "content": "second",
         "attachments": [],
-        "submission_mode": "server",
         "exchange_id": sibling,
     }
 
@@ -7496,7 +7491,6 @@ async def test_v2_retry_restores_partial_exchange_before_creating_sibling(
         "index": 0,
         "content": "retry this",
         "attachments": [],
-        "submission_mode": "server",
         "exchange_id": sibling,
     }
     assert adapter.turns == parent_prefix
@@ -7562,7 +7556,6 @@ async def test_v2_regenerate_uses_the_real_resubmit_primitive():
         "index": 1,
         "content": "second",
         "attachments": [],
-        "submission_mode": "server",
         "exchange_id": sibling,
     }
 

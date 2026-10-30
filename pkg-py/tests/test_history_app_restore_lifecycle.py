@@ -468,7 +468,6 @@ async def test_failed_retained_parent_restore_keeps_edit_without_dispatch(
     projections = [a for a in sent if a["type"] == "history_edit_projection"]
     assert len(projections) == 1
     assert projections[0]["exchange_id"] == failed_id
-    assert projections[0]["submission_mode"] == "server"
     assert sent[-1]["type"] == "history_update"
     assert sent[-1]["active_read_only"] is True
     assert sent[-1]["active_read_only_reason"] == "app_restore_failed"

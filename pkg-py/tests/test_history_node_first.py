@@ -79,8 +79,8 @@ async def test_edit_success_stages_then_admits_exactly_once(
     assert target_input is not None
     assert target_input.content == "second"
 
-    # The projection carries the staged identity and server submission
-    # mode; the accepted input was committed under that same ID.
+    # The projection carries the staged identity; the accepted input was
+    # committed under that same ID.
     projections = [a for a in sent if a["type"] == "history_edit_projection"]
     assert projections == [
         {
@@ -89,7 +89,6 @@ async def test_edit_success_stages_then_admits_exactly_once(
             "index": 2,
             "content": "replacement",
             "attachments": [],
-            "submission_mode": "server",
             "exchange_id": sibling,
         }
     ]

@@ -325,7 +325,6 @@ async def test_edit_success_stages_one_node_and_admits_same_id_once(
     ]
     assert len(projections) == 1
     assert projections[0]["requestId"] == "edit-ok"
-    assert projections[0]["submission_mode"] == "server"
     assert projections[0]["exchange_id"] == staged_id
     assert projections[0]["attachments"][0]["name"] == "notes.txt"
 

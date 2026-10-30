@@ -1140,7 +1140,6 @@ class HistoryController:
                     "attachments": _attachment_projection(
                         submitted_input.attachments
                     ),
-                    "submission_mode": "server",
                     "exchange_id": staged_id,
                 }
                 with _restore_step("sending the resubmission"):

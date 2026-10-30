@@ -498,7 +498,6 @@ async def test_live_replay_uses_invalid_input_as_cause_and_only_valid_parent_as_
             "index": 1,
             "content": "second",
             "attachments": [],
-            "submission_mode": "server",
             "exchange_id": sibling,
         }
     ]
