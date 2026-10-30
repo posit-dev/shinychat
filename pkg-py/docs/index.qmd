@@ -167,8 +167,9 @@ rewound before `on_restore` runs, while `chat.messages()` still exposes the
 outgoing transcript. The pending replacement is already recorded and its
 display projection has been sent, but it is not accepted input. After a
 successful callback, the transcript is rewound to the parent prefix before that
-input is accepted. In-session browsing also exposes the outgoing transcript during the callback; load and conversation
-switch replay the target display before invoking callbacks.
+input is accepted. In-session browsing also exposes the outgoing transcript
+during the callback; load and conversation switch replay the target display
+before invoking callbacks.
 
 Use the sibling arrows to return to `west`. `on_restore` receives `west`. A
 follow-up from `west` records its own values on its new exchange and leaves the

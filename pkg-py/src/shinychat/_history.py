@@ -535,8 +535,8 @@ class ChatHistory:
         rewound to the parent prefix before the replacement is accepted. Load
         and switch replay the target display before callbacks run. Use it to
         sync auxiliary UI state (active tabs, model selectors, etc.) to match
-        the selected position. Raw Shiny input values are not synced automatically;
-        call the appropriate ``ui.update_*()`` functions here.
+        the selected position. Raw Shiny input values are not synced
+        automatically; call the appropriate ``ui.update_*()`` functions here.
 
         The callback receives the ``values`` dict that was captured by
         ``on_save`` at the selected position (a detached copy; mutating it
