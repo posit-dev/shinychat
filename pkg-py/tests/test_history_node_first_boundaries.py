@@ -43,16 +43,11 @@ from shinychat._history_store import (
 )
 from shinychat._history_types import (
     HISTORY_ERROR_NOT_SENT,
-    PREPARATION_ENTRY_KIND,
-    PREPARATION_ENTRY_VERSION,
-    PREPARATION_STATE_KEY,
     TURNS_STATE_KEY,
     VALUES_STATE_KEY,
     ConversationRecordV1,
     ConversationRecordV2,
     ExchangeNode,
-    StateEntry,
-    is_valid_preparation_entry,
     node_is_terminal_incomplete,
 )
 from test_history_controller import (
@@ -70,16 +65,6 @@ from test_history_controller import (
 EDIT_INDEX = 2
 EDIT_CONTENT = "second edited"
 PREFIX_CONTENTS = ["first", "reply one"]
-
-
-def _preparation_envelope(app_values: str) -> StateEntry:
-    """The exact durable preparation envelope for a failed submission."""
-    return StateEntry(
-        kind=PREPARATION_ENTRY_KIND,
-        version=PREPARATION_ENTRY_VERSION,
-        mode="snapshot",
-        data={"terminal": True, "accepted": False, "app_values": app_values},
-    )
 
 
 class _PoisonableAdapter(_FakeAdapter):
@@ -219,10 +204,11 @@ def _assert_failed_node(
     assert node.error is not None
     assert node.error.message == HISTORY_ERROR_NOT_SENT
     assert node.checkpoint == "invalid"
-    assert node.state[PREPARATION_STATE_KEY] == _preparation_envelope(
-        app_values
-    )
-    assert is_valid_preparation_entry(node.state[PREPARATION_STATE_KEY])
+    assert node.not_sent is True
+    assert node.app_values == app_values
+    if app_values == "unavailable":
+        # Unavailable is an empty own snapshot, never a partial tree.
+        assert node.state[VALUES_STATE_KEY].data == {}
     assert node_is_terminal_incomplete(node)
     # A known terminal incomplete leaf is an explicit display destination.
     assert record.checkpoint_leaf(record.active_leaf) == record.active_leaf
@@ -304,7 +290,8 @@ async def test_edit_success_stages_one_node_and_admits_same_id_once(
     # The accepted exchange stays an ordinary open node: no failure marker.
     assert node.status == "pending"
     assert node.checkpoint == "candidate"
-    assert PREPARATION_STATE_KEY not in node.state
+    assert node.not_sent is None
+    assert node.app_values is None
     assert not node_is_terminal_incomplete(node)
 
     # The original branch and its descendants are untouched.
@@ -347,7 +334,8 @@ async def test_edit_success_stages_one_node_and_admits_same_id_once(
     assert isinstance(snapshot, ConversationRecordV2)
     assert snapshot.active_leaf == staged_id
     assert snapshot.nodes[staged_id].status == "pending"
-    assert PREPARATION_STATE_KEY not in snapshot.nodes[staged_id].state
+    assert snapshot.nodes[staged_id].not_sent is None
+    assert snapshot.nodes[staged_id].app_values is None
 
 
 # ---------------------------------------------------------------------------
@@ -442,9 +430,8 @@ async def test_outgoing_close_capture_failure_creates_failed_node(
     failed_snapshot = snapshot.nodes[failed_id]
     assert failed_snapshot.status == "error"
     assert failed_snapshot.checkpoint == "invalid"
-    assert failed_snapshot.state[PREPARATION_STATE_KEY] == (
-        _preparation_envelope("complete")
-    )
+    assert failed_snapshot.not_sent is True
+    assert failed_snapshot.app_values == "complete"
 
 
 # ---------------------------------------------------------------------------
@@ -520,9 +507,8 @@ async def test_restore_callback_failure_attaches_to_staged_node(
     # Durable terminal outcome.
     snapshot = store.last_snapshot
     assert isinstance(snapshot, ConversationRecordV2)
-    assert snapshot.nodes[failed_id].state[PREPARATION_STATE_KEY] == (
-        _preparation_envelope("complete")
-    )
+    assert snapshot.nodes[failed_id].not_sent is True
+    assert snapshot.nodes[failed_id].app_values == "complete"
 
 
 # ---------------------------------------------------------------------------
@@ -540,9 +526,9 @@ async def test_failed_node_app_values_whole_snapshot_policy(
     case: str,
 ) -> None:
     """The failed node records either one complete canonical-JSON snapshot
-    or nothing at all: a snapshot is complete only when every callback
-    finished and the whole snapshot serialized, and the ordinary capture
-    role runs exactly once either way."""
+    or an empty snapshot marked unavailable: a snapshot is complete only
+    when every callback finished and the whole snapshot serialized, and
+    the ordinary capture role runs exactly once either way."""
 
     def fill(values: dict[Any, Any]) -> None:
         values[2] = "two"
@@ -603,18 +589,15 @@ async def test_failed_node_app_values_whole_snapshot_policy(
         # round-trip semantics, no stricter whitelist).
         expected = canonical_values({2: "two", "tab": "all"})
         assert expected == {"2": "two", "tab": "all"}
-        assert node.state[PREPARATION_STATE_KEY] == _preparation_envelope(
-            "complete"
-        )
+        assert node.not_sent is True
+        assert node.app_values == "complete"
         assert node.state[VALUES_STATE_KEY].data == expected
         json.dumps(node.state[VALUES_STATE_KEY].data)
     else:
         # Incomplete: unavailable, with no partial fragment tree.
-        assert node.state[PREPARATION_STATE_KEY] == _preparation_envelope(
-            "unavailable"
-        )
-        assert VALUES_STATE_KEY not in node.state
-        assert is_valid_preparation_entry(node.state[PREPARATION_STATE_KEY])
+        assert node.not_sent is True
+        assert node.app_values == "unavailable"
+        assert node.state[VALUES_STATE_KEY].data == {}
 
 
 # ---------------------------------------------------------------------------
@@ -745,7 +728,8 @@ async def test_post_commit_store_failure_never_relabeled_not_sent(
     assert node.error is None
     assert node.checkpoint == "candidate"
     for some_node in record.nodes.values():
-        assert PREPARATION_STATE_KEY not in some_node.state
+        assert some_node.not_sent is None
+        assert some_node.app_values is None
         assert not (
             some_node.error is not None
             and some_node.error.message == HISTORY_ERROR_NOT_SENT
@@ -763,7 +747,8 @@ async def test_post_commit_store_failure_never_relabeled_not_sent(
     snapshot = store.last_snapshot
     assert isinstance(snapshot, ConversationRecordV2)
     assert snapshot.nodes[staged_id].status == "pending"
-    assert PREPARATION_STATE_KEY not in snapshot.nodes[staged_id].state
+    assert snapshot.nodes[staged_id].not_sent is None
+    assert snapshot.nodes[staged_id].app_values is None
     assert store.failed_puts == 1
 
     # The original branch is preserved against its pre-operation
@@ -833,7 +818,8 @@ async def test_terminal_persist_failure_retains_failed_node_honestly(
     staged_snapshot = snapshot.nodes[failed_id]
     assert staged_snapshot.status == "pending"
     assert staged_snapshot.checkpoint == "candidate"
-    assert PREPARATION_STATE_KEY not in staged_snapshot.state
+    assert staged_snapshot.not_sent is None
+    assert staged_snapshot.app_values is None
     assert store.failed_puts == 1
 
     # No accepted input was published for the unsent attempt, and the
@@ -951,9 +937,8 @@ async def test_display_delivery_failure_retains_persisted_failed_node(
     assert isinstance(snapshot, ConversationRecordV2)
     failed_snapshot = snapshot.nodes[failed_id]
     assert failed_snapshot.status == "error"
-    assert failed_snapshot.state[PREPARATION_STATE_KEY] == (
-        _preparation_envelope("complete")
-    )
+    assert failed_snapshot.not_sent is True
+    assert failed_snapshot.app_values == "complete"
 
     # Nothing was accepted and the failed row was retained in the
     # transcript before the delivery failed.
@@ -1068,7 +1053,8 @@ async def test_duplicate_staged_admission_rejected_before_second_commit(
     assert [str(p.content) for p in publications] == ["dup input"]
     node = record.nodes[staged_id]
     assert node.status == "pending"
-    assert PREPARATION_STATE_KEY not in node.state
+    assert node.not_sent is None
+    assert node.app_values is None
 
 
 # ---------------------------------------------------------------------------
@@ -1144,7 +1130,8 @@ async def test_reused_fault_instance_keeps_per_admission_classification(
     assert chat._transcript.open_exchange_id == first_id
     first_node = record.nodes[first_id]
     assert first_node.status == "pending"
-    assert PREPARATION_STATE_KEY not in first_node.state
+    assert first_node.not_sent is None
+    assert first_node.app_values is None
     assert publications == []
 
     # Disarm the one-shot store fault: the next staging persist must
@@ -1180,7 +1167,8 @@ async def test_reused_fault_instance_keeps_per_admission_classification(
     assert chat._transcript.open_exchange_id == first_id
     second_node = record.nodes[second_id]
     assert second_node.status == "pending"
-    assert PREPARATION_STATE_KEY not in second_node.state
+    assert second_node.not_sent is None
+    assert second_node.app_values is None
     assert token_one.committed is True
     assert publications == []
 
@@ -1300,25 +1288,13 @@ async def test_failed_node_marker_does_not_bypass_protections(
             message_index=EDIT_INDEX,
         )
 
-    # Classification guards: neither a bare terminal status, a bare
-    # invalid checkpoint, a missing envelope, nor a malformed envelope
-    # makes a node a known stopped producer.
+    # Classification guards: neither a bare terminal status nor a bare
+    # invalid checkpoint makes a node a known stopped producer; the
+    # not-sent marker is required as well.
     legacy = record.nodes[failed_id].model_copy(deep=True)
     assert node_is_terminal_incomplete(legacy)
-    del legacy.state[PREPARATION_STATE_KEY]
+    legacy.not_sent = None
     assert not node_is_terminal_incomplete(legacy)
-    malformed = record.nodes[failed_id].model_copy(deep=True)
-    malformed.state[PREPARATION_STATE_KEY] = StateEntry(
-        kind=PREPARATION_ENTRY_KIND,
-        version=PREPARATION_ENTRY_VERSION,
-        mode="snapshot",
-        # An "accepted" preparation outcome is not a failed submission.
-        data={"terminal": True, "accepted": True, "app_values": "complete"},
-    )
-    assert not is_valid_preparation_entry(
-        malformed.state[PREPARATION_STATE_KEY]
-    )
-    assert not node_is_terminal_incomplete(malformed)
     pending_invalid = record.nodes[pending_id].model_copy(deep=True)
     pending_invalid.checkpoint = "invalid"
     assert not node_is_terminal_incomplete(pending_invalid)

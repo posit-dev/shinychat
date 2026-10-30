@@ -16,10 +16,11 @@ browser (run focused: ``make py-check-playwright FILTER=history_node_first``):
   with no transient removal or rollback, trigger zero provider or
   accepted-input callbacks, run the automatic capture role exactly once
   (proven by the independent ``#save_count``), and be recorded as its own
-  terminal-incomplete node with an explicit invalid checkpoint and the
-  preparation envelope -- ``app_values: "unavailable"`` when the fixture's
-  on_save raised mid-capture, ``app_values: "complete"`` when it finished
-  -- while the original branch is retained.
+  terminal-incomplete node (``not_sent: true``, an ``error`` status and an
+  explicit invalid checkpoint) with ``app_values: "unavailable"`` when the
+  fixture's on_save raised mid-capture, or ``app_values: "complete"`` when it
+  finished. The node owns its ``shinychat:values`` snapshot (``{}`` when
+  unavailable), while the original branch is retained.
 * ``test_history_node_first_failed_edit_survives_reload`` -- a failed real
   file reload, parameterized across both app-values outcomes: the failed
   node reloads selected and displayed with its failure affordances, the
@@ -74,10 +75,11 @@ DRAFT_TEXT = "delta draft"
 # value, which is "all"), and reloading it must restore it rather than the
 # parent's.
 FILTER_AT_FAILURE = "captured-at-failure"
-# The agreed durable failure metadata: an explicit invalid checkpoint plus
-# the shinychat:preparation/input_preparation envelope
-# {terminal: true, accepted: false, app_values: unavailable | complete}.
-PREPARATION_KEY = "shinychat:preparation"
+# The durable failure metadata lives on the failed node itself: an explicit
+# invalid checkpoint, ``not_sent: true``, an ``error`` status, and
+# ``app_values: unavailable | complete`` with the node's own
+# ``shinychat:values`` snapshot (an empty ``{}`` when unavailable).
+VALUES_KEY = "shinychat:values"
 # Coordinator Inbox evidence capture (best effort, never asserted).
 SCREENSHOT_PATH = os.environ.get(
     "SHINYCHAT_ZCV8_FAILURE_SCREENSHOT", "/tmp/zcv8-node-first-failure.png"
@@ -436,46 +438,55 @@ def assert_original_branch_retained(record: dict[str, Any]) -> None:
     assert_attachment_fidelity(record, ids_b[0])
 
 
-def assert_preparation_envelope(
+def assert_failed_values_snapshot(
     record: dict[str, Any], node_id: str, *, app_values: str
 ) -> None:
-    """The durable failed-attempt marker in the versioned StateEntry
-    envelope, on the failed node only. ``app_values`` is the fixture's
-    deterministic outcome: "unavailable" when the on_save callback raised
-    mid-capture (restore_throw), "complete" when it finished and the full
-    snapshot serialized (capture_poison)."""
-    state = record["nodes"][node_id].get("state") or {}
-    entry = state.get(PREPARATION_KEY)
-    assert isinstance(entry, dict), (
-        f"node {node_id} is missing the {PREPARATION_KEY!r} preparation "
-        f"envelope; state keys: {sorted(state)}"
-    )
-    assert entry.get("kind") == "input_preparation", (
-        f"unexpected envelope kind {entry.get('kind')!r} on {PREPARATION_KEY}"
-    )
-    assert entry.get("version") == 1, f"unexpected envelope version {entry!r}"
-    assert entry.get("mode") == "snapshot", (
-        f"unexpected envelope mode {entry!r}"
-    )
-    data = entry.get("data") or {}
-    assert data.get("terminal") is True, (
-        f"failed node {node_id} must be marked terminal, got {data!r}"
-    )
-    assert data.get("accepted") is False, (
-        f"failed node {node_id} must be marked not accepted, got {data!r}"
-    )
-    assert data.get("app_values") == app_values, (
+    """The failed node owns its app-values snapshot. ``app_values`` is the
+    fixture's deterministic outcome: "unavailable" when the on_save callback
+    raised mid-capture (restore_throw), where the node's ``shinychat:values``
+    snapshot is an empty ``{}``; "complete" when it finished and the captured
+    snapshot serialized (capture_poison), where it holds the failure-time
+    value."""
+    node = record["nodes"][node_id]
+    assert node.get("app_values") == app_values, (
         f"failed node {node_id} must record app_values={app_values!r} "
-        f"(the fixture's on_save outcome), got {data!r}"
+        f"(the fixture's on_save outcome), got {node.get('app_values')!r}"
     )
+    state = node.get("state") or {}
+    entry = state.get(VALUES_KEY)
+    assert isinstance(entry, dict), (
+        f"failed node {node_id} must own a {VALUES_KEY!r} snapshot; "
+        f"state keys: {sorted(state)}"
+    )
+    assert entry.get("kind") == "values", (
+        f"unexpected {VALUES_KEY} kind {entry.get('kind')!r} on {node_id}"
+    )
+    assert entry.get("version") == 1, f"unexpected {VALUES_KEY} entry {entry!r}"
+    assert entry.get("mode") == "snapshot", (
+        f"unexpected {VALUES_KEY} mode {entry!r}"
+    )
+    data = entry.get("data")
+    assert isinstance(data, dict), (
+        f"failed node {node_id} must carry a values object, got {data!r}"
+    )
+    if app_values == "unavailable":
+        assert data == {}, (
+            f"unavailable snapshot on {node_id} must be an empty {{}}, "
+            f"got {data!r}"
+        )
+    else:
+        assert data.get("filter") == FILTER_AT_FAILURE, (
+            f"complete snapshot on {node_id} must hold the failure-time "
+            f"value {FILTER_AT_FAILURE!r}, got {data!r}"
+        )
 
 
 def assert_failed_node(
     record: dict[str, Any], node_id: str, *, app_values: str
 ) -> None:
     """One retained failed attempt: explicit invalid checkpoint, an ordinary
-    not-sent error, and the preparation envelope with the fixture's
-    deterministic app_values outcome."""
+    not-sent error (``not_sent: true``), and the node's own app-values
+    snapshot with the fixture's deterministic app_values outcome."""
     node = record["nodes"][node_id]
     assert node.get("checkpoint") == "invalid", (
         f"failed node {node_id} must record checkpoint='invalid', "
@@ -485,12 +496,16 @@ def assert_failed_node(
         f"failed node {node_id} must carry an ordinary error status, "
         f"got {node.get('status')!r}"
     )
+    assert node.get("not_sent") is True, (
+        f"failed node {node_id} must record not_sent=True, "
+        f"got {node.get('not_sent')!r}"
+    )
     error = node.get("error") or {}
     assert "not sent" in str(error.get("message", "")).lower(), (
         f"failed node {node_id} must say the message was not sent, "
         f"got {error!r}"
     )
-    assert_preparation_envelope(record, node_id, app_values=app_values)
+    assert_failed_values_snapshot(record, node_id, app_values=app_values)
 
 
 def assert_failed_edit_recorded(
@@ -740,8 +755,9 @@ def test_history_node_first_restore_failure_retains_edit(
     mutates live app and model state, then throws. B' must be displayed
     inside the restore fault window, stay displayed with no transient
     rollback, trigger zero provider or accepted-input callbacks, and be
-    recorded as its own terminal-incomplete node with an invalid checkpoint
-    and the preparation envelope while the original branch is retained."""
+    recorded as its own terminal-incomplete node with an invalid checkpoint,
+    ``not_sent: true``, ``app_values: "unavailable"`` and an empty
+    ``shinychat:values`` snapshot, while the original branch is retained."""
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
@@ -807,9 +823,10 @@ def test_history_node_first_capture_failure_retains_edit(
     after poisoning the model, so the required capture of the edited
     exchange fails. B' must stay displayed with no transient removal or
     rollback, trigger zero provider or accepted-input callbacks, and be
-    recorded as its own terminal-incomplete node with an invalid checkpoint
-    and the preparation envelope recording a complete snapshot while the
-    original branch is retained."""
+    recorded as its own terminal-incomplete node with an invalid checkpoint,
+    ``not_sent: true``, ``app_values: "complete"`` and a ``shinychat:values``
+    snapshot holding the captured-at-failure value, while the original branch
+    is retained."""
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
@@ -846,7 +863,8 @@ def test_history_node_first_failed_edit_survives_reload(
     the two app-values outcomes. The terminal failed node reloads as the
     selected displayed position with its failure affordances and sibling
     navigation intact, and the on-disk node (input, attachment, invalid
-    checkpoint, not-sent error, preparation envelope) is unchanged by the
+    checkpoint, ``not_sent``, ``app_values`` and ``shinychat:values``
+    snapshot) is unchanged by the
     load. Loading dispatches no model work and accepts no input. When the
     snapshot is unavailable (restore_throw's on_save raised mid-capture),
     loading must not invoke on_restore at all -- never with inherited parent
@@ -868,6 +886,8 @@ def test_history_node_first_failed_edit_survives_reload(
         "checkpoint",
         "status",
         "error",
+        "not_sent",
+        "app_values",
         "input",
         "state",
     )
@@ -1215,6 +1235,8 @@ def test_history_node_first_retry_failure_creates_new_sibling(
         "checkpoint",
         "status",
         "error",
+        "not_sent",
+        "app_values",
         "input",
         "state",
     )

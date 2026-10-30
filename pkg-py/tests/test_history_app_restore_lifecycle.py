@@ -24,7 +24,6 @@ from shinychat._history_store import (
 )
 from shinychat._history_types import (
     HISTORY_ERROR_NOT_SENT,
-    PREPARATION_STATE_KEY,
     VALUES_STATE_KEY,
     ConversationRecordV2,
     StateEntry,
@@ -413,11 +412,8 @@ async def test_failed_retained_parent_restore_keeps_edit_without_dispatch(
     assert failed.checkpoint == "invalid"
     assert failed.error is not None
     assert failed.error.message == HISTORY_ERROR_NOT_SENT
-    assert failed.state[PREPARATION_STATE_KEY].data == {
-        "terminal": True,
-        "accepted": False,
-        "app_values": "complete",
-    }
+    assert failed.not_sent is True
+    assert failed.app_values == "complete"
     # No on_save callbacks: the complete observed snapshot is {}, not
     # the retained parent's values masquerading as a failed capture.
     assert failed.state[VALUES_STATE_KEY].data == {}

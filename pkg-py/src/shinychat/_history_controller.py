@@ -48,7 +48,6 @@ from ._history_title import (
 # NB: shiny is imported lazily inside methods throughout this module; a
 # top-level import would be circular (shiny.ui._chat imports shinychat).
 from ._history_types import (
-    HISTORY_ERROR_NOT_SENT,
     SYSTEM_PROMPT_STATE_KEY,
     TURNS_STATE_KEY,
     ConversationRecordV1,
@@ -60,7 +59,6 @@ from ._history_types import (
     node_has_unavailable_app_values,
     node_is_terminal_incomplete,
     project_history_error_message,
-    validate_node_preparation_consistency,
 )
 from ._history_v1 import import_v1_record_with_warnings
 
@@ -708,11 +706,6 @@ class HistoryController:
 
         if not target.path_node_ids() or target.active_leaf is None:
             raise ValueError("Exchange-tree record has no active path.")
-        # Preparation markers classify record-wide: any envelope that
-        # does not describe a coherent terminal failed position fails
-        # closed here, before the coherent-leaf walk could bypass it.
-        for node_id, node in target.nodes.items():
-            validate_node_preparation_consistency(node_id, node)
         source_isolated = source_isolated or self._unresolved_record(target)
         assert target.active_leaf is not None
         active_node = target.nodes.get(target.active_leaf)
@@ -1280,11 +1273,11 @@ class HistoryController:
 
         The staged node stays visible and selected as a known terminal
         incomplete position: a sanitized "message not sent" outcome, an
-        explicitly invalid checkpoint, and the durable preparation
-        envelope. No accepted-input or provider callback runs for the
-        failed attempt. The server transcript gains the failed row as a
-        terminal display entry (never an accepted input, never an open
-        exchange), so the same-session view matches a fresh load. The
+        explicitly invalid checkpoint, and ordinary node fields recording the
+        failure and app snapshot availability. No accepted-input or provider
+        callback runs for the failed attempt. The server transcript gains
+        the failed row as a terminal display entry (never an accepted input,
+        never an open exchange), so the same-session view matches a fresh load. The
         developer keeps the raw cause as a warning; the client settles
         through the metadata/history messages, and the transition wrapper
         sends the completion. The original branch is preserved.
@@ -1572,17 +1565,8 @@ class HistoryController:
             if terminal:
                 metadata["preparation_failed"] = True
             if node.status == "error":
-                # A known terminal incomplete row derives its safe wording
-                # from the validated preparation marker: an older writer's
-                # whitelist may have rewritten the stored error to the
-                # generic provider message, which must not mislabel a
-                # never-sent submission.
-                metadata["error_message"] = (
-                    HISTORY_ERROR_NOT_SENT
-                    if terminal
-                    else project_history_error_message(
-                        node.error.message if node.error is not None else None
-                    )
+                metadata["error_message"] = project_history_error_message(
+                    node.error.message if node.error is not None else None
                 )
             data[message_index] = metadata
         if data:
@@ -1694,11 +1678,7 @@ class HistoryController:
 
         # The target position's values come from the preflight copy,
         # before the destructive replay/rewind.
-        target_values = (
-            {}
-            if node_has_unavailable_app_values(projection.nodes[leaf])
-            else _history_plan.resolve_path_values(projection, leaf)
-        )
+        target_values = _history_plan.resolve_path_values(projection, leaf)
 
         async with self._destructive_mutation(block_input=True):
             if unavailable_model:

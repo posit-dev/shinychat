@@ -52,9 +52,6 @@ from ._history_store import ConversationPartition, ConversationStore
 from ._history_title import fallback_title_from_text
 from ._history_types import (
     HISTORY_ERROR_NOT_SENT,
-    PREPARATION_ENTRY_KIND,
-    PREPARATION_ENTRY_VERSION,
-    PREPARATION_STATE_KEY,
     SYSTEM_PROMPT_STATE_KEY,
     TURNS_STATE_KEY,
     VALUES_STATE_KEY,
@@ -505,7 +502,7 @@ class _ExchangeRecorder:
                 version=1,
                 mode="snapshot",
                 data=cast(JsonValue, saved_turns),
-            )
+            ).with_previous_extra(child_entry)
 
     def _validate_model_state(self) -> None:
         try:
@@ -603,12 +600,15 @@ class _ExchangeRecorder:
             else:
                 # Builtins already validate and detach their fresh payloads.
                 # Overrides/wrappers/custom hooks cannot borrow that trust.
-                staged.nodes[node_id].state[name] = (
+                entry = (
                     entry
                     if builtin is not None
                     else StateEntry.model_validate(
                         canonical_values(entry.model_dump(mode="python"))
                     )
+                )
+                staged.nodes[node_id].state[name] = entry.with_previous_extra(
+                    staged.nodes[node_id].state.get(name)
                 )
         for key, node in staged.nodes.items():
             live.nodes[key].state = node.state
@@ -723,8 +723,8 @@ class _ExchangeRecorder:
 
         The staged submission is finished as a sanitized "message not
         sent" error with an explicitly invalid checkpoint and the durable
-        preparation envelope: terminal, never accepted, and whether a
-        complete app-values snapshot was observed at the failed position.
+        node fields describing whether a complete app-values snapshot was
+        observed at the failed position.
         The ordinary automatic app-value capture role runs exactly once
         here, even after a failed ``on_restore`` (a restore failure does
         not make ``on_save`` impossible, and the failed node has no saved
@@ -749,16 +749,12 @@ class _ExchangeRecorder:
         record.finish_exchange(exchange_id, "error", HISTORY_ERROR_NOT_SENT)
         node = record.nodes[exchange_id]
         node.checkpoint = "invalid"
-        node.state[PREPARATION_STATE_KEY] = StateEntry(
-            kind=PREPARATION_ENTRY_KIND,
-            version=PREPARATION_ENTRY_VERSION,
-            mode="snapshot",
-            data={
-                "terminal": True,
-                "accepted": False,
-                "app_values": app_values,
-            },
-        )
+        node.not_sent = True
+        node.app_values = app_values
+        if app_values == "unavailable":
+            node.state[VALUES_STATE_KEY] = StateEntry(
+                kind="values", version=1, mode="snapshot", data={}
+            )
         await self.persist_record_locked()
 
     def reset(self) -> None:
@@ -866,7 +862,11 @@ class _ExchangeRecorder:
             if entry is None:
                 staged.nodes[node_id].state.pop(VALUES_STATE_KEY, None)
             else:
-                staged.nodes[node_id].state[VALUES_STATE_KEY] = entry
+                staged.nodes[node_id].state[VALUES_STATE_KEY] = (
+                    entry.with_previous_extra(
+                        staged.nodes[node_id].state.get(VALUES_STATE_KEY)
+                    )
+                )
         except Exception as error:
             if strict:
                 raise

@@ -1,17 +1,15 @@
 """Regressions for the independent node-first review's P1/P2 findings.
 
-Unavailable values are not ordinary sparse inheritance. Baseline writers can
-pin parent values onto an unavailable failed child while preserving its opaque
-preparation marker; that valid marker remains authoritative on a new reader.
-Bookmarks identify display positions, including known terminal failures, not
-just model-continuation checkpoints.
+A failed position records its availability on the exchange node and always
+owns its values snapshot. Bookmarks identify display positions, including
+known terminal failures, not just model-continuation checkpoints.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Awaitable, Callable, cast
+from typing import Any, Awaitable, Callable, Literal, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -20,10 +18,7 @@ from shiny.session import session_context
 from shinychat import Chat
 from shinychat._chat_types import ChatMessage
 from shinychat._history_controller import HistoryController
-from shinychat._history_plan import (
-    resolve_path_values,
-    validate_active_path_state,
-)
+from shinychat._history_plan import resolve_path_values
 from shinychat._history_store import (
     ConversationPartition,
     ConversationStore,
@@ -32,7 +27,6 @@ from shinychat._history_store import (
 )
 from shinychat._history_types import (
     HISTORY_ERROR_NOT_SENT,
-    PREPARATION_STATE_KEY,
     TURNS_STATE_KEY,
     VALUES_STATE_KEY,
     CapturedMessage,
@@ -66,7 +60,9 @@ def review_store(
 
 
 def _record(
-    *, availability: str = "unavailable", failed_parent: str | None = None
+    *,
+    availability: Literal["complete", "unavailable"] = "unavailable",
+    failed_parent: str | None = None,
 ) -> ConversationRecordV2:
     record = new_conversation_record_v2(
         id="c_review", title="Review", client_info={}
@@ -104,16 +100,11 @@ def _record(
     record.open_exchange("failed", _stored_message("user", "replacement"))
     record.finish_exchange("failed", "error", HISTORY_ERROR_NOT_SENT)
     record.nodes["failed"].checkpoint = "invalid"
-    record.nodes["failed"].state[PREPARATION_STATE_KEY] = StateEntry(
-        kind="input_preparation",
-        version=1,
-        mode="snapshot",
-        data={"terminal": True, "accepted": False, "app_values": availability},
+    record.nodes["failed"].not_sent = True
+    record.nodes["failed"].app_values = availability
+    record.nodes["failed"].state[VALUES_STATE_KEY] = StateEntry(
+        kind="values", version=1, mode="snapshot", data={}
     )
-    if availability == "complete":
-        record.nodes["failed"].state[VALUES_STATE_KEY] = StateEntry(
-            kind="values", version=1, mode="snapshot", data={}
-        )
     return record
 
 
@@ -241,12 +232,9 @@ async def test_root_bookmark_recapture_preserves_unavailable_and_ordinary_values
         rewritten.nodes[record.root_id].state[VALUES_STATE_KEY].data
         == NEW_VALUES
     )
-    assert VALUES_STATE_KEY not in rewritten.nodes["failed"].state
-    assert rewritten.nodes["failed"].state[PREPARATION_STATE_KEY].data == {
-        "terminal": True,
-        "accepted": False,
-        "app_values": "unavailable",
-    }
+    assert rewritten.nodes["failed"].not_sent is True
+    assert rewritten.nodes["failed"].app_values == "unavailable"
+    assert rewritten.nodes["failed"].state[VALUES_STATE_KEY].data == {}
     assert (
         rewritten.nodes["ordinary"].state[VALUES_STATE_KEY].data == OLD_VALUES
     )
@@ -256,8 +244,9 @@ async def test_root_bookmark_recapture_preserves_unavailable_and_ordinary_values
     original_after = rewritten.nodes["original"].model_dump()
     original_after["state"].pop(VALUES_STATE_KEY)
     assert original_after == original
-    with pytest.raises(ValueError, match="unavailable"):
-        resolve_path_values(rewritten, "failed")
+    # The failed position resolves its own owned snapshot; the node's
+    # app_values marker, not a resolver error, keeps it out of restore.
+    assert resolve_path_values(rewritten, "failed") == {}
     _assert_unaccepted(root_view)
 
     rewritten.set_active_leaf("failed")
@@ -276,51 +265,6 @@ async def test_root_bookmark_recapture_preserves_unavailable_and_ordinary_values
     assert failed_view.controller._exchange_recorder.read_only
     assert not failed_view.chat.history._history_submission_admitted()
     _assert_unaccepted(failed_view)
-
-
-@pytest.mark.anyio
-async def test_legacy_pinned_values_are_ignored_when_marker_says_unavailable(
-    request: pytest.FixtureRequest, review_store: ConversationStore
-) -> None:
-    record = _record()
-    # This is legitimate e4f2021e sparse-child pinning output: an old writer
-    # recaptures the root, pins its old values onto every entryless child,
-    # and preserves the opaque preparation envelope. Do not reject this
-    # combination as malformed or replay the pin as an observed snapshot.
-    record.nodes["failed"].state[VALUES_STATE_KEY] = StateEntry(
-        kind="values", version=1, mode="snapshot", data=OLD_VALUES.copy()
-    )
-    await review_store.put(PARTITION, record)
-    loaded = await _stored(review_store)
-    validate_active_path_state(loaded)
-    assert node_is_terminal_incomplete(loaded.nodes["failed"])
-    view = _view(request, review_store)
-    observed: list[dict[str, Any]] = []
-    view.chat.history.on_restore(lambda values: observed.append(dict(values)))
-    await view.initialize()
-    await view.controller._restore_initial_exchange_record(loaded)
-    assert observed == []
-    assert _contents(view.chat) == ["replacement"]
-    assert (
-        view.controller._exchange_recorder.read_only_reason
-        == "terminal_incomplete"
-    )
-    assert view.controller._can_resubmit_active()
-    with pytest.raises(ValueError, match="unavailable"):
-        resolve_path_values(loaded, "failed")
-    _assert_unaccepted(view)
-
-    # Browse away and back through the real rewind path: the legacy pin
-    # must not reappear in on_restore on return to the failed position.
-    await view.controller.handle_navigate(
-        0, "prev", request_id="browse-original"
-    )
-    assert observed == [OLD_VALUES]
-    observed.clear()
-    await view.controller.handle_navigate(0, "next", request_id="browse-failed")
-    assert observed == []
-    assert _contents(view.chat) == ["replacement"]
-    _assert_unaccepted(view)
 
 
 @pytest.mark.anyio
@@ -349,32 +293,6 @@ async def test_complete_empty_failed_snapshot_is_restored_not_inherited(
 
 
 @pytest.mark.anyio
-async def test_complete_marker_without_own_snapshot_fails_closed_before_restore(
-    request: pytest.FixtureRequest, review_store: ConversationStore
-) -> None:
-    record = _record(availability="complete")
-    del record.nodes["failed"].state[VALUES_STATE_KEY]
-    await review_store.put(PARTITION, record)
-    view = _view(request, review_store)
-    observed: list[dict[str, Any]] = []
-    view.chat.history.on_restore(lambda values: observed.append(dict(values)))
-    await view.initialize()
-    with pytest.raises(ValueError, match="complete"):
-        validate_active_path_state(await _stored(review_store))
-    with (
-        pytest.warns(UserWarning, match="complete"),
-        pytest.raises(ValueError, match="complete"),
-    ):
-        await view.controller._restore_initial_exchange_record(
-            await _stored(review_store)
-        )
-    assert observed == []
-    assert view.controller._exchange_recorder.record is None
-    assert (await _stored(review_store)).model_dump() == record.model_dump()
-    _assert_unaccepted(view)
-
-
-@pytest.mark.anyio
 @pytest.mark.parametrize(
     "availability, expected_restores",
     [("complete", [{}]), ("unavailable", [])],
@@ -382,7 +300,7 @@ async def test_complete_marker_without_own_snapshot_fails_closed_before_restore(
 async def test_failed_bookmark_restores_selected_display_without_admission(
     request: pytest.FixtureRequest,
     review_store: ConversationStore,
-    availability: str,
+    availability: Literal["complete", "unavailable"],
     expected_restores: list[dict[str, Any]],
 ) -> None:
     record = _record(availability=availability, failed_parent="original")

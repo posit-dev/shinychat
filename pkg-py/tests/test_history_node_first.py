@@ -2,13 +2,14 @@
 
 Covers the success path through the real guarded Chat seam, terminal
 failure attachment, recovery (explicit Retry from a failed position),
-fail-closed envelope validation, complete-vs-unavailable app values, and
-the terminal browsing/reload handling. Storage/admission boundary cases
+complete-vs-unavailable app values, and the terminal browsing/reload
+handling. Storage/admission boundary cases
 live in test_history_node_first_boundaries.py.
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, cast
 
 import pytest
@@ -18,10 +19,10 @@ from shinychat._chat_transcript import StagedInputAdmission
 from shinychat._history_store import FileConversationStore
 from shinychat._history_types import (
     HISTORY_ERROR_NOT_SENT,
-    PREPARATION_STATE_KEY,
     TURNS_STATE_KEY,
     VALUES_STATE_KEY,
     ConversationRecordV2,
+    ExchangeNode,
     StateEntry,
     new_conversation_record_v2,
     node_is_terminal_incomplete,
@@ -37,13 +38,6 @@ from test_history_controller import (
     _wire_resubmit_capture,
     part,
 )
-
-
-def _preparation_data(node: Any) -> dict[str, Any]:
-    entry = node.state.get(PREPARATION_STATE_KEY)
-    assert entry is not None
-    assert isinstance(entry.data, dict)
-    return cast(dict[str, Any], entry.data)
 
 
 def _actions_of_list(
@@ -99,9 +93,7 @@ async def test_edit_success_stages_then_admits_exactly_once(
             "exchange_id": sibling,
         }
     ]
-    transcript_ids = [
-        entry.exchange_id for entry in chat._transcript.read()
-    ]
+    transcript_ids = [entry.exchange_id for entry in chat._transcript.read()]
     assert transcript_ids[-1] == sibling
     with reactive.isolate():
         latest = chat.user_input()
@@ -157,13 +149,10 @@ async def test_edit_restore_failure_attaches_terminal_node(
     assert node.error.message == HISTORY_ERROR_NOT_SENT
     assert node.checkpoint == "invalid"
     assert node_is_terminal_incomplete(node)
-    assert _preparation_data(node) == {
-        "terminal": True,
-        "accepted": False,
-        # No save callbacks are registered, so the one automatic capture
-        # records the observed (empty) values as complete.
-        "app_values": "complete",
-    }
+    assert node.not_sent is True
+    # No save callbacks are registered, so the one automatic capture
+    # records the observed (empty) values as complete.
+    assert node.app_values == "complete"
     assert node.input is not None
     assert node.input.content == "replacement"
     # The restriction names the app restore failure; it is resolvable.
@@ -242,7 +231,8 @@ async def test_edit_capture_failure_after_restore_attaches_terminal_node(
     assert staged is not None and staged not in (first, target)
     node = record.nodes[staged]
     assert node_is_terminal_incomplete(node)
-    assert _preparation_data(node)["app_values"] == "complete"
+    assert node.not_sent is True
+    assert node.app_values == "complete"
     # The complete failed-position snapshot records its own values entry,
     # even though it equals the inherited (empty) values: a sparse
     # capture would have recorded nothing and been mistaken for
@@ -284,10 +274,11 @@ async def test_failed_position_values_unavailable_when_save_throws(
     assert staged is not None
     node = record.nodes[staged]
     assert node_is_terminal_incomplete(node)
-    assert _preparation_data(node)["app_values"] == "unavailable"
-    # Unavailable means no observed values: nothing is recorded that a
-    # later restore could mistake for the failed position's own values.
-    assert VALUES_STATE_KEY not in node.state
+    assert node.not_sent is True
+    assert node.app_values == "unavailable"
+    # Unavailable means no observed values: an empty own snapshot that a
+    # later restore skips instead of mistaking for inherited values.
+    assert node.state[VALUES_STATE_KEY].data == {}
 
 
 # ---------------------------------------------------------------------------
@@ -421,7 +412,9 @@ async def test_retry_from_failed_stays_refused_for_unrelated_restrictions(
     assert failed is not None
     # A source-isolated record never recovers through resubmit.
     recorder.install_restored_record(
-        record, read_only=True, source_isolated=True,
+        record,
+        read_only=True,
+        source_isolated=True,
         read_only_reason="interrupted",
     )
     with pytest.raises(RuntimeError, match="interrupted"):
@@ -439,127 +432,55 @@ async def test_retry_from_failed_stays_refused_for_unrelated_restrictions(
 
 
 # ---------------------------------------------------------------------------
-# Fail-closed envelope validation
+# Terminal-incomplete classification (predicate only)
 # ---------------------------------------------------------------------------
 
 
-def _record_with_failed_leaf(
-    *, envelope: StateEntry | None, checkpoint: Any = "invalid", status: Any = "error"
-) -> tuple[Any, str, str]:
-    record = new_conversation_record_v2(
-        id="c_envelope_guard", title="guard", client_info={}
-    )
-    root_id = record.root_id
-    record.nodes[root_id].state[TURNS_STATE_KEY] = StateEntry(
-        kind="turns", version=1, mode="snapshot", data=[]
-    )
-    record.open_exchange("original", _stored_message("user", "B"))
-    record.finish_exchange("original", "ok", None)
-    record.nodes["original"].checkpoint = "valid"
-    record.set_active_leaf(root_id)
-    record.open_exchange("failed", _stored_message("user", "B-prime"))
-    record.finish_exchange("failed", status, "err")
-    record.nodes["failed"].checkpoint = checkpoint
-    if envelope is not None:
-        record.nodes["failed"].state[PREPARATION_STATE_KEY] = envelope
-    return record, root_id, "failed"
-
-
-VALID_ENVELOPE = StateEntry(
-    kind="input_preparation",
-    version=1,
-    mode="snapshot",
-    data={"terminal": True, "accepted": False, "app_values": "complete"},
-)
-
-
-@pytest.mark.anyio
 @pytest.mark.parametrize(
-    "envelope",
+    ("status", "checkpoint", "not_sent", "has_input", "expected"),
     [
-        StateEntry(
-            kind="input_preparation",
-            version=2,
-            mode="snapshot",
-            data={"terminal": True, "accepted": False, "app_values": "complete"},
-        ),
-        StateEntry(
-            kind="input_preparation",
-            version=1,
-            mode="delta",
-            data={"terminal": True, "accepted": False, "app_values": "complete"},
-        ),
-        StateEntry(
-            kind="input_preparation",
-            version=1,
-            mode="snapshot",
-            data={"terminal": True, "accepted": True, "app_values": "complete"},
-        ),
-        StateEntry(
-            kind="input_preparation",
-            version=1,
-            mode="snapshot",
-            data={"terminal": True, "accepted": False, "app_values": "partial"},
-        ),
-        StateEntry(
-            kind="input_preparation",
-            version=1,
-            mode="snapshot",
-            data={"terminal": True, "accepted": False},
-        ),
-        StateEntry(
-            kind="other_kind",
-            version=1,
-            mode="snapshot",
-            data={"terminal": True, "accepted": False, "app_values": "complete"},
-        ),
+        ("error", "invalid", True, True, True),
+        # A bare terminal status, or an invalid checkpoint without the
+        # not-sent marker, never classifies a stopped producer.
+        ("error", "invalid", None, True, False),
+        ("error", "invalid", False, True, False),
+        ("error", "invalid", True, False, False),
+        ("error", "valid", True, True, False),
+        ("error", "candidate", True, True, False),
+        ("error", None, True, True, False),
+        # Only a failed status is terminal; a live pending producer is not.
+        ("pending", "invalid", True, True, False),
+        ("ok", "invalid", True, True, False),
+        ("cancelled", "invalid", True, True, False),
     ],
-    ids=["version", "mode", "accepted", "app_values", "missing-key", "kind"],
+    ids=[
+        "terminal",
+        "no-not-sent",
+        "not-sent-false",
+        "no-input",
+        "valid-checkpoint",
+        "candidate-checkpoint",
+        "no-checkpoint",
+        "pending",
+        "ok",
+        "cancelled",
+    ],
 )
-async def test_malformed_preparation_envelope_fails_closed(
-    envelope: StateEntry,
+def test_terminal_incomplete_predicate_requires_status_input_checkpoint_not_sent(
+    status: Any,
+    checkpoint: Any,
+    not_sent: bool | None,
+    has_input: bool,
+    expected: bool,
 ) -> None:
-    from shinychat import _history_plan
-
-    record, _root, failed = _record_with_failed_leaf(envelope=envelope)
-    node = record.nodes[failed]
-    # A malformed marker never classifies the node as a known terminal
-    # position...
-    assert not node_is_terminal_incomplete(node)
-    # ...and any planning against the record fails closed before mutation.
-    with pytest.raises(ValueError, match="preparation"):
-        _history_plan.validate_active_path_state(record)
-    controller, _ = _make_controller()
-    with pytest.raises(ValueError, match="preparation"):
-        controller._prepare_exchange_restore(record.model_copy(deep=True))
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize(
-    "checkpoint,status",
-    [("valid", "error"), (None, "error"), ("candidate", "error"), ("invalid", "pending")],
-    ids=["valid", "legacy-none", "candidate", "pending"],
-)
-async def test_valid_envelope_with_wrong_position_fails_closed(
-    checkpoint: Any, status: Any
-) -> None:
-    """A valid marker on a non-terminal node is contradictory: it is not a
-    continuation checkpoint, not a terminal failure, and never restored or
-    admitted."""
-    from shinychat import _history_plan
-
-    record, _root, failed = _record_with_failed_leaf(
-        envelope=VALID_ENVELOPE.model_copy(deep=True),
-        checkpoint=checkpoint,
+    node = ExchangeNode(
+        created_at=datetime.now(timezone.utc),
         status=status,
+        input=_stored_message("user", "B") if has_input else None,
+        checkpoint=checkpoint,
+        not_sent=not_sent,
     )
-    node = record.nodes[failed]
-    assert not node_is_terminal_incomplete(node)
-    with pytest.raises(ValueError, match="not a terminal failed submission"):
-        _history_plan.validate_active_path_state(record)
-    controller, _ = _make_controller()
-    with pytest.raises(ValueError, match="not a terminal failed submission"):
-        controller._prepare_exchange_restore(record.model_copy(deep=True))
+    assert node_is_terminal_incomplete(node) is expected
 
 
 # ---------------------------------------------------------------------------
@@ -588,9 +509,8 @@ def _record_with_browsable_failure() -> tuple[Any, str, str]:
     record.open_exchange("failed", _stored_message("user", "B-prime"))
     record.finish_exchange("failed", "error", HISTORY_ERROR_NOT_SENT)
     record.nodes["failed"].checkpoint = "invalid"
-    record.nodes["failed"].state[PREPARATION_STATE_KEY] = (
-        VALID_ENVELOPE.model_copy(deep=True)
-    )
+    record.nodes["failed"].not_sent = True
+    record.nodes["failed"].app_values = "complete"
     record.nodes["failed"].state[VALUES_STATE_KEY] = StateEntry(
         kind="values", version=1, mode="snapshot", data={"tab": "failed"}
     )
@@ -624,13 +544,10 @@ async def test_failed_leaf_loads_browsable_not_source_isolated() -> None:
 async def test_failed_leaf_without_values_skips_restore_on_load() -> None:
     controller, _ = _make_controller()
     record, _original, failed = _record_with_browsable_failure()
-    # Unavailable app values: no own entry, never inherited.
-    del record.nodes[failed].state[VALUES_STATE_KEY]
-    record.nodes[failed].state[PREPARATION_STATE_KEY] = StateEntry(
-        kind="input_preparation",
-        version=1,
-        mode="snapshot",
-        data={"terminal": True, "accepted": False, "app_values": "unavailable"},
+    # Unavailable app values: an empty own snapshot, never inherited.
+    record.nodes[failed].app_values = "unavailable"
+    record.nodes[failed].state[VALUES_STATE_KEY] = StateEntry(
+        kind="values", version=1, mode="snapshot", data={}
     )
     restores: list[dict[str, Any]] = []
     controller._restore_callbacks.append(lambda v: restores.append(dict(v)))
@@ -690,7 +607,8 @@ async def test_failed_edit_survives_file_store_reload(
     assert recorder.read_only_reason == "terminal_incomplete"
     failed_node = recorder.record.nodes[failed]
     assert node_is_terminal_incomplete(failed_node)
-    assert _preparation_data(failed_node)["app_values"] == "complete"
+    assert failed_node.not_sent is True
+    assert failed_node.app_values == "complete"
     assert recorder.record.checkpoint_siblings(failed) == [original, failed]
 
 

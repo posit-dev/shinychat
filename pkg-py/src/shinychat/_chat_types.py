@@ -4,6 +4,7 @@ import warnings
 from collections.abc import Iterable
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Any,
     AsyncIterable,
     Callable,
@@ -13,7 +14,7 @@ from typing import (
 )
 
 from htmltools import HTML, HTMLDependency, Tag, TagChild, TagList
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, PlainSerializer, with_config
 
 if TYPE_CHECKING:
     from shiny.session import Session
@@ -23,6 +24,7 @@ from ._html_islands import (
     IslandBlockPart,
     derive_island_parts,
 )
+from ._persisted_model import PersistedModel
 from ._typing_extensions import NotRequired, TypedDict, TypeGuard
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
@@ -52,6 +54,7 @@ class StringSegment(TypedDict):
     content_type: ContentType
 
 
+@with_config(ConfigDict(extra="allow"))
 class ToolRequestBlock(TypedDict):
     """A tool call request from the server.
 
@@ -70,6 +73,7 @@ class ToolRequestBlock(TypedDict):
     grouping: NotRequired[Literal["none", "tool", "all"]]
 
 
+@with_config(ConfigDict(extra="allow"))
 class ToolResultBlock(TypedDict):
     """The result of a completed tool call.
 
@@ -100,6 +104,7 @@ class ToolResultBlock(TypedDict):
     footer: NotRequired[str]
 
 
+@with_config(ConfigDict(extra="allow"))
 class WebSearchSource(TypedDict):
     """One source in a ``web_search_results`` block.
 
@@ -112,6 +117,7 @@ class WebSearchSource(TypedDict):
     domain: NotRequired[str]
 
 
+@with_config(ConfigDict(extra="allow"))
 class WebSearchBlock(TypedDict):
     """A web search query.
 
@@ -126,6 +132,7 @@ class WebSearchBlock(TypedDict):
     id: NotRequired[str]
 
 
+@with_config(ConfigDict(extra="allow"))
 class WebSearchResultsBlock(TypedDict):
     """Results for a preceding ``web_search`` block."""
 
@@ -136,6 +143,7 @@ class WebSearchResultsBlock(TypedDict):
     search_id: NotRequired[str]
 
 
+@with_config(ConfigDict(extra="allow"))
 class WebSearchCitationsBlock(TypedDict):
     """Citations for the most recent ``web_search`` block.
 
@@ -149,6 +157,7 @@ class WebSearchCitationsBlock(TypedDict):
     sources: list[WebSearchSource]
 
 
+@with_config(ConfigDict(extra="allow"))
 class WebFetchBlock(TypedDict):
     """A fetched URL from a web search session."""
 
@@ -158,6 +167,7 @@ class WebFetchBlock(TypedDict):
     status: NotRequired[Literal["success", "error"]]
 
 
+@with_config(ConfigDict(extra="allow"))
 class HtmlBlock(TypedDict):
     """Trusted HTML rendered through the RawHTML sink.
 
@@ -236,6 +246,12 @@ StructuredBlock = Union[
     WebSearchCitationsBlock,
     WebFetchBlock,
     HtmlBlock,
+]
+
+# Persist structured-block dictionaries without dropping unknown null fields.
+PersistedBlock = Annotated[
+    StructuredBlock,
+    PlainSerializer(lambda block: block, return_type=dict[str, Any]),
 ]
 
 # Structured blocks the markdown-stream wire supports: `html_block` and
@@ -845,7 +861,7 @@ class ContentSegment(_SegmentBase):
     html_deps: list[HTMLDependency] | None = None
 
 
-class StoredSegment(_SegmentBase):
+class StoredSegment(_SegmentBase, PersistedModel):
     html_deps: list[SerializedDep] | None = None
 
 
@@ -875,12 +891,12 @@ def ensure_string_segment(
         segments.insert(0, StoredSegment(content="", content_type=content_type))
 
 
-class StoredMessage(BaseModel):
+class StoredMessage(PersistedModel):
     role: Role
     # Interleaved in content order, mirroring ChatMessage.segments and the
     # wire format: StoredSegment entries for strings, StructuredBlock dicts
     # (distinguished by a "type" key) for blocks.
-    segments: list[StoredSegment | StructuredBlock]
+    segments: list[StoredSegment | PersistedBlock]
     attachments: list[Attachment] = []
 
     @property

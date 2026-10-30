@@ -20,12 +20,14 @@ from pydantic import (
 from ._attachments import Attachment
 from ._chat_types import (
     ContentType,
+    PersistedBlock,
     Role,
     SerializedDep,
     StoredMessage,
     StoredSegment,
     StructuredBlock,
 )
+from ._persisted_model import PersistedModel
 from ._typing_extensions import NotRequired, TypedDict
 
 
@@ -53,17 +55,6 @@ SYSTEM_PROMPT_STATE_KEY = "shinychat:system_prompt"
 # per-exchange form of what `on_save` callbacks write and `on_restore`
 # callbacks read).
 VALUES_STATE_KEY = "shinychat:values"
-# The blessed state-entry name for the durable preparation outcome of a
-# recorded submission. Present only on a node whose input was staged and
-# failed before acceptance: it distinguishes a known terminal incomplete
-# position from an unfinished producer, records that the input was never
-# accepted, and records whether a complete app-values snapshot was observed
-# at the failed position. The entry owns no capture/restore/rewind hook;
-# it is causal metadata, never a restore input.
-PREPARATION_STATE_KEY = "shinychat:preparation"
-PREPARATION_ENTRY_KIND = "input_preparation"
-PREPARATION_ENTRY_VERSION = 1
-
 MAX_HISTORY_ERROR_MESSAGE = 256
 HISTORY_ERROR_GENERIC = "The response could not be completed."
 HISTORY_ERROR_STREAM_START = "The response stream could not be started."
@@ -137,112 +128,19 @@ class StoredUiMessage(TypedDict):
     attachment_content_stripped: NotRequired[bool]
 
 
-def is_valid_preparation_entry(entry: "StateEntry") -> bool:
-    """Whether the entry is a well-formed v1 preparation envelope."""
-    if entry.kind != PREPARATION_ENTRY_KIND:
-        return False
-    if (
-        not isinstance(entry.version, int)
-        or isinstance(entry.version, bool)
-        or entry.version != PREPARATION_ENTRY_VERSION
-    ):
-        return False
-    if entry.mode != "snapshot":
-        return False
-    data = entry.data
-    if not isinstance(data, dict):
-        return False
-    if set(data) != {"terminal", "accepted", "app_values"}:
-        return False
-    return (
-        data.get("terminal") is True
-        and data.get("accepted") is False
-        and data.get("app_values") in ("complete", "unavailable")
-    )
-
-
-def validate_preparation_entry(name: str, entry: "StateEntry") -> None:
-    """Fail closed on a malformed preparation envelope.
-
-    A node whose marker cannot be validated must never masquerade as a
-    known stopped producer: state planning rejects the record before any
-    mutation, keeping the conservative interrupted/unresolved reading.
-    """
-    if not is_valid_preparation_entry(entry):
-        raise ValueError(
-            f"State entry {name!r} is not a valid preparation envelope."
-        )
-
-
-def validate_node_preparation_consistency(
-    name: str, node: "ExchangeNode"
-) -> None:
-    """Fail closed when a preparation envelope disagrees with its node.
-
-    Any preparation marker — even an internally valid one — is only
-    coherent on the terminal failed position it describes (error status,
-    submitted input, explicitly invalid checkpoint). A marker on any
-    other node is contradictory: it must never promote the node to a
-    continuation checkpoint nor be silently ignored, so planning rejects
-    the record before mutation. Nodes without the marker keep their
-    documented legacy derivation unchanged.
-    """
-    if PREPARATION_STATE_KEY not in node.state:
-        return
-    if not node_is_terminal_incomplete(node):
-        raise ValueError(
-            f"Exchange {name!r} carries a preparation marker but is not a "
-            "terminal failed submission."
-        )
-    entry = node.state[PREPARATION_STATE_KEY]
-    assert isinstance(entry.data, dict)
-    if (
-        entry.data["app_values"] == "complete"
-        and VALUES_STATE_KEY not in node.state
-    ):
-        raise ValueError(
-            f"Exchange {name!r} claims a complete preparation snapshot "
-            "without its own application values."
-        )
-    # Older writers can pin inherited values onto an unavailable child while
-    # recapturing its parent. The preserved marker remains authoritative:
-    # those values are not an observed snapshot and must never be restored.
-
-
 def node_has_unavailable_app_values(node: "ExchangeNode") -> bool:
-    """Whether preparation explicitly recorded unavailable application values."""
-    entry = node.state.get(PREPARATION_STATE_KEY)
-    return (
-        entry is not None
-        and is_valid_preparation_entry(entry)
-        and isinstance(entry.data, dict)
-        and entry.data["app_values"] == "unavailable"
-    )
+    """Whether the failed position could not capture application values."""
+    return node.app_values == "unavailable"
 
 
 def node_is_terminal_incomplete(node: "ExchangeNode") -> bool:
-    """Whether the node is a recorded, known terminal incomplete position.
-
-    True only when every element agrees: the node carries a submitted
-    input, finished with an error, holds an explicitly invalid checkpoint,
-    and its preparation envelope is a well-formed terminal/never-accepted
-    marker. Any disagreement (a pending status, a candidate or missing
-    checkpoint, a malformed or unrecognized envelope, no input) keeps the
-    conservative reading: an unfinished or interrupted producer, never a
-    browsable terminal position. Legacy nodes without the envelope keep
-    their documented interpretation, so absence of the marker is never
-    read as a terminal failure either.
-    """
-    if node.status != "error":
-        return False
-    if node.input is None:
-        return False
-    if node.checkpoint != "invalid":
-        return False
-    entry = node.state.get(PREPARATION_STATE_KEY)
-    if entry is None:
-        return False
-    return is_valid_preparation_entry(entry)
+    """A terminal rejected input is browsable, but not a checkpoint."""
+    return (
+        node.status == "error"
+        and node.input is not None
+        and node.checkpoint == "invalid"
+        and node.not_sent is True
+    )
 
 
 def new_conversation_record(
@@ -464,9 +362,9 @@ class ConversationRecordV1(BaseModel):
         return node_id
 
 
-class CapturedMessage(BaseModel):
+class CapturedMessage(PersistedModel):
     role: Literal["user", "assistant"]
-    segments: list[StoredSegment | StructuredBlock]
+    segments: list[StoredSegment | PersistedBlock]
     icon: str | None = None
     attachments: list[Attachment] | None = None
 
@@ -507,11 +405,19 @@ class CapturedMessage(BaseModel):
         )
 
 
-class StateEntry(BaseModel):
+class StateEntry(PersistedModel):
     kind: str
     version: int
     mode: Literal["delta", "snapshot"]
     data: JsonValue
+
+    def with_previous_extra(self, previous: StateEntry | None) -> StateEntry:
+        """Keep unknown fields when a capture replaces an existing entry."""
+        if previous is None or not previous.model_extra:
+            return self
+        extras = copy.deepcopy(previous.model_extra)
+        extras.update(self.model_extra or {})
+        return self.model_copy(update=extras)
 
     @model_serializer(mode="wrap")
     def _serialize(
@@ -529,14 +435,14 @@ class StateEntry(BaseModel):
             and (info.include is None or "data" in info.include)
         ):
             serialized["data"] = None
-        return serialized
+        return self._preserve_extra_nulls(serialized, info)
 
 
-class ErrorEntry(BaseModel):
+class ErrorEntry(PersistedModel):
     message: str
 
 
-class ExchangeNode(BaseModel):
+class ExchangeNode(PersistedModel):
     parent_id: str | None = None
     children: list[str] = Field(default_factory=list)
     selected_child: str | None = None
@@ -547,6 +453,8 @@ class ExchangeNode(BaseModel):
     state: dict[str, StateEntry] = Field(default_factory=dict)
     error: ErrorEntry | None = None
     checkpoint: Literal["candidate", "valid", "invalid"] | None = None
+    not_sent: bool | None = None
+    app_values: Literal["complete", "unavailable"] | None = None
 
     @property
     def checkpoint_state(self) -> Literal["candidate", "valid", "invalid"]:
@@ -588,7 +496,7 @@ def _ancestor_path(
     return path
 
 
-class ConversationRecordV2(BaseModel):
+class ConversationRecordV2(PersistedModel):
     """The v2 exchange-tree record, isolated from the released v1 model."""
 
     schema_version: Literal[2] = 2
