@@ -262,7 +262,10 @@ async def test_root_bookmark_recapture_preserves_unavailable_and_ordinary_values
     )
     assert failed_observed == []
     assert _contents(failed_view.chat) == ["replacement"]
-    assert failed_view.controller._exchange_recorder.read_only
+    recorder = failed_view.controller._exchange_recorder
+    assert not recorder.read_only
+    assert recorder.selected_not_sent
+    assert not recorder.continuation_allowed
     assert not failed_view.chat.history._history_submission_admitted()
     _assert_unaccepted(failed_view)
 
@@ -288,7 +291,10 @@ async def test_complete_empty_failed_snapshot_is_restored_not_inherited(
     assert live.active_leaf == "failed"
     assert live.nodes["failed"].state[VALUES_STATE_KEY].data == {}
     assert resolve_path_values(live, "failed") == {}
-    assert restored.controller._exchange_recorder.read_only
+    recorder = restored.controller._exchange_recorder
+    assert not recorder.read_only
+    assert recorder.selected_not_sent
+    assert not recorder.continuation_allowed
     _assert_unaccepted(restored)
 
 
@@ -325,7 +331,10 @@ async def test_failed_bookmark_restores_selected_display_without_admission(
         failed.error is not None
         and failed.error.message == HISTORY_ERROR_NOT_SENT
     )
-    assert recorder.read_only_reason == "terminal_incomplete"
+    assert not recorder.read_only
+    assert recorder.read_only_reason is None
+    assert recorder.selected_not_sent
+    assert not recorder.continuation_allowed
     assert not recorder.source_isolated
     assert restored.controller._can_resubmit_active()
     assert not restored.chat.history._history_submission_admitted()

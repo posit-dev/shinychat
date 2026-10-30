@@ -9,7 +9,6 @@ export type ReadOnlyReason =
   | "model_unavailable"
   | "app_restore_failed"
   | "interrupted"
-  | "terminal_incomplete"
 
 export interface ConversationMeta {
   id: string

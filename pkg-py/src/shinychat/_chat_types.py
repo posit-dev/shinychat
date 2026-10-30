@@ -29,15 +29,12 @@ from ._typing_extensions import NotRequired, TypedDict, TypeGuard
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
 Role = Literal["assistant", "user", "system"]
-# Why a restored conversation is view-only: its saved model context is
-# unavailable, an app restore failed, its checkpoint is unfinished/invalid,
-# or the selected position is a known terminal incomplete submission (a
-# recorded edit/retry that failed before acceptance).
+# Why a restored conversation is view-only: its model context is unavailable,
+# an app restore failed, or its checkpoint is unfinished/invalid.
 ReadOnlyReason = Literal[
     "model_unavailable",
     "app_restore_failed",
     "interrupted",
-    "terminal_incomplete",
 ]
 
 SerializedDep = dict[str, object]

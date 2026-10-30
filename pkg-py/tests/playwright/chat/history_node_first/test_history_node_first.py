@@ -99,10 +99,8 @@ FAILED_POSITION_PREFIX = [
     {"role": "assistant", "content": f"Echo: {MSG_A}"},
     {"role": "user", "content": MSG_B_PRIME},
 ]
-# The original branch's remembered C destination: browsing to B's version
-# displays its descendant's full accepted branch on screen. Read-only
-# display-only navigation deliberately never applies that context to the
-# live model (asserted on the browse trace entry instead).
+# The original branch's remembered C destination. Browse recovery applies
+# this recorded model context independently of replaying the display.
 B_BRANCH_PREFIX = [
     {"role": "user", "content": MSG_A},
     {"role": "assistant", "content": f"Echo: {MSG_A}"},
@@ -965,6 +963,116 @@ def test_history_node_first_failed_edit_survives_reload(
     assert_original_branch_retained(reloaded)
 
 
+def test_history_node_first_fixed_browse_restores_before_followup(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    """A fixed browse restores the original model and app before continuation."""
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    page.locator("#region_filter").fill("north")
+    expect(page.locator("#current_filter")).to_have_text(
+        "north", timeout=10_000
+    )
+    seed_conversation(page, chat)
+    chat.set_user_input(DRAFT_TEXT)
+    page.locator("#fault_mode").select_option("restore_throw")
+    edit_user_message(page, 1, MSG_B_PRIME)
+    expect(page.locator("#restore_count")).to_have_text("1", timeout=30_000)
+    wait_for_failure_settled(page)
+    assert_b_prime_displayed(page)
+    assert_failed_node_affordances(page, chat)
+    assert_no_extra_callbacks(page)
+    expect(page.locator("#user_input_text")).to_have_text(MSG_C)
+    expect(page.locator("#model_poisoned")).to_have_text("true")
+    expect(page.locator("#current_filter")).to_have_text("mutated-by-restore")
+
+    record = wait_for_record_where(
+        page,
+        lambda r: any(
+            r["nodes"][node_id].get("not_sent") is True
+            for node_id in _node_ids_with_input(r, MSG_B_PRIME)
+        ),
+        description="the failed edit is terminal and recorded",
+    )
+    failed_id = assert_failed_edit_recorded(record, app_values="unavailable")
+    assert_original_branch_retained(record)
+    c_ids = _node_ids_with_input(record, MSG_C)
+    assert len(c_ids) == 1
+    c_id = c_ids[0]
+    original_c_state = record["nodes"][c_id]["state"]
+    before_trace = read_trace(page)
+    assert len([e for e in before_trace if e["event"] == "provider_enter"]) == 3
+    assert_edit_time_callback_observation(before_trace, B_BRANCH_PREFIX)
+
+    # Fixing the callback alone cannot repair the poisoned model. Browsing
+    # must apply C's saved model and app state before enabling the composer.
+    page.locator("#fault_mode").select_option("none")
+    expect(page.locator("#model_poisoned")).to_have_text("true")
+    nav = page.locator(".shiny-chat-sibling-nav")
+    nav.get_by_role("button", name="Previous version").click()
+    expect(page.locator("#restore_count")).to_have_text("2", timeout=30_000)
+    expect(page.locator("#current_filter")).to_have_text(
+        "north", timeout=10_000
+    )
+    expect(page.locator("#region_filter")).to_have_value(
+        "north", timeout=10_000
+    )
+    expect(page.locator("#model_poisoned")).to_have_text(
+        "false", timeout=10_000
+    )
+    expect(page.locator("#chat_messages")).to_have_text(
+        json.dumps(B_BRANCH_PREFIX), timeout=10_000
+    )
+    expect(chat.loc.locator(".shiny-chat-readonly")).to_have_count(
+        0, timeout=10_000
+    )
+    expect(chat.loc_input).to_be_visible(timeout=10_000)
+    expect(chat.loc_input).to_have_text(DRAFT_TEXT, timeout=10_000)
+    assert_no_extra_callbacks(page)
+
+    browse_trace = restore_enter_entries(read_trace(page))
+    assert len(browse_trace) == 2
+    assert browse_trace[1]["chat_messages"] == FAILED_POSITION_PREFIX
+    assert browse_trace[1]["client_turns"] == B_BRANCH_PREFIX
+    assert browse_trace[1]["values"] == {"filter": "north"}
+    record = wait_for_record_where(
+        page,
+        lambda r: r.get("active_leaf") == c_id,
+        description="the original C checkpoint is selected",
+    )
+    assert record["nodes"][c_id]["state"] == original_c_state
+    assert_failed_node(record, failed_id, app_values="unavailable")
+
+    # The fixture records the actual client context at provider entry,
+    # before it appends this new input; display rows alone cannot prove it.
+    expect(chat.loc_input_button).to_be_enabled(timeout=10_000)
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message(f"Echo: {DRAFT_TEXT}", timeout=30_000)
+    expect(page.locator("#provider_calls")).to_have_text("4", timeout=10_000)
+    expect(page.locator("#submit_count")).to_have_text("4", timeout=10_000)
+    expect(page.locator("#user_input_count")).to_have_text("4", timeout=10_000)
+    followup_entries = [
+        e
+        for e in read_trace(page)
+        if e["event"] == "provider_enter" and e["text"] == DRAFT_TEXT
+    ]
+    assert len(followup_entries) == 1
+    assert followup_entries[0]["client_turns"] == B_BRANCH_PREFIX
+    assert followup_entries[0]["filter"] == "north"
+    record = wait_for_record_where(
+        page,
+        lambda r: len(_ok_node_ids(r, DRAFT_TEXT)) == 1,
+        description="the follow-up completed on the original branch",
+    )
+    followup_id = _ok_node_ids(record, DRAFT_TEXT)[0]
+    assert record["nodes"][followup_id]["parent_id"] == c_id
+    assert record["active_leaf"] == followup_id
+    assert_failed_node(record, failed_id, app_values="unavailable")
+    assert_original_branch_retained(record)
+
+
 def test_history_node_first_browse_and_retry_recovers(
     page: Page, local_app: ShinyAppProc
 ) -> None:
@@ -1007,9 +1115,8 @@ def test_history_node_first_browse_and_retry_recovers(
     # Browsing the original shows its own branch; the failed edit is off-path.
     # The display replay installs the browsed target's full remembered
     # branch -- B_BRANCH_PREFIX, through the remembered descendant C -- so
-    # every accepted input and echo of the original branch is on screen
-    # (the live model deliberately keeps the edit-time parent context
-    # instead; asserted on the trace below).
+    # every accepted input and echo of the original branch is on screen.
+    # The compatible model rewind runs before the still-broken callback.
     for expected in B_BRANCH_PREFIX:
         role_class = (
             ".shiny-chat-user-message"
@@ -1162,28 +1269,18 @@ def test_history_node_first_browse_and_retry_recovers(
     )
     # 1. The edit-time failure saw the outgoing original branch.
     assert_edit_time_outgoing_entry(entries[0], B_BRANCH_PREFIX)
-    # 2. Ordinary browse semantics are deliberately unchanged by the
-    #    node-first contract: the callback retains the OUTGOING transcript
-    #    until the replay installs the target view (loads and browses see
-    #    the same view), receives the TARGET's recorded values, and --
-    #    because read-only display-only navigation never invokes the
-    #    builtin model rewind hooks (pre-existing production behavior the
-    #    contract preserves) -- the live model still holds the edit-time
-    #    parent context, still poisoned. The browsed target's full
-    #    remembered branch (B_BRANCH_PREFIX) is installed on screen
-    #    (asserted on the displayed rows above), never applied to the live
-    #    model: the trace must prove the browse did not touch it.
+    # 2. The browse callback sees the OUTGOING transcript, the target's
+    #    recorded values, and its fully rewound model. This callback still
+    #    fails, so the app restriction remains even after model restoration.
     browse_entry = entries[1]
     assert browse_entry["chat_messages"] == FAILED_POSITION_PREFIX, (
         "the browse callback must observe the outgoing failed-position "
         "transcript (loads and browses see the same view), not the new "
         f"target's display; got {browse_entry['chat_messages']}"
     )
-    assert browse_entry["client_turns"] == PARENT_PREFIX, (
-        "the browse callback's live model must still hold the edit-time "
-        "parent context: read-only display-only navigation deliberately "
-        "never rewinds the live model, so the target's remembered branch "
-        f"must not be applied at browse time; got {browse_entry['client_turns']}"
+    assert browse_entry["client_turns"] == B_BRANCH_PREFIX, (
+        "the browse callback must observe the recorded target model; "
+        f"got {browse_entry['client_turns']}"
     )
     assert browse_entry["values"].get("filter") == "all", (
         f"the browsed original's app values were wrong: {browse_entry['values']}"

@@ -66,7 +66,7 @@ import json
 import os
 import tempfile
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, AsyncGenerator, Literal
 from unittest.mock import MagicMock
@@ -126,6 +126,7 @@ class EchoClient(chatlas.Chat):
         self.dispatches = dispatches
         self.poison_mirror = poison_mirror
         self._capture_poisoned = False
+        self.on_provider_enter: Callable[[str], None] | None = None
 
     @property
     def capture_poisoned(self) -> bool:
@@ -159,6 +160,8 @@ class EchoClient(chatlas.Chat):
         self, *args: Any, **kwargs: Any
     ) -> AsyncGenerator[str, None]:  # type: ignore[override]
         text = str(args[0]) if args else ""
+        if self.on_provider_enter is not None:
+            self.on_provider_enter(text)
         self.dispatches.set(self.dispatches() + 1)
         self._turns.extend(
             [
@@ -227,20 +230,29 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
 
     def turns_snapshot() -> list[dict[str, Any]] | None:
         # Diagnostic reads must not introduce an extra restore failure when
-        # the fault deliberately makes model capture unavailable. The capture
-        # poison guards get_turns (the production capture seam); the trace
-        # still needs to observe what the live model actually holds while
-        # poisoned, because read-only navigation deliberately never invokes
-        # the builtin model rewind hooks: the browse callback's model must
-        # be provably the untouched edit-time parent context, not a guess.
+        # the fault deliberately makes model capture unavailable. The raw
+        # read exposes the actual live turns even while capture is poisoned.
         turns = (
             list(client._turns)  # diagnostic raw read, bypasses the fault
             if client.capture_poisoned
             else client.get_turns()
         )
-        return [
-            {"role": turn.role, "content": turn.text} for turn in turns
-        ]
+        return [{"role": turn.role, "content": turn.text} for turn in turns]
+
+    def trace_provider_enter(text: str) -> None:
+        # Observe model and app state before the provider adds this input.
+        with reactive.isolate():
+            region = selected_filter.get()
+        trace(
+            {
+                "event": "provider_enter",
+                "text": text,
+                "client_turns": turns_snapshot(),
+                "filter": region,
+            }
+        )
+
+    client.on_provider_enter = trace_provider_enter
 
     def apply_filter(region: str) -> None:
         selected_filter.set(region)

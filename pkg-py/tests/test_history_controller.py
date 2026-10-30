@@ -5537,7 +5537,9 @@ async def test_v2_destructive_active_id_callback_observes_reset(
 
 
 @pytest.mark.anyio
-async def test_v2_recorder_captures_postpartition_root_ui_but_not_greeting():
+async def test_v2_recorder_captures_postpartition_root_ui_but_not_greeting(
+    request: pytest.FixtureRequest,
+):
     from shiny.module import ResolvedId
     from shiny.session import session_context
     from shinychat import Chat
@@ -5565,6 +5567,7 @@ async def test_v2_recorder_captures_postpartition_root_ui_but_not_greeting():
     session = GreetingSession()
     with session_context(cast(Any, session)):
         real_chat = Chat("history_acceptance", history=False)
+    request.addfinalizer(real_chat.destroy)
 
     adapter = _FakeAdapter()
     controller, _ = _make_controller(
@@ -6984,8 +6987,10 @@ async def test_v2_edit_projection_delivery_failure_retains_failed_node() -> (
     assert node.input.content == "edited"
     # The original branch is preserved; the record is never cleared.
     assert record.nodes[target].input is not None
-    assert recorder.read_only
-    assert recorder.read_only_reason == "terminal_incomplete"
+    assert not recorder.read_only
+    assert recorder.read_only_reason is None
+    assert recorder.selected_not_sent
+    assert not recorder.continuation_allowed
     assert chat.clear_messages_calls == 0
 
 
@@ -7037,7 +7042,10 @@ async def test_v2_resubmit_store_failure_retains_failed_node() -> None:
     assert node_is_terminal_incomplete(put_attempts[1].nodes[staged])
     # No fresh-draft cleanup, no swallowed settlement.
     assert chat.clear_messages_calls == 0
-    assert recorder.read_only_reason == "terminal_incomplete"
+    assert not recorder.read_only
+    assert recorder.read_only_reason is None
+    assert recorder.selected_not_sent
+    assert not recorder.continuation_allowed
     notifier.assert_awaited_once_with()
 
 
@@ -7101,7 +7109,10 @@ async def test_v2_resubmit_rewind_hook_failure_retains_failed_node() -> None:
         {"role": "user", "content": "first"},
     ]
     assert chat.clear_messages_calls == 0
-    assert recorder.read_only_reason == "terminal_incomplete"
+    assert not recorder.read_only
+    assert recorder.read_only_reason is None
+    assert recorder.selected_not_sent
+    assert not recorder.continuation_allowed
 
 
 @pytest.mark.anyio

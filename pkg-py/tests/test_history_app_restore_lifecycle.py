@@ -328,13 +328,13 @@ async def test_read_only_retention_reports_app_failure_not_model_context() -> (
 
 
 # ---------------------------------------------------------------------------
-# Read-only browsing: stays read-only, no retry, display-only still runs
+# Browsing after app failure: reapply the target model and app state
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.anyio
-async def test_read_only_browsing_stays_read_only_without_retry() -> None:
-    controller, fake_chat, _adapter, _store, _first, _second = (
+async def test_app_failed_browse_recovers_after_model_and_app_restore() -> None:
+    controller, fake_chat, adapter, _store, original, _second = (
         _make_v2_navigation_controller()
     )
     recorder = controller._exchange_recorder
@@ -347,14 +347,19 @@ async def test_read_only_browsing_stays_read_only_without_retry() -> None:
 
     await controller.handle_navigate(2, "prev", request_id="nav-1")
 
-    # Display-only output still dispatches on browse, but the read-only
-    # state is neither cleared by a sibling callback succeeding nor
-    # reclassified: the reason still explains the same failure.
+    # A compatible model rewind and successful app restore resolve the
+    # app restriction; a callback alone is not sufficient.
     assert len(calls) == 1
-    assert recorder.read_only is True
-    assert recorder.read_only_reason == "app_restore_failed"
+    assert recorder.record.active_leaf == original
+    assert adapter.turns == [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+        {"role": "user", "content": "original"},
+    ]
+    assert not recorder.read_only
+    assert recorder.read_only_reason is None
     update = _read_only_actions(fake_chat)[-1]
-    assert update["active_read_only"] is True
+    assert "active_read_only" not in update
 
 
 # ---------------------------------------------------------------------------

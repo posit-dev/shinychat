@@ -82,7 +82,6 @@ _MODEL_STATE_KEYS = frozenset({TURNS_STATE_KEY, SYSTEM_PROMPT_STATE_KEY})
 # isolation), and live-producer restrictions are never recovered here.
 _RESOLVABLE_RESUBMIT_REASONS: tuple[ReadOnlyReason, ...] = (
     "app_restore_failed",
-    "terminal_incomplete",
 )
 
 
@@ -227,10 +226,6 @@ _READ_ONLY_RESUBMIT_MESSAGES: dict[ReadOnlyReason, str] = {
     ),
     "interrupted": (
         "Cannot resubmit an exchange in an interrupted read-only conversation."
-    ),
-    "terminal_incomplete": (
-        "Cannot resubmit an exchange in a read-only conversation: the "
-        "selected position is a recorded submission that was not sent."
     ),
 }
 
@@ -773,7 +768,6 @@ class HistoryController:
         active_leaf = target.active_leaf
         assert active_leaf is not None
         active_node = target.nodes[active_leaf]
-        terminal_leaf = node_is_terminal_incomplete(active_node)
 
         try:
             with _restore_step("replaying the conversation display"):
@@ -783,18 +777,12 @@ class HistoryController:
             with _restore_step("installing the restored record"):
                 recorder.install_restored_record(
                     target,
-                    read_only=(
-                        unavailable_reason is not None
-                        or source_isolated
-                        or terminal_leaf
-                    ),
+                    read_only=unavailable_reason is not None or source_isolated,
                     source_isolated=source_isolated,
                     read_only_reason=(
                         "interrupted"
                         if source_isolated
                         else "model_unavailable"
-                        if unavailable_reason is not None
-                        else "terminal_incomplete"
                     ),
                 )
                 await self._set_active_id(target.id)
@@ -1069,10 +1057,10 @@ class HistoryController:
             # Authoritative guard for edit/retry/regenerate: a read-only
             # record must not be mutated or consume a model stream. The
             # message names the reason, never a cause it did not have.
-            # The resolvable restrictions (a failed app restore, a known
-            # terminal incomplete position) are the exception: an explicit
-            # resubmit revalidates them by restoring the target's valid
-            # parent, without close-capturing a poisoned live model.
+            # An app-restore failure is the sole resolvable record
+            # restriction: an explicit resubmit revalidates it by restoring
+            # the target's valid parent. A selected not-sent position is
+            # derived separately and must not close-capture its live model.
             raise RuntimeError(
                 _READ_ONLY_RESUBMIT_MESSAGES.get(
                     recorder.read_only_reason or "model_unavailable",
@@ -1302,8 +1290,6 @@ class HistoryController:
                     f"reload: {put_error!r}",
                     stacklevel=2,
                 )
-            if not recorder.read_only:
-                recorder.mark_read_only("terminal_incomplete")
             record = recorder.record
             assert record is not None
             node = record.nodes[staged_id]
@@ -1350,32 +1336,11 @@ class HistoryController:
         *,
         save_step: str,
         send: Callable[[], Awaitable[None]],
-        send_read_only: Callable[[], Awaitable[None]] | None = None,
-        transcript_prefix: tuple["TranscriptEntry", ...] | None = None,
-        transaction: object | None = None,
         target_values: dict[str, Any],
         terminal_leaf: bool = False,
-        leaving_terminal_view: bool = False,
+        revalidate_model: bool = False,
     ) -> None:
-        """The shared rewind skeleton: capture the close, run the plan,
-        restore the target's app state, commit the resubmit pointer, then send.
-
-        ``on_restore`` runs for the target position before ``send``. An
-        ordinary app failure keeps the original resubmit branch displayed
-        view-only, and sends ``send_read_only`` instead of ``send`` (for
-        resubmits: the metadata and display without the edit projection,
-        which is the replacement's provider kickoff). Without
-        ``send_read_only``, browsing commits and displays the target even
-        when app restoration fails.
-        Any other failure takes the full cleanup.
-
-        ``terminal_leaf`` marks a known terminal incomplete destination:
-        an explicit display position that is never a continuation
-        checkpoint. It is committed without the checkpoint requirement,
-        its own observed values (when they exist) drive ``on_restore``,
-        inherited parent values are never replayed as if observed at the
-        failure, and the record is view-only while it is selected.
-        """
+        """Apply a navigation plan, restore app state, and replay the target."""
         recorder = self._exchange_recorder
         if not terminal_leaf:
             record.require_checkpoint(leaf)
@@ -1384,66 +1349,36 @@ class HistoryController:
             if current_leaf is None:
                 raise ValueError("Exchange-tree record has no active leaf.")
             if not node_is_terminal_incomplete(record.nodes[current_leaf]):
-                # A known terminal incomplete outgoing position has a
-                # poisoned live model: leave it recorded, never close it.
+                # The recorder suppresses capture for any record restriction;
+                # a selected not-sent node must not be closed either.
                 await recorder.capture_state_locked(
                     current_leaf, "node_close", model_only=True
                 )
             try:
                 with _restore_step(save_step):
                     await _history_plan.run_plan(rewind_state)
-                    if send_read_only is None:
-                        if terminal_leaf:
-                            record.set_active_leaf(leaf)
-                            await recorder.persist_record_locked()
-                        else:
-                            await recorder.persist_active_leaf_locked(
-                                record, leaf
-                            )
+                    if terminal_leaf:
+                        record.set_active_leaf(leaf)
+                        await recorder.persist_record_locked()
+                    else:
+                        await recorder.persist_active_leaf_locked(record, leaf)
                 skip_restore = node_has_unavailable_app_values(
                     record.nodes[leaf]
                 )
                 restored = (
-                    True
+                    False
                     if skip_restore
                     else self._restore_app_state(target_values)
                 )
-                with _restore_step(save_step):
-                    if send_read_only is not None:
-                        if restored:
-                            if terminal_leaf:
-                                record.set_active_leaf(leaf)
-                                await recorder.persist_record_locked()
-                            else:
-                                await recorder.persist_active_leaf_locked(
-                                    record, leaf
-                                )
-                        else:
-                            # Close capture is in-memory only. Preserve it under
-                            # the original leaf without committing the parent.
-                            await recorder.persist_record_locked()
-                    if restored and transcript_prefix is not None:
-                        # Sync the append-only server transcript to the
-                        # same parent prefix the record/adapter rewound
-                        # to, so the replacement input appends after the
-                        # prefix instead of the abandoned tail. Capture
-                        # callbacks do not fire on replace: the record
-                        # was already rewound above.
-                        self.chat._transcript.replace(
-                            transcript_prefix, transaction=transaction
-                        )
-                if terminal_leaf:
-                    recorder.mark_read_only("terminal_incomplete")
-                elif (
-                    restored
-                    and leaving_terminal_view
-                    and recorder.read_only_reason == "terminal_incomplete"
-                ):
-                    recorder.clear_read_only()
-                if restored:
-                    await send()
-                else:
-                    await (send_read_only or send)()
+                if revalidate_model and restored:
+                    # App and custom hooks can mutate the client after the
+                    # target plan ran. Validate the actual context without
+                    # capturing it over the selected checkpoint.
+                    with _restore_step("validating the restored model context"):
+                        recorder._validate_model_state()
+                    if recorder.read_only_reason == "app_restore_failed":
+                        recorder.clear_read_only()
+                await send()
             except BaseException as error:
                 await self._clear_failed_restore(error)
                 raise
@@ -1544,17 +1479,12 @@ class HistoryController:
                     and parent is not None
                     and parent.is_checkpoint
                     and (
-                        not recorder.read_only
+                        recorder.continuation_allowed
                         # A known terminal incomplete row offers Retry/Edit
                         # while its restriction is one an explicit resubmit
                         # can revalidate; ordinary continuation stays
                         # blocked by the read-only state.
-                        or (
-                            terminal
-                            and not recorder.source_isolated
-                            and recorder.read_only_reason
-                            in _RESOLVABLE_RESUBMIT_REASONS
-                        )
+                        or (terminal and self._can_resubmit_active())
                     )
                 ),
             }
@@ -1620,7 +1550,6 @@ class HistoryController:
             return
         target = siblings[target_pos]
 
-        read_only = recorder.read_only
         leaf = record.checkpoint_leaf(target)
         if leaf is None:
             raise ValueError("The requested position has no valid checkpoint.")
@@ -1629,15 +1558,17 @@ class HistoryController:
         terminal_leaf = node_is_terminal_incomplete(record.nodes[leaf])
         if not terminal_leaf:
             record.require_checkpoint(leaf)
-        leaving_terminal_view = (
-            read_only
-            and recorder.read_only_reason == "terminal_incomplete"
+        recover_model = (
+            not terminal_leaf
             and not recorder.source_isolated
-            and not terminal_leaf
+            and (
+                (recorder.selected_not_sent and not recorder.read_only)
+                or recorder.read_only_reason == "app_restore_failed"
+            )
         )
-        display_only = (
-            read_only and not leaving_terminal_view
-        ) or terminal_leaf
+        display_only = terminal_leaf or (
+            recorder.read_only and not recover_model
+        )
         projection = record.model_copy(deep=True)
         projection.set_active_leaf(leaf)
         node_ids = tuple(projection.path_node_ids())
@@ -1651,16 +1582,16 @@ class HistoryController:
             # read-only record's model context is already unavailable, so
             # any valid sibling path can be displayed; structural errors
             # still fail before mutation either way.
-            reject_unavailable=not (display_only or leaving_terminal_view),
+            reject_unavailable=not (display_only or recover_model),
             phase="rewind",
         )
         unavailable_model = (
-            leaving_terminal_view
+            recover_model
             and _history_plan.turns_unavailable_reason(rewind_state) is not None
         )
         if unavailable_model:
             display_only = True
-            leaving_terminal_view = False
+        revalidate_model = recover_model and not unavailable_model
         if display_only:
             # Display-only navigation replays the display and persists the
             # selected leaf, but never captures live model state (the
@@ -1699,7 +1630,7 @@ class HistoryController:
                 send=send_navigation,
                 target_values=target_values,
                 terminal_leaf=terminal_leaf,
-                leaving_terminal_view=leaving_terminal_view,
+                revalidate_model=revalidate_model,
             )
 
     async def handle_edit(
@@ -1753,11 +1684,9 @@ class HistoryController:
             "active_id": self._active_id_now(),
             "transition_protocol": "completion-v2",
         }
-        if self._exchange_recorder.read_only:
-            # Emitted only for a read-only active record; absent clears
-            # the client's flag, so older messages remain writable. The
-            # reason only explains the state (absent keeps old peers on
-            # the model wording).
+        if not self._exchange_recorder.continuation_allowed:
+            # Emitted for either a record restriction or an ineligible
+            # selected position. Only record restrictions carry a reason.
             action["active_read_only"] = True
             reason = self._exchange_recorder.read_only_reason
             if reason is not None:
@@ -1772,8 +1701,8 @@ class HistoryController:
         True only when the selected leaf is a known terminal incomplete
         submission whose valid parent can still be restored: no source
         isolation, no live producer, and no unrelated (model-unavailable,
-        interrupted) restriction. A resolvable app-restore or terminal
-        restriction does not block the explicit recovery.
+        interrupted) restriction. A resolvable app-restore restriction
+        does not block the explicit recovery.
         """
         recorder = self._exchange_recorder
         if recorder.source_isolated:

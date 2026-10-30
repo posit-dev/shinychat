@@ -238,7 +238,10 @@ async def test_edit_capture_failure_after_restore_attaches_terminal_node(
     # unavailable.
     assert VALUES_STATE_KEY in node.state
     assert node.state[VALUES_STATE_KEY].data == {}
-    assert recorder.read_only_reason == "terminal_incomplete"
+    assert not recorder.read_only
+    assert recorder.read_only_reason is None
+    assert recorder.selected_not_sent
+    assert not recorder.continuation_allowed
     with reactive.isolate():
         assert chat.user_input() is None
 
@@ -364,7 +367,10 @@ async def test_retry_from_failed_skips_poisoned_outgoing_close_capture(
 
     failed = record.active_leaf
     assert failed is not None
-    assert recorder.read_only_reason == "terminal_incomplete"
+    assert not recorder.read_only
+    assert recorder.read_only_reason is None
+    assert recorder.selected_not_sent
+    assert not recorder.continuation_allowed
     assert poisoned_adapter.poisoned
 
     # The developer fixes the app, but the live model is still poisoned.
@@ -528,11 +534,13 @@ async def test_failed_leaf_loads_browsable_not_source_isolated() -> None:
     recorder = controller._exchange_recorder
     assert recorder.record is not None
     assert recorder.record.active_leaf == failed
-    # A known terminal incomplete position is not an interrupted producer:
-    # no source isolation, but it is view-only as terminal incomplete.
+    # This selected position is not an interrupted producer: the record
+    # is writable, but the position cannot admit a continuation.
     assert not recorder.source_isolated
-    assert recorder.read_only
-    assert recorder.read_only_reason == "terminal_incomplete"
+    assert not recorder.read_only
+    assert recorder.read_only_reason is None
+    assert recorder.selected_not_sent
+    assert not recorder.continuation_allowed
     # The failed position's own observed values restore.
     assert restores == [{"tab": "failed"}]
     # Sibling navigation includes the failed leaf (explicit positions).
@@ -554,9 +562,11 @@ async def test_failed_leaf_without_values_skips_restore_on_load() -> None:
     await replay_exchange_record(controller, record)
 
     assert restores == []
-    assert controller._exchange_recorder.read_only_reason == (
-        "terminal_incomplete"
-    )
+    recorder = controller._exchange_recorder
+    assert not recorder.read_only
+    assert recorder.read_only_reason is None
+    assert recorder.selected_not_sent
+    assert not recorder.continuation_allowed
 
 
 @pytest.mark.anyio
@@ -571,13 +581,16 @@ async def test_browse_between_failed_and_original() -> None:
     await controller.handle_navigate(0, "prev", request_id="nav-1")
     assert recorder.record is not None
     assert recorder.record.active_leaf == original
-    # Original -> failed: display-only, marked terminal incomplete again.
+    # Original -> failed: display-only; the selected position blocks input.
     await controller.handle_navigate(0, "next", request_id="nav-2")
     assert recorder.record.active_leaf == failed
-    assert recorder.read_only_reason == "terminal_incomplete"
+    assert not recorder.read_only
+    assert recorder.read_only_reason is None
+    assert recorder.selected_not_sent
+    assert not recorder.continuation_allowed
     update = _actions_of_list(fake.actions, "history_update")[-1]
     assert update["active_read_only"] is True
-    assert update["active_read_only_reason"] == "terminal_incomplete"
+    assert "active_read_only_reason" not in update
     assert update["active_can_resubmit"] is True
 
 
@@ -603,7 +616,10 @@ async def test_failed_edit_survives_file_store_reload(
     recorder = reloaded._exchange_recorder
     assert recorder.record is not None
     assert recorder.record.active_leaf == failed
-    assert recorder.read_only_reason == "terminal_incomplete"
+    assert not recorder.read_only
+    assert recorder.read_only_reason is None
+    assert recorder.selected_not_sent
+    assert not recorder.continuation_allowed
     failed_node = recorder.record.nodes[failed]
     assert node_is_terminal_incomplete(failed_node)
     assert failed_node.not_sent is True

@@ -60,6 +60,7 @@ from ._history_types import (
     StateEntry,
     TurnDict,
     new_conversation_record_v2,
+    node_is_terminal_incomplete,
 )
 
 if TYPE_CHECKING:
@@ -172,15 +173,28 @@ class _ExchangeRecorder:
 
     @property
     def read_only(self) -> bool:
-        """Whether the loaded record's saved model context is unavailable.
+        """Whether the record has a conversation-wide restriction.
 
-        Set when a restored record is installed; cleared on reset (New
-        chat, delete, failed-restore cleanup) and reclassified on every
-        install. Once set, it is kept for the loaded conversation across
-        sibling navigation, even when another sibling has compatible
-        turns.
+        This is separate from the selected position's continuation eligibility.
+        Only a verified app restore may resolve its corresponding restriction;
+        model-unavailable and source-isolated views stay restricted.
         """
         return self._read_only
+
+    @property
+    def selected_not_sent(self) -> bool:
+        record = self.record
+        if record is None or record.active_leaf is None:
+            return False
+        node = record.nodes.get(record.active_leaf)
+        return node is not None and node_is_terminal_incomplete(node)
+
+    @property
+    def continuation_allowed(self) -> bool:
+        """Whether the selected view may admit or capture new work."""
+        return not (
+            self._read_only or self._source_isolated or self.selected_not_sent
+        )
 
     @property
     def read_only_reason(self) -> ReadOnlyReason | None:
@@ -559,7 +573,7 @@ class _ExchangeRecorder:
         strict: bool = True,
     ) -> bool:
         assert self.record is not None
-        if self._read_only:
+        if not self.continuation_allowed:
             return False
         # Hooks may pin inherited entries on children as well as returning a
         # frame. Run them against a detached staging tree, committing all state
@@ -640,23 +654,20 @@ class _ExchangeRecorder:
         self._read_only_reason = read_only_reason if read_only else None
 
     def mark_read_only(self, reason: ReadOnlyReason) -> None:
-        """Make the installed record view-only after an app restore failure."""
+        """Make the installed record view-only for a record-level reason."""
         assert self.record is not None
         if not self._read_only or (
-            self._read_only_reason == "terminal_incomplete"
-            and reason != "terminal_incomplete"
+            self._read_only_reason == "app_restore_failed"
+            and reason == "model_unavailable"
         ):
             self._read_only = True
             self._read_only_reason = reason
 
     def clear_read_only(self) -> None:
-        """Clear a view-only restriction that a successful restore resolved.
+        """Clear an app restriction after its state has been restored.
 
-        The controller's explicit resubmit recovery clears a resolved app
-        restriction. Healthy-checkpoint navigation can also clear a position-
-        only ``terminal_incomplete`` restriction after model/app restoration.
         Model-unavailable, source-isolated, and live-producer protections
-        are never cleared by either path.
+        are never cleared by browsing or explicit resubmission.
         """
         self._read_only = False
         self._read_only_reason = None
@@ -849,7 +860,7 @@ class _ExchangeRecorder:
         its observed values.
         """
         assert self.record is not None
-        if self._read_only and not _force:
+        if not self.continuation_allowed and not _force:
             return False
         live = self.record
         staged = self._stage_state(live)
@@ -891,7 +902,7 @@ class _ExchangeRecorder:
         if (
             self.record is None
             or self._host.partition is None
-            or self._read_only
+            or not self.continuation_allowed
         ):
             return False
         leaf = self.record.active_leaf
@@ -920,7 +931,7 @@ class _ExchangeRecorder:
             if (
                 self.record is None
                 or self._host.partition is None
-                or self._read_only
+                or not self.continuation_allowed
             ):
                 return False
             leaf = self.record.active_leaf
@@ -1062,21 +1073,23 @@ class _ExchangeRecorder:
         if self._host.partition is None:
             commit()
             return
-        if self._read_only:
-            if (
-                self._staged_input is not None
-                and self._staged_input[0] == exchange_id
-            ):
-                # A staged admission requires the writable state its
-                # controller verified before dispatching it; silently
-                # committing only the transcript would diverge the owners.
-                raise RuntimeError(
-                    "Cannot admit a staged input into a read-only conversation."
-                )
-            commit()
-            return
-
         async with self._locked():
+            if not self.continuation_allowed:
+                if self.selected_not_sent:
+                    # Selection may have changed after Chat's admission check.
+                    raise RuntimeError(
+                        "Cannot admit input at a not-sent position."
+                    )
+                if (
+                    self._staged_input is not None
+                    and self._staged_input[0] == exchange_id
+                ):
+                    # Never commit only the transcript of a staged input.
+                    raise RuntimeError(
+                        "Cannot admit a staged input into a read-only conversation."
+                    )
+                commit()
+                return
             staged = self._staged_input
             if staged is not None and staged[0] == exchange_id:
                 self._staged_input = None
@@ -1199,10 +1212,12 @@ class _ExchangeRecorder:
         *,
         stream_id: str | None = None,
     ) -> None:
-        if self._host.partition is None or self._read_only:
+        if self._host.partition is None or not self.continuation_allowed:
             return
 
         async with self._locked():
+            if not self.continuation_allowed:
+                return
             if (
                 entry.message.role == "assistant"
                 and self.record is not None
@@ -1262,10 +1277,12 @@ class _ExchangeRecorder:
     async def stream_updated(
         self, stream_id: str, entry: TranscriptEntry
     ) -> None:
-        if self._host.partition is None or self._read_only:
+        if self._host.partition is None or not self.continuation_allowed:
             return
 
         async with self._locked():
+            if not self.continuation_allowed:
+                return
             exchange_id = self._stream_exchanges.get(stream_id)
             if exchange_id is None or self.record is None:
                 return
@@ -1281,10 +1298,12 @@ class _ExchangeRecorder:
         error: str | None,
     ) -> None:
         try:
-            if self._host.partition is None or self._read_only:
+            if self._host.partition is None or not self.continuation_allowed:
                 return
 
             async with self._locked():
+                if not self.continuation_allowed:
+                    return
                 exchange_id = self._stream_exchanges.get(stream_id)
                 if exchange_id is None or self.record is None:
                     return

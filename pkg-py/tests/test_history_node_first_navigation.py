@@ -23,7 +23,10 @@ async def test_terminal_visit_does_not_lock_healthy_branch() -> None:
     await controller.handle_navigate(0, "next", request_id="visit-failure")
     assert recorder.record is not None
     assert recorder.record.active_leaf == failed
-    assert recorder.read_only_reason == "terminal_incomplete"
+    assert not recorder.read_only
+    assert recorder.read_only_reason is None
+    assert recorder.selected_not_sent
+    assert not recorder.continuation_allowed
     await controller.handle_navigate(0, "prev", request_id="return-healthy")
 
     assert recorder.record.active_leaf == original
@@ -37,7 +40,10 @@ async def test_failed_healthy_restore_escalates_terminal_restriction() -> None:
     record, original, _failed = _record_with_browsable_failure()
     await replay_exchange_record(controller, record)
     recorder = controller._exchange_recorder
-    assert recorder.read_only_reason == "terminal_incomplete"
+    assert not recorder.read_only
+    assert recorder.read_only_reason is None
+    assert recorder.selected_not_sent
+    assert not recorder.continuation_allowed
 
     def broken_restore(_values: dict[str, Any]) -> None:
         raise ValueError("application still broken")
@@ -56,7 +62,6 @@ async def test_failed_healthy_restore_escalates_terminal_restriction() -> None:
 @pytest.mark.parametrize(
     ("reason", "isolated"),
     [
-        ("app_restore_failed", False),
         ("model_unavailable", False),
         ("interrupted", True),
     ],
@@ -76,6 +81,9 @@ async def test_healthy_navigation_keeps_unrelated_restrictions(
         source_isolated=isolated,
     )
     writes_before = len(store.put_calls)
+    adapter = cast(_FakeAdapter, controller.adapter)
+    sentinel_turns = [{"role": "user", "content": "untrusted live context"}]
+    adapter.turns = list(sentinel_turns)
 
     await controller.handle_navigate(0, "prev", request_id="restricted-return")
 
@@ -84,6 +92,8 @@ async def test_healthy_navigation_keeps_unrelated_restrictions(
     assert recorder.read_only
     assert recorder.read_only_reason == reason
     assert recorder.source_isolated == isolated
+    # A display-only browse must not apply the original's recorded turns.
+    assert adapter.turns == sentinel_turns
     if isolated:
         assert len(store.put_calls) == writes_before
 
@@ -101,7 +111,10 @@ async def test_unavailable_healthy_context_remains_browsable_without_continuatio
     recorder = controller._exchange_recorder
     assert recorder.record is not None
     assert recorder.record.active_leaf == failed
-    assert recorder.read_only_reason == "terminal_incomplete"
+    assert not recorder.read_only
+    assert recorder.read_only_reason is None
+    assert recorder.selected_not_sent
+    assert not recorder.continuation_allowed
 
     await controller.handle_navigate(
         0, "prev", request_id="unavailable-original"

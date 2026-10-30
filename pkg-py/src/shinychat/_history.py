@@ -402,7 +402,8 @@ class ChatHistory:
     def _history_submission_admitted(self) -> bool:
         controller = self._controller
         return self._history_action_admitted() and (
-            controller is None or not controller._exchange_recorder.read_only
+            controller is None
+            or controller._exchange_recorder.continuation_allowed
         )
 
     async def _flush_pending(self) -> None:
@@ -572,15 +573,18 @@ class ChatHistory:
         siblings). Failed browsing retains the selected target. After failed
         resubmit preparation, the live model client may hold the parent
         prefix or a partially restored state rather than the displayed
-        branch; read-only blocks continuation and saved state capture, but
-        an explicit Retry or Edit after the underlying problem is fixed
-        restores the valid parent and creates a new sibling — it never
-        rewrites the failed node or the original. Callbacks that can
-        recover from a known case should
-        handle it themselves. Cancellation and other fatal errors take the
-        usual full restore cleanup. Read-only conversations keep their
-        saved values; a later successful switch or restore of the
-        conversation, or starting a new chat, clears the read-only state.
+        branch. The selected not-sent position blocks continuation and
+        state capture; an explicit Retry or Edit after the underlying
+        problem is fixed restores the valid parent and creates a new
+        sibling — it never rewrites the failed node or the original.
+        Callbacks that can recover from a known case should handle it
+        themselves. Cancellation and other fatal errors take the usual
+        full restore cleanup. A later browse to a compatible checkpoint
+        clears an earlier app-restore failure only after restoring its
+        model context and available app values, then validating the live
+        model. Display-only browsing or skipped app values do not clear
+        that restriction. Model-unavailable and source-isolated views
+        remain read-only; starting a new chat resets the active view.
 
         Restores faithfully reapply the conversation's saved system prompt
         (the one captured while the conversation was live) before callbacks

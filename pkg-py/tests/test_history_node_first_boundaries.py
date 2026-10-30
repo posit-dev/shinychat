@@ -408,10 +408,12 @@ async def test_outgoing_close_capture_failure_creates_failed_node(
         {"role": "user", "content": "second"},
     ]
 
-    # The selected position is read-only as a known terminal incomplete
-    # submission, which an explicit Retry/Edit may revalidate.
-    assert recorder.read_only
-    assert recorder.read_only_reason == "terminal_incomplete"
+    # The selected position cannot continue, but an explicit Retry/Edit
+    # may revalidate its parent without a record-wide restriction.
+    assert not recorder.read_only
+    assert recorder.read_only_reason is None
+    assert recorder.selected_not_sent
+    assert not recorder.continuation_allowed
     assert controller._can_resubmit_active()
 
     # The client metadata distinguishes "not sent" from a provider error.
@@ -1249,16 +1251,10 @@ async def test_failed_node_marker_does_not_bypass_protections(
         assert len(record.nodes) == node_count
         assert recorder._staged_input is None
 
-    # The restriction an explicit resubmit may revalidate is the only
-    # one advertised, because the failed node's valid parent can be
-    # restored without close-capturing poisoned state.
+    # The selected not-sent node offers explicit recovery without a
+    # conversation-wide restriction.
     record.set_active_leaf(failed_id)
-    recorder.install_restored_record(
-        record,
-        read_only=True,
-        source_isolated=False,
-        read_only_reason="terminal_incomplete",
-    )
+    recorder.install_restored_record(record)
     await controller.send_history_update()
     assert controller._can_resubmit_active() is True
     assert last_history_update()["active_can_resubmit"] is True
