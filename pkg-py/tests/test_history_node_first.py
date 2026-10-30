@@ -289,7 +289,7 @@ async def test_failed_position_values_unavailable_when_save_throws(
 
 
 @pytest.mark.anyio
-async def test_retry_from_failed_recovers_and_creates_new_sibling(
+async def test_retry_from_failed_recovers_and_reuses_version(
     request: pytest.FixtureRequest,
 ) -> None:
     controller, chat, adapter, store, first, target = (
@@ -317,20 +317,20 @@ async def test_retry_from_failed_recovers_and_creates_new_sibling(
     failed_node = record.nodes[failed].model_copy(deep=True)
     assert recorder.read_only_reason == "app_restore_failed"
 
-    # The developer fixes the app; an explicit Retry revalidates, restores
-    # the valid parent, clears only the resolved restriction, and creates
-    # a NEW sibling — the failed node is never rewritten.
+    # The developer fixes the app; an explicit Retry revalidates the valid
+    # parent, clears the resolved restriction, and reuses the failed version.
     broken["value"] = False
     await controller.resubmit(
         failed, kind="retry", request_id="req-6", message_index=2
     )
 
     sibling = record.active_leaf
-    assert sibling is not None and sibling not in (first, target, failed)
+    assert sibling is not None and sibling == failed
     assert record.nodes[sibling].parent_id == first
     assert record.nodes[sibling].status == "pending"
-    assert record.children_of(first) == [target, failed, sibling]
-    assert record.nodes[failed].model_dump() == failed_node.model_dump()
+    assert record.nodes[sibling].not_sent is None
+    assert record.nodes[sibling].created_at == failed_node.created_at
+    assert record.children_of(first) == [target, failed]
     assert not recorder.read_only
     with reactive.isolate():
         latest = chat.user_input()
@@ -376,14 +376,14 @@ async def test_retry_from_failed_skips_poisoned_outgoing_close_capture(
     # The developer fixes the app, but the live model is still poisoned.
     # The retry must NOT close-capture the failed position's live model:
     # it restores the valid parent (which clears the poison via
-    # set_turns) and admits a new sibling.
+    # set_turns) and admits the same logical version.
     broken["value"] = False
     await controller.resubmit(
         failed, kind="retry", request_id="req-8", message_index=2
     )
 
     sibling = record.active_leaf
-    assert sibling is not None and sibling != failed
+    assert sibling is not None and sibling == failed
     assert record.nodes[sibling].parent_id == first
     assert record.nodes[sibling].status == "pending"
     assert not poisoned_adapter.poisoned

@@ -278,6 +278,12 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
             values["filter"] = selected_filter.get()
             if (
                 client.capture_poisoned
+                and input.fault_mode() == "capture_poison"
+            ):
+                # Distinguish successive retained attempts in the file store.
+                values["failure_capture"] = save_attempts.get()
+            if (
+                client.capture_poisoned
                 and input.fault_mode() == "restore_throw"
             ):
                 # The restore_throw preparation failure deliberately breaks

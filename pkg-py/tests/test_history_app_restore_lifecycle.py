@@ -485,8 +485,7 @@ async def test_failed_retained_parent_restore_keeps_edit_without_dispatch(
     assert sent[-1]["active_read_only_reason"] == "app_restore_failed"
     assert recorder.read_only is True
 
-    # An intentional Retry that fails again creates another version, leaving
-    # the first failed node and the original branch unchanged.
+    # Retrying the unaccepted leaf fails again in the same logical version.
     first_failure = failed.model_copy(deep=True)
     failed_transcript = chat.messages()
     messages_seen.clear()
@@ -499,10 +498,10 @@ async def test_failed_retained_parent_restore_keeps_edit_without_dispatch(
             message_index=message_index,
         )
     retry_id = record.active_leaf
-    assert retry_id is not None and retry_id != failed_id
+    assert retry_id is not None and retry_id == failed_id
     assert record.nodes[retry_id].parent_id == parent_id
     assert record.nodes[retry_id].checkpoint == "invalid"
-    assert record.nodes[failed_id] == first_failure
+    assert record.nodes[retry_id] == first_failure
     assert messages_seen == [failed_transcript]
     assert turns_seen == [adapter.turns]
     assert chat._normal_user_submission_sequence == submission_sequence

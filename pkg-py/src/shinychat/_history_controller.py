@@ -1098,22 +1098,37 @@ class HistoryController:
         target_values = _history_plan.resolve_path_values(prefix, parent_id)
 
         outgoing_leaf = record.active_leaf
-        staged_id = _utils.private_random_id(bytes=16)
+        outgoing_to_capture = (
+            outgoing_leaf
+            if outgoing_leaf is not None
+            and not node_is_terminal_incomplete(record.nodes[outgoing_leaf])
+            else None
+        )
+        replace_existing = (
+            kind == "retry"
+            and recorder.can_replace_not_sent_input(exchange_id, parent_id)
+        )
+        staged_id = (
+            exchange_id
+            if replace_existing
+            else _utils.private_random_id(bytes=16)
+        )
 
         async with self._destructive_mutation(block_input=True) as transaction:
             transcript_prefix = self._transcript_prefix_entries(
                 record, node_ids
             )
-            # Record the validated submission as one ordinary exchange
-            # node under the target's valid parent — synchronous and
-            # infallible — BEFORE the pending projection and BEFORE any
-            # fallible work: the first durable put, the outgoing close
-            # capture, the rewind, and the restore. The attempt stays the
-            # selected position whatever preparation does; it is never
-            # rolled back to the original.
+            # Record the validated attempt under the target's valid parent:
+            # Retry may reuse a safe not-sent leaf; other submissions open a
+            # sibling. Stage before the projection and all fallible work: the
+            # first durable put, outgoing close capture, rewind, and restore.
+            # The attempt stays selected whatever preparation does.
             async with self._exchange_mutation():
                 recorder.stage_input_locked(
-                    staged_id, parent_id, submitted_input
+                    staged_id,
+                    parent_id,
+                    submitted_input,
+                    replace_existing=replace_existing,
                 )
             admission = StagedInputAdmission(staged_id)
             try:
@@ -1142,7 +1157,7 @@ class HistoryController:
                     transcript_prefix=transcript_prefix,
                     transaction=transaction,
                     target_values=target_values,
-                    outgoing_leaf=outgoing_leaf,
+                    outgoing_leaf=outgoing_to_capture,
                 )
             except Exception as error:
                 await self._fail_staged_input(
@@ -1226,9 +1241,7 @@ class HistoryController:
         recorder = self._exchange_recorder
         record.require_checkpoint(parent_id)
         async with self._exchange_mutation():
-            if outgoing_leaf is not None and not node_is_terminal_incomplete(
-                record.nodes[outgoing_leaf]
-            ):
+            if outgoing_leaf is not None:
                 with _restore_step("capturing the outgoing position"):
                     await recorder.capture_state_locked(
                         outgoing_leaf, "node_close", model_only=True

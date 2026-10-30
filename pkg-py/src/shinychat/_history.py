@@ -575,16 +575,25 @@ class ChatHistory:
         prefix or a partially restored state rather than the displayed
         branch. The selected not-sent position blocks continuation and
         state capture; an explicit Retry or Edit after the underlying
-        problem is fixed restores the valid parent and creates a new
-        sibling — it never rewrites the failed node or the original.
-        Callbacks that can recover from a known case should handle it
-        themselves. Cancellation and other fatal errors take the usual
+        problem is fixed restores the valid parent. Retry replaces an
+        eligible selected not-sent leaf, keeping its identity so existing
+        bookmarks follow the latest attempt. Its previous failure outcome
+        and app snapshot are replaced; the original accepted branch is
+        preserved. Edit and Retry of accepted/provider-failed input still
+        create siblings. Callbacks that can recover from a known case
+        should handle it themselves. Cancellation and other fatal errors
+        take the usual
         full restore cleanup. A later browse to a compatible checkpoint
         clears an earlier app-restore failure only after restoring its
         model context and available app values, then validating the live
         model. Display-only browsing or skipped app values do not clear
         that restriction. Model-unavailable and source-isolated views
-        remain read-only; starting a new chat resets the active view.
+        remain read-only. Browsing an incompatible model target still
+        displays it, without restoring the model. An existing app-failure
+        restriction remains recoverable, but a model-unavailable
+        restriction discovered there stays for the loaded view, even
+        after returning to a compatible position. Starting a new chat
+        resets the active view.
 
         Restores faithfully reapply the conversation's saved system prompt
         (the one captured while the conversation was live) before callbacks

@@ -93,10 +93,11 @@ async def test_recovery_pending_staged_retry_is_admitted_through_chat(
     await view.controller.handle_resubmit(0, "retry", request_id="retry-failed")
 
     staged = selected.active_leaf
-    assert staged is not None and staged not in (original, failed)
+    assert staged is not None and staged == failed
+    assert staged != original
     assert selected.nodes[staged].parent_id == selected.root_id
     assert staged_observations == [("pending", False, True)]
-    assert selected.nodes[failed].not_sent is True
+    assert selected.nodes[failed].not_sent is None
     with reactive.isolate():
         user_input = view.chat.user_input()
         assert user_input is not None and user_input.text == "B-prime"
