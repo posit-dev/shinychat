@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import shinychat._history as history_module
 import shinychat._history_plan as history_plan_module
+from _history_test_helpers import replay_exchange_record
 from shiny import reactive
 from shiny._utils import AsyncCallbacks, wrap_async
 from shiny.module import ResolvedId
@@ -29,7 +30,7 @@ from shinychat._history_types import (
     new_conversation_record_v2,
 )
 from shinychat.types import ChatMessage, HistoryOptions
-from test_history_controller import _restore_target
+from test_history_controller import _FakeChat, _make_controller, _restore_target
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -4516,3 +4517,97 @@ async def test_capture_cleanup_preserves_primary_delivery_failure_when_transport
     loading.assert_awaited_once()
     notification.assert_called_once()
     assert "private capture cause" not in notification.call_args.args[0]
+
+
+_BROWSER_ATTACHMENT_EXPECTED: dict[str, Any] = {
+    "mime": "text/plain",
+    "name": "notes.txt",
+    "size": 5,
+    "data_url": "data:text/plain;base64,aGVsbG8=",
+}
+
+
+@pytest.mark.anyio
+async def test_browser_attachment_input_discards_unknown_fields_through_history(
+    tmp_path: Any, request: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ordinary browser input goes through the registered userInput handler.
+
+    The raw browser payload (including a field no reader knows) is
+    normalized by the real ``shinychat.userInput`` handler, published through
+    the real accepted-input effects, and persisted. The accepted node, the
+    stored snapshot, and the replay must carry the known attachment metadata
+    and drop the unknown field.
+    """
+    from shiny.input_handler import input_handlers
+
+    monkeypatch.setenv("SHINYCHAT_MAX_ATTACHMENT_SIZE", "5")
+    chat, session, _client, store = await _make_initialized_live_v2_chat(
+        tmp_path, "browser_attachment_ingress"
+    )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    assert recorder is not None
+    # The model-provider consumer needs a live stream; detach it as the
+    # capture tests do. Accepted-input effects and the recorder stay real.
+    next(
+        effect
+        for effect in chat._effects
+        if effect._fn.__name__ == "handle_user_input"
+    ).destroy()
+    handler = cast(
+        Callable[[Any, Any, Any], Any], input_handlers["shinychat.userInput"]
+    )
+    raw_browser_payload = {
+        "text": "See attached",
+        "attachments": [
+            {
+                **_BROWSER_ATTACHMENT_EXPECTED,
+                "browser_only_field": {"payload": "x" * 10000, "null": None},
+            }
+        ],
+        "client_message_id": "client-1",
+    }
+
+    def submit(value: Any) -> None:
+        cast(Any, session.input[chat.user_input_id])._set(value)
+
+    with session_context(cast(Any, session)), reactive.isolate():
+        submit(handler(raw_browser_payload, chat.user_input_id, session))
+        await reactive.flush()
+        record = recorder.record
+        assert record is not None
+        first = record.active_leaf
+        assert first is not None
+        # Complete the exchange through the normal app-output path, making
+        # it a coherent checkpoint that a fresh controller can replay.
+        await chat.append_message("attachment received")
+        await reactive.flush()
+
+    record = recorder.record
+    assert record is not None
+    node = record.nodes[first]
+    assert node.input is not None
+    assert node.input.content == "See attached"
+    assert [
+        attachment.model_dump(mode="json")
+        for attachment in node.input.attachments
+    ] == [_BROWSER_ATTACHMENT_EXPECTED]
+
+    partition = ConversationPartition(chat_id=chat.id, scope="test")
+    stored = await store.get(partition, record.id)
+    assert isinstance(stored, ConversationRecordV2)
+    stored_node = stored.nodes[first]
+    assert stored_node.input is not None
+    assert [
+        attachment.model_dump(mode="json")
+        for attachment in stored_node.input.attachments
+    ] == [_BROWSER_ATTACHMENT_EXPECTED]
+
+    restored, _ = _make_controller(store=store)
+    await replay_exchange_record(restored, stored)
+    fake_chat = cast(_FakeChat, restored.chat)
+    restored_user = fake_chat.restored_messages[0]
+    assert restored_user["attachments"] == [_BROWSER_ATTACHMENT_EXPECTED]
