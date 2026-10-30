@@ -134,7 +134,7 @@ A replacement follows this order:
 
 1. Resolve the request to its active-path input; validate eligibility and preflight its valid parent before mutation.
 2. Record the replacement as one ordinary sibling node before fallible preparation, including outgoing model-only capture. Send the matching server-owned projection so the browser displays that node pending without echoing its input back. Legacy shared-frontend producers retain the browser-echo flow.
-3. Capture outgoing model-only changes where appropriate, rewind the model, and expose the parent's accepted transcript prefix before `on_restore`. The pending replacement is not accepted input. Preserve rich committed prefix entries and the original stored branch.
+3. Capture outgoing model-only changes where appropriate, rewind the model, and invoke `on_restore` while `chat.messages()` still exposes the outgoing transcript. The pending replacement is not accepted input. After a successful callback, replace the transcript with the parent's accepted prefix, preserving its rich committed entries and the original stored branch.
 4. Validate/capture the restored model after `on_restore`, then admit the same staged node exactly once through the guarded Chat input path. Normal accepted-input signals trigger application/provider work.
 5. If preparation fails before the shared transcript/tree commit, attach a sanitized not-sent outcome and explicitly invalidate that same node's checkpoint. Keep it selected and visible; do not dispatch accepted-input/provider events. An already committed input whose later persistence or delivery fails is not a not-sent input.
 

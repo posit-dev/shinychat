@@ -527,15 +527,15 @@ class ChatHistory:
         a sibling or another position; and before an edit, retry, or
         regenerate starts replacement work from the retained parent. Callbacks
         receive the target values; for writable in-session changes, model
-        state has already been rewound. Browsing still shows the outgoing
-        branch in ``chat.messages()``; edit, retry, and regenerate instead
-        show the restored parent's accepted transcript prefix (and the
-        rewound parent model context), while the attempted replacement is
-        already recorded as the selected node without being presented as
-        accepted input. Load and switch instead replay
-        the target display before callbacks run. Use it to sync auxiliary
-        UI state (active tabs, model selectors, etc.) to match the selected
-        position. Raw Shiny input values are not synced automatically;
+        state has already been rewound. During browsing and edit, retry,
+        or regenerate, ``chat.messages()`` still shows the outgoing transcript.
+        For a resubmit, the attempted replacement is already recorded as the
+        selected node and its display projection has been sent, but it is not
+        yet accepted input. After a successful callback, the transcript is
+        rewound to the parent prefix before the replacement is accepted. Load
+        and switch replay the target display before callbacks run. Use it to
+        sync auxiliary UI state (active tabs, model selectors, etc.) to match
+        the selected position. Raw Shiny input values are not synced automatically;
         call the appropriate ``ui.update_*()`` functions here.
 
         The callback receives the ``values`` dict that was captured by
