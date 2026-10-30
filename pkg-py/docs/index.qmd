@@ -164,10 +164,15 @@ any previously saved root values; without recorded values, callbacks receive
 to supply defaults or raise an error; history does not automatically reset
 application state. An unhandled ordinary error retains the original branch
 read-only. For writable in-session browsing and resubmits, the model is already
-rewound when the callback runs, but `chat.messages()` and the display still
-show the outgoing branch. The resubmit parent pointer commits only after the
-callback succeeds. Load and conversation switch replay the target display
-before invoking callbacks.
+rewound when the callback runs. During edit, retry, or regenerate,
+`chat.messages()` contains the retained parent's accepted transcript, without
+the outgoing branch or replacement input; the display still shows the outgoing
+branch, and the parent pointer commits only after the callback succeeds. During
+browsing, `chat.messages()` and the display still show the outgoing branch.
+Load and conversation switch replay the target display before invoking
+callbacks. If an `on_restore` callback raises an ordinary exception during a
+resubmit, the original branch is replayed to the display and `chat.messages()`,
+while the model may remain rewound.
 
 Use the sibling arrows to return to `west`. `on_restore` receives `west`. A
 follow-up from `west` records its own values on its new exchange and leaves the

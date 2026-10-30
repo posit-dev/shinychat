@@ -352,9 +352,13 @@ async def test_read_only_browsing_stays_read_only_without_retry() -> None:
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("message_index", [0, 2])
-async def test_failed_retained_parent_restore_suppresses_edit_projection(
+@pytest.mark.parametrize(
+    "kind,message_index",
+    [("edit", 0), ("edit", 2), ("retry", 2), ("regenerate", 2)],
+)
+async def test_failed_retained_parent_restore_preserves_original_branch(
     request: pytest.FixtureRequest,
+    kind: str,
     message_index: int,
     tmp_path: Path,
 ) -> None:
@@ -365,7 +369,7 @@ async def test_failed_retained_parent_restore_suppresses_edit_projection(
     assert recorder is not None
     record = recorder.record
     assert record is not None
-    record.nodes[target].status = "ok"
+    record.nodes[target].status = "error" if kind == "retry" else "ok"
     await _seed_resubmit_transcript(chat, first, target)
     _wire_resubmit_capture(controller, chat)
     sent = _spy_send_actions(chat)
@@ -378,9 +382,17 @@ async def test_failed_retained_parent_restore_suppresses_edit_projection(
         kind="values", version=1, mode="snapshot", data={"value": "first"}
     )
     values_seen: list[dict[str, Any]] = []
+    messages_seen: list[list[Any]] = []
+    turns_seen: list[list[Any]] = []
+    input_blocked: list[bool] = []
+    actions_seen: list[list[dict[str, Any]]] = []
 
     def failing(values: dict[str, Any]) -> None:
         values_seen.append(dict(values))
+        messages_seen.append(list(chat.messages()))
+        turns_seen.append(list(adapter.turns))
+        input_blocked.append(chat._destructive_history_blocks_input)
+        actions_seen.append(list(sent))
         if message_index == 0:
             values["region"]
         raise RuntimeError("retained parent app restore failed")
@@ -388,7 +400,14 @@ async def test_failed_retained_parent_restore_suppresses_edit_projection(
     controller._restore_callbacks.append(failing)
 
     with pytest.warns(UserWarning, match="on_restore callback failed"):
-        await controller.handle_edit(message_index, "edited", request_id="req")
+        if kind == "edit":
+            await controller.handle_edit(
+                message_index, "edited", request_id="req"
+            )
+        else:
+            await controller.handle_resubmit(
+                message_index, kind, request_id="req"
+            )
 
     assert record.active_leaf == target
     assert [
@@ -418,6 +437,28 @@ async def test_failed_retained_parent_restore_suppresses_edit_projection(
         ]
     )
     assert values_seen == ([{}] if message_index == 0 else [{"value": "first"}])
+    assert [[m["content"] for m in messages] for messages in messages_seen] == (
+        [[]] if message_index == 0 else [["first", "reply one"]]
+    )
+    assert turns_seen == [adapter.turns]
+    assert input_blocked == [True]
+    assert actions_seen == [[]]
+    # Failure replays the original record to the browser and server alike.
+    # Compare the actual outgoing browser actions with the public transcript.
+    assert sent[0]["type"] == "clear"
+    assert not any(a["type"] == "clear" for a in sent[1:])
+    browser_messages = [a["message"] for a in sent if a["type"] == "message"]
+    assert (
+        [(m["role"], m["segments"][0]["content"]) for m in browser_messages]
+        == [(m["role"], m["content"]) for m in chat.messages()]
+        == [
+            ("user", "first"),
+            ("assistant", "reply one"),
+            ("user", "second"),
+            ("assistant", "reply two"),
+        ]
+    )
+    assert record.children_of(first) == [target]
 
     # Reopening uses the persisted full branch, not the interior parent.
     reloaded, _reload_store = _make_controller()
@@ -445,6 +486,53 @@ async def test_failed_retained_parent_restore_suppresses_edit_projection(
         await controller.resubmit(
             target, kind="edit", request_id="req-2", message_index=2
         )
+
+
+@pytest.mark.anyio
+async def test_failed_edit_replays_original_server_and_browser_transcripts(
+    request: pytest.FixtureRequest,
+) -> None:
+    controller, chat, adapter, _store, first, target = (
+        _make_v2_resubmit_real_chat(request, chat_id="callback_failure_replay")
+    )
+    record = controller._exchange_recorder.record
+    assert record is not None
+    record.nodes[target].status = "ok"
+    await _seed_resubmit_transcript(chat, first, target)
+    _wire_resubmit_capture(controller, chat)
+    sent = _spy_send_actions(chat)
+    outgoing = chat.messages()
+
+    def fail(_values: dict[str, Any]) -> None:
+        raise RuntimeError("restore failed")
+
+    controller._restore_callbacks.append(fail)
+    with pytest.warns(UserWarning, match="on_restore callback failed"):
+        await controller.handle_edit(2, "replacement", request_id="req")
+
+    replayed = chat.messages()
+    assert [(m["role"], m["content"]) for m in replayed] == [
+        (m["role"], m["content"]) for m in outgoing
+    ]
+    assert sent[0]["type"] == "clear"
+    browser = [a["message"] for a in sent if a["type"] == "message"]
+    assert [(m["role"], m["segments"][0]["content"]) for m in browser] == [
+        (m["role"], m["content"]) for m in replayed
+    ]
+    # Existing replay reconstructs from record data, not transient entry data.
+    assert "attachments" in outgoing[0] and "attachments" not in replayed[0]
+    assert outgoing[1].get("status") == "cancelled"
+    assert "status" not in replayed[1]
+    assert adapter.turns == [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "first"},
+    ]
+    assert record.active_leaf == target
+    assert record.children_of(first) == [target]
+    assert (
+        controller._exchange_recorder.read_only_reason == "app_restore_failed"
+    )
+    assert not any(a["type"] == "history_edit_projection" for a in sent)
 
 
 @pytest.mark.anyio
@@ -563,8 +651,11 @@ async def test_fatal_rewind_error_takes_full_cleanup(
     record.nodes[target].status = "ok"
     await _seed_resubmit_transcript(chat, first, target)
     _wire_resubmit_capture(controller, chat)
+    sent = _spy_send_actions(chat)
+    messages_seen: list[list[Any]] = []
 
     def cancelled(_values: dict[str, Any]) -> None:
+        messages_seen.append(list(chat.messages()))
         raise asyncio.CancelledError()
 
     controller._restore_callbacks.append(cancelled)
@@ -572,8 +663,14 @@ async def test_fatal_rewind_error_takes_full_cleanup(
     with pytest.raises(asyncio.CancelledError):
         await controller.handle_edit(2, "second edited", request_id="req")
 
+    assert [[m["content"] for m in messages] for messages in messages_seen] == [
+        ["first", "reply one"]
+    ]
     assert recorder.record is None
     assert recorder.read_only is False
+    assert chat.messages() == ()
+    assert _adapter.turns == []
+    assert not any(a["type"] == "history_edit_projection" for a in sent)
 
 
 # ---------------------------------------------------------------------------
@@ -757,61 +854,108 @@ async def test_new_chat_neither_captures_outgoing_nor_restores() -> None:
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("operation", ["browse", "edit"])
-async def test_in_session_restore_callback_sees_outgoing_transcript_after_model_rewind(
-    request: pytest.FixtureRequest, operation: str
+async def test_browse_restore_callback_sees_outgoing_transcript_after_model_rewind(
+    request: pytest.FixtureRequest,
 ) -> None:
-    if operation == "edit":
-        controller, chat, adapter, _store, first, target = (
-            _make_v2_resubmit_real_chat(request, chat_id="callback_phase_edit")
-        )
-        await _seed_resubmit_transcript(chat, first, target)
-    else:
-        controller, _fake, adapter, _store, first, target = (
-            _make_v2_navigation_controller()
-        )
-        session = _RealChatSession()
-        with session_context(cast(Any, session)):
-            chat = Chat("callback_phase_browse", history=False)
-        request.addfinalizer(chat.destroy)
-        controller.chat = chat
-        record = controller._exchange_recorder.record
-        assert record is not None
-        await controller._replay_exchange_display(
-            record, tuple(record.path_node_ids())
-        )
-    _wire_resubmit_capture(controller, chat)
-    _spy_send_actions(chat)
+    controller, _fake, adapter, _store, first, _target = (
+        _make_v2_navigation_controller()
+    )
+    session = _RealChatSession()
+    with session_context(cast(Any, session)):
+        chat = Chat("callback_phase_browse", history=False)
+    request.addfinalizer(chat.destroy)
+    controller.chat = chat
     record = controller._exchange_recorder.record
     assert record is not None
+    await controller._replay_exchange_display(
+        record, tuple(record.path_node_ids())
+    )
     outgoing = chat.messages()
-    original_leaf = record.active_leaf
-    observations: list[tuple[Any, Any, Any, dict[str, Any]]] = []
+    observations: list[tuple[Any, Any, Any]] = []
 
     def observe(_values: dict[str, Any]) -> None:
         observations.append(
+            (chat.messages(), list(adapter.turns), record.active_leaf)
+        )
+
+    controller._restore_callbacks.append(observe)
+    await controller.handle_navigate(2, "prev", request_id="phase")
+
+    assert observations == [
+        (
+            outgoing,
+            [
+                {"role": "system", "content": "bootstrap"},
+                {"role": "user", "content": "first"},
+                {"role": "user", "content": "original"},
+            ],
+            first,
+        )
+    ]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "kind,message_index",
+    [("edit", 0), ("edit", 2), ("retry", 2), ("regenerate", 2)],
+)
+async def test_resubmit_restore_callback_sees_accepted_parent_transcript(
+    request: pytest.FixtureRequest, kind: str, message_index: int
+) -> None:
+    controller, chat, adapter, _store, first, target = (
+        _make_v2_resubmit_real_chat(request, chat_id=f"callback_phase_{kind}")
+    )
+    record = controller._exchange_recorder.record
+    assert record is not None
+    record.nodes[target].status = "error" if kind == "retry" else "ok"
+    await _seed_resubmit_transcript(chat, first, target)
+    _wire_resubmit_capture(controller, chat)
+    sent = _spy_send_actions(chat)
+    outgoing = list(chat.messages())
+    original_leaf = record.active_leaf
+    children = list(record.children_of(first))
+    observations: list[tuple[Any, Any, Any, Any, Any, Any, bool]] = []
+
+    def observe(values: dict[str, Any]) -> None:
+        observations.append(
             (
-                chat.messages(),
+                list(chat.messages()),
                 list(adapter.turns),
                 record.active_leaf,
-                dict(_values),
+                dict(values),
+                list(sent),
+                list(record.children_of(first)),
+                chat._destructive_history_blocks_input,
             )
         )
 
     controller._restore_callbacks.append(observe)
-    if operation == "edit":
-        await controller.handle_edit(2, "replacement", request_id="phase")
-        expected_turns = [
-            {"role": "system", "content": "bootstrap"},
-            {"role": "user", "content": "first"},
-        ]
-        expected_leaf = original_leaf
+    if kind == "edit":
+        await controller.handle_edit(
+            message_index, "replacement", request_id="phase"
+        )
     else:
-        await controller.handle_navigate(2, "prev", request_id="phase")
-        expected_turns = [
-            {"role": "system", "content": "bootstrap"},
-            {"role": "user", "content": "first"},
-            {"role": "user", "content": "original"},
-        ]
-        expected_leaf = first
-    assert observations == [(outgoing, expected_turns, expected_leaf, {})]
+        await controller.handle_resubmit(
+            message_index, kind, request_id="phase"
+        )
+
+    expected_messages = [] if message_index == 0 else outgoing[:2]
+    expected_turns = [{"role": "system", "content": "bootstrap"}]
+    if message_index != 0:
+        expected_turns.append({"role": "user", "content": "first"})
+    assert observations == [
+        (
+            expected_messages,
+            expected_turns,
+            original_leaf,
+            {},
+            [],
+            children,
+            True,
+        )
+    ]
+    assert list(chat.messages()) == expected_messages
+    assert sent[-1]["type"] == "history_edit_projection"
+    assert sent[-1]["content"] == (
+        "replacement" if kind == "edit" else "second"
+    )
