@@ -527,10 +527,13 @@ class ChatHistory:
         a sibling or another position; and before an edit, retry, or
         regenerate starts replacement work from the retained parent. Callbacks
         receive the target values; for writable in-session changes, model
-        state has already been rewound, but ``chat.messages()`` and the
-        display still show the outgoing branch. A resubmit commits its parent
-        pointer only after callbacks succeed. Load and switch instead replay
-        the target display before callbacks run. Use it to sync auxiliary
+        state has already been rewound. During edit, retry, or regenerate,
+        ``chat.messages()`` contains the retained parent's accepted transcript,
+        not the outgoing branch or replacement input; the display still shows
+        the outgoing branch and the parent pointer commits only after callbacks
+        succeed. During browsing, ``chat.messages()`` and the display still
+        show the outgoing branch. Load and switch replay the target display
+        before callbacks run. Use it to sync auxiliary
         UI state (active tabs, model selectors, etc.) to match the selected
         position. Raw Shiny input values are not synced automatically;
         call the appropriate ``ui.update_*()`` functions here.
@@ -562,11 +565,12 @@ class ChatHistory:
         state could not be fully restored), and the error is warned to the
         developer. Failed edit, retry, and regenerate preparation retains
         the original full branch rather than selecting its parent; failed
-        browsing retains the selected target. After failed resubmit
-        preparation, the live model client may still hold the parent prefix,
-        not the displayed branch; read-only blocks continuation and saved
-        state capture until a full restore or new chat. Callbacks that can recover from a known case should
-        handle it themselves. Cancellation and other fatal errors take the
+        browsing retains the selected target. After an ordinary callback
+        failure during resubmit preparation, the original branch is replayed
+        to the display and ``chat.messages()``, but the live model client may
+        still hold the parent prefix. Read-only blocks continuation and saved
+        state capture until a full restore or new chat. Callbacks that can recover from a
+        known case should handle it themselves. Cancellation and other fatal errors take the
         usual full restore cleanup. Read-only conversations keep their
         saved values; a later successful switch or restore of the
         conversation, or starting a new chat, clears the read-only state.

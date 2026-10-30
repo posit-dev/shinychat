@@ -1142,6 +1142,13 @@ class HistoryController:
                     await _history_plan.run_plan(rewind_state)
                     if send_read_only is None:
                         await recorder.persist_active_leaf_locked(record, leaf)
+                    if transcript_prefix is not None:
+                        # Restore the accepted parent prefix before callbacks
+                        # inspect chat.messages(). Capture callbacks do not
+                        # fire on replace.
+                        self.chat._transcript.replace(
+                            transcript_prefix, transaction=transaction
+                        )
                 restored = self._restore_app_state(target_values)
                 with _restore_step(save_step):
                     if send_read_only is not None:
@@ -1153,16 +1160,6 @@ class HistoryController:
                             # Close capture is in-memory only. Preserve it under
                             # the original leaf without committing the parent.
                             await recorder.persist_record_locked()
-                    if restored and transcript_prefix is not None:
-                        # Sync the append-only server transcript to the
-                        # same parent prefix the record/adapter rewound
-                        # to, so the replacement input appends after the
-                        # prefix instead of the abandoned tail. Capture
-                        # callbacks do not fire on replace: the record
-                        # was already rewound above.
-                        self.chat._transcript.replace(
-                            transcript_prefix, transaction=transaction
-                        )
                 if restored:
                     await send()
                 else:
