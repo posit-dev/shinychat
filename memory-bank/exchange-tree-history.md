@@ -98,7 +98,7 @@ Automatic app-capture failure warns and retains prior state without certifying a
 
 A state entry has `kind`, `version`, `mode`, and JSON `data`. Builtin entry version 1 is separate from record schema version 2.
 
-The Python schema-2 reader preserves unknown fields, including explicit nulls, on records, nodes, state entries, error entries, and captured messages, attachments, and structured blocks, so a read/modify/write by this version does not drop fields written by a newer writer. Recapturing a state entry keeps the unknown fields of the entry it replaces, and a sparse capture does not discard an entry that carries them. Browser-supplied attachment dictionaries are filtered to known fields at submission and edit ingress, so client-chosen keys never enter saved records.
+The Python schema-2 reader preserves unknown fields, including explicit nulls, on records, nodes, state entries, error entries, and captured messages, attachments, and structured blocks, so a read/modify/write by this version does not drop fields written by a newer writer. Recapturing a state entry keeps the unknown fields of the entry it replaces, and a sparse capture does not discard an entry that carries them. Browser-supplied attachment dictionaries are filtered to known fields at submission and edit ingress. Bookmark-restored messages, which can come from a client-editable URL, are filtered the same way, recursively through segments, structured blocks, and attachments. Client-chosen keys therefore never enter saved records.
 
 | Namespace | Capture and resolution |
 |---|---|

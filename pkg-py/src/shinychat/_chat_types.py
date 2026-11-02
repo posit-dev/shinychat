@@ -249,6 +249,39 @@ PersistedBlock = Annotated[
     PlainSerializer(lambda block: block, return_type=dict[str, Any]),
 ]
 
+_KNOWN_BLOCK_TYPES: dict[str, Any] = {
+    "tool_request": ToolRequestBlock,
+    "tool_result": ToolResultBlock,
+    "web_search": WebSearchBlock,
+    "web_search_results": WebSearchResultsBlock,
+    "web_search_citations": WebSearchCitationsBlock,
+    "web_fetch": WebFetchBlock,
+    "html_block": HtmlBlock,
+}
+
+
+def _keep_known(value: dict[str, Any], known: Iterable[str]) -> dict[str, Any]:
+    return {name: value[name] for name in known if name in value}
+
+
+def _discard_unknown_block_fields(block: Any) -> Any:
+    if not isinstance(block, dict):
+        return block
+    block_type = _KNOWN_BLOCK_TYPES.get(str(block.get("type")))
+    if block_type is None:
+        return block
+    block = _keep_known(block, block_type.__annotations__)
+    sources = block.get("sources")
+    if isinstance(sources, list):
+        block["sources"] = [
+            _keep_known(s, WebSearchSource.__annotations__)
+            if isinstance(s, dict)
+            else s
+            for s in sources
+        ]
+    return block
+
+
 # Structured blocks the markdown-stream wire supports: `html_block` and
 # the web_* family. Tool blocks are out of scope for streams.
 StreamBlock = Union[
@@ -1037,3 +1070,26 @@ def initial_message_payload(
                 seen.add(id(dep))
                 deps.append(dep)
     return payload, deps
+
+
+def parse_bookmark_message(value: Any) -> StoredMessage:
+    """Discard unknown client-editable fields without changing persisted readers."""
+    if isinstance(value, dict):
+        segments = value.get("segments")
+        attachments = value.get("attachments")
+        value = _keep_known(value, StoredMessage.model_fields)
+        if isinstance(segments, list):
+            value["segments"] = [
+                _keep_known(s, StoredSegment.model_fields)
+                if isinstance(s, dict) and "type" not in s
+                else _discard_unknown_block_fields(s)
+                for s in segments
+            ]
+        if isinstance(attachments, list):
+            value["attachments"] = [
+                _keep_known(a, Attachment.model_fields)
+                if isinstance(a, dict)
+                else a
+                for a in attachments
+            ]
+    return StoredMessage.model_validate(value)
