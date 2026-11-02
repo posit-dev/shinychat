@@ -6,6 +6,7 @@ import threading
 from typing import Any, cast
 
 import pytest
+from _session_api_contract import FakeSessionReactiveApi
 from htmltools import HTMLDependency, TagList, tags
 from pydantic_core import PydanticSerializationError
 from shiny import Inputs, Session
@@ -15,7 +16,7 @@ from shinychat import Chat
 from shinychat.types import ChatDrawerController
 
 
-class _ArtifactSession:
+class _ArtifactSession(FakeSessionReactiveApi):
     ns: ResolvedId = ResolvedId("")
     app: object = None
     id: str = "artifact-session"

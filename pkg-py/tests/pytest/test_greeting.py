@@ -6,6 +6,7 @@ import threading
 from typing import Any, cast
 
 import pytest
+from _session_api_contract import FakeSessionReactiveApi
 from htmltools import HTML, HTMLDependency, Tag, TagList, tags
 from shiny.session import session_context
 from shinychat import Chat, chat_greeting, chat_ui
@@ -232,7 +233,7 @@ def test_chat_ui_mixed_greeting_bare_string_escaped_on_wire():
 # ---------------------------------------------------------------------------
 
 
-class _SpySession:
+class _SpySession(FakeSessionReactiveApi):
     """Minimal mock that captures custom messages sent by Chat."""
 
     ns: Any = ""
@@ -468,7 +469,7 @@ class _MockBookmark:
         return lambda: None
 
 
-class _MockBookmarkSession:
+class _MockBookmarkSession(FakeSessionReactiveApi):
     """Minimal session stub for enable_bookmarking() unit tests."""
 
     def __init__(self):

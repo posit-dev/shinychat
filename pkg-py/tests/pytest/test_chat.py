@@ -13,6 +13,7 @@ from typing import Any, AsyncIterable, Awaitable, Callable, cast
 from unittest.mock import MagicMock
 
 import pytest
+from _session_api_contract import FakeSessionReactiveApi
 from htmltools import HTML, HTMLDependency, TagList, tags
 from shiny import Session, reactive
 from shiny.module import ResolvedId
@@ -40,7 +41,7 @@ from shinychat._utils_types import MISSING
 # ----------------------------------------------------------------------
 
 
-class _MockSession:
+class _MockSession(FakeSessionReactiveApi):
     ns: ResolvedId = ResolvedId("")
     app: object = None
     id: str = "mock-session"
@@ -3058,23 +3059,17 @@ def test_message_stream_context_rejects_complete_appends():
 
 
 async def _run_stream_test(sent: list[Any], n: int, body: Any) -> None:
-    # Shiny's global reactive lock binds to the first event loop that
-    # contends for it; each run_async() is a fresh loop, so start with a
-    # fresh lock (same approach as the upstream #418 test helper).
-    from shiny.reactive._core import _reactive_environment as renv
-
-    renv._lock = None
+    # Let the extended-task worker that `body()` starts send its n actions, then
+    # wait for the reactive environment to go idle so the loop this test runs on
+    # doesn't close with work still in flight. Shiny 1.9 runs each effect (and
+    # extended task) in its own task and tracks them itself (py-shiny#2508), so no
+    # global reactive lock is involved.
     await body()
-    # Wait for n actions and for any ExtendedTask done-callback to release
-    # the lock, so this loop doesn't exit while still holding it.
     for _ in range(100):
-        if len(sent) >= n and not renv.lock.locked():
+        if len(sent) >= n:
             break
         await asyncio.sleep(0.01)
-    # Leave the lock unbound: this loop is about to die, and a lock bound
-    # to a dead loop breaks ExtendedTask done-callbacks in later tests
-    # (Python < 3.14 binds locks to their first contending loop).
-    renv._lock = None
+    await reactive.flush()
 
 
 def test_nested_stream_context_inside_append_message_stream_works():
@@ -4784,7 +4779,7 @@ def test_no_module_level_init_message_queue():
     assert not hasattr(chat_module, "_QUEUED_INIT_MESSAGES_SESSION")
 
 
-class _BookmarkStubSession:
+class _BookmarkStubSession(FakeSessionReactiveApi):
     """Session stub with just enough bookmark machinery for
     `enable_bookmarking`: captures the registered on_bookmark/on_restore
     callbacks so tests can invoke them directly."""
