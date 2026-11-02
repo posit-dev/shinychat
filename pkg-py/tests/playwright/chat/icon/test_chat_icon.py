@@ -38,6 +38,7 @@ def test_validate_chat_basic(page: Page, local_app: ShinyAppProc) -> None:
         mod.expect_last_message_icon_to_have_classes()
 
         mod.chat.set_user_input(f"Hi {mod.id}.")
+        expect(mod.chat.loc_input_button).to_be_enabled(timeout=30_000)
         mod.chat.send_user_input()
 
         mod.expect_last_message_icon_to_have_classes()
@@ -48,11 +49,13 @@ def test_validate_chat_basic(page: Page, local_app: ShinyAppProc) -> None:
 
     animal.set("Hippo")
     chat_animal.chat.set_user_input("hello")
+    expect(chat_animal.chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat_animal.chat.send_user_input()
     chat_animal.expect_last_message_icon_to_have_classes("fa icon-hippo")
 
     animal.set("Frog")
     chat_animal.chat.set_user_input("hello")
+    expect(chat_animal.chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat_animal.chat.send_user_input()
     chat_animal.expect_last_message_icon_to_have_classes("fa icon-frog")
 
@@ -60,6 +63,7 @@ def test_validate_chat_basic(page: Page, local_app: ShinyAppProc) -> None:
     # (the message-specific icon is just for that message)
     animal.set("Otter")
     chat_animal.chat.set_user_input("hello")
+    expect(chat_animal.chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat_animal.chat.send_user_input()
     chat_animal.expect_last_message_icon_to_have_classes()
 
@@ -69,5 +73,6 @@ def test_validate_chat_basic(page: Page, local_app: ShinyAppProc) -> None:
 
     image.set("Shiny")
     chat_image.chat.set_user_input("hi shiny")
+    expect(chat_image.chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat_image.chat.send_user_input()
     chat_image.expect_last_message_icon_to_have_classes("icon-image shiny")

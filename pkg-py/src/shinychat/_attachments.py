@@ -10,10 +10,10 @@ import base64
 import json
 import mimetypes
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from htmltools import html_escape
 from pydantic import BaseModel
 from typing_extensions import TypedDict
 
@@ -183,6 +183,9 @@ def resolve_max_attachment_size() -> int:
     return DEFAULT_MAX_ATTACHMENT_SIZE
 
 
+_BASE64_PAYLOAD_RE = re.compile(r"^[A-Za-z0-9+/]*={0,2}$")
+
+
 def data_url_payload_size(data_url: str) -> int:
     """Return the decoded payload size (bytes) of a base64 data URL."""
     comma = data_url.find(",")
@@ -192,7 +195,7 @@ def data_url_payload_size(data_url: str) -> int:
     payload_len = len(payload)
     if payload_len == 0:
         return 0
-    if payload_len % 4 != 0:
+    if payload_len % 4 != 0 or not _BASE64_PAYLOAD_RE.match(payload):
         raise ValueError("Malformed base64 payload in data URL")
     padding = 0
     if payload.endswith("=="):
@@ -315,16 +318,19 @@ def attachment_to_content(att: Attachment) -> "Content":
         data = decode_data_url(att.data_url)
         return ContentPDF(data=data, filename=att.name or "document.pdf")
     if is_text_type(att.mime):
-        from chatlas.types import ContentText
+        from chatlas.types import ContentDocument
 
+        # Construct ContentDocument directly (mirroring ContentPDF above)
+        # rather than via chatlas's content_document_url(): that constructor
+        # auto-names data: URLs from a process-global counter, and a filename
+        # re-derived later (e.g. by history's attachment-content strip) would
+        # never match the one rendered into the stored message at input time.
         _require_data_url(att)
-        text = decode_data_url(att.data_url).decode("utf-8", errors="replace")
-        name = att.name or "file"
-        return ContentText(
-            text=(
-                f'<file-attachment name="{html_escape(name, attr=True)}" '
-                f'type="{html_escape(att.mime, attr=True)}">\n{text}\n</file-attachment>'
-            )
+        data = decode_data_url(att.data_url)
+        return ContentDocument(
+            data=data,
+            filename=att.name or "file",
+            mime_type=att.mime,
         )
     raise ValueError(f"Unsupported attachment type: {att.mime}")
 

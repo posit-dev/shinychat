@@ -62,7 +62,7 @@ test_that("contents_from_attachments returns empty list for NULL/empty", {
   expect_equal(contents_from_attachments(list()), list())
 })
 
-test_that("contents_from_attachments wraps text in a file-attachment tag", {
+test_that("contents_from_attachments builds ellmer document content for text", {
   md <- "# Title\n\nbody"
   b64 <- jsonlite::base64_enc(charToRaw(md))
   res <- contents_from_attachments(
@@ -75,85 +75,57 @@ test_that("contents_from_attachments wraps text in a file-attachment tag", {
     )
   )
   expect_length(res, 1)
-  expect_identical(
-    res[[1]],
-    "<file-attachment name=\"notes.md\" type=\"text/markdown\">\n# Title\n\nbody\n</file-attachment>"
-  )
+  doc <- res[[1]]
+  expect_true(S7::S7_inherits(doc, ellmer::ContentDocument))
+  expect_equal(doc@mime_type, "text/markdown")
+  expect_equal(doc@filename, "notes.md")
+  expect_equal(doc@data, b64)
 })
 
-test_that("contents_from_attachments escapes name/type attributes", {
-  b64 <- jsonlite::base64_enc(charToRaw("x"))
-  res <- contents_from_attachments(
-    list(
+test_that("user_input_contents rejects malformed base64 payloads", {
+  value <- list(
+    text = "hello",
+    attachments = list(
       list(
         mime = "text/plain",
-        data_url = paste0("data:text/plain;base64,", b64),
-        name = "a\"&<b.txt"
+        data_url = "data:text/plain;base64,abc",
+        name = "bad.txt",
+        size = 1
       )
     )
   )
-  expect_match(
-    res[[1]],
-    "name=\"a&quot;&amp;&lt;b.txt\"",
-    fixed = TRUE
-  )
+  expect_error(user_input_contents(value), "Malformed base64 payload")
+
+  # Valid length and padding, but invalid base64 characters.
+  value$attachments[[1]]$data_url <- "data:text/plain;base64,a@bc"
+  expect_error(user_input_contents(value), "Malformed base64 payload")
 })
 
-test_that("contents_from_attachments replaces invalid UTF-8 bytes", {
-  b64 <- jsonlite::base64_enc(as.raw(c(0xff, 0xfe, 0x20, 0x78)))
-  res <- contents_from_attachments(
-    list(
-      list(
-        mime = "text/plain",
-        data_url = paste0("data:text/plain;base64,", b64),
-        name = "weird.txt"
-      )
-    )
+test_that("contents_from_attachments deterministically names unnamed attachments", {
+  # Auto-generated names come from a process-global counter, so they must not
+  # leak into stored messages: history's attachment-content strip re-derives
+  # the rendered content and matches it against the stored segment text.
+  text_att <- list(
+    mime = "text/plain",
+    data_url = "data:text/plain;base64,aGVsbG8=",
+    name = ""
   )
-  expect_match(res[[1]], "\uFFFD", fixed = TRUE)
-})
+  expect_equal(contents_from_attachments(list(text_att))[[1]]@filename, "file")
+  expect_equal(contents_from_attachments(list(text_att))[[1]]@filename, "file")
 
-test_that("contents_from_attachments errors clearly on malformed base64", {
-  expect_error(
-    contents_from_attachments(
-      list(
-        list(
-          mime = "text/plain",
-          data_url = "data:text/plain;base64,abc",
-          name = "bad.txt"
-        )
-      )
-    ),
-    "Malformed base64 payload in data URL"
+  pdf_att <- list(
+    mime = "application/pdf",
+    data_url = "data:application/pdf;base64,JVBERi0=",
+    name = ""
   )
-})
-
-test_that("contents_from_attachments drops NUL bytes in text", {
-  b64 <- jsonlite::base64_enc(as.raw(c(0x41, 0x00, 0x42)))
-  res <- contents_from_attachments(
-    list(
-      list(
-        mime = "text/plain",
-        data_url = paste0("data:text/plain;base64,", b64),
-        name = "n.txt"
-      )
-    )
+  expect_equal(
+    contents_from_attachments(list(pdf_att))[[1]]@filename,
+    "document.pdf"
   )
-  expect_match(res[[1]], "AB", fixed = TRUE)
-})
-
-test_that("contents_from_attachments falls back to 'file' for empty name", {
-  b64 <- jsonlite::base64_enc(charToRaw("hi"))
-  res <- contents_from_attachments(
-    list(
-      list(
-        mime = "text/plain",
-        data_url = paste0("data:text/plain;base64,", b64),
-        name = ""
-      )
-    )
+  expect_equal(
+    contents_from_attachments(list(pdf_att))[[1]]@filename,
+    "document.pdf"
   )
-  expect_match(res[[1]], "name=\"file\"", fixed = TRUE)
 })
 
 test_that("contents_from_attachments builds ellmer image/pdf content", {
@@ -190,7 +162,7 @@ test_that("contents_from_attachments builds ellmer image/pdf content", {
       )
     )
   )[[1]]
-  expect_match(pdf_no_name@filename, "^file_\\d+\\.pdf$")
+  expect_equal(pdf_no_name@filename, "document.pdf")
 })
 
 test_that("contents_from_attachments errors on unsupported type", {

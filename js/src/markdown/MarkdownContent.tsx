@@ -7,6 +7,7 @@ import React, {
 import type { ContentType } from "../transport/types"
 import { parseMarkdown, parseHtml, hastToReact } from "./markdownToReact"
 import { hideTrailingPartialAsideTag } from "./hideTrailingPartialTag"
+import { useStreamIdle } from "./useStreamIdle"
 import {
   markdownProcessor,
   htmlProcessor,
@@ -72,6 +73,11 @@ export function MarkdownContent({
     [parseSource, isText, isHtml, processor],
   )
 
+  // The trailing dot signals a stalled stream, not an active one: while text
+  // is arriving the growing text is signal enough, and a dot hopping along
+  // with every update is distracting.
+  const streamingDot = useStreamIdle(streaming && !isText, content)
+
   // Stage 2 (cheap): convert HAST → React elements. Re-runs when streaming toggles.
   const elements = useMemo(
     () =>
@@ -79,9 +85,10 @@ export function MarkdownContent({
         ? hastToReact(hast, {
             tagToComponentMap: resolvedTagToComponentMap,
             streaming,
+            streamingDot,
           })
         : null,
-    [hast, streaming, resolvedTagToComponentMap],
+    [hast, streaming, streamingDot, resolvedTagToComponentMap],
   )
 
   if (isText) {

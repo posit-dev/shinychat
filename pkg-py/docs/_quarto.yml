@@ -22,7 +22,7 @@ website:
   page-footer:
     left: |
       Proudly supported by
-      [![](https://posit.co/wp-content/uploads/2024/06/Posit-Logos-2024_horiz-full-color.svg){fig-alt="Posit" width=65px}](https://posit.co)
+      [![](https://www.tidyverse.org/posit-logo.svg){fig-alt="Posit" width=65px}](https://posit.co)
 
   navbar:
     left:
@@ -30,6 +30,8 @@ website:
         href: index.qmd
       - text: Page chat
         href: page-chat.qmd
+      - text: Migrating to v0.8.0
+        href: migrating-to-0.8.0.qmd
       - text: API Reference
         href: api/index.qmd
     tools:
@@ -129,6 +131,8 @@ quartodoc:
         - types.ConversationStore
         - types.FileConversationStore
         - types.ConversationRecord
+        - types.ConversationRecordV1
+        - types.ConversationRecordV2
         - types.ConversationMeta
     - title: Testing
       options:

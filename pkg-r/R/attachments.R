@@ -59,7 +59,10 @@ data_url_payload_size <- function(data_url) {
   if (payload_len == 0L) {
     return(0)
   }
-  if (payload_len %% 4L != 0L) {
+  if (
+    payload_len %% 4L != 0L ||
+      !grepl("^[A-Za-z0-9+/]*={0,2}$", payload)
+  ) {
     cli::cli_abort("Malformed base64 payload in data URL")
   }
   padding <- if (endsWith(payload, "==")) {
@@ -200,26 +203,29 @@ content_from_attachment <- function(att) {
   if (startsWith(mime, "image/")) {
     return(ellmer::content_image_url(data_url))
   }
-  if (identical(mime, "application/pdf")) {
-    content <- ellmer::content_pdf_url(data_url)
-    if (nzchar(name)) {
-      content@filename <- name
+  is_pdf <- identical(mime, "application/pdf")
+  if (is_pdf || mime %in% attachment_types()$text) {
+    content <- if (is_pdf) {
+      ellmer::content_pdf_url(data_url)
+    } else {
+      # `mime_type` is intentionally not passed: ellmer ignores it for data:
+      # URLs (the URL header's type wins), and validation already pins the
+      # header to `mime`.
+      ellmer::content_document_url(data_url)
+    }
+    # Unnamed attachments get a deterministic fallback: the constructors
+    # auto-name from a process-global counter (document_001.txt,
+    # file_001.pdf, ...), so a filename re-derived later (e.g. by history's
+    # attachment-content strip) would never match the one rendered into the
+    # stored message at input time.
+    content@filename <- if (nzchar(name)) {
+      name
+    } else if (is_pdf) {
+      "document.pdf"
+    } else {
+      "file"
     }
     return(content)
-  }
-  if (mime %in% attachment_types()$text) {
-    # Returned as a plain string: ellmer coerces character `...` args to
-    # ContentText, so no explicit content constructor is needed here.
-    text <- decode_data_url_text(data_url)
-    nm <- if (nzchar(name)) name else "file"
-    return(
-      sprintf(
-        "<file-attachment name=\"%s\" type=\"%s\">\n%s\n</file-attachment>",
-        htmltools::htmlEscape(nm, attribute = TRUE),
-        htmltools::htmlEscape(mime, attribute = TRUE),
-        text
-      )
-    )
   }
   cli::cli_abort("Unsupported attachment type: {.val {mime}}")
 }
@@ -258,10 +264,6 @@ user_input_contents <- function(value, session = NULL, name = NULL) {
   contents
 }
 
-# Decode the base64 payload of a data URL to a UTF-8 string. R strings cannot
-# hold embedded NUL, so NUL bytes are dropped (rawToChar would otherwise error);
-# remaining invalid UTF-8 is replaced with U+FFFD, akin to Python's
-# decode(errors="replace").
 #' Create an attachment from a local file path
 #'
 #' Reads a file, base64-encodes its contents, and returns a list in the format
@@ -307,20 +309,4 @@ chat_attachment <- function(path, mime = NULL, name = NULL) {
     size = length(raw),
     data_url = paste0("data:", mime, ";base64,", b64)
   )
-}
-
-decode_data_url_text <- function(data_url) {
-  comma <- regexpr(",", data_url, fixed = TRUE)
-  if (comma == -1L) {
-    cli::cli_abort("Malformed data URL")
-  }
-  b64 <- substring(data_url, comma + 1L)
-  bytes <- tryCatch(
-    jsonlite::base64_dec(b64),
-    error = function(cnd) {
-      cli::cli_abort("Malformed base64 payload in data URL", parent = cnd)
-    }
-  )
-  bytes <- bytes[bytes != as.raw(0L)]
-  iconv(rawToChar(bytes), from = "UTF-8", to = "UTF-8", sub = "\uFFFD")
 }

@@ -23,7 +23,7 @@ function ExternalHistory({ elementId }: { elementId: string }) {
     createElement(ChatHistoryContent, {
       conversations: history.conversations,
       activeId: history.activeId,
-      busy: history.busy,
+      busy: history.busy || history.historyTransitionPending !== null,
       connected: history.connected,
       onSelect: store.actions.select,
       onNew: store.actions.create,

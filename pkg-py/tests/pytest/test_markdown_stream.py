@@ -42,6 +42,9 @@ class _CaptureSession:
     def _increment_busy_count(self) -> None:
         pass
 
+    def _decrement_busy_count(self) -> None:
+        pass
+
     def is_stub_session(self) -> bool:
         return False
 

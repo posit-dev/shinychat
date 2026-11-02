@@ -17,6 +17,18 @@ if TYPE_CHECKING:
     from ._chat import Chat
     from ._chat_types import ChatGreeting, ChatMessageDict
 
+# Raised when new_chat() is rejected because the v2 initial history decision
+# is still pending. Mirrors the stream-entry rejection (_STREAM_SUPPRESSED_MESSAGE
+# in _chat.py, phase-5.6 D1): a new chat is an awaited conversation transition
+# the app builds on, so it fails loudly instead of being silently dropped;
+# nothing has been cleared when it raises.
+_NEW_CHAT_SUPPRESSED_MESSAGE = (
+    "Cannot start a new chat while chat history is still initializing. "
+    "No conversation transition can start yet, so the new chat was rejected "
+    "before anything was cleared; retry after the history restore decision "
+    "completes."
+)
+
 
 class ChatClient:
     """
@@ -183,24 +195,31 @@ class ChatClient:
 
     async def new_chat(self, *, greeting: bool = False) -> None:
         """
-        Save the current conversation and start a new one.
+        Start a new conversation, preserving the current saved history.
 
         This method is available only when conversation history is enabled.
-        It saves the current record, clears the client turns and rendered
-        messages, resets the active conversation ID, and updates the history
-        drawer.
+        It captures the latest model context, clears the client turns and
+        rendered messages, resets the active conversation ID, and updates
+        the history drawer. If model capture fails, it warns the developer,
+        keeps the already-saved conversation, and proceeds with the reset.
+        Storage and reset errors, cancellation, and fatal errors still
+        propagate.
 
         Parameters
         ----------
         greeting
-            Passed to :meth:`~shinychat.Chat.clear_messages`. When ``True``,
-            also clears the greeting and resolves the configured greeting for
-            the new conversation.
+            When ``True``, also clears the greeting and resolves the
+            configured greeting for the new conversation.
 
         Raises
         ------
         ValueError
             If conversation history is not enabled.
+        RuntimeError
+            If conversation history is still initializing (the initial
+            restore decision is pending). The new chat is rejected before
+            anything is cleared; retry after the history restore decision
+            completes.
         shiny.types.NotifyException
             If an assistant response is currently streaming. To avoid this
             error, guard the call by checking
@@ -213,6 +232,8 @@ class ChatClient:
                 "Can't start a new chat without conversation history enabled; "
                 "use `await chat.client.clear()` instead."
             )
+        if not self._chat.history._history_action_admitted():
+            raise RuntimeError(_NEW_CHAT_SUPPRESSED_MESSAGE)
         if self._chat.latest_message_stream.status() == "running":
             from shiny.types import NotifyException
 

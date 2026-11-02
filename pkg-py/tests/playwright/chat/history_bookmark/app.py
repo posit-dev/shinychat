@@ -59,6 +59,18 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         ),
     )
 
+    # Auxiliary Shiny inputs are not synced by the conversation switch
+    # itself; carry them through the conversation's captured `values` so an
+    # in-place switch (mechanism D5) restores them like a bookmark reload
+    # would.
+    _chat.history.on_save(
+        lambda values: values.update(filter_text=input.filter_text())
+    )
+
+    @_chat.history.on_restore
+    def _restore_filter(values: dict[str, Any]) -> None:
+        ui.update_text("filter_text", value=str(values.get("filter_text", "none")))
+
     @render.text
     def filter_state():
         return f"filter: {input.filter_text()}"

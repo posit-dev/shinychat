@@ -37,7 +37,7 @@ describe("ToolResult", () => {
         valueType="text"
         requestCall={"my_tool(x = 1)"}
         showRequest={true}
-        expanded={true}
+        initialExpanded={true}
       />,
     )
     expect(container.textContent).toContain("my_tool(x = 1)")
@@ -58,7 +58,7 @@ describe("ToolResult", () => {
         valueType="text"
         requestCall={["my_tool(", "  x = 1)"] as unknown as string}
         showRequest={true}
-        expanded={true}
+        initialExpanded={true}
       />,
     )
 
@@ -78,7 +78,7 @@ describe("ToolResult", () => {
       value: "done",
       valueType: "text",
       showRequest: true,
-      expanded: true,
+      initialExpanded: true,
     }
     const { rerender, getByRole, queryByRole, container } = render(
       <ToolResult

@@ -187,6 +187,43 @@ describe("shiny-chat-history custom element", () => {
     expect(transport.sendHistoryDelete).toHaveBeenCalledWith("chat", "first")
   })
 
+  it("disables every history action during a pending edit transition", async () => {
+    const transport = createMockTransport()
+    const registration = acquireHistoryStore("chat", transport)
+    registration.store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      transitionProtocol: "completion-v2",
+    })
+    const host = await appendHistory("chat")
+
+    await waitFor(() => {
+      expect(within(host).getByText("First conversation")).toBeTruthy()
+    })
+
+    const menu = menuFor(host, "First conversation")
+    await act(async () => {
+      expect(registration.store.beginEditTransition()).not.toBeNull()
+    })
+
+    await waitFor(() => {
+      expect(
+        within(host).getByRole("button", { name: /new conversation/i }),
+      ).toHaveProperty("disabled", true)
+      expect(historyItemButton(host, "First conversation")).toHaveProperty(
+        "disabled",
+        true,
+      )
+      expect(
+        within(menu).getByRole("button", { name: "Rename" }),
+      ).toHaveProperty("disabled", true)
+      expect(
+        within(menu).getByRole("button", { name: "Delete" }),
+      ).toHaveProperty("disabled", true)
+    })
+  })
+
   it("disables unsafe actions while busy or disconnected", async () => {
     const transport = createMockTransport()
     const registration = acquireHistoryStore("chat", transport)

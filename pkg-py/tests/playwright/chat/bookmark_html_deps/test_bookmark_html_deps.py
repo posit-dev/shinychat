@@ -34,6 +34,7 @@ def test_html_deps_restored_after_bookmark(
 
     # Send a message to trigger the styled response
     chat.set_user_input("hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
 
     # Wait for the styled card to appear

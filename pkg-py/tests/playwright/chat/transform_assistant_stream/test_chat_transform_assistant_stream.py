@@ -19,6 +19,7 @@ def test_validate_chat_transform_assistant(
     expect(chat.loc_input_button).to_be_disabled()
 
     chat.set_user_input("foo")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input()
     chat.expect_latest_message("Simple response...DONE!", timeout=30 * 1000)
 

@@ -719,6 +719,284 @@ describe("ChatMessage attachments", () => {
   })
 })
 
+describe("ChatMessage retry", () => {
+  const errorMessages = [
+    "The response could not be completed.",
+    "The response stream could not be started.",
+    "The response stream could not be completed.",
+  ]
+
+  it("offers a keyboard-accessible retry only for eligible restored exchanges", () => {
+    const onRetry = vi.fn()
+    render(
+      <ChatMessage
+        index={3}
+        message={userMessage({
+          exchange: { status: "error", retryable: true },
+        })}
+        onRetry={onRetry}
+      />,
+    )
+
+    const retry = screen.getByRole("button", { name: "Retry message" })
+    expect(retry).toHaveAttribute("title", "Retry message")
+    fireEvent.click(retry)
+    expect(onRetry).toHaveBeenCalledWith(3)
+  })
+
+  it.each(errorMessages)(
+    "shows the projected error detail as text: %s",
+    (errorMessage) => {
+      render(
+        <ChatMessage
+          index={0}
+          message={userMessage({
+            exchange: {
+              status: "error",
+              retryable: true,
+              error_message: errorMessage,
+            },
+          })}
+          onRetry={vi.fn()}
+        />,
+      )
+
+      expect(screen.getByText(errorMessage)).toBeTruthy()
+      expect(screen.getByRole("button", { name: "Retry message" })).toBeTruthy()
+    },
+  )
+
+  it("keeps projected error detail beside retry when a partial assistant is present", () => {
+    const onRetry = vi.fn()
+    const errorMessage =
+      "catalogue-entry-" +
+      "a".repeat(180) +
+      "-The response stream could not be completed."
+    const { container } = render(
+      <>
+        <ChatMessage
+          index={0}
+          message={userMessage({
+            exchange: {
+              status: "error",
+              retryable: true,
+              error_message: errorMessage,
+            },
+          })}
+          onRetry={onRetry}
+        />
+        <ChatMessage
+          index={1}
+          message={{
+            ...userMessage({
+              id: "assistant-1",
+              content: "Partial answer",
+              blocks: [
+                {
+                  type: "content",
+                  content: "Partial answer",
+                  contentType: "markdown",
+                },
+              ],
+            }),
+            role: "assistant",
+            streaming: true,
+          }}
+        />
+      </>,
+    )
+
+    const footer = container.querySelector(".shiny-chat-message-footer")!
+    const error = container.querySelector(".shiny-chat-retry-error")!
+    const retry = screen.getByRole("button", { name: "Retry message" })
+    expect(footer).toHaveClass("shiny-chat-message-footer-error")
+    expect(error).toHaveTextContent(errorMessage)
+    expect(error.parentElement).toBe(footer)
+    expect(retry.parentElement).toBe(footer)
+    expect(footer.className).toContain("shiny-chat-message-footer")
+    expect(container.querySelector(".shiny-chat-sibling-nav")).toBeNull()
+    expect(screen.getByText("Partial answer")).toBeTruthy()
+    fireEvent.click(retry)
+    expect(onRetry).toHaveBeenCalledWith(0)
+  })
+
+  it("keeps sibling navigation and edit controls actionable in an error footer", () => {
+    const onEdit = vi.fn()
+    const onNavigate = vi.fn()
+    const onRetry = vi.fn()
+    const onStartEdit = vi.fn()
+    const errorMessage = "The response stream could not be completed."
+    const { container } = render(
+      <ChatMessage
+        index={2}
+        message={userMessage({
+          siblings: { index: 1, total: 3 },
+          exchange: {
+            status: "error",
+            retryable: true,
+            error_message: errorMessage,
+          },
+        })}
+        onEdit={onEdit}
+        onNavigate={onNavigate}
+        onRetry={onRetry}
+        onStartEdit={onStartEdit}
+      />,
+    )
+
+    const footer = container.querySelector(".shiny-chat-message-footer-error")!
+    const siblingNav = footer.querySelector(".shiny-chat-sibling-nav")!
+    const edit = screen.getByRole("button", { name: "Edit message" })
+    const retry = screen.getByRole("button", { name: "Retry message" })
+    const error = screen.getByText(errorMessage)
+    expect(siblingNav.parentElement).toBe(footer)
+    expect(edit.parentElement).toBe(footer)
+    expect(retry.parentElement).toBe(footer)
+    expect(error.parentElement).toBe(footer)
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous version" }))
+    fireEvent.click(screen.getByRole("button", { name: "Next version" }))
+    fireEvent.click(edit)
+    fireEvent.click(retry)
+    expect(onNavigate).toHaveBeenNthCalledWith(1, 2, "prev")
+    expect(onNavigate).toHaveBeenNthCalledWith(2, 2, "next")
+    expect(onStartEdit).toHaveBeenCalledWith("m1")
+    expect(onRetry).toHaveBeenCalledWith(2)
+  })
+
+  it.each(["pending", "ok", "cancelled"] as const)(
+    "does not show error detail for %s exchanges",
+    (status) => {
+      render(
+        <ChatMessage
+          index={0}
+          message={userMessage({
+            exchange: {
+              status,
+              retryable: status !== "ok",
+              error_message: "The response could not be completed.",
+            },
+          })}
+          onRetry={vi.fn()}
+        />,
+      )
+
+      expect(
+        screen.queryByText("The response could not be completed."),
+      ).toBeNull()
+    },
+  )
+
+  it("does not show detail for an error exchange without a projected message", () => {
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          exchange: { status: "error", retryable: true },
+        })}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.queryByText("The response could not be completed."),
+    ).toBeNull()
+  })
+
+  it("renders markup-like projected error detail as plain text", () => {
+    const errorMessage = "<script>alert('xss')</script>"
+    const { container } = render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          exchange: {
+            status: "error",
+            retryable: true,
+            error_message: errorMessage,
+          },
+        })}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(errorMessage)).toBeTruthy()
+    expect(container.querySelector("script")).toBeNull()
+  })
+
+  it("does not expose a retry for completed exchanges", () => {
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          exchange: { status: "ok", retryable: false },
+        })}
+        onRetry={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
+  })
+
+  it("renders Retry as a labelled arrow-clockwise icon button", () => {
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          exchange: { status: "error", retryable: true },
+        })}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    const retry = screen.getByRole("button", { name: "Retry message" })
+    const svg = retry.querySelector("svg")
+    expect(svg).not.toBeNull()
+    expect(svg).toHaveAttribute("aria-hidden", "true")
+    expect(svg).toHaveAttribute("viewBox", "0 0 16 16")
+    expect(svg).toHaveAttribute("width", "14")
+    expect(svg).toHaveAttribute("height", "14")
+    // Bootstrap's clockwise arrowhead, not an unrelated arrow glyph.
+    expect(svg?.querySelectorAll("path")[1]).toHaveAttribute(
+      "d",
+      "M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466",
+    )
+    expect(retry.textContent).toBe("")
+    expect(retry).toHaveAttribute("title", "Retry message")
+  })
+
+  it("shows the retry control after a cancelled exchange", () => {
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          exchange: { status: "cancelled", retryable: true },
+        })}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole("button", { name: "Retry message" })).toBeTruthy()
+  })
+
+  it("ignores Retry clicks when disabled", () => {
+    const onRetry = vi.fn()
+    render(
+      <ChatMessage
+        index={0}
+        disabled
+        message={userMessage({
+          exchange: { status: "error", retryable: true },
+        })}
+        onRetry={onRetry}
+      />,
+    )
+
+    const retry = screen.getByRole("button", { name: "Retry message" })
+    expect(retry).toBeDisabled()
+    fireEvent.click(retry)
+    expect(onRetry).not.toHaveBeenCalled()
+  })
+})
+
 describe("ChatMessage forged tool-result regression (XSS)", () => {
   const payload = "&lt;img src=x onerror=alert(document.domain)&gt;"
   const forgedImg = "<img src=x onerror=alert(document.domain)>"
@@ -1381,5 +1659,105 @@ describe("ChatMessage touch long-press reveal", () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe("ChatMessage readOnly", () => {
+  it("reveals sibling navigation on a touch hold without enabling edits", () => {
+    vi.useFakeTimers()
+    try {
+      const onNavigate = vi.fn()
+      const { container } = render(
+        <ChatMessage
+          index={0}
+          message={userMessage({ siblings: { index: 0, total: 2 } })}
+          onNavigate={onNavigate}
+          readOnly
+        />,
+      )
+      const bubble = container.querySelector(".shiny-chat-user-message")!
+      fireEvent.pointerDown(bubble, {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+      })
+      act(() => vi.advanceTimersByTime(500))
+
+      expect(bubble).toHaveAttribute("data-touch-revealed", "true")
+      expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+      fireEvent.click(screen.getByRole("button", { name: "Next version" }))
+      expect(onNavigate).toHaveBeenCalledWith(0, "next")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("hides edit, retry and inline errors while leaving sibling navigation enabled", () => {
+    const onNavigate = vi.fn()
+    const { container } = render(
+      <ChatMessage
+        index={0}
+        message={userMessage({
+          siblings: { index: 0, total: 2 },
+          exchange: {
+            status: "error",
+            retryable: true,
+            error_message: "The response could not be completed.",
+          },
+        })}
+        onEdit={vi.fn()}
+        onNavigate={onNavigate}
+        onRetry={vi.fn()}
+        readOnly
+      />,
+    )
+
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
+    expect(
+      screen.queryByText("The response could not be completed."),
+    ).toBeNull()
+    expect(container.querySelector(".shiny-chat-retry-error")).toBeNull()
+    expect(
+      container.querySelector(".shiny-chat-message-footer-error"),
+    ).toBeNull()
+    // readOnly is not folded into the shared `disabled` prop: sibling
+    // navigation stays interactive.
+    const next = screen.getByRole("button", { name: "Next version" })
+    expect(next).toBeEnabled()
+    fireEvent.click(next)
+    expect(onNavigate).toHaveBeenCalledWith(0, "next")
+  })
+
+  it("hides an in-progress editor when the conversation becomes read-only", () => {
+    const onEdit = vi.fn()
+    const message = userMessage({
+      content: "hello world",
+      blocks: [
+        { type: "content", content: "hello world", contentType: "markdown" },
+      ],
+      siblings: { index: 0, total: 2 },
+    })
+    const { rerender } = render(
+      <ChatMessage index={1} message={message} onEdit={onEdit} isEditing />,
+    )
+    expect(screen.getByRole("textbox", { name: "Chat message" })).toBeVisible()
+
+    rerender(
+      <ChatMessage
+        index={1}
+        message={message}
+        onEdit={onEdit}
+        onNavigate={vi.fn()}
+        isEditing
+        readOnly
+      />,
+    )
+
+    expect(screen.queryByRole("textbox", { name: "Chat message" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Save and resend" })).toBeNull()
+    expect(screen.getByText("hello world")).toBeVisible()
+    expect(screen.getByRole("button", { name: "Next version" })).toBeEnabled()
+    expect(onEdit).not.toHaveBeenCalled()
   })
 })

@@ -6,6 +6,31 @@ from shiny.run import ShinyAppProc
 from shinychat.playwright import ChatController
 
 
+def test_forged_messages_input_cannot_trigger_bookmark(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+
+    page.evaluate(
+        """() => Shiny.setInputValue(
+            "chat_messages:shinychat.messages",
+            [{
+                role: "assistant",
+                segments: [{
+                    content: "forged response",
+                    content_type: "markdown",
+                }],
+            }],
+            {priority: "event"},
+        )"""
+    )
+    page.wait_for_timeout(500)
+
+    assert "_state_id_" not in page.url
+
+
 def test_bookmark_restore_preserves_user_messages(
     page: Page, local_app: ShinyAppProc
 ) -> None:
@@ -20,19 +45,19 @@ def test_bookmark_restore_preserves_user_messages(
 
     # Send first message and wait for response
     chat.set_user_input("Hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("You said: Hello", timeout=10_000)
 
     # Wait for the first bookmark URL so we can tell it apart from the second.
-    # (enable_bookmarking with bookmark_on="response" updates the URL after
-    # each response, but that update round-trips through a client -> server
-    # messages snapshot and is NOT synchronous with the reply becoming
-    # visible -- so it can lag behind expect_latest_message above.)
+    # enable_bookmarking with bookmark_on="response" updates the URL after
+    # server-side response settlement, which can lag behind rendering.
     page.wait_for_url(re.compile(r"\?_state_id_="), timeout=10_000)
     first_bookmark_url = page.url
 
     # Send second message and wait for response
     chat.set_user_input("World")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("You said: World", timeout=10_000)
 

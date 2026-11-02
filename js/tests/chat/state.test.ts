@@ -56,6 +56,94 @@ function makeAssistantMsg(
 }
 
 describe("chatReducer", () => {
+  it("removes only the rejected id, preserving newer rows and older streams", () => {
+    let state = chatReducer(initialState, {
+      type: "INPUT_SENT",
+      id: "A",
+      content: "same",
+      role: "user",
+      awaitResponse: false,
+    })
+    state = chatReducer(state, {
+      type: "INPUT_SENT",
+      id: "B",
+      content: "same",
+      role: "user",
+      awaitResponse: false,
+    })
+    const stream = makeAssistantMsg({ id: "older-stream", streaming: true })
+    state = { ...state, streamingMessage: stream }
+    const removed = chatReducer(state, { type: "remove_message", id: "A" })
+    expect(removed.messages.map((m) => m.id)).toEqual(["B"])
+    expect(removed.streamingMessage).toBe(stream)
+    expect(chatReducer(removed, { type: "remove_message", id: "A" })).toEqual(
+      removed,
+    )
+    const refreshed = chatReducer(removed, {
+      type: "update_exchange_metadata",
+      data: { 0: { status: "pending", retryable: false } },
+    })
+    const siblings = chatReducer(refreshed, {
+      type: "update_siblings",
+      data: { 0: { index: 1, total: 2 } },
+    })
+    expect(siblings.messages[0]?.id).toBe("B")
+    expect(siblings.messages[0]?.exchange).toEqual({
+      status: "pending",
+      retryable: false,
+    })
+    expect(siblings.messages[0]?.siblings).toEqual({ index: 1, total: 2 })
+  })
+
+  it("a successful retry fully replaces stale error exchange metadata", () => {
+    let state = chatReducer(initialState, {
+      type: "INPUT_SENT",
+      content: "hi",
+      role: "user",
+      awaitResponse: false,
+    })
+    state = chatReducer(state, {
+      type: "update_exchange_metadata",
+      data: {
+        0: {
+          status: "error",
+          retryable: true,
+          error_message: "The response stream could not be completed.",
+        },
+      },
+    })
+    expect(state.messages[0]?.exchange).toEqual({
+      status: "error",
+      retryable: true,
+      error_message: "The response stream could not be completed.",
+    })
+
+    // The server's authoritative ok metadata must fully replace the stale
+    // error: no lingering error_message, no lingering retryable.
+    const retried = chatReducer(state, {
+      type: "update_exchange_metadata",
+      data: { 0: { status: "ok", retryable: false } },
+    })
+    expect(retried.messages[0]?.exchange).toEqual({
+      status: "ok",
+      retryable: false,
+    })
+  })
+
+  it("removing loading twice preserves active streaming", () => {
+    const state = {
+      ...chatReducer(initialState, {
+        type: "INPUT_SENT",
+        content: "hi",
+        role: "user",
+      }),
+      streamingMessage: makeAssistantMsg({ streaming: true }),
+    }
+    const once = chatReducer(state, { type: "remove_loading" })
+    expect(chatReducer(once, { type: "remove_loading" })).toEqual(once)
+    expect(once.streamingMessage).toBe(state.streamingMessage)
+  })
+
   describe("INPUT_SENT", () => {
     it("INPUT_SENT stores attached image data URLs on the user message", () => {
       const next = chatReducer(initialState, {
@@ -705,6 +793,7 @@ describe("chatReducer", () => {
         enabled: true,
         conversations,
         activeId: "conv-1",
+        readOnly: false,
       })
     })
 
@@ -1663,6 +1752,7 @@ describe("chatReducer", () => {
         enabled: true,
         conversations,
         activeId: "c1",
+        readOnly: false,
       })
     })
 
@@ -1679,6 +1769,7 @@ describe("chatReducer", () => {
             },
           ],
           activeId: "old",
+          readOnly: true,
         },
       })
       const next = chatReducer(state, {
@@ -1691,6 +1782,7 @@ describe("chatReducer", () => {
         enabled: true,
         conversations: [],
         activeId: null,
+        readOnly: false,
       })
     })
 
@@ -1718,6 +1810,124 @@ describe("chatReducer", () => {
         active_id: null,
       })
       expect(next.drawer).toBe(artifact)
+    })
+
+    it("clears a stale explanation when an older server sends a writable update", () => {
+      const failed = chatReducer(initialState, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c1",
+        active_read_only: true,
+        active_read_only_reason: "app_restore_failed",
+      })
+      expect(failed.history.readOnlyReason).toBe("app_restore_failed")
+      const writable = chatReducer(failed, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c2",
+      })
+      expect(writable.history.readOnly).toBe(false)
+      expect(writable.history.readOnlyReason).toBeUndefined()
+    })
+
+    it("sets readOnly from active_read_only", () => {
+      const next = chatReducer(initialState, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c1",
+        active_read_only: true,
+      })
+      expect(next.history.readOnly).toBe(true)
+    })
+
+    it("treats absent or false active_read_only as writable", () => {
+      const readOnlyState = chatReducer(initialState, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c1",
+        active_read_only: true,
+      })
+      expect(readOnlyState.history.readOnly).toBe(true)
+
+      // Older servers never send the flag: absent must clear it.
+      const absent = chatReducer(readOnlyState, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c1",
+      })
+      expect(absent.history.readOnly).toBe(false)
+
+      const explicitFalse = chatReducer(readOnlyState, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c1",
+        active_read_only: false,
+      })
+      expect(explicitFalse.history.readOnly).toBe(false)
+    })
+
+    it("keeps readOnly independent from inputDisabled", () => {
+      const readOnlyState = chatReducer(initialState, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c1",
+        active_read_only: true,
+      })
+      expect(readOnlyState.history.readOnly).toBe(true)
+      expect(readOnlyState.inputDisabled).toBe(false)
+
+      const disabledState = chatReducer(makeState({ inputDisabled: true }), {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: null,
+      })
+      expect(disabledState.history.readOnly).toBe(false)
+      expect(disabledState.inputDisabled).toBe(true)
+    })
+
+    it("retains readOnly across stream start and end", () => {
+      const readOnlyState = chatReducer(initialState, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c1",
+        active_read_only: true,
+      })
+      const streaming = chatReducer(readOnlyState, {
+        type: "chunk_start",
+        message: {
+          role: "assistant",
+          segments: [{ content: "Hel", content_type: "markdown" }],
+        },
+      })
+      expect(streaming.history.readOnly).toBe(true)
+      expect(streaming.inputDisabled).toBe(true)
+
+      const ended = chatReducer(streaming, { type: "chunk_end" })
+      expect(ended.history.readOnly).toBe(true)
+      expect(ended.inputDisabled).toBe(false)
+    })
+
+    it("retains readOnly across clear", () => {
+      const readOnlyState = chatReducer(initialState, {
+        type: "history_update",
+        enabled: true,
+        conversations: [],
+        active_id: "c1",
+        active_read_only: true,
+      })
+      const cleared = chatReducer(readOnlyState, { type: "clear" })
+      expect(cleared.messages).toEqual([])
+      expect(cleared.history).toBe(readOnlyState.history)
+      expect(cleared.history.readOnly).toBe(true)
     })
   })
 

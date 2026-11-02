@@ -9,6 +9,10 @@ def test_user_input_handler_is_registered():
     assert "shinychat.userInput" in input_handlers
 
 
+def test_messages_input_handler_is_not_registered():
+    assert "shinychat.messages" not in input_handlers
+
+
 def _get_handler() -> Callable[[Any, Any, Any], Any]:
     return cast(
         Callable[[Any, Any, Any], Any], input_handlers["shinychat.userInput"]
@@ -82,3 +86,14 @@ def test_user_input_handler_rejects_unsupported_attachment_mime():
     }
     with pytest.raises(ValueError, match="unsupported MIME type"):
         handler(value, "chat_user_input", None)
+
+
+def test_user_input_handler_preserves_optional_client_id_and_accepts_legacy_input():
+    handler = _get_handler()
+    assert handler(
+        {"text": "hi", "client_message_id": "client-A"}, "chat_user_input", None
+    ) == {"text": "hi", "attachments": [], "client_message_id": "client-A"}
+    assert handler("legacy", "chat_user_input", None) == {
+        "text": "legacy",
+        "attachments": [],
+    }

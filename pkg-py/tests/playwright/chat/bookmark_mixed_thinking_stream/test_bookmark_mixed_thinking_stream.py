@@ -33,6 +33,7 @@ def test_mixed_thinking_survives_bookmark(
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     chat.set_user_input("hello")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     _assert_all_three(page)
 

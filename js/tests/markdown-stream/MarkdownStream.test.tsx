@@ -24,6 +24,7 @@ import {
   MarkdownStream,
   type MarkdownStreamApi,
 } from "../../src/markdown-stream/MarkdownStream"
+import { STREAM_IDLE_MS } from "../../src/markdown/useStreamIdle"
 import { useAutoScroll } from "../../src/markdown/useAutoScroll"
 import type { HtmlBlock } from "../../src/chat/html-block-model"
 import type { WebActivityBlock } from "../../src/chat/web-activity-model"
@@ -209,6 +210,35 @@ describe("MarkdownStream", () => {
     expect(container.querySelector("h2")).not.toBeNull()
     expect(container.querySelector("[data-forged]")).toBeNull()
     expect(container.textContent).toContain("<shiny-chat-raw-html>")
+  })
+
+  it("shows a single waiting dot when a whitespace-only stream stalls", () => {
+    vi.useFakeTimers()
+    try {
+      let api: MarkdownStreamApi | undefined
+      const { container } = render(
+        <MarkdownStream
+          initialStreaming
+          initialContentType="html"
+          onApiReady={(value) => {
+            api = value
+          }}
+        />,
+      )
+
+      act(() => {
+        api?.appendContent("\n\n", true)
+      })
+      // Past STREAM_IDLE_MS, both the awaiting-content dot and
+      // MarkdownContent's stalled-stream dot want to render. Only one may.
+      act(() => {
+        vi.advanceTimersByTime(STREAM_IDLE_MS + 100)
+      })
+
+      expect(container.querySelectorAll(".markdown-stream-dot")).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("renders adjacent markdown and trusted HTML segments", () => {

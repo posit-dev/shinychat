@@ -19,6 +19,7 @@ def test_image_input_forwards_to_handler(
     expect(page.locator(".shiny-chat-input-thumbnail img")).to_have_count(1)
 
     chat.set_user_input("what is this?")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
 
     # Server handler received exactly one image.

@@ -5,6 +5,11 @@ export type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 
 export type ContentType = "markdown" | "html" | "text" | "thinking"
 
+export type ReadOnlyReason =
+  | "model_unavailable"
+  | "app_restore_failed"
+  | "interrupted"
+
 export interface ConversationMeta {
   id: string
   title: string
@@ -228,6 +233,7 @@ export type ChatAction =
       attachment_mode?: "append" | "set"
     }
   | { type: "remove_loading" }
+  | { type: "remove_message"; id: string }
   | { type: "update_cancel"; enable_cancel: boolean }
   | { type: "update_upload"; enable_upload: boolean }
   | {
@@ -260,6 +266,14 @@ export type ChatAction =
       enabled: boolean
       conversations: ConversationMeta[]
       active_id: string | null
+      /**
+       * True when the active conversation was restored without a usable
+       * model context: viewable but not continuable. Absent/false means
+       * writable (older servers never send it).
+       */
+      active_read_only?: boolean
+      active_read_only_reason?: ReadOnlyReason
+      transition_protocol?: string
     }
   | {
       type: "history_navigate"
@@ -274,6 +288,25 @@ export type ChatAction =
       type: "update_siblings"
       data: Record<number, { index: number; total: number }>
     }
+  | {
+      type: "update_exchange_metadata"
+      data: Record<
+        number,
+        {
+          status: "pending" | "ok" | "error" | "cancelled"
+          retryable: boolean
+          error_message?: string
+        }
+      >
+    }
+  | {
+      type: "history_edit_projection"
+      requestId: string
+      index: number
+      content: string
+      attachments: AttachmentPayload[]
+    }
+  | { type: "history_transition_complete"; requestId: string }
 
 export type ShinyChatEnvelope = {
   id: string
@@ -300,6 +333,7 @@ export type ShinyClientMessage = {
 
 /** The user's submission: text plus any attachments, sent as one input value. */
 export type UserInputValue = {
+  client_message_id?: string
   text: string
   attachments: AttachmentPayload[]
 }
@@ -309,9 +343,8 @@ export interface ChatTransport {
   /**
    * Send the user's submission as the type-tagged `shinychat.userInput` value
    * for the given input id (read server-side as `input$<id>`). The shape
-   * signals the upload mode: a bare `string` when the attachment affordance is
-   * disabled (back-compatible with the historical string-valued input), or a
-   * `{text, attachments}` composite when it is enabled.
+   * includes the optimistic row ID for capture-rejection correlation. Legacy
+   * callers may still send a bare string without correlation.
    */
   sendInput(id: string, value: string | UserInputValue): void
   sendCancel(id: string): void
@@ -320,22 +353,31 @@ export interface ChatTransport {
     command: string,
     userText: string,
     echo: boolean,
+    client_message_id?: string,
   ): void
   onMessage(id: string, callback: (action: ChatAction) => void): () => void
   sendHistorySelect(id: string, convId: string): void
-  sendHistoryNew(id: string): void
+  sendHistoryNew(id: string, requestId?: string): void
   sendHistoryRename(id: string, convId: string, title: string): void
-  sendHistoryDelete(id: string, convId: string): void
+  sendHistoryDelete(id: string, convId: string, requestId?: string): void
   sendMessageEdit(
     id: string,
     index: number,
     content: string,
     attachments?: AttachmentPayload[],
+    requestId?: string,
   ): void
   sendMessageNavigate(
     id: string,
     index: number,
     direction: "prev" | "next",
+    requestId?: string,
+  ): void
+  sendMessageResubmit(
+    id: string,
+    index: number,
+    kind: "retry" | "regenerate",
+    requestId: string,
   ): void
 }
 

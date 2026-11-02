@@ -27,6 +27,11 @@ from ._typing_extensions import NotRequired, TypedDict, TypeGuard
 from ._utils_types import DEPRECATED, DEPRECATED_TYPE, MISSING, MISSING_TYPE
 
 Role = Literal["assistant", "user", "system"]
+# Why a restored conversation is view-only: its saved model context is
+# unavailable, an app restore failed, or its checkpoint is unfinished/invalid.
+ReadOnlyReason = Literal[
+    "model_unavailable", "app_restore_failed", "interrupted"
+]
 
 SerializedDep = dict[str, object]
 
@@ -307,6 +312,11 @@ class UpdateInputAction(TypedDict):
     attachment_mode: NotRequired[Literal["append", "set"]]
 
 
+class RemoveMessageAction(TypedDict):
+    type: Literal["remove_message"]
+    id: str
+
+
 class RemoveLoadingAction(TypedDict):
     type: Literal["remove_loading"]
 
@@ -390,6 +400,15 @@ class HistoryUpdateAction(TypedDict):
     enabled: bool
     conversations: list[dict[str, Any]]  # ConversationMeta dumps
     active_id: str | None
+    transition_protocol: NotRequired[Literal["completion-v1", "completion-v2"]]
+    # True only while the active record is view-only (its saved model
+    # context is unavailable, or its app state could not be restored);
+    # absent/false means writable, so older peers that never send it keep
+    # the writable default.
+    active_read_only: NotRequired[bool]
+    # Explanation only, emitted solely alongside ``active_read_only``. It
+    # never gates ordering; absent reasons are treated as the model case.
+    active_read_only_reason: NotRequired[ReadOnlyReason]
 
 
 class HistoryNavigateAction(TypedDict):
@@ -399,9 +418,33 @@ class HistoryNavigateAction(TypedDict):
     reload: NotRequired[bool]
 
 
+class HistoryTransitionCompleteAction(TypedDict):
+    type: Literal["history_transition_complete"]
+    requestId: str
+
+
+class HistoryEditProjectionAction(TypedDict):
+    type: Literal["history_edit_projection"]
+    requestId: str
+    index: int
+    content: str
+    attachments: list[dict[str, Any]]
+
+
 class UpdateSiblingsAction(TypedDict):
     type: Literal["update_siblings"]
     data: dict[int, dict[str, int]]
+
+
+class ExchangeMetadata(TypedDict):
+    status: Literal["pending", "ok", "error", "cancelled"]
+    retryable: bool
+    error_message: NotRequired[str]
+
+
+class UpdateExchangeMetadataAction(TypedDict):
+    type: Literal["update_exchange_metadata"]
+    data: dict[int, ExchangeMetadata]
 
 
 ChatAction = Union[
@@ -413,6 +456,7 @@ ChatAction = Union[
     ClearAction,
     UpdateInputAction,
     RemoveLoadingAction,
+    RemoveMessageAction,
     UpdateCancelAction,
     UpdateUploadAction,
     GreetingAction,
@@ -427,7 +471,10 @@ ChatAction = Union[
     DrawerUpdateAction,
     HistoryUpdateAction,
     HistoryNavigateAction,
+    HistoryTransitionCompleteAction,
+    HistoryEditProjectionAction,
     UpdateSiblingsAction,
+    UpdateExchangeMetadataAction,
 ]
 
 
@@ -449,6 +496,8 @@ class ChatMessageDict(TypedDict):
     role: Role
     html_deps: NotRequired[list[SerializedDep]]
     attachments: NotRequired[list[Attachment]]
+    status: NotRequired[Literal["cancelled", "error"]]
+    error: NotRequired[dict[str, str]]
 
 
 class ChatMessage:

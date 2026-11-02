@@ -7,9 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking changes
+
+* Conversation history has been rewritten so that saved model context and application values follow the selected exchange and branch. Existing conversations continue to load and are converted to a new format when next saved. If possible, we recommend backing up the complete conversation history directory before upgrading: converted history cannot be read by shinychat v0.7.2, so downgrading requires restoring your backup and discarding any later changes. Apps with custom conversation stores must support the new record format. See [Conversation history](#conversation-history) below for an overview and [Migrating to v0.8.0](docs/migrating-to-0.8.0.qmd) for upgrade instructions. (#431, #433, #437)
+
+### New features
+
+* Text file attachments now use the model provider's native document support when available. (#415)
+
+### Changes
+
+* Streamed responses now appear smoothly instead of in abrupt chunks. Stopping a response reveals any remaining text immediately, and the trailing activity dot appears only while waiting for more text. (#411)
+
+* `Chat.append_message_stream()` now starts its stream before returning. Calling `append_message()` or starting another stream while a response is streaming now raises `RuntimeError` instead of queuing the message. Apps that send follow-up messages should wait for the stream to finish; see the [migration guide](docs/migrating-to-0.8.0.qmd). (#417, #418)
+
+### Conversation history
+
+* Editing, retrying, and switching branches now restore both the model context and the application values saved for that position. `@chat.history.on_save` can run multiple times per exchange; keep callbacks lightweight. Use `@chat.history.on_restore` to restore Shiny inputs and provide defaults when no values were saved. With bookmark restore enabled, switching conversations no longer reloads the page, so apps must restore inputs in this callback. See the [migration guide](docs/migrating-to-0.8.0.qmd). (#433, #437)
+
+* The chat now waits for history to finish restoring before accepting submissions. Apps must also wait before appending messages: during restore, `Chat.append_message()` warns and discards the message, while `Chat.append_message_stream()` and `Chat.message_stream_context()` raise `RuntimeError`. Use `Chat(greeting=...)` for welcome text. (#433)
+
+* Streamed responses are saved after they finish, fail, or are cancelled. An abrupt server shutdown can still lose the unfinished question and answer. If a conversation was interrupted or its saved model or application state cannot be restored, you can browse saved messages read-only and start a new chat to continue. History errors now show a user-friendly message, with details reported to app authors as Python warnings. (#433, #437, #439)
+
+* If model state cannot be saved before sending a message, the message is not sent or resent automatically, and previous history is kept. Starting a new chat now works even if the current model state cannot be saved; previously, that failure could prevent the reset. The app receives a warning, and previously saved history is kept. (#433, #439)
+
+* Failed or cancelled responses now show a Retry control immediately, without reopening the conversation. Read-only conversations do not show it. (#444)
+
+* `Chat.clear_messages()` now raises `ValueError` when conversation history is enabled. Use `await chat.client.new_chat()` to start a new conversation instead. With `history=False` or no client, `clear_messages()` still clears the displayed messages. (#445)
+
 ### Bug fixes
 
+* Expanding a running tool call's row in a tool group now shows its arguments. Previously the panel stayed empty until the call finished. (#424)
+
 * Stopping an in-progress response now returns focus to the chat input, even inside a Shiny modal. During streaming, Escape dismisses an open slash-command menu or history drawer first; a subsequent Escape cancels the response without closing the modal. (thanks @taekop, #416)
+
+* Cancelling a response no longer leaves later messages stuck waiting for it to finish. (#418)
 
 ## [0.7.2] - 2026-09-18
 

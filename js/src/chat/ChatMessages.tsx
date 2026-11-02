@@ -14,8 +14,11 @@ export interface ChatMessagesProps {
     attachments: AttachmentPayload[],
   ) => void
   onNavigate?: (index: number, direction: "prev" | "next") => void
+  onRetry?: (index: number) => void
   siblingNavigationPending?: boolean
   disabled?: boolean
+  /** Read-only conversation: hide edit/retry; sibling navigation stays usable. */
+  readOnly?: boolean
   inputId: string
   submitKey?: SubmitKey
   uploadAccept?: string[]
@@ -29,8 +32,10 @@ export const ChatMessages = memo(function ChatMessages({
   iconAssistant,
   onEdit,
   onNavigate,
+  onRetry,
   siblingNavigationPending,
   disabled,
+  readOnly,
   inputId,
   submitKey,
   uploadAccept,
@@ -59,8 +64,10 @@ export const ChatMessages = memo(function ChatMessages({
             iconAssistant={iconAssistant}
             onEdit={onEdit}
             onNavigate={onNavigate}
+            onRetry={onRetry}
             siblingNavigationPending={siblingNavigationPending}
             disabled={disabled}
+            readOnly={readOnly}
             inputId={inputId}
             submitKey={submitKey}
             uploadAccept={uploadAccept}

@@ -7,22 +7,7 @@ from ._chat_bookmark import is_chatlas_chat_client, serialize_chatlas_turn
 from ._chat_client import ChatClient
 from ._chat_normalize import normalize_message
 from ._chat_types import ChatMessage, Role
-from ._typing_extensions import NotRequired, TypedDict
-
-
-class TurnDict(TypedDict):
-    """A JSON-serialized chat turn dict.
-
-    Matches the shape of ``chatlas.Turn.model_dump(mode="json")`` and the
-    plain dicts that non-chatlas clients return from ``get_turns()``. The
-    keys this codebase reads are ``role`` (a string), ``contents``
-    (chatlas content-item dicts), and ``content`` (plain-text content on
-    generic dicts). Extra keys are allowed at runtime.
-    """
-
-    role: NotRequired[str]
-    contents: NotRequired[list[Any]]
-    content: NotRequired[Any]
+from ._history_types import TurnDict
 
 
 @runtime_checkable
@@ -33,6 +18,10 @@ class ClientWithTurns(Protocol):
     `get_turns()` must return JSON-serializable dicts (or objects with a
     `model_dump(mode="json")`); `set_turns()` must accept what `get_turns()`
     returned after a JSON round trip.
+
+    A client that also exposes a writable `system_prompt` must treat an
+    empty string as no system prompt. History normalizes a None prompt to
+    that clear marker; generic clients receive it unchanged on restore.
     """
 
     def get_turns(self) -> list[Any]: ...
@@ -51,15 +40,41 @@ class TurnsAdapter:
             return self._client.value
         return self._client
 
-    def get_turns_json(self) -> list[TurnDict]:
+    def get_turns_json(
+        self, *, include_system_prompt: bool = False
+    ) -> list[TurnDict]:
         raw = self._turns_client()
-        turns = raw.get_turns()
         if is_chatlas_chat_client(raw):
-            return cast(
-                list[TurnDict], [serialize_chatlas_turn(t) for t in turns]
-            )
-        # Non-chatlas turns are turn dicts by construction (see TurnDict).
-        return list(turns)
+            turns = raw.get_turns(include_system_prompt=include_system_prompt)
+            serialized: list[dict[str, Any]] = []
+            for turn in turns:
+                serialized.append(serialize_chatlas_turn(turn))
+            return cast(list[TurnDict], serialized)
+        turns = raw.get_turns()
+        serialized = []
+        for turn in turns:
+            if hasattr(turn, "model_dump"):
+                serialized.append(turn.model_dump(mode="json"))
+            else:
+                serialized.append(turn)
+        return cast(list[TurnDict], serialized)
+
+    def is_chatlas(self) -> bool:
+        return is_chatlas_chat_client(self._turns_client())
+
+    def has_system_prompt(self) -> bool:
+        return hasattr(self._turns_client(), "system_prompt")
+
+    def get_system_prompt(self) -> str | None:
+        return self._turns_client().system_prompt  # type: ignore[attr-defined]
+
+    def set_system_prompt(self, prompt: str | None) -> None:
+        raw = self._turns_client()
+        if is_chatlas_chat_client(raw) and prompt == "":
+            # Chatlas's None API removes the system turn; an empty string
+            # creates a system turn instead. Generic clients keep the string.
+            prompt = None
+        raw.system_prompt = prompt  # type: ignore[attr-defined]
 
     def get_turns_grouped(self) -> list[list[TurnDict]]:
         turns = self.get_turns_json()
@@ -202,7 +217,6 @@ def normalize_turn_group(group: list[TurnDict]) -> ChatMessage | None:
         try:
             turns = [Turn.model_validate(t) for t in group]
             contents = [c for turn in turns for c in turn.contents]
-            # The group's first turn decides the role (mirrors R's ellmer_turn_effective_role).
             merged = Turn(role=turns[0].role, contents=contents)
             msg = normalize_message(merged)
         except Exception as e:
@@ -216,7 +230,6 @@ def normalize_turn_group(group: list[TurnDict]) -> ChatMessage | None:
         if not msg.content and not msg.blocks:
             return None
         return msg
-    # Generic dict turns: join defensively if a hand-built group has more.
     content = "\n\n".join(
         text for t in group if (text := str(t.get("content", "")))
     )

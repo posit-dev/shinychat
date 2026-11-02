@@ -111,10 +111,10 @@ test_that("replay_ui() repairs attachment content in existing records", {
   )
 
   attachment <- list(
-    mime = "text/plain",
-    name = "notes.txt",
-    size = 5L,
-    data_url = "data:text/plain;base64,aGVsbG8="
+    mime = "image/png",
+    name = "plot.png",
+    size = 3L,
+    data_url = "data:image/png;base64,QUJD"
   )
   record <- new_conversation_record(title = "t")
   record$nodes$n_0001 <- list(
@@ -127,11 +127,9 @@ test_that("replay_ui() repairs attachment content in existing records", {
       segments = list(list(
         content = paste0(
           "See attached\n\n",
-          "<file-attachment name=\"notes.txt\" type=\"text/plain\">\n",
-          "hello\n",
-          "</file-attachment>"
+          "<img src=\"data:image/png;base64,QUJD\">"
         ),
-        content_type = "markdown"
+        content_type = "html"
       )),
       attachments = list(attachment)
     ))
@@ -150,7 +148,7 @@ test_that("replay_ui() repairs attachment content in existing records", {
     restored$segments,
     list(list(
       content = "See attached",
-      content_type = "markdown"
+      content_type = "html"
     ))
   )
 })

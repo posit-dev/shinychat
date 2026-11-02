@@ -249,7 +249,7 @@ ui <- page_fillable(
       card_header("Chat with Claude"),
       chat_ui(
         "claude",
-        greeting = "Hi! Use this chat interface to chat with Anthropic's `claude-3-5-sonnet`."
+        greeting = "Hi! Use this chat interface to chat with Anthropic's `claude-sonnet-5-5`."
       )
     ),
     card(
@@ -263,7 +263,7 @@ ui <- page_fillable(
 )
 
 server <- function(input, output, session) {
-  claude <- ellmer::chat_anthropic(model = "claude-3-5-sonnet-latest") # Requires ANTHROPIC_API_KEY
+  claude <- ellmer::chat_anthropic(model = "claude-sonnet-5-5") # Requires ANTHROPIC_API_KEY
   openai <- ellmer::chat_openai(model = "gpt-4o") # Requires OPENAI_API_KEY
 
   chat_server("claude", claude)

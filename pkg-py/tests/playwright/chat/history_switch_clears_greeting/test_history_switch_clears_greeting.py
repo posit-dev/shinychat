@@ -26,6 +26,7 @@ def test_greeting_clears_when_switching_to_old_conversation(
     chat.expect_greeting("Welcome", timeout=30_000)
 
     chat.set_user_input("first conversation")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: first conversation", timeout=30_000)
 
@@ -39,6 +40,7 @@ def test_greeting_clears_when_switching_to_old_conversation(
     expect(page.locator(".shiny-chat-history-drawer")).not_to_be_visible()
 
     chat.set_user_input("second conversation")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: second conversation", timeout=30_000)
 

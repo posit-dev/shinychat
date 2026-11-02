@@ -5,7 +5,8 @@ import warnings
 from typing import Any, Awaitable, Callable, Union, cast
 
 from ._chat_bookmark import is_chatlas_chat_client
-from ._history_client import TurnDict, turn_fallback_markdown
+from ._history_client import turn_fallback_markdown
+from ._history_types import TurnDict
 from ._utils import wrap_async
 
 TitleFn = Callable[
@@ -49,17 +50,17 @@ async def generate_title(
         return None
 
 
-def fallback_title(turns: list[TurnDict]) -> str:
-    for turn in turns:
-        if turn.get("role") != "user":
-            continue
-        text = " ".join(turn_fallback_markdown(turn).split())
-        if not text:
-            continue
-        if len(text) <= MAX_FALLBACK_LEN:
-            return text
-        return text[: MAX_FALLBACK_LEN - 3] + "..."
-    return "New chat"
+def _truncate_fallback(text: str) -> str:
+    if len(text) <= MAX_FALLBACK_LEN:
+        return text
+    return text[: MAX_FALLBACK_LEN - 3] + "..."
+
+
+def fallback_title_from_text(text: str) -> str:
+    text = " ".join(text.split())
+    if not text:
+        return "New chat"
+    return _truncate_fallback(text)
 
 
 async def chatlas_one_shot_title(

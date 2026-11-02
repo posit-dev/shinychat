@@ -37,6 +37,14 @@ class _MockSession:
     def _increment_busy_count(self) -> None:
         pass
 
+    def _decrement_busy_count(self) -> None:
+        pass
+
+    async def _unhandled_error(self, e: Exception) -> None:
+        # py-shiny 1.7.0 routes effect errors here instead of killing the
+        # flush; swallow in the mock (a real session logs and closes).
+        pass
+
     def is_stub_session(self) -> bool:
         return True
 
@@ -347,6 +355,12 @@ def test_chat_ui_enable_cancel_unset_omits_attribute():
     tag = chat_ui("myid")
     html = tag.get_html_string()
     assert "enable-cancel" not in html
+
+
+def test_chat_ui_seeds_completion_v2_history_transition_protocol():
+    html = chat_ui("myid").get_html_string()
+    attr = 'data-shinychat-history-transition-protocol="completion-v2"'
+    assert html.count(attr) == 1
 
 
 def test_chat_ui_show_thinking_after_s_attribute():

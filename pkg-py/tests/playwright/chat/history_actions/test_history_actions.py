@@ -22,6 +22,7 @@ def test_history_rename_delete_search(
 
     # Send a message to create a saved conversation.
     chat.set_user_input("about penguins")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
     chat.expect_latest_message("echo: about penguins", timeout=30_000)
 

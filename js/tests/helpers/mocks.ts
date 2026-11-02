@@ -22,6 +22,7 @@ export function createMockTransport(): ChatTransport & {
     sendHistoryDelete: vi.fn(),
     sendMessageEdit: vi.fn(),
     sendMessageNavigate: vi.fn(),
+    sendMessageResubmit: vi.fn(),
     onMessage(id, callback) {
       if (!listeners.has(id)) listeners.set(id, new Set())
       listeners.get(id)!.add(callback)

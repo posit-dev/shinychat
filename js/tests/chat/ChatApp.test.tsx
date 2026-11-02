@@ -14,6 +14,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, screen, act, fireEvent } from "@testing-library/react"
 import { ChatApp } from "../../src/chat/ChatApp"
+import { ShinyTransport } from "../../src/transport/shiny-transport"
 import {
   createMockTransport,
   createMockShinyLifecycle,
@@ -23,6 +24,53 @@ import {
 // Stub window.Shiny for transport code that might reference it
 beforeEach(() => {
   installShinyWindowStub()
+})
+
+describe("user submission", () => {
+  it("sends one user-input event and no messages snapshot", async () => {
+    const transport = new ShinyTransport()
+    const shinyLifecycle = createMockShinyLifecycle()
+
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={shinyLifecycle}
+        elementId="test-chat"
+        inputId="chat_user_input"
+      />,
+    )
+
+    const handler = vi
+      .mocked(window.Shiny!.addCustomMessageHandler)
+      .mock.calls.find(([name]) => name === "shinyChatMessage")?.[1]
+    expect(handler).toBeDefined()
+
+    const setInputValue = window.Shiny?.setInputValue
+    if (!setInputValue) throw new Error("Shiny setInputValue is unavailable")
+    const mockSetInputValue = vi.mocked(setInputValue)
+    mockSetInputValue.mockClear()
+
+    await act(async () => {
+      await handler?.({
+        id: "test-chat",
+        action: {
+          type: "update_input",
+          value: "hello",
+          submit: true,
+        },
+      })
+    })
+
+    expect(mockSetInputValue).toHaveBeenCalledTimes(1)
+    expect(mockSetInputValue).toHaveBeenCalledWith(
+      "chat_user_input:shinychat.userInput",
+      expect.objectContaining({ text: "hello", seq: expect.any(Number) }),
+      { priority: "event" },
+    )
+    expect(
+      mockSetInputValue.mock.calls.some(([id]) => id.includes("_messages")),
+    ).toBe(false)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -241,11 +289,12 @@ describe("Issue #4: single transport subscription", () => {
     })
 
     // transport.sendInput should have been called via the container ref.
-    // Upload is not enabled here, so the wire shape is a bare string.
-    expect(transport.sendInput).toHaveBeenCalledWith(
-      "test-input",
-      "submitted text",
-    )
+    // Correlation is sent even without the upload affordance.
+    expect(transport.sendInput).toHaveBeenCalledWith("test-input", {
+      text: "submitted text",
+      attachments: [],
+      client_message_id: expect.any(String),
+    })
 
     // After submit, the old value should be restored
     expect(editor.textContent).toBe("existing text")

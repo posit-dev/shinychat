@@ -15,6 +15,7 @@ def test_auto_chat_cancel_uses_stream_controller(
     expect(chat.loc).to_be_visible(timeout=30_000)
 
     chat.set_user_input("cancel this response")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")
 
     cancel_button = chat.loc_input_container.locator(

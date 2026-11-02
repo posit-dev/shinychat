@@ -1,7 +1,7 @@
 import base64
 
 import pytest
-from chatlas.types import ContentPDF, ContentText
+from chatlas.types import ContentDocument, ContentPDF
 from shinychat._attachments import (
     DEFAULT_MAX_ATTACHMENT_SIZE,
     SUPPORTED_ATTACHMENT_TYPES,
@@ -146,7 +146,7 @@ def test_attachment_to_content_unsupported_type_raises():
         attachment_to_content(att)
 
 
-def test_attachment_to_content_text_wraps_in_file_attachment():
+def test_attachment_to_content_text_builds_document_content():
     md = "# Title\n\nbody"
     b64 = base64.b64encode(md.encode()).decode()
     att = Attachment(
@@ -155,36 +155,37 @@ def test_attachment_to_content_text_wraps_in_file_attachment():
         name="notes.md",
     )
     content = attachment_to_content(att)
-    assert isinstance(content, ContentText)
-    assert content.text == (
-        '<file-attachment name="notes.md" type="text/markdown">\n'
-        f"{md}\n"
-        "</file-attachment>"
-    )
+    assert isinstance(content, ContentDocument)
+    assert content.mime_type == "text/markdown"
+    assert content.filename == "notes.md"
+    assert content.data == md.encode()
 
 
-def test_attachment_to_content_text_escapes_attributes():
-    b64 = base64.b64encode(b"x").decode()
+def test_attachment_to_content_text_names_unnamed_deterministically():
+    # Unnamed attachments must not get chatlas's counter-based auto-name: the
+    # history strip re-derives the rendered content and matches it against the
+    # stored segment text, which a changing name would never match.
     att = Attachment(
         mime="text/plain",
-        data_url=f"data:text/plain;base64,{b64}",
-        name='a"&<b.txt',
+        data_url="data:text/plain;base64,aGVsbG8=",
+        name="",
     )
-    content = attachment_to_content(att)
-    assert isinstance(content, ContentText)
-    assert 'name="a&quot;&amp;&lt;b.txt"' in content.text
+    for _ in range(2):
+        content = attachment_to_content(att)
+        assert isinstance(content, ContentDocument)
+        assert content.filename == "file"
 
 
-def test_attachment_to_content_text_non_utf8_does_not_raise():
-    b64 = base64.b64encode(b"\xff\xfe bad bytes").decode()
+def test_attachment_to_content_text_malformed_base64_raises_clean_error():
     att = Attachment(
         mime="text/plain",
-        data_url=f"data:text/plain;base64,{b64}",
-        name="weird.txt",
+        data_url="data:text/plain;base64,%%%not-base64%%%",
+        name="broken.txt",
     )
-    content = attachment_to_content(att)
-    assert isinstance(content, ContentText)
-    assert "�" in content.text
+    with pytest.raises(
+        ValueError, match="Malformed base64 payload in data URL"
+    ):
+        attachment_to_content(att)
 
 
 def test_attachment_to_content_pdf_malformed_base64_raises_clean_error():
@@ -255,6 +256,24 @@ def test_validate_attachments_rejects_malformed_data_url_header(
     )
 
     with pytest.raises(ValueError, match="data URL header must be"):
+        validate_attachments([attachment])
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "abc",  # valid characters, invalid length
+        "a@bc",  # valid length and padding, invalid characters
+    ],
+)
+def test_validate_attachments_rejects_malformed_base64_payload(payload: str):
+    attachment = Attachment(
+        mime="text/plain",
+        data_url=f"data:text/plain;base64,{payload}",
+        name="bad.txt",
+    )
+
+    with pytest.raises(ValueError, match="Malformed base64 payload"):
         validate_attachments([attachment])
 
 

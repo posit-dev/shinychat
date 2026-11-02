@@ -52,6 +52,7 @@ def test_desktop_navigation_streaming_and_history_auto_open(
 
     expect(chat.loc_input).to_be_visible(timeout=TIMEOUT)
     chat.set_user_input("stream while hidden")
+    expect(chat.loc_input_button).to_be_enabled(timeout=TIMEOUT)
     chat.send_user_input()
     chat.set_user_input("preserved draft")
 
@@ -69,8 +70,13 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     resizer = page_chat.loc.get_by_role("separator", name="Resize sidebar")
     expect(resizer).to_be_visible()
     resizer.press("End")
-    expect(resizer).to_have_attribute(
-        "aria-valuenow", resizer.get_attribute("aria-valuemax")
+    # aria-valuemax is recomputed from live layout (ResizeObserver / sidebar
+    # MutationObserver), so a value read before this assertion can go stale
+    # within its retry window. Poll the element for self-consistency instead.
+    page.wait_for_function(
+        "(el) => el.getAttribute('aria-valuenow') === el.getAttribute('aria-valuemax')",
+        arg=resizer.element_handle(),
+        timeout=TIMEOUT,
     )
     resizer.press("Home")
     expect(resizer).to_have_attribute("aria-valuenow", "150")
@@ -687,6 +693,11 @@ def test_open_mobile_dropdown_repositions_after_desktop_resize(
     expect(menu.locator(".shiny-chat-page-nav-menu-items")).to_have_css(
         "position", "fixed"
     )
+    # Desktop CSS can apply before the responsive handler moves the
+    # controls out of the hidden mobile mount.
+    expect(menu.locator(".shiny-chat-page-nav-menu-items")).to_be_visible(
+        timeout=TIMEOUT
+    )
     items_box = menu.locator(".shiny-chat-page-nav-menu-items").bounding_box()
     assert items_box is not None
     assert items_box["x"] >= 0
@@ -880,6 +891,7 @@ def test_page_chat_remeasures_greeting_after_history_new(
     layout = chat.loc.locator(".shiny-chat-layout")
 
     chat.set_user_input("Save this conversation")
+    expect(chat.loc_input_button).to_be_enabled(timeout=TIMEOUT)
     chat.send_user_input()
     chat.expect_latest_message("echo: Save this conversation", timeout=TIMEOUT)
 

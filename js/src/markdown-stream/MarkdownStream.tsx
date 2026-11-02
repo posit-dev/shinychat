@@ -7,6 +7,8 @@ import {
   useMemo,
 } from "react"
 import { MarkdownContent } from "../markdown/MarkdownContent"
+import { StreamingDot } from "../markdown/StreamingDotIcon"
+import { useStreamIdle } from "../markdown/useStreamIdle"
 import { useAutoScroll, findScrollableParent } from "../markdown/useAutoScroll"
 import { HtmlBlockContent } from "../chat/HtmlBlockContent"
 import type { HtmlBlock } from "../chat/html-block-model"
@@ -110,10 +112,11 @@ export function MarkdownStream({
     () => [segments, blockMounts],
     [segments, blockMounts],
   )
-  const { containerRef, scrollToBottom, repinIfAtBottom } = useAutoScroll({
-    streaming: autoScroll && streaming,
-    contentDependency: scrollContentDependency,
-  })
+  const { containerRef, scrollToBottom, repinIfAtBottom, stickToBottom } =
+    useAutoScroll({
+      streaming: autoScroll && streaming,
+      contentDependency: scrollContentDependency,
+    })
 
   useLayoutEffect(() => {
     if (!autoScroll || !innerRef.current) {
@@ -143,8 +146,18 @@ export function MarkdownStream({
     }
   }, [containerRef])
 
+  // Scroll while streaming, and once more when it ends: StreamSmoother flushes
+  // its remaining buffer in the same batch as setStreaming(false), which the
+  // content-change effect (streaming-gated) never scrolls for. stickToBottom
+  // is read via ref so a mid-stream scroll-away doesn't re-trigger the effect.
+  const stickToBottomRef = useRef(stickToBottom)
+  stickToBottomRef.current = stickToBottom
+  const wasStreamingRef = useRef(streaming)
   useEffect(() => {
-    if (streaming && autoScroll) {
+    const wasStreaming = wasStreamingRef.current
+    wasStreamingRef.current = streaming
+    if (!autoScroll) return
+    if (streaming || (wasStreaming && stickToBottomRef.current)) {
       scrollToBottom()
     }
   }, [streaming, autoScroll, scrollToBottom])
@@ -217,8 +230,29 @@ export function MarkdownStream({
     onApiReady?.(api)
   }, [api, onApiReady])
 
+  // With nothing to show yet, the dot is the only sign the stream is live.
+  // Once content exists, MarkdownContent shows it only when the stream stalls.
+  const awaitingContent =
+    streaming && segments.every((s) => !isBlockSegment(s) && !/\S/.test(s.text))
+
+  // ...but whitespace-only content can satisfy both conditions at once: the
+  // trailing MarkdownContent shows its own stalled-stream dot, so stand down
+  // rather than render a second one.
+  const lastSegment = segments[segments.length - 1]
+  const lastText =
+    lastSegment && !isBlockSegment(lastSegment) ? lastSegment.text : null
+  const trailingDotShown = useStreamIdle(
+    streaming && contentType !== "text" && lastText !== null,
+    lastText,
+  )
+
   return (
     <div ref={innerRef}>
+      {awaitingContent && !trailingDotShown && (
+        <p>
+          <StreamingDot />
+        </p>
+      )}
       {segments.map((segment, index) =>
         isBlockSegment(segment) ? (
           segment.type === "web_activity" ? (
