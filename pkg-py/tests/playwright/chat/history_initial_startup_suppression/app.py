@@ -61,7 +61,9 @@ def _target_record() -> Any:
         data=[
             {
                 "role": "user",
-                "contents": [{"content_type": "text", "text": "restored input"}],
+                "contents": [
+                    {"content_type": "text", "text": "restored input"}
+                ],
             }
         ],
     )

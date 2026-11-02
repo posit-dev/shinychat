@@ -223,10 +223,7 @@ def sparse_snapshot_entry(
     if not is_effective(previous):
         previous = effective_ancestor
     canonical = _canonical_data(data)
-    if (
-        previous is not None
-        and _canonical_data(previous.data) != canonical
-    ):
+    if previous is not None and _canonical_data(previous.data) != canonical:
         for child_id in node.children:
             child = record.nodes[child_id]
             if not is_effective(child.state.get(key)):
@@ -405,9 +402,7 @@ def _validate_restore_state_entry(name: str, entry: StateEntry) -> None:
     try:
         json.dumps(entry.data, allow_nan=False)
     except (TypeError, ValueError) as e:
-        raise ValueError(
-            f"State entry {name!r} has invalid JSON data."
-        ) from e
+        raise ValueError(f"State entry {name!r} has invalid JSON data.") from e
 
 
 def validate_active_path_state(record: ConversationRecordV2) -> None:

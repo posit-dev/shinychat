@@ -90,7 +90,9 @@ def test_matrix_covers_the_421_scenario() -> None:
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("case", MATRIX, ids=lambda case: cast(str, case["name"]))
+@pytest.mark.parametrize(
+    "case", MATRIX, ids=lambda case: cast(str, case["name"])
+)
 async def test_turn_rewrite_scenario(
     case: dict[str, Any], tmp_path: Path
 ) -> None:
@@ -125,8 +127,10 @@ async def test_turn_rewrite_scenario(
             # The client owns its turn list: it holds the user turn once
             # the input is submitted, before the server accepts it.
             adapter.set_turns_json(step["turns"])
-            open_exchange_id = await transcript.record_accepted_input_and_notify(
-                _stored_message("user", step["content"])
+            open_exchange_id = (
+                await transcript.record_accepted_input_and_notify(
+                    _stored_message("user", step["content"])
+                )
             )
             if conversation_id is None:
                 record = recorder.record

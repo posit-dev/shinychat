@@ -305,7 +305,9 @@ def test_set_greeting_none_sends_greeting_clear(request: pytest.FixtureRequest):
     assert actions[0]["type"] == "greeting_clear"
 
 
-def test_set_greeting_string_sends_greeting_action(request: pytest.FixtureRequest):
+def test_set_greeting_string_sends_greeting_action(
+    request: pytest.FixtureRequest,
+):
     chat, spy = _make_spy_chat(request)
 
     async def _run():
@@ -320,7 +322,9 @@ def test_set_greeting_string_sends_greeting_action(request: pytest.FixtureReques
     assert actions[0]["options"]["persistent"] is False
 
 
-def test_set_greeting_html_sends_html_content_type(request: pytest.FixtureRequest):
+def test_set_greeting_html_sends_html_content_type(
+    request: pytest.FixtureRequest,
+):
     chat, spy = _make_spy_chat(request)
 
     async def _run():
@@ -353,7 +357,9 @@ def test_set_greeting_tag_content_sends_no_island_tags(
     assert "<div>hi</div>" in actions[0]["content"]
 
 
-def test_set_greeting_stream_sends_start_chunks_end(request: pytest.FixtureRequest):
+def test_set_greeting_stream_sends_start_chunks_end(
+    request: pytest.FixtureRequest,
+):
     chat, spy = _make_spy_chat(request)
 
     async def _run():

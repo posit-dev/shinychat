@@ -153,9 +153,7 @@ async def test_v2_worked_example_round_trips_through_each_store(
 
     await store.put(partition, record)
     reader = (
-        store
-        if backend == "memory"
-        else FileConversationStore(dir=tmp_path)
+        store if backend == "memory" else FileConversationStore(dir=tmp_path)
     )
     loaded = await reader.get(partition, record.id)
 
@@ -168,7 +166,9 @@ async def test_v2_worked_example_round_trips_through_each_store(
         if loaded.nodes[node_id].input is not None
     ]
     assert all(message is not None for message in path_inputs)
-    assert [message.content for message in path_inputs if message is not None] == [
+    assert [
+        message.content for message in path_inputs if message is not None
+    ] == [
         "Summarize the attached CSV",
         "Now plot revenue by month",
     ]
@@ -316,9 +316,13 @@ async def test_memory_store_refuses_v1_overwriting_a_v2_record():
 @pytest.mark.anyio
 async def test_memory_store_allows_same_schema_record_subclass_overwrite():
     store = InMemoryConversationStore()
-    record = new_conversation_record_v2(title="v2", client_info={"kind": "test"})
+    record = new_conversation_record_v2(
+        title="v2", client_info={"kind": "test"}
+    )
     await store.put(part(scope="alice"), record)
-    replacement = _ConversationRecordV2Subclass.model_validate(record.model_dump())
+    replacement = _ConversationRecordV2Subclass.model_validate(
+        record.model_dump()
+    )
 
     await store.put(part(scope="alice"), replacement)
 

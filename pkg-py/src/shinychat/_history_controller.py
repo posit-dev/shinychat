@@ -737,7 +737,9 @@ class HistoryController:
                     read_only=unavailable_reason is not None or source_isolated,
                     source_isolated=source_isolated,
                     read_only_reason=(
-                        "interrupted" if source_isolated else "model_unavailable"
+                        "interrupted"
+                        if source_isolated
+                        else "model_unavailable"
                     ),
                 )
                 await self._set_active_id(target.id)

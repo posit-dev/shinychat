@@ -282,7 +282,9 @@ def test_artifact_validates_title_and_content(
         _run_async(chat.drawer.show(cast(Any, object())))
 
 
-def test_drawer_mixed_content_bare_string_escaped(request: pytest.FixtureRequest) -> None:
+def test_drawer_mixed_content_bare_string_escaped(
+    request: pytest.FixtureRequest,
+) -> None:
     """A bare string containing executable HTML in mixed drawer content is
     HTML-escaped in the action payload (safe for the single-string innerHTML
     payload), while trusted tags still render as real HTML."""
@@ -306,7 +308,9 @@ def test_drawer_mixed_content_bare_string_escaped(request: pytest.FixtureRequest
     assert "<div>trusted</div>" in content
 
 
-def test_drawer_mixed_content_update_bare_string_escaped(request: pytest.FixtureRequest) -> None:
+def test_drawer_mixed_content_update_bare_string_escaped(
+    request: pytest.FixtureRequest,
+) -> None:
     """Same safe escaping applies to drawer.update()."""
     chat, session = _make_chat(request)
 

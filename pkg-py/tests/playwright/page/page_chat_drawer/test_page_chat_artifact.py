@@ -154,7 +154,9 @@ def test_drawer_suppresses_track_motion_during_layout_resize(
     chat, _ = open_page(page, local_app)
     page.get_by_role("button", name="Show drawer").click()
     layout = chat.loc.locator(".shiny-chat-layout")
-    expect(chat.loc.locator(".shiny-chat-drawer")).to_be_visible(timeout=TIMEOUT)
+    expect(chat.loc.locator(".shiny-chat-drawer")).to_be_visible(
+        timeout=TIMEOUT
+    )
 
     resize_samples = layout.evaluate(
         """async (element) => {

@@ -162,7 +162,9 @@ async def test_message_transcript_matrix(case: dict[str, Any]) -> None:
                     projection = transcript.read()
                     cast(
                         StoredSegment,
-                        projection[cast(int, operation["entry"])].message.segments[0],
+                        projection[
+                            cast(int, operation["entry"])
+                        ].message.segments[0],
                     ).content = cast(str, operation["replacement"])
                 else:
                     raise AssertionError(
