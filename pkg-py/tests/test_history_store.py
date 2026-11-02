@@ -185,6 +185,133 @@ async def test_v2_worked_example_round_trips_through_each_store(
 
 
 @pytest.mark.anyio
+async def test_v2_file_read_modify_write_preserves_unknown_fields(
+    tmp_path: Path,
+) -> None:
+    raw = json.loads(WORKED_EXAMPLE_PATH.read_text(encoding="utf-8"))
+    unknown = {
+        "future_null": None,
+        "future_false": False,
+        "future_zero": 0,
+        "future_empty": {},
+        "future_nested": {"items": [None, False, 0, {}, []]},
+    }
+    raw.update(unknown)
+    raw["nodes"]["x_00"].update(unknown)
+    raw["nodes"]["x_00"]["state"]["shinychat:values"].update(unknown)
+    partition = part(scope="future-fields")
+    record_file = (
+        tmp_path
+        / sanitize_scope("chat")
+        / sanitize_scope("future-fields")
+        / raw["id"]
+        / "record.json"
+    )
+    record_file.parent.mkdir(parents=True)
+    record_file.write_text(json.dumps(raw), encoding="utf-8")
+    store = FileConversationStore(dir=tmp_path)
+
+    loaded = await store.get(partition, raw["id"])
+    assert isinstance(loaded, ConversationRecordV2)
+    detached = loaded.model_copy(deep=True)
+    loaded.title = "Renamed"
+    await store.put(partition, loaded)
+
+    written = json.loads(record_file.read_text(encoding="utf-8"))
+    locations = [
+        written,
+        written["nodes"]["x_00"],
+        written["nodes"]["x_00"]["state"]["shinychat:values"],
+    ]
+    for location in locations:
+        assert {key: location[key] for key in unknown} == unknown
+    # Deep copies at all three model boundaries must not alias the source.
+    assert detached.__pydantic_extra__ is not None
+    detached.__pydantic_extra__["future_nested"]["items"].append("changed")
+    assert detached.nodes["x_00"].__pydantic_extra__ is not None
+    detached.nodes["x_00"].__pydantic_extra__["future_nested"]["items"].append(
+        "changed"
+    )
+    entry = detached.nodes["x_00"].state["shinychat:values"]
+    assert entry.__pydantic_extra__ is not None
+    entry.__pydantic_extra__["future_nested"]["items"].append("changed")
+    dumped = json.loads(loaded.model_dump_json(exclude_none=True))
+    for location in (
+        dumped,
+        dumped["nodes"]["x_00"],
+        dumped["nodes"]["x_00"]["state"]["shinychat:values"],
+    ):
+        assert {key: location[key] for key in unknown} == unknown
+    assert "future_null" not in loaded.model_dump(
+        exclude_none=True, exclude={"future_null"}
+    )
+    assert loaded.model_dump(exclude_none=True, include={"future_null"}) == {
+        "future_null": None
+    }
+
+
+@pytest.mark.anyio
+async def test_v2_file_rewrite_preserves_unknown_message_fields(
+    tmp_path: Path,
+) -> None:
+    raw = json.loads(WORKED_EXAMPLE_PATH.read_text(encoding="utf-8"))
+    input_message = raw["nodes"]["x_01"]["input"]
+    input_message["future_input"] = None
+    input_message["segments"][0]["future_segment"] = {"x": None}
+    input_message["attachments"] = [
+        {
+            "mime": "text/plain",
+            "name": "a.txt",
+            "size": 1,
+            "data_url": "data:text/plain;base64,YQ==",
+            "future_attachment": None,
+        }
+    ]
+    message = raw["nodes"]["x_01"]["messages"][0]
+    message["future_message"] = None
+    message["segments"].append(
+        {
+            "type": "web_search_results",
+            "version": 1,
+            "future_block": None,
+            "sources": [{"url": "https://example.com", "future_source": None}],
+        }
+    )
+    raw["nodes"]["x_02"]["error"]["future_error"] = None
+    partition = part(scope="future-messages")
+    record_file = (
+        tmp_path
+        / sanitize_scope("chat")
+        / sanitize_scope("future-messages")
+        / raw["id"]
+        / "record.json"
+    )
+    record_file.parent.mkdir(parents=True)
+    record_file.write_text(json.dumps(raw), encoding="utf-8")
+    store = FileConversationStore(tmp_path)
+
+    loaded = await store.get(partition, raw["id"])
+    assert isinstance(loaded, ConversationRecordV2)
+    loaded.title = "Renamed"
+    await store.put(partition, loaded)
+
+    written = json.loads(record_file.read_text(encoding="utf-8"))
+    assert written["nodes"]["x_01"]["input"]["future_input"] is None
+    assert written["nodes"]["x_01"]["input"]["segments"][0][
+        "future_segment"
+    ] == {"x": None}
+    assert (
+        written["nodes"]["x_01"]["input"]["attachments"][0]["future_attachment"]
+        is None
+    )
+    saved_message = written["nodes"]["x_01"]["messages"][0]
+    assert saved_message["future_message"] is None
+    assert saved_message["segments"][-1]["future_block"] is None
+    assert saved_message["segments"][-1]["sources"][0]["future_source"] is None
+    assert written["nodes"]["x_02"]["error"]["future_error"] is None
+
+
+@pytest.mark.anyio
 async def test_v2_put_failure_keeps_previous_document(
     store: FileConversationStore,
     tmp_path: Path,

@@ -458,7 +458,7 @@ class _ExchangeRecorder:
                 version=1,
                 mode="snapshot",
                 data=cast(JsonValue, saved_turns),
-            )
+            ).with_previous_extra(child_entry)
 
     def _validate_model_state(self) -> None:
         try:
@@ -556,12 +556,15 @@ class _ExchangeRecorder:
             else:
                 # Builtins already validate and detach their fresh payloads.
                 # Overrides/wrappers/custom hooks cannot borrow that trust.
-                staged.nodes[node_id].state[name] = (
+                entry = (
                     entry
                     if builtin is not None
                     else StateEntry.model_validate(
                         canonical_values(entry.model_dump(mode="python"))
                     )
+                )
+                staged.nodes[node_id].state[name] = entry.with_previous_extra(
+                    staged.nodes[node_id].state.get(name)
                 )
         for key, node in staged.nodes.items():
             live.nodes[key].state = node.state
@@ -715,7 +718,11 @@ class _ExchangeRecorder:
             if entry is None:
                 staged.nodes[node_id].state.pop(VALUES_STATE_KEY, None)
             else:
-                staged.nodes[node_id].state[VALUES_STATE_KEY] = entry
+                staged.nodes[node_id].state[VALUES_STATE_KEY] = (
+                    entry.with_previous_extra(
+                        staged.nodes[node_id].state.get(VALUES_STATE_KEY)
+                    )
+                )
         except Exception as error:
             if strict:
                 raise
