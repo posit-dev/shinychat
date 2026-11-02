@@ -17,11 +17,10 @@ from __future__ import annotations
 import asyncio
 import inspect
 import warnings
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import contextmanager
 from typing import (
     TYPE_CHECKING,
     Any,
-    AsyncIterator,
     Callable,
     Literal,
     Mapping,
@@ -105,12 +104,6 @@ class _ExchangeRecorder:
         self.record: ConversationRecordV2 | None = None
         self._stream_exchanges: dict[str, str] = {}
         self.lock = asyncio.Lock()
-        # Owner tracking makes ``_locked`` reentrant within the task that
-        # holds ``lock``: the controller admits a staged submission through
-        # the shared transcript seam while it already owns the record, and
-        # the underlying asyncio.Lock is not reentrant.
-        self._lock_task: "asyncio.Task[Any] | None" = None
-        self._lock_depth = 0
         # The one staged submission slot for the active record: the
         # controller stages, prepares, and then either admits or finishes
         # it while owning the record lock, so at most one staged submission
@@ -150,26 +143,6 @@ class _ExchangeRecorder:
         # they are delivered to on_restore callbacks rather
         # than applied to the client.
         self._register_capture_hook(VALUES_STATE_KEY, self._capture_values)
-
-    @asynccontextmanager
-    async def _locked(self) -> "AsyncIterator[None]":
-        """The record's one lock, reentrant within its owning task."""
-        task = asyncio.current_task()
-        if task is not None and self._lock_task is task:
-            self._lock_depth += 1
-            try:
-                yield
-            finally:
-                self._lock_depth -= 1
-            return
-        async with self.lock:
-            self._lock_task = task
-            self._lock_depth = 1
-            try:
-                yield
-            finally:
-                self._lock_depth = 0
-                self._lock_task = None
 
     @property
     def read_only(self) -> bool:
@@ -798,7 +771,7 @@ class _ExchangeRecorder:
 
     async def flush_pending(self) -> bool:
         """Capture model-only changes at a coherent completed position."""
-        async with self._locked():
+        async with self.lock:
             if self._stream_exchanges:
                 return False
             return await self.save_current_locked()
@@ -885,7 +858,7 @@ class _ExchangeRecorder:
     async def save_current(self) -> bool:
         # The public save is the explicit one: callback and payload
         # failures raise to the caller instead of warning.
-        async with self._locked():
+        async with self.lock:
             return await self.save_current_locked(strict=True)
 
     async def save_current_locked(self, *, strict: bool = False) -> bool:
@@ -917,7 +890,7 @@ class _ExchangeRecorder:
 
     async def response_settled(self) -> bool:
         """Persist settlement and report whether a write occurred, not reliability."""
-        async with self._locked():
+        async with self.lock:
             if (
                 self.record is None
                 or self._host.partition is None
@@ -1002,7 +975,7 @@ class _ExchangeRecorder:
         self, record: ConversationRecordV2 | None = None
     ) -> tuple[str, str] | None:
         """Return one atomic pointer snapshot for a live v2 record."""
-        async with self._locked():
+        async with self.lock:
             active = self.record
             if (
                 active is None
@@ -1020,7 +993,7 @@ class _ExchangeRecorder:
         The returned state id is safe to delete: it is either the replaced URL
         after a successful update or the newly minted stale URL.
         """
-        async with self._locked():
+        async with self.lock:
             record = self.record
             if (
                 self._source_isolated
@@ -1063,7 +1036,7 @@ class _ExchangeRecorder:
         if self._host.partition is None:
             commit()
             return
-        async with self._locked():
+        async with self.lock:
             if not self.continuation_allowed:
                 if self.selected_not_sent:
                     # Selection may have changed after Chat's admission check.
@@ -1205,7 +1178,7 @@ class _ExchangeRecorder:
         if self._host.partition is None or not self.continuation_allowed:
             return
 
-        async with self._locked():
+        async with self.lock:
             if not self.continuation_allowed:
                 return
             if (
@@ -1270,7 +1243,7 @@ class _ExchangeRecorder:
         if self._host.partition is None or not self.continuation_allowed:
             return
 
-        async with self._locked():
+        async with self.lock:
             if not self.continuation_allowed:
                 return
             exchange_id = self._stream_exchanges.get(stream_id)
@@ -1291,7 +1264,7 @@ class _ExchangeRecorder:
             if self._host.partition is None or not self.continuation_allowed:
                 return
 
-            async with self._locked():
+            async with self.lock:
                 if not self.continuation_allowed:
                     return
                 exchange_id = self._stream_exchanges.get(stream_id)

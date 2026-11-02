@@ -977,7 +977,7 @@ class Chat:
                 ):
                     # Capture has exited the recorder lock. Serialize removal and
                     # positional refresh with any subsequent accepted exchange.
-                    async with controller._exchange_recorder._locked():
+                    async with controller._exchange_recorder.lock:
                         await self._send_action(
                             {"type": "remove_message", "id": client_message_id}
                         )

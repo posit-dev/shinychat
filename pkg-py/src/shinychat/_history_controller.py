@@ -389,7 +389,7 @@ class HistoryController:
 
     @asynccontextmanager
     async def _exchange_mutation(self):
-        async with self._exchange_recorder._locked():
+        async with self._exchange_recorder.lock:
             yield
 
     async def on_response(self) -> None:
