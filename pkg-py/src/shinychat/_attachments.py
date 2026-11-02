@@ -12,11 +12,11 @@ import mimetypes
 import os
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
+from pydantic import BaseModel
 from typing_extensions import TypedDict
 
-from ._persisted_model import PersistedModel
 from ._utils_types import MISSING_TYPE
 
 if TYPE_CHECKING:
@@ -67,7 +67,7 @@ def _guess_mime(name: str) -> str:
     )
 
 
-class Attachment(PersistedModel):
+class Attachment(BaseModel):
     """An image, PDF, or text file to attach to a chat message.
 
     Construct via :meth:`from_path`, :meth:`from_data`, or :meth:`from_url`.
@@ -151,17 +151,6 @@ class Attachment(PersistedModel):
             size=0,
             data_url=url,
         )
-
-
-def parse_input_attachment(value: Any) -> Attachment:
-    """Discard unknown browser fields without changing persisted readers."""
-    if isinstance(value, dict):
-        value = {
-            name: value[name]
-            for name in Attachment.model_fields
-            if name in value
-        }
-    return Attachment.model_validate(value)
 
 
 #: Default total attachment-size cap (bytes) when the environment variable is

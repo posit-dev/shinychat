@@ -20,14 +20,12 @@ from pydantic import (
 from ._attachments import Attachment
 from ._chat_types import (
     ContentType,
-    PersistedBlock,
     Role,
     SerializedDep,
     StoredMessage,
     StoredSegment,
     StructuredBlock,
 )
-from ._persisted_model import PersistedModel
 from ._typing_extensions import NotRequired, TypedDict
 
 
@@ -362,9 +360,9 @@ class ConversationRecordV1(BaseModel):
         return node_id
 
 
-class CapturedMessage(PersistedModel):
+class CapturedMessage(BaseModel):
     role: Literal["user", "assistant"]
-    segments: list[StoredSegment | PersistedBlock]
+    segments: list[StoredSegment | StructuredBlock]
     icon: str | None = None
     attachments: list[Attachment] | None = None
 
@@ -405,19 +403,11 @@ class CapturedMessage(PersistedModel):
         )
 
 
-class StateEntry(PersistedModel):
+class StateEntry(BaseModel):
     kind: str
     version: int
     mode: Literal["delta", "snapshot"]
     data: JsonValue
-
-    def with_previous_extra(self, previous: StateEntry | None) -> StateEntry:
-        """Keep unknown fields when a capture replaces an existing entry."""
-        if previous is None or not previous.model_extra:
-            return self
-        extras = copy.deepcopy(previous.model_extra)
-        extras.update(self.model_extra or {})
-        return self.model_copy(update=extras)
 
     @model_serializer(mode="wrap")
     def _serialize(
@@ -435,14 +425,14 @@ class StateEntry(PersistedModel):
             and (info.include is None or "data" in info.include)
         ):
             serialized["data"] = None
-        return self._preserve_extra_nulls(serialized, info)
+        return serialized
 
 
-class ErrorEntry(PersistedModel):
+class ErrorEntry(BaseModel):
     message: str
 
 
-class ExchangeNode(PersistedModel):
+class ExchangeNode(BaseModel):
     parent_id: str | None = None
     children: list[str] = Field(default_factory=list)
     selected_child: str | None = None
@@ -496,7 +486,7 @@ def _ancestor_path(
     return path
 
 
-class ConversationRecordV2(PersistedModel):
+class ConversationRecordV2(BaseModel):
     """The v2 exchange-tree record, isolated from the released v1 model."""
 
     schema_version: Literal[2] = 2

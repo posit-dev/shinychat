@@ -32,8 +32,7 @@ from typing import Any, Callable, cast
 from unittest.mock import patch
 
 import pytest
-from _history_test_helpers import replay_exchange_record
-from shinychat._chat_transcript import StagedInputAdmission, TranscriptEntry
+from shinychat._chat_transcript import StagedInputAdmission
 from shinychat._chat_types import ChatMessage, StoredMessage, StoredSegment
 from shinychat._history_controller import HistoryController
 from shinychat._history_plan import canonical_values
@@ -53,8 +52,6 @@ from shinychat._history_types import (
 )
 from test_history_controller import (
     _FakeAdapter,
-    _FakeChat,
-    _make_controller,
     _make_v2_resubmit_real_chat,
     _seed_resubmit_transcript,
     _spy_send_actions,
@@ -1312,100 +1309,3 @@ async def test_failed_node_marker_does_not_bypass_protections(
     pending_invalid = record.nodes[pending_id].model_copy(deep=True)
     pending_invalid.checkpoint = "invalid"
     assert not node_is_terminal_incomplete(pending_invalid)
-
-
-# ---------------------------------------------------------------------------
-# Browser edit payloads: unknown attachment fields never reach the record
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.anyio
-async def test_edit_browser_attachment_discards_unknown_fields_in_node_snapshot_and_replay(
-    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A browser edit attachment keeps its known metadata and drops any
-    unknown field, on the accepted node, the stored snapshot, the edit
-    projection, and the replayed user message."""
-    monkeypatch.setenv("SHINYCHAT_MAX_ATTACHMENT_SIZE", "5")
-    (
-        controller,
-        chat,
-        _adapter,
-        store,
-        first,
-        _target,
-    ) = await _make_editable_chat(request, chat_id="edit_attachment_ingress")
-    recorder = controller._exchange_recorder
-    assert recorder is not None
-    record = recorder.record
-    assert record is not None
-    original_ids = set(record.nodes)
-    sent = _spy_send_actions(chat)
-    expected_attachment = {
-        "mime": "text/plain",
-        "name": "notes.txt",
-        "size": 5,
-        "data_url": "data:text/plain;base64,aGVsbG8=",
-    }
-
-    await controller.handle_edit(
-        EDIT_INDEX,
-        EDIT_CONTENT,
-        [
-            {
-                **expected_attachment,
-                "browser_only_field": {"payload": "x" * 10000, "null": None},
-            }
-        ],
-        request_id="edit-attachment-ingress",
-    )
-
-    new_ids = set(record.nodes) - original_ids
-    assert len(new_ids) == 1
-    staged_id = new_ids.pop()
-    node = record.nodes[staged_id]
-    assert node.parent_id == first
-    assert node.input is not None
-    assert [
-        attachment.model_dump(mode="json")
-        for attachment in node.input.attachments
-    ] == [expected_attachment]
-
-    snapshot = store.last_snapshot
-    assert isinstance(snapshot, ConversationRecordV2)
-    stored_input = snapshot.nodes[staged_id].input
-    assert stored_input is not None
-    assert [
-        attachment.model_dump(mode="json")
-        for attachment in stored_input.attachments
-    ] == [expected_attachment]
-
-    projections = [
-        action for action in sent if action["type"] == "history_edit_projection"
-    ]
-    assert len(projections) == 1
-    assert projections[0]["attachments"] == [expected_attachment]
-
-    # Complete the accepted edit through the transcript/recorder boundary;
-    # unresolved pending exchanges are deliberately not replayable.
-    async def send() -> bool:
-        return True
-
-    await chat._transcript.append(
-        TranscriptEntry(message=_stored_message("assistant", "received")),
-        exchange_id=staged_id,
-        send=send,
-    )
-    completed = store.last_snapshot
-    assert isinstance(completed, ConversationRecordV2)
-    assert completed.nodes[staged_id].is_checkpoint
-    restored, _ = _make_controller(store=_SnapshotStore())
-    await replay_exchange_record(restored, completed)
-    fake_chat = cast(_FakeChat, restored.chat)
-    replayed_user = [
-        message
-        for message in fake_chat.restored_messages
-        if message["role"] == "user" and message["attachments"]
-    ]
-    assert replayed_user, fake_chat.restored_messages
-    assert replayed_user[-1]["attachments"] == [expected_attachment]

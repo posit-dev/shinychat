@@ -17,7 +17,6 @@ from shiny.input_handler import input_handlers
 
 from ._attachments import (
     Attachment,
-    parse_input_attachment,
     validate_attachments,
 )
 from ._typing_extensions import NotRequired, TypedDict
@@ -42,7 +41,7 @@ def _(value: Any, _name: "ResolvedId", _session: "Session") -> UserInputValue:
             f"Expected str or dict from shinychat.userInput, got {type(value)!r}"
         )
     attachments = [
-        parse_input_attachment(a) for a in (value.get("attachments") or [])
+        Attachment.model_validate(a) for a in (value.get("attachments") or [])
     ]
     validate_attachments(attachments)
     result = UserInputValue(

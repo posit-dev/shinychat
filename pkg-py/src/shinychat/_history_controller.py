@@ -15,7 +15,6 @@ from typing import (
 from . import _history_plan, _utils
 from ._attachments import (
     Attachment,
-    parse_input_attachment,
     validate_attachments,
 )
 from ._chat_transcript import StagedInputAdmission, TranscriptEntry
@@ -1018,7 +1017,10 @@ class HistoryController:
         if not isinstance(content, str):
             raise TypeError("Edited message content must be a string.")
         parsed = (
-            [parse_input_attachment(attachment) for attachment in attachments]
+            [
+                Attachment.model_validate(attachment)
+                for attachment in attachments
+            ]
             if attachments is not None
             else []
         )
