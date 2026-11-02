@@ -77,8 +77,9 @@ VALUES_KEY = "shinychat:values"
 SCREENSHOT_PATH = os.environ.get(
     "SHINYCHAT_ZCV8_FAILURE_SCREENSHOT", "/tmp/zcv8-node-first-failure.png"
 )
-# During edit-time on_restore the model has rewound to the parent, while
-# chat.messages() still shows the outgoing branch or failed position.
+# Contract: during edit-time on_restore, chat.messages() shows the restored
+# parent's accepted transcript prefix, and the model is rewound to the parent
+# at the same point.
 PARENT_PREFIX = [
     {"role": "user", "content": MSG_A},
     {"role": "assistant", "content": f"Echo: {MSG_A}"},
@@ -597,12 +598,12 @@ def assert_stable_presence(
         )
 
 
-def assert_edit_time_outgoing_entry(
-    entry: dict[str, Any], outgoing: list[dict[str, str]]
-) -> None:
-    """The callback sees the outgoing transcript and the rewound model."""
-    assert entry["chat_messages"] == outgoing, (
-        "edit-time on_restore must observe the outgoing transcript: "
+def assert_edit_time_parent_prefix_entry(entry: dict[str, Any]) -> None:
+    """Contract: during edit-time on_restore, chat.messages() shows the
+    restored parent's accepted transcript prefix and the model is rewound
+    to the parent at the same point -- not the outgoing full branch."""
+    assert entry["chat_messages"] == PARENT_PREFIX, (
+        "edit-time on_restore must observe the parent-prefix transcript: "
         f"got {entry['chat_messages']}"
     )
     assert entry["client_turns"] == PARENT_PREFIX, (
@@ -611,12 +612,12 @@ def assert_edit_time_outgoing_entry(
     )
 
 
-def assert_edit_time_callback_observation(
-    trace: list[dict[str, Any]], outgoing: list[dict[str, str]]
+def assert_parent_prefix_callback_observation(
+    trace: list[dict[str, Any]],
 ) -> None:
     entries = restore_enter_entries(trace)
     assert entries, "no on_restore trace event was recorded"
-    assert_edit_time_outgoing_entry(entries[-1], outgoing)
+    assert_edit_time_parent_prefix_entry(entries[-1])
 
 
 def test_history_node_first_success_control(
@@ -648,9 +649,9 @@ def test_history_node_first_success_control(
     )
     assert_b_prime_displayed(page)
 
-    # The original branch remains in chat.messages() during restore while
-    # the model already contains the retained parent.
-    assert_edit_time_callback_observation(read_trace(page), B_BRANCH_PREFIX)
+    # The edit-time restore callback saw the retained parent's accepted
+    # prefix in chat.messages() and the rewound parent model.
+    assert_parent_prefix_callback_observation(read_trace(page))
 
     record = wait_for_record(page, MSG_B_PRIME)
     ids_a = _node_ids_with_input(record, MSG_A)
@@ -754,7 +755,7 @@ def test_history_node_first_restore_failure_retains_edit(
     record = wait_for_record(page, MSG_B_PRIME)
     assert_failed_edit_recorded(record)
     assert_original_branch_retained(record)
-    assert_edit_time_callback_observation(trace, B_BRANCH_PREFIX)
+    assert_parent_prefix_callback_observation(trace)
     # Read-only for ordinary follow-ups, but explicit Retry/Edit remain,
     # with sibling navigation between the failed node and the original.
     assert_failed_node_affordances(page, chat)
@@ -799,7 +800,7 @@ def test_history_node_first_capture_failure_retains_edit(
     record = wait_for_record(page, MSG_B_PRIME)
     assert_failed_edit_recorded(record)
     assert_original_branch_retained(record)
-    assert_edit_time_callback_observation(trace, B_BRANCH_PREFIX)
+    assert_parent_prefix_callback_observation(trace)
     assert_failed_node_affordances(page, chat)
 
 
@@ -1071,7 +1072,7 @@ def test_history_node_first_fixed_browse_restores_before_followup(
     original_c_state = record["nodes"][c_id]["state"]
     before_trace = read_trace(page)
     assert len([e for e in before_trace if e["event"] == "provider_enter"]) == 3
-    assert_edit_time_callback_observation(before_trace, B_BRANCH_PREFIX)
+    assert_parent_prefix_callback_observation(before_trace)
 
     # Fixing the callback alone cannot repair the poisoned model. Browsing
     # must apply C's saved model and app state before enabling the composer.
@@ -1333,8 +1334,8 @@ def test_history_node_first_browse_and_retry_recovers(
         "expected exactly three on_restore invocations (edit-time failure, "
         f"broken browse of the original, retry parent restore); got {len(entries)}"
     )
-    # 1. The edit-time failure saw the outgoing original branch.
-    assert_edit_time_outgoing_entry(entries[0], B_BRANCH_PREFIX)
+    # 1. The edit-time failure observed the parent prefix.
+    assert_edit_time_parent_prefix_entry(entries[0])
     # 2. The browse callback sees the OUTGOING transcript, the target's
     #    recorded values, and its fully rewound model. This callback still
     #    fails, so the app restriction remains even after model restoration.
@@ -1351,12 +1352,12 @@ def test_history_node_first_browse_and_retry_recovers(
     assert browse_entry["values"].get("filter") == "all", (
         f"the browsed original's app values were wrong: {browse_entry['values']}"
     )
-    # 3. The retry sees the outgoing failed position, with the model
+    # 3. The retry's parent restore observed the parent prefix with the model
     #    already rewound: the fixture's poison only clears when a saved
     #    parent is applied, so this proves the retry restored the valid
     #    parent instead of close-capturing B's poisoned live model.
     retry_entry = entries[2]
-    assert_edit_time_outgoing_entry(retry_entry, FAILED_POSITION_PREFIX)
+    assert_edit_time_parent_prefix_entry(retry_entry)
     assert retry_entry["values"].get("filter") == "all", (
         "the retry must restore the valid parent's app values; got "
         f"{retry_entry['values']}"
@@ -1449,14 +1450,15 @@ def test_history_node_first_retry_failure_creates_new_sibling(
     )
     assert_original_branch_retained(record)
 
-    # --- The retry sees the outgoing failed position and the rewound parent
-    #     model (the fixture's poison only clears on parent apply). ---
+    # --- Model context: the retry's edit-time restore observed the parent
+    #     prefix with the model already rewound (the fixture's poison only
+    #     clears on parent apply). ---
     entries = restore_enter_entries(read_trace(page))
     assert len(entries) == 2, (
         "expected exactly two on_restore invocations (edit-time failure and "
         f"the retry parent restore); got {len(entries)}"
     )
-    assert_edit_time_outgoing_entry(entries[1], FAILED_POSITION_PREFIX)
+    assert_edit_time_parent_prefix_entry(entries[1])
     assert entries[1]["values"].get("filter") == "all", (
         f"the retry must restore the parent's app values: {entries[1]['values']}"
     )

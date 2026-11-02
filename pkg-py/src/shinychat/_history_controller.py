@@ -1222,12 +1222,13 @@ class HistoryController:
         """Fallible edit-time preparation for one staged submission.
 
         Captures the outgoing position (unless its live model is poisoned
-        by a known terminal failure), then rewinds the model to the valid
-        parent before ``on_restore``. The callback still sees the outgoing
-        transcript, while the staged node is already selected but not
-        accepted. On success, replace the transcript with the accepted
-        parent prefix before admission. Preparation failures raise for the
-        caller to attach to the staged node.
+        by a known terminal failure), rewinds the model to the valid
+        parent, and replaces the committed transcript with the parent's
+        accepted prefix BEFORE ``on_restore`` runs: during edit-time
+        restore, ``chat.messages()`` and the model both show the restored
+        parent prefix, while the staged node is already the selected
+        record position but not accepted input. Preparation failures raise
+        for the caller to attach to the staged node.
         """
         recorder = self._exchange_recorder
         record.require_checkpoint(parent_id)
@@ -1241,16 +1242,17 @@ class HistoryController:
                     )
             with _restore_step("saving the resubmission"):
                 await _history_plan.run_plan(rewind_state)
+            # Sync the append-only server transcript to the same parent
+            # prefix the record/adapter rewound to, BEFORE the restore
+            # callback observes it. Capture callbacks do not fire on
+            # replace: the record was already rewound above.
+            self.chat._transcript.replace(
+                transcript_prefix, transaction=transaction
+            )
             restored = self._restore_app_state(target_values)
-            if restored:
-                if recorder.read_only:
-                    with _restore_step("validating the restored model context"):
-                        recorder._validate_model_state()
-                # Retain rich accepted entries from the parent before the
-                # staged input is admitted. Replacement does not capture.
-                self.chat._transcript.replace(
-                    transcript_prefix, transaction=transaction
-                )
+            if restored and recorder.read_only:
+                with _restore_step("validating the restored model context"):
+                    recorder._validate_model_state()
             return restored
 
     async def _fail_staged_input(

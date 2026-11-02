@@ -398,6 +398,7 @@ async def test_failed_retained_parent_restore_keeps_edit_without_dispatch(
     turns_seen: list[list[Any]] = []
     submission_sequence = chat._normal_user_submission_sequence
     outgoing = chat.messages()
+    parent_messages = tuple(outgoing[: 0 if message_index == 0 else 2])
 
     def failing(values: dict[str, Any]) -> None:
         values_seen.append(dict(values))
@@ -456,7 +457,7 @@ async def test_failed_retained_parent_restore_keeps_edit_without_dispatch(
         ]
     )
     assert values_seen == ([{}] if message_index == 0 else [{"value": "first"}])
-    assert messages_seen == [outgoing]
+    assert messages_seen == [parent_messages]
     assert turns_seen == [adapter.turns]
 
     # Reopening preserves the selected failed version without invoking
@@ -487,7 +488,6 @@ async def test_failed_retained_parent_restore_keeps_edit_without_dispatch(
     # An intentional Retry that fails again creates another version, leaving
     # the first failed node and the original branch unchanged.
     first_failure = failed.model_copy(deep=True)
-    failed_transcript = chat.messages()
     messages_seen.clear()
     turns_seen.clear()
     with pytest.warns(UserWarning, match="on_restore callback failed"):
@@ -502,7 +502,7 @@ async def test_failed_retained_parent_restore_keeps_edit_without_dispatch(
     assert record.nodes[retry_id].parent_id == parent_id
     assert record.nodes[retry_id].checkpoint == "invalid"
     assert record.nodes[failed_id] == first_failure
-    assert messages_seen == [failed_transcript]
+    assert messages_seen == [parent_messages]
     assert turns_seen == [adapter.turns]
     assert chat._normal_user_submission_sequence == submission_sequence
 
@@ -638,7 +638,7 @@ async def test_fatal_rewind_error_takes_full_cleanup(
 
     assert observations == [
         (
-            outgoing,
+            outgoing[:2],
             [
                 {"role": "system", "content": "bootstrap"},
                 {"role": "user", "content": "first"},
@@ -891,9 +891,10 @@ async def test_in_session_restore_callback_transcript_matches_operation(
             {"role": "system", "content": "bootstrap"},
             {"role": "user", "content": "first"},
         ]
-        # The callback sees the outgoing transcript, not the pending input,
-        # even though the model has already rewound to the parent.
-        expected_messages = outgoing
+        # The callback sees the retained parent's accepted prefix, matching
+        # the already-rewound model; neither the outgoing branch nor the
+        # pending replacement is visible.
+        expected_messages = outgoing[:2]
         expected_leaf = record.active_leaf
     else:
         await controller.handle_navigate(2, "prev", request_id="phase")
@@ -924,3 +925,72 @@ async def test_in_session_restore_callback_transcript_matches_operation(
             "reply one",
             node.input.content,
         ]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "kind,message_index",
+    [("edit", 0), ("edit", 2), ("retry", 2), ("regenerate", 2)],
+)
+async def test_resubmit_restore_callback_sees_accepted_parent_transcript(
+    request: pytest.FixtureRequest, kind: str, message_index: int
+) -> None:
+    controller, chat, adapter, _store, first, target = (
+        _make_v2_resubmit_real_chat(request, chat_id=f"callback_parent_{kind}")
+    )
+    record = controller._exchange_recorder.record
+    assert record is not None
+    record.nodes[target].status = "error" if kind == "retry" else "ok"
+    await _seed_resubmit_transcript(chat, first, target)
+    _wire_resubmit_capture(controller, chat)
+    sent = _spy_send_actions(chat)
+    outgoing = list(chat.messages())
+    submission_sequence = chat._normal_user_submission_sequence
+    observations: list[tuple[Any, ...]] = []
+
+    def observe(_values: dict[str, Any]) -> None:
+        observations.append(
+            (
+                [m["content"] for m in chat.messages()],
+                list(adapter.turns),
+                chat._normal_user_submission_sequence,
+                chat._transcript.open_exchange_id,
+                chat._destructive_history_blocks_input,
+                any(a["type"] == "history_edit_projection" for a in sent),
+            )
+        )
+
+    controller._restore_callbacks.append(observe)
+    if kind == "edit":
+        await controller.handle_edit(
+            message_index, "replacement", request_id="phase"
+        )
+    else:
+        await controller.handle_resubmit(
+            message_index, kind, request_id="phase"
+        )
+
+    prefix = [] if message_index == 0 else ["first", "reply one"]
+    expected_turns: list[dict[str, Any]] = [
+        {"role": "system", "content": "bootstrap"}
+    ]
+    if message_index != 0:
+        expected_turns.append({"role": "user", "content": "first"})
+    # The callback sees the retained parent's accepted prefix and the
+    # rewound model; the pending replacement is recorded and projected but
+    # not accepted input, and the outgoing branch is not visible.
+    assert observations == [
+        (
+            prefix,
+            expected_turns,
+            submission_sequence,
+            None,
+            True,
+            True,
+        )
+    ]
+    assert [m["content"] for m in chat.messages()] == [
+        *prefix,
+        "replacement" if kind == "edit" else "second",
+    ]
+    assert len(outgoing) == 4
