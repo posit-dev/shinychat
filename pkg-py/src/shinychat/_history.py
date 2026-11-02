@@ -547,6 +547,12 @@ class ChatHistory:
             def _(values):
                 ui.update_navs("tabs", selected=values.get("selected_tab"))
 
+        Values are stored as ``on_save`` returned them and are never
+        migrated. Older conversations can lack keys a later deploy added, so
+        handle known differences here (for example with ``values.get(key,
+        default)``) rather than letting the callback raise: an exception
+        means the app could not be restored.
+
         Editing or retrying the first message restores the values recorded
         on the starting checkpoint: the first accepted input captured app
         state there, so callbacks normally receive those values. A failed
@@ -572,6 +578,8 @@ class ChatHistory:
         (the original and its descendants are preserved as navigable
         siblings). A selected not-sent position is display-only for app
         state: loading it or browsing to it never calls ``on_restore``.
+        While it is selected, ``chat.messages()`` includes the unsent
+        message as displayed, although the model never received it.
         Failed browsing retains the selected target. After failed
         resubmit preparation, the live model client may hold the parent
         prefix or a partially restored state rather than the displayed
@@ -583,9 +591,9 @@ class ChatHistory:
         themselves. Cancellation and other fatal errors take the usual
         full restore cleanup. A later browse to a compatible checkpoint
         clears an earlier app/model restriction only after restoring its
-        model context and available app values, then validating the live
-        model. Display-only browsing, skipped app values and an invalid
-        live model do not clear that restriction. Incompatible targets
+        model context and app values, then validating the live model.
+        Display-only browsing, skipped app values and an invalid live model
+        do not clear that restriction. Incompatible targets
         remain browsable without a model rewind; sending stays disabled
         if no compatible target can safely restore both model and app
         state. Explicit Retry/Edit of a selected not-sent leaf can recover

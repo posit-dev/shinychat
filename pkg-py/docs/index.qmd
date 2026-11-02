@@ -224,16 +224,45 @@ remain visible; the original branch and its descendants remain stored. No
 accepted-input callback or provider work runs for that version. A successful
 history write preserves it for reload and sibling navigation, but it is not a
 model-continuation checkpoint. A not-sent version is display-only for
-application state: loading it or browsing to it never runs `on_restore`.
+application state: loading it or browsing to it never runs `on_restore`. While
+it is selected, `chat.messages()` includes the unsent message as displayed,
+even though the model never received it.
 
 After fixing the application, explicitly **Retry** or edit the failed version.
 This restores its valid parent without capturing the failed position's live
 model, then creates another version. A Retry that fails preparation also remains
-as a new version. Successful preparation clears only a resolved application-
-restore restriction; unrelated model-unavailable or interrupted-source
-restrictions still apply. Nothing retries automatically. Selecting the already
+as a new version. Once the parent's model is reapplied, `on_restore` succeeds,
+and the live model validates, an earlier application-restore or
+model-unavailable restriction clears. Interrupted-source restrictions still
+apply. Nothing retries automatically. Selecting the already
 active conversation again doesn't retry its callbacks. Use **New chat** to leave
 the conversation.
+
+### Saved values that change between deploys
+
+History stores whatever `on_save` returned when each position was recorded, and
+shinychat doesn't version or migrate those values. When you redeploy with a new
+or renamed input, older conversations still carry the old shape. An `on_restore`
+callback that indexes a key those values don't have raises, and the conversation
+becomes read-only.
+
+Handle the differences you expect inside the callback, and decide there which
+defaults are safe:
+
+```python
+@chat.history.on_restore
+def _(values):
+    # "region" was added in a later deploy; older conversations lack it.
+    ui.update_select("region", selected=values.get("region", "all"))
+    # "tab" was renamed from "selected_tab".
+    tab = values.get("tab", values.get("selected_tab", "overview"))
+    ui.update_navs("tabs", selected=tab)
+```
+
+Shinychat treats an exception from `on_restore` as "the app couldn't be
+restored", because the values you chose to save tie the conversation to the
+rest of your app. Recover from known cases in the callback rather than letting
+it raise.
 
 ### Response checkpoints and interrupted conversations
 
