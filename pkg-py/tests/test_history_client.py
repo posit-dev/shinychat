@@ -358,7 +358,9 @@ def test_generic_model_turn_uses_json_mode_without_python_preflight():
 
 @pytest.mark.parametrize("chatlas_client", [False, True])
 @pytest.mark.parametrize("value", [object(), {object(): 100}])
-def test_model_turn_serializer_rejects_unsupported_objects(chatlas_client, value):
+def test_model_turn_serializer_rejects_unsupported_objects(
+    chatlas_client, value
+):
     import chatlas
     from pydantic import BaseModel
     from pydantic_core import PydanticSerializationError

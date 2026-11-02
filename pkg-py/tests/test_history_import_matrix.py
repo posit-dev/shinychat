@@ -575,9 +575,12 @@ def test_input_node_leaf_ends_path_at_its_bare_exchange() -> None:
         "n_0005",
         "n_0003",
     ]
-    for pair_id, answer in ("n_0004", "First answer"), (
-        "n_0005",
-        "Regenerated answer",
+    for pair_id, answer in (
+        ("n_0004", "First answer"),
+        (
+            "n_0005",
+            "Regenerated answer",
+        ),
     ):
         pair = imported.nodes[pair_id]
         assert pair.parent_id == "n_0002"

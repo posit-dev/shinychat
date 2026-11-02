@@ -333,8 +333,12 @@ async def test_first_input_captures_the_current_starting_pair_once(
     root = record.root_id
     assert captures == [{"dataset": "East"}]
     assert record.nodes[root].state[TURNS_STATE_KEY].data == starting_turns
-    assert record.nodes[root].state[SYSTEM_PROMPT_STATE_KEY].data == "East prompt"
-    assert record.nodes[root].state[VALUES_STATE_KEY].data == {"dataset": "East"}
+    assert (
+        record.nodes[root].state[SYSTEM_PROMPT_STATE_KEY].data == "East prompt"
+    )
+    assert record.nodes[root].state[VALUES_STATE_KEY].data == {
+        "dataset": "East"
+    }
     assert VALUES_STATE_KEY not in record.nodes[first].state
     saved_root = (await _saved(backend, record.id)).nodes[root]
     assert saved_root.state == record.nodes[root].state
@@ -342,16 +346,24 @@ async def test_first_input_captures_the_current_starting_pair_once(
     # Completing the first response records its changed values on the child,
     # leaving the first-input pair available for an edit/retry rewind.
     live["dataset"] = "response"
-    adapter.set_turns_json([*starting_turns, {"role": "assistant", "content": "answer"}])
+    adapter.set_turns_json(
+        [*starting_turns, {"role": "assistant", "content": "answer"}]
+    )
     await _end_stream(transcript)
     await writer.on_response()
     assert captures == [{"dataset": "East"}, {"dataset": "response"}]
     assert record.nodes[root].state == saved_root.state
-    assert record.nodes[first].state[VALUES_STATE_KEY].data == {"dataset": "response"}
+    assert record.nodes[first].state[VALUES_STATE_KEY].data == {
+        "dataset": "response"
+    }
 
     restored: list[dict[str, Any]] = []
-    viewer, _ = _make_controller(store=backend.reader, adapter=_prompt_adapter())
-    viewer._restore_callbacks.append(lambda values: restored.append(dict(values)))
+    viewer, _ = _make_controller(
+        store=backend.reader, adapter=_prompt_adapter()
+    )
+    viewer._restore_callbacks.append(
+        lambda values: restored.append(dict(values))
+    )
     starting_record = await _saved(backend, record.id)
     starting_record.set_active_leaf(root)
     await replay_exchange_record(viewer, starting_record)

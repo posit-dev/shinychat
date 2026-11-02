@@ -385,8 +385,11 @@ async def test_builtin_client_preserves_cooperative_cancellation_outcome(
     finished = asyncio.Event()
     outcomes: list[str] = []
     with session_context(session):
-        chat = Chat("cooperative_cancel", client=cast(Any, client), history=False)
+        chat = Chat(
+            "cooperative_cancel", client=cast(Any, client), history=False
+        )
         try:
+
             async def on_finished(
                 _stream_id: str, status: str, _error: str | None
             ) -> None:
@@ -400,7 +403,9 @@ async def test_builtin_client_preserves_cooperative_cancellation_outcome(
             await reactive.flush()
             await asyncio.wait_for(client.started.wait(), timeout=1)
             if cancel_requested:
-                cast(Any, session.input[ResolvedId("cooperative_cancel_cancel")])._set(1)
+                cast(
+                    Any, session.input[ResolvedId("cooperative_cancel_cancel")]
+                )._set(1)
                 await reactive.flush()
             client.release.set()
             await asyncio.wait_for(finished.wait(), timeout=1)
@@ -408,9 +413,13 @@ async def test_builtin_client_preserves_cooperative_cancellation_outcome(
 
             assert outcomes == ["cancelled" if cancel_requested else "ok"]
             response = chat._transcript.read()[-1]
-            assert response.status == ("cancelled" if cancel_requested else None)
+            assert response.status == (
+                "cancelled" if cancel_requested else None
+            )
             assert response.message.content == (
-                "partial response" if cancel_requested else "partial response completed"
+                "partial response"
+                if cancel_requested
+                else "partial response completed"
             )
 
             # A following submission must not inherit the cancellation flag.
@@ -421,7 +430,10 @@ async def test_builtin_client_preserves_cooperative_cancellation_outcome(
             await reactive.flush()
             await asyncio.wait_for(finished.wait(), timeout=1)
             assert outcomes[-1] == "ok"
-            assert chat._transcript.read()[-1].message.content == "partial response completed"
+            assert (
+                chat._transcript.read()[-1].message.content
+                == "partial response completed"
+            )
         finally:
             client.release.set()
             chat.destroy()
@@ -865,9 +877,7 @@ def test_v2_terminal_metadata_uses_registered_response_settlement_callback(
         def root_scope(self) -> "_HistorySession":
             return self
 
-        async def send_custom_message(
-            self, type: str, message: Any
-        ) -> None:
+        async def send_custom_message(self, type: str, message: Any) -> None:
             self.sent.append(message["action"])
 
     class _HistoryAdapter:
@@ -3104,9 +3114,7 @@ def test_nested_stream_context_inside_append_message_stream_works():
         action["type"] for action in sent if action["type"] != "history_update"
     ]
     assert types[0] == "chunk_start" and types[-1] == "chunk_end"
-    contents = [
-        entry.message.content for entry in chat._transcript.read()
-    ]
+    contents = [entry.message.content for entry in chat._transcript.read()]
     assert len(contents) == 1 and "inner" in contents[0]
 
 
