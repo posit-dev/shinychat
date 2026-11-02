@@ -18,7 +18,9 @@ AcceptedInputCallback = Callable[
 MessageCommittedCallback = Callable[
     [str | None, "TranscriptEntry"], Awaitable[None]
 ]
-StreamStartedCallback = Callable[[str, str | None, "TranscriptEntry"], Awaitable[None]]
+StreamStartedCallback = Callable[
+    [str, str | None, "TranscriptEntry"], Awaitable[None]
+]
 StreamUpdatedCallback = Callable[[str, "TranscriptEntry"], Awaitable[None]]
 StreamFinishedCallback = Callable[
     [str, Literal["ok", "cancelled", "error"], str | None], Awaitable[None]

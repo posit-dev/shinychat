@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 import pytest
+from _session_api_contract import FakeSessionReactiveApi
 from shiny import Inputs, Session
 from shiny._deprecated import ShinyDeprecationWarning
 from shiny.module import ResolvedId
@@ -10,7 +11,7 @@ from shiny.session import session_context
 from shinychat import Chat, chat_ui
 
 
-class _MockSession:
+class _MockSession(FakeSessionReactiveApi):
     ns: ResolvedId = ResolvedId("")
     app: object = None
     id: str = "mock-session"

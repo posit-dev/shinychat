@@ -529,6 +529,7 @@ def test_path_sibling_metadata_multiple_branches():
 
 # -- ConversationRecord: the name for the current version (plan §7.6, D1) --
 
+
 def _v1_record_with_exchange() -> ConversationRecordV1:
     rec = new_conversation_record(title="legacy", id="c_v1")
     rec.append_linear(turn("user", "hi"))
@@ -622,9 +623,7 @@ def test_upgraded_record_survives_revalidation():
     imported = ConversationRecord.model_validate(rec.model_dump(mode="json"))
     # Re-validating the upgraded record must not run the import again (or
     # otherwise change it): v2 input passes through unchanged.
-    again = ConversationRecord.model_validate(
-        imported.model_dump(mode="json")
-    )
+    again = ConversationRecord.model_validate(imported.model_dump(mode="json"))
     assert again == imported
 
 

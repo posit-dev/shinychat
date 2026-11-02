@@ -52,9 +52,7 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     chat._send_action = track_history_update  # type: ignore[method-assign]
 
     @chat.on_user_submit
-    async def _record_submission(
-        _input: str, attachments: list[Any]
-    ) -> None:
+    async def _record_submission(_input: str, attachments: list[Any]) -> None:
         accepted_submission_count.set(accepted_submission_count() + 1)
         accepted_attachment_count.set(len(attachments))
 
@@ -64,9 +62,7 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
 
     @render.text
     def accepted_submissions() -> str:
-        return (
-            f"{accepted_submission_count()}:{accepted_attachment_count()}"
-        )
+        return f"{accepted_submission_count()}:{accepted_attachment_count()}"
 
     @render.text
     def slash_submissions() -> str:

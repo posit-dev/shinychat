@@ -69,7 +69,9 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
 
     @_chat.history.on_restore
     def _restore_filter(values: dict[str, Any]) -> None:
-        ui.update_text("filter_text", value=str(values.get("filter_text", "none")))
+        ui.update_text(
+            "filter_text", value=str(values.get("filter_text", "none"))
+        )
 
     @render.text
     def filter_state():

@@ -6,7 +6,9 @@ from measure_history_turn_storage import run_conversation
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("tool_heavy", [False, True], ids=["plain", "tools"])
-async def test_storage_measurement_round_trips_complete_records(tmp_path, tool_heavy):
+async def test_storage_measurement_round_trips_complete_records(
+    tmp_path, tool_heavy
+):
     result = await run_conversation(
         exchanges=2, tool_heavy=tool_heavy, store_dir=tmp_path
     )
