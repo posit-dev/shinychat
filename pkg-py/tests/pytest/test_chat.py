@@ -4208,7 +4208,7 @@ def test_thinking_stream_stores_segment_not_tags():
         async def _exercise() -> None:
             await chat.append_message_stream(gen())
 
-        run_async(_exercise)
+        run_async(lambda: _run_stream_test(sent, 5, _exercise))
 
         # The thinking chunk must travel as bare content paired with
         # content_type="thinking" -- not wrapped in literal <thinking> tags.
