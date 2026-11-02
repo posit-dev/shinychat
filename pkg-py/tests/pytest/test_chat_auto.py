@@ -5,6 +5,7 @@ import threading
 from typing import Any, cast
 
 import pytest
+from _session_api_contract import FakeSessionReactiveApi
 from htmltools import HTML, tags
 from shiny import Inputs, Session
 from shiny.module import ResolvedId
@@ -19,7 +20,7 @@ from shinychat._chat_types import ChatMessageDict
 # ---------------------------------------------------------------------------
 
 
-class _MockSession:
+class _MockSession(FakeSessionReactiveApi):
     ns: ResolvedId = ResolvedId("")
     app: object = None
     id: str = "mock-session"

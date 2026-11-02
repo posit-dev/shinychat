@@ -135,9 +135,7 @@ def _check_overwrite(
     if not record_file.is_file():
         return False
     raw = json.loads(record_file.read_text(encoding="utf-8"))
-    existing_schema_version = check_schema_version(
-        raw.get("schema_version")
-    )
+    existing_schema_version = check_schema_version(raw.get("schema_version"))
     if existing_schema_version == record.schema_version:
         return False
     if existing_schema_version == 1 and record.schema_version == 2:
@@ -461,9 +459,7 @@ class FileConversationStore(ConversationStore):
                             conv_dir / stale,
                             e,
                         )
-                self._write_state.pop(
-                    self._ws_key(partition, record.id), None
-                )
+                self._write_state.pop(self._ws_key(partition, record.id), None)
             return
 
         conv_dir.mkdir(parents=True, exist_ok=True)
@@ -572,9 +568,7 @@ class FileConversationStore(ConversationStore):
         record: ConversationRecordV1 | ConversationRecordV2,
         size_bytes: int,
     ) -> None:
-        updated = [
-            m for m in self._meta_cache[partition] if m.id != record.id
-        ]
+        updated = [m for m in self._meta_cache[partition] if m.id != record.id]
         updated.append(record.meta(size_bytes=size_bytes))
         # list() is documented newest-first by created_at (#372); a
         # warm cache must not reorder on updated_at when a save touches

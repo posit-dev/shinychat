@@ -89,9 +89,15 @@ version-file = "pkg-py/src/shinychat/__version.py"
 include = ["pkg-py"]
 exclude = ["pkg-py/_dev"]
 pythonVersion = "3.10"
+# Shared test helpers live one level above pkg-py/tests/pytest; point type
+# checking at the same import root that pytest's `pythonpath` below adds.
+extraPaths = ["pkg-py/tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["pkg-py/tests"]
+# Shared test helpers live in pkg-py/tests; pytest's rootdir insertion only
+# covers each test file's own directory, so tests/pytest/* could not import them.
+pythonpath = ["pkg-py/tests"]
 
 [tool.coverage.run]
 source = ["pkg-py/src/shinychat"]

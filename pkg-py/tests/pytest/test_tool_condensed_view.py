@@ -740,9 +740,7 @@ async def test_custom_tool_result_html_dependencies_survive_the_wrap(
     sent = await _stream_custom_result(result)
 
     assert len(sent) == 1
-    dep_names = [
-        d["name"] for d in (sent[0].segments[0].html_deps or [])
-    ]
+    dep_names = [d["name"] for d in (sent[0].segments[0].html_deps or [])]
     assert "custom-widget" in dep_names
 
 

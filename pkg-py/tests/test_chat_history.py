@@ -13,6 +13,7 @@ import pytest
 import shinychat._history as history_module
 import shinychat._history_plan as history_plan_module
 from _history_test_helpers import replay_exchange_record
+from _session_api_contract import FakeSessionReactiveApi
 from shiny import reactive
 from shiny._utils import AsyncCallbacks, wrap_async
 from shiny.module import ResolvedId
@@ -37,7 +38,7 @@ from test_history_controller import _FakeChat, _make_controller, _restore_target
 # ---------------------------------------------------------------------------
 
 
-class _MockSession:
+class _MockSession(FakeSessionReactiveApi):
     ns: ResolvedId = ResolvedId("")
     app: object = None
     id: str = "mock-session-history"

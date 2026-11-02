@@ -6,6 +6,7 @@ import threading
 from typing import Any, cast
 
 import pytest
+from _session_api_contract import FakeSessionReactiveApi
 from htmltools import HTMLDependency, TagList, tags
 from pydantic_core import PydanticSerializationError
 from shiny import Inputs, Session
@@ -15,7 +16,7 @@ from shinychat import Chat
 from shinychat.types import ChatDrawerController
 
 
-class _ArtifactSession:
+class _ArtifactSession(FakeSessionReactiveApi):
     ns: ResolvedId = ResolvedId("")
     app: object = None
     id: str = "artifact-session"
@@ -281,7 +282,9 @@ def test_artifact_validates_title_and_content(
         _run_async(chat.drawer.show(cast(Any, object())))
 
 
-def test_drawer_mixed_content_bare_string_escaped(request: pytest.FixtureRequest) -> None:
+def test_drawer_mixed_content_bare_string_escaped(
+    request: pytest.FixtureRequest,
+) -> None:
     """A bare string containing executable HTML in mixed drawer content is
     HTML-escaped in the action payload (safe for the single-string innerHTML
     payload), while trusted tags still render as real HTML."""
@@ -305,7 +308,9 @@ def test_drawer_mixed_content_bare_string_escaped(request: pytest.FixtureRequest
     assert "<div>trusted</div>" in content
 
 
-def test_drawer_mixed_content_update_bare_string_escaped(request: pytest.FixtureRequest) -> None:
+def test_drawer_mixed_content_update_bare_string_escaped(
+    request: pytest.FixtureRequest,
+) -> None:
     """Same safe escaping applies to drawer.update()."""
     chat, session = _make_chat(request)
 

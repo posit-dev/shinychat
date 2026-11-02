@@ -1372,7 +1372,9 @@ async def test_system_prompt_null_entries_preserve_inherited_branch_on_recapture
         exchange_id=replacement,
         send=_sent,
     )
-    await transcript.end_stream(stream_id="s3", status=None, error=None, send=_sent)
+    await transcript.end_stream(
+        stream_id="s3", status=None, error=None, send=_sent
+    )
 
     assert _prompt_data(record, first) == "B"
     assert _prompt_data(record, original) == "A"
