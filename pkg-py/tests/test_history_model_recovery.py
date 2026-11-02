@@ -240,13 +240,12 @@ async def test_kvte_notsent_after_unavailable_detour_restores_parent_before_admi
     if kind == "retry":
         await view.controller.handle_resubmit(0, "retry", request_id="recover")
         expected_text = "B-prime"
-        assert live.active_leaf == failed
     else:
         await view.controller.handle_edit(
             0, "edited replacement", request_id="recover"
         )
         expected_text = "edited replacement"
-        assert live.active_leaf not in (failed, original)
+    assert live.active_leaf not in (failed, original)
     assert observed[-1] == ({"tab": "parent"}, [])
     assert view.controller.adapter.get_turns_json() == []
     assert not recorder.read_only
@@ -516,10 +515,14 @@ async def test_kvte_failed_parent_recovery_never_admits_input(
         )
 
     assert observed == [[]]
-    assert live.active_leaf == failed
-    node = live.nodes[failed]
-    assert node.status == "error" and node.checkpoint == "invalid"
-    assert node.not_sent is True
+    assert live.active_leaf not in (None, failed)
+    assert (
+        live.nodes[live.active_leaf].parent_id == live.nodes[failed].parent_id
+    )
+    for node_id in (failed, live.active_leaf):
+        node = live.nodes[node_id]
+        assert node.status == "error" and node.checkpoint == "invalid"
+        assert node.not_sent is True
     assert recorder.read_only_reason == "model_unavailable"
     assert not recorder.continuation_allowed
     assert view.chat._transcript.open_exchange_id is None

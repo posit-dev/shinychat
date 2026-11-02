@@ -61,7 +61,6 @@ from ._history_types import (
     TurnDict,
     new_conversation_record_v2,
     node_is_terminal_incomplete,
-    utcnow,
 )
 
 if TYPE_CHECKING:
@@ -695,48 +694,11 @@ class _ExchangeRecorder:
             )
         return self.record.open_inputless_exchange(), False
 
-    def can_replace_not_sent_input(
-        self, exchange_id: str, parent_id: str
-    ) -> bool:
-        """Whether Retry may safely reuse the selected not-sent leaf."""
-        record = self.record
-        if record is None or record.active_leaf != exchange_id:
-            return False
-        node = record.nodes.get(exchange_id)
-        parent = record.nodes.get(parent_id)
-        if (
-            node is None
-            or parent is None
-            or not parent.is_checkpoint
-            or node.parent_id != parent_id
-            or not node_is_terminal_incomplete(node)
-            or node.children
-            or node.messages
-            or node.selected_child is not None
-        ):
-            return False
-        # An inconsistent child list must not hide a descendant, or expose
-        # this node through another parent. Leave malformed trees intact.
-        if any(
-            other.parent_id == exchange_id
-            or (key != parent_id and exchange_id in other.children)
-            for key, other in record.nodes.items()
-        ):
-            return False
-        path = record.path_node_ids()
-        return all(
-            record.nodes[parent].children.count(child) == 1
-            and record.nodes[parent].selected_child == child
-            for parent, child in zip(path, path[1:])
-        )
-
     def stage_input_locked(
         self,
         exchange_id: str,
         parent_id: str,
         message: StoredMessage,
-        *,
-        replace_existing: bool = False,
     ) -> None:
         """Record one valid edited/retried submission before preparation.
 
@@ -758,33 +720,12 @@ class _ExchangeRecorder:
             raise RuntimeError(
                 "A staged submission is already awaiting preparation."
             )
-        if replace_existing:
-            if not self.can_replace_not_sent_input(exchange_id, parent_id):
-                raise RuntimeError("Cannot replace this staged submission.")
-            node = self.record.nodes[exchange_id]
-            self.record.nodes[exchange_id] = node.model_copy(
-                update={
-                    "selected_child": None,
-                    "input": message.model_copy(deep=True),
-                    "messages": [],
-                    "state": {},
-                    "status": "pending",
-                    "checkpoint": "candidate",
-                    "error": None,
-                    "not_sent": None,
-                    "app_values": None,
-                }
-            )
-            self.record.updated_at = utcnow()
-        else:
-            self.record.open_exchange(exchange_id, message, parent_id=parent_id)
+        self.record.open_exchange(exchange_id, message, parent_id=parent_id)
         self._staged_input = (exchange_id, message.model_copy(deep=True))
 
     async def fail_staged_input_locked(
         self,
         exchange_id: str,
-        *,
-        capture_app: bool = True,
     ) -> None:
         """Attach the safe pre-admission failure outcome to a staged node.
 
@@ -792,15 +733,15 @@ class _ExchangeRecorder:
         sent" error with an explicitly invalid checkpoint and the durable
         node fields describing whether a complete app-values snapshot was
         observed at the failed position.
-        Normally the automatic app-value capture runs exactly once here,
-        even after a failed ``on_restore`` (the failed node has no saved
-        values that capturing could overwrite). A cooperative cancellation
-        skips app getters and records unavailable values instead. The snapshot is complete
+        The ordinary automatic app-value capture role runs exactly once
+        here, even after a failed ``on_restore`` (a restore failure does
+        not make ``on_save`` impossible, and the failed node has no saved
+        values that capturing could overwrite). The snapshot is complete
         only when every callback finished and the whole snapshot
         serialized; otherwise the values are unavailable rather than a
         partial fragment tree. The staged slot is consumed either way, so
         the failed attempt can never be re-admitted; an intentional Retry
-        stages a fresh attempt at the same eligible leaf or a new sibling.
+        stages a new sibling.
         """
         record = self.record
         assert record is not None
@@ -810,7 +751,7 @@ class _ExchangeRecorder:
             self._staged_input = None
         app_values = (
             "complete"
-            if capture_app and self._capture_app_state(_force=True)
+            if self._capture_app_state(_force=True)
             else "unavailable"
         )
         record.finish_exchange(exchange_id, "error", HISTORY_ERROR_NOT_SENT)

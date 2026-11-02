@@ -575,19 +575,11 @@ class ChatHistory:
         prefix or a partially restored state rather than the displayed
         branch. The selected not-sent position blocks continuation and
         state capture; an explicit Retry or Edit after the underlying
-        problem is fixed restores the valid parent. Retry replaces an
-        eligible selected not-sent leaf, keeping its identity so existing
-        bookmarks follow the latest attempt. Its previous failure outcome
-        and app snapshot are replaced; the original accepted branch is
-        preserved. Edit and Retry of accepted/provider-failed input still
-        create siblings. Callbacks that can recover from a known case
-        should handle it themselves. Cancellation and other fatal errors
-        take the usual full restore cleanup. A cooperatively cancelled
-        in-place Retry that was not accepted first attempts to save the
-        same node as not sent, with unavailable app values rather than
-        invoking app getters. Failed storage or hard termination cannot
-        promise that position survives reload; already accepted input is
-        never relabeled. A later browse to a compatible checkpoint
+        problem is fixed restores the valid parent and creates a new
+        sibling — it never rewrites the failed node or the original.
+        Callbacks that can recover from a known case should handle it
+        themselves. Cancellation and other fatal errors take the usual
+        full restore cleanup. A later browse to a compatible checkpoint
         clears an earlier app/model restriction only after restoring its
         model context and available app values, then validating the live
         model. Display-only browsing, skipped app values and an invalid

@@ -31,12 +31,12 @@ browser (run focused: ``make py-check-playwright FILTER=history_node_first``):
 * ``test_history_node_first_browse_and_retry_recovers`` -- original <-> failed
   navigation with the callback still broken, then fixing the app and an
   explicit Retry while the live model getter is still poisoned: the valid
-  parent is restored without close-capturing the poisoned live model and the
-  same version succeeds exactly once, preserving the original branch, the
-  selection, the model context and the composer draft.
-* ``test_history_node_first_retry_failures_reuse_version`` -- repeated
-  intentional Retries with the fault still active replace the same failed
-  version without dispatching provider work.
+  parent is restored without close-capturing the poisoned live model and a
+  new sibling succeeds exactly once, preserving the failed node, the
+  original branch, the selection, the model context and the composer draft.
+* ``test_history_node_first_retry_failure_creates_new_sibling`` -- an
+  intentional Retry with the fault still active fails again, yet creates a
+  new failed sibling; the earlier failed node is not rewritten.
 
 The five failure-facing tests are contract regressions: they must fail
 against pre-feature production, which never retains a failed edit.
@@ -1222,9 +1222,10 @@ def test_history_node_first_browse_and_retry_recovers(
     """Contract regression: with the app callback still broken, browse the
     original B, return to the failed B', fix the app selector, then click
     Retry while the live model getter is still poisoned. The valid parent
-    must be restored without close-capturing B's poisoned live model, and the
-    same version must succeed exactly once, preserving the original branch,
-    the selection, the parent-prefix model context and the composer draft."""
+    must be restored without close-capturing B's poisoned live model, and a
+    new sibling must succeed exactly once -- preserving the failed node, the
+    original descendants, the selection, the parent-prefix model context and
+    the composer draft."""
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
@@ -1349,12 +1350,12 @@ def test_history_node_first_browse_and_retry_recovers(
     expect(chat.loc_input).to_be_visible(timeout=10_000)
     expect(chat.loc_input).to_have_text(DRAFT_TEXT, timeout=10_000)
 
-    # The successfully retried version stays selected as 2 / 2.
+    # The new sibling is displayed (same input text as B'), selected as 3 / 3.
     assert_b_prime_displayed(page)
     expect(
         page.locator(".shiny-chat-user-message").filter(has_text=MSG_B)
     ).to_have_count(0, timeout=10_000)
-    expect(sibling_nav.locator("span")).to_have_text("2 / 2", timeout=5_000)
+    expect(sibling_nav.locator("span")).to_have_text("3 / 3", timeout=5_000)
 
     # No transient removal or rollback: before the browse, and across the
     # retry, the edited input never disappears and the original never
@@ -1365,25 +1366,25 @@ def test_history_node_first_browse_and_retry_recovers(
         samples, retry_index, must_text=MSG_B_PRIME, forbidden_text=MSG_B
     )
 
-    # --- Record: the same logical version now contains the successful retry.
+    # --- Record: a new successful sibling; the failed node is not rewritten.
     record = wait_for_record_where(
         page,
         lambda r: len(_ok_node_ids(r, MSG_B_PRIME)) == 1,
-        description="the retried version recorded with an ok outcome",
+        description="the retry's new sibling recorded with an ok outcome",
         timeout_s=20.0,
     )
     ids_a = _node_ids_with_input(record, MSG_A)
     ids_bp = _node_ids_with_input(record, MSG_B_PRIME)
     assert len(ids_a) == 1, f"expected exactly one A node, found {ids_a}"
-    assert ids_bp == [bp_id], f"retry changed the version identity: {ids_bp}"
+    assert len(ids_bp) == 2, (
+        f"expected the failed B' plus its retry sibling, found {ids_bp}"
+    )
     b2_id = _ok_node_ids(record, MSG_B_PRIME)[0]
-    assert b2_id == bp_id
+    assert b2_id != bp_id, "the retry must create a new node, not reuse B'"
     b2 = record["nodes"][b2_id]
-    assert b2["parent_id"] == ids_a[0], "the version must remain a child of A"
-    assert b2.get("not_sent") is None
-    assert b2.get("app_values") is None
+    assert b2["parent_id"] == ids_a[0], "the retry sibling must be a child of A"
     assert b2.get("checkpoint") != "invalid", (
-        f"the retry must not inherit the failed checkpoint: {b2!r}"
+        f"the retry sibling must not inherit the failed checkpoint: {b2!r}"
     )
     responses = [
         m
@@ -1396,9 +1397,11 @@ def test_history_node_first_browse_and_retry_recovers(
     assert f"Echo: {MSG_B_PRIME}" in _segments_text(responses[0])
     assert_attachment_fidelity(record, b2_id)
     assert record.get("active_leaf") == b2_id, (
-        "the retried version must be the selected position; "
+        "the retry sibling must be the selected position; "
         f"active_leaf={record.get('active_leaf')!r}"
     )
+    # The failed B' node was not rewritten by the recovery.
+    assert_failed_node(record, bp_id, app_values="unavailable")
     assert_original_branch_retained(record)
 
     # --- Model context: each on_restore observation, separately. ---
@@ -1437,10 +1440,14 @@ def test_history_node_first_browse_and_retry_recovers(
     )
 
 
-def test_history_node_first_retry_failures_reuse_version(
+def test_history_node_first_retry_failure_creates_new_sibling(
     page: Page, local_app: ShinyAppProc
 ) -> None:
-    """Repeated failed Retries replace the same version without dispatch."""
+    """Contract regression: an intentional Retry with the capture fault still
+    active fails again, and that failure must be preserved as a NEW failed
+    sibling -- never a rewrite of the original failed node -- with no model
+    dispatch, no accepted input, and no transient removal of the displayed
+    edit."""
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
@@ -1449,64 +1456,91 @@ def test_history_node_first_retry_failures_reuse_version(
     assert_b_prime_displayed(page)
     record = wait_for_record(page, MSG_B_PRIME)
     bp_id = assert_failed_edit_recorded(record, app_values="complete")
+    # The automatic capture ran exactly once and serialized, so the
+    # failed node's snapshot is explicitly complete (with the distinctive
+    # captured-at-failure value).
     assert_save_count(page, saves_before + 1)
     assert_failed_node_affordances(page, chat)
     expect(page.locator("#model_poisoned")).to_have_text("true", timeout=10_000)
     sibling_nav = page.locator(".shiny-chat-sibling-nav")
     expect(sibling_nav.locator("span")).to_have_text("2 / 2", timeout=5_000)
-    node = record["nodes"][bp_id]
-    parent_id = node["parent_id"]
-    created_at = node["created_at"]
-    children = list(record["nodes"][parent_id]["children"])
-    sequence = record["next_node_seq"]
+
+    tracked_fields = (
+        "parent_id",
+        "checkpoint",
+        "status",
+        "error",
+        "not_sent",
+        "app_values",
+        "input",
+        "state",
+    )
+    pre_node = {k: record["nodes"][bp_id].get(k) for k in tracked_fields}
+
     retry_index = len(peek_samples(page))
+    chat.loc.get_by_role("button", name="Retry message").click()
+    # The retry's parent restore ran the still-broken callback once more.
+    expect(page.locator("#restore_count")).to_have_text("2", timeout=30_000)
+    # The new failed sibling is displayed and selected as 3 / 3.
+    expect(sibling_nav.locator("span")).to_have_text("3 / 3", timeout=30_000)
+    assert_b_prime_displayed(page)
+    assert_failed_node_affordances(page, chat)
+    # The second failure dispatched and accepted nothing, again.
+    assert_no_extra_callbacks(page)
+    expect(page.locator("#user_input_text")).to_have_text(MSG_C, timeout=10_000)
+    # The still-active fault re-poisoned the model after the parent apply.
+    expect(page.locator("#model_poisoned")).to_have_text("true", timeout=10_000)
+    # Each of the two pre-admission failures ran the automatic capture
+    # exactly once: one more invocation since the first failure settled.
+    assert_save_count(page, saves_before + 2)
 
-    for retry_number in (1, 2):
-        chat.loc.get_by_role("button", name="Retry message").click()
-        expect(page.locator("#restore_count")).to_have_text(
-            str(retry_number + 1), timeout=30_000
-        )
-        assert_save_count(page, saves_before + retry_number + 1)
-        expect(sibling_nav.locator("span")).to_have_text(
-            "2 / 2", timeout=30_000
-        )
-        assert_b_prime_displayed(page)
-        assert_failed_node_affordances(page, chat)
-        assert_no_extra_callbacks(page)
-        expect(page.locator("#user_input_text")).to_have_text(MSG_C)
-        expect(page.locator("#model_poisoned")).to_have_text("true")
-        record = wait_for_record_where(
-            page,
-            lambda r: (
-                r.get("active_leaf") == bp_id
-                and r["nodes"][bp_id].get("not_sent") is True
-                and r["nodes"][bp_id]
-                .get("state", {})
-                .get(VALUES_KEY, {})
-                .get("data", {})
-                .get("failure_capture")
-                == saves_before + retry_number + 1
-            ),
-            description="the latest failed Retry persisted in the same version",
-        )
-        assert _node_ids_with_input(record, MSG_B_PRIME) == [bp_id]
-        assert_failed_node(record, bp_id, app_values="complete")
-        assert_attachment_fidelity(record, bp_id)
-        assert record["nodes"][bp_id]["created_at"] == created_at
-        assert record["nodes"][parent_id]["children"] == children
-        assert record["nodes"][parent_id]["selected_child"] == bp_id
-        assert record["next_node_seq"] == sequence
-        assert_original_branch_retained(record)
-
+    # No transient removal or rollback across the failed retry.
     samples = collect_samples(page)
     assert_stable_presence(
         samples, retry_index, must_text=MSG_B_PRIME, forbidden_text=MSG_B
     )
+
+    # --- Record: a new failed sibling; the original failed node is intact.
+    record = wait_for_record_where(
+        page,
+        lambda r: len(_node_ids_with_input(r, MSG_B_PRIME)) == 2,
+        description="the intentional retry recorded a new failed sibling",
+        timeout_s=20.0,
+    )
+    ids_a = _node_ids_with_input(record, MSG_A)
+    ids_bp = _node_ids_with_input(record, MSG_B_PRIME)
+    assert len(ids_a) == 1, f"expected exactly one A node, found {ids_a}"
+    assert len(ids_bp) == 2, f"expected two failed siblings, found {ids_bp}"
+    new_id = next(i for i in ids_bp if i != bp_id)
+    assert record.get("active_leaf") == new_id, (
+        "the newly failed sibling must be the selected position, not the "
+        f"original failed node; active_leaf={record.get('active_leaf')!r}"
+    )
+    for node_id in ids_bp:
+        node = record["nodes"][node_id]
+        assert node["parent_id"] == ids_a[0], (
+            f"failed sibling {node_id} must be a child of A"
+        )
+        assert_failed_node(record, node_id, app_values="complete")
+        assert_attachment_fidelity(record, node_id)
+    # The original failed node was not rewritten by the failed retry.
+    post_node = {k: record["nodes"][bp_id].get(k) for k in tracked_fields}
+    assert post_node == pre_node, (
+        "the failed retry rewrote the original failed node"
+    )
+    assert_original_branch_retained(record)
+
+    # --- The retry sees the outgoing failed position and the rewound parent
+    #     model (the fixture's poison only clears on parent apply). ---
     entries = restore_enter_entries(read_trace(page))
-    assert len(entries) == 3
-    for entry in entries[1:]:
-        assert_edit_time_outgoing_entry(entry, FAILED_POSITION_PREFIX)
-        assert entry["values"].get("filter") == "all"
+    assert len(entries) == 2, (
+        "expected exactly two on_restore invocations (edit-time failure and "
+        f"the retry parent restore); got {len(entries)}"
+    )
+    assert_edit_time_outgoing_entry(entries[1], FAILED_POSITION_PREFIX)
+    assert entries[1]["values"].get("filter") == "all", (
+        f"the retry must restore the parent's app values: {entries[1]['values']}"
+    )
 
 
 def test_history_node_first_healthy_branch_writable_after_failed_visit(
@@ -1521,36 +1555,37 @@ def test_history_node_first_healthy_branch_writable_after_failed_visit(
     assert_failed_node_affordances(page, chat)
     page.locator("#fault_mode").select_option("none")
     expect(page.locator("#model_poisoned")).to_have_text("true")
-    nav = page.locator(".shiny-chat-sibling-nav")
-    expect(nav.locator("span")).to_have_text("2 / 2")
-    nav.get_by_role("button", name="Previous version").click()
-    expect(nav.locator("span")).to_have_text("1 / 2")
-    chat.expect_latest_message(f"Echo: {MSG_C}", timeout=30_000)
+    chat.loc.get_by_role("button", name="Retry message").click()
+    chat.expect_latest_message(f"Echo: {MSG_B_PRIME}", timeout=30_000)
+    expect(chat.loc_input).to_be_visible()
+    expect(page.locator("#provider_calls")).to_have_text("4")
     healthy = wait_for_record_where(
         page,
         lambda r: (
-            r["nodes"][r["active_leaf"]].get("input") is not None
-            and MSG_C in _segments_text(r["nodes"][r["active_leaf"]]["input"])
+            len(_node_ids_with_input(r, MSG_B_PRIME)) == 2
+            and r["nodes"][r["active_leaf"]]["status"] == "ok"
         ),
-        description="the healthy original branch",
+        description="the healthy retry checkpoint",
     )
     healthy_id = healthy["active_leaf"]
-    expect(chat.loc.locator(".shiny-chat-readonly")).to_have_count(0)
-    expect(chat.loc_input).to_be_visible()
+    nav = page.locator(".shiny-chat-sibling-nav")
+    expect(nav.locator("span")).to_have_text("3 / 3")
 
-    nav.get_by_role("button", name="Next version").click()
-    expect(nav.locator("span")).to_have_text("2 / 2")
-    assert_failed_node_affordances(page, chat)
     nav.get_by_role("button", name="Previous version").click()
-    expect(nav.locator("span")).to_have_text("1 / 2")
-    chat.expect_latest_message(f"Echo: {MSG_C}")
+    expect(nav.locator("span")).to_have_text("2 / 3")
+    assert_failed_node_affordances(page, chat)
+    nav.get_by_role("button", name="Next version").click()
+    expect(nav.locator("span")).to_have_text("3 / 3")
+    chat.expect_latest_message(f"Echo: {MSG_B_PRIME}")
     expect(chat.loc.locator(".shiny-chat-readonly")).to_have_count(0)
     expect(chat.loc_input).to_be_visible()
     expect(chat.loc_input).to_have_text(DRAFT_TEXT)
     expect(chat.loc_input_button).to_be_enabled()
     expect(page.locator("#current_filter")).to_have_text("all")
     expect(page.locator("#model_poisoned")).to_have_text("false")
-    assert_no_extra_callbacks(page)
+    expect(page.locator("#provider_calls")).to_have_text("4")
+    expect(page.locator("#submit_count")).to_have_text("4")
+    expect(page.locator("#user_input_count")).to_have_text("4")
     selected = wait_for_record_where(
         page,
         lambda r: r["active_leaf"] == healthy_id,
