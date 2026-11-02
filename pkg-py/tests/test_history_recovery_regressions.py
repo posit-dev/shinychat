@@ -486,30 +486,6 @@ async def test_recovery_retry_after_unavailable_detour_restores_parent(
 
 
 @pytest.mark.anyio
-async def test_recovery_unavailable_target_app_values_cannot_clear_app_failure() -> (
-    None
-):
-    controller, _chat, adapter, _store, original, _outgoing = (
-        _make_v2_navigation_controller()
-    )
-    recorder = controller._exchange_recorder
-    record = recorder.record
-    assert record is not None
-    record.nodes[original].app_values = "unavailable"
-    recorder.mark_read_only("app_restore_failed")
-    restores: list[dict[str, Any]] = []
-    controller._restore_callbacks.append(lambda v: restores.append(dict(v)))
-    adapter.turns = [{"role": "user", "content": "poisoned"}]
-
-    await controller.handle_navigate(2, "prev", request_id="unavailable-values")
-
-    assert record.active_leaf == original
-    assert restores == []
-    assert recorder.read_only
-    assert recorder.read_only_reason == "app_restore_failed"
-
-
-@pytest.mark.anyio
 @pytest.mark.parametrize("source", ["app_failure", "not_sent"])
 async def test_recovery_successful_callback_cannot_clear_invalid_live_model(
     source: str,

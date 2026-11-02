@@ -31,10 +31,9 @@ def retry_store(
 async def test_edit_and_retry_create_siblings(
     request: pytest.FixtureRequest, retry_store: ConversationStore, kind: str
 ) -> None:
-    record = _record(availability="complete", failed_parent="original")
+    record = _record(failed_parent="original")
     if kind == "provider_retry":
         record.nodes["failed"].not_sent = None
-        record.nodes["failed"].app_values = None
         record.nodes["failed"].checkpoint = "valid"
     before = record.nodes["failed"].model_dump()
     children = list(record.nodes["original"].children)
@@ -51,10 +50,9 @@ async def test_edit_and_retry_create_siblings(
     original_after = live.nodes["failed"].model_dump()
     if kind == "provider_retry":
         # The ordinary close-capture can add recorded model context.
-        assert (
-            original_after.pop("state")[VALUES_STATE_KEY]
-            == before.pop("state")[VALUES_STATE_KEY]
-        )
+        assert original_after.pop("state").get(VALUES_STATE_KEY) == before.pop(
+            "state"
+        ).get(VALUES_STATE_KEY)
     assert original_after == before
     assert live.nodes["original"].children == [*children, new_id]
     assert live.nodes[new_id].parent_id == "original"
@@ -68,7 +66,7 @@ async def test_fatal_resubmit_failures_keep_interrupted_reading(
     view = await _producer(
         request,
         retry_store,
-        _record(availability="complete", failed_parent="original"),
+        _record(failed_parent="original"),
     )
     blocked = asyncio.Event()
     never = asyncio.Event()

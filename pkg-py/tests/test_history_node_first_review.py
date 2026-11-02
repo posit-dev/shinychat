@@ -1,15 +1,15 @@
 """Regressions for the independent node-first review's P1/P2 findings.
 
-A failed position records its availability on the exchange node and always
-owns its values snapshot. Bookmarks identify display positions, including
-known terminal failures, not just model-continuation checkpoints.
+A not-sent position is display-only for app state: it never invokes
+``on_restore``. Bookmarks identify display positions, including known
+terminal failures, not just model-continuation checkpoints.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Literal, cast
+from typing import Any, Awaitable, Callable, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -59,11 +59,7 @@ def review_store(
     return InMemoryConversationStore()
 
 
-def _record(
-    *,
-    availability: Literal["complete", "unavailable"] = "unavailable",
-    failed_parent: str | None = None,
-) -> ConversationRecordV2:
+def _record(*, failed_parent: str | None = None) -> ConversationRecordV2:
     record = new_conversation_record_v2(
         id="c_review", title="Review", client_info={}
     )
@@ -101,10 +97,6 @@ def _record(
     record.finish_exchange("failed", "error", HISTORY_ERROR_NOT_SENT)
     record.nodes["failed"].checkpoint = "invalid"
     record.nodes["failed"].not_sent = True
-    record.nodes["failed"].app_values = availability
-    record.nodes["failed"].state[VALUES_STATE_KEY] = StateEntry(
-        kind="values", version=1, mode="snapshot", data={}
-    )
     return record
 
 
@@ -200,7 +192,7 @@ def _assert_unaccepted(view: _View) -> None:
 
 
 @pytest.mark.anyio
-async def test_root_bookmark_recapture_preserves_unavailable_and_ordinary_values(
+async def test_root_bookmark_recapture_preserves_ordinary_values(
     request: pytest.FixtureRequest, review_store: ConversationStore
 ) -> None:
     record = _record()
@@ -233,8 +225,6 @@ async def test_root_bookmark_recapture_preserves_unavailable_and_ordinary_values
         == NEW_VALUES
     )
     assert rewritten.nodes["failed"].not_sent is True
-    assert rewritten.nodes["failed"].app_values == "unavailable"
-    assert rewritten.nodes["failed"].state[VALUES_STATE_KEY].data == {}
     assert (
         rewritten.nodes["ordinary"].state[VALUES_STATE_KEY].data == OLD_VALUES
     )
@@ -244,9 +234,6 @@ async def test_root_bookmark_recapture_preserves_unavailable_and_ordinary_values
     original_after = rewritten.nodes["original"].model_dump()
     original_after["state"].pop(VALUES_STATE_KEY)
     assert original_after == original
-    # The failed position resolves its own owned snapshot; the node's
-    # app_values marker, not a resolver error, keeps it out of restore.
-    assert resolve_path_values(rewritten, "failed") == {}
     _assert_unaccepted(root_view)
 
     rewritten.set_active_leaf("failed")
@@ -271,10 +258,10 @@ async def test_root_bookmark_recapture_preserves_unavailable_and_ordinary_values
 
 
 @pytest.mark.anyio
-async def test_complete_empty_failed_snapshot_is_restored_not_inherited(
+async def test_load_at_not_sent_node_does_not_call_on_restore(
     request: pytest.FixtureRequest, review_store: ConversationStore
 ) -> None:
-    record = _record(availability="complete")
+    record = _record()
     await review_store.put(PARTITION, record)
     restored = _view(request, review_store)
     observed: list[dict[str, Any]] = []
@@ -285,12 +272,10 @@ async def test_complete_empty_failed_snapshot_is_restored_not_inherited(
     await restored.controller._restore_initial_exchange_record(
         await _stored(review_store)
     )
-    assert observed == [{}]
+    assert observed == []
     live = restored.controller._exchange_recorder.record
     assert live is not None
     assert live.active_leaf == "failed"
-    assert live.nodes["failed"].state[VALUES_STATE_KEY].data == {}
-    assert resolve_path_values(live, "failed") == {}
     recorder = restored.controller._exchange_recorder
     assert not recorder.read_only
     assert recorder.selected_not_sent
@@ -299,17 +284,11 @@ async def test_complete_empty_failed_snapshot_is_restored_not_inherited(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize(
-    "availability, expected_restores",
-    [("complete", [{}]), ("unavailable", [])],
-)
 async def test_failed_bookmark_restores_selected_display_without_admission(
     request: pytest.FixtureRequest,
     review_store: ConversationStore,
-    availability: Literal["complete", "unavailable"],
-    expected_restores: list[dict[str, Any]],
 ) -> None:
-    record = _record(availability=availability, failed_parent="original")
+    record = _record(failed_parent="original")
     producer = await _producer(request, review_store, record)
     pointer = await producer.stamp()
     assert pointer == {"conversation_id": "c_review", "node_id": "failed"}
@@ -338,7 +317,7 @@ async def test_failed_bookmark_restores_selected_display_without_admission(
     assert not recorder.source_isolated
     assert restored.controller._can_resubmit_active()
     assert not restored.chat.history._history_submission_admitted()
-    assert observed == expected_restores
+    assert observed == []
     assert _contents(restored.chat) == [
         "original",
         "original reply",

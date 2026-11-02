@@ -56,7 +56,6 @@ from ._history_types import (
     TurnDict,
     check_schema_version,
     new_conversation_id,
-    node_has_unavailable_app_values,
     node_is_terminal_incomplete,
     project_history_error_message,
 )
@@ -792,10 +791,9 @@ class HistoryController:
             # conversation-wide object. An ordinary failure marks the
             # record view-only inside the helper; the metadata below still
             # runs so the client learns the read-only state.
-            # A terminal incomplete position without its own observed values
-            # never invokes on_restore with inherited parent values as if
-            # they were observed at the failure.
-            if not node_has_unavailable_app_values(active_node):
+            # A not-sent position is display-only for app state: it never
+            # invokes on_restore.
+            if not node_is_terminal_incomplete(active_node):
                 self._restore_app_state(
                     _history_plan.resolve_path_values(target, active_leaf)
                 )
@@ -1089,12 +1087,6 @@ class HistoryController:
 
         prefix = record.model_copy(deep=True)
         prefix.set_active_leaf(parent_id)
-        if (
-            resolvable or recorder.selected_not_sent
-        ) and node_has_unavailable_app_values(prefix.nodes[parent_id]):
-            raise ValueError(
-                "Application values are unavailable at the parent checkpoint."
-            )
         node_ids = tuple(prefix.path_node_ids())
         rewind_state = _history_plan.preflight_state(
             prefix,
@@ -1384,9 +1376,7 @@ class HistoryController:
                         await recorder.persist_record_locked()
                     else:
                         await recorder.persist_active_leaf_locked(record, leaf)
-                skip_restore = node_has_unavailable_app_values(
-                    record.nodes[leaf]
-                )
+                skip_restore = node_is_terminal_incomplete(record.nodes[leaf])
                 restored = (
                     False
                     if skip_restore
@@ -1759,8 +1749,6 @@ class HistoryController:
             else None
         )
         if leaf.parent_id is None or parent is None or not parent.is_checkpoint:
-            return False
-        if node_has_unavailable_app_values(parent):
             return False
         try:
             _history_plan.validate_active_path_state(record)

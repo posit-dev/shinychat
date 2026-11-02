@@ -235,7 +235,6 @@ class _ExchangeRecorder:
         *,
         strict: bool = False,
         record: ConversationRecordV2 | None = None,
-        explicit: bool = False,
     ) -> StateEntry | None:
         """Run the ``on_save`` callbacks and sparsely record their values.
 
@@ -286,15 +285,6 @@ class _ExchangeRecorder:
                 return previous.model_copy(deep=True)
             return None
 
-        if explicit:
-            # The failed-position capture: a complete snapshot always
-            # records its own entry, even when it equals the inherited
-            # parent values, so the durable complete/unavailable marker
-            # and the presence of observed values can never disagree.
-            # Ordinary success captures keep the sparse inheritance form.
-            return StateEntry(
-                kind="values", version=1, mode="snapshot", data=data
-            )
         return sparse_snapshot_entry(
             record,
             node_id,
@@ -700,18 +690,11 @@ class _ExchangeRecorder:
         """Attach the safe pre-admission failure outcome to a staged node.
 
         The staged submission is finished as a sanitized "message not
-        sent" error with an explicitly invalid checkpoint and the durable
-        node fields describing whether a complete app-values snapshot was
-        observed at the failed position.
-        The ordinary automatic app-value capture role runs exactly once
-        here, even after a failed ``on_restore`` (a restore failure does
-        not make ``on_save`` impossible, and the failed node has no saved
-        values that capturing could overwrite). The snapshot is complete
-        only when every callback finished and the whole snapshot
-        serialized; otherwise the values are unavailable rather than a
-        partial fragment tree. The staged slot is consumed either way, so
-        the failed attempt can never be re-admitted; an intentional Retry
-        stages a new sibling.
+        sent" error with an explicitly invalid checkpoint. The failed
+        position is display-only for app state: it records no values of
+        its own and never invokes ``on_restore``. The staged slot is
+        consumed, so the failed attempt can never be re-admitted; an
+        intentional Retry stages a new sibling.
         """
         record = self.record
         assert record is not None
@@ -719,20 +702,10 @@ class _ExchangeRecorder:
             exchange_id
         ):
             self._staged_input = None
-        app_values = (
-            "complete"
-            if self._capture_app_state(_force=True)
-            else "unavailable"
-        )
         record.finish_exchange(exchange_id, "error", HISTORY_ERROR_NOT_SENT)
         node = record.nodes[exchange_id]
         node.checkpoint = "invalid"
         node.not_sent = True
-        node.app_values = app_values
-        if app_values == "unavailable":
-            node.state[VALUES_STATE_KEY] = StateEntry(
-                kind="values", version=1, mode="snapshot", data={}
-            )
         await self.persist_record_locked()
 
     def reset(self) -> None:
@@ -813,30 +786,17 @@ class _ExchangeRecorder:
             if published:
                 self._active_id_published_for = record
 
-    def _capture_app_state(
-        self, *, strict: bool = False, _force: bool = False
-    ) -> bool:
-        """Capture the active exchange's values without partially changing state.
-
-        ``_force`` is reserved for the one failed-position capture: a
-        view-only restriction suppresses captures to protect *saved* state
-        from an untrustworthy live client, but a failed staged node owns
-        no saved values and its single capture attempt is the approved
-        failed-position behavior. The failed-position capture also records
-        explicitly (never sparsely), so a complete marker always carries
-        its observed values.
-        """
+    def _capture_app_state(self, *, strict: bool = False) -> bool:
+        """Capture the active exchange's values without partially changing state."""
         assert self.record is not None
-        if not self.continuation_allowed and not _force:
+        if not self.continuation_allowed:
             return False
         live = self.record
         staged = self._stage_state(live)
         node_id = live.active_leaf
         assert node_id is not None
         try:
-            entry = self._capture_values_at(
-                node_id, strict=True, record=staged, explicit=_force
-            )
+            entry = self._capture_values_at(node_id, strict=True, record=staged)
             if entry is None:
                 staged.nodes[node_id].state.pop(VALUES_STATE_KEY, None)
             else:

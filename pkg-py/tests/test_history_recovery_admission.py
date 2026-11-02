@@ -155,7 +155,7 @@ async def test_explicit_save_does_not_capture_promote_or_rewrite_selected_not_se
     failed = (await _stored(store, partition)).nodes[FAILED]
     assert failed.not_sent is True
     assert failed.checkpoint == "invalid"
-    assert failed.state[VALUES_STATE_KEY].data == {"tab": "failed"}
+    assert VALUES_STATE_KEY not in failed.state
     _assert_nothing_accepted(chat, provider_calls)
 
 

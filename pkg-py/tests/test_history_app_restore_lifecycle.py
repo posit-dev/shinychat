@@ -423,10 +423,8 @@ async def test_failed_retained_parent_restore_keeps_edit_without_dispatch(
     assert failed.error is not None
     assert failed.error.message == HISTORY_ERROR_NOT_SENT
     assert failed.not_sent is True
-    assert failed.app_values == "complete"
-    # No on_save callbacks: the complete observed snapshot is {}, not
-    # the retained parent's values masquerading as a failed capture.
-    assert failed.state[VALUES_STATE_KEY].data == {}
+    # A not-sent position is display-only for app state: no values entry.
+    assert VALUES_STATE_KEY not in failed.state
     assert [
         cast(Any, entry.message).segments[0].content
         for entry in chat._transcript.read()
@@ -461,19 +459,20 @@ async def test_failed_retained_parent_restore_keeps_edit_without_dispatch(
     assert messages_seen == [outgoing]
     assert turns_seen == [adapter.turns]
 
-    # Reopening preserves the selected failed version and its own app facts.
+    # Reopening preserves the selected failed version without invoking
+    # on_restore at the not-sent position.
     reloaded, _reload_store = _make_controller()
     reload_chat = cast(_FakeChat, reloaded.chat)
-    with pytest.warns(UserWarning, match="on_restore callback failed"):
-        reloaded._restore_callbacks.append(failing)
-        await replay_exchange_record(reloaded, stored)
+    callbacks_before_reload = len(values_seen)
+    reloaded._restore_callbacks.append(failing)
+    await replay_exchange_record(reloaded, stored)
     assert reloaded._exchange_recorder.record is not None
     assert reloaded._exchange_recorder.record.active_leaf == failed_id
     assert reloaded._exchange_recorder.source_isolated is False
     assert [
         m["segments"][0]["content"] for m in reload_chat.restored_messages
     ] == [*prefix, "edited"]
-    assert values_seen[-1] == {}
+    assert len(values_seen) == callbacks_before_reload
 
     # Projection is presentation, not provider kickoff: it uses the staged ID
     # without a browser echo; accepted-input publication is still unchanged.

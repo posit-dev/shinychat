@@ -570,7 +570,9 @@ class ChatHistory:
         "message not sent" outcome, holds an explicitly invalid checkpoint,
         and never reverts the visible conversation to the original branch
         (the original and its descendants are preserved as navigable
-        siblings). Failed browsing retains the selected target. After failed
+        siblings). A selected not-sent position is display-only for app
+        state: loading it or browsing to it never calls ``on_restore``.
+        Failed browsing retains the selected target. After failed
         resubmit preparation, the live model client may hold the parent
         prefix or a partially restored state rather than the displayed
         branch. The selected not-sent position blocks continuation and
@@ -588,8 +590,7 @@ class ChatHistory:
         if no compatible target can safely restore both model and app
         state. Explicit Retry/Edit of a selected not-sent leaf can recover
         through its valid compatible parent; Retry/Edit is offered only
-        when that saved parent can be preflighted and its app values are
-        available. Source-isolated, interrupted and active-producer
+        when that saved parent can be preflighted. Source-isolated, interrupted and active-producer
         protections are never cleared by that recovery.
         Starting a new chat resets the active view.
 

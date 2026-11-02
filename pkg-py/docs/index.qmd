@@ -225,9 +225,8 @@ a separate version with a **message not sent** outcome. Its input and attachment
 remain visible; the original branch and its descendants remain stored. No
 accepted-input callback or provider work runs for that version. A successful
 history write preserves it for reload and sibling navigation, but it is not a
-model-continuation checkpoint. Its captured application values are either a
-complete JSON snapshot or explicitly unavailable, never a partial snapshot or
-an inherited value presented as an observed one.
+model-continuation checkpoint. A not-sent version is display-only for
+application state: loading it or browsing to it never runs `on_restore`.
 
 After fixing the application, explicitly **Retry** or edit the failed version.
 This restores its valid parent without capturing the failed position's live

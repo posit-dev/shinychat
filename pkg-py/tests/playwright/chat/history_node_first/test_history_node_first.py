@@ -14,20 +14,16 @@ browser (run focused: ``make py-check-playwright FILTER=history_node_first``):
   then poisons the model so the required capture fails. In both cases B'
   must be displayed inside the actual server fault window, stay displayed
   with no transient removal or rollback, trigger zero provider or
-  accepted-input callbacks, run the automatic capture role exactly once
-  (proven by the independent ``#save_count``), and be recorded as its own
+  accepted-input callbacks, never run the automatic capture role (proven by
+  the independent ``#save_count``), and be recorded as its own
   terminal-incomplete node (``not_sent: true``, an ``error`` status and an
-  explicit invalid checkpoint) with ``app_values: "unavailable"`` when the
-  fixture's on_save raised mid-capture, or ``app_values: "complete"`` when it
-  finished. The node owns its ``shinychat:values`` snapshot (``{}`` when
-  unavailable), while the original branch is retained.
+  explicit invalid checkpoint) that owns no ``shinychat:values`` snapshot,
+  while the original branch is retained.
 * ``test_history_node_first_failed_edit_survives_reload`` -- a failed real
-  file reload, parameterized across both app-values outcomes: the failed
-  node reloads selected and displayed with its failure affordances, the
-  stored node is unchanged, and loading it dispatches nothing. An
-  unavailable snapshot must not invoke ``on_restore`` at all; a complete
-  snapshot restores the failed node's own distinctive saved values (not
-  inherited parent values) exactly once.
+  file reload, parameterized across both fault modes: the failed node reloads
+  selected and displayed with its failure affordances, the stored node is
+  unchanged, and loading it dispatches nothing and never invokes
+  ``on_restore`` (a not-sent position is display-only for app state).
 * ``test_history_node_first_browse_and_retry_recovers`` -- original <-> failed
   navigation with the callback still broken, then fixing the app and an
   explicit Retry while the live model getter is still poisoned: the valid
@@ -41,7 +37,7 @@ browser (run focused: ``make py-check-playwright FILTER=history_node_first``):
 The five failure-facing tests are contract regressions: they must fail
 against pre-feature production, which never retains a failed edit.
 ``app.py`` documents the fixture's fault model, counters, the deterministic
-unavailable/complete snapshot split, and the ``#model_poisoned`` and
+fault modes, and the ``#model_poisoned`` and
 ``#save_count`` observations.
 """
 
@@ -70,15 +66,12 @@ MSG_B_PRIME = "bravo prime edit"
 ATTACHMENT_NAME = "notes-b.txt"
 DRAFT_TEXT = "delta draft"
 # The distinctive app value the capture_poison fault stages before the
-# required capture fails: a complete failed-position snapshot must contain
-# exactly this value (deliberately different from any inherited parent
-# value, which is "all"), and reloading it must restore it rather than the
-# parent's.
+# required capture fails (deliberately different from the parent value, which
+# is "all"). A not-sent position never records or restores it.
 FILTER_AT_FAILURE = "captured-at-failure"
 # The durable failure metadata lives on the failed node itself: an explicit
-# invalid checkpoint, ``not_sent: true``, an ``error`` status, and
-# ``app_values: unavailable | complete`` with the node's own
-# ``shinychat:values`` snapshot (an empty ``{}`` when unavailable).
+# invalid checkpoint, ``not_sent: true`` and an ``error`` status. The node
+# owns no ``shinychat:values`` snapshot.
 VALUES_KEY = "shinychat:values"
 # Coordinator Inbox evidence capture (best effort, never asserted).
 SCREENSHOT_PATH = os.environ.get(
@@ -327,8 +320,8 @@ def _begin_failing_edit(
     sampler, then edit B into a preparation failure. The sampler stays
     running so callers can mark later stage boundaries. Returns the
     ``#save_count`` reading right before the edit, so callers can prove the
-    pre-admission capture ran exactly once (ordinary saves count too, hence
-    the delta)."""
+    preparation failure ran no automatic capture (ordinary saves count too,
+    hence the delta)."""
     seed_conversation(page, chat)
     if draft is not None:
         # A composer draft typed before the failing edit must survive the
@@ -352,9 +345,9 @@ def _seed_edit_and_fail(
 
 
 def assert_save_count(page: Page, expected: int) -> None:
-    """The independent on_save counter: proves the automatic capture role
-    ran exactly once per preparation failure (ordinary saves are part of
-    the baseline the caller read before the edit)."""
+    """The independent on_save counter: proves a preparation failure runs no
+    automatic capture (ordinary saves are part of the baseline the caller
+    read before the edit)."""
     expect(page.locator("#save_count")).to_have_text(
         str(expected), timeout=10_000
     )
@@ -435,55 +428,23 @@ def assert_original_branch_retained(record: dict[str, Any]) -> None:
     assert_attachment_fidelity(record, ids_b[0])
 
 
-def assert_failed_values_snapshot(
-    record: dict[str, Any], node_id: str, *, app_values: str
-) -> None:
-    """The failed node owns its app-values snapshot. ``app_values`` is the
-    fixture's deterministic outcome: "unavailable" when the on_save callback
-    raised mid-capture (restore_throw), where the node's ``shinychat:values``
-    snapshot is an empty ``{}``; "complete" when it finished and the captured
-    snapshot serialized (capture_poison), where it holds the failure-time
-    value."""
+def assert_failed_values_absent(record: dict[str, Any], node_id: str) -> None:
+    """A not-sent node is display-only for app state: it owns no
+    ``shinychat:values`` snapshot and carries no app-values marker."""
     node = record["nodes"][node_id]
-    assert node.get("app_values") == app_values, (
-        f"failed node {node_id} must record app_values={app_values!r} "
-        f"(the fixture's on_save outcome), got {node.get('app_values')!r}"
-    )
     state = node.get("state") or {}
-    entry = state.get(VALUES_KEY)
-    assert isinstance(entry, dict), (
-        f"failed node {node_id} must own a {VALUES_KEY!r} snapshot; "
+    assert VALUES_KEY not in state, (
+        f"failed node {node_id} must not own a {VALUES_KEY!r} snapshot; "
         f"state keys: {sorted(state)}"
     )
-    assert entry.get("kind") == "values", (
-        f"unexpected {VALUES_KEY} kind {entry.get('kind')!r} on {node_id}"
+    assert "app_values" not in node, (
+        f"failed node {node_id} must not carry an app_values marker"
     )
-    assert entry.get("version") == 1, f"unexpected {VALUES_KEY} entry {entry!r}"
-    assert entry.get("mode") == "snapshot", (
-        f"unexpected {VALUES_KEY} mode {entry!r}"
-    )
-    data = entry.get("data")
-    assert isinstance(data, dict), (
-        f"failed node {node_id} must carry a values object, got {data!r}"
-    )
-    if app_values == "unavailable":
-        assert data == {}, (
-            f"unavailable snapshot on {node_id} must be an empty {{}}, "
-            f"got {data!r}"
-        )
-    else:
-        assert data.get("filter") == FILTER_AT_FAILURE, (
-            f"complete snapshot on {node_id} must hold the failure-time "
-            f"value {FILTER_AT_FAILURE!r}, got {data!r}"
-        )
 
 
-def assert_failed_node(
-    record: dict[str, Any], node_id: str, *, app_values: str
-) -> None:
+def assert_failed_node(record: dict[str, Any], node_id: str) -> None:
     """One retained failed attempt: explicit invalid checkpoint, an ordinary
-    not-sent error (``not_sent: true``), and the node's own app-values
-    snapshot with the fixture's deterministic app_values outcome."""
+    not-sent error (``not_sent: true``), and no app-values snapshot."""
     node = record["nodes"][node_id]
     assert node.get("checkpoint") == "invalid", (
         f"failed node {node_id} must record checkpoint='invalid', "
@@ -502,12 +463,10 @@ def assert_failed_node(
         f"failed node {node_id} must say the message was not sent, "
         f"got {error!r}"
     )
-    assert_failed_values_snapshot(record, node_id, app_values=app_values)
+    assert_failed_values_absent(record, node_id)
 
 
-def assert_failed_edit_recorded(
-    record: dict[str, Any], *, app_values: str
-) -> str:
+def assert_failed_edit_recorded(record: dict[str, Any]) -> str:
     """The single failed edit node: recorded under B's valid parent, still
     selected, with attachment fidelity and the failed-node markers."""
     ids_a = _node_ids_with_input(record, MSG_A)
@@ -523,7 +482,7 @@ def assert_failed_edit_recorded(
     assert node["parent_id"] == ids_a[0], (
         "failed edit node must be a child of A"
     )
-    assert_failed_node(record, bp_id, app_values=app_values)
+    assert_failed_node(record, bp_id)
     assert record.get("active_leaf") == bp_id, (
         "failed edit node must remain the selected position; "
         f"active_leaf={record.get('active_leaf')!r}"
@@ -749,8 +708,8 @@ def test_history_node_first_restore_failure_retains_edit(
     inside the restore fault window, stay displayed with no transient
     rollback, trigger zero provider or accepted-input callbacks, and be
     recorded as its own terminal-incomplete node with an invalid checkpoint,
-    ``not_sent: true``, ``app_values: "unavailable"`` and an empty
-    ``shinychat:values`` snapshot, while the original branch is retained."""
+    ``not_sent: true`` and no ``shinychat:values`` snapshot, while the
+    original branch is retained."""
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
@@ -790,12 +749,10 @@ def test_history_node_first_restore_failure_retains_edit(
     expect(page.locator("#user_input_text")).to_have_text(MSG_C, timeout=10_000)
     # The live model getter stays poisoned until a saved parent is applied.
     expect(page.locator("#model_poisoned")).to_have_text("true", timeout=10_000)
-    # The automatic capture role ran exactly once for the failed node; the
-    # fixture's on_save raised mid-capture after a serializable fragment, so
-    # the node must record the snapshot as unavailable, not a partial tree.
-    assert_save_count(page, saves_before + 1)
+    # A not-sent position never runs the automatic capture role.
+    assert_save_count(page, saves_before)
     record = wait_for_record(page, MSG_B_PRIME)
-    assert_failed_edit_recorded(record, app_values="unavailable")
+    assert_failed_edit_recorded(record)
     assert_original_branch_retained(record)
     assert_edit_time_callback_observation(trace, B_BRANCH_PREFIX)
     # Read-only for ordinary follow-ups, but explicit Retry/Edit remain,
@@ -817,8 +774,8 @@ def test_history_node_first_capture_failure_retains_edit(
     exchange fails. B' must stay displayed with no transient removal or
     rollback, trigger zero provider or accepted-input callbacks, and be
     recorded as its own terminal-incomplete node with an invalid checkpoint,
-    ``not_sent: true``, ``app_values: "complete"`` and a ``shinychat:values``
-    snapshot holding the captured-at-failure value, while the original branch
+    ``not_sent: true`` and no ``shinychat:values`` snapshot (the
+    captured-at-failure value is never recorded), while the original branch
     is retained."""
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
@@ -837,12 +794,10 @@ def test_history_node_first_capture_failure_retains_edit(
     assert_no_extra_callbacks(page)
     expect(page.locator("#user_input_text")).to_have_text(MSG_C, timeout=10_000)
     expect(page.locator("#model_poisoned")).to_have_text("true", timeout=10_000)
-    # The automatic capture role ran exactly once for the failed node, and
-    # this time it finished and serialized: the node must record the
-    # snapshot as complete.
-    assert_save_count(page, saves_before + 1)
+    # A not-sent position never runs the automatic capture role.
+    assert_save_count(page, saves_before)
     record = wait_for_record(page, MSG_B_PRIME)
-    assert_failed_edit_recorded(record, app_values="complete")
+    assert_failed_edit_recorded(record)
     assert_original_branch_retained(record)
     assert_edit_time_callback_observation(trace, B_BRANCH_PREFIX)
     assert_failed_node_affordances(page, chat)
@@ -853,16 +808,12 @@ def test_history_node_first_failed_edit_survives_reload(
     page: Page, local_app: ShinyAppProc, fault_mode: str
 ) -> None:
     """Contract regression: a failed real file reload, parameterized across
-    the two app-values outcomes. The terminal failed node reloads as the
-    selected displayed position with its failure affordances and sibling
-    navigation intact, and the on-disk node (input, attachment, invalid
-    checkpoint, ``not_sent``, ``app_values`` and ``shinychat:values``
-    snapshot) is unchanged by the
-    load. Loading dispatches no model work and accepts no input. When the
-    snapshot is unavailable (restore_throw's on_save raised mid-capture),
-    loading must not invoke on_restore at all -- never with inherited parent
-    values. When the snapshot is complete (capture_poison), loading restores
-    the failed node's own distinctive saved values, not inherited ones."""
+    both fault modes. The terminal failed node reloads as the selected
+    displayed position with its failure affordances and sibling navigation
+    intact, and the on-disk node (input, attachment, invalid checkpoint,
+    ``not_sent``, state) is unchanged by the load. Loading dispatches no
+    model work, accepts no input, and never invokes on_restore: a not-sent
+    position is display-only for app state."""
     page.goto(local_app.url)
     chat = ChatController(page, "chat")
     expect(chat.loc).to_be_visible(timeout=30_000)
@@ -870,8 +821,7 @@ def test_history_node_first_failed_edit_survives_reload(
     _begin_failing_edit(page, chat, fault_mode)
     assert_b_prime_displayed(page)
     record = wait_for_record(page, MSG_B_PRIME)
-    app_values = "unavailable" if fault_mode == "restore_throw" else "complete"
-    bp_id = assert_failed_edit_recorded(record, app_values=app_values)
+    bp_id = assert_failed_edit_recorded(record)
     assert_failed_node_affordances(page, chat)
 
     tracked_fields = (
@@ -880,7 +830,6 @@ def test_history_node_first_failed_edit_survives_reload(
         "status",
         "error",
         "not_sent",
-        "app_values",
         "input",
         "state",
     )
@@ -915,38 +864,13 @@ def test_history_node_first_failed_edit_survives_reload(
     expect(page.locator("#submit_count")).to_have_text("0", timeout=10_000)
     expect(page.locator("#user_input_count")).to_have_text("0", timeout=10_000)
     entries_after = restore_enter_entries(read_trace(page))
-    if fault_mode == "restore_throw":
-        # Unavailable snapshot: loading must not run on_restore at all --
-        # never with the failed position's inherited parent values.
-        expect(page.locator("#restore_count")).to_have_text("0", timeout=10_000)
-        assert len(entries_after) == 1, (
-            "loading an unavailable failed position must not add restore "
-            f"trace entries; found {len(entries_after) - 1} new ones"
-        )
-        # No app values were applied on load.
-        expect(page.locator("#current_filter")).to_have_text(
-            "all", timeout=10_000
-        )
-    else:
-        # Complete snapshot: loading restores the failed node's own values
-        # exactly once, and the callback sees the actual distinctive
-        # captured-at-failure value, not the inherited parent value.
-        expect(page.locator("#restore_count")).to_have_text("1", timeout=10_000)
-        expect(page.locator("#region_filter")).to_have_value(
-            FILTER_AT_FAILURE, timeout=10_000
-        )
-        expect(page.locator("#current_filter")).to_have_text(
-            FILTER_AT_FAILURE, timeout=10_000
-        )
-        assert len(entries_after) == 2, (
-            "loading a complete failed position must run on_restore exactly "
-            f"once; found {len(entries_after) - 1} reload entries"
-        )
-        assert entries_after[-1]["values"].get("filter") == FILTER_AT_FAILURE, (
-            "the reload callback must see the failed node's actual saved "
-            "values, not inherited parent values: "
-            f"{entries_after[-1]['values']}"
-        )
+    expect(page.locator("#restore_count")).to_have_text("0", timeout=10_000)
+    assert len(entries_after) == 1, (
+        "loading a not-sent position must not add restore trace entries; "
+        f"found {len(entries_after) - 1} new ones"
+    )
+    # No app values were applied on load.
+    expect(page.locator("#current_filter")).to_have_text("all", timeout=10_000)
     # The capture poison is a live-model fault, not persisted state.
     expect(page.locator("#model_poisoned")).to_have_text(
         "false", timeout=10_000
@@ -959,7 +883,7 @@ def test_history_node_first_failed_edit_survives_reload(
         "reloading moved the selection away from the failed node; "
         f"active_leaf={reloaded.get('active_leaf')!r}"
     )
-    assert_failed_edit_recorded(reloaded, app_values=app_values)
+    assert_failed_edit_recorded(reloaded)
     assert_original_branch_retained(reloaded)
 
 
@@ -1139,7 +1063,7 @@ def test_history_node_first_fixed_browse_restores_before_followup(
         ),
         description="the failed edit is terminal and recorded",
     )
-    failed_id = assert_failed_edit_recorded(record, app_values="unavailable")
+    failed_id = assert_failed_edit_recorded(record)
     assert_original_branch_retained(record)
     c_ids = _node_ids_with_input(record, MSG_C)
     assert len(c_ids) == 1
@@ -1186,7 +1110,7 @@ def test_history_node_first_fixed_browse_restores_before_followup(
         description="the original C checkpoint is selected",
     )
     assert record["nodes"][c_id]["state"] == original_c_state
-    assert_failed_node(record, failed_id, app_values="unavailable")
+    assert_failed_node(record, failed_id)
 
     # The fixture records the actual client context at provider entry,
     # before it appends this new input; display rows alone cannot prove it.
@@ -1212,7 +1136,7 @@ def test_history_node_first_fixed_browse_restores_before_followup(
     followup_id = _ok_node_ids(record, DRAFT_TEXT)[0]
     assert record["nodes"][followup_id]["parent_id"] == c_id
     assert record["active_leaf"] == followup_id
-    assert_failed_node(record, failed_id, app_values="unavailable")
+    assert_failed_node(record, failed_id)
     assert_original_branch_retained(record)
 
 
@@ -1235,10 +1159,9 @@ def test_history_node_first_browse_and_retry_recovers(
     )
     assert_b_prime_displayed(page)
     record = wait_for_record(page, MSG_B_PRIME)
-    bp_id = assert_failed_edit_recorded(record, app_values="unavailable")
-    # The automatic capture ran exactly once and its on_save raised
-    # mid-capture, so the failed node's snapshot is explicitly unavailable.
-    assert_save_count(page, saves_before + 1)
+    bp_id = assert_failed_edit_recorded(record)
+    # A not-sent position never runs the automatic capture role.
+    assert_save_count(page, saves_before)
     assert_failed_node_affordances(page, chat)
 
     sibling_nav = page.locator(".shiny-chat-sibling-nav")
@@ -1315,7 +1238,7 @@ def test_history_node_first_browse_and_retry_recovers(
         "returning from the original must re-select the failed node; "
         f"active_leaf={record.get('active_leaf')!r}"
     )
-    assert_failed_node(record, bp_id, app_values="unavailable")
+    assert_failed_node(record, bp_id)
 
     # --- Fix the app; the live model getter is still poisoned. ---
     page.locator("#fault_mode").select_option("none")
@@ -1401,7 +1324,7 @@ def test_history_node_first_browse_and_retry_recovers(
         f"active_leaf={record.get('active_leaf')!r}"
     )
     # The failed B' node was not rewritten by the recovery.
-    assert_failed_node(record, bp_id, app_values="unavailable")
+    assert_failed_node(record, bp_id)
     assert_original_branch_retained(record)
 
     # --- Model context: each on_restore observation, separately. ---
@@ -1455,11 +1378,9 @@ def test_history_node_first_retry_failure_creates_new_sibling(
     saves_before = _begin_failing_edit(page, chat, "capture_poison")
     assert_b_prime_displayed(page)
     record = wait_for_record(page, MSG_B_PRIME)
-    bp_id = assert_failed_edit_recorded(record, app_values="complete")
-    # The automatic capture ran exactly once and serialized, so the
-    # failed node's snapshot is explicitly complete (with the distinctive
-    # captured-at-failure value).
-    assert_save_count(page, saves_before + 1)
+    bp_id = assert_failed_edit_recorded(record)
+    # A not-sent position never runs the automatic capture role.
+    assert_save_count(page, saves_before)
     assert_failed_node_affordances(page, chat)
     expect(page.locator("#model_poisoned")).to_have_text("true", timeout=10_000)
     sibling_nav = page.locator(".shiny-chat-sibling-nav")
@@ -1471,7 +1392,6 @@ def test_history_node_first_retry_failure_creates_new_sibling(
         "status",
         "error",
         "not_sent",
-        "app_values",
         "input",
         "state",
     )
@@ -1490,9 +1410,8 @@ def test_history_node_first_retry_failure_creates_new_sibling(
     expect(page.locator("#user_input_text")).to_have_text(MSG_C, timeout=10_000)
     # The still-active fault re-poisoned the model after the parent apply.
     expect(page.locator("#model_poisoned")).to_have_text("true", timeout=10_000)
-    # Each of the two pre-admission failures ran the automatic capture
-    # exactly once: one more invocation since the first failure settled.
-    assert_save_count(page, saves_before + 2)
+    # Neither pre-admission failure ran the automatic capture role.
+    assert_save_count(page, saves_before)
 
     # No transient removal or rollback across the failed retry.
     samples = collect_samples(page)
@@ -1521,7 +1440,7 @@ def test_history_node_first_retry_failure_creates_new_sibling(
         assert node["parent_id"] == ids_a[0], (
             f"failed sibling {node_id} must be a child of A"
         )
-        assert_failed_node(record, node_id, app_values="complete")
+        assert_failed_node(record, node_id)
         assert_attachment_fidelity(record, node_id)
     # The original failed node was not rewritten by the failed retry.
     post_node = {k: record["nodes"][bp_id].get(k) for k in tracked_fields}

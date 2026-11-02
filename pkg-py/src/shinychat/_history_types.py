@@ -126,11 +126,6 @@ class StoredUiMessage(TypedDict):
     attachment_content_stripped: NotRequired[bool]
 
 
-def node_has_unavailable_app_values(node: "ExchangeNode") -> bool:
-    """Whether the failed position could not capture application values."""
-    return node.app_values == "unavailable"
-
-
 def node_is_terminal_incomplete(node: "ExchangeNode") -> bool:
     """A terminal rejected input is browsable, but not a checkpoint."""
     return (
@@ -444,7 +439,6 @@ class ExchangeNode(BaseModel):
     error: ErrorEntry | None = None
     checkpoint: Literal["candidate", "valid", "invalid"] | None = None
     not_sent: bool | None = None
-    app_values: Literal["complete", "unavailable"] | None = None
 
     @property
     def checkpoint_state(self) -> Literal["candidate", "valid", "invalid"]:

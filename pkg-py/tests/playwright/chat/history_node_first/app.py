@@ -22,23 +22,21 @@ Counters are kept independent of each other:
 * ``#user_input_count`` -- incremented by an effect observing the shipped
   ``chat.user_input()`` accessor (an independent accepted-input channel).
 * ``#save_count`` -- incremented inside the ``@chat.history.on_save``
-  callback (one per automatic capture invocation, including the single
-  pre-admission capture on a preparation failure; ordinary saves count too,
-  so tests read deltas rather than absolutes).
+  callback (one per automatic capture invocation; a preparation failure runs
+  none, because a not-sent position is display-only for app state; ordinary
+  saves count too, so tests read deltas rather than absolutes).
 
-The two fault modes make the app-values outcome of a preparation failure
-explicit and opposite:
+The two fault modes exercise a preparation failure at different points. In
+both, the retained failed node owns no values snapshot and loading or
+browsing to it never invokes ``on_restore``:
 
-* ``restore_throw`` breaks the automatic ``on_save`` capture *after* a
-  serializable diagnostic fragment was added, so the full snapshot is
-  correctly incomplete and the retained failed node must record
-  ``app_values: "unavailable"`` -- never a partial fragment tree. The
-  shipped warn-and-continue policy applies; healthy edits are unaffected.
+* ``restore_throw`` mutates the live app and model, then throws from
+  ``on_restore``. If ``on_save`` ran while the model is poisoned it would
+  raise after adding a serializable diagnostic fragment; the failed node
+  records none of it.
 * ``capture_poison`` first mutates the live filter to a distinctive
   captured-at-failure value, then poisons the model and returns normally;
-  the required capture fails but ``on_save`` succeeds, so the failed node
-  must record a *complete* snapshot containing exactly that value. Reloading
-  it must restore the node's own saved values, not inherited parent values.
+  the required capture fails. The distinctive value is never recorded.
 
 Every ``on_restore`` invocation appends JSON events to
 ``<store dir>/restore_trace.jsonl``: the wall-clock (ms) entry observation of
@@ -93,8 +91,7 @@ FAULT_MODES = {
 }
 
 # The distinctive app value the capture_poison fault stages before the
-# required capture fails, so a complete failed-position snapshot is
-# distinguishable from any inherited parent value ("all").
+# required capture fails, distinguishable from any parent value ("all").
 FILTER_CAPTURED_AT_FAILURE = "captured-at-failure"
 
 # The bounded synchronous fault window. The server blocks for this long in
@@ -277,20 +274,16 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         # read with no reactive dependency.
         with reactive.isolate():
             # One per automatic capture invocation, successful or not;
-            # tests read deltas to prove the pre-admission capture ran
-            # exactly once.
+            # tests read deltas to prove a preparation failure runs none.
             save_attempts.set(save_attempts.get() + 1)
             values["filter"] = selected_filter.get()
             if (
                 client.capture_poisoned
                 and input.fault_mode() == "restore_throw"
             ):
-                # The restore_throw preparation failure deliberately breaks
-                # the automatic capture AFTER a serializable fragment was
-                # added, so the full snapshot is correctly incomplete: the
-                # retained failed node must record app_values "unavailable",
-                # never a partial fragment tree. The shipped warn-and-continue
-                # policy applies.
+                # The restore_throw fault deliberately breaks any automatic
+                # capture AFTER a serializable fragment was added; the shipped
+                # warn-and-continue policy applies to ordinary captures.
                 values["diagnostic"] = "captured-at-restore-failure"
                 raise RuntimeError("Injected edit-time on_save failure")
 
@@ -322,9 +315,8 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         if mode == "capture_poison":
             # Mutate the live app state to a distinctive captured-at-failure
             # value first, then poison the model and return normally: the
-            # required capture of the edited exchange fails, but the
-            # automatic on_save capture succeeds, so the retained failed
-            # node must record a complete snapshot with exactly this value.
+            # required capture of the edited exchange fails. A not-sent
+            # position never records this value.
             selected_filter.set(FILTER_CAPTURED_AT_FAILURE)
             client.capture_poisoned = True
             trace(

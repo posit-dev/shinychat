@@ -27,7 +27,6 @@ The boundaries pinned here come from the approved failed-attempt contract:
   terminal status alone never classifies a node as a stopped producer.
 """
 
-import json
 from typing import Any, Callable, cast
 from unittest.mock import patch
 
@@ -35,7 +34,6 @@ import pytest
 from shinychat._chat_transcript import StagedInputAdmission
 from shinychat._chat_types import ChatMessage, StoredMessage, StoredSegment
 from shinychat._history_controller import HistoryController
-from shinychat._history_plan import canonical_values
 from shinychat._history_recorder import _ModelCaptureError
 from shinychat._history_store import (
     ConversationPartition,
@@ -188,7 +186,7 @@ async def _make_editable_chat(
 
 
 def _assert_failed_node(
-    controller: HistoryController, *, parent_id: str, app_values: str
+    controller: HistoryController, *, parent_id: str
 ) -> str:
     """Assert the retained terminal incomplete node and return its id."""
     recorder = controller._exchange_recorder
@@ -205,10 +203,8 @@ def _assert_failed_node(
     assert node.error.message == HISTORY_ERROR_NOT_SENT
     assert node.checkpoint == "invalid"
     assert node.not_sent is True
-    assert node.app_values == app_values
-    if app_values == "unavailable":
-        # Unavailable is an empty own snapshot, never a partial tree.
-        assert node.state[VALUES_STATE_KEY].data == {}
+    # A not-sent position is display-only for app state: no values of its own.
+    assert VALUES_STATE_KEY not in node.state
     assert node_is_terminal_incomplete(node)
     # A known terminal incomplete leaf is an explicit display destination.
     assert record.checkpoint_leaf(record.active_leaf) == record.active_leaf
@@ -291,7 +287,6 @@ async def test_edit_success_stages_one_node_and_admits_same_id_once(
     assert node.status == "pending"
     assert node.checkpoint == "candidate"
     assert node.not_sent is None
-    assert node.app_values is None
     assert not node_is_terminal_incomplete(node)
 
     # The original branch and its descendants are untouched.
@@ -334,7 +329,6 @@ async def test_edit_success_stages_one_node_and_admits_same_id_once(
     assert snapshot.active_leaf == staged_id
     assert snapshot.nodes[staged_id].status == "pending"
     assert snapshot.nodes[staged_id].not_sent is None
-    assert snapshot.nodes[staged_id].app_values is None
 
 
 # ---------------------------------------------------------------------------
@@ -370,14 +364,8 @@ async def test_outgoing_close_capture_failure_creates_failed_node(
             EDIT_INDEX, EDIT_CONTENT, request_id="edit-outgoing"
         )
 
-    failed_id = _assert_failed_node(
-        controller, parent_id=first, app_values="complete"
-    )
+    failed_id = _assert_failed_node(controller, parent_id=first)
     assert set(record.nodes) - original_ids == {failed_id}
-
-    # The failed node keeps the one whole app snapshot: with no on_save
-    # callbacks the captured values are the empty snapshot, not absent.
-    assert record.nodes[failed_id].state[VALUES_STATE_KEY].data == {}
 
     # The original branch is fully preserved, including the recorded
     # context the failed capture could not rewrite.
@@ -432,7 +420,6 @@ async def test_outgoing_close_capture_failure_creates_failed_node(
     assert failed_snapshot.status == "error"
     assert failed_snapshot.checkpoint == "invalid"
     assert failed_snapshot.not_sent is True
-    assert failed_snapshot.app_values == "complete"
 
 
 # ---------------------------------------------------------------------------
@@ -445,8 +432,8 @@ async def test_restore_callback_failure_attaches_to_staged_node(
     request: pytest.FixtureRequest,
 ) -> None:
     """An on_restore callback that mutates app state then throws leaves the
-    edited input as the failed node, keeps whatever app facts the normal
-    capture role observed, and rewinds only the model to the parent."""
+    edited input as the failed node, records no values for it, and rewinds
+    only the model to the parent."""
     live: dict[str, str] = {"filter": "all"}
     capture_calls: list[dict[str, Any]] = []
 
@@ -476,15 +463,10 @@ async def test_restore_callback_failure_attaches_to_staged_node(
             EDIT_INDEX, EDIT_CONTENT, request_id="edit-restore"
         )
 
-    # The single failed node carries a complete snapshot of the mutated
-    # live app facts: a restore failure never blocks the one on_save role.
+    # The failed position is display-only for app state: no on_save capture.
     assert live["filter"] == "restored"
-    assert capture_calls == [{"filter": "restored"}]
-    failed_id = _assert_failed_node(
-        controller, parent_id=first, app_values="complete"
-    )
-    node = record.nodes[failed_id]
-    assert node.state[VALUES_STATE_KEY].data == {"filter": "restored"}
+    assert capture_calls == []
+    failed_id = _assert_failed_node(controller, parent_id=first)
 
     # The conversation is view-only because the app restore failed; that
     # restriction is one an explicit resubmit may revalidate.
@@ -509,96 +491,6 @@ async def test_restore_callback_failure_attaches_to_staged_node(
     snapshot = store.last_snapshot
     assert isinstance(snapshot, ConversationRecordV2)
     assert snapshot.nodes[failed_id].not_sent is True
-    assert snapshot.nodes[failed_id].app_values == "complete"
-
-
-# ---------------------------------------------------------------------------
-# Complete vs unavailable whole app snapshots at the failed position
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize(
-    "case",
-    ["complete-canonical", "callback-throws", "unserializable-value"],
-)
-async def test_failed_node_app_values_whole_snapshot_policy(
-    request: pytest.FixtureRequest,
-    case: str,
-) -> None:
-    """The failed node records either one complete canonical-JSON snapshot
-    or an empty snapshot marked unavailable: a snapshot is complete only
-    when every callback finished and the whole snapshot serialized, and
-    the ordinary capture role runs exactly once either way."""
-
-    def fill(values: dict[Any, Any]) -> None:
-        values[2] = "two"
-        values["tab"] = "all"
-
-    def throw(_values: dict[str, Any]) -> None:
-        raise ValueError("on_save exploded")
-
-    def nan(values: dict[str, Any]) -> None:
-        values["bad"] = float("nan")
-
-    fill_calls: list[int] = []
-
-    def counting_fill(values: dict[str, Any]) -> None:
-        fill_calls.append(1)
-        fill(values)
-
-    save_callbacks: list[Callable[[dict[str, Any]], None]]
-    if case == "complete-canonical":
-        save_callbacks = [counting_fill]
-    elif case == "callback-throws":
-        save_callbacks = [counting_fill, throw]
-    else:
-        save_callbacks = [counting_fill, nan]
-
-    (
-        controller,
-        chat,
-        adapter,
-        _store,
-        first,
-        _target,
-    ) = await _make_editable_chat(
-        request,
-        chat_id=f"node_first_values_{case.replace('-', '_')}",
-        save_callbacks=save_callbacks,
-    )
-    recorder = controller._exchange_recorder
-    assert recorder is not None
-    record = recorder.record
-    assert record is not None
-    publications = _count_accepted_publications(chat)
-    adapter.fault = RuntimeError("model capture unavailable")
-
-    with pytest.warns(UserWarning, match="recorded but not sent"):
-        await controller.handle_edit(
-            EDIT_INDEX, EDIT_CONTENT, request_id=f"edit-{case}"
-        )
-
-    assert record.active_leaf is not None
-    node = record.nodes[record.active_leaf]
-    assert publications == []
-    # The capture role ran exactly once.
-    assert len(fill_calls) == 1
-
-    if case == "complete-canonical":
-        # Whole snapshot, canonical JSON encoding (author-owned
-        # round-trip semantics, no stricter whitelist).
-        expected = canonical_values({2: "two", "tab": "all"})
-        assert expected == {"2": "two", "tab": "all"}
-        assert node.not_sent is True
-        assert node.app_values == "complete"
-        assert node.state[VALUES_STATE_KEY].data == expected
-        json.dumps(node.state[VALUES_STATE_KEY].data)
-    else:
-        # Incomplete: unavailable, with no partial fragment tree.
-        assert node.not_sent is True
-        assert node.app_values == "unavailable"
-        assert node.state[VALUES_STATE_KEY].data == {}
 
 
 # ---------------------------------------------------------------------------
@@ -643,9 +535,7 @@ async def test_staging_persist_failure_keeps_attempt_without_admission(
 
     # The validated submission was recorded in the working record first
     # and finished as the same failed node.
-    failed_id = _assert_failed_node(
-        controller, parent_id=first, app_values="complete"
-    )
+    failed_id = _assert_failed_node(controller, parent_id=first)
     assert set(record.nodes) - original_ids == {failed_id}
 
     # Never admitted, and the visible failed row is retained: the failed
@@ -730,7 +620,6 @@ async def test_post_commit_store_failure_never_relabeled_not_sent(
     assert node.checkpoint == "candidate"
     for some_node in record.nodes.values():
         assert some_node.not_sent is None
-        assert some_node.app_values is None
         assert not (
             some_node.error is not None
             and some_node.error.message == HISTORY_ERROR_NOT_SENT
@@ -749,7 +638,6 @@ async def test_post_commit_store_failure_never_relabeled_not_sent(
     assert isinstance(snapshot, ConversationRecordV2)
     assert snapshot.nodes[staged_id].status == "pending"
     assert snapshot.nodes[staged_id].not_sent is None
-    assert snapshot.nodes[staged_id].app_values is None
     assert store.failed_puts == 1
 
     # The original branch is preserved against its pre-operation
@@ -808,9 +696,7 @@ async def test_terminal_persist_failure_retains_failed_node_honestly(
             )
 
     # The failed working node is fully retained in memory.
-    failed_id = _assert_failed_node(
-        controller, parent_id=first, app_values="complete"
-    )
+    failed_id = _assert_failed_node(controller, parent_id=first)
 
     # The durable store only ever received the staged (pending) snapshot:
     # it honestly claims neither acceptance nor a terminal outcome.
@@ -820,7 +706,6 @@ async def test_terminal_persist_failure_retains_failed_node_honestly(
     assert staged_snapshot.status == "pending"
     assert staged_snapshot.checkpoint == "candidate"
     assert staged_snapshot.not_sent is None
-    assert staged_snapshot.app_values is None
     assert store.failed_puts == 1
 
     # No accepted input was published for the unsent attempt, and the
@@ -870,9 +755,7 @@ async def test_persist_failure_notifies_user_edit_not_saved(
 
         # The retained failed working node and honest no-saved store are
         # the same policy as the persistence-failure test.
-        failed_id = _assert_failed_node(
-            controller, parent_id=first, app_values="complete"
-        )
+        failed_id = _assert_failed_node(controller, parent_id=first)
         assert record.nodes[failed_id].input is not None
         assert _messages(chat) == [*PREFIX_CONTENTS, EDIT_CONTENT]
         assert store.snapshots == []
@@ -927,9 +810,7 @@ async def test_display_delivery_failure_retains_persisted_failed_node(
 
     # The failed working node is retained, selected, and unchanged by the
     # delivery failure.
-    failed_id = _assert_failed_node(
-        controller, parent_id=first, app_values="complete"
-    )
+    failed_id = _assert_failed_node(controller, parent_id=first)
 
     # The terminal outcome was already durable, so a reload keeps the
     # failed node: an honest saved guarantee, unlike the persistence
@@ -939,7 +820,6 @@ async def test_display_delivery_failure_retains_persisted_failed_node(
     failed_snapshot = snapshot.nodes[failed_id]
     assert failed_snapshot.status == "error"
     assert failed_snapshot.not_sent is True
-    assert failed_snapshot.app_values == "complete"
 
     # Nothing was accepted and the failed row was retained in the
     # transcript before the delivery failed.
@@ -1055,7 +935,6 @@ async def test_duplicate_staged_admission_rejected_before_second_commit(
     node = record.nodes[staged_id]
     assert node.status == "pending"
     assert node.not_sent is None
-    assert node.app_values is None
 
 
 # ---------------------------------------------------------------------------
@@ -1132,7 +1011,6 @@ async def test_reused_fault_instance_keeps_per_admission_classification(
     first_node = record.nodes[first_id]
     assert first_node.status == "pending"
     assert first_node.not_sent is None
-    assert first_node.app_values is None
     assert publications == []
 
     # Disarm the one-shot store fault: the next staging persist must
@@ -1169,7 +1047,6 @@ async def test_reused_fault_instance_keeps_per_admission_classification(
     second_node = record.nodes[second_id]
     assert second_node.status == "pending"
     assert second_node.not_sent is None
-    assert second_node.app_values is None
     assert token_one.committed is True
     assert publications == []
 
@@ -1206,9 +1083,7 @@ async def test_failed_node_marker_does_not_bypass_protections(
         await controller.handle_edit(
             EDIT_INDEX, EDIT_CONTENT, request_id="edit-protections"
         )
-    failed_id = _assert_failed_node(
-        controller, parent_id=first, app_values="complete"
-    )
+    failed_id = _assert_failed_node(controller, parent_id=first)
     assert publications == []
 
     def last_history_update() -> dict[str, Any]:

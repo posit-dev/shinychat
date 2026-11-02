@@ -257,9 +257,7 @@ async def test_kvte_notsent_after_unavailable_detour_restores_parent_before_admi
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize(
-    "parent_issue", ["unavailable_model", "unavailable_values", "malformed"]
-)
+@pytest.mark.parametrize("parent_issue", ["unavailable_model", "malformed"])
 async def test_kvte_notsent_recovery_rejects_unusable_parent_before_staging(
     request: pytest.FixtureRequest, parent_issue: str
 ) -> None:
@@ -272,8 +270,6 @@ async def test_kvte_notsent_recovery_rejects_unusable_parent_before_staging(
     live = recorder.record
     if parent_issue == "unavailable_model":
         live.nodes[live.root_id].state[TURNS_STATE_KEY].kind = "unsupported"
-    elif parent_issue == "unavailable_values":
-        live.nodes[live.root_id].app_values = "unavailable"
     else:
         live.nodes[live.root_id].state["unknown:state"] = StateEntry(
             kind="unknown", version=1, mode="snapshot", data={}
@@ -310,10 +306,7 @@ async def test_kvte_notsent_recovery_rejects_unusable_parent_before_staging(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("problem", ["callback", "unavailable_values"])
-async def test_kvte_model_recovery_never_clears_without_app_restore(
-    problem: str,
-) -> None:
+async def test_kvte_model_recovery_never_clears_without_app_restore() -> None:
     controller, _chat, adapter, _store, original, outgoing = (
         _make_v2_navigation_controller()
     )
@@ -323,25 +316,15 @@ async def test_kvte_model_recovery_never_clears_without_app_restore(
     recorder.mark_read_only("model_unavailable")
     adapter.turns = _turns("untrusted")
     calls: list[dict[str, Any]] = []
-    if problem == "callback":
 
-        def fail(values: dict[str, Any]) -> None:
-            calls.append(dict(values))
-            raise ValueError("app restore failed")
+    def fail(values: dict[str, Any]) -> None:
+        calls.append(dict(values))
+        raise ValueError("app restore failed")
 
-        controller._restore_callbacks.append(fail)
-        with pytest.warns(UserWarning, match="on_restore callback failed"):
-            await controller.handle_navigate(2, "prev", request_id="app-fails")
-        assert calls == [{}]
-    else:
-        record.nodes[original].app_values = "unavailable"
-        controller._restore_callbacks.append(
-            lambda values: calls.append(dict(values))
-        )
-        await controller.handle_navigate(
-            2, "prev", request_id="values-unavailable"
-        )
-        assert calls == []
+    controller._restore_callbacks.append(fail)
+    with pytest.warns(UserWarning, match="on_restore callback failed"):
+        await controller.handle_navigate(2, "prev", request_id="app-fails")
+    assert calls == [{}]
     assert record.active_leaf == original
     assert recorder.read_only
     assert recorder.read_only_reason == "model_unavailable"
@@ -541,7 +524,6 @@ async def test_kvte_model_restriction_does_not_allow_resubmit_of_accepted_error(
     await view.initialize()
     record, _original, failed = _record_with_browsable_failure()
     record.nodes[failed].not_sent = None
-    record.nodes[failed].app_values = None
     record.nodes[failed].checkpoint = "valid"
     await view.controller._restore_initial_exchange_record(record)
     recorder = view.controller._exchange_recorder
@@ -563,40 +545,6 @@ async def test_kvte_model_restriction_does_not_allow_resubmit_of_accepted_error(
 
     assert live.model_dump() == before
     assert recorder.read_only_reason == "model_unavailable"
-    assert not recorder.continuation_allowed
-    assert view.chat._transcript.open_exchange_id is None
-    with reactive.isolate():
-        assert view.chat.user_input() is None
-    assert view.provider_inputs == []
-
-
-@pytest.mark.anyio
-async def test_kvte_app_failed_accepted_retry_rejects_unavailable_parent_values(
-    request: pytest.FixtureRequest,
-) -> None:
-    view = _view(request, InMemoryConversationStore())
-    await view.initialize()
-    record, _original, failed = _record_with_browsable_failure()
-    record.nodes[failed].not_sent = None
-    record.nodes[failed].app_values = None
-    record.nodes[failed].checkpoint = "valid"
-    await view.controller._restore_initial_exchange_record(record)
-    recorder = view.controller._exchange_recorder
-    assert recorder.record is not None
-    live = recorder.record
-    live.nodes[live.root_id].app_values = "unavailable"
-    recorder.mark_read_only("app_restore_failed")
-    before = live.model_dump()
-    transcript = view.chat._transcript.read()
-
-    with pytest.raises(ValueError, match="[Uu]navailable"):
-        await view.controller.handle_resubmit(
-            0, "retry", request_id="unavailable-values"
-        )
-
-    assert live.model_dump() == before
-    assert view.chat._transcript.read() == transcript
-    assert recorder.read_only_reason == "app_restore_failed"
     assert not recorder.continuation_allowed
     assert view.chat._transcript.open_exchange_id is None
     with reactive.isolate():

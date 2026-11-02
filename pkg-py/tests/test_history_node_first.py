@@ -2,8 +2,8 @@
 
 Covers the success path through the real guarded Chat seam, terminal
 failure attachment, recovery (explicit Retry from a failed position),
-complete-vs-unavailable app values, and the terminal browsing/reload
-handling. Storage/admission boundary cases
+not-sent positions as display-only for app state, and the terminal
+browsing/reload handling. Storage/admission boundary cases
 live in test_history_node_first_boundaries.py.
 """
 
@@ -149,9 +149,6 @@ async def test_edit_restore_failure_attaches_terminal_node(
     assert node.checkpoint == "invalid"
     assert node_is_terminal_incomplete(node)
     assert node.not_sent is True
-    # No save callbacks are registered, so the one automatic capture
-    # records the observed (empty) values as complete.
-    assert node.app_values == "complete"
     assert node.input is not None
     assert node.input.content == "replacement"
     # The restriction names the app restore failure; it is resolvable.
@@ -231,56 +228,13 @@ async def test_edit_capture_failure_after_restore_attaches_terminal_node(
     node = record.nodes[staged]
     assert node_is_terminal_incomplete(node)
     assert node.not_sent is True
-    assert node.app_values == "complete"
-    # The complete failed-position snapshot records its own values entry,
-    # even though it equals the inherited (empty) values: a sparse
-    # capture would have recorded nothing and been mistaken for
-    # unavailable.
-    assert VALUES_STATE_KEY in node.state
-    assert node.state[VALUES_STATE_KEY].data == {}
+    assert VALUES_STATE_KEY not in node.state
     assert not recorder.read_only
     assert recorder.read_only_reason is None
     assert recorder.selected_not_sent
     assert not recorder.continuation_allowed
     with reactive.isolate():
         assert chat.user_input() is None
-
-
-@pytest.mark.anyio
-async def test_failed_position_values_unavailable_when_save_throws(
-    request: pytest.FixtureRequest,
-) -> None:
-    controller, chat, adapter, store, first, target = (
-        _make_v2_resubmit_real_chat(request, chat_id="node_first_saveerr")
-    )
-    poisoned_adapter = _PoisonableAdapter()
-    poisoned_adapter.turns = adapter.turns
-    controller.adapter = poisoned_adapter  # type: ignore[assignment]
-    await _seed_resubmit_transcript(chat, first, target)
-    _wire_resubmit_capture(controller, chat)
-    record = controller._exchange_recorder.record
-    assert record is not None
-
-    def broken_save(_values: dict[str, Any]) -> None:
-        raise RuntimeError("on_save broke")
-
-    controller._save_callbacks.append(broken_save)
-    controller._restore_callbacks.append(
-        lambda _values: setattr(poisoned_adapter, "poisoned", True)
-    )
-
-    with pytest.warns(UserWarning):
-        await controller.handle_edit(2, "replacement", request_id="req-4")
-
-    staged = record.active_leaf
-    assert staged is not None
-    node = record.nodes[staged]
-    assert node_is_terminal_incomplete(node)
-    assert node.not_sent is True
-    assert node.app_values == "unavailable"
-    # Unavailable means no observed values: an empty own snapshot that a
-    # later restore skips instead of mistaking for inherited values.
-    assert node.state[VALUES_STATE_KEY].data == {}
 
 
 # ---------------------------------------------------------------------------
@@ -520,10 +474,6 @@ def _record_with_browsable_failure() -> tuple[Any, str, str]:
     record.finish_exchange("failed", "error", HISTORY_ERROR_NOT_SENT)
     record.nodes["failed"].checkpoint = "invalid"
     record.nodes["failed"].not_sent = True
-    record.nodes["failed"].app_values = "complete"
-    record.nodes["failed"].state[VALUES_STATE_KEY] = StateEntry(
-        kind="values", version=1, mode="snapshot", data={"tab": "failed"}
-    )
     return record, "original", "failed"
 
 
@@ -546,32 +496,10 @@ async def test_failed_leaf_loads_browsable_not_source_isolated() -> None:
     assert recorder.read_only_reason is None
     assert recorder.selected_not_sent
     assert not recorder.continuation_allowed
-    # The failed position's own observed values restore.
-    assert restores == [{"tab": "failed"}]
+    # A not-sent position is display-only for app state.
+    assert restores == []
     # Sibling navigation includes the failed leaf (explicit positions).
     assert recorder.record.checkpoint_siblings(failed) == [original, failed]
-
-
-@pytest.mark.anyio
-async def test_failed_leaf_without_values_skips_restore_on_load() -> None:
-    controller, _ = _make_controller()
-    record, _original, failed = _record_with_browsable_failure()
-    # Unavailable app values: an empty own snapshot, never inherited.
-    record.nodes[failed].app_values = "unavailable"
-    record.nodes[failed].state[VALUES_STATE_KEY] = StateEntry(
-        kind="values", version=1, mode="snapshot", data={}
-    )
-    restores: list[dict[str, Any]] = []
-    controller._restore_callbacks.append(lambda v: restores.append(dict(v)))
-
-    await replay_exchange_record(controller, record)
-
-    assert restores == []
-    recorder = controller._exchange_recorder
-    assert not recorder.read_only
-    assert recorder.read_only_reason is None
-    assert recorder.selected_not_sent
-    assert not recorder.continuation_allowed
 
 
 @pytest.mark.anyio
@@ -581,14 +509,19 @@ async def test_browse_between_failed_and_original() -> None:
     await replay_exchange_record(controller, record)
     recorder = controller._exchange_recorder
     fake = cast(_FakeChat, controller.chat)
+    restores: list[dict[str, Any]] = []
+    controller._restore_callbacks.append(lambda v: restores.append(dict(v)))
 
     # Failed -> original: explicit sibling navigation works.
     await controller.handle_navigate(0, "prev", request_id="nav-1")
     assert recorder.record is not None
     assert recorder.record.active_leaf == original
-    # Original -> failed: display-only; the selected position blocks input.
+    assert restores == [{}]
+    # Original -> failed: display-only; the selected position blocks input
+    # and never invokes on_restore.
     await controller.handle_navigate(0, "next", request_id="nav-2")
     assert recorder.record.active_leaf == failed
+    assert restores == [{}]
     assert not recorder.read_only
     assert recorder.read_only_reason is None
     assert recorder.selected_not_sent
@@ -628,7 +561,6 @@ async def test_failed_edit_survives_file_store_reload(
     failed_node = recorder.record.nodes[failed]
     assert node_is_terminal_incomplete(failed_node)
     assert failed_node.not_sent is True
-    assert failed_node.app_values == "complete"
     assert recorder.record.checkpoint_siblings(failed) == [original, failed]
 
 
