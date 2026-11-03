@@ -218,6 +218,10 @@ export function ChatApp({
   useLayoutEffect(() => {
     messagesRef.current = state.messages
   }, [state.messages])
+  const pendingInputRef = useRef(state.pendingInput)
+  useLayoutEffect(() => {
+    pendingInputRef.current = state.pendingInput
+  }, [state.pendingInput])
   const smootherRef = useRef<StreamSmoother<ChunkMeta> | null>(null)
   // Set on CANCEL_REQUESTED: providers can keep sending chunks after a
   // cancel, and those must append raw rather than pace in — stopping should
@@ -262,6 +266,17 @@ export function ChatApp({
         return
       }
       if (action.type === "update_input") {
+        // While a submission awaits server acceptance the composer holds it,
+        // locked; programmatic value, attachment and submit updates wait out.
+        if (
+          pendingInputRef.current !== null &&
+          (action.value !== undefined || action.attachments !== undefined)
+        ) {
+          console.warn(
+            "[shinychat] Ignored an input update while a message awaits acceptance.",
+          )
+          return
+        }
         // Placeholder updates go through the reducer (it's the only
         // remaining field the reducer tracks for update_input).
         if (action.placeholder !== undefined) {
@@ -280,6 +295,22 @@ export function ChatApp({
         } else if (action.focus) {
           containerRef.current?.focus()
         }
+        return
+      }
+      if (action.type === "input_received") {
+        // The submitted content stayed in the (locked) composer until now,
+        // and the reducer appends it to the message list on this action. A
+        // rejection never gets here, so nothing is lost if the server
+        // refuses the input.
+        const pending = pendingInputRef.current
+        if (pending?.id === action.id && pending.clearOnAccept) {
+          containerRef.current?.setInputValue("", {
+            ...(pending.clearOnAccept === "all"
+              ? { attachments: [], attachmentMode: "set" as const }
+              : {}),
+          })
+        }
+        dispatch(action)
         return
       }
       if (action.type === "history_update") {
@@ -626,6 +657,7 @@ export function ChatApp({
                 messages={state.messages}
                 streamingMessage={state.streamingMessage}
                 inputDisabled={state.inputDisabled}
+                composerLocked={state.pendingInput !== null}
                 submissionBlocked={submissionBlocked}
                 inputPlaceholder={state.inputPlaceholder}
                 iconAssistant={iconAssistant}

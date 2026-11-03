@@ -71,6 +71,7 @@ function renderChatInput(
     uploadAccept: string[]
     maxUploadSize: number
     disabled: boolean
+    locked: boolean
     historyStore: HistoryStore
     submissionBlocked: boolean
     placeholder: string
@@ -115,6 +116,7 @@ function renderChatInput(
         }
         maxUploadSize={props.maxUploadSize ?? 30_000_000}
         disabled={props.disabled ?? false}
+        locked={props.locked}
         historyStore={historyStore}
         submissionBlocked={props.submissionBlocked}
         placeholder={props.placeholder ?? "Type here..."}
@@ -368,6 +370,175 @@ describe("ChatInput", () => {
   })
 
   describe("imperative handle", () => {
+    describe("composer lock", () => {
+      type EditorHost = HTMLElement & {
+        editor: { commands: { insertContent(text: string): boolean } }
+      }
+
+      it("rejects typed edits while locked, keeping programmatic ones", () => {
+        const { editorEl, ref } = renderChatInput({ locked: true })
+        act(() => {
+          ;(editorEl as unknown as EditorHost).editor.commands.insertContent(
+            "typed",
+          )
+        })
+        expect(editorEl.textContent).toBe("")
+
+        act(() => {
+          ref.current?.setInputValue("restored", { focus: true })
+        })
+        expect(editorEl.textContent).toBe("restored")
+      })
+
+      it("accepts typed edits when not locked", () => {
+        const { editorEl } = renderChatInput({ locked: false })
+        act(() => {
+          ;(editorEl as unknown as EditorHost).editor.commands.insertContent(
+            "typed",
+          )
+        })
+        expect(editorEl.textContent).toBe("typed")
+      })
+
+      it("exposes the lock to assistive tech and styling", () => {
+        const locked = renderChatInput({ locked: true })
+        const zone = locked.container.querySelector(
+          ".shiny-chat-input-dropzone",
+        ) as HTMLElement
+        expect(zone.classList.contains("is-pending")).toBe(true)
+        expect(zone.getAttribute("aria-busy")).toBe("true")
+        expect(locked.editorEl.getAttribute("aria-readonly")).toBe("true")
+        expect(
+          locked.container
+            .querySelector(".shiny-chat-btn-send")
+            ?.getAttribute("aria-label"),
+        ).toBe("Sending message")
+        locked.unmount()
+
+        const open = renderChatInput({ locked: false })
+        const openZone = open.container.querySelector(
+          ".shiny-chat-input-dropzone",
+        ) as HTMLElement
+        expect(openZone.classList.contains("is-pending")).toBe(false)
+        expect(openZone.hasAttribute("aria-busy")).toBe(false)
+        expect(open.editorEl.hasAttribute("aria-readonly")).toBe(false)
+      })
+
+      it("swallows pasted and dropped files while locked", async () => {
+        const { container } = renderChatInput({ locked: true })
+        const zone = container.querySelector(
+          ".shiny-chat-input-dropzone",
+        ) as HTMLElement
+        const file = new File(["x"], "a.png", { type: "image/png" })
+        const drop = createEvent.drop(zone)
+        Object.defineProperty(drop, "dataTransfer", {
+          value: { files: [file] },
+        })
+        await act(async () => {
+          fireEvent(zone, drop)
+        })
+        expect(drop.defaultPrevented).toBe(true)
+        expect(container.querySelector(".shiny-chat-input-attachments")).toBe(
+          null,
+        )
+      })
+
+      function sendUnderProtocol(protocol?: "completion-v2") {
+        const historyStore = new HistoryStore("lock-input")
+        historyStore.updateHistory({
+          enabled: true,
+          conversations: [],
+          activeId: null,
+          transitionProtocol: protocol,
+        })
+        const ref = createRef<ChatInputHandle>()
+        const view = renderChatInput({ historyStore }, ref)
+        act(() => {
+          ref.current?.setInputValue("hello", { submit: true })
+        })
+        return view
+      }
+
+      it("asks for the lock on completion-v2 submissions", () => {
+        const { dispatch } = sendUnderProtocol("completion-v2")
+        expect(dispatch).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: "INPUT_SENT",
+            awaitAcceptance: true,
+          }),
+        )
+      })
+
+      it("retains interactive v2 submissions in the composer, not programmatic ones", () => {
+        const historyStore = new HistoryStore("retained-input")
+        historyStore.updateHistory({
+          enabled: true,
+          conversations: [],
+          activeId: null,
+          transitionProtocol: "completion-v2",
+        })
+        const ref = createRef<ChatInputHandle>()
+        const { dispatch, editorEl } = renderChatInput({ historyStore }, ref)
+
+        act(() => {
+          ref.current?.setInputValue("typed")
+        })
+        fireEvent.click(screen.getByRole("button", { name: "Send message" }))
+        expect(dispatch).toHaveBeenLastCalledWith(
+          expect.objectContaining({ content: "typed", clearOnAccept: "all" }),
+        )
+        // Kept until the server accepts it.
+        expect(editorEl.textContent).toBe("typed")
+
+        act(() => {
+          ref.current?.setInputValue("suggested", { submit: true })
+        })
+        const programmatic = dispatch.mock.calls.at(-1)?.[0]
+        expect(programmatic).toMatchObject({ content: "suggested" })
+        expect(programmatic.clearOnAccept).toBeFalsy()
+      })
+
+      it("clears only the text, not attachments, after an accepted echoing slash command", () => {
+        const historyStore = new HistoryStore("slash-retained")
+        historyStore.updateHistory({
+          enabled: true,
+          conversations: [],
+          activeId: null,
+          transitionProtocol: "completion-v2",
+        })
+        const ref = createRef<ChatInputHandle>()
+        const { dispatch, editorEl } = renderChatInput(
+          {
+            historyStore,
+            slashCommandId: "slash-id",
+            slashCommands: [{ name: "help", description: "Help", echo: true }],
+          },
+          ref,
+        )
+        act(() => {
+          ref.current?.setInputValue("/help topic")
+        })
+        fireEvent.click(screen.getByRole("button", { name: "Send message" }))
+        expect(dispatch).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            content: "/help topic",
+            clearOnAccept: "text",
+          }),
+        )
+        expect(editorEl.textContent).toContain("help")
+      })
+
+      it("does not ask for the lock without completion-v2", () => {
+        const { dispatch } = sendUnderProtocol()
+        expect(dispatch).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: "INPUT_SENT",
+            awaitAcceptance: false,
+          }),
+        )
+      })
+    })
+
     it("setInputValue sets the editor value without submitting", () => {
       const ref = createRef<ChatInputHandle>()
       const { editorEl, dispatch } = renderChatInput({}, ref)

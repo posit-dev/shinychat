@@ -3929,6 +3929,10 @@ async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
     with session_context(cast(Any, session)), reactive.isolate():
         await submit("initial", 1)
         assert calls == ["initial"]
+        # An admitted submission releases the browser's composer lock.
+        assert {"type": "input_received", "id": "client-1"} in [
+            m["action"] for m in session.messages
+        ]
         assert recorder.record is not None
         transcript_before = _transcript_snapshot(chat)
         prior_open_id = chat._transcript.open_exchange_id
@@ -3962,14 +3966,18 @@ async def test_capture_failure_reports_unsent_input_and_new_chat_recovers(
                 with pytest.warns(UserWarning, match=cause):
                     await submit("rejected", seq)
                 actions = [m["action"] for m in session.messages]
-                removal = next(
-                    i
-                    for i, a in enumerate(actions)
-                    if a == {"type": "remove_message", "id": f"client-{seq}"}
-                )
-                assert (
-                    actions[removal + 1]["type"] == "update_exchange_metadata"
-                )
+                # The browser never showed the held submission, so rejection
+                # discards it without removing a row or refreshing metadata.
+                assert {
+                    "type": "input_rejected",
+                    "id": f"client-{seq}",
+                } in actions
+                assert not any(a["type"] == "remove_message" for a in actions)
+                # A rejected submission is removed, never acknowledged.
+                assert {
+                    "type": "input_received",
+                    "id": f"client-{seq}",
+                } not in (actions)
                 assert calls == ["initial"]
                 assert _transcript_snapshot(chat) == transcript_before
                 assert chat._transcript.open_exchange_id == prior_open_id
@@ -4136,6 +4144,14 @@ async def test_postcommit_input_failure_keeps_shared_owner_without_dispatch(
         notification.assert_not_called()
         assert not any(
             m["action"]["type"] == "remove_message" for m in session.messages
+        )
+        # The input was committed, so the browser is told to show it even
+        # though a later step failed.
+        assert {"type": "input_received", "id": "committed-client"} in [
+            m["action"] for m in session.messages
+        ]
+        assert not any(
+            m["action"]["type"] == "input_rejected" for m in session.messages
         )
         assert dispatches == []
         published = chat.user_input()
@@ -4314,8 +4330,8 @@ async def test_app_output_during_failed_input_put_targets_shared_committed_excha
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("entry_point", ["normal", "slash"])
-@pytest.mark.parametrize("failure", ["metadata", "legacy"])
-async def test_capture_rejection_cleanup_survives_metadata_failure_or_legacy_input(
+@pytest.mark.parametrize("failure", ["delivery", "legacy"])
+async def test_capture_rejection_cleanup_survives_delivery_failure_or_legacy_input(
     tmp_path: Any, request: Any, capsys: Any, entry_point: str, failure: str
 ) -> None:
     chat, session, client, store = await _make_initialized_live_v2_chat(
@@ -4362,16 +4378,18 @@ async def test_capture_rejection_cleanup_survives_metadata_failure_or_legacy_inp
                 "seq": 1,
             }
         )
-        if failure == "metadata":
+        if failure == "delivery":
             payload["client_message_id"] = "rejected-client"
         notification = MagicMock()
+        real_send_action = chat._send_action
+
+        async def flaky_send_action(action: Any) -> None:
+            if action["type"] == "input_rejected":
+                raise RuntimeError("rejection delivery failed")
+            await real_send_action(action)
+
         with (
-            patch.object(
-                controller,
-                "_send_exchange_metadata",
-                side_effect=RuntimeError("metadata delivery failed"),
-            ) as metadata,
-            patch.object(controller, "_send_sibling_metadata") as siblings,
+            patch.object(chat, "_send_action", flaky_send_action),
             patch("shiny.ui.notification_show", notification),
             pytest.warns(UserWarning, match="not JSON serializable"),
         ):
@@ -4381,25 +4399,18 @@ async def test_capture_rejection_cleanup_survives_metadata_failure_or_legacy_inp
                 else chat._slash_command_id
             )
             cast(Any, session.input[input_id])._set(payload)
-            if failure == "metadata":
+            if failure == "delivery":
                 # Normal effects propagate transport failure; slash retains its
                 # existing live-error wrapper. Neither claims successful delivery.
                 await reactive.flush()
-                assert "metadata delivery failed" in capsys.readouterr().err
-                metadata.assert_awaited_once()
+                assert "rejection delivery failed" in capsys.readouterr().err
             else:
                 await reactive.flush()
-                metadata.assert_not_called()
-            siblings.assert_not_called()
         actions = [message["action"] for message in session.messages]
         assert {"type": "remove_loading"} in actions
-        removals = [
-            action for action in actions if action["type"] == "remove_message"
-        ]
-        assert removals == (
-            [{"type": "remove_message", "id": "rejected-client"}]
-            if failure == "metadata"
-            else []
+        assert not any(
+            action["type"] in ("input_rejected", "remove_message")
+            for action in actions
         )
         reports = [call.args[0] for call in notification.call_args_list]
         unsent = [report for report in reports if "Message not sent" in report]
@@ -4472,10 +4483,10 @@ async def test_capture_cleanup_propagates_failure_while_capture_error_is_handled
         siblings.assert_not_called()
     else:
         delivery.assert_awaited_once_with(
-            {"type": "remove_message", "id": client_message_id}
+            {"type": "input_rejected", "id": client_message_id}
         )
-        metadata.assert_awaited_once()
-        siblings.assert_awaited_once()
+        metadata.assert_not_called()
+        siblings.assert_not_called()
 
 
 @pytest.mark.anyio

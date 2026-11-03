@@ -537,6 +537,12 @@ class Chat:
             async def _on_user_input():
                 data = self._session.input[self.user_input_id]()
                 client_message_id = data.get("client_message_id")
+                committed = False
+
+                def mark_committed() -> None:
+                    nonlocal committed
+                    committed = True
+
                 try:
                     text, attachments = self._user_input()
                     msg = ChatMessage(
@@ -544,8 +550,15 @@ class Chat:
                         role="user",
                         attachments=attachments,
                     )
-                    await self._record_accepted_user_input_with_capture(msg)
+                    await self._record_accepted_user_input_with_capture(
+                        msg, on_commit=mark_committed
+                    )
+                    await self._send_input_received(client_message_id)
                 except Exception as e:
+                    if committed:
+                        await self._send_input_received_after_failure(
+                            client_message_id
+                        )
                     await self._handle_input_exception(e, client_message_id)
 
             @reactive.effect
@@ -568,6 +581,12 @@ class Chat:
                 command = data.get("command", "")
                 user_text = data.get("userText", "")
                 echo = bool(data.get("echo", True))
+                committed = False
+
+                def mark_committed() -> None:
+                    nonlocal committed
+                    committed = True
+
                 try:
                     if not self.history._history_submission_admitted():
                         # Client-triggered, not a programmatic append; direct
@@ -581,8 +600,11 @@ class Chat:
 
                         try:
                             await self._record_accepted_user_input_with_capture(
-                                msg, dispatch_user_submit=False
+                                msg,
+                                dispatch_user_submit=False,
+                                on_commit=mark_committed,
                             )
+                            await self._send_input_received(client_message_id)
                         except _ModelCaptureError as e:
                             await self._handle_input_exception(
                                 e, client_message_id
@@ -600,6 +622,10 @@ class Chat:
                                 cast(UserSubmitFunction0, reg.handler)
                             )()
                 except Exception as e:
+                    if committed:
+                        await self._send_input_received_after_failure(
+                            client_message_id
+                        )
                     await self._raise_exception(e)
                 finally:
                     await self._remove_loading_message()
@@ -962,27 +988,44 @@ class Chat:
 
         return remove
 
+    async def _send_input_received(self, client_message_id: object) -> None:
+        # Releases the browser's composer lock for a submission that was not
+        # rejected during admission.
+        if isinstance(client_message_id, str):
+            await self._send_action(
+                {"type": "input_received", "id": client_message_id}
+            )
+
+    async def _send_input_received_after_failure(
+        self, client_message_id: object
+    ) -> None:
+        # The input was committed before a later step failed (for example
+        # persistence), so it is accepted: the browser must show it rather
+        # than drop a message the server transcript contains. A delivery
+        # failure here must not replace the error being handled.
+        try:
+            await self._send_input_received(client_message_id)
+        except Exception as e:
+            warnings.warn(
+                f"Could not acknowledge an accepted input: {e}", stacklevel=1
+            )
+
     async def _handle_input_exception(
         self, e: Exception, client_message_id: str | None = None
     ) -> None:
         from ._history_recorder import _ModelCaptureError
 
         if isinstance(e, _ModelCaptureError):
-            controller = self.history._controller
             delivery_error: BaseException | None = None
             try:
-                if (
-                    isinstance(client_message_id, str)
-                    and controller is not None
-                ):
-                    # Capture has exited the recorder lock. Serialize removal and
-                    # positional refresh with any subsequent accepted exchange.
-                    async with controller._exchange_recorder.lock:
-                        await self._send_action(
-                            {"type": "remove_message", "id": client_message_id}
-                        )
-                        await controller._send_exchange_metadata()
-                        await controller._send_sibling_metadata()
+                if isinstance(client_message_id, str):
+                    # The browser holds the submission out of its message list
+                    # until acceptance, so rejecting it needs no row removal
+                    # or positional refresh: it discards the held submission
+                    # and unlocks the composer, which still holds the input.
+                    await self._send_action(
+                        {"type": "input_rejected", "id": client_message_id}
+                    )
             except BaseException as err:
                 delivery_error = err
                 raise
@@ -2545,6 +2588,7 @@ class Chat:
         dispatch_user_submit: bool = True,
         staged_admission: "StagedInputAdmission | None" = None,
         transaction: object | None = None,
+        on_commit: Callable[[], None] | None = None,
     ) -> None:
         if staged_admission is not None:
             # A server-staged submission is admitted by the history
@@ -2582,7 +2626,9 @@ class Chat:
                 staged_admission, stored
             )
         else:
-            await self._transcript.record_accepted_input_and_notify(stored)
+            await self._transcript.record_accepted_input_and_notify(
+                stored, on_commit=on_commit
+            )
         self._publish_accepted_user_input(
             stored, dispatch_user_submit=dispatch_user_submit
         )
