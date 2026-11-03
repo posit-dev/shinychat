@@ -87,7 +87,6 @@ from ._chat_types import (
     flatten_segments_content,
     initial_message_payload,
     is_structured_segment,
-    parse_bookmark_message,
     serialize_html_deps,
 )
 from ._drawer import ChatDrawerController
@@ -2349,7 +2348,7 @@ class Chat:
         icon: str | None = None,
     ) -> None:
         try:
-            stored = parse_bookmark_message(message_dict)
+            stored = StoredMessage.model_validate(message_dict, extra="ignore")
         except ValidationError as e:
             # Skip rather than raise: raising here would abort the caller's
             # restore loop, silently dropping every message after this one

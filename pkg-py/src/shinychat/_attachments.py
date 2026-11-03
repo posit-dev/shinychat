@@ -12,7 +12,7 @@ import mimetypes
 import os
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 from typing_extensions import TypedDict
 
@@ -151,17 +151,6 @@ class Attachment(PersistedModel):
             size=0,
             data_url=url,
         )
-
-
-def parse_input_attachment(value: Any) -> Attachment:
-    """Discard unknown browser fields without changing persisted readers."""
-    if isinstance(value, dict):
-        value = {
-            name: value[name]
-            for name in Attachment.model_fields
-            if name in value
-        }
-    return Attachment.model_validate(value)
 
 
 #: Default total attachment-size cap (bytes) when the environment variable is
