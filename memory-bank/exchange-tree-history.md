@@ -98,6 +98,8 @@ Automatic app-capture failure warns and retains prior state without certifying a
 
 A state entry has `kind`, `version`, `mode`, and JSON `data`. Builtin entry version 1 is separate from record schema version 2.
 
+The Python schema-2 reader preserves unknown fields on records, nodes, state entries, error entries, and captured messages, attachments, and structured blocks, so a read/modify/write by this version does not drop fields written by a newer writer. For optional fields, null and absent mean the same: records are written with `exclude_none`, so a top-level null is omitted, known or unknown. A state entry this version recaptures is replaced whole, because the old entry's unknown fields described the old data. A state-entry field can therefore be dropped whenever an older writer recaptures the entry; if it must survive, put it on the node or bump the entry's `version`. The persisted models declare `extra="allow"`, and client input is parsed with `model_validate(..., extra="ignore")`, which discards unknown keys recursively. That covers browser attachments at submission and edit, and bookmark-restored messages, which can come from a client-editable URL. Client-chosen keys therefore never enter saved records.
+
 | Namespace | Capture and resolution |
 |---|---|
 | `shinychat:turns` | Exact-prefix deltas against the branch parent's effective saved context; full snapshots when no baseline is usable or the prefix comparison fails. Existing snapshot entries and compatible legacy deltas remain readable |

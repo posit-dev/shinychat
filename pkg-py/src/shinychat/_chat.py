@@ -2349,7 +2349,7 @@ class Chat:
         icon: str | None = None,
     ) -> None:
         try:
-            stored = StoredMessage.model_validate(message_dict)
+            stored = StoredMessage.model_validate(message_dict, extra="ignore")
         except ValidationError as e:
             # Skip rather than raise: raising here would abort the caller's
             # restore loop, silently dropping every message after this one

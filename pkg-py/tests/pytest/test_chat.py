@@ -2899,6 +2899,62 @@ def test_restore_bookmark_message_warning_omits_the_offending_value():
         run_async(_exercise)
 
 
+def test_restore_bookmark_message_discards_unknown_fields():
+    with session_context(test_session):
+        chat = Chat(id="chat_restore_unknown_fields")
+        sent: list[dict[str, Any]] = []
+
+        async def _capture(action: Any, deps: Any = None) -> None:
+            sent.append(action)
+
+        chat._send_action = _capture  # type: ignore[method-assign]
+
+        message = {
+            "role": "assistant",
+            "client_key": 1,
+            "segments": [
+                {
+                    "content": "hi",
+                    "content_type": "markdown",
+                    "client_key": 2,
+                },
+                {
+                    "type": "web_search_results",
+                    "version": 1,
+                    "sources": [{"url": "https://x.test", "client_key": 3}],
+                    "client_key": 4,
+                },
+            ],
+            "attachments": [
+                {
+                    "mime": "text/plain",
+                    "name": "a.txt",
+                    "size": 1,
+                    "data_url": "data:text/plain;base64,YQ==",
+                    "client_key": 5,
+                }
+            ],
+        }
+
+        async def _exercise() -> None:
+            await chat._restore_bookmark_message(message)
+
+        run_async(_exercise)
+
+    (entry,) = chat._transcript.read()
+    stored = entry.message
+    dumped = stored.model_dump(mode="json")
+    assert "client_key" not in str(dumped)
+    assert "client_key" not in str(sent)
+    block = stored.segments[1]
+    assert isinstance(block, dict)
+    assert block == {
+        "type": "web_search_results",
+        "version": 1,
+        "sources": [{"url": "https://x.test"}],
+    }
+
+
 def test_user_input_reads_latest_stored():
     from shiny import reactive
     from shinychat._chat import UserInput

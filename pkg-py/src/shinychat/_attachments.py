@@ -14,9 +14,9 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from pydantic import BaseModel
 from typing_extensions import TypedDict
 
+from ._persisted_model import PersistedModel
 from ._utils_types import MISSING_TYPE
 
 if TYPE_CHECKING:
@@ -67,7 +67,7 @@ def _guess_mime(name: str) -> str:
     )
 
 
-class Attachment(BaseModel):
+class Attachment(PersistedModel):
     """An image, PDF, or text file to attach to a chat message.
 
     Construct via :meth:`from_path`, :meth:`from_data`, or :meth:`from_url`.

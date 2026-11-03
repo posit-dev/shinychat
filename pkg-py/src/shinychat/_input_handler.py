@@ -41,7 +41,8 @@ def _(value: Any, _name: "ResolvedId", _session: "Session") -> UserInputValue:
             f"Expected str or dict from shinychat.userInput, got {type(value)!r}"
         )
     attachments = [
-        Attachment.model_validate(a) for a in (value.get("attachments") or [])
+        Attachment.model_validate(a, extra="ignore")
+        for a in (value.get("attachments") or [])
     ]
     validate_attachments(attachments)
     result = UserInputValue(
