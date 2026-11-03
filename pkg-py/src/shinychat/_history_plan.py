@@ -232,9 +232,6 @@ def sparse_snapshot_entry(
         node.parent_id is not None
         and effective_ancestor is not None
         and _canonical_data(effective_ancestor.data) == canonical
-        # An existing entry with unknown fields cannot be discarded just
-        # because its known value matches the parent.
-        and not (node.state.get(key) and node.state[key].model_extra)
     ):
         # A descendant with an unchanged value inherits instead of
         # recording; the root always records.

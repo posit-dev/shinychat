@@ -391,14 +391,6 @@ class StateEntry(PersistedModel):
     mode: Literal["delta", "snapshot"]
     data: JsonValue
 
-    def with_previous_extra(self, previous: StateEntry | None) -> StateEntry:
-        """Keep unknown fields when a capture replaces an existing entry."""
-        if previous is None or not previous.model_extra:
-            return self
-        extras = copy.deepcopy(previous.model_extra)
-        extras.update(self.model_extra or {})
-        return self.model_copy(update=extras)
-
     @model_serializer(mode="wrap")
     def _serialize(
         self,
