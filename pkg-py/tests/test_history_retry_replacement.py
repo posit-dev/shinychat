@@ -1,6 +1,7 @@
 """Retry and Edit of a failed attempt open a new sibling."""
 
 import asyncio
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -86,7 +87,8 @@ async def test_fatal_resubmit_failures_keep_interrupted_reading(
         )
         await asyncio.wait_for(blocked.wait(), timeout=5)
         task.cancel("edit cancellation")
-        with pytest.raises(asyncio.CancelledError, match="edit cancellation"):
+        match = "edit cancellation" if sys.version_info >= (3, 11) else None
+        with pytest.raises(asyncio.CancelledError, match=match):
             await task
     else:
         with pytest.raises(SystemExit, match="fatal preparation"):
