@@ -16,7 +16,6 @@ import {
   AsideFaviconContext,
 } from "./context"
 import { setCurrentConversationId } from "./currentConversation"
-import { uuid } from "../utils/uuid"
 import { navigateTo } from "../utils/navigate"
 import {
   chatReducer,
@@ -215,6 +214,10 @@ export function ChatApp({
   }, [elementId, historyStore, transport])
 
   const containerRef = useRef<ChatContainerHandle>(null)
+  const messagesRef = useRef(state.messages)
+  useLayoutEffect(() => {
+    messagesRef.current = state.messages
+  }, [state.messages])
   const smootherRef = useRef<StreamSmoother<ChunkMeta> | null>(null)
   // Set on CANCEL_REQUESTED: providers can keep sending chunks after a
   // cancel, and those must append raw rather than pace in — stopping should
@@ -286,6 +289,7 @@ export function ChatApp({
           activeId: action.active_id,
           readOnly: action.active_read_only ?? false,
           readOnlyReason: action.active_read_only_reason,
+          canResubmit: action.active_can_resubmit,
           transitionProtocol: action.transition_protocol,
         })
         dispatch({
@@ -316,22 +320,34 @@ export function ChatApp({
         return
       }
       if (action.type === "history_edit_projection") {
+        // A replacement has already been staged on the server. An old or
+        // malformed projection must never turn into a new browser submission.
+        if (
+          typeof action.requestId !== "string" ||
+          !action.requestId.trim() ||
+          typeof action.exchange_id !== "string" ||
+          !action.exchange_id.trim() ||
+          !Number.isInteger(action.index) ||
+          action.index < 0 ||
+          messagesRef.current[action.index]?.role !== "user" ||
+          typeof action.content !== "string" ||
+          !Array.isArray(action.attachments)
+        ) {
+          console.warn(
+            "[shinychat] Malformed history edit projection; dropping.",
+          )
+          return
+        }
         if (!historyStore.acceptEditProjection(action.requestId)) return
-        const client_message_id = uuid()
         dispatch({ type: "TRUNCATE_MESSAGES", index: action.index })
         dispatch({
           type: "INPUT_SENT",
-          id: client_message_id,
+          id: action.exchange_id,
           content: action.content,
           role: "user",
           ...(action.attachments.length > 0
             ? { attachments: action.attachments }
             : {}),
-        })
-        transport.sendInput(inputId, {
-          text: action.content,
-          attachments: action.attachments,
-          client_message_id,
         })
         return
       }
@@ -523,7 +539,9 @@ export function ChatApp({
   const handleEdit = useCallback(
     (index: number, content: string, attachments: AttachmentPayload[]) => {
       if (
-        historyStore.getSnapshot().readOnly ||
+        (historyStore.getSnapshot().readOnly &&
+          (!historyStore.getSnapshot().canResubmit ||
+            !messagesRef.current[index]?.exchange?.preparation_failed)) ||
         isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
         historyStore.isMutationBlocked()
       )
@@ -569,7 +587,9 @@ export function ChatApp({
   const handleRetry = useCallback(
     (index: number) => {
       if (
-        historyStore.getSnapshot().readOnly ||
+        (historyStore.getSnapshot().readOnly &&
+          (!historyStore.getSnapshot().canResubmit ||
+            !messagesRef.current[index]?.exchange?.preparation_failed)) ||
         isHistorySubmissionBlocked(historyStore.getSnapshot()) ||
         historyStore.isMutationBlocked()
       )

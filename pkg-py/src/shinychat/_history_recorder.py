@@ -50,6 +50,7 @@ from ._history_plan import (
 from ._history_store import ConversationPartition, ConversationStore
 from ._history_title import fallback_title_from_text
 from ._history_types import (
+    HISTORY_ERROR_NOT_SENT,
     SYSTEM_PROMPT_STATE_KEY,
     TURNS_STATE_KEY,
     VALUES_STATE_KEY,
@@ -58,6 +59,7 @@ from ._history_types import (
     StateEntry,
     TurnDict,
     new_conversation_record_v2,
+    node_is_terminal_incomplete,
 )
 
 if TYPE_CHECKING:
@@ -102,6 +104,12 @@ class _ExchangeRecorder:
         self.record: ConversationRecordV2 | None = None
         self._stream_exchanges: dict[str, str] = {}
         self.lock = asyncio.Lock()
+        # The one staged submission slot for the active record: the
+        # controller stages, prepares, and then either admits or finishes
+        # it while owning the record lock, so at most one staged submission
+        # is ever in flight. Admission/failure consumes the slot, so one
+        # staged submission is admitted exactly once.
+        self._staged_input: tuple[str, StoredMessage] | None = None
         self._capture_hooks: dict[str, CaptureHook] = {}
         self._restore_hooks: dict[str, RestoreHook] = {}
         self._rewind_hooks: dict[str, RewindHook] = {}
@@ -138,15 +146,28 @@ class _ExchangeRecorder:
 
     @property
     def read_only(self) -> bool:
-        """Whether the loaded record's saved model context is unavailable.
+        """Whether the record has a conversation-wide restriction.
 
-        Set when a restored record is installed; cleared on reset (New
-        chat, delete, failed-restore cleanup) and reclassified on every
-        install. Once set, it is kept for the loaded conversation across
-        sibling navigation, even when another sibling has compatible
-        turns.
+        This is separate from the selected position's continuation eligibility.
+        A verified model and app restore may resolve its corresponding
+        restriction; source-isolated views stay restricted.
         """
         return self._read_only
+
+    @property
+    def selected_not_sent(self) -> bool:
+        record = self.record
+        if record is None or record.active_leaf is None:
+            return False
+        node = record.nodes.get(record.active_leaf)
+        return node is not None and node_is_terminal_incomplete(node)
+
+    @property
+    def continuation_allowed(self) -> bool:
+        """Whether the selected view may admit or capture new work."""
+        return not (
+            self._read_only or self._source_isolated or self.selected_not_sent
+        )
 
     @property
     def read_only_reason(self) -> ReadOnlyReason | None:
@@ -515,7 +536,7 @@ class _ExchangeRecorder:
         strict: bool = True,
     ) -> bool:
         assert self.record is not None
-        if self._read_only:
+        if not self.continuation_allowed:
             return False
         # Hooks may pin inherited entries on children as well as returning a
         # frame. Run them against a detached staging tree, committing all state
@@ -593,11 +614,20 @@ class _ExchangeRecorder:
         self._read_only_reason = read_only_reason if read_only else None
 
     def mark_read_only(self, reason: ReadOnlyReason) -> None:
-        """Make the installed record view-only after an app restore failure."""
+        """Make the installed record view-only for a record-level reason."""
         assert self.record is not None
         if not self._read_only:
             self._read_only = True
             self._read_only_reason = reason
+
+    def clear_read_only(self) -> None:
+        """Clear a record restriction after a verified model and app restore.
+
+        Source-isolated, interrupted, and live-producer protections are never
+        cleared by browsing or explicit resubmission.
+        """
+        self._read_only = False
+        self._read_only_reason = None
 
     async def _new_record(self, *, title: str) -> ConversationRecordV2:
         return new_conversation_record_v2(
@@ -624,9 +654,64 @@ class _ExchangeRecorder:
             )
         return self.record.open_inputless_exchange(), False
 
+    def stage_input_locked(
+        self,
+        exchange_id: str,
+        parent_id: str,
+        message: StoredMessage,
+    ) -> None:
+        """Record one valid edited/retried submission before preparation.
+
+        Synchronous and infallible: the staged node becomes an ordinary
+        exchange under the target's valid parent (and the selected
+        position) as soon as the request is validated, before the pending
+        projection and before any fallible work — the first durable put,
+        the outgoing close capture, the rewind, and the restore. The same
+        node is later either admitted exactly once through
+        :meth:`accepted_input` or finished as a known terminal incomplete
+        position by :meth:`fail_staged_input_locked`. Staging records
+        intent; it runs no capture hook and is therefore allowed under a
+        resolvable view-only restriction. The caller owns the first put
+        explicitly, so a storage failure there is handled like any other
+        preparation failure of the same staged node.
+        """
+        assert self.record is not None
+        if self._staged_input is not None:
+            raise RuntimeError(
+                "A staged submission is already awaiting preparation."
+            )
+        self.record.open_exchange(exchange_id, message, parent_id=parent_id)
+        self._staged_input = (exchange_id, message.model_copy(deep=True))
+
+    async def fail_staged_input_locked(
+        self,
+        exchange_id: str,
+    ) -> None:
+        """Attach the safe pre-admission failure outcome to a staged node.
+
+        The staged submission is finished as a sanitized "message not
+        sent" error with an explicitly invalid checkpoint. The failed
+        position is display-only for app state: it records no values of
+        its own and never invokes ``on_restore``. The staged slot is
+        consumed, so the failed attempt can never be re-admitted; an
+        intentional Retry stages a new sibling.
+        """
+        record = self.record
+        assert record is not None
+        if self._staged_input is not None and self._staged_input[0] == (
+            exchange_id
+        ):
+            self._staged_input = None
+        record.finish_exchange(exchange_id, "error", HISTORY_ERROR_NOT_SENT)
+        node = record.nodes[exchange_id]
+        node.checkpoint = "invalid"
+        node.not_sent = True
+        await self.persist_record_locked()
+
     def reset(self) -> None:
         self.record = None
         self._stream_exchanges.clear()
+        self._staged_input = None
         self._active_id_published_for = None
         self._read_only = False
         self._source_isolated = False
@@ -704,7 +789,7 @@ class _ExchangeRecorder:
     def _capture_app_state(self, *, strict: bool = False) -> bool:
         """Capture the active exchange's values without partially changing state."""
         assert self.record is not None
-        if self._read_only:
+        if not self.continuation_allowed:
             return False
         live = self.record
         staged = self._stage_state(live)
@@ -740,7 +825,7 @@ class _ExchangeRecorder:
         if (
             self.record is None
             or self._host.partition is None
-            or self._read_only
+            or not self.continuation_allowed
         ):
             return False
         leaf = self.record.active_leaf
@@ -769,7 +854,7 @@ class _ExchangeRecorder:
             if (
                 self.record is None
                 or self._host.partition is None
-                or self._read_only
+                or not self.continuation_allowed
             ):
                 return False
             leaf = self.record.active_leaf
@@ -908,11 +993,40 @@ class _ExchangeRecorder:
         commit: Callable[[], None],
     ) -> None:
         """Commit both input owners after model capture, before persistence."""
-        if self._host.partition is None or self._read_only:
+        if self._host.partition is None:
             commit()
             return
-
         async with self.lock:
+            if not self.continuation_allowed:
+                if self.selected_not_sent:
+                    # Selection may have changed after Chat's admission check.
+                    raise RuntimeError(
+                        "Cannot admit input at a not-sent position."
+                    )
+                if (
+                    self._staged_input is not None
+                    and self._staged_input[0] == exchange_id
+                ):
+                    # Never commit only the transcript of a staged input.
+                    raise RuntimeError(
+                        "Cannot admit a staged input into a read-only conversation."
+                    )
+                commit()
+                return
+            staged = self._staged_input
+            if staged is not None and staged[0] == exchange_id:
+                self._staged_input = None
+                await self._admit_staged_input_locked(
+                    exchange_id, staged[1], commit
+                )
+                return
+            if self.record is not None and exchange_id in self.record.nodes:
+                # A consumed staged ID (or any recorded node) must never be
+                # admitted again: reject before any capture, commit, or
+                # accepted-input signal.
+                raise RuntimeError(
+                    f"Exchange {exchange_id!r} was already admitted."
+                )
             created = False
             if self.record is None:
                 title = fallback_title_from_text(message.content)
@@ -960,6 +1074,45 @@ class _ExchangeRecorder:
             if created:
                 await self._host.send_history_update()
 
+    async def _admit_staged_input_locked(
+        self,
+        exchange_id: str,
+        message: StoredMessage,
+        commit: Callable[[], None],
+    ) -> None:
+        """Admit a staged submission through the ordinary acceptance steps.
+
+        The staged node already records the input under its valid parent
+        and is the active leaf, so there is no ``open_exchange``: the
+        parent closes (the required post-restore model capture, whose
+        failure attaches to the staged node), unresolved predecessors on
+        the parent prefix stay unpromoted, the automatic app-value capture
+        runs once, and only then does the transcript commit and the record
+        persist. The accepted-input signal fires after this returns,
+        exactly as for an ordinary submission.
+        """
+        record = self.record
+        assert record is not None
+        node = record.nodes.get(exchange_id)
+        if node is None or record.active_leaf != exchange_id:
+            raise RuntimeError(
+                f"Staged exchange {exchange_id!r} is not the active submission."
+            )
+        parent_id = node.parent_id
+        if parent_id is not None:
+            await self.capture_state_locked(
+                parent_id, "node_close", model_only=True
+            )
+        for path_id in record.path_node_ids():
+            if path_id == exchange_id:
+                continue
+            path_node = record.nodes[path_id]
+            if path_node.checkpoint_state == "candidate":
+                path_node.checkpoint = "invalid"
+        self._capture_app_state()
+        commit()
+        await self.persist_record_locked()
+
     async def message_committed(
         self, exchange_id: str | None, entry: TranscriptEntry
     ) -> None:
@@ -982,10 +1135,12 @@ class _ExchangeRecorder:
         *,
         stream_id: str | None = None,
     ) -> None:
-        if self._host.partition is None or self._read_only:
+        if self._host.partition is None or not self.continuation_allowed:
             return
 
         async with self.lock:
+            if not self.continuation_allowed:
+                return
             if (
                 entry.message.role == "assistant"
                 and self.record is not None
@@ -1045,10 +1200,12 @@ class _ExchangeRecorder:
     async def stream_updated(
         self, stream_id: str, entry: TranscriptEntry
     ) -> None:
-        if self._host.partition is None or self._read_only:
+        if self._host.partition is None or not self.continuation_allowed:
             return
 
         async with self.lock:
+            if not self.continuation_allowed:
+                return
             exchange_id = self._stream_exchanges.get(stream_id)
             if exchange_id is None or self.record is None:
                 return
@@ -1064,10 +1221,12 @@ class _ExchangeRecorder:
         error: str | None,
     ) -> None:
         try:
-            if self._host.partition is None or self._read_only:
+            if self._host.partition is None or not self.continuation_allowed:
                 return
 
             async with self.lock:
+                if not self.continuation_allowed:
+                    return
                 exchange_id = self._stream_exchanges.get(stream_id)
                 if exchange_id is None or self.record is None:
                     return

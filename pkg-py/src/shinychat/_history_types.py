@@ -54,16 +54,20 @@ SYSTEM_PROMPT_STATE_KEY = "shinychat:system_prompt"
 # per-exchange form of what `on_save` callbacks write and `on_restore`
 # callbacks read).
 VALUES_STATE_KEY = "shinychat:values"
-
 MAX_HISTORY_ERROR_MESSAGE = 256
 HISTORY_ERROR_GENERIC = "The response could not be completed."
 HISTORY_ERROR_STREAM_START = "The response stream could not be started."
 HISTORY_ERROR_STREAM_TERMINAL = "The response stream could not be completed."
+# The sanitized user-facing outcome for a submission that failed before
+# acceptance. Technical detail stays in developer diagnostics; the record
+# never invents a provider error for a message the provider never saw.
+HISTORY_ERROR_NOT_SENT = "Message not sent."
 HISTORY_ERROR_MESSAGES = frozenset(
     {
         HISTORY_ERROR_GENERIC,
         HISTORY_ERROR_STREAM_START,
         HISTORY_ERROR_STREAM_TERMINAL,
+        HISTORY_ERROR_NOT_SENT,
     }
 )
 
@@ -121,6 +125,16 @@ class StoredUiMessage(TypedDict):
     version: int
     attachments: NotRequired[list[AttachmentDict]]
     attachment_content_stripped: NotRequired[bool]
+
+
+def node_is_terminal_incomplete(node: "ExchangeNode") -> bool:
+    """A terminal rejected input is browsable, but not a checkpoint."""
+    return (
+        node.status == "error"
+        and node.input is not None
+        and node.checkpoint == "invalid"
+        and node.not_sent is True
+    )
 
 
 def new_conversation_record(
@@ -425,6 +439,7 @@ class ExchangeNode(PersistedModel):
     state: dict[str, StateEntry] = Field(default_factory=dict)
     error: ErrorEntry | None = None
     checkpoint: Literal["candidate", "valid", "invalid"] | None = None
+    not_sent: bool | None = None
 
     @property
     def checkpoint_state(self) -> Literal["candidate", "valid", "invalid"]:
@@ -588,7 +603,16 @@ class ConversationRecordV2(PersistedModel):
                 leaves[key] = (
                     leaves[selected]
                     if selected is not None
-                    else (key if node.is_checkpoint else None)
+                    else (
+                        key
+                        # A known terminal incomplete leaf is an explicit
+                        # display destination (browsable, never a
+                        # continuation checkpoint); an unfinished producer
+                        # stays ineligible.
+                        if node.is_checkpoint
+                        or node_is_terminal_incomplete(node)
+                        else None
+                    )
                 )
                 visiting.remove(key)
         return leaves
@@ -679,10 +703,30 @@ class ConversationRecordV2(PersistedModel):
                 result[node_id] = (siblings.index(node_id), len(siblings))
         return result
 
-    def open_exchange(self, exchange_id: str, message: StoredMessage) -> None:
+    def open_exchange(
+        self,
+        exchange_id: str,
+        message: StoredMessage,
+        *,
+        parent_id: str | None = None,
+    ) -> None:
+        """Open one ordinary input-bearing exchange and select it.
+
+        ``parent_id`` defaults to the active leaf (ordinary acceptance).
+        A staged edit/retry passes its target's valid parent explicitly:
+        the node is recorded and selected before any fallible
+        preparation, so the attempt survives preparation failure and is
+        never silently lost — while sharing this one construction and
+        linking lifecycle with ordinary exchanges. Either way the whole
+        ancestor path's selection pointers move to the new node, which
+        for the default case is exactly the prior active path.
+        """
         if exchange_id in self.nodes:
             raise ValueError(f"Duplicate exchange id {exchange_id!r}")
-        parent_id = self.active_leaf
+        if parent_id is None:
+            parent_id = self.active_leaf
+        elif parent_id not in self.nodes:
+            raise ValueError(f"Unknown exchange id {parent_id!r}")
         self.nodes[exchange_id] = ExchangeNode(
             parent_id=parent_id,
             created_at=utcnow(),
@@ -692,8 +736,7 @@ class ConversationRecordV2(PersistedModel):
         )
         if parent_id is not None:
             self.nodes[parent_id].children.append(exchange_id)
-            self.nodes[parent_id].selected_child = exchange_id
-        self.active_leaf = exchange_id
+        self.set_active_leaf(exchange_id)
         self.next_node_seq += 1
         self.updated_at = utcnow()
 

@@ -24,6 +24,7 @@ export interface HistorySnapshot {
    */
   readOnly: boolean
   readOnlyReason?: ReadOnlyReason
+  canResubmit: boolean
   busy: boolean
   connected: boolean
   transitionProtocol: TransitionProtocol | null
@@ -43,6 +44,7 @@ const initialSnapshot: HistorySnapshot = Object.freeze({
   conversations: Object.freeze([]),
   activeId: null,
   readOnly: false,
+  canResubmit: false,
   busy: false,
   connected: false,
   transitionProtocol: null,
@@ -55,6 +57,7 @@ export class HistoryStore {
   private snapshot: HistorySnapshot = initialSnapshot
   private listeners = new Set<Listener>()
   private transport: ChatTransport | null = null
+  private editProjectionApplied = false
 
   constructor(readonly elementId: string) {}
 
@@ -130,6 +133,7 @@ export class HistoryStore {
     activeId,
     readOnly = false,
     readOnlyReason,
+    canResubmit = false,
     transitionProtocol,
   }: {
     enabled: boolean
@@ -137,6 +141,7 @@ export class HistoryStore {
     activeId: string | null
     readOnly?: boolean
     readOnlyReason?: ReadOnlyReason
+    canResubmit?: boolean
     transitionProtocol?: string
   }): void {
     const nextConversations = conversationsEqual(
@@ -158,6 +163,7 @@ export class HistoryStore {
       activeId,
       readOnly,
       readOnlyReason: readOnly ? readOnlyReason : undefined,
+      canResubmit,
       busy: this.snapshot.busy,
       connected: this.snapshot.connected,
       transitionProtocol: normalizedProtocol,
@@ -184,7 +190,12 @@ export class HistoryStore {
   }
 
   acceptEditProjection(requestId: string): boolean {
-    if (this.snapshot.historyTransitionPending !== requestId) return false
+    if (
+      this.snapshot.historyTransitionPending !== requestId ||
+      this.editProjectionApplied
+    )
+      return false
+    this.editProjectionApplied = true
     // Projection installs the ordinary input/loading state immediately after
     // this call. Mark history busy first so no mutation can slip between the
     // matching wire action and React's state commit.
@@ -224,6 +235,7 @@ export class HistoryStore {
 
   private beginTransition(): string {
     const requestId = uuid()
+    this.editProjectionApplied = false
     this.publish({ ...this.snapshot, historyTransitionPending: requestId })
     return requestId
   }
@@ -366,6 +378,7 @@ function snapshotsEqual(a: HistorySnapshot, b: HistorySnapshot): boolean {
     a.activeId === b.activeId &&
     a.readOnly === b.readOnly &&
     a.readOnlyReason === b.readOnlyReason &&
+    a.canResubmit === b.canResubmit &&
     a.busy === b.busy &&
     a.connected === b.connected &&
     a.transitionProtocol === b.transitionProtocol &&

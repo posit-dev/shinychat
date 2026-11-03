@@ -151,6 +151,10 @@ export const ChatMessage = memo(function ChatMessage({
   const [hasEditText, setHasEditText] = useState(false)
   const editRef = useRef<TiptapInputHandle>(null)
   const isUser = message.role === "user"
+  const showPreparationFailure =
+    isUser &&
+    message.exchange?.status === "error" &&
+    message.exchange.preparation_failed
 
   const blocks = message.blocks
 
@@ -610,7 +614,7 @@ export const ChatMessage = memo(function ChatMessage({
     />
   )
 
-  return (
+  const messageElement = (
     <div
       ref={rootRef}
       className={roleClass}
@@ -727,6 +731,7 @@ export const ChatMessage = memo(function ChatMessage({
           <div
             className={`shiny-chat-message-footer${
               !readOnly &&
+              !showPreparationFailure &&
               message.exchange?.status === "error" &&
               message.exchange.error_message
                 ? " shiny-chat-message-footer-error"
@@ -789,6 +794,7 @@ export const ChatMessage = memo(function ChatMessage({
               />
             )}
             {!readOnly &&
+              !showPreparationFailure &&
               message.exchange?.status === "error" &&
               message.exchange.error_message && (
                 <span className="shiny-chat-retry-error">
@@ -799,5 +805,16 @@ export const ChatMessage = memo(function ChatMessage({
         )}
       {lightboxPortal}
     </div>
+  )
+
+  return (
+    <>
+      {messageElement}
+      {showPreparationFailure && (!isEditing || readOnly) && (
+        <p className="shiny-chat-message-not-sent">
+          This message was not sent.
+        </p>
+      )}
+    </>
   )
 })

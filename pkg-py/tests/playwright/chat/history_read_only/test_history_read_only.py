@@ -25,8 +25,8 @@ def test_incompatible_context_can_be_viewed_and_navigated_but_not_continued(
     expect(status).to_contain_text(
         "This conversation can be viewed but not continued. Its saved model context couldn't be loaded."
     )
-    expect(chat.loc_input).to_have_count(0)
-    expect(chat.loc_input_button).to_have_count(0)
+    expect(chat.loc_input).to_be_hidden()
+    expect(chat.loc_input_button).to_be_hidden()
     expect(chat.loc.locator(".shiny-chat-edit-btn")).to_have_count(0)
     expect(chat.loc.get_by_role("button", name="Retry message")).to_have_count(
         0

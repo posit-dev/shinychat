@@ -19,6 +19,7 @@ export interface ChatMessagesProps {
   disabled?: boolean
   /** Read-only conversation: hide edit/retry; sibling navigation stays usable. */
   readOnly?: boolean
+  canResubmit?: boolean
   inputId: string
   submitKey?: SubmitKey
   uploadAccept?: string[]
@@ -36,6 +37,7 @@ export const ChatMessages = memo(function ChatMessages({
   siblingNavigationPending,
   disabled,
   readOnly,
+  canResubmit = false,
   inputId,
   submitKey,
   uploadAccept,
@@ -67,7 +69,9 @@ export const ChatMessages = memo(function ChatMessages({
             onRetry={onRetry}
             siblingNavigationPending={siblingNavigationPending}
             disabled={disabled}
-            readOnly={readOnly}
+            readOnly={
+              readOnly && !(canResubmit && msg.exchange?.preparation_failed)
+            }
             inputId={inputId}
             submitKey={submitKey}
             uploadAccept={uploadAccept}

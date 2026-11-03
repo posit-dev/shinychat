@@ -402,7 +402,8 @@ class ChatHistory:
     def _history_submission_admitted(self) -> bool:
         controller = self._controller
         return self._history_action_admitted() and (
-            controller is None or not controller._exchange_recorder.read_only
+            controller is None
+            or controller._exchange_recorder.continuation_allowed
         )
 
     async def _flush_pending(self) -> None:
@@ -527,13 +528,16 @@ class ChatHistory:
         a sibling or another position; and before an edit, retry, or
         regenerate starts replacement work from the retained parent. Callbacks
         receive the target values; for writable in-session changes, model
-        state has already been rewound, but ``chat.messages()`` and the
-        display still show the outgoing branch. A resubmit commits its parent
-        pointer only after callbacks succeed. Load and switch instead replay
-        the target display before callbacks run. Use it to sync auxiliary
-        UI state (active tabs, model selectors, etc.) to match the selected
-        position. Raw Shiny input values are not synced automatically;
-        call the appropriate ``ui.update_*()`` functions here.
+        state has already been rewound. Browsing still shows the outgoing
+        branch in ``chat.messages()``; edit, retry, and regenerate instead
+        show the restored parent's accepted transcript prefix (and the
+        rewound parent model context), while the attempted replacement is
+        already recorded as the selected node without being presented as
+        accepted input. Load and switch instead replay the target display
+        before callbacks run. Use it to sync auxiliary UI state (active tabs,
+        model selectors, etc.) to match the selected position. Raw Shiny
+        input values are not synced automatically; call the appropriate
+        ``ui.update_*()`` functions here.
 
         The callback receives the ``values`` dict that was captured by
         ``on_save`` at the selected position (a detached copy; mutating it
@@ -543,6 +547,12 @@ class ChatHistory:
             def _(values):
                 ui.update_navs("tabs", selected=values.get("selected_tab"))
 
+        Values are stored as ``on_save`` returned them and are never
+        migrated. Older conversations can lack keys a later deploy added, so
+        handle known differences here (for example with ``values.get(key,
+        default)``) rather than letting the callback raise: an exception
+        means the app could not be restored.
+
         Editing or retrying the first message restores the values recorded
         on the starting checkpoint: the first accepted input captured app
         state there, so callbacks normally receive those values. A failed
@@ -551,7 +561,8 @@ class ChatHistory:
         root can replace its values. The author callback
         decides whether to supply defaults or fail; history does not
         automatically reset application state. An unhandled ordinary failure
-        retains the original branch read-only, as described below.
+        keeps the submitted message recorded and selected as a terminal
+        "message not sent" position, read-only, as described below.
 
         Starting a new chat does not fire ``on_restore``: the new chat has
         no saved target, and authors set up its state themselves.
@@ -560,16 +571,36 @@ class ChatHistory:
         exception, so later callbacks never mask it. The conversation stays
         visible but becomes read-only (the composer explains that its app
         state could not be fully restored), and the error is warned to the
-        developer. Failed edit, retry, and regenerate preparation retains
-        the original full branch rather than selecting its parent; failed
-        browsing retains the selected target. After failed resubmit
-        preparation, the live model client may still hold the parent prefix,
-        not the displayed branch; read-only blocks continuation and saved
-        state capture until a full restore or new chat. Callbacks that can recover from a known case should
-        handle it themselves. Cancellation and other fatal errors take the
-        usual full restore cleanup. Read-only conversations keep their
-        saved values; a later successful switch or restore of the
-        conversation, or starting a new chat, clears the read-only state.
+        developer. A failed edit, retry, or regenerate keeps the submitted
+        message recorded and selected as its own node: it shows a sanitized
+        "message not sent" outcome, holds an explicitly invalid checkpoint,
+        and never reverts the visible conversation to the original branch
+        (the original and its descendants are preserved as navigable
+        siblings). A selected not-sent position is display-only for app
+        state: loading it or browsing to it never calls ``on_restore``.
+        While it is selected, ``chat.messages()`` includes the unsent
+        message as displayed, although the model never received it.
+        Failed browsing retains the selected target. After failed
+        resubmit preparation, the live model client may hold the parent
+        prefix or a partially restored state rather than the displayed
+        branch. The selected not-sent position blocks continuation and
+        state capture; an explicit Retry or Edit after the underlying
+        problem is fixed restores the valid parent and creates a new
+        sibling — it never rewrites the failed node or the original.
+        Callbacks that can recover from a known case should handle it
+        themselves. Cancellation and other fatal errors take the usual
+        full restore cleanup. A later browse to a compatible checkpoint
+        clears an earlier app/model restriction only after restoring its
+        model context and app values, then validating the live model.
+        Display-only browsing, skipped app values and an invalid live model
+        do not clear that restriction. Incompatible targets
+        remain browsable without a model rewind; sending stays disabled
+        if no compatible target can safely restore both model and app
+        state. Explicit Retry/Edit of a selected not-sent leaf can recover
+        through its valid compatible parent; Retry/Edit is offered only
+        when that saved parent can be preflighted. Source-isolated, interrupted and active-producer
+        protections are never cleared by that recovery.
+        Starting a new chat resets the active view.
 
         Restores faithfully reapply the conversation's saved system prompt
         (the one captured while the conversation was live) before callbacks

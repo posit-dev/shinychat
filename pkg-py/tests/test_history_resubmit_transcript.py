@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-from shinychat._chat_types import ChatMessage
 from shinychat._history_types import CapturedMessage
 from test_history_controller import (
     _make_v2_resubmit_real_chat,
@@ -54,16 +53,17 @@ async def test_resubmit_after_display_replay_keeps_the_server_parent_prefix(
         3 if root_notice else 2, "second edited", request_id="replayed-edit"
     )
 
-    assert [message["content"] for message in chat.messages()] == prefix
+    # The server-direct staged admission committed the accepted input under
+    # its staged exchange ID: the transcript is the parent prefix plus the
+    # admitted edit, exactly once — no browser echo involved.
+    assert [message["content"] for message in chat.messages()] == [
+        *prefix,
+        "second edited",
+    ]
     assert [
         message["segments"][0]["content"]
         for message in chat._messages_for_bookmark()
-    ] == prefix
-
-    await chat._record_accepted_user_input_with_capture(
-        ChatMessage(content="second edited", role="user")
-    )
-    assert [message["content"] for message in chat.messages()] == [
+    ] == [
         *prefix,
         "second edited",
     ]

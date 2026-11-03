@@ -422,6 +422,7 @@ describe("historyStore", () => {
     expect(registration.store.acceptEditProjection("stale")).toBe(false)
     expect(registration.store.getSnapshot().busy).toBe(false)
     expect(registration.store.acceptEditProjection("edit-request")).toBe(true)
+    expect(registration.store.acceptEditProjection("edit-request")).toBe(false)
     expect(registration.store.getSnapshot().busy).toBe(true)
 
     registration.store.completeHistoryTransition("stale")
@@ -430,6 +431,26 @@ describe("historyStore", () => {
     )
     registration.store.completeHistoryTransition("edit-request")
     expect(registration.store.getSnapshot().historyTransitionPending).toBeNull()
+  })
+
+  it("withdraws incomplete-position recovery when the server omits the capability", () => {
+    const store = getHistoryStore("chat")
+    store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      readOnly: true,
+      canResubmit: true,
+    })
+    expect(store.getSnapshot().canResubmit).toBe(true)
+    store.updateHistory({
+      enabled: true,
+      conversations,
+      activeId: "first",
+      readOnly: true,
+      readOnlyReason: "model_unavailable",
+    })
+    expect(store.getSnapshot().canResubmit).toBe(false)
   })
 
   it("uses remount-safe UUIDs so stale completions cannot release a new transition", async () => {

@@ -273,6 +273,8 @@ export type ChatAction =
        */
       active_read_only?: boolean
       active_read_only_reason?: ReadOnlyReason
+      /** Explicit recovery is available from a known terminal incomplete node. */
+      active_can_resubmit?: boolean
       transition_protocol?: string
     }
   | {
@@ -295,6 +297,7 @@ export type ChatAction =
         {
           status: "pending" | "ok" | "error" | "cancelled"
           retryable: boolean
+          preparation_failed?: boolean
           error_message?: string
         }
       >
@@ -305,6 +308,8 @@ export type ChatAction =
       index: number
       content: string
       attachments: AttachmentPayload[]
+      /** Identity of the replacement already staged by the server. */
+      exchange_id: string
     }
   | { type: "history_transition_complete"; requestId: string }
 

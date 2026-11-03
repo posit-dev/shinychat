@@ -18,7 +18,7 @@ History preserves three independent facts about a conversation:
 
 These facts are correlated when recorded, not reconciled afterward. A tool loop can produce several turns; UI-only content can have no turn; context compaction need not change the displayed answer. Display/model disagreement is allowed by design. History must not reconstruct either representation by guessing from roles or message counts.
 
-An **exchange** owns an optional accepted input and its captured content. A **position** is a node on a conversation path. A **checkpoint** is a position eligible as a coherent saved-state destination. Having content, having a checkpoint, and having successfully persisted it are different things.
+An **exchange** owns an optional submitted input and its captured content; staging the input does not accept it. A **position** is a node on a conversation path. A **checkpoint** is a position eligible as a coherent saved-state destination. Having content, having a checkpoint, and having successfully persisted it are different things.
 
 ```mermaid
 flowchart TD
@@ -37,7 +37,7 @@ Each node has parent/child links, remembered `selected_child`, optional input, c
 
 - **`active_leaf` selects a root-to-position path.** Other branches remain stored but are not displayed.
 - **`selected_child` remembers a choice at each parent.** Switching branches preserves the other branch's remembered descendants.
-- **Checkpoint selection stays inside a chosen subtree.** It follows eligible remembered children, falls back to the newest eligible child when needed, and returns a valid destination or none. Sibling arrows offer subtrees with coherent destinations, not every raw node or an arbitrary nearest ancestor.
+- **Checkpoint selection stays inside a chosen subtree.** It follows eligible remembered children, falls back to the newest eligible child when needed, and returns a valid destination or none. Browsing also admits a known terminal incomplete preparation outcome; this is a display destination, not a model checkpoint. An invalid flag alone never grants that capability.
 - **Inputless positions are real.** Pre-input programmatic content and independent responses can occupy them. They can be ancestors/destinations, but direct edit/retry/regenerate targets require accepted input.
 
 Ownership is divided by responsibility, independent of language-specific class boundaries:
@@ -130,14 +130,19 @@ Recorded prompt applies before turns. App values are validated/folded separately
 | Load/switch | Saved conversation tree/path, not a rewind within the current tree |
 | New chat | Explicit leave/reset with no saved restoration target |
 
-Resubmission requires input on the active path and a checkpointed parent. The input is causal data; the parent is the rewind destination. Live Retry also respects read-only and in-flight guards.
+Resubmission requires input on the active path and a checkpointed parent. The input is causal data; the parent is the rewind destination. A selected not-sent node offers Retry/Edit only when its saved parent model can be preflighted. Live Retry also respects read-only and in-flight guards.
 
-A normal replacement follows this order:
+A replacement follows this order:
 
-1. Resolve the correlated browser request to its exchange; validate eligibility and state on the existing path, including the abandoned target. Preflight the retained parent before mutation.
-2. Capture outgoing model-only changes, apply parent rewind, and restore its app values. The model is now rewound, but transcript/display still show the outgoing branch during the app callback.
-3. After successful app restoration, commit parent selection and truncate the server transcript to the same retained prefix. Preserve rich committed entries and the original stored branch.
-4. Send the matching edit projection. The browser marks itself busy, truncates presentation, and submits projected input through ordinary admission, opening the replacement exchange. Failed app restoration withholds this provider-work kickoff.
+1. Resolve the request to its active-path input; validate eligibility and preflight its valid parent before mutation.
+2. Record the replacement as one ordinary sibling node before fallible preparation, including outgoing model-only capture. Send the matching server-owned projection so the browser displays that node pending under its staged identity without echoing its input back. Replacement projections use only this server-admission protocol; ordinary sends still come from the browser. R adopts the protocol during its port before refreshing its served assets.
+3. Capture outgoing model-only changes where appropriate, rewind the model, and expose the parent's accepted transcript prefix before `on_restore`. The pending replacement is not accepted input. Preserve rich committed prefix entries and the original stored branch.
+4. Validate/capture the restored model after `on_restore`, then admit the same staged node exactly once through the guarded Chat input path. Normal accepted-input signals trigger application/provider work.
+5. If preparation fails before the shared transcript/tree commit, attach a sanitized not-sent outcome and explicitly invalidate that same node's checkpoint. Keep it selected and visible; do not dispatch accepted-input/provider events. An already committed input whose later persistence or delivery fails is not a not-sent input.
+
+A known terminal incomplete preparation node can be browsed, bookmarked, persisted and reloaded, but not used for ordinary continuation. Explicit save and response settlement do not recapture state or promote a selected not-sent node. Its `not_sent` field records that admission failed. A not-sent position is display-only for app state: it records no values of its own, and loading or browsing to it never invokes `on_restore`. The server transcript still includes its unsent input, so `chat.messages()` matches the display and a fresh load; the model never received that input. Successful nodes do not have this failure field.
+
+Retry/Edit restores the valid parent and always creates a new sibling, including when preparation fails again. Recovery from this position does not close-capture its poisoned live model. A successful parent restore can resolve an earlier app/model restriction only after restoring available app values and validating the actual live model. Source-isolated, interrupted and active-producer protections are not cleared by that recovery.
 
 Request matching and transition completion coordinate interaction, not checkpoint validity. Ordinary busy/admission gates still protect response work.
 
@@ -163,17 +168,22 @@ Viewing, continuing, and writing the source record are separate capabilities:
 |---|---|
 | Compatible coherent checkpoint | Restore recorded path/state; writable under normal admission, but persistence can still fail |
 | Malformed/unregistered state or state-hook execution failure | Reject during preflight where possible; restore cleanup attempts fresh-view recovery, with safe diagnostics |
-| Known model context unavailable | Compatible display remains read-only; browsing skips builtin model rewind and capture; not automatically source-isolated |
-| Ordinary app-restore failure | Stop callbacks and become read-only; load/browse can retain target, failed resubmit preparation retains original branch without replacement kickoff |
+| Known model context unavailable | View the incompatible position read-only without builtin model rewind or capture; a compatible checkpoint can recover after real model/app restoration and live validation; not automatically source-isolated |
+| Ordinary app-restore failure | Stop callbacks and block continuation; load/browse retain the selected display, while failed resubmit preparation retains the new replacement as not sent |
+| Known terminal incomplete preparation | Browse and persist display/app facts; no model-continuation checkpoint; explicit Retry/Edit restores a valid parent and creates a new version |
 | Unresolved/invalid active source restored into another view | Project to coherent paths with needed structural ancestors; suppress untrusted pending fragments/invalid-only branches; isolate from source writes/deletion |
 
-Read-only browsing alone does not grant continuation even if another sibling has compatible context; full restore/reset reclassifies the view. Failed resubmit preparation may leave the live model at the parent while displaying the original branch; read-only prevents pretending these agree. Cancellation/fatal errors take full cleanup rather than ordinary callback-failure handling.
+A model-unavailable or `app_restore_failed` restriction can clear after browsing to a compatible checkpoint: history reapplies the target model, restores its available app values, and validates the resulting live model context before allowing continuation. Display-only browsing, skipped unavailable app values and an invalid live model are not proof of recovery. Source-isolated, interrupted and active-producer protections remain absolute.
+
+A selected not-sent node blocks ordinary continuation and state capture directly; it does not add a conversation-wide read-only reason. Failed resubmit preparation may leave the live model poisoned or at the parent while displaying the unaccepted replacement. Explicit Retry/Edit restores the valid parent, and browsing to a healthy checkpoint reapplies model and app state without close-capturing the poisoned outgoing position. A callback failure remains `app_restore_failed`, not a writable view. Cancellation/fatal errors take full cleanup rather than ordinary callback-failure handling.
+
+Every sibling target is classified before selection, including after recovery makes the current view writable. An incompatible target remains viewable without builtin model rewind; trustworthy outgoing model-only changes are captured before the target makes the view read-only. If no compatible target can be restored, sending stays disabled but the conversation can still be browsed. A later compatible browse can recover under the model/app validation proof above; explicit Retry/Edit of a selected not-sent leaf can recover by restoring its valid compatible parent before admission. Saved message/model data is not migrated or repaired. Display replay and callback success alone never authorize continuation.
 
 Source isolation prevents pointer, metadata, rename, save, shutdown, and delete paths from overwriting the producer's record. It belongs to the viewer, not a global fence. The original response task may survive reload and later save its checkpoint; the new view does not reconnect to it.
 
 History/replayed-error explanations are safe regardless of general app error-sanitization settings; details go to developer diagnostics. Live input/response errors retain the app's live error policy.
 
-If rewind succeeds but replacement input capture fails, rejection is not a request to select the old successful branch. Preserve representable intent and make recovery explicit. **Known gap:** the old branch remains stored, but the rewound parent has no direct UI route to its hidden child; rejected edits are not browsable failed attempts.
+If preparation fails, the edited input stays at its recorded position and sibling arrows provide explicit access to the preserved original branch. The browser shows an italic “This message was not sent.” below the user bubble and its version controls, not inside the bubble. The durable safe outcome remains “Message not sent.” Successful storage is required for reload durability; a disconnected browser or failed write cannot be promised a saved position.
 
 New chat is a narrow explicit exit, not a rollback engine. Outgoing model-capture failure warns and preserves saved history while allowing normal reset; storage/reset failures and fatal errors still propagate. Authors own valid fresh app state; reset cannot repair a permanently broken getter.
 
@@ -196,7 +206,7 @@ New chat is a narrow explicit exit, not a rollback engine. Outgoing model-captur
 
 Remove unnecessary premises before adding guards, timers, retry ledgers, or compatibility machinery. Checkpoint coherence does not fence arbitrary client mutations between terminal capture and settled app capture.
 
-The public screen-clear/history-record guard and direct original-branch/failed-attempt access remain unfinished. Provider-specific state also precludes assuming cross-client or cross-language record loading from the shared outer schema.
+The public screen-clear/history-record guard remains unfinished. Provider-specific state also precludes assuming cross-client or cross-language record loading from the shared outer schema.
 
 ## Port contract
 

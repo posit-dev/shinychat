@@ -55,6 +55,32 @@ class TranscriptEntry:
 _STREAM_UNOWNED: Any = object()
 
 
+class StagedInputAdmission:
+    """The one owned capability to admit a staged input, for the current call.
+
+    The history controller creates this object when it stages a submission
+    and passes it through the guarded Chat seam to the transcript. It
+    carries the staged exchange identity and the per-call outcome:
+    ``consumed`` once this capability has entered the transcript exactly
+    once, ``committed`` once this call ran the accepted-input commit. There
+    is no registry of IDs: the capability itself is the ownership proof,
+    and a reused or replayed capability is rejected before any capture,
+    callback, or commit runs.
+    """
+
+    __slots__ = ("exchange_id", "_consumed", "_committed")
+
+    def __init__(self, exchange_id: str) -> None:
+        self.exchange_id = exchange_id
+        self._consumed = False
+        self._committed = False
+
+    @property
+    def committed(self) -> bool:
+        """Whether the accepted-input commit ran for the current call."""
+        return self._committed
+
+
 @dataclass
 class _InFlightStream:
     id: str
@@ -158,6 +184,51 @@ class ChatTranscript:
                 exchange_id=_utils.private_random_id(),
             )
         )
+
+    async def record_staged_input_and_notify(
+        self, admission: StagedInputAdmission, message: StoredMessage
+    ) -> str:
+        """Commit a server-staged input under its pre-recorded exchange ID.
+
+        Same observer contract as :meth:`record_accepted_input_and_notify`,
+        but the exchange identity was assigned when the submission was
+        staged in the history record and arrives as an owned
+        :class:`StagedInputAdmission` capability. The capability is
+        consumed before the fallible observer runs, and a committed entry
+        or open exchange with the same ID also rejects re-admission, so one
+        staged submission is admitted exactly once. When the observer fails
+        after this call's commit ran, ``admission.committed`` tells the
+        caller to keep the post-commit storage/delivery failure policy
+        rather than relabeling an accepted input as not sent.
+        """
+        exchange_id = admission.exchange_id
+        if (
+            admission._consumed
+            or exchange_id == self._open_exchange_id
+            or any(entry.exchange_id == exchange_id for entry in self._entries)
+        ):
+            raise RuntimeError(
+                f"Staged exchange {exchange_id!r} was already admitted."
+            )
+        admission._consumed = True
+        prepared = TranscriptEntry(
+            message=message.model_copy(deep=True),
+            exchange_id=exchange_id,
+        )
+
+        def commit() -> None:
+            self._commit_accepted_input(prepared)
+            admission._committed = True
+
+        if self._on_accepted_input is None:
+            commit()
+        else:
+            await self._on_accepted_input(
+                exchange_id,
+                prepared.message.model_copy(deep=True),
+                commit,
+            )
+        return exchange_id
 
     async def record_accepted_input_and_notify(
         self, message: StoredMessage

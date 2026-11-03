@@ -1,0 +1,2 @@
+Notes for message bravo.
+This text fixture checks that an edited message keeps its attachments.

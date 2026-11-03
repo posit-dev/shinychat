@@ -462,7 +462,7 @@ def test_echoed_slash_command_capture_error_removes_loading_message():
         async def _capture_exception(error: BaseException) -> None:
             errors.append(error)
 
-        chat._record_accepted_user_input_with_capture = _capture_error
+        chat._record_accepted_user_input_with_capture = _capture_error  # type: ignore[method-assign]
         chat._raise_exception = _capture_exception  # type: ignore[method-assign]
         chat._send_action = _capture_action  # type: ignore[method-assign]
 
@@ -4264,7 +4264,7 @@ def test_thinking_stream_stores_segment_not_tags():
         async def _exercise() -> None:
             await chat.append_message_stream(gen())
 
-        run_async(_exercise)
+        run_async(lambda: _run_stream_test(sent, 5, _exercise))
 
         # The thinking chunk must travel as bare content paired with
         # content_type="thinking" -- not wrapped in literal <thinking> tags.

@@ -766,6 +766,50 @@ describe("ChatMessage retry", () => {
     },
   )
 
+  it.each([false, true])(
+    "shows preparation failure below the bubble, including read-only=%s",
+    (readOnly) => {
+      const onRetry = vi.fn()
+      const { container } = render(
+        <ChatMessage
+          index={2}
+          message={userMessage({
+            siblings: { index: 1, total: 2 },
+            exchange: {
+              status: "error",
+              retryable: true,
+              preparation_failed: true,
+              error_message: "Message not sent.",
+            },
+          })}
+          readOnly={readOnly}
+          onRetry={onRetry}
+        />,
+      )
+
+      const bubble = container.querySelector(".shiny-chat-user-message")!
+      const notice = screen.getByText("This message was not sent.")
+      expect(notice).toHaveClass("shiny-chat-message-not-sent")
+      expect(bubble.nextElementSibling).toBe(notice)
+      expect(bubble).not.toContainElement(notice)
+      expect(screen.queryByText("Message not sent.")).toBeNull()
+      expect(
+        container.querySelector(".shiny-chat-message-footer-error"),
+      ).toBeNull()
+      expect(
+        screen.getByRole("button", { name: "Previous version" }),
+      ).toBeEnabled()
+      if (readOnly) {
+        expect(
+          screen.queryByRole("button", { name: "Retry message" }),
+        ).toBeNull()
+      } else {
+        fireEvent.click(screen.getByRole("button", { name: "Retry message" }))
+        expect(onRetry).toHaveBeenCalledWith(2)
+      }
+    },
+  )
+
   it("keeps projected error detail beside retry when a partial assistant is present", () => {
     const onRetry = vi.fn()
     const errorMessage =
