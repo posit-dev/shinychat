@@ -164,6 +164,8 @@ shinychat.types.ConversationRecordV2.iter_visible_inputs py:function 1 api/types
 shinychat._history_types.ConversationRecordV2.iter_visible_inputs py:function 1 api/types.ConversationRecordV2.html#shinychat.types.ConversationRecordV2.iter_visible_inputs shinychat.types.ConversationRecordV2.iter_visible_inputs
 shinychat.types.ConversationRecordV2.newest_child py:function 1 api/types.ConversationRecordV2.html#shinychat.types.ConversationRecordV2.newest_child -
 shinychat._history_types.ConversationRecordV2.newest_child py:function 1 api/types.ConversationRecordV2.html#shinychat.types.ConversationRecordV2.newest_child shinychat.types.ConversationRecordV2.newest_child
+shinychat.types.ConversationRecordV2.open_exchange py:function 1 api/types.ConversationRecordV2.html#shinychat.types.ConversationRecordV2.open_exchange -
+shinychat._history_types.ConversationRecordV2.open_exchange py:function 1 api/types.ConversationRecordV2.html#shinychat.types.ConversationRecordV2.open_exchange shinychat.types.ConversationRecordV2.open_exchange
 shinychat.types.ConversationRecordV2.root_id py:attribute 1 api/types.ConversationRecordV2.html#shinychat.types.ConversationRecordV2.root_id -
 shinychat._history_types.ConversationRecordV2.root_id py:attribute 1 api/types.ConversationRecordV2.html#shinychat.types.ConversationRecordV2.root_id shinychat.types.ConversationRecordV2.root_id
 shinychat.types.ConversationRecordV2 py:class 1 api/types.ConversationRecordV2.html#shinychat.types.ConversationRecordV2 -

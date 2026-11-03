@@ -441,6 +441,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#shinychat.types.ConversationRecordV2.checkpoint_leaf" id="toc-shinychat.types.ConversationRecordV2.checkpoint_leaf" class="nav-link" data-scroll-target="#shinychat.types.ConversationRecordV2.checkpoint_leaf">checkpoint_leaf</a></li>
   <li><a href="#shinychat.types.ConversationRecordV2.iter_visible_inputs" id="toc-shinychat.types.ConversationRecordV2.iter_visible_inputs" class="nav-link" data-scroll-target="#shinychat.types.ConversationRecordV2.iter_visible_inputs">iter_visible_inputs</a></li>
   <li><a href="#shinychat.types.ConversationRecordV2.newest_child" id="toc-shinychat.types.ConversationRecordV2.newest_child" class="nav-link" data-scroll-target="#shinychat.types.ConversationRecordV2.newest_child">newest_child</a></li>
+  <li><a href="#shinychat.types.ConversationRecordV2.open_exchange" id="toc-shinychat.types.ConversationRecordV2.open_exchange" class="nav-link" data-scroll-target="#shinychat.types.ConversationRecordV2.open_exchange">open_exchange</a></li>
   </ul></li>
   </ul></li>
   </ul>
@@ -495,6 +496,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><a href="#shinychat.types.ConversationRecordV2.newest_child">newest_child</a></td>
 <td>Newest eligible child; insertion order breaks timestamp ties.</td>
 </tr>
+<tr class="even">
+<td><a href="#shinychat.types.ConversationRecordV2.open_exchange">open_exchange</a></td>
+<td>Open one ordinary input-bearing exchange and select it.</td>
+</tr>
 </tbody>
 </table>
 <section id="shinychat.types.ConversationRecordV2.checkpoint_leaf" class="level3">
@@ -512,6 +517,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="shinychat.types.ConversationRecordV2.newest_child">newest_child</h3>
 <div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>types.ConversationRecordV2.newest_child(children)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Newest eligible child; insertion order breaks timestamp ties.</p>
+</section>
+<section id="shinychat.types.ConversationRecordV2.open_exchange" class="level3">
+<h3 class="anchored" data-anchor-id="shinychat.types.ConversationRecordV2.open_exchange">open_exchange</h3>
+<div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>types.ConversationRecordV2.open_exchange(</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    exchange_id,</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    message,</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    parent_id<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Open one ordinary input-bearing exchange and select it.</p>
+<p><code>parent_id</code> defaults to the active leaf (ordinary acceptance). A staged edit/retry passes its target’s valid parent explicitly: the node is recorded and selected before any fallible preparation, so the attempt survives preparation failure and is never silently lost — while sharing this one construction and linking lifecycle with ordinary exchanges. Either way the whole ancestor path’s selection pointers move to the new node, which for the default case is exactly the prior active path.</p>
 
 
 </section>
