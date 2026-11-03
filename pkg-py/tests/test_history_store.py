@@ -190,7 +190,6 @@ async def test_v2_file_read_modify_write_preserves_unknown_fields(
 ) -> None:
     raw = json.loads(WORKED_EXAMPLE_PATH.read_text(encoding="utf-8"))
     unknown = {
-        "future_null": None,
         "future_false": False,
         "future_zero": 0,
         "future_empty": {},
@@ -199,6 +198,9 @@ async def test_v2_file_read_modify_write_preserves_unknown_fields(
     raw.update(unknown)
     raw["nodes"]["x_00"].update(unknown)
     raw["nodes"]["x_00"]["state"]["shinychat:values"].update(unknown)
+    # Null and absent mean the same for optional fields, so a top-level null
+    # is written like any other None: omitted.
+    raw["future_null"] = None
     partition = part(scope="future-fields")
     record_file = (
         tmp_path
@@ -242,12 +244,7 @@ async def test_v2_file_read_modify_write_preserves_unknown_fields(
         dumped["nodes"]["x_00"]["state"]["shinychat:values"],
     ):
         assert {key: location[key] for key in unknown} == unknown
-    assert "future_null" not in loaded.model_dump(
-        exclude_none=True, exclude={"future_null"}
-    )
-    assert loaded.model_dump(exclude_none=True, include={"future_null"}) == {
-        "future_null": None
-    }
+    assert "future_null" not in written
 
 
 @pytest.mark.anyio
@@ -256,7 +253,7 @@ async def test_v2_file_rewrite_preserves_unknown_message_fields(
 ) -> None:
     raw = json.loads(WORKED_EXAMPLE_PATH.read_text(encoding="utf-8"))
     input_message = raw["nodes"]["x_01"]["input"]
-    input_message["future_input"] = None
+    input_message["future_input"] = "kept"
     input_message["segments"][0]["future_segment"] = {"x": None}
     input_message["attachments"] = [
         {
@@ -264,20 +261,22 @@ async def test_v2_file_rewrite_preserves_unknown_message_fields(
             "name": "a.txt",
             "size": 1,
             "data_url": "data:text/plain;base64,YQ==",
-            "future_attachment": None,
+            "future_attachment": "kept",
         }
     ]
     message = raw["nodes"]["x_01"]["messages"][0]
-    message["future_message"] = None
+    message["future_message"] = "kept"
     message["segments"].append(
         {
             "type": "web_search_results",
             "version": 1,
-            "future_block": None,
-            "sources": [{"url": "https://example.com", "future_source": None}],
+            "future_block": "kept",
+            "sources": [
+                {"url": "https://example.com", "future_source": "kept"}
+            ],
         }
     )
-    raw["nodes"]["x_02"]["error"]["future_error"] = None
+    raw["nodes"]["x_02"]["error"]["future_error"] = "kept"
     partition = part(scope="future-messages")
     record_file = (
         tmp_path
@@ -296,19 +295,21 @@ async def test_v2_file_rewrite_preserves_unknown_message_fields(
     await store.put(partition, loaded)
 
     written = json.loads(record_file.read_text(encoding="utf-8"))
-    assert written["nodes"]["x_01"]["input"]["future_input"] is None
+    assert written["nodes"]["x_01"]["input"]["future_input"] == "kept"
     assert written["nodes"]["x_01"]["input"]["segments"][0][
         "future_segment"
     ] == {"x": None}
     assert (
         written["nodes"]["x_01"]["input"]["attachments"][0]["future_attachment"]
-        is None
+        == "kept"
     )
     saved_message = written["nodes"]["x_01"]["messages"][0]
-    assert saved_message["future_message"] is None
-    assert saved_message["segments"][-1]["future_block"] is None
-    assert saved_message["segments"][-1]["sources"][0]["future_source"] is None
-    assert written["nodes"]["x_02"]["error"]["future_error"] is None
+    assert saved_message["future_message"] == "kept"
+    assert saved_message["segments"][-1]["future_block"] == "kept"
+    assert (
+        saved_message["segments"][-1]["sources"][0]["future_source"] == "kept"
+    )
+    assert written["nodes"]["x_02"]["error"]["future_error"] == "kept"
 
 
 @pytest.mark.anyio

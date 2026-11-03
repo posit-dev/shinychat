@@ -20,7 +20,6 @@ from pydantic import (
 from ._attachments import Attachment
 from ._chat_types import (
     ContentType,
-    PersistedBlock,
     Role,
     SerializedDep,
     StoredMessage,
@@ -345,7 +344,7 @@ class ConversationRecordV1(BaseModel):
 
 class CapturedMessage(PersistedModel):
     role: Literal["user", "assistant"]
-    segments: list[StoredSegment | PersistedBlock]
+    segments: list[StoredSegment | StructuredBlock]
     icon: str | None = None
     attachments: list[Attachment] | None = None
 
@@ -416,7 +415,7 @@ class StateEntry(PersistedModel):
             and (info.include is None or "data" in info.include)
         ):
             serialized["data"] = None
-        return self._preserve_extra_nulls(serialized, info)
+        return serialized
 
 
 class ErrorEntry(PersistedModel):

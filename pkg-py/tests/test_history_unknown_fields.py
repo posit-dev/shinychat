@@ -1,8 +1,8 @@
 """Unknown schema-2 fields survive controller read/modify/write.
 
 Fields written by a newer writer on an exchange node or state entry must
-survive a controller read/modify/write on every store backend, including
-explicit nulls, even when ``save_current`` recaptures and replaces that entry.
+survive a controller read/modify/write on every store backend, even when
+``save_current`` recaptures and replaces that entry.
 """
 
 import json
@@ -33,9 +33,9 @@ from test_history_controller import (
     part,
 )
 
-# Written by a newer writer; the current reader must not drop them. The null
-# value is deliberate: explicit nulls are state, not absent fields.
-FUTURE_FIELDS: dict[str, Any] = {"future_flag": None, "future_note": "kept"}
+# Written by a newer writer; the current reader must not drop them. The false
+# value is deliberate: falsy values are state, not absent fields.
+FUTURE_FIELDS: dict[str, Any] = {"future_flag": False, "future_note": "kept"}
 # Nested values are copied, not shared, when an entry is replaced.
 NESTED_FIELDS: dict[str, Any] = {"future_nested": {"tags": [None, {"k": 1}]}}
 UNKNOWN_FIELDS: dict[str, Any] = {**FUTURE_FIELDS, **NESTED_FIELDS}
@@ -150,14 +150,14 @@ async def test_controller_rewrite_preserves_new_reader_unknown_fields(
     assert isinstance(rewritten, ConversationRecordV2)
     assert rewritten.title == "Renamed"
     assert rewritten.active_leaf == "descendant"
-    # The replaced, recaptured entry keeps its unknown fields, nulls included.
+    # The replaced, recaptured entry keeps its unknown fields.
     replaced = rewritten.nodes["descendant"].state[TURNS_STATE_KEY]
     assert replaced.model_extra == FUTURE_FIELDS
-    assert replaced.model_dump()["future_flag"] is None
+    assert replaced.model_dump()["future_flag"] is False
     # The sibling's unknown node fields are untouched.
     sibling = rewritten.nodes["sibling"]
     assert sibling.model_extra == FUTURE_FIELDS
-    assert sibling.model_dump()["future_flag"] is None
+    assert sibling.model_dump()["future_flag"] is False
     assert sibling.input == original.nodes["sibling"].input
     assert rewritten.nodes["original"].children == ["descendant"]
     assert rewritten.nodes["descendant"].input == (
@@ -197,7 +197,7 @@ async def test_values_recapture_matching_ancestor_keeps_unknown_fields(
 ) -> None:
     # The live app now matches the root's value, so sparse capture would
     # inherit and drop the child's entry. Its unknown fields must keep the
-    # entry alive instead, with the explicit nulls and nested values intact.
+    # entry alive instead, with falsy and nested values intact.
     original = _values_chain_record()
     await unknown_fields_store.put(part(), original)
     loaded = await unknown_fields_store.get(part(), original.id)
@@ -218,7 +218,7 @@ async def test_values_recapture_matching_ancestor_keeps_unknown_fields(
     child = rewritten.nodes["child"].state[VALUES_STATE_KEY]
     assert child.data == {"region": "all"}
     assert child.model_extra == UNKNOWN_FIELDS
-    assert child.model_dump()["future_flag"] is None
+    assert child.model_dump()["future_flag"] is False
     assert rewritten.nodes[rewritten.root_id].state[VALUES_STATE_KEY].data == {
         "region": "all"
     }
@@ -264,7 +264,7 @@ async def test_turn_pin_of_child_keeps_unknown_fields_after_parent_recapture(
 ) -> None:
     # Recapturing the parent's rewritten turns pins its delta child to a
     # snapshot. The pinned replacement entry must keep the child's unknown
-    # fields, nulls and nested values included.
+    # fields, falsy and nested values included.
     original = _turns_chain_record()
     await unknown_fields_store.put(part(), original)
     loaded = await unknown_fields_store.get(part(), original.id)
@@ -293,4 +293,4 @@ async def test_turn_pin_of_child_keeps_unknown_fields_after_parent_recapture(
         {"role": "user", "content": "c1"},
     ]
     assert pinned.model_extra == UNKNOWN_FIELDS
-    assert pinned.model_dump()["future_flag"] is None
+    assert pinned.model_dump()["future_flag"] is False

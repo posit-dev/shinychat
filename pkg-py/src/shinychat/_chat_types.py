@@ -4,7 +4,6 @@ import warnings
 from collections.abc import Iterable
 from typing import (
     TYPE_CHECKING,
-    Annotated,
     Any,
     AsyncIterable,
     Callable,
@@ -14,7 +13,7 @@ from typing import (
 )
 
 from htmltools import HTML, HTMLDependency, Tag, TagChild, TagList
-from pydantic import BaseModel, ConfigDict, PlainSerializer, with_config
+from pydantic import BaseModel, ConfigDict, with_config
 
 if TYPE_CHECKING:
     from shiny.session import Session
@@ -241,12 +240,6 @@ StructuredBlock = Union[
     WebSearchCitationsBlock,
     WebFetchBlock,
     HtmlBlock,
-]
-
-# Persist structured-block dictionaries without dropping unknown null fields.
-PersistedBlock = Annotated[
-    StructuredBlock,
-    PlainSerializer(lambda block: block, return_type=dict[str, Any]),
 ]
 
 
@@ -877,7 +870,7 @@ class StoredMessage(PersistedModel):
     # Interleaved in content order, mirroring ChatMessage.segments and the
     # wire format: StoredSegment entries for strings, StructuredBlock dicts
     # (distinguished by a "type" key) for blocks.
-    segments: list[StoredSegment | PersistedBlock]
+    segments: list[StoredSegment | StructuredBlock]
     attachments: list[Attachment] = []
 
     @property
@@ -1038,4 +1031,3 @@ def initial_message_payload(
                 seen.add(id(dep))
                 deps.append(dep)
     return payload, deps
-
