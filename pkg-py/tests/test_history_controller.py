@@ -6862,6 +6862,44 @@ async def test_v2_edit_resubmit_forwards_validated_attachment_copy():
 
 
 @pytest.mark.anyio
+async def test_edit_browser_attachment_discards_unknown_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SHINYCHAT_MAX_ATTACHMENT_SIZE", "5")
+    controller, chat, _adapter, _store, _first, _target = (
+        _make_v2_resubmit_controller()
+    )
+    expected = {
+        "mime": "text/plain",
+        "name": "notes.txt",
+        "size": 5,
+        "data_url": "data:text/plain;base64,aGVsbG8=",
+    }
+
+    await controller.handle_edit(
+        1,
+        "edited",
+        [
+            {
+                **expected,
+                "browser_only_field": {"payload": "x" * 10000, "null": None},
+            }
+        ],
+        request_id="request",
+    )
+
+    assert chat.actions[-1]["attachments"] == [expected]
+    replacement = controller._replacement_resubmit_input(
+        "edited",
+        [{**expected, "browser_only_field": {"null": None}}],
+    )
+    assert [
+        attachment.model_dump(mode="json")
+        for attachment in replacement.attachments
+    ] == [expected]
+
+
+@pytest.mark.anyio
 async def test_v2_edit_nonleaf_rewinds_to_root_and_preserves_old_branch() -> (
     None
 ):

@@ -971,7 +971,7 @@ class HistoryController:
             raise TypeError("Edited message content must be a string.")
         parsed = (
             [
-                Attachment.model_validate(attachment)
+                Attachment.model_validate(attachment, extra="ignore")
                 for attachment in attachments
             ]
             if attachments is not None

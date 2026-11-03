@@ -26,6 +26,7 @@ from ._chat_types import (
     StoredSegment,
     StructuredBlock,
 )
+from ._persisted_model import PersistedModel
 from ._typing_extensions import NotRequired, TypedDict
 
 
@@ -341,7 +342,7 @@ class ConversationRecordV1(BaseModel):
         return node_id
 
 
-class CapturedMessage(BaseModel):
+class CapturedMessage(PersistedModel):
     role: Literal["user", "assistant"]
     segments: list[StoredSegment | StructuredBlock]
     icon: str | None = None
@@ -384,7 +385,7 @@ class CapturedMessage(BaseModel):
         )
 
 
-class StateEntry(BaseModel):
+class StateEntry(PersistedModel):
     kind: str
     version: int
     mode: Literal["delta", "snapshot"]
@@ -409,11 +410,11 @@ class StateEntry(BaseModel):
         return serialized
 
 
-class ErrorEntry(BaseModel):
+class ErrorEntry(PersistedModel):
     message: str
 
 
-class ExchangeNode(BaseModel):
+class ExchangeNode(PersistedModel):
     parent_id: str | None = None
     children: list[str] = Field(default_factory=list)
     selected_child: str | None = None
@@ -465,7 +466,7 @@ def _ancestor_path(
     return path
 
 
-class ConversationRecordV2(BaseModel):
+class ConversationRecordV2(PersistedModel):
     """The v2 exchange-tree record, isolated from the released v1 model."""
 
     schema_version: Literal[2] = 2
