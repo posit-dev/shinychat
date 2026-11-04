@@ -33,7 +33,7 @@ def test_capture_failure_notification_and_new_chat_recovery(
     ).to_have_count(0)
     # The rejected text never left the composer, which is unlocked again.
     expect(chat.loc_input).to_have_text("not sent")
-    expect(chat.loc_input).to_have_attribute("contenteditable", "true")
+    expect(chat.loc_input).not_to_have_attribute("aria-readonly", "true")
     expect(notification).to_contain_text("saved checkpoint is unchanged")
     expect(notification).to_contain_text("New chat")
     expect(page.locator("#dispatch_count")).to_have_text(

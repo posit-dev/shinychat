@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### New features
 
 * Text file attachments now use the model provider's native document support when available. (#415)
-* With conversation history enabled, a sent message stays in the (locked) message box until the app has accepted it, and only then moves into the chat. If the app rejects the message ("Message not sent"), it never appears in the chat, and your text and attachments are still in the message box, which becomes editable again.
+* With conversation history enabled, a sent message stays in the (locked) message box until the app has accepted it, and only then moves into the chat. If the app rejects the message ("Message not sent"), it never appears in the chat, and your text and attachments are still in the message box, which becomes editable again. (#453)
 
 ### Changes
 

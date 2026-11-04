@@ -2717,6 +2717,15 @@ class Chat:
             ``"append"`` (default) adds to the existing set; ``"set"`` replaces it.
             Pass ``attachment_mode="set"`` with ``attachments=[]`` to clear all staged
             attachments.
+
+        Notes
+        -----
+        When the browser uses the ``completion-v2`` protocol, including when
+        conversation history is enabled, calls containing ``value`` or
+        ``attachments`` that reach the browser while a submission awaits server
+        acceptance are ignored in their entirety. This includes calls with
+        ``submit=True``. Ignored calls are not queued, and a warning is logged in
+        the browser console. Calls that only update ``placeholder`` still apply.
         """
 
         if submit and value is None:
