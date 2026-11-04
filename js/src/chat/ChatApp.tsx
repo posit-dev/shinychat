@@ -47,6 +47,8 @@ import type {
   ContentType,
   ChatAction,
 } from "../transport/types"
+
+type UpdateInputAction = Extract<ChatAction, { type: "update_input" }>
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 import type { AttachmentPayload } from "./attachments"
@@ -219,9 +221,40 @@ export function ChatApp({
     messagesRef.current = state.messages
   }, [state.messages])
   const pendingInputRef = useRef(state.pendingInput)
+  // Programmatic value/attachment updates that arrived while a submission
+  // awaited acceptance. They apply in order once it settles (see below).
+  const heldInputUpdatesRef = useRef<UpdateInputAction[]>([])
+  const applyInputUpdate = useCallback((action: UpdateInputAction) => {
+    // Placeholder updates go through the reducer (it's the only remaining
+    // field the reducer tracks for update_input).
+    if (action.placeholder !== undefined) {
+      dispatch({ type: "update_input", placeholder: action.placeholder })
+    }
+
+    // Value and focus are always imperative — the textarea is fully
+    // uncontrolled, so the reducer never touches its value.
+    if (action.value !== undefined || action.attachments !== undefined) {
+      containerRef.current?.setInputValue(action.value, {
+        submit: action.submit,
+        focus: action.focus,
+        attachments: action.attachments,
+        attachmentMode: action.attachment_mode,
+      })
+    } else if (action.focus) {
+      containerRef.current?.focus()
+    }
+  }, [])
   useLayoutEffect(() => {
     pendingInputRef.current = state.pendingInput
-  }, [state.pendingInput])
+    if (state.pendingInput !== null) return
+    // The hold ended by acceptance (after the composer cleared) or by a
+    // remove_loading/clear cleanup; a rejection already discarded them.
+    // Applying after the commit means a held submit sees the composer's
+    // current state, as it would have before the hold existed.
+    const held = heldInputUpdatesRef.current
+    heldInputUpdatesRef.current = []
+    held.forEach(applyInputUpdate)
+  }, [state.pendingInput, applyInputUpdate])
   const smootherRef = useRef<StreamSmoother<ChunkMeta> | null>(null)
   // Set on CANCEL_REQUESTED: providers can keep sending chunks after a
   // cancel, and those must append raw rather than pace in — stopping should
@@ -267,34 +300,33 @@ export function ChatApp({
       }
       if (action.type === "update_input") {
         // While a submission awaits server acceptance the composer holds it,
-        // locked; programmatic value, attachment and submit updates wait out.
+        // locked. Value, attachment and submit updates wait until it settles
+        // so they land where they would have without the hold: after the
+        // accepted submission leaves the composer.
         if (
           pendingInputRef.current !== null &&
           (action.value !== undefined || action.attachments !== undefined)
         ) {
-          console.warn(
-            "[shinychat] Ignored an input update while a message awaits acceptance.",
-          )
+          heldInputUpdatesRef.current.push(action)
           return
         }
-        // Placeholder updates go through the reducer (it's the only
-        // remaining field the reducer tracks for update_input).
-        if (action.placeholder !== undefined) {
-          dispatch({ type: "update_input", placeholder: action.placeholder })
+        applyInputUpdate(action)
+        return
+      }
+      if (action.type === "input_rejected") {
+        // The composer keeps the user's rejected text and attachments, so
+        // held updates must not overwrite them. A held submit would most
+        // likely be refused for the same reason this one was.
+        if (
+          pendingInputRef.current?.id === action.id &&
+          heldInputUpdatesRef.current.length > 0
+        ) {
+          heldInputUpdatesRef.current = []
+          console.warn(
+            "[shinychat] Discarded input updates received while a rejected message awaited acceptance.",
+          )
         }
-
-        // Value and focus are always imperative — the textarea is
-        // fully uncontrolled, so the reducer never touches its value.
-        if (action.value !== undefined || action.attachments !== undefined) {
-          containerRef.current?.setInputValue(action.value, {
-            submit: action.submit,
-            focus: action.focus,
-            attachments: action.attachments,
-            attachmentMode: action.attachment_mode,
-          })
-        } else if (action.focus) {
-          containerRef.current?.focus()
-        }
+        dispatch(action)
         return
       }
       if (action.type === "input_received") {
@@ -447,7 +479,14 @@ export function ChatApp({
       deferred = []
       unsubscribe()
     }
-  }, [transport, elementId, historyStore, inputId, state.enableUpload])
+  }, [
+    transport,
+    elementId,
+    historyStore,
+    inputId,
+    state.enableUpload,
+    applyInputUpdate,
+  ])
 
   // Stopping should stop the motion: reveal whatever is buffered at once. If
   // the stream already ended and only its tail was draining, there is nothing

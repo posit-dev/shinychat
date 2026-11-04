@@ -2190,7 +2190,53 @@ describe("ChatApp integration: composer retained until input is accepted", () =>
     expect(editorEl.readOnly).toBe(false)
   })
 
-  it("ignores programmatic input updates while a message awaits acceptance", async () => {
+  it("holds programmatic input updates until the message is accepted, then applies them in order", async () => {
+    const { transport, editorEl } = renderChat()
+    await send(editorEl)
+
+    act(() => {
+      transport.fire("test-chat", { type: "update_input", value: "first" })
+      transport.fire("test-chat", { type: "update_input", value: "second" })
+    })
+    expect(editorEl.value).toBe("my message")
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "input_received",
+        id: sentId(transport),
+      })
+    })
+
+    // As if the composer had cleared on submit and the updates landed after.
+    expect(editorEl.value).toBe("second")
+    expect(sentRows()).toBe(1)
+  })
+
+  it("refuses a held programmatic submit after acceptance while the response is pending", async () => {
+    const { transport, editorEl } = renderChat()
+    await send(editorEl)
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "update_input",
+        value: "server text",
+        submit: true,
+      })
+    })
+    act(() => {
+      transport.fire("test-chat", {
+        type: "input_received",
+        id: sentId(transport),
+      })
+    })
+
+    // Same as a programmatic submit arriving mid-response without the hold.
+    expect(transport.sendInput).toHaveBeenCalledTimes(1)
+    expect(editorEl.value).toBe("")
+    expect(screen.queryByText("server text", { selector: "p" })).toBeNull()
+  })
+
+  it("discards held programmatic input updates when the message is rejected", async () => {
     const { transport, editorEl } = renderChat()
     await send(editorEl)
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
@@ -2202,10 +2248,44 @@ describe("ChatApp integration: composer retained until input is accepted", () =>
         submit: true,
       })
     })
+    act(() => {
+      transport.fire("test-chat", {
+        type: "input_rejected",
+        id: sentId(transport),
+      })
+    })
 
     expect(editorEl.value).toBe("my message")
+    expect(editorEl.readOnly).toBe(false)
     expect(transport.sendInput).toHaveBeenCalledTimes(1)
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("Discarded input updates"),
+    )
+
+    // Updates after the rejection apply normally.
+    act(() => {
+      transport.fire("test-chat", { type: "update_input", value: "later" })
+    })
+    expect(editorEl.value).toBe("later")
     warn.mockRestore()
+  })
+
+  it("applies held programmatic input updates when remove_loading releases the hold", async () => {
+    const { transport, editorEl } = renderChat()
+    await send(editorEl)
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "update_input",
+        value: "server text",
+      })
+    })
+    act(() => {
+      transport.fire("test-chat", { type: "remove_loading" })
+    })
+
+    expect(editorEl.value).toBe("server text")
+    expect(editorEl.readOnly).toBe(false)
   })
 
   it("leaves a draft alone when a programmatic submit is accepted", async () => {

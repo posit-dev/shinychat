@@ -2758,11 +2758,18 @@ class Chat:
         Notes
         -----
         When the browser uses the ``completion-v2`` protocol, including when
-        conversation history is enabled, calls containing ``value`` or
-        ``attachments`` that reach the browser while a submission awaits server
-        acceptance are ignored in their entirety. This includes calls with
-        ``submit=True``. Ignored calls are not queued, and a warning is logged in
-        the browser console. Calls that only update ``placeholder`` still apply.
+        conversation history is enabled, a submitted message stays in the
+        locked message box until the server accepts it. Calls containing
+        ``value`` or ``attachments`` that reach the browser during that time
+        are held and applied in order once the message is accepted, after it
+        leaves the message box. If the server rejects the message, the user's
+        text and attachments stay in the message box and the held calls are
+        discarded, including any with ``submit=True``, and a warning is logged
+        in the browser console. Calls that only update ``placeholder`` apply
+        immediately.
+
+        ``submit=True`` has no effect while a response is in progress, so a held
+        submit applied after acceptance usually has no effect either.
         """
 
         if submit and value is None:
