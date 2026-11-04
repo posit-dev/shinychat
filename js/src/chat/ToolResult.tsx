@@ -2,6 +2,7 @@ import { memo, useRef } from "react"
 import { ToolCard } from "./ToolCard"
 import { RawHTML } from "./RawHTML"
 import { MarkdownContent } from "../markdown/MarkdownContent"
+import { highlightHtmlCode } from "../markdown/highlightHtmlCode"
 import { markdownCodeBlock } from "../markdown/markdownCodeBlock"
 import { exclamationCircleFill, filePdfFill } from "../utils/icons"
 import { useFullscreen } from "./useFullscreen"
@@ -195,7 +196,7 @@ export function ToolResultValue({
   let resultContent: React.ReactNode
 
   if (valueType === "html") {
-    resultContent = <RawHTML html={displayValue} />
+    resultContent = <RawHTML html={highlightHtmlCode(displayValue)} />
   } else if (valueType === "text") {
     resultContent = <p>{displayValue}</p>
   } else if (valueType === "content_extra") {
