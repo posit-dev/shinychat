@@ -225,6 +225,10 @@ export function ChatApp({
   // awaited acceptance. They apply in order once it is accepted; any other
   // end to the wait discards them (see handleAction).
   const heldInputUpdatesRef = useRef<UpdateInputAction[]>([])
+  // Set once the server settles the pending input (accepted, rejected or
+  // cleaned up). pendingInputRef keeps it until React commits, so updates
+  // arriving in between still queue and replay against the committed state.
+  const holdReleasedRef = useRef(false)
   const applyInputUpdate = useCallback((action: UpdateInputAction) => {
     // Placeholder updates go through the reducer (it's the only remaining
     // field the reducer tracks for update_input).
@@ -254,12 +258,14 @@ export function ChatApp({
   }, [])
   useLayoutEffect(() => {
     pendingInputRef.current = state.pendingInput
+    holdReleasedRef.current = false
     if (state.pendingInput !== null) return
-    // Only an accepted submission leaves updates here: they apply after the
-    // composer cleared and the commit, so a held submit sees the composer's
-    // current state, as it would have before the hold existed. That state
-    // is still awaiting the accepted message's response, so a held submit
-    // is refused and can't start another hold mid-replay.
+    // Left here: updates held before an acceptance, and any that arrived
+    // after the server settled the input but before this commit. They apply
+    // now, so a held submit sees the composer's committed state, as it would
+    // have without the hold. After an acceptance that state is still
+    // awaiting the response, so a held submit is refused and can't start
+    // another hold mid-replay.
     const held = heldInputUpdatesRef.current
     heldInputUpdatesRef.current = []
     held.forEach(applyInputUpdate)
@@ -311,11 +317,9 @@ export function ChatApp({
         // While a submission awaits server acceptance the composer holds it,
         // locked. Value, attachment and submit updates wait until it is
         // accepted so they land where they would have without the hold: after
-        // the submission leaves the composer. Updates queue behind any still
-        // held to keep their order.
+        // the submission leaves the composer.
         if (
-          (pendingInputRef.current !== null ||
-            heldInputUpdatesRef.current.length > 0) &&
+          pendingInputRef.current !== null &&
           (action.value !== undefined || action.attachments !== undefined)
         ) {
           heldInputUpdatesRef.current.push(action)
@@ -328,22 +332,25 @@ export function ChatApp({
         // The composer keeps the user's rejected text and attachments, so
         // held updates must not overwrite them. A held submit would most
         // likely be refused for the same reason this one was.
-        if (pendingInputRef.current?.id === action.id) {
+        if (
+          pendingInputRef.current?.id === action.id &&
+          !holdReleasedRef.current
+        ) {
           discardHeldInputUpdates()
-          // Updates from here on apply directly, without waiting for commit.
-          pendingInputRef.current = null
+          holdReleasedRef.current = true
         }
         dispatch(action)
         return
       }
       if (
         (action.type === "remove_loading" || action.type === "clear") &&
-        pendingInputRef.current !== null
+        pendingInputRef.current !== null &&
+        !holdReleasedRef.current
       ) {
         // Releases the hold without acceptance (e.g. the server failed before
         // committing the input), so it is handled like a rejection.
         discardHeldInputUpdates()
-        pendingInputRef.current = null
+        holdReleasedRef.current = true
       }
       if (action.type === "input_received") {
         // The submitted content stayed in the (locked) composer until now,
@@ -351,7 +358,7 @@ export function ChatApp({
         // rejection never gets here, so nothing is lost if the server
         // refuses the input.
         const pending = pendingInputRef.current
-        if (pending?.id === action.id) {
+        if (pending?.id === action.id && !holdReleasedRef.current) {
           if (pending.clearOnAccept) {
             containerRef.current?.setInputValue("", {
               ...(pending.clearOnAccept === "all"
@@ -360,8 +367,8 @@ export function ChatApp({
             })
           }
           // Held updates replay at commit; a later cleanup must not discard
-          // them, and new updates still queue behind them.
-          pendingInputRef.current = null
+          // them.
+          holdReleasedRef.current = true
         }
         dispatch(action)
         return

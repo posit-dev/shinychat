@@ -2337,6 +2337,31 @@ describe("ChatApp integration: composer retained until input is accepted", () =>
     expect(editorEl.value).toBe("after")
   })
 
+  it("sends a programmatic submit that arrives right after a rejection, before it commits", async () => {
+    const { transport, editorEl } = renderChat()
+    await send(editorEl)
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "input_rejected",
+        id: sentId(transport),
+      })
+      transport.fire("test-chat", {
+        type: "update_input",
+        value: "server text",
+        submit: true,
+      })
+    })
+
+    // Applied once the rejection committed and the composer unlocked, not
+    // against the still-locked composer.
+    expect(transport.sendInput).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(transport.sendInput).mock.calls[1]![1]).toMatchObject({
+      text: "server text",
+    })
+    expect(editorEl.value).toBe("my message")
+  })
+
   it("leaves a draft alone when a programmatic submit is accepted", async () => {
     const { transport, editorEl } = renderChat()
     await act(async () => {
