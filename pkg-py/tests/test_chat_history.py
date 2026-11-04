@@ -4062,6 +4062,94 @@ async def test_slash_response_capture_failure_keeps_live_error_handling(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("entry_point", ["normal", "slash"])
+async def test_admission_refusal_rejects_browser_input_instead_of_acknowledging_it(
+    tmp_path: Any, request: Any, entry_point: str
+) -> None:
+    chat, session, _, store = await _make_initialized_live_v2_chat(
+        tmp_path, "admission_refusal"
+    )
+    request.addfinalizer(chat.destroy)
+    controller = chat.history._controller
+    assert controller is not None
+    recorder = controller._exchange_recorder
+    # Replace the built-in provider consumer with this app's dispatch
+    # callbacks, keeping the accepted-input effects and recorder wiring real.
+    next(
+        effect
+        for effect in chat._effects
+        if effect._fn.__name__ == "handle_user_input"
+    ).destroy()
+    calls: list[str] = []
+
+    @chat.on_user_submit
+    async def submitted(text: str) -> None:
+        calls.append(text)
+
+    @chat.slash_command("send", "Send")
+    async def slash(text: str) -> None:
+        calls.append(text)
+
+    async def submit(text: str, seq: int) -> None:
+        if entry_point == "normal":
+            cast(Any, session.input[chat.user_input_id])._set(
+                {
+                    "text": text,
+                    "attachments": [],
+                    "seq": seq,
+                    "client_message_id": f"client-{seq}",
+                }
+            )
+        else:
+            cast(Any, session.input[chat._slash_command_id])._set(
+                {
+                    "command": "send",
+                    "userText": text,
+                    "echo": True,
+                    "seq": seq,
+                    "client_message_id": f"client-{seq}",
+                }
+            )
+        await reactive.flush()
+
+    with session_context(cast(Any, session)), reactive.isolate():
+        await submit("initial", 1)
+        assert calls == ["initial"]
+        # The admitted submission was acknowledged to the browser.
+        assert {"type": "input_received", "id": "client-1"} in [
+            m["action"] for m in session.messages
+        ]
+        assert recorder.record is not None
+        transcript_before = _transcript_snapshot(chat)
+        record_before = recorder.record.model_dump(mode="json")
+        partition = ConversationPartition(chat_id=chat.id, scope="test")
+        saved = await store.get(partition, recorder.record.id)
+        assert saved is not None
+        checkpoint = saved.model_dump(mode="json")
+
+        # Admission now refuses new submissions, as after a failed restore.
+        recorder.mark_read_only("app_restore_failed")
+        await submit("refused", 2)
+        # The refused submission is rejected for the browser and never
+        # acknowledged: the composer keeps the draft and discards the held
+        # row instead of staying locked until a page reload.
+        assert {"type": "input_rejected", "id": "client-2"} in [
+            m["action"] for m in session.messages
+        ]
+        assert {"type": "input_received", "id": "client-2"} not in [
+            m["action"] for m in session.messages
+        ]
+        # Nothing was dispatched and nothing was recorded.
+        assert calls == ["initial"]
+        assert "refused" not in str(chat.user_input())
+        assert _transcript_snapshot(chat) == transcript_before
+        assert recorder.record.model_dump(mode="json") == record_before
+        saved = await store.get(partition, recorder.record.id)
+        assert saved is not None
+        assert saved.model_dump(mode="json") == checkpoint
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("entry_point", ["normal", "slash"])
 @pytest.mark.parametrize(
     "failure", ["first_put", "later_put", "created_update"]
 )
