@@ -2270,7 +2270,37 @@ describe("ChatApp integration: composer retained until input is accepted", () =>
     warn.mockRestore()
   })
 
-  it("applies held programmatic input updates when remove_loading releases the hold", async () => {
+  it.each(["remove_loading", "clear"] as const)(
+    "discards held programmatic input updates when %s releases the hold without acceptance",
+    async (type) => {
+      const { transport, editorEl } = renderChat()
+      await send(editorEl)
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+      act(() => {
+        transport.fire("test-chat", {
+          type: "update_input",
+          value: "server text",
+          submit: true,
+        })
+      })
+      act(() => {
+        transport.fire("test-chat", { type })
+      })
+
+      // The server never accepted the input, e.g. it failed before commit,
+      // so the user's unsent text survives as it does after a rejection.
+      expect(editorEl.value).toBe("my message")
+      expect(editorEl.readOnly).toBe(false)
+      expect(transport.sendInput).toHaveBeenCalledTimes(1)
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("Discarded input updates"),
+      )
+      warn.mockRestore()
+    },
+  )
+
+  it("keeps held programmatic input updates when remove_loading follows acceptance", async () => {
     const { transport, editorEl } = renderChat()
     await send(editorEl)
 
@@ -2279,13 +2309,32 @@ describe("ChatApp integration: composer retained until input is accepted", () =>
         type: "update_input",
         value: "server text",
       })
-    })
-    act(() => {
+      // Same act: nothing commits until all three have been handled.
+      transport.fire("test-chat", {
+        type: "input_received",
+        id: sentId(transport),
+      })
       transport.fire("test-chat", { type: "remove_loading" })
     })
 
     expect(editorEl.value).toBe("server text")
-    expect(editorEl.readOnly).toBe(false)
+    expect(sentRows()).toBe(1)
+  })
+
+  it("applies updates arriving just after acceptance behind the held ones", async () => {
+    const { transport, editorEl } = renderChat()
+    await send(editorEl)
+
+    act(() => {
+      transport.fire("test-chat", { type: "update_input", value: "held" })
+      transport.fire("test-chat", {
+        type: "input_received",
+        id: sentId(transport),
+      })
+      transport.fire("test-chat", { type: "update_input", value: "after" })
+    })
+
+    expect(editorEl.value).toBe("after")
   })
 
   it("leaves a draft alone when a programmatic submit is accepted", async () => {

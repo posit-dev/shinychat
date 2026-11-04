@@ -2762,9 +2762,10 @@ class Chat:
         locked message box until the server accepts it. Calls containing
         ``value`` or ``attachments`` that reach the browser during that time
         are held and applied in order once the message is accepted, after it
-        leaves the message box. If the server rejects the message, the user's
-        text and attachments stay in the message box and the held calls are
-        discarded, including any with ``submit=True``, and a warning is logged
+        leaves the message box. If the server rejects the message, or the wait
+        ends without acceptance (for example, because of an error), the
+        user's text and attachments stay in the message box and the held calls
+        are discarded, including any with ``submit=True``, and a warning is logged
         in the browser console. Calls that only update ``placeholder`` apply
         immediately.
 
