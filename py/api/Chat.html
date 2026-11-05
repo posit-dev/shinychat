@@ -1556,6 +1556,11 @@ to indicate what you're currently reasoning about. For example:
 </tbody>
 </table>
 </section>
+<section id="notes-1" class="level4 doc-section doc-section-notes">
+<h4 class="doc-section doc-section-notes anchored" data-anchor-id="notes-1">Notes</h4>
+<p>When the browser uses the <code>completion-v2</code> protocol, including when conversation history is enabled, a submitted message stays in the locked message box until the server accepts it. Calls containing <code>value</code> or <code>attachments</code> that reach the browser during that time are held and applied in order once the message is accepted, after it leaves the message box. If the server rejects the message, or the wait ends without acceptance (for example, because of an error), the user’s text and attachments stay in the message box and the held calls are discarded, including any with <code>submit=True</code>, and a warning is logged in the browser console. Calls that only update <code>placeholder</code> apply immediately.</p>
+<p><code>submit=True</code> has no effect while a response is in progress, so a held submit applied after acceptance usually has no effect either.</p>
+</section>
 </section>
 <section id="shinychat.Chat.user_input" class="level3">
 <h3 class="anchored" data-anchor-id="shinychat.Chat.user_input">user_input</h3>
