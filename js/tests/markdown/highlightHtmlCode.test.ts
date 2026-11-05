@@ -10,6 +10,23 @@ describe("highlightHtmlCode", () => {
     expect(out).toMatch(/<span class="hljs-/)
   })
 
+  it("preserves code text and base64 images in composed html results", () => {
+    const imageSrc =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/Jb8AAAAASUVORK5CYII="
+    const html =
+      '<pre><code class="language-r">label &lt;- "a &amp; b"\nplot(1:3)</code></pre>' +
+      `<img src="${imageSrc}" alt="Plot">`
+    const container = document.createElement("div")
+
+    container.innerHTML = highlightHtmlCode(html)
+
+    const code = container.querySelector("code")
+    expect(code?.classList.contains("hljs")).toBe(true)
+    expect(code?.querySelector('span[class^="hljs-"]')).toBeTruthy()
+    expect(code?.textContent).toBe('label <- "a & b"\nplot(1:3)')
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(imageSrc)
+  })
+
   it("highlights python and sql too (lowlight common grammars)", () => {
     for (const lang of ["python", "sql"]) {
       const out = highlightHtmlCode(
