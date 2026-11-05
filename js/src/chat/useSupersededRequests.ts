@@ -1,6 +1,7 @@
 import { useMemo, useRef } from "react"
 import {
   requestDefinitionIcons,
+  requestDefinitionTitles,
   supersededRequestIds,
   type ChatMessageData,
 } from "./state"
@@ -25,6 +26,29 @@ export function useSupersededRequests(
     const next = supersededRequestIds(messages, streamingMessage)
     const prev = previous.current
     if (next.size === prev.size && [...next].every((id) => prev.has(id))) {
+      return prev
+    }
+    previous.current = next
+    return next
+  }, [messages, streamingMessage])
+}
+
+/**
+ * Definition titles keyed by request id, with a stable map identity when the
+ * transcript's title metadata has not changed.
+ */
+export function useRequestDefinitionTitles(
+  messages: ChatMessageData[],
+  streamingMessage: ChatMessageData | null,
+): ReadonlyMap<string, string> {
+  const previous = useRef<Map<string, string>>(new Map())
+  return useMemo(() => {
+    const next = requestDefinitionTitles(messages, streamingMessage)
+    const prev = previous.current
+    if (
+      next.size === prev.size &&
+      [...next].every(([requestId, title]) => prev.get(requestId) === title)
+    ) {
       return prev
     }
     previous.current = next

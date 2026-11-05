@@ -369,6 +369,7 @@ describe("ChatMessage attachments", () => {
         value={{
           supersededRequests: new Set(["req-1"]),
           requestDefinitionIcons: new Map(),
+          requestDefinitionTitles: new Map(),
         }}
       >
         <ChatMessage index={0} message={message} />
@@ -425,6 +426,7 @@ describe("ChatMessage attachments", () => {
         value={{
           supersededRequests: new Set(["req-1"]),
           requestDefinitionIcons: new Map(),
+          requestDefinitionTitles: new Map(),
         }}
       >
         <ChatMessage index={0} message={message} />
@@ -433,6 +435,98 @@ describe("ChatMessage attachments", () => {
     expect(container.textContent).toContain("email")
     expect(container.textContent).not.toContain("search")
     expect(container.textContent).not.toContain("×2")
+  })
+
+  it("keeps the definition title as a settled multi-call group's header", () => {
+    // Two requests carry the tool's definition title; their results carry
+    // per-call display titles. Once the results supersede the requests, the
+    // header must stay "Checking weather" and both children keep their result
+    // titles -- instead of the header adopting the first result title and the
+    // duplicate first child degrading to the bare tool name (issue #456).
+    const message: ChatMessageData = {
+      ...userMessage({ content: "", blocks: [] }),
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool_loop",
+          content: "",
+          contentType: "markdown",
+          grouping: "tool",
+          groups: [
+            {
+              key: "tool:get_weather",
+              toolName: "get_weather",
+              title: "Checking weather",
+              titleSettled: false,
+              count: 4,
+              segments: [
+                {
+                  toolName: "get_weather",
+                  title: "Checking weather",
+                  count: 4,
+                  settled: false,
+                },
+              ],
+              calls: [
+                {
+                  requestId: "call_1",
+                  localId: "call_1",
+                  toolName: "get_weather",
+                  status: "running",
+                  definitionTitle: "Checking weather",
+                  arguments: '{"city":"Duluth"}',
+                },
+                {
+                  requestId: "call_2",
+                  localId: "call_2",
+                  toolName: "get_weather",
+                  status: "running",
+                  definitionTitle: "Checking weather",
+                  arguments: '{"city":"Tokyo"}',
+                },
+                {
+                  requestId: "call_1",
+                  localId: "call_1",
+                  toolName: "get_weather",
+                  status: "success",
+                  title: "Checked weather in Duluth",
+                  value: "72F and sunny in Duluth",
+                  valueType: "text",
+                },
+                {
+                  requestId: "call_2",
+                  localId: "call_2",
+                  toolName: "get_weather",
+                  status: "success",
+                  title: "Checked weather in Tokyo",
+                  value: "72F and sunny in Tokyo",
+                  valueType: "text",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    const { container } = render(
+      <ChatToolContext.Provider
+        value={{
+          supersededRequests: new Set(["call_1", "call_2"]),
+          requestDefinitionIcons: new Map(),
+          requestDefinitionTitles: new Map([
+            ["call_1", "Checking weather"],
+            ["call_2", "Checking weather"],
+          ]),
+        }}
+      >
+        <ChatMessage index={0} message={message} />
+      </ChatToolContext.Provider>,
+    )
+    expect(container.textContent).toContain("Checking weather")
+    expect(container.textContent).toContain("×2")
+    expect(container.textContent).toContain("Checked weather in Duluth")
+    expect(container.textContent).toContain("Checked weather in Tokyo")
+    expect(container.textContent).not.toContain("get_weather")
   })
 
   it('removes the icon entirely when the assistant icon is "" (icon_assistant=False)', () => {

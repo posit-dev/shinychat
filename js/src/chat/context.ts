@@ -16,6 +16,7 @@ export function useChatStopScroll(): StopScroll | null {
 const initialToolState: ChatToolState = {
   supersededRequests: new Set(),
   requestDefinitionIcons: new Map(),
+  requestDefinitionTitles: new Map(),
 }
 
 export const ChatToolContext = createContext<ChatToolState>(initialToolState)

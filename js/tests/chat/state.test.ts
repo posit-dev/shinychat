@@ -2,13 +2,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import {
   chatReducer,
   contentFromBlocks,
+  inheritRequestDefinitionTitle,
   initialState,
+  requestDefinitionTitles,
   structuredBlockToLoop,
   supersededRequestIds,
   type ChatState,
   type ChatMessageData,
   type GreetingData,
   type ChatDrawerState,
+  type ToolCallItem,
   type ToolLoopBlock,
   type ToolGrouping,
 } from "../../src/chat/state"
@@ -2151,6 +2154,125 @@ describe("supersededRequestIds", () => {
     const ids = supersededRequestIds([routed([bare])], null)
     expect(ids.has("")).toBe(false)
     expect(ids.size).toBe(0)
+  })
+})
+
+describe("requestDefinitionTitles", () => {
+  const titledRequest = (id: string, title: string): ToolRequestBlock => ({
+    type: "tool_request",
+    version: 1,
+    request_id: id,
+    tool_name: "get_weather",
+    arguments: "{}",
+    title,
+  })
+  const result = (id: string, title: string): ToolResultBlock => ({
+    type: "tool_result",
+    version: 1,
+    request_id: id,
+    tool_name: "get_weather",
+    status: "success",
+    value: "ok",
+    value_type: "text",
+    title,
+  })
+
+  function routed(
+    blocks: Array<ToolRequestBlock | ToolResultBlock>,
+    overrides: Partial<ChatMessageData> = {},
+  ): ChatMessageData {
+    const loops = blocks
+      .map((b) => structuredBlockToLoop(b, "tool"))
+      .filter((l): l is ToolLoopBlock => l !== null)
+    return {
+      id: "m",
+      role: "assistant",
+      content: "",
+      streaming: false,
+      ...overrides,
+      blocks: loops,
+    }
+  }
+
+  it("collects a running request's definition title keyed by request id", () => {
+    const titles = requestDefinitionTitles(
+      [routed([titledRequest("req-1", "Checking weather")])],
+      null,
+    )
+    expect(titles.get("req-1")).toBe("Checking weather")
+  })
+
+  it("collects across messages and from the streaming message", () => {
+    const titles = requestDefinitionTitles(
+      [routed([titledRequest("req-1", "Checking weather")])],
+      routed([titledRequest("req-2", "Checking weather")], {
+        id: "s",
+        streaming: true,
+      }),
+    )
+    expect(titles.get("req-1")).toBe("Checking weather")
+    expect(titles.get("req-2")).toBe("Checking weather")
+  })
+
+  it("ignores result titles, which are dynamic, not definition identity", () => {
+    const titles = requestDefinitionTitles(
+      [routed([result("req-1", "Checked weather in Duluth")])],
+      null,
+    )
+    expect(titles.size).toBe(0)
+  })
+
+  it("ignores requests in user messages", () => {
+    const titles = requestDefinitionTitles(
+      [
+        routed([titledRequest("req-1", "Checking weather")], {
+          id: "u",
+          role: "user",
+        }),
+      ],
+      null,
+    )
+    expect(titles.size).toBe(0)
+  })
+})
+
+describe("inheritRequestDefinitionTitle", () => {
+  const settled = (partial: Partial<ToolCallItem> = {}): ToolCallItem => ({
+    requestId: "req-1",
+    localId: "req-1",
+    toolName: "get_weather",
+    status: "success",
+    title: "Checked weather in Duluth",
+    ...partial,
+  })
+  const titles = new Map([["req-1", "Checking weather"]])
+
+  it("copies the request's definition title onto its settled result call", () => {
+    const call = inheritRequestDefinitionTitle(settled(), titles)
+    expect(call.definitionTitle).toBe("Checking weather")
+  })
+
+  it("leaves the result's own dynamic title intact", () => {
+    const call = inheritRequestDefinitionTitle(settled(), titles)
+    expect(call.title).toBe("Checked weather in Duluth")
+  })
+
+  it("keeps an explicit definition title on the result call", () => {
+    const call = inheritRequestDefinitionTitle(
+      settled({ definitionTitle: "Explicit" }),
+      titles,
+    )
+    expect(call.definitionTitle).toBe("Explicit")
+  })
+
+  it("returns a running call untouched", () => {
+    const running = settled({ status: "running" })
+    expect(inheritRequestDefinitionTitle(running, titles)).toBe(running)
+  })
+
+  it("returns the call untouched when no request title is indexed", () => {
+    const call = settled({ requestId: "req-unknown" })
+    expect(inheritRequestDefinitionTitle(call, titles)).toBe(call)
   })
 })
 

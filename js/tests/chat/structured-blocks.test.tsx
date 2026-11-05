@@ -734,6 +734,7 @@ describe("structured tool_request block via message.segments", () => {
         value={{
           supersededRequests: superseded,
           requestDefinitionIcons: new Map(),
+          requestDefinitionTitles: new Map(),
         }}
       >
         <ChatMessages messages={state.messages} inputId="test-input" />
@@ -809,6 +810,7 @@ describe("structured tool_request block via block_insert mid-stream", () => {
         value={{
           supersededRequests: superseded,
           requestDefinitionIcons: new Map(),
+          requestDefinitionTitles: new Map(),
         }}
       >
         <ChatMessages messages={state.messages} inputId="test-input" />

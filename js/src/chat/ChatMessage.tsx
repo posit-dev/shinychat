@@ -3,6 +3,7 @@ import { BlockErrorBoundary } from "./BlockErrorBoundary"
 import {
   deriveToolGroupIdentity,
   inheritRequestDefinitionIcon,
+  inheritRequestDefinitionTitle,
   type ChatMessageData,
   type ContentBlock,
   type RenderBlock,
@@ -142,7 +143,11 @@ export const ChatMessage = memo(function ChatMessage({
 }: ChatMessageProps) {
   const slashCommands = useSlashCommands()
   const toolGrouping = useToolGrouping()
-  const { supersededRequests, requestDefinitionIcons } = useChatToolState()
+  const {
+    supersededRequests,
+    requestDefinitionIcons,
+    requestDefinitionTitles,
+  } = useChatToolState()
   const [lightbox, setLightbox] = useState<{
     src: string
     name: string
@@ -181,6 +186,9 @@ export const ChatMessage = memo(function ChatMessage({
                 ),
             )
             .map((c) => inheritRequestDefinitionIcon(c, requestDefinitionIcons))
+            .map((c) =>
+              inheritRequestDefinitionTitle(c, requestDefinitionTitles),
+            )
           const changed =
             calls.length !== g.calls.length ||
             calls.some((call, index) => call !== g.calls[index])
@@ -192,7 +200,12 @@ export const ChatMessage = memo(function ChatMessage({
       if (groups.length > 0) out.push({ block: { ...block, groups }, index })
     })
     return out
-  }, [blocks, supersededRequests, requestDefinitionIcons])
+  }, [
+    blocks,
+    supersededRequests,
+    requestDefinitionIcons,
+    requestDefinitionTitles,
+  ])
 
   // Hidden thinking must not make an otherwise-empty assistant message look
   // complete. Re-render at the next streaming threshold so the icon and

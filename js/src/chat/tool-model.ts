@@ -402,6 +402,23 @@ export function requestDefinitionIcons(
   return icons
 }
 
+/**
+ * Definition titles keyed by the request that supplied them.
+ *
+ * The title analogue of `requestDefinitionIcons`: a settled result omits the
+ * tool's static title, so after its superseded request is filtered out this
+ * index is the only way the group header can keep the definition title.
+ */
+export function requestDefinitionTitles(
+  messages: ChatMessageData[],
+  streamingMessage: ChatMessageData | null,
+): Map<string, string> {
+  const titles = new Map<string, string>()
+  for (const msg of messages) collectRequestDefinitionTitles(msg, titles)
+  if (streamingMessage) collectRequestDefinitionTitles(streamingMessage, titles)
+  return titles
+}
+
 function collectResultIds(msg: ChatMessageData, into: Set<string>): void {
   if (msg.role === "user") return
 
@@ -442,6 +459,29 @@ function collectRequestDefinitionIcons(
   }
 }
 
+function collectRequestDefinitionTitles(
+  msg: ChatMessageData,
+  into: Map<string, string>,
+): void {
+  if (msg.role === "user") return
+
+  for (const block of msg.blocks) {
+    if (block.type !== "tool_loop") continue
+    for (const group of block.groups) {
+      for (const call of group.calls) {
+        if (
+          call.status === "running" &&
+          call.requestId &&
+          call.definitionTitle !== undefined &&
+          !into.has(call.requestId)
+        ) {
+          into.set(call.requestId, call.definitionTitle)
+        }
+      }
+    }
+  }
+}
+
 /**
  * Restore a settled call's definition icon from its matching request.
  *
@@ -469,4 +509,25 @@ export function inheritRequestDefinitionIcon(
     definitionIcon: nextDefinitionIcon,
     icon: nextIcon,
   }
+}
+
+/**
+ * Restore a settled call's definition title from its matching request.
+ *
+ * Unlike the icon, the title is not also copied into the dynamic slot: a
+ * result's own `title` must stay distinct so `resolveTitle()` can prefer the
+ * static definition title for a multi-call header while each child row keeps
+ * its per-call result title.
+ */
+export function inheritRequestDefinitionTitle(
+  call: ToolCallItem,
+  definitionTitles: ReadonlyMap<string, string>,
+): ToolCallItem {
+  if (call.status === "running" || !call.requestId) return call
+
+  const definitionTitle = definitionTitles.get(call.requestId)
+  if (definitionTitle === undefined) return call
+  if (call.definitionTitle !== undefined) return call
+
+  return { ...call, definitionTitle }
 }
