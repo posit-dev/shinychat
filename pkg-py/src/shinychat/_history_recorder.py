@@ -1046,10 +1046,24 @@ class _ExchangeRecorder:
                 if capture_start:
                     # First input defines the starting position. Capture model
                     # and app state together, with one on_save invocation.
-                    await self.capture_state_locked(
+                    root_had_saved_state = bool(
+                        self.record.nodes[self.record.root_id].state
+                    )
+                    captured = await self.capture_state_locked(
                         self.record.root_id, "root_close", strict=False
                     )
                     self._close_root_if_inactive()
+                    if not captured and not root_had_saved_state:
+                        # The first-input capture failed and this root never
+                        # held a saved frame (no explicit chat.history.save()
+                        # preceded the first input). Its empty state can
+                        # never restore the live client, so finish it
+                        # invalid: it must not serve as a rewind destination
+                        # for editing/retrying message 1. A root that already
+                        # holds a manually saved frame keeps that valid pair.
+                        self.record.nodes[
+                            self.record.root_id
+                        ].checkpoint = "invalid"
                 elif not self.record.nodes[active_leaf].is_checkpoint:
                     # Validate admission without promoting an unresolved
                     # predecessor into a model checkpoint.
