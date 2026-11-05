@@ -111,7 +111,11 @@ describe("ToolResult", () => {
   })
 
   it("does not re-parse html values without language classes", () => {
-    const html = '<div class="author-widget"><b>custom</b></div>'
+    // A re-serialization round-trip drops one leading newline inside <pre>,
+    // and the DOM parser drops another on mount. If the value were re-parsed,
+    // the rendered text would be "keep", not "\nkeep".
+    const html =
+      '<div class="author-widget"><b>custom</b></div><pre>\n\nkeep</pre>'
     const { container } = render(
       <ToolResult
         toolName="send"
@@ -125,5 +129,6 @@ describe("ToolResult", () => {
     expect(container.querySelector(".author-widget")?.innerHTML).toBe(
       "<b>custom</b>",
     )
+    expect(container.querySelector("pre")?.textContent).toBe("\nkeep")
   })
 })

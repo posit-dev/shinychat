@@ -28,12 +28,53 @@ describe("highlightHtmlCode", () => {
   })
 
   it("highlights python and sql too (lowlight common grammars)", () => {
-    for (const lang of ["python", "sql"]) {
-      const out = highlightHtmlCode(
-        `<pre><code class="language-${lang}">select 1</code></pre>`,
-      )
-      expect(out).toContain("hljs")
+    const snippets: Record<string, string> = {
+      python: "def f(x):\n    return x",
+      sql: "SELECT 1",
     }
+    for (const [lang, snippet] of Object.entries(snippets)) {
+      const out = highlightHtmlCode(
+        `<pre><code class="language-${lang}">${snippet}</code></pre>`,
+      )
+      // rehype-highlight adds the bare `hljs` class even for unregistered
+      // languages; token spans prove the grammar is registered.
+      expect(out).toMatch(/<span class="hljs-/)
+    }
+  })
+
+  it("highlights the class forms rehype-highlight recognizes", () => {
+    const forms = [
+      '<pre><code class="sourceCode language-r">x &lt;- 1</code></pre>',
+      '<pre><code class="lang-r">x &lt;- 1</code></pre>',
+      "<pre><code class=language-r>x &lt;- 1</code></pre>",
+    ]
+    for (const html of forms) {
+      expect(highlightHtmlCode(html)).toMatch(/<span class="hljs-/)
+    }
+  })
+
+  it("leaves author markup inside code as authored", () => {
+    const html =
+      '<pre><code class="language-r">x &lt;- <mark>f</mark>(<a href="https://example.com">y</a>)</code></pre>'
+    const out = highlightHtmlCode(html)
+    expect(out).toContain("<mark>f</mark>")
+    expect(out).toContain('<a href="https://example.com">y</a>')
+    expect(out).not.toMatch(/<span class="hljs-/)
+  })
+
+  it("leaves Prism-tokenized code as authored", () => {
+    const html =
+      '<pre><code class="language-r"><span class="token keyword">library</span>(dplyr)</code></pre>'
+    const out = highlightHtmlCode(html)
+    expect(out).toContain('<span class="token keyword">library</span>')
+    expect(out).not.toMatch(/<span class="hljs-/)
+  })
+
+  it("honors an author-set nohighlight class on plain-text code", () => {
+    const out = highlightHtmlCode(
+      '<pre><code class="language-r nohighlight">x &lt;- 1</code></pre>',
+    )
+    expect(out).not.toMatch(/<span class="hljs-/)
   })
 
   it("returns html without language classes byte-identical (no parse round-trip)", () => {

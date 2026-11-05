@@ -691,7 +691,9 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
 #' @param icon An icon to display with the settled call and drill-down card. Can
 #'   be a character string or HTML content (e.g. from [htmltools::tags]).
 #' @param html Custom HTML content (to use in place of the default result
-#'   content in the drill-down card).
+#'   content in the drill-down card). Code blocks tagged with a language class
+#'   (`<pre><code class="language-r">`) are syntax-highlighted; add a
+#'   `nohighlight` class to a code block to opt out.
 #' @param markdown Custom Markdown string (to use in place of the default
 #'   result content in the drill-down card).
 #' @param text Custom plain text string (to use in place of the default
