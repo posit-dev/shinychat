@@ -1,7 +1,7 @@
 """Fixture for edit admission, refusal, and draft retention.
 
-A one-shot on_save failure makes the first-input root invalid while later
-checkpoints remain valid. The probe verifies that setup before tests edit.
+The first message's valid parent can be invalidated after opening its editor,
+without projecting updated metadata, to simulate a stale capability race.
 The edit gate uses out-of-cycle websocket handlers because a reactive
 release effect cannot run while the gated edit effect is awaiting it.
 """
@@ -47,16 +47,40 @@ class EchoClient:
 
 
 app_ui = ui.page_fillable(
-    ui.input_action_button("break_onsave", "Break first-input on_save"),
-    ui.output_text("onsave_status"),
+    ui.input_action_button(
+        "invalidate_parent", "Invalidate first message parent"
+    ),
+    ui.output_text("parent_status"),
+    ui.tags.button(
+        "Hold next edit",
+        type="button",
+        onclick="window.shinychatControlEditGate('hold')",
+    ),
+    ui.tags.button(
+        "Release edit",
+        type="button",
+        onclick="window.shinychatControlEditGate('release')",
+    ),
+    ui.tags.span("Edit gate idle", id="edit_gate_status", role="status"),
     ui.output_text("dispatch_count"),
     chat_ui("chat", allow_attachments=True),
     ui.tags.script(
         """
         window.__shinychatEditGate = { state: "idle" };
+        window.shinychatControlEditGate = function (action) {
+          const status = document.getElementById("edit_gate_status");
+          status.textContent = action === "hold" ? "Arming edit gate" : "Release requested";
+          Shiny.shinyapp.makeRequest("shinyChatEditGateControl", [action], function () {
+            if (action === "hold") status.textContent = "Next edit held";
+          }, function () {
+            status.textContent = "Edit gate request failed";
+          });
+        };
         if (window.Shiny && Shiny.addCustomMessageHandler) {
           Shiny.addCustomMessageHandler("shinyChatEditGate", function (msg) {
             window.__shinychatEditGate = { state: msg.state };
+            document.getElementById("edit_gate_status").textContent =
+              msg.state === "parked" ? "Edit request parked" : "Edit request released";
           });
         }
         """
@@ -66,7 +90,7 @@ app_ui = ui.page_fillable(
 
 def server(input: Inputs, output: Outputs, session: Session) -> None:
     dispatches = reactive.value(0)
-    onsave_state = reactive.value("idle")
+    parent_state = reactive.value("First message parent not invalidated")
     client = EchoClient(dispatches)
     chat = Chat(
         "chat",
@@ -78,24 +102,24 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
     controller = chat.history._controller
     assert controller is not None
 
-    # One-shot failing app on_save: consumed by the first-input root_close
-    # capture, so every later capture (settlements, admissions, edits)
-    # succeeds and later checkpoints stay valid.
-    break_onsave = {"armed": False, "consumed": False}
-
-    @chat.history.on_save
-    def fail_first_capture(values: dict[str, Any]) -> None:
-        if break_onsave["armed"] and not break_onsave["consumed"]:
-            break_onsave["consumed"] = True
-            onsave_state.set("first-input on_save failed")
-            raise RuntimeError("first-input on_save failed")
-        values["app"] = "ok"
-
+    # Simulate a capability race: the editor was opened while the parent was
+    # valid, then its checkpoint changes without a new client projection.
+    # Production edit admission still checks the real record.
     @reactive.effect
-    @reactive.event(input.break_onsave)
-    def _arm_break_onsave() -> None:
-        break_onsave["armed"] = True
-        onsave_state.set("armed")
+    @reactive.event(input.invalidate_parent)
+    def _invalidate_parent() -> None:
+        record = controller._exchange_recorder.record
+        if record is None or not any(
+            node.input is not None for node in record.nodes.values()
+        ):
+            parent_state.set(
+                "Send the first message before invalidating its parent"
+            )
+            return
+        record.nodes[record.root_id].checkpoint = "invalid"
+        parent_state.set(
+            "First message parent invalidated; client metadata unchanged"
+        )
 
     # Plain, non-reactive gate state: the gate is driven only by the
     # websocket message handler below, never by reactive effects (see the
@@ -151,23 +175,29 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
         if record is None:
             return {"record": None}
         root = record.root_id
-        user_inputs = [
-            str(node.input.content)
-            for node in record.nodes.values()
-            if node.input is not None
+        user_nodes = [
+            node for node in record.nodes.values() if node.input is not None
         ]
         return {
             "root_status": record.nodes[root].status,
             "root_checkpoint": record.nodes[root].checkpoint,
-            "user_inputs": user_inputs,
+            "user_inputs": [
+                str(node.input.content) for node in user_nodes if node.input
+            ],
+            "parent_checkpoints": [
+                record.nodes[node.parent_id].checkpoint
+                if node.parent_id is not None
+                else None
+                for node in user_nodes
+            ],
         }
 
     session.set_message_handler("shinyChatEditGateControl", edit_gate_control)
     session.set_message_handler("shinyChatFixtureProbe", fixture_probe)
 
     @render.text
-    def onsave_status() -> str:
-        return onsave_state.get()
+    def parent_status() -> str:
+        return parent_state.get()
 
     @render.text
     def dispatch_count() -> str:

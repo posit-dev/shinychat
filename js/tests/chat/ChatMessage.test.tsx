@@ -120,6 +120,48 @@ describe("ChatMessage parent checkpoint validity", () => {
     expect(screen.getByRole("button", { name: "Edit message" })).toBeTruthy()
   })
 
+  it("retains a held edit when its parent becomes invalid, then shows the error after closing", () => {
+    const onEdit = vi.fn(() => "retained" as const)
+    const message = userMessage({
+      exchange: { status: "ok", retryable: false, parent_editable: true },
+    })
+    const { rerender } = render(
+      <ChatMessage index={0} message={message} onEdit={onEdit} isEditing />,
+    )
+    const editor = screen.getByRole("textbox", { name: "Chat message" })
+    fireEvent.change(editor, { target: { value: "draft" } })
+    fireEvent.keyDown(editor, { key: "Enter" })
+    expect(onEdit).toHaveBeenCalledWith(0, "draft", [])
+
+    const invalidMessage = {
+      ...message,
+      exchange: {
+        status: "error" as const,
+        retryable: false,
+        parent_editable: false,
+        error_message: "The response could not be completed.",
+      },
+    }
+    rerender(
+      <ChatMessage
+        index={0}
+        message={invalidMessage}
+        onEdit={onEdit}
+        isEditing
+        editLocked
+      />,
+    )
+    expect(editor).toHaveValue("draft")
+    expect(editor).toHaveAttribute("readonly")
+    expect(screen.queryByText(invalidMessage.exchange.error_message)).toBeNull()
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+
+    rerender(<ChatMessage index={0} message={invalidMessage} onEdit={onEdit} />)
+    expect(screen.queryByRole("textbox", { name: "Chat message" })).toBeNull()
+    expect(screen.getByText(invalidMessage.exchange.error_message)).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+  })
+
   it("preserves Edit for exchange metadata from an older server", () => {
     render(
       <ChatMessage
