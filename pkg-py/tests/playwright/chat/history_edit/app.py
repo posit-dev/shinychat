@@ -36,11 +36,14 @@ class EchoChatClient(chatlas.Chat):
 
 
 def app_ui(request: object) -> ui.Tag:
-    return ui.page_fillable(chat_ui("chat", allow_attachments=True))
+    return ui.page_fillable(
+        ui.input_checkbox("fail_capture", "Fail checkpoint capture", False),
+        chat_ui("chat", allow_attachments=True),
+    )
 
 
 def server(input: Inputs, output: Outputs, session: Session) -> None:
-    Chat(
+    chat = Chat(
         id="chat",
         client=EchoChatClient(),
         history=HistoryOptions(
@@ -50,6 +53,11 @@ def server(input: Inputs, output: Outputs, session: Session) -> None:
             title=None,
         ),
     )
+
+    @chat.history.on_save
+    def _capture(values: dict[str, object]) -> None:
+        if input.fail_capture():
+            raise RuntimeError("Injected checkpoint capture failure")
 
     @reactive.effect
     @reactive.event(input.test_passive_sibling_update)

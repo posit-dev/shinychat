@@ -549,6 +549,7 @@ async def test_first_input_onsave_failure_refuses_first_message_resubmit(
     assert metadata[-1]["data"][0] == {
         "status": stream_status,
         "retryable": False,
+        "parent_editable": False,
     }
     live_turns = adapter.get_turns_json()
     with pytest.raises(ValueError, match="not a valid checkpoint"):
@@ -1098,6 +1099,7 @@ async def test_restored_invalid_ancestor_metadata_and_retained_parent_retry(
         "status": "error",
         "error_message": HISTORY_ERROR_GENERIC,
         "retryable": mode == "writable",
+        "parent_editable": mode != "invalid_parent",
     }
     with pytest.raises(ValueError, match="not a valid checkpoint"):
         restored.require_checkpoint(target)

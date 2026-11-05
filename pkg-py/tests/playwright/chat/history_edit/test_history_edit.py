@@ -7,6 +7,56 @@ from shinychat.playwright import ChatController
 HERE = Path(__file__).parent
 
 
+def test_invalid_parent_hides_edit_but_valid_parent_stays_editable(
+    page: Page, local_app: ShinyAppProc
+) -> None:
+    page.goto(local_app.url)
+    chat = ChatController(page, "chat")
+    expect(chat.loc).to_be_visible(timeout=30_000)
+    capture_failure = page.get_by_label("Fail checkpoint capture")
+    capture_failure.check()
+
+    chat.set_user_input("invalid start")
+    expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message("Echo: invalid start", timeout=10_000)
+    expect(chat.loc_input).to_be_editable(timeout=30_000)
+    first_user = page.locator(".shiny-chat-user-message").first
+    first_user.hover()
+    expect(first_user.get_by_role("button", name="Edit message")).to_have_count(
+        0
+    )
+
+    # The failed root and first settlement remain invalid. Once capture works,
+    # the second exchange settles as a valid checkpoint for the third input.
+    capture_failure.uncheck()
+    chat.set_user_input("healthy checkpoint")
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message("Echo: healthy checkpoint", timeout=10_000)
+    expect(chat.loc_input).to_be_editable(timeout=30_000)
+    second_user = page.locator(".shiny-chat-user-message").nth(1)
+    expect(
+        second_user.get_by_role("button", name="Edit message")
+    ).to_have_count(0)
+
+    chat.set_user_input("editable input")
+    chat.send_user_input(method="enter")
+    chat.expect_latest_message("Echo: editable input", timeout=10_000)
+    expect(chat.loc_input).to_be_editable(timeout=30_000)
+    third_user = page.locator(".shiny-chat-user-message").nth(2)
+    third_user.hover()
+    expect(
+        third_user.get_by_role("button", name="Retry message")
+    ).to_have_count(0)
+    third_user.get_by_role("button", name="Edit message").click()
+    expect(
+        third_user.get_by_role("textbox", name="Chat message")
+    ).to_be_visible()
+    expect(first_user.get_by_role("button", name="Edit message")).to_have_count(
+        0
+    )
+
+
 def test_edit_creates_branch_and_regenerates(
     page: Page, local_app: ShinyAppProc
 ) -> None:

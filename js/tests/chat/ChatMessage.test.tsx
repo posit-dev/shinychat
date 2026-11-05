@@ -29,6 +29,89 @@ const imageAttachment = (src: string, mime = "image/png") => ({
   size: 0,
 })
 
+describe("ChatMessage parent checkpoint validity", () => {
+  it.each(["pending", "ok", "error", "cancelled"] as const)(
+    "hides Edit for an invalid parent regardless of %s outcome",
+    (status) => {
+      const exchange = { status, retryable: false, parent_editable: false }
+      const { container } = render(
+        <ChatMessage
+          index={0}
+          message={userMessage({ exchange })}
+          onEdit={vi.fn()}
+          onStartEdit={vi.fn()}
+        />,
+      )
+      expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+      expect(container.querySelector(".shiny-chat-message-footer")).toBeNull()
+    },
+  )
+
+  it("keeps a successful non-retryable exchange editable", () => {
+    const onStartEdit = vi.fn()
+    const exchange = {
+      status: "ok" as const,
+      retryable: false,
+      parent_editable: true,
+    }
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({ exchange })}
+        onEdit={vi.fn()}
+        onStartEdit={onStartEdit}
+        onRetry={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Edit message" }))
+    expect(onStartEdit).toHaveBeenCalledWith("m1")
+    expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
+  })
+
+  it("updates Edit visibility without losing sibling navigation", () => {
+    const onNavigate = vi.fn()
+    const props = {
+      index: 0,
+      onEdit: vi.fn(),
+      onNavigate,
+    }
+    const message = userMessage({ siblings: { index: 1, total: 2 } })
+    const { rerender } = render(<ChatMessage {...props} message={message} />)
+    // Legacy metadata producers (including R's pre-port history) omit the field.
+    expect(screen.getByRole("button", { name: "Edit message" })).toBeTruthy()
+    const exchange = {
+      status: "ok" as const,
+      retryable: false,
+      parent_editable: false,
+    }
+    rerender(<ChatMessage {...props} message={{ ...message, exchange }} />)
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Previous version" }))
+    expect(onNavigate).toHaveBeenCalledWith(0, "prev")
+    rerender(
+      <ChatMessage
+        {...props}
+        message={{
+          ...message,
+          exchange: { ...exchange, parent_editable: true },
+        }}
+      />,
+    )
+    expect(screen.getByRole("button", { name: "Edit message" })).toBeTruthy()
+  })
+
+  it("preserves Edit for exchange metadata from an older server", () => {
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({ exchange: { status: "ok", retryable: false } })}
+        onEdit={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole("button", { name: "Edit message" })).toBeTruthy()
+  })
+})
+
 describe("ChatMessage attachments", () => {
   it("renders an <img> for each attached image", () => {
     render(

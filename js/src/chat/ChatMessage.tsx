@@ -151,6 +151,11 @@ export const ChatMessage = memo(function ChatMessage({
   const [hasEditText, setHasEditText] = useState(false)
   const editRef = useRef<TiptapInputHandle>(null)
   const isUser = message.role === "user"
+  const canEdit =
+    !!onEdit &&
+    !disabled &&
+    !readOnly &&
+    message.exchange?.parent_editable !== false
   const showPreparationFailure =
     isUser &&
     message.exchange?.status === "error" &&
@@ -228,8 +233,7 @@ export const ChatMessage = memo(function ChatMessage({
     isUser &&
     !disabled &&
     (!isEditing || readOnly) &&
-    ((!readOnly && !!onEdit) ||
-      (!!onNavigate && (message.siblings?.total ?? 0) > 1))
+    (canEdit || (!!onNavigate && (message.siblings?.total ?? 0) > 1))
 
   const [touchRevealed, setTouchRevealed] = useState(false)
   const touchHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -725,7 +729,7 @@ export const ChatMessage = memo(function ChatMessage({
       </div>
       {isUser &&
         (!isEditing || readOnly) &&
-        ((onEdit && !disabled && !readOnly) ||
+        (canEdit ||
           (message.siblings && message.siblings.total > 1) ||
           (message.exchange?.retryable && onRetry && !readOnly)) && (
           <div
@@ -769,7 +773,7 @@ export const ChatMessage = memo(function ChatMessage({
                 </button>
               </div>
             )}
-            {onEdit && !disabled && !readOnly && (
+            {canEdit && (
               <button
                 type="button"
                 className="shiny-chat-edit-btn"
