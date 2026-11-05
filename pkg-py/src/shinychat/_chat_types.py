@@ -329,6 +329,30 @@ class RemoveMessageAction(TypedDict):
     id: str
 
 
+class InputReceivedAction(TypedDict):
+    """The server finished admitting a browser submission without rejecting it.
+
+    Sent for a submission carrying a ``client_message_id``. Until it (or
+    ``input_rejected``) arrives, a history-enabled browser keeps the submitted
+    text in its composer, locked, and does not show the message in the chat.
+    This acknowledgement moves it into the chat and clears the composer.
+    """
+
+    type: Literal["input_received"]
+    id: str
+
+
+class InputRejectedAction(TypedDict):
+    """The server rejected a browser submission before accepting it.
+
+    The browser discards the held submission and unlocks its composer, which
+    still holds the text and attachments.
+    """
+
+    type: Literal["input_rejected"]
+    id: str
+
+
 class RemoveLoadingAction(TypedDict):
     type: Literal["remove_loading"]
 
@@ -478,6 +502,8 @@ ChatAction = Union[
     BlockInsertAction,
     ClearAction,
     UpdateInputAction,
+    InputReceivedAction,
+    InputRejectedAction,
     RemoveLoadingAction,
     RemoveMessageAction,
     UpdateCancelAction,

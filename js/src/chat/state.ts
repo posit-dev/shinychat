@@ -127,8 +127,30 @@ export interface GreetingData {
   blocks: ContentBlock[]
 }
 
+export interface PendingInput {
+  id: string
+  content: string
+  attachments?: AttachmentPayload[]
+  /** Show the loading placeholder and disable input once accepted. */
+  awaitResponse: boolean
+  /**
+   * The content is still in the composer; clear it on acceptance: its text
+   * only (slash commands leave staged attachments for the next message), or
+   * text and attachments.
+   */
+  clearOnAccept: false | "text" | "all"
+}
+
 export interface ChatInputState {
   inputDisabled: boolean
+  /**
+   * A submission the server has not yet admitted or rejected. It is not in
+   * `messages` yet: `input_received` appends it, `input_rejected` discards
+   * it. While set, the composer is locked and (for composer submissions)
+   * still holds the submitted content. Also cleared by `remove_loading` and
+   * `clear`.
+   */
+  pendingInput: PendingInput | null
   inputPlaceholder: string
 }
 
@@ -216,6 +238,10 @@ export type UIAction =
       role: "user"
       /** When false, append the user message only — no loading placeholder, no input disable. Defaults to true. */
       awaitResponse?: boolean
+      /** Hold the submission out of the message list, with the composer locked, until the server sends `input_received` (append it) or `input_rejected` (discard it). */
+      awaitAcceptance?: boolean
+      /** The submitted content is still in the composer; clear it when the server sends `input_received`. A rejection leaves it there. Requires `awaitAcceptance`. */
+      clearOnAccept?: "text" | "all"
       attachments?: AttachmentPayload[]
     }
   | { type: "TRUNCATE_MESSAGES"; index: number }
@@ -230,6 +256,7 @@ export const initialState: ChatState = {
   streamingMessage: null,
   greeting: null,
   inputDisabled: false,
+  pendingInput: null,
   inputPlaceholder: "Enter a message...",
   cancelRequested: false,
   enableCancel: false,
@@ -691,6 +718,52 @@ function extractTopics(text: string, buffer: string): TopicResult {
   return { cleaned: combined, topic, buffer: newBuffer }
 }
 
+function appendSubmittedInput(
+  state: ChatState,
+  input: {
+    id: string
+    content: string
+    attachments?: AttachmentPayload[]
+    awaitResponse: boolean
+  },
+): ChatState {
+  const userMsg: ChatMessageData = {
+    id: input.id,
+    role: "user",
+    content: input.content,
+    streaming: false,
+    ...(input.attachments && input.attachments.length > 0
+      ? { attachments: input.attachments }
+      : {}),
+    blocks: [
+      { type: "content", content: input.content, contentType: "markdown" },
+    ],
+  }
+
+  if (!input.awaitResponse) {
+    return {
+      ...state,
+      messages: [...state.messages, userMsg],
+      greeting: dismissGreeting(state.greeting),
+    }
+  }
+
+  const loadingMsg: ChatMessageData = {
+    id: uuid(),
+    role: "assistant",
+    content: "",
+    streaming: false,
+    isPlaceholder: true,
+    blocks: [],
+  }
+  return {
+    ...state,
+    messages: [...state.messages, userMsg, loadingMsg],
+    inputDisabled: true,
+    greeting: dismissGreeting(state.greeting),
+  }
+}
+
 export function chatReducer(state: ChatState, action: AnyAction): ChatState {
   switch (action.type) {
     case "TRUNCATE_MESSAGES":
@@ -701,40 +774,41 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       }
 
     case "INPUT_SENT": {
-      const userMsg: ChatMessageData = {
+      const input = {
         id: action.id ?? uuid(),
-        role: "user",
         content: action.content,
-        streaming: false,
-        ...(action.attachments && action.attachments.length > 0
-          ? { attachments: action.attachments }
-          : {}),
-        blocks: [
-          { type: "content", content: action.content, contentType: "markdown" },
-        ],
+        attachments: action.attachments,
+        awaitResponse: action.awaitResponse !== false,
       }
-
-      if (action.awaitResponse === false) {
+      if (action.awaitAcceptance) {
         return {
           ...state,
-          messages: [...state.messages, userMsg],
-          greeting: dismissGreeting(state.greeting),
+          pendingInput: {
+            ...input,
+            clearOnAccept: action.clearOnAccept ?? false,
+          },
+          inputDisabled: input.awaitResponse ? true : state.inputDisabled,
         }
       }
+      return appendSubmittedInput(state, input)
+    }
 
-      const loadingMsg: ChatMessageData = {
-        id: uuid(),
-        role: "assistant",
-        content: "",
-        streaming: false,
-        isPlaceholder: true,
-        blocks: [],
+    case "input_received": {
+      const pending = state.pendingInput
+      if (pending?.id !== action.id) return state
+      return {
+        ...appendSubmittedInput(state, pending),
+        pendingInput: null,
       }
+    }
+
+    case "input_rejected": {
+      const pending = state.pendingInput
+      if (pending?.id !== action.id) return state
       return {
         ...state,
-        messages: [...state.messages, userMsg, loadingMsg],
-        inputDisabled: true,
-        greeting: dismissGreeting(state.greeting),
+        pendingInput: null,
+        inputDisabled: pending.awaitResponse ? false : state.inputDisabled,
       }
     }
 
@@ -1230,12 +1304,13 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
         // chunk_end for every opened stream, even on error. Finalizing
         // here would truncate the response — chunks are dropped once
         // streamingMessage is cleared.
-        return { ...state, messages }
+        return { ...state, messages, pendingInput: null }
       }
       return {
         ...state,
         messages,
         inputDisabled: false,
+        pendingInput: null,
         cancelRequested: false,
       }
     }

@@ -31,6 +31,9 @@ def test_capture_failure_notification_and_new_chat_recovery(
     expect(
         chat.loc.locator(".shiny-chat-user-message").filter(has_text="not sent")
     ).to_have_count(0)
+    # The rejected text never left the composer, which is unlocked again.
+    expect(chat.loc_input).to_have_text("not sent")
+    expect(chat.loc_input).not_to_have_attribute("aria-readonly", "true")
     expect(notification).to_contain_text("saved checkpoint is unchanged")
     expect(notification).to_contain_text("New chat")
     expect(page.locator("#dispatch_count")).to_have_text(
@@ -43,6 +46,8 @@ def test_capture_failure_notification_and_new_chat_recovery(
         page.get_by_role("button", name="Correct model state").click()
         expect(page.locator("#poison_status")).to_have_text("Healthy")
     expect(chat.loc_input).to_be_visible(timeout=30_000)
+    # The rejected draft is still in the composer; replace it.
+    chat.loc_input.fill("")
     chat.set_user_input("recovered")
     expect(chat.loc_input_button).to_be_enabled(timeout=30_000)
     chat.send_user_input(method="enter")

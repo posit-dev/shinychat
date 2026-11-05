@@ -15,7 +15,14 @@ import type {
 // behavior still isn't replicated and remains covered by ChatInput's tests.
 export const FakeTiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
   function FakeTiptapInput(
-    { placeholder, onHasTextChange, onSubmit, submitKey, canSubmitEmpty },
+    {
+      placeholder,
+      onHasTextChange,
+      onSubmit,
+      submitKey,
+      canSubmitEmpty,
+      locked,
+    },
     ref,
   ) {
     const [value, setValue] = useState("")
@@ -59,7 +66,9 @@ export const FakeTiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
         aria-label="Chat message"
         placeholder={placeholder}
         value={value}
+        readOnly={locked}
         onChange={(e) => {
+          if (locked) return
           setBoth(e.target.value)
           onHasTextChange(e.target.value.trim().length > 0)
         }}
@@ -72,7 +81,9 @@ export const FakeTiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
             e.preventDefault()
             const isBlank = valueRef.current.trim().length === 0
             if (isBlank && !canSubmitEmpty?.()) return
-            if (onSubmit(valueRef.current)) {
+            const result = onSubmit(valueRef.current)
+            // "retained" keeps the content until the server accepts it.
+            if (result && result !== "retained") {
               setBoth("")
               onHasTextChange(false)
             }

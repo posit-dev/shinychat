@@ -123,6 +123,8 @@ export interface ChatContainerProps {
   messages: ChatMessageData[]
   streamingMessage: ChatMessageData | null
   inputDisabled: boolean
+  /** Block edits to the composer until the server admits the last submission. */
+  composerLocked?: boolean
   submissionBlocked?: boolean
   inputPlaceholder: string
   iconAssistant?: string
@@ -181,6 +183,7 @@ export const ChatContainer = forwardRef<
     messages,
     streamingMessage,
     inputDisabled,
+    composerLocked = false,
     submissionBlocked = false,
     inputPlaceholder,
     iconAssistant,
@@ -830,6 +833,8 @@ export const ChatContainer = forwardRef<
     if (!suggestion) return
 
     e.preventDefault()
+    // A pending submission owns the locked composer.
+    if (composerLocked) return
     // Cmd/Ctrl + event = force submit; Alt/Opt + event = force set without submitting
     const shouldSubmit =
       e.metaKey || e.ctrlKey ? true : e.altKey ? false : submit
@@ -1193,6 +1198,7 @@ export const ChatContainer = forwardRef<
                 uploadAccept={uploadAccept}
                 maxUploadSize={maxUploadSize}
                 disabled={inputDisabled}
+                locked={composerLocked}
                 historyStore={historyStore}
                 submissionBlocked={submissionBlocked}
                 hasTopShadow={!isAtBottom}

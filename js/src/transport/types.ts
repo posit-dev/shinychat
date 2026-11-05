@@ -233,6 +233,25 @@ export type ChatAction =
       attachment_mode?: "append" | "set"
     }
   | { type: "remove_loading" }
+  | {
+      /**
+       * The server finished admitting the submission with this client message
+       * ID without rejecting it. The browser then shows the held submission
+       * in the message list, clears the composer content it retained, and
+       * releases the lock taken by `INPUT_SENT` with `awaitAcceptance`.
+       */
+      type: "input_received"
+      id: string
+    }
+  | {
+      /**
+       * The server rejected the submission with this client message ID
+       * (it was not sent). The browser discards the held submission and
+       * unlocks the composer, which still holds the text and attachments.
+       */
+      type: "input_rejected"
+      id: string
+    }
   | { type: "remove_message"; id: string }
   | { type: "update_cancel"; enable_cancel: boolean }
   | { type: "update_upload"; enable_upload: boolean }

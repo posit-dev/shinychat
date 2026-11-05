@@ -448,10 +448,14 @@ def test_echoed_slash_command_capture_error_removes_loading_message():
         chat = Chat("echoed_slash_capture_error", history=False)
 
         async def _capture_error(
-            message: ChatMessage, *, dispatch_user_submit: bool = True
+            message: ChatMessage,
+            *,
+            dispatch_user_submit: bool = True,
+            on_commit: Any = None,
         ) -> None:
             del message
             del dispatch_user_submit
+            del on_commit
             raise RuntimeError("capture failed")
 
         async def _capture_action(
