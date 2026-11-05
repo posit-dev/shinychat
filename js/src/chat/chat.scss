@@ -637,6 +637,23 @@ shiny-chat-container:not([fill]) {
   }
 }
 
+// While a submission waits for the server to accept it, the composer holds
+// the sent content read-only. Dim it so the lock reads as intentional.
+.shiny-chat-input-dropzone.is-pending {
+  .tiptap,
+  .shiny-chat-input-attachments {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transition: opacity 0.15s ease-in-out;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tiptap,
+    .shiny-chat-input-attachments {
+      transition: none;
+    }
+  }
+}
+
 .shiny-chat-input {
   --_input-padding-top: 0;
   --_input-padding-bottom: var(--_chat-composer-input-padding-bottom);

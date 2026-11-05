@@ -47,6 +47,8 @@ import type {
   ContentType,
   ChatAction,
 } from "../transport/types"
+
+type UpdateInputAction = Extract<ChatAction, { type: "update_input" }>
 import type { HtmlDep } from "rstudio-shiny/srcts/types/src/shiny/render"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 import type { AttachmentPayload } from "./attachments"
@@ -218,6 +220,56 @@ export function ChatApp({
   useLayoutEffect(() => {
     messagesRef.current = state.messages
   }, [state.messages])
+  const pendingInputRef = useRef(state.pendingInput)
+  // Programmatic value/attachment updates that arrived while a submission
+  // awaited acceptance. They apply in order once it is accepted; any other
+  // end to the wait discards them (see handleAction).
+  const heldInputUpdatesRef = useRef<UpdateInputAction[]>([])
+  // Set once the server settles the pending input (accepted, rejected or
+  // cleaned up). pendingInputRef keeps it until React commits, so updates
+  // arriving in between still queue and replay against the committed state.
+  const holdReleasedRef = useRef(false)
+  const applyInputUpdate = useCallback((action: UpdateInputAction) => {
+    // Placeholder updates go through the reducer (it's the only remaining
+    // field the reducer tracks for update_input).
+    if (action.placeholder !== undefined) {
+      dispatch({ type: "update_input", placeholder: action.placeholder })
+    }
+
+    // Value and focus are always imperative — the textarea is fully
+    // uncontrolled, so the reducer never touches its value.
+    if (action.value !== undefined || action.attachments !== undefined) {
+      containerRef.current?.setInputValue(action.value, {
+        submit: action.submit,
+        focus: action.focus,
+        attachments: action.attachments,
+        attachmentMode: action.attachment_mode,
+      })
+    } else if (action.focus) {
+      containerRef.current?.focus()
+    }
+  }, [])
+  const discardHeldInputUpdates = useCallback(() => {
+    if (heldInputUpdatesRef.current.length === 0) return
+    heldInputUpdatesRef.current = []
+    console.warn(
+      "[shinychat] Discarded input updates that arrived while a message awaited acceptance; the message was not accepted.",
+    )
+  }, [])
+  useLayoutEffect(() => {
+    pendingInputRef.current = state.pendingInput
+    holdReleasedRef.current = false
+    if (state.pendingInput !== null) return
+    // Left here: updates held before an acceptance, and any that arrived
+    // after the server settled the input but before this commit. They apply
+    // now, so a held submit sees the composer's committed state, as it would
+    // have without the hold. After an acceptance that state is still
+    // awaiting the response, so a held submit is refused and can't start
+    // another hold mid-replay.
+    const held = heldInputUpdatesRef.current
+    heldInputUpdatesRef.current = []
+    held.forEach(applyInputUpdate)
+  }, [state.pendingInput, applyInputUpdate])
   const smootherRef = useRef<StreamSmoother<ChunkMeta> | null>(null)
   // Set on CANCEL_REQUESTED: providers can keep sending chunks after a
   // cancel, and those must append raw rather than pace in — stopping should
@@ -262,24 +314,63 @@ export function ChatApp({
         return
       }
       if (action.type === "update_input") {
-        // Placeholder updates go through the reducer (it's the only
-        // remaining field the reducer tracks for update_input).
-        if (action.placeholder !== undefined) {
-          dispatch({ type: "update_input", placeholder: action.placeholder })
+        // While a submission awaits server acceptance the composer holds it,
+        // locked. Value, attachment and submit updates wait until it is
+        // accepted so they land where they would have without the hold: after
+        // the submission leaves the composer.
+        if (
+          pendingInputRef.current !== null &&
+          (action.value !== undefined || action.attachments !== undefined)
+        ) {
+          heldInputUpdatesRef.current.push(action)
+          return
         }
-
-        // Value and focus are always imperative — the textarea is
-        // fully uncontrolled, so the reducer never touches its value.
-        if (action.value !== undefined || action.attachments !== undefined) {
-          containerRef.current?.setInputValue(action.value, {
-            submit: action.submit,
-            focus: action.focus,
-            attachments: action.attachments,
-            attachmentMode: action.attachment_mode,
-          })
-        } else if (action.focus) {
-          containerRef.current?.focus()
+        applyInputUpdate(action)
+        return
+      }
+      if (action.type === "input_rejected") {
+        // The composer keeps the user's rejected text and attachments, so
+        // held updates must not overwrite them. A held submit would most
+        // likely be refused for the same reason this one was.
+        if (
+          pendingInputRef.current?.id === action.id &&
+          !holdReleasedRef.current
+        ) {
+          discardHeldInputUpdates()
+          holdReleasedRef.current = true
         }
+        dispatch(action)
+        return
+      }
+      if (
+        (action.type === "remove_loading" || action.type === "clear") &&
+        pendingInputRef.current !== null &&
+        !holdReleasedRef.current
+      ) {
+        // Releases the hold without acceptance (e.g. the server failed before
+        // committing the input), so it is handled like a rejection.
+        discardHeldInputUpdates()
+        holdReleasedRef.current = true
+      }
+      if (action.type === "input_received") {
+        // The submitted content stayed in the (locked) composer until now,
+        // and the reducer appends it to the message list on this action. A
+        // rejection never gets here, so nothing is lost if the server
+        // refuses the input.
+        const pending = pendingInputRef.current
+        if (pending?.id === action.id && !holdReleasedRef.current) {
+          if (pending.clearOnAccept) {
+            containerRef.current?.setInputValue("", {
+              ...(pending.clearOnAccept === "all"
+                ? { attachments: [], attachmentMode: "set" as const }
+                : {}),
+            })
+          }
+          // Held updates replay at commit; a later cleanup must not discard
+          // them.
+          holdReleasedRef.current = true
+        }
+        dispatch(action)
         return
       }
       if (action.type === "history_update") {
@@ -416,7 +507,15 @@ export function ChatApp({
       deferred = []
       unsubscribe()
     }
-  }, [transport, elementId, historyStore, inputId, state.enableUpload])
+  }, [
+    transport,
+    elementId,
+    historyStore,
+    inputId,
+    state.enableUpload,
+    applyInputUpdate,
+    discardHeldInputUpdates,
+  ])
 
   // Stopping should stop the motion: reveal whatever is buffered at once. If
   // the stream already ended and only its tail was draining, there is nothing
@@ -626,6 +725,7 @@ export function ChatApp({
                 messages={state.messages}
                 streamingMessage={state.streamingMessage}
                 inputDisabled={state.inputDisabled}
+                composerLocked={state.pendingInput !== null}
                 submissionBlocked={submissionBlocked}
                 inputPlaceholder={state.inputPlaceholder}
                 iconAssistant={iconAssistant}

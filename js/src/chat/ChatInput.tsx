@@ -27,6 +27,11 @@ export interface ChatInputProps {
   uploadAccept: string[]
   maxUploadSize: number | null
   disabled: boolean
+  /**
+   * Block text, paste, drop and attachment edits while a submission awaits
+   * server admission. Programmatic `setInputValue` still applies.
+   */
+  locked?: boolean
   historyStore: HistoryStore
   submissionBlocked?: boolean
   hasTopShadow?: boolean
@@ -57,6 +62,14 @@ export interface ChatInputHandle {
   focus(): void
 }
 
+/** `"retained"`: submitted, but keep the content in the composer until the server accepts it. */
+export type SubmitResult = boolean | "retained"
+
+function swallowEvent(e: { preventDefault(): void; stopPropagation(): void }) {
+  e.preventDefault()
+  e.stopPropagation()
+}
+
 function parseSlashCommand(
   value: string,
   commands: SlashCommandDef[],
@@ -81,6 +94,7 @@ export const ChatInput = memo(
       uploadAccept,
       maxUploadSize,
       disabled,
+      locked = false,
       historyStore,
       submissionBlocked = false,
       hasTopShadow = false,
@@ -119,8 +133,11 @@ export const ChatInput = memo(
       resetAll,
     } = staging
 
+    // `interactive` submits come from the composer itself. Under
+    // completion-v2 they return "retained": the content stays (locked) in the
+    // composer until the server accepts it, so a rejection loses nothing.
     const submitValue = useCallback(
-      (content: string): boolean => {
+      (content: string, interactive = true): SubmitResult => {
         // Read the live snapshot: history_update can arrive before React
         // unmounts the input, so a same-tick send must not render acceptance.
         if (
@@ -134,7 +151,12 @@ export const ChatInput = memo(
         if (disabled) return false
 
         const client_message_id = uuid()
+        // Only history v2 can reject an accepted submission, and only it
+        // acknowledges acceptance, so only it needs the composer lock.
+        const awaitAcceptance =
+          historyStore.getSnapshot().transitionProtocol === "completion-v2"
         const slashMatch = parseSlashCommand(content, slashCommands)
+        let retained = false
         if (slashMatch) {
           // Slash commands don't carry files; staged attachments stay in the
           // tray so they can be sent with a regular message afterwards.
@@ -160,6 +182,7 @@ export const ChatInput = memo(
           const echo = detail.echo
           const prevented = ev.defaultPrevented
 
+          retained = interactive && echo && !prevented && awaitAcceptance
           if (echo) {
             dispatch({
               type: "INPUT_SENT",
@@ -167,6 +190,8 @@ export const ChatInput = memo(
               content,
               role: "user",
               awaitResponse: !prevented,
+              awaitAcceptance: awaitAcceptance && !prevented,
+              ...(retained ? { clearOnAccept: "text" as const } : {}),
             })
           }
           if (!prevented) {
@@ -179,11 +204,14 @@ export const ChatInput = memo(
             )
           }
         } else {
+          retained = interactive && awaitAcceptance
           dispatch({
             type: "INPUT_SENT",
             id: client_message_id,
             content,
             role: "user",
+            awaitAcceptance,
+            ...(retained ? { clearOnAccept: "all" as const } : {}),
             ...(payloads.length > 0 ? { attachments: payloads } : {}),
           })
           transport.sendInput(inputId, {
@@ -191,10 +219,10 @@ export const ChatInput = memo(
             attachments: payloads,
             client_message_id,
           })
-          resetAll()
+          if (!retained) resetAll()
         }
         onSend?.()
-        return true
+        return retained ? "retained" : true
       },
       [
         disabled,
@@ -277,7 +305,9 @@ export const ChatInput = memo(
           if (submitAttachments.length === 0) {
             // No attachments in play — reuse the interactive path so slash
             // commands submitted programmatically still execute.
-            submitted = submitValue(submitContent)
+            // The user's draft stays in the composer, so a rejection must not
+            // restore this content over it.
+            submitted = submitValue(submitContent, false) !== false
           } else if (!disabled && submitAttachments.length > 0) {
             const client_message_id = uuid()
             dispatch({
@@ -285,6 +315,9 @@ export const ChatInput = memo(
               id: client_message_id,
               content: submitContent,
               role: "user",
+              awaitAcceptance:
+                historyStore.getSnapshot().transitionProtocol ===
+                "completion-v2",
               attachments: submitAttachments,
             })
             transport.sendInput(inputId, {
@@ -354,9 +387,11 @@ export const ChatInput = memo(
     const sendButtonLabel =
       sendButtonState === "cancel"
         ? "Stop generating"
-        : sendButtonState === "pending" || sendButtonState === "cancelling"
-          ? "Loading"
-          : "Send message"
+        : locked
+          ? "Sending message"
+          : sendButtonState === "pending" || sendButtonState === "cancelling"
+            ? "Loading"
+            : "Send message"
 
     // Only "empty" gets the native disabled attribute (matches prior
     // behavior); "pending"/"cancelling" are non-interactive via CSS
@@ -374,8 +409,9 @@ export const ChatInput = memo(
         : sendButtonState === "ready"
           ? () => {
               const content = tiptapRef.current?.serializeEditor() ?? ""
-              if (submitValue(content)) {
-                tiptapRef.current?.setInputValue("")
+              const result = submitValue(content)
+              if (result) {
+                if (result !== "retained") tiptapRef.current?.setInputValue("")
                 tiptapRef.current?.focus()
               }
             }
@@ -385,10 +421,11 @@ export const ChatInput = memo(
       // The whole input region is a drop zone, so files can be dropped onto
       // the attachment tray (not just the editor) when attachments exist.
       <div
-        className="shiny-chat-input-dropzone"
-        onDropCapture={onDrop}
+        className={`shiny-chat-input-dropzone${locked ? " is-pending" : ""}`}
+        aria-busy={locked || undefined}
+        onDropCapture={locked ? swallowEvent : onDrop}
         onDragOver={(e) => e.preventDefault()}
-        onPasteCapture={onPaste}
+        onPasteCapture={locked ? swallowEvent : onPaste}
       >
         <AttachmentTray
           staging={staging}
@@ -396,6 +433,7 @@ export const ChatInput = memo(
           maxUploadSize={maxUploadSize}
           enableUpload={enableUpload}
           disabled={disabled}
+          locked={locked}
         />
         <TiptapInput
           ref={tiptapRef}
@@ -408,6 +446,7 @@ export const ChatInput = memo(
           userMessages={userMessages}
           submitKey={submitKey}
           canSubmitEmpty={canSubmitEmpty}
+          locked={locked}
         />
         <button
           type="button"

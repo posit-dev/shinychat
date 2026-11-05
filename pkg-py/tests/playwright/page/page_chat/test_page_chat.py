@@ -54,6 +54,8 @@ def test_desktop_navigation_streaming_and_history_auto_open(
     chat.set_user_input("stream while hidden")
     expect(chat.loc_input_button).to_be_enabled(timeout=TIMEOUT)
     chat.send_user_input()
+    # The sent text stays in the locked composer until the server accepts it.
+    expect(chat.loc_input).to_have_text("", timeout=TIMEOUT)
     chat.set_user_input("preserved draft")
 
     page_chat.select_page("Settings")

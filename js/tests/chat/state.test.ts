@@ -2322,3 +2322,91 @@ describe("html_deps retention", () => {
     expect(last.htmlDeps).toEqual([dep])
   })
 })
+
+describe("pending input acceptance", () => {
+  const send = (state: ChatState, id: string, awaitAcceptance?: boolean) =>
+    chatReducer(state, {
+      type: "INPUT_SENT",
+      id,
+      content: "hi",
+      role: "user",
+      awaitAcceptance,
+    })
+
+  it("appends immediately when acceptance is not awaited", () => {
+    const state = send(initialState, "A")
+    expect(state.pendingInput).toBeNull()
+    expect(state.messages.map((m) => m.id)).toContain("A")
+    expect(state.inputDisabled).toBe(true)
+  })
+
+  it("holds the submission out of the message list until accepted", () => {
+    const state = send(initialState, "A", true)
+    expect(state.messages).toEqual([])
+    expect(state.pendingInput).toMatchObject({ id: "A", content: "hi" })
+    expect(state.inputDisabled).toBe(true)
+  })
+
+  it("appends the user row and loading placeholder on a matching acknowledgement", () => {
+    const pending = send(initialState, "A", true)
+    const accepted = chatReducer(pending, { type: "input_received", id: "A" })
+    expect(accepted.pendingInput).toBeNull()
+    expect(accepted.messages.map((m) => m.role)).toEqual(["user", "assistant"])
+    expect(accepted.messages[0]).toMatchObject({ id: "A", content: "hi" })
+    expect(accepted.messages[1]?.isPlaceholder).toBe(true)
+    expect(accepted.inputDisabled).toBe(true)
+  })
+
+  it("keeps awaitResponse=false submissions placeholder-free and enabled", () => {
+    const pending = chatReducer(initialState, {
+      type: "INPUT_SENT",
+      id: "A",
+      content: "/cmd",
+      role: "user",
+      awaitResponse: false,
+      awaitAcceptance: true,
+    })
+    expect(pending.inputDisabled).toBe(false)
+    const accepted = chatReducer(pending, { type: "input_received", id: "A" })
+    expect(accepted.messages.map((m) => m.id)).toEqual(["A"])
+    expect(accepted.inputDisabled).toBe(false)
+  })
+
+  it("ignores an acknowledgement or rejection for a different input", () => {
+    const pending = send(initialState, "A", true)
+    expect(chatReducer(pending, { type: "input_received", id: "B" })).toBe(
+      pending,
+    )
+    expect(chatReducer(pending, { type: "input_rejected", id: "B" })).toBe(
+      pending,
+    )
+  })
+
+  it("discards the held submission on rejection without ever adding a row", () => {
+    const pending = send(initialState, "A", true)
+    const rejected = chatReducer(pending, { type: "input_rejected", id: "A" })
+    expect(rejected.pendingInput).toBeNull()
+    expect(rejected.messages).toEqual([])
+    expect(rejected.inputDisabled).toBe(false)
+  })
+
+  it("clears on remove_loading, including while a stream is open", () => {
+    const pending = send(initialState, "A", true)
+    expect(chatReducer(pending, { type: "remove_loading" })).toMatchObject({
+      pendingInput: null,
+      inputDisabled: false,
+    })
+    const streaming = {
+      ...pending,
+      streamingMessage: makeAssistantMsg({ id: "s", streaming: true }),
+    }
+    expect(
+      chatReducer(streaming, { type: "remove_loading" }).pendingInput,
+    ).toBeNull()
+  })
+
+  it("clears on clear", () => {
+    const pending = send(initialState, "A", true)
+    expect(chatReducer(pending, { type: "clear" }).pendingInput).toBeNull()
+  })
+})

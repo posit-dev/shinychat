@@ -537,6 +537,12 @@ class Chat:
             async def _on_user_input():
                 data = self._session.input[self.user_input_id]()
                 client_message_id = data.get("client_message_id")
+                committed = False
+
+                def mark_committed() -> None:
+                    nonlocal committed
+                    committed = True
+
                 try:
                     text, attachments = self._user_input()
                     msg = ChatMessage(
@@ -544,8 +550,23 @@ class Chat:
                         role="user",
                         attachments=attachments,
                     )
-                    await self._record_accepted_user_input_with_capture(msg)
+                    admitted = (
+                        await self._record_accepted_user_input_with_capture(
+                            msg, on_commit=mark_committed
+                        )
+                    )
+                    if admitted:
+                        await self._send_input_received(client_message_id)
+                    else:
+                        # Refused at admission: the browser must drop the
+                        # held submission and keep the composer draft rather
+                        # than wait for a response that will never come.
+                        await self._send_input_rejected(client_message_id)
                 except Exception as e:
+                    if committed:
+                        await self._send_input_received_after_failure(
+                            client_message_id
+                        )
                     await self._handle_input_exception(e, client_message_id)
 
             @reactive.effect
@@ -568,11 +589,20 @@ class Chat:
                 command = data.get("command", "")
                 user_text = data.get("userText", "")
                 echo = bool(data.get("echo", True))
+                committed = False
+
+                def mark_committed() -> None:
+                    nonlocal committed
+                    committed = True
+
                 try:
                     if not self.history._history_submission_admitted():
                         # Client-triggered, not a programmatic append; direct
                         # user actions have their own rejection path (P5.4),
-                        # so this stays silent like the user-input sites.
+                        # so this stays silent apart from releasing the held
+                        # echo: no notification, no resync.
+                        if echo:
+                            await self._send_input_rejected(client_message_id)
                         return
                     if echo:
                         full_text = f"/{command} {user_text}".rstrip()
@@ -580,9 +610,25 @@ class Chat:
                         from ._history_recorder import _ModelCaptureError
 
                         try:
-                            await self._record_accepted_user_input_with_capture(
-                                msg, dispatch_user_submit=False
+                            admitted = await (
+                                self._record_accepted_user_input_with_capture(
+                                    msg,
+                                    dispatch_user_submit=False,
+                                    on_commit=mark_committed,
+                                )
                             )
+                            if not admitted:
+                                # Defensive: the early admission check above
+                                # currently intercepts every refusal before
+                                # this call, with no await between, so this
+                                # branch is unreachable today. Keep it so the
+                                # echo is never acknowledged if that early
+                                # check ever changes or moves.
+                                await self._send_input_rejected(
+                                    client_message_id
+                                )
+                                return
+                            await self._send_input_received(client_message_id)
                         except _ModelCaptureError as e:
                             await self._handle_input_exception(
                                 e, client_message_id
@@ -600,6 +646,10 @@ class Chat:
                                 cast(UserSubmitFunction0, reg.handler)
                             )()
                 except Exception as e:
+                    if committed:
+                        await self._send_input_received_after_failure(
+                            client_message_id
+                        )
                     await self._raise_exception(e)
                 finally:
                     await self._remove_loading_message()
@@ -962,27 +1012,50 @@ class Chat:
 
         return remove
 
+    async def _send_input_received(self, client_message_id: object) -> None:
+        # Releases the browser's composer lock for a submission that was not
+        # rejected during admission.
+        if isinstance(client_message_id, str):
+            await self._send_action(
+                {"type": "input_received", "id": client_message_id}
+            )
+
+    async def _send_input_rejected(self, client_message_id: object) -> None:
+        # Admission refused the submission: the browser discards its held
+        # copy, keeps the composer draft, and unlocks the composer. Nothing
+        # was recorded, so there is no row to remove or position to refresh.
+        if isinstance(client_message_id, str):
+            await self._send_action(
+                {"type": "input_rejected", "id": client_message_id}
+            )
+
+    async def _send_input_received_after_failure(
+        self, client_message_id: object
+    ) -> None:
+        # The input was committed before a later step failed (for example
+        # persistence), so it is accepted: the browser must show it rather
+        # than drop a message the server transcript contains. A delivery
+        # failure here must not replace the error being handled.
+        try:
+            await self._send_input_received(client_message_id)
+        except Exception as e:
+            warnings.warn(
+                f"Could not acknowledge an accepted input: {e}", stacklevel=1
+            )
+
     async def _handle_input_exception(
         self, e: Exception, client_message_id: str | None = None
     ) -> None:
         from ._history_recorder import _ModelCaptureError
 
         if isinstance(e, _ModelCaptureError):
-            controller = self.history._controller
             delivery_error: BaseException | None = None
             try:
-                if (
-                    isinstance(client_message_id, str)
-                    and controller is not None
-                ):
-                    # Capture has exited the recorder lock. Serialize removal and
-                    # positional refresh with any subsequent accepted exchange.
-                    async with controller._exchange_recorder.lock:
-                        await self._send_action(
-                            {"type": "remove_message", "id": client_message_id}
-                        )
-                        await controller._send_exchange_metadata()
-                        await controller._send_sibling_metadata()
+                # The browser holds the submission out of its message list
+                # until acceptance, so rejecting it needs no row removal
+                # or positional refresh: it discards the held submission
+                # and unlocks the composer, which still holds the input.
+                await self._send_input_rejected(client_message_id)
             except BaseException as err:
                 delivery_error = err
                 raise
@@ -2545,7 +2618,14 @@ class Chat:
         dispatch_user_submit: bool = True,
         staged_admission: "StagedInputAdmission | None" = None,
         transaction: object | None = None,
-    ) -> None:
+        on_commit: Callable[[], None] | None = None,
+    ) -> bool:
+        """Record user input that admission accepted.
+
+        Returns whether the input was admitted: ``False`` only for the
+        silent non-staged refusal (nothing was recorded), ``True`` once the
+        input is recorded. Staged refusals raise instead.
+        """
         if staged_admission is not None:
             # A server-staged submission is admitted by the history
             # controller while it owns the destructive mutation, so browser
@@ -2575,17 +2655,20 @@ class Chat:
                 raise RuntimeError(
                     "Cannot admit a staged input while submissions are not admitted."
                 )
-            return
+            return False
         stored = self._as_stored_message(message)
         if staged_admission is not None:
             await self._transcript.record_staged_input_and_notify(
                 staged_admission, stored
             )
         else:
-            await self._transcript.record_accepted_input_and_notify(stored)
+            await self._transcript.record_accepted_input_and_notify(
+                stored, on_commit=on_commit
+            )
         self._publish_accepted_user_input(
             stored, dispatch_user_submit=dispatch_user_submit
         )
+        return True
 
     def _publish_accepted_user_input(
         self,
@@ -2671,6 +2754,23 @@ class Chat:
             ``"append"`` (default) adds to the existing set; ``"set"`` replaces it.
             Pass ``attachment_mode="set"`` with ``attachments=[]`` to clear all staged
             attachments.
+
+        Notes
+        -----
+        When the browser uses the ``completion-v2`` protocol, including when
+        conversation history is enabled, a submitted message stays in the
+        locked message box until the server accepts it. Calls containing
+        ``value`` or ``attachments`` that reach the browser during that time
+        are held and applied in order once the message is accepted, after it
+        leaves the message box. If the server rejects the message, or the wait
+        ends without acceptance (for example, because of an error), the
+        user's text and attachments stay in the message box and the held calls
+        are discarded, including any with ``submit=True``, and a warning is logged
+        in the browser console. Calls that only update ``placeholder`` apply
+        immediately.
+
+        ``submit=True`` has no effect while a response is in progress, so a held
+        submit applied after acceptance usually has no effect either.
         """
 
         if submit and value is None:

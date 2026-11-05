@@ -8,6 +8,7 @@ import { Extension, Editor, type JSONContent, type Range } from "@tiptap/core"
 import { CommandMention } from "./tiptap/commandMention"
 import { createSuggestionRender } from "./tiptap/suggestionRender"
 import { SuggestionPluginKey } from "@tiptap/suggestion"
+import { Plugin, PluginKey } from "@tiptap/pm/state"
 import type { SubmitKey } from "./tiptap/submitShortcut"
 import { filterSlashCommands } from "./SlashCommandPalette"
 import { useInputHistory } from "./useInputHistory"
@@ -28,7 +29,8 @@ export interface TiptapInputProps {
   hasTopShadow?: boolean
   slashCommands: SlashCommandDef[]
   onHasTextChange: (hasText: boolean) => void
-  onSubmit: (content: string) => boolean
+  /** Truthy when submitted; `"retained"` keeps the content in the editor. */
+  onSubmit: (content: string) => boolean | "retained"
   userMessages: string[]
   submitKey: SubmitKey
   /**
@@ -36,7 +38,16 @@ export interface TiptapInputProps {
    * empty (e.g. the wrapping ChatInput has staged attachments to send).
    */
   canSubmitEmpty?: () => boolean
+  /**
+   * Reject user edits to the document (typing, paste, drop, undo) while true,
+   * keeping focus and selection. Edits made through the imperative handle
+   * still apply.
+   */
+  locked?: boolean
 }
+
+// Transactions from the imperative handle carry this meta and bypass `locked`.
+const PROGRAMMATIC_META = "shinychatProgrammatic"
 
 export function serializeEditor(editor: Editor): string {
   const doc = editor.state.doc
@@ -105,6 +116,7 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
       userMessages,
       submitKey,
       canSubmitEmpty,
+      locked = false,
     },
     ref,
   ) {
@@ -119,6 +131,8 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
     onHasTextChangeRef.current = onHasTextChange
     const canSubmitEmptyRef = useRef(canSubmitEmpty)
     canSubmitEmptyRef.current = canSubmitEmpty
+    const lockedRef = useRef(locked)
+    lockedRef.current = locked
     const resetRef = useRef(reset)
     resetRef.current = reset
     const editorInstanceRef = useRef<Editor | null>(null)
@@ -129,6 +143,20 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
         Text,
         HardBreak,
         UndoRedo,
+        Extension.create({
+          name: "composerLock",
+          addProseMirrorPlugins() {
+            return [
+              new Plugin({
+                key: new PluginKey("composerLock"),
+                filterTransaction: (tr) =>
+                  !lockedRef.current ||
+                  !tr.docChanged ||
+                  tr.getMeta(PROGRAMMATIC_META) === true,
+              }),
+            ]
+          },
+        }),
         Extension.create({
           name: "submitShortcut",
           priority: 200,
@@ -141,9 +169,12 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
               const content = serializeEditor(this.editor)
               const isBlank = this.editor.isEmpty || content.trim().length === 0
               if (isBlank && !canSubmitEmptyRef.current?.()) return false
-              if (onSubmitRef.current(content)) {
-                this.editor.commands.clearContent(true)
-                onHasTextChangeRef.current(false)
+              const result = onSubmitRef.current(content)
+              if (result) {
+                if (result !== "retained") {
+                  this.editor.commands.clearContent(true)
+                  onHasTextChangeRef.current(false)
+                }
                 resetRef.current()
               }
               return true
@@ -255,6 +286,16 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
     useEffect(() => {
       const el = editor?.view?.dom
       if (!el) return
+      if (locked) {
+        el.setAttribute("aria-readonly", "true")
+      } else {
+        el.removeAttribute("aria-readonly")
+      }
+    }, [editor, locked])
+
+    useEffect(() => {
+      const el = editor?.view?.dom
+      if (!el) return
       if (slashCommands.length > 0) {
         el.setAttribute("aria-haspopup", "listbox")
       } else {
@@ -274,17 +315,21 @@ export const TiptapInput = forwardRef<TiptapInputHandle, TiptapInputProps>(
         ) {
           if (!editor) return
           const oldContent = serializeEditor(editor)
-          editor.commands.setContent(
-            parseToDoc(value, slashCommandsRef.current),
-          )
+          editor
+            .chain()
+            .setMeta(PROGRAMMATIC_META, true)
+            .setContent(parseToDoc(value, slashCommandsRef.current))
+            .run()
           onHasTextChange(value.trim().length > 0)
 
           if (submit) {
             const serialized = serializeEditor(editor)
             onSubmit(serialized)
-            editor.commands.setContent(
-              parseToDoc(oldContent, slashCommandsRef.current),
-            )
+            editor
+              .chain()
+              .setMeta(PROGRAMMATIC_META, true)
+              .setContent(parseToDoc(oldContent, slashCommandsRef.current))
+              .run()
             onHasTextChange(oldContent.trim().length > 0)
           }
           if (shouldFocus) {
