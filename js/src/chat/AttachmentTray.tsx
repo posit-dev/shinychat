@@ -15,6 +15,7 @@ export interface AttachmentTrayProps {
   maxUploadSize: number | null
   enableUpload?: boolean
   disabled?: boolean
+  locked?: boolean
 }
 
 export const AttachmentTray = memo(function AttachmentTray({
@@ -23,6 +24,7 @@ export const AttachmentTray = memo(function AttachmentTray({
   maxUploadSize,
   enableUpload,
   disabled,
+  locked = false,
 }: AttachmentTrayProps) {
   const {
     attachments,
@@ -48,7 +50,10 @@ export const AttachmentTray = memo(function AttachmentTray({
               key={a.id}
               attachment={a}
               index={i}
-              onRemove={() => removeAttachmentByKeyboard(i)}
+              locked={locked}
+              onRemove={() => {
+                if (!locked) removeAttachmentByKeyboard(i)
+              }}
               registerRef={(el) => {
                 attachmentRefs.current[i] = el
               }}
@@ -99,11 +104,13 @@ const AttachmentPreview = memo(function AttachmentPreview({
   attachment,
   index,
   onRemove,
+  locked,
   registerRef,
 }: {
   attachment: AttachedFile
   index: number
   onRemove: () => void
+  locked: boolean
   registerRef: (el: HTMLDivElement | null) => void
 }) {
   // Shared focus/keyboard behavior applied to whichever root each variant
@@ -111,9 +118,11 @@ const AttachmentPreview = memo(function AttachmentPreview({
   // Delete/Backspace to remove while focused.
   const containerProps: React.HTMLAttributes<HTMLDivElement> = {
     tabIndex: 0,
-    "aria-label": attachment.name
-      ? `Attachment: ${attachment.name}. Press Delete to remove.`
-      : "Attachment. Press Delete to remove.",
+    "aria-label": locked
+      ? `Attachment: ${attachment.name || "unnamed"}`
+      : attachment.name
+        ? `Attachment: ${attachment.name}. Press Delete to remove.`
+        : "Attachment. Press Delete to remove.",
     onClick: (e) => (e.currentTarget as HTMLDivElement).focus(),
     onKeyDown: (e) => {
       if (e.code === "Delete" || e.code === "Backspace") {
@@ -145,6 +154,7 @@ const AttachmentPreview = memo(function AttachmentPreview({
           aria-label={
             attachment.name ? `Remove ${attachment.name}` : "Remove image"
           }
+          disabled={locked}
           onClick={onRemove}
         >
           ×
@@ -159,6 +169,7 @@ const AttachmentPreview = memo(function AttachmentPreview({
         name={attachment.name}
         size={attachment.size}
         onRemove={onRemove}
+        locked={locked}
         rootRef={registerRef}
         rootProps={containerProps}
       />
@@ -188,6 +199,7 @@ const AttachmentPreview = memo(function AttachmentPreview({
         aria-label={
           attachment.name ? `Remove ${attachment.name}` : "Remove attachment"
         }
+        disabled={locked}
         onClick={onRemove}
       >
         ×

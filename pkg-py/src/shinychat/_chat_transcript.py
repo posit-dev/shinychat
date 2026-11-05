@@ -231,7 +231,10 @@ class ChatTranscript:
         return exchange_id
 
     async def record_accepted_input_and_notify(
-        self, message: StoredMessage
+        self,
+        message: StoredMessage,
+        *,
+        on_commit: Callable[[], None] | None = None,
     ) -> str:
         """Let the observer commit after capture, before persistence/UI awaits.
 
@@ -247,6 +250,8 @@ class ChatTranscript:
 
         def commit() -> None:
             self._commit_accepted_input(prepared)
+            if on_commit is not None:
+                on_commit()
 
         if self._on_accepted_input is None:
             commit()

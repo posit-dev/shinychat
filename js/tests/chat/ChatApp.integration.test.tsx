@@ -2084,3 +2084,336 @@ describe("ChatApp integration: end-of-stream drain", () => {
     expect(shownText()).toContain("next reply")
   })
 })
+
+describe("ChatApp integration: composer retained until input is accepted", () => {
+  function renderChat({ v2 = true } = {}) {
+    const transport = createMockTransport()
+    render(
+      <ChatApp
+        transport={transport}
+        shinyLifecycle={createMockShinyLifecycle()}
+        elementId="test-chat"
+        inputId="test-input"
+      />,
+    )
+    if (v2) {
+      act(() => {
+        transport.fire("test-chat", {
+          type: "history_update",
+          enabled: true,
+          conversations: [],
+          active_id: null,
+          transition_protocol: "completion-v2",
+        })
+      })
+    }
+    const editorEl = screen.getByRole("textbox", {
+      name: "Chat message",
+    }) as HTMLTextAreaElement
+    return { transport, editorEl }
+  }
+
+  async function send(editorEl: HTMLTextAreaElement, text = "my message") {
+    await act(async () => {
+      fireEvent.change(editorEl, { target: { value: text } })
+      fireEvent.keyDown(editorEl, { code: "Enter", key: "Enter" })
+    })
+  }
+
+  const sentId = (transport: ReturnType<typeof createMockTransport>) =>
+    (
+      vi.mocked(transport.sendInput).mock.calls[0]![1] as {
+        client_message_id: string
+      }
+    ).client_message_id
+
+  const sentRows = () =>
+    screen.queryAllByText("my message", { selector: "p" }).length
+
+  it("keeps the sent text in the locked composer, not the chat, until the server accepts it", async () => {
+    const { transport, editorEl } = renderChat()
+    await send(editorEl)
+    expect(editorEl.value).toBe("my message")
+    expect(editorEl.readOnly).toBe(true)
+    expect(sentRows()).toBe(0)
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "input_received",
+        id: sentId(transport),
+      })
+    })
+
+    // The text moves from the composer into the chat in one step.
+    expect(editorEl.value).toBe("")
+    expect(editorEl.readOnly).toBe(false)
+    expect(sentRows()).toBe(1)
+  })
+
+  it("keeps the text and never shows a row when the server rejects the input", async () => {
+    const { transport, editorEl } = renderChat()
+    await send(editorEl)
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "input_rejected",
+        id: sentId(transport),
+      })
+    })
+
+    expect(editorEl.value).toBe("my message")
+    expect(editorEl.readOnly).toBe(false)
+    expect(sentRows()).toBe(0)
+  })
+
+  it("ignores an acknowledgement for a different input", async () => {
+    const { transport, editorEl } = renderChat()
+    await send(editorEl)
+
+    act(() => {
+      transport.fire("test-chat", { type: "input_received", id: "other" })
+    })
+
+    expect(editorEl.value).toBe("my message")
+    expect(editorEl.readOnly).toBe(true)
+  })
+
+  it("unlocks without clearing when the server cleans up with remove_loading", async () => {
+    const { transport, editorEl } = renderChat()
+    await send(editorEl)
+
+    act(() => {
+      transport.fire("test-chat", { type: "remove_loading" })
+    })
+
+    expect(editorEl.value).toBe("my message")
+    expect(editorEl.readOnly).toBe(false)
+  })
+
+  it("holds programmatic input updates until the message is accepted, then applies them in order", async () => {
+    const { transport, editorEl } = renderChat()
+    await send(editorEl)
+
+    act(() => {
+      transport.fire("test-chat", { type: "update_input", value: "first" })
+      transport.fire("test-chat", { type: "update_input", value: "second" })
+    })
+    expect(editorEl.value).toBe("my message")
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "input_received",
+        id: sentId(transport),
+      })
+    })
+
+    // As if the composer had cleared on submit and the updates landed after.
+    expect(editorEl.value).toBe("second")
+    expect(sentRows()).toBe(1)
+  })
+
+  it("refuses a held programmatic submit after acceptance while the response is pending", async () => {
+    const { transport, editorEl } = renderChat()
+    await send(editorEl)
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "update_input",
+        value: "server text",
+        submit: true,
+      })
+    })
+    act(() => {
+      transport.fire("test-chat", {
+        type: "input_received",
+        id: sentId(transport),
+      })
+    })
+
+    // Same as a programmatic submit arriving mid-response without the hold.
+    expect(transport.sendInput).toHaveBeenCalledTimes(1)
+    expect(editorEl.value).toBe("")
+    expect(screen.queryByText("server text", { selector: "p" })).toBeNull()
+  })
+
+  it("discards held programmatic input updates when the message is rejected", async () => {
+    const { transport, editorEl } = renderChat()
+    await send(editorEl)
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "update_input",
+        value: "server text",
+        submit: true,
+      })
+    })
+    act(() => {
+      transport.fire("test-chat", {
+        type: "input_rejected",
+        id: sentId(transport),
+      })
+    })
+
+    expect(editorEl.value).toBe("my message")
+    expect(editorEl.readOnly).toBe(false)
+    expect(transport.sendInput).toHaveBeenCalledTimes(1)
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("Discarded input updates"),
+    )
+
+    // Updates after the rejection apply normally.
+    act(() => {
+      transport.fire("test-chat", { type: "update_input", value: "later" })
+    })
+    expect(editorEl.value).toBe("later")
+    warn.mockRestore()
+  })
+
+  it.each(["remove_loading", "clear"] as const)(
+    "discards held programmatic input updates when %s releases the hold without acceptance",
+    async (type) => {
+      const { transport, editorEl } = renderChat()
+      await send(editorEl)
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+      act(() => {
+        transport.fire("test-chat", {
+          type: "update_input",
+          value: "server text",
+          submit: true,
+        })
+      })
+      act(() => {
+        transport.fire("test-chat", { type })
+      })
+
+      // The server never accepted the input, e.g. it failed before commit,
+      // so the user's unsent text survives as it does after a rejection.
+      expect(editorEl.value).toBe("my message")
+      expect(editorEl.readOnly).toBe(false)
+      expect(transport.sendInput).toHaveBeenCalledTimes(1)
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("Discarded input updates"),
+      )
+      warn.mockRestore()
+    },
+  )
+
+  it("keeps held programmatic input updates when remove_loading follows acceptance", async () => {
+    const { transport, editorEl } = renderChat()
+    await send(editorEl)
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "update_input",
+        value: "server text",
+      })
+      // Same act: nothing commits until all three have been handled.
+      transport.fire("test-chat", {
+        type: "input_received",
+        id: sentId(transport),
+      })
+      transport.fire("test-chat", { type: "remove_loading" })
+    })
+
+    expect(editorEl.value).toBe("server text")
+    expect(sentRows()).toBe(1)
+  })
+
+  it("applies updates arriving just after acceptance behind the held ones", async () => {
+    const { transport, editorEl } = renderChat()
+    await send(editorEl)
+
+    act(() => {
+      transport.fire("test-chat", { type: "update_input", value: "held" })
+      transport.fire("test-chat", {
+        type: "input_received",
+        id: sentId(transport),
+      })
+      transport.fire("test-chat", { type: "update_input", value: "after" })
+    })
+
+    expect(editorEl.value).toBe("after")
+  })
+
+  it("sends a programmatic submit that arrives right after a rejection, before it commits", async () => {
+    const { transport, editorEl } = renderChat()
+    await send(editorEl)
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "input_rejected",
+        id: sentId(transport),
+      })
+      transport.fire("test-chat", {
+        type: "update_input",
+        value: "server text",
+        submit: true,
+      })
+    })
+
+    // Applied once the rejection committed and the composer unlocked, not
+    // against the still-locked composer.
+    expect(transport.sendInput).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(transport.sendInput).mock.calls[1]![1]).toMatchObject({
+      text: "server text",
+    })
+    expect(editorEl.value).toBe("my message")
+  })
+
+  it("leaves a draft alone when a programmatic submit is accepted", async () => {
+    const { transport, editorEl } = renderChat()
+    await act(async () => {
+      fireEvent.change(editorEl, { target: { value: "my draft" } })
+    })
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "update_input",
+        value: "suggested",
+        submit: true,
+      })
+    })
+    const id = sentId(transport)
+    expect(editorEl.value).toBe("my draft")
+
+    act(() => {
+      transport.fire("test-chat", { type: "input_received", id })
+    })
+    expect(editorEl.value).toBe("my draft")
+    expect(screen.getAllByText("suggested", { selector: "p" })).toHaveLength(1)
+  })
+
+  it("leaves a draft alone when a programmatic submit is rejected", async () => {
+    const { transport, editorEl } = renderChat()
+    await act(async () => {
+      fireEvent.change(editorEl, { target: { value: "my draft" } })
+    })
+    act(() => {
+      transport.fire("test-chat", {
+        type: "update_input",
+        value: "suggested",
+        submit: true,
+      })
+    })
+
+    act(() => {
+      transport.fire("test-chat", {
+        type: "input_rejected",
+        id: sentId(transport),
+      })
+    })
+
+    expect(editorEl.value).toBe("my draft")
+    expect(screen.queryByText("suggested", { selector: "p" })).toBeNull()
+  })
+
+  it("clears immediately and never locks without completion-v2", async () => {
+    const { editorEl } = renderChat({ v2: false })
+    await send(editorEl)
+
+    expect(editorEl.value).toBe("")
+    expect(editorEl.readOnly).toBe(false)
+  })
+})

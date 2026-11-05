@@ -6,6 +6,7 @@ export const TextAttachmentPreview = memo(function TextAttachmentPreview({
   name,
   size,
   onRemove,
+  locked = false,
   onActivate,
   rootRef,
   rootProps,
@@ -14,6 +15,8 @@ export const TextAttachmentPreview = memo(function TextAttachmentPreview({
   name: string
   size: number
   onRemove?: () => void
+  /** Disables the remove button while the composer is locked. */
+  locked?: boolean
   /** When set, the card is a clickable button that opens the full-text lightbox
    * (sent-message use). Mutually exclusive with rootProps. */
   onActivate?: () => void
@@ -61,6 +64,7 @@ export const TextAttachmentPreview = memo(function TextAttachmentPreview({
           type="button"
           tabIndex={0}
           aria-label={name ? `Remove ${name}` : "Remove attachment"}
+          disabled={locked}
           onClick={onRemove}
         >
           ×
