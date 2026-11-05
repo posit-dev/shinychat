@@ -4,6 +4,10 @@
 
 ### New features and improvements
 
+- Tool call results that render HTML now syntax-highlight code blocks,
+  matching how code looks elsewhere in the chat.
+  ([\#455](https://github.com/posit-dev/shinychat/issues/455))
+
 - Text file attachments are now sent to the model via
   [`ellmer::content_document_url()`](https://ellmer.tidyverse.org/reference/content_document_file.html)
   rather than a hand-assembled `<file-attachment>` text wrapper, so

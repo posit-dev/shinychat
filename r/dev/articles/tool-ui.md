@@ -408,7 +408,10 @@ to replace the default result content in the drill-down card:
     packages like [htmltools](https://github.com/rstudio/htmltools),
     [gt](https://gt.rstudio.com),
     [reactable](https://glin.github.io/reactable/) or even
-    [htmlwidgets](https://github.com/ramnathv/htmlwidgets).
+    [htmlwidgets](https://github.com/ramnathv/htmlwidgets). Code blocks
+    tagged with a language class (`<pre><code class="language-r">`) are
+    syntax-highlighted; add a `nohighlight` class to a code block to opt
+    out.
 2.  `markdown`: A markdown string that is automatically rendered as rich
     HTML in shinychat.
 3.  `text`: A plain text string that is shown without code formatting.

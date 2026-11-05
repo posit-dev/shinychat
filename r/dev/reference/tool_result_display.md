@@ -46,7 +46,9 @@ tool_result_display(
 - html:
 
   Custom HTML content (to use in place of the default result content in
-  the drill-down card).
+  the drill-down card). Code blocks tagged with a language class
+  (`<pre><code class="language-r">`) are syntax-highlighted; add a
+  `nohighlight` class to a code block to opt out.
 
 - markdown:
 
