@@ -156,7 +156,7 @@ export const ChatMessage = memo(function ChatMessage({
   // Preserve a submitted edit's mounted draft even if a history update makes
   // the conversation read-only before the transition is settled.
   const [retainedEdit, setRetainedEdit] = useState(false)
-  const showEdit = isEditing && (!readOnly || editLocked || retainedEdit)
+  const showEdit = isEditing && (!readOnly || retainedEdit)
   const editRef = useRef<TiptapInputHandle>(null)
   const isUser = message.role === "user"
   const canEdit =

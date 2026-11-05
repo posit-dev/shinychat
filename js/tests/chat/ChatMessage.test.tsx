@@ -1918,6 +1918,27 @@ describe("ChatMessage readOnly", () => {
     expect(onNavigate).toHaveBeenCalledWith(0, "next")
   })
 
+  it("does not reopen an unsent read-only edit during an unrelated transition", () => {
+    const props = {
+      index: 0,
+      message: userMessage({ siblings: { index: 0, total: 2 } }),
+      onEdit: vi.fn(),
+      onNavigate: vi.fn(),
+      isEditing: true,
+    }
+    const { rerender } = render(<ChatMessage {...props} />)
+    fireEvent.change(screen.getByRole("textbox", { name: "Chat message" }), {
+      target: { value: "unsent draft" },
+    })
+    rerender(<ChatMessage {...props} readOnly />)
+    expect(screen.queryByRole("textbox", { name: "Chat message" })).toBeNull()
+
+    rerender(<ChatMessage {...props} readOnly editLocked />)
+    expect(screen.queryByRole("textbox", { name: "Chat message" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Save and resend" })).toBeNull()
+    expect(props.onEdit).not.toHaveBeenCalled()
+  })
+
   it("hides an in-progress editor when the conversation becomes read-only", () => {
     const onEdit = vi.fn()
     const message = userMessage({
