@@ -1,9 +1,9 @@
 import { useMemo, useRef } from "react"
 import {
-  requestDefinitionIcons,
-  requestDefinitionTitles,
+  requestDefinitions,
   supersededRequestIds,
   type ChatMessageData,
+  type RequestDefinition,
 } from "./state"
 
 /**
@@ -34,43 +34,27 @@ export function useSupersededRequests(
 }
 
 /**
- * Definition titles keyed by request id, with a stable map identity when the
- * transcript's title metadata has not changed.
+ * Definition identity (title, icon) keyed by request id, with a stable map
+ * identity when the transcript's definition metadata has not changed.
  */
-export function useRequestDefinitionTitles(
+export function useRequestDefinitions(
   messages: ChatMessageData[],
   streamingMessage: ChatMessageData | null,
-): ReadonlyMap<string, string> {
-  const previous = useRef<Map<string, string>>(new Map())
+): ReadonlyMap<string, RequestDefinition> {
+  const previous = useRef<Map<string, RequestDefinition>>(new Map())
   return useMemo(() => {
-    const next = requestDefinitionTitles(messages, streamingMessage)
+    const next = requestDefinitions(messages, streamingMessage)
     const prev = previous.current
     if (
       next.size === prev.size &&
-      [...next].every(([requestId, title]) => prev.get(requestId) === title)
-    ) {
-      return prev
-    }
-    previous.current = next
-    return next
-  }, [messages, streamingMessage])
-}
-
-/**
- * Definition icons keyed by request id, with a stable map identity when the
- * transcript's icon metadata has not changed.
- */
-export function useRequestDefinitionIcons(
-  messages: ChatMessageData[],
-  streamingMessage: ChatMessageData | null,
-): ReadonlyMap<string, string> {
-  const previous = useRef<Map<string, string>>(new Map())
-  return useMemo(() => {
-    const next = requestDefinitionIcons(messages, streamingMessage)
-    const prev = previous.current
-    if (
-      next.size === prev.size &&
-      [...next].every(([requestId, icon]) => prev.get(requestId) === icon)
+      [...next].every(([requestId, definition]) => {
+        const prevDefinition = prev.get(requestId)
+        return (
+          prevDefinition !== undefined &&
+          prevDefinition.title === definition.title &&
+          prevDefinition.icon === definition.icon
+        )
+      })
     ) {
       return prev
     }

@@ -30,8 +30,7 @@ import {
   type AnyAction,
 } from "./state"
 import {
-  useRequestDefinitionIcons,
-  useRequestDefinitionTitles,
+  useRequestDefinitions,
   useSupersededRequests,
 } from "./useSupersededRequests"
 import { ChatContainer, type ChatContainerHandle } from "./ChatContainer"
@@ -705,21 +704,16 @@ export function ChatApp({
     state.messages,
     state.streamingMessage,
   )
-  const requestDefinitionIcons = useRequestDefinitionIcons(
-    state.messages,
-    state.streamingMessage,
-  )
-  const requestDefinitionTitles = useRequestDefinitionTitles(
+  const requestDefinitions = useRequestDefinitions(
     state.messages,
     state.streamingMessage,
   )
   const toolState: ChatToolState = useMemo(
     () => ({
       supersededRequests,
-      requestDefinitionIcons,
-      requestDefinitionTitles,
+      requestDefinitions,
     }),
-    [supersededRequests, requestDefinitionIcons, requestDefinitionTitles],
+    [supersededRequests, requestDefinitions],
   )
 
   return (

@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
-* A group of related tool calls no longer loses its descriptive title once all the calls finish; the group now keeps the title it had while the calls were running. (#457)
+* A multi-call tool group now keeps the tool's definition title after its calls finish, instead of switching to the first call's result title. (#457)
 
 * Expanding a running tool call's row in a tool group now shows its arguments. Previously the panel stayed empty until the call finished. (#424)
 

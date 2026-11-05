@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import {
   chatReducer,
   contentFromBlocks,
-  inheritRequestDefinitionTitle,
+  inheritRequestDefinition,
   initialState,
-  requestDefinitionTitles,
+  requestDefinitions,
   structuredBlockToLoop,
   supersededRequestIds,
   type ChatState,
@@ -2157,14 +2157,19 @@ describe("supersededRequestIds", () => {
   })
 })
 
-describe("requestDefinitionTitles", () => {
-  const titledRequest = (id: string, title: string): ToolRequestBlock => ({
+describe("requestDefinitions", () => {
+  const titledRequest = (
+    id: string,
+    title: string,
+    icon?: string,
+  ): ToolRequestBlock => ({
     type: "tool_request",
     version: 1,
     request_id: id,
     tool_name: "get_weather",
     arguments: "{}",
     title,
+    icon,
   })
   const result = (id: string, title: string): ToolResultBlock => ({
     type: "tool_result",
@@ -2194,36 +2199,43 @@ describe("requestDefinitionTitles", () => {
     }
   }
 
-  it("collects a running request's definition title keyed by request id", () => {
-    const titles = requestDefinitionTitles(
-      [routed([titledRequest("req-1", "Checking weather")])],
+  it("collects a running request's definition identity keyed by request id", () => {
+    const definitions = requestDefinitions(
+      [
+        routed([
+          titledRequest("req-1", "Checking weather", '<svg class="w"></svg>'),
+        ]),
+      ],
       null,
     )
-    expect(titles.get("req-1")).toBe("Checking weather")
+    expect(definitions.get("req-1")).toEqual({
+      title: "Checking weather",
+      icon: '<svg class="w"></svg>',
+    })
   })
 
   it("collects across messages and from the streaming message", () => {
-    const titles = requestDefinitionTitles(
+    const definitions = requestDefinitions(
       [routed([titledRequest("req-1", "Checking weather")])],
       routed([titledRequest("req-2", "Checking weather")], {
         id: "s",
         streaming: true,
       }),
     )
-    expect(titles.get("req-1")).toBe("Checking weather")
-    expect(titles.get("req-2")).toBe("Checking weather")
+    expect(definitions.get("req-1")?.title).toBe("Checking weather")
+    expect(definitions.get("req-2")?.title).toBe("Checking weather")
   })
 
   it("ignores result titles, which are dynamic, not definition identity", () => {
-    const titles = requestDefinitionTitles(
+    const definitions = requestDefinitions(
       [routed([result("req-1", "Checked weather in Duluth")])],
       null,
     )
-    expect(titles.size).toBe(0)
+    expect(definitions.size).toBe(0)
   })
 
   it("ignores requests in user messages", () => {
-    const titles = requestDefinitionTitles(
+    const definitions = requestDefinitions(
       [
         routed([titledRequest("req-1", "Checking weather")], {
           id: "u",
@@ -2232,11 +2244,11 @@ describe("requestDefinitionTitles", () => {
       ],
       null,
     )
-    expect(titles.size).toBe(0)
+    expect(definitions.size).toBe(0)
   })
 })
 
-describe("inheritRequestDefinitionTitle", () => {
+describe("inheritRequestDefinition", () => {
   const settled = (partial: Partial<ToolCallItem> = {}): ToolCallItem => ({
     requestId: "req-1",
     localId: "req-1",
@@ -2245,34 +2257,47 @@ describe("inheritRequestDefinitionTitle", () => {
     title: "Checked weather in Duluth",
     ...partial,
   })
-  const titles = new Map([["req-1", "Checking weather"]])
+  const definitions = new Map([
+    ["req-1", { title: "Checking weather", icon: '<svg class="w"></svg>' }],
+  ])
 
-  it("copies the request's definition title onto its settled result call", () => {
-    const call = inheritRequestDefinitionTitle(settled(), titles)
+  it("copies the request's definition title and icon onto its settled result call", () => {
+    const call = inheritRequestDefinition(settled(), definitions)
     expect(call.definitionTitle).toBe("Checking weather")
+    expect(call.definitionIcon).toBe('<svg class="w"></svg>')
+    expect(call.icon).toBe('<svg class="w"></svg>')
   })
 
   it("leaves the result's own dynamic title intact", () => {
-    const call = inheritRequestDefinitionTitle(settled(), titles)
+    const call = inheritRequestDefinition(settled(), definitions)
     expect(call.title).toBe("Checked weather in Duluth")
   })
 
   it("keeps an explicit definition title on the result call", () => {
-    const call = inheritRequestDefinitionTitle(
+    const call = inheritRequestDefinition(
       settled({ definitionTitle: "Explicit" }),
-      titles,
+      definitions,
     )
     expect(call.definitionTitle).toBe("Explicit")
   })
 
-  it("returns a running call untouched", () => {
-    const running = settled({ status: "running" })
-    expect(inheritRequestDefinitionTitle(running, titles)).toBe(running)
+  it("keeps an explicit result icon over the definition icon", () => {
+    const call = inheritRequestDefinition(
+      settled({ icon: '<svg class="result"></svg>' }),
+      definitions,
+    )
+    expect(call.icon).toBe('<svg class="result"></svg>')
+    expect(call.definitionIcon).toBe('<svg class="w"></svg>')
   })
 
-  it("returns the call untouched when no request title is indexed", () => {
+  it("returns a running call untouched", () => {
+    const running = settled({ status: "running" })
+    expect(inheritRequestDefinition(running, definitions)).toBe(running)
+  })
+
+  it("returns the call untouched when no request definition is indexed", () => {
     const call = settled({ requestId: "req-unknown" })
-    expect(inheritRequestDefinitionTitle(call, titles)).toBe(call)
+    expect(inheritRequestDefinition(call, definitions)).toBe(call)
   })
 })
 
