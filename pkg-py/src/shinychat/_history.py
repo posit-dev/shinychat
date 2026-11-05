@@ -557,8 +557,10 @@ class ChatHistory:
         on the starting checkpoint: the first accepted input captured app
         state there, so callbacks normally receive those values. A failed
         starting capture preserves any previously saved root values; without
-        recorded values, callbacks receive ``{}``. An explicit save at the
-        root can replace its values. The author callback
+        recorded values, the starting position becomes invalid, so editing,
+        retrying, or regenerating the first message is refused rather than
+        restoring an empty state. An explicit save at the root can replace
+        its values. The author callback
         decides whether to supply defaults or fail; history does not
         automatically reset application state. An unhandled ordinary failure
         keeps the submitted message recorded and selected as a terminal
