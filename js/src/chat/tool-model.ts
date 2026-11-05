@@ -101,8 +101,10 @@ export interface ToolGroupIdentity {
 }
 
 // An aggregated set keeps the static definition title so the header stays
-// stable across calls' differing dynamic titles. A lone call shows its most
-// specific dynamic title instead.
+// stable across calls' differing dynamic titles. Without one, it takes a
+// result title only when every call shares it — one call's title must not
+// stand for the others'. A lone call shows its most specific dynamic title
+// instead.
 function resolveTitle(calls: ToolCallItem[]): string | undefined {
   const firstDone = calls.find((c) => c.status !== "running")
   const definitionTitle = calls.find(
@@ -110,9 +112,10 @@ function resolveTitle(calls: ToolCallItem[]): string | undefined {
   )?.definitionTitle
   const resultTitle =
     firstDone?.title ?? calls.find((c) => c.title !== undefined)?.title
-  return calls.length > 1
-    ? (definitionTitle ?? resultTitle)
-    : (resultTitle ?? definitionTitle)
+  if (calls.length === 1) return resultTitle ?? definitionTitle
+  if (definitionTitle !== undefined) return definitionTitle
+  const titles = new Set(calls.map((c) => c.title))
+  return titles.size === 1 ? [...titles][0] : undefined
 }
 
 // An aggregated set keeps only a shared definition icon. A lone call can show
@@ -386,20 +389,31 @@ export function supersededRequestIds(
 }
 
 /**
- * Definition icons keyed by the request that supplied them.
+ * The definition identity a running request supplied for its call.
+ */
+export interface RequestDefinition {
+  title?: string
+  icon?: string
+}
+
+/**
+ * Definition identity (title, icon) keyed by the request that supplied it.
  *
  * Request and result blocks remain separate lifecycle calls so they can arrive
- * in different messages. A result that omits an icon therefore needs this
- * index to retain its tool's shared identity after the request is hidden.
+ * in different messages. A result carries one `title`: its display title, or
+ * the definition title when the tool sets none (servers send
+ * `display.title ?? annotations.title`). It cannot mark which one it is, so
+ * once the superseded request is filtered out, this index is the only source
+ * of the tool's shared title. The same holds for the icon.
  */
-export function requestDefinitionIcons(
+export function requestDefinitions(
   messages: ChatMessageData[],
   streamingMessage: ChatMessageData | null,
-): Map<string, string> {
-  const icons = new Map<string, string>()
-  for (const msg of messages) collectRequestDefinitionIcons(msg, icons)
-  if (streamingMessage) collectRequestDefinitionIcons(streamingMessage, icons)
-  return icons
+): Map<string, RequestDefinition> {
+  const definitions = new Map<string, RequestDefinition>()
+  for (const msg of messages) collectRequestDefinitions(msg, definitions)
+  if (streamingMessage) collectRequestDefinitions(streamingMessage, definitions)
+  return definitions
 }
 
 function collectResultIds(msg: ChatMessageData, into: Set<string>): void {
@@ -419,9 +433,9 @@ function collectResultIds(msg: ChatMessageData, into: Set<string>): void {
   }
 }
 
-function collectRequestDefinitionIcons(
+function collectRequestDefinitions(
   msg: ChatMessageData,
-  into: Map<string, string>,
+  into: Map<string, RequestDefinition>,
 ): void {
   if (msg.role === "user") return
 
@@ -429,43 +443,56 @@ function collectRequestDefinitionIcons(
     if (block.type !== "tool_loop") continue
     for (const group of block.groups) {
       for (const call of group.calls) {
+        if (call.status !== "running" || !call.requestId) continue
         if (
-          call.status === "running" &&
-          call.requestId &&
-          call.definitionIcon !== undefined &&
-          !into.has(call.requestId)
+          call.definitionTitle === undefined &&
+          call.definitionIcon === undefined
         ) {
-          into.set(call.requestId, call.definitionIcon)
+          continue
         }
+        if (into.has(call.requestId)) continue
+        into.set(call.requestId, {
+          title: call.definitionTitle,
+          icon: call.definitionIcon,
+        })
       }
     }
   }
 }
 
 /**
- * Restore a settled call's definition icon from its matching request.
+ * Restore a settled call's definition identity from its matching request.
  *
- * An explicit result icon remains intact. Keeping both fields lets the
- * presentation layer distinguish a result-specific icon from the tool's
- * stable identity.
+ * An explicit result title or icon remains intact (`??` never overwrites),
+ * and keeping both fields lets the presentation layer distinguish
+ * result-specific identity from the tool's stable identity. The icon is also
+ * copied into the dynamic slot because `renderLeaf` passes `icon={item.icon}`
+ * with no fallback; every title reader already falls back to
+ * `definitionTitle`, so the title needs no copy.
  */
-export function inheritRequestDefinitionIcon(
+export function inheritRequestDefinition(
   call: ToolCallItem,
-  definitionIcons: ReadonlyMap<string, string>,
+  definitions: ReadonlyMap<string, RequestDefinition>,
 ): ToolCallItem {
   if (call.status === "running" || !call.requestId) return call
 
-  const definitionIcon = definitionIcons.get(call.requestId)
-  if (definitionIcon === undefined) return call
+  const definition = definitions.get(call.requestId)
+  if (definition === undefined) return call
 
-  const nextDefinitionIcon = call.definitionIcon ?? definitionIcon
-  const nextIcon = call.icon ?? definitionIcon
-  if (nextDefinitionIcon === call.definitionIcon && nextIcon === call.icon) {
+  const nextDefinitionTitle = call.definitionTitle ?? definition.title
+  const nextDefinitionIcon = call.definitionIcon ?? definition.icon
+  const nextIcon = call.icon ?? definition.icon
+  if (
+    nextDefinitionTitle === call.definitionTitle &&
+    nextDefinitionIcon === call.definitionIcon &&
+    nextIcon === call.icon
+  ) {
     return call
   }
 
   return {
     ...call,
+    definitionTitle: nextDefinitionTitle,
     definitionIcon: nextDefinitionIcon,
     icon: nextIcon,
   }
