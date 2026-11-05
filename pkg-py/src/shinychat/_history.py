@@ -833,8 +833,11 @@ class ChatHistory:
                 if not reject_resubmit:
                     await notify_error(error_prefix, e)
                 else:
+                    import warnings
+
                     from shiny import ui as shiny_ui
 
+                    warnings.warn(f"{error_prefix}: {e}", stacklevel=1)
                     if request_id is not None:
                         try:
                             await chat._send_action(

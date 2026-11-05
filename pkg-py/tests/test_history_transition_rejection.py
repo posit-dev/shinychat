@@ -129,6 +129,23 @@ async def test_invalid_parent_rejects_before_projection(
 
 
 @pytest.mark.anyio
+async def test_expected_refusal_keeps_developer_diagnostics_out_of_browser(
+    transition: Any,
+) -> None:
+    record = _record(transition[0])
+    record.nodes[record.root_id].checkpoint = "invalid"
+    operation, payload = _payload("edit")
+    with pytest.warns(
+        UserWarning,
+        match="Could not edit message: The requested position is not a valid checkpoint",
+    ):
+        actions, notifications = await _invoke(transition, operation, payload)
+    _assert_refused(actions, notifications)
+    assert "not a valid checkpoint" not in str(actions)
+    assert "not a valid checkpoint" not in str(notifications)
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("kind", ["edit", "retry", "regenerate"])
 @pytest.mark.parametrize(
     "case", ["gate", "partition", "missing", "index", "read_only"]
