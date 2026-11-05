@@ -160,6 +160,11 @@ export const ChatMessage = memo(function ChatMessage({
     isUser &&
     message.exchange?.status === "error" &&
     message.exchange.preparation_failed
+  const showResponseError =
+    !readOnly &&
+    !showPreparationFailure &&
+    message.exchange?.status === "error" &&
+    !!message.exchange.error_message
 
   const blocks = message.blocks
 
@@ -731,15 +736,11 @@ export const ChatMessage = memo(function ChatMessage({
         (!isEditing || readOnly) &&
         (canEdit ||
           (message.siblings && message.siblings.total > 1) ||
-          (message.exchange?.retryable && onRetry && !readOnly)) && (
+          (message.exchange?.retryable && onRetry && !readOnly) ||
+          showResponseError) && (
           <div
             className={`shiny-chat-message-footer${
-              !readOnly &&
-              !showPreparationFailure &&
-              message.exchange?.status === "error" &&
-              message.exchange.error_message
-                ? " shiny-chat-message-footer-error"
-                : ""
+              showResponseError ? " shiny-chat-message-footer-error" : ""
             }`}
           >
             {message.siblings && message.siblings.total > 1 && (
@@ -797,14 +798,11 @@ export const ChatMessage = memo(function ChatMessage({
                 dangerouslySetInnerHTML={{ __html: arrowClockwise }}
               />
             )}
-            {!readOnly &&
-              !showPreparationFailure &&
-              message.exchange?.status === "error" &&
-              message.exchange.error_message && (
-                <span className="shiny-chat-retry-error">
-                  {message.exchange.error_message}
-                </span>
-              )}
+            {showResponseError && (
+              <span className="shiny-chat-retry-error">
+                {message.exchange?.error_message}
+              </span>
+            )}
           </div>
         )}
       {lightboxPortal}

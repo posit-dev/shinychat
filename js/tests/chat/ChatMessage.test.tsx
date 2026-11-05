@@ -47,6 +47,26 @@ describe("ChatMessage parent checkpoint validity", () => {
     },
   )
 
+  it("keeps the response error visible when its invalid parent hides both actions", () => {
+    const exchange = {
+      status: "error" as const,
+      retryable: false,
+      parent_editable: false,
+      error_message: "The response could not be completed.",
+    }
+    render(
+      <ChatMessage
+        index={0}
+        message={userMessage({ exchange })}
+        onEdit={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(exchange.error_message)).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Edit message" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Retry message" })).toBeNull()
+  })
+
   it("keeps a successful non-retryable exchange editable", () => {
     const onStartEdit = vi.fn()
     const exchange = {
