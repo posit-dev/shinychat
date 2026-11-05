@@ -93,4 +93,42 @@ describe("ToolResult", () => {
     expect(queryByRole("alert")).toBeNull()
     expect(container.textContent).toContain("my_tool(x = 1)")
   })
+
+  it("highlights language-tagged code blocks in html values", () => {
+    const { container } = render(
+      <ToolResult
+        toolName="send"
+        status="success"
+        value='<pre><code class="language-r">plot(1:3)</code></pre>'
+        valueType="html"
+        showRequest={false}
+        initialExpanded={true}
+      />,
+    )
+    const code = container.querySelector("code")
+    expect(code?.className).toContain("hljs")
+    expect(code?.innerHTML).toMatch(/<span class="hljs-/)
+  })
+
+  it("does not re-parse html values without language classes", () => {
+    // A re-serialization round-trip drops one leading newline inside <pre>,
+    // and the DOM parser drops another on mount. If the value were re-parsed,
+    // the rendered text would be "keep", not "\nkeep".
+    const html =
+      '<div class="author-widget"><b>custom</b></div><pre>\n\nkeep</pre>'
+    const { container } = render(
+      <ToolResult
+        toolName="send"
+        status="success"
+        value={html}
+        valueType="html"
+        showRequest={false}
+        initialExpanded={true}
+      />,
+    )
+    expect(container.querySelector(".author-widget")?.innerHTML).toBe(
+      "<b>custom</b>",
+    )
+    expect(container.querySelector("pre")?.textContent).toBe("\nkeep")
+  })
 })
