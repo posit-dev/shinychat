@@ -18,6 +18,13 @@ const processor = unified()
  * HTML pays no parse round-trip and is byte-identical.
  */
 export function highlightHtmlCode(html: string): string {
-  if (!html.includes("language-")) return html
+  // Gate on the class attribute, not the bare word: prose mentioning
+  // "language-" must stay byte-identical rather than take the round-trip.
+  if (
+    !html.includes('class="language-') &&
+    !html.includes("class='language-")
+  ) {
+    return html
+  }
   return String(processor.processSync(html))
 }

@@ -648,7 +648,9 @@ method(contents_shinychat, ellmer::ContentToolResult) <- function(content) {
     icon = icon_rendered$html,
     intent = content@request@arguments[["_intent"]],
     show_request = isTRUE(display$show_request %||% TRUE),
-    expanded = isTRUE(display$open),
+    # [["open"]] rather than $open: display may carry open_style, which $open
+    # would partial-match.
+    expanded = isTRUE(display[["open"]]),
     full_screen = isTRUE(display$full_screen),
     open_style = if (identical(display$open_style, "framed")) {
       "framed"

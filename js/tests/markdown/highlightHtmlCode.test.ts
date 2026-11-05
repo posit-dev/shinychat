@@ -30,4 +30,14 @@ describe("highlightHtmlCode", () => {
     )
     expect(out).not.toMatch(/<span class="hljs-/)
   })
+
+  it('stays byte-identical when "language-" appears only in prose', () => {
+    const html = "<p>Classes like language-r are conventional.</p>"
+    expect(highlightHtmlCode(html)).toBe(html)
+  })
+
+  it("round-trips malformed HTML without throwing", () => {
+    const out = highlightHtmlCode('<pre><code class="language-r">x <- 1</code>')
+    expect(out).toContain("hljs")
+  })
 })
