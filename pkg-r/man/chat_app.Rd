@@ -153,7 +153,7 @@ response; it defaults to \code{TRUE} when a handler is given and \code{FALSE}
 otherwise (set \code{echo = FALSE} for a handler that only performs side
 effects). Returns a function that removes the command. Errors if a
 command with the same name is already registered unless
-\code{force = TRUE}.
+\code{force = TRUE}. Equivalent to \code{\link[=chat_slash_command]{chat_slash_command()}}.
 }
 }
 }

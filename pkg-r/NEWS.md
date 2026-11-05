@@ -2,11 +2,15 @@
 
 ## New features and improvements
 
+* Added `chat_slash_command()` for registering slash commands without `chat_server()`, so apps that drive `chat_ui()` with their own server logic (for example, a backend that isn't an ellmer client) can offer the slash-command palette too. It shares one palette per chat with `chat_server()`'s `$slash_command()` method, so it can also be used alongside `chat_server()` without passing its return value around.
+
 * Text file attachments are now sent to the model via `ellmer::content_document_url()` rather than a hand-assembled `<file-attachment>` text wrapper, so providers that handle documents natively receive a real document. This raises the minimum required ellmer version to 0.5.0. (#415)
 
 * Streamed responses now reveal smoothly at a typing-like pace instead of in abrupt server-sized chunks, with far fewer re-renders along the way. Bursts of text catch up quickly, the reveal never flashes a partial HTML tag, and stopping a response reveals any buffered text immediately. The trailing dot now appears only once a stream has stalled (or before any text has arrived), rather than hopping along with every update. (#411)
 
 ## Bug fixes
+
+* A slash command handler that returns a promise now keeps the chat in its loading state, with the input disabled, until the promise settles. Previously the loading indicator disappeared and the input re-enabled as soon as the handler returned, before an asynchronous reply arrived. A rejected promise is now reported like a handler error.
 
 * Expanding a running tool call's row in a tool group now shows its arguments. Previously the panel stayed empty until the call finished. (#424)
 

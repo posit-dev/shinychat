@@ -89,6 +89,7 @@ reference:
 
 - title: Slash commands
   contents:
+  - chat_slash_command
   - ContentSlashCommand
 
 - title: File attachments
