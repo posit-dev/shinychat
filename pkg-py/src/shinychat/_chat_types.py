@@ -464,6 +464,12 @@ class HistoryTransitionCompleteAction(TypedDict):
     requestId: str
 
 
+class HistoryTransitionRejectedAction(TypedDict):
+    type: Literal["history_transition_rejected"]
+    requestId: str
+    reason: str
+
+
 class HistoryEditProjectionAction(TypedDict):
     type: Literal["history_edit_projection"]
     requestId: str
@@ -523,6 +529,7 @@ ChatAction = Union[
     HistoryUpdateAction,
     HistoryNavigateAction,
     HistoryTransitionCompleteAction,
+    HistoryTransitionRejectedAction,
     HistoryEditProjectionAction,
     UpdateSiblingsAction,
     UpdateExchangeMetadataAction,

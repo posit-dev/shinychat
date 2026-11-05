@@ -1496,7 +1496,8 @@ export function chatReducer(state: ChatState, action: AnyAction): ChatState {
       return state
     }
 
-    case "history_transition_complete": {
+    case "history_transition_complete":
+    case "history_transition_rejected": {
       // HistoryStore owns the matching request marker.
       return state
     }

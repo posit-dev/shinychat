@@ -102,7 +102,9 @@ interface ChatMessageProps {
     index: number,
     content: string,
     attachments: AttachmentPayload[],
-  ) => void
+  ) => boolean | "retained" | void
+  editLocked?: boolean
+  isEditLocked?: () => boolean
   onNavigate?: (index: number, direction: "prev" | "next") => void
   onRetry?: (index: number) => void
   siblingNavigationPending?: boolean
@@ -125,6 +127,8 @@ export const ChatMessage = memo(function ChatMessage({
   index,
   iconAssistant,
   onEdit,
+  editLocked = false,
+  isEditLocked,
   onNavigate,
   onRetry,
   siblingNavigationPending = false,
@@ -149,6 +153,10 @@ export const ChatMessage = memo(function ChatMessage({
     mime: string
   } | null>(null)
   const [hasEditText, setHasEditText] = useState(false)
+  // Preserve a submitted edit's mounted draft even if a history update makes
+  // the conversation read-only before the transition is settled.
+  const [retainedEdit, setRetainedEdit] = useState(false)
+  const showEdit = isEditing && (!readOnly || editLocked || retainedEdit)
   const editRef = useRef<TiptapInputHandle>(null)
   const isUser = message.role === "user"
   const canEdit =
@@ -237,7 +245,7 @@ export const ChatMessage = memo(function ChatMessage({
   const touchHoldEnabled =
     isUser &&
     !disabled &&
-    (!isEditing || readOnly) &&
+    !showEdit &&
     (canEdit || (!!onNavigate && (message.siblings?.total ?? 0) > 1))
 
   const [touchRevealed, setTouchRevealed] = useState(false)
@@ -247,19 +255,22 @@ export const ChatMessage = memo(function ChatMessage({
   const rootRef = useRef<HTMLDivElement>(null)
 
   const focusEditor = useCallback(() => editRef.current?.focus(), [])
+  const canMutateEdit = useCallback(() => !isEditLocked?.(), [isEditLocked])
   const staging = useAttachmentStaging({
     uploadAccept,
     maxUploadSize,
     enableUpload,
     focusEditor,
+    canMutate: canMutateEdit,
   })
-  const { applyPayloads, getPayloads, onPaste, onDrop } = staging
+  const { applyPayloads, getPayloads, isProcessing, onPaste, onDrop } = staging
 
   // Seed the editor only on the transition into editing. Re-seeding when
   // message.content/attachments change while an edit is open would clobber the
   // user's in-progress text and steal focus, so guard on the previous state.
   const wasEditingRef = useRef(false)
   useEffect(() => {
+    if (!isEditing) setRetainedEdit(false)
     if (isEditing && !wasEditingRef.current) {
       editRef.current?.setInputValue(message.content, { focus: true })
       applyPayloads(message.attachments ?? [], "set")
@@ -268,13 +279,28 @@ export const ChatMessage = memo(function ChatMessage({
   }, [isEditing, message.content, message.attachments, applyPayloads])
 
   const handleSaveEdit = useCallback(
-    (content: string): boolean => {
-      if (disabled || readOnly) return false
-      onEdit?.(index, content, getPayloads())
+    (content: string): boolean | "retained" => {
+      if (disabled || readOnly || isEditLocked?.() || isProcessing() || !onEdit)
+        return false
+      const result = onEdit(index, content, getPayloads())
+      if (result === "retained") {
+        setRetainedEdit(true)
+        return result
+      }
+      if (result === false) return false
       onCancelEdit?.()
       return true
     },
-    [onEdit, onCancelEdit, index, disabled, readOnly, getPayloads],
+    [
+      onEdit,
+      onCancelEdit,
+      index,
+      disabled,
+      readOnly,
+      isEditLocked,
+      isProcessing,
+      getPayloads,
+    ],
   )
   // Lets Enter submit an attachments-only edit even though the editor doc is
   // empty (TiptapInput blocks empty submits otherwise).
@@ -644,11 +670,17 @@ export const ChatMessage = memo(function ChatMessage({
         className="shiny-chat-message-content"
         data-pending={showInlinePendingDots || undefined}
       >
-        {isEditing && !readOnly ? (
+        {showEdit ? (
           <div
             className="shiny-chat-edit-wrap"
             onKeyDownCapture={(e) => {
-              if (e.key === "Escape") {
+              if (
+                isEditLocked?.() &&
+                (e.key === "Escape" || e.key === "Enter")
+              ) {
+                e.preventDefault()
+                e.stopPropagation()
+              } else if (e.key === "Escape") {
                 e.preventDefault()
                 onCancelEdit?.()
               }
@@ -656,9 +688,19 @@ export const ChatMessage = memo(function ChatMessage({
           >
             <div
               className="shiny-chat-edit-box"
-              onDropCapture={onDrop}
+              onDropCapture={(e) => {
+                if (isEditLocked?.()) {
+                  e.preventDefault()
+                  e.stopPropagation()
+                } else onDrop(e)
+              }}
               onDragOver={(e) => e.preventDefault()}
-              onPasteCapture={onPaste}
+              onPasteCapture={(e) => {
+                if (isEditLocked?.()) {
+                  e.preventDefault()
+                  e.stopPropagation()
+                } else onPaste(e)
+              }}
             >
               <AttachmentTray
                 staging={staging}
@@ -666,6 +708,8 @@ export const ChatMessage = memo(function ChatMessage({
                 maxUploadSize={maxUploadSize}
                 enableUpload={enableUpload}
                 disabled={disabled}
+                locked={editLocked}
+                isLocked={isEditLocked}
               />
               <TiptapInput
                 ref={editRef}
@@ -677,12 +721,17 @@ export const ChatMessage = memo(function ChatMessage({
                 onHasTextChange={setHasEditText}
                 onSubmit={handleSaveEdit}
                 canSubmitEmpty={canSubmitEmpty}
+                locked={editLocked}
+                isLocked={isEditLocked}
               />
               <button
                 type="button"
                 className="shiny-chat-btn-send"
                 disabled={
-                  disabled || (!hasEditText && staging.attachments.length === 0)
+                  disabled ||
+                  readOnly ||
+                  staging.processing ||
+                  (!hasEditText && staging.attachments.length === 0)
                 }
                 onClick={() => {
                   const content = editRef.current?.serializeEditor() ?? ""
@@ -696,7 +745,10 @@ export const ChatMessage = memo(function ChatMessage({
             <button
               type="button"
               className="shiny-chat-edit-cancel-outside"
-              onClick={() => onCancelEdit?.()}
+              disabled={editLocked}
+              onClick={() => {
+                if (!isEditLocked?.()) onCancelEdit?.()
+              }}
             >
               Cancel
             </button>
@@ -733,7 +785,7 @@ export const ChatMessage = memo(function ChatMessage({
         )}
       </div>
       {isUser &&
-        (!isEditing || readOnly) &&
+        !showEdit &&
         (canEdit ||
           (message.siblings && message.siblings.total > 1) ||
           (message.exchange?.retryable && onRetry && !readOnly) ||
@@ -812,7 +864,7 @@ export const ChatMessage = memo(function ChatMessage({
   return (
     <>
       {messageElement}
-      {showPreparationFailure && (!isEditing || readOnly) && (
+      {showPreparationFailure && !showEdit && (
         <p className="shiny-chat-message-not-sent">
           This message was not sent.
         </p>
