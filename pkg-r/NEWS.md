@@ -8,6 +8,8 @@
 
 ## Bug fixes
 
+* A group of related tool calls no longer loses its descriptive title once all the calls finish; the group now keeps the title it had while the calls were running. (#457)
+
 * Expanding a running tool call's row in a tool group now shows its arguments. Previously the panel stayed empty until the call finished. (#424)
 
 * Stopping an in-progress response now returns focus to the chat input, even inside a Shiny modal. During streaming, Escape dismisses an open slash-command menu or history drawer first; a subsequent Escape cancels the response without closing the modal. (thanks @taekop, #416)
